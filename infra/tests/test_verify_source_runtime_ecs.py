@@ -32,6 +32,7 @@ from scripts.verify_source_runtime_ecs import (
     _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
+    _runtime_ids_from_command,
     _runtime_targets,
     _runtime_skip_reason,
     _runtime_skip_retryable,
@@ -122,6 +123,10 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
     def test_runtime_id_from_command(self) -> None:
         self.assertEqual(_runtime_id_from_command(["orchestrator", "run", "runtime_id=writer-cosmo-session"]), "writer-cosmo-session")
+        self.assertEqual(
+            _runtime_ids_from_command(["orchestrator", "run", "runtime_ids=writer-cosmo-session,writer-cosmo-message"]),
+            ["writer-cosmo-session", "writer-cosmo-message"],
+        )
 
     def test_schedule_suffix_matches_pulumi_names(self) -> None:
         self.assertEqual(_schedule_suffix("Cosmo Survey Feedback"), "cosmo-survey-feedback")
@@ -199,6 +204,49 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(len(targets), 1)
         self.assertEqual(targets[0].target["Arn"], "cluster")
+
+    def test_runtime_targets_find_grouped_scheduler_target(self) -> None:
+        config = {
+            "orchestratorSchedules": [
+                {
+                    "name": "cosmo-live-group-01",
+                    "backend": "scheduler",
+                    "command": ["orchestrator", "run", "runtime_ids=writer-cosmo-session,writer-cosmo-message"],
+                }
+            ]
+        }
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            self.assertEqual(args[-1], "cerebro-go-production-orchestrator-cosmo-live-group-01")
+            return {
+                "Target": {
+                    "Arn": "cluster",
+                    "Input": "{\"containerOverrides\":[]}",
+                    "EcsParameters": {
+                        "TaskDefinitionArn": "task-definition",
+                        "LaunchType": "FARGATE",
+                        "NetworkConfiguration": {
+                            "awsvpcConfiguration": {
+                                "Subnets": ["subnet-1"],
+                                "SecurityGroups": ["sg-1"],
+                                "AssignPublicIp": "DISABLED",
+                            }
+                        },
+                    },
+                }
+            }
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            targets = _runtime_targets(
+                config,
+                ["writer-cosmo-message"],
+                "cerebro-go-production",
+                "us-east-1",
+            )
+
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0].runtime_id, "writer-cosmo-message")
+        self.assertEqual(targets[0].schedule_name, "cosmo-live-group-01")
 
     def test_runtime_targets_skip_disabled_schedule(self) -> None:
         config = {

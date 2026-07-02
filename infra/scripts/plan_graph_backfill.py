@@ -12,10 +12,10 @@ import sys
 from typing import Any
 
 try:
-    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_id_from_command, runtime_source_id
+    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_ids_from_command, runtime_source_id
 except ModuleNotFoundError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_id_from_command, runtime_source_id
+    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_ids_from_command, runtime_source_id
 
 
 @dataclass(frozen=True)
@@ -83,8 +83,7 @@ def _schedule_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for schedule in config.get("orchestratorSchedules") or []:
         if not isinstance(schedule, dict):
             continue
-        runtime_id = runtime_id_from_command(schedule.get("command"))
-        if runtime_id:
+        for runtime_id in runtime_ids_from_command(schedule.get("command")):
             mapped[runtime_id] = schedule
     return mapped
 

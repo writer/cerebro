@@ -142,14 +142,28 @@ def _cloudtrail_audit_metric_filter_specs(name: str) -> list[dict]:
     ]
 
 
-def _runtime_id_from_command(command) -> str:
+def _runtime_ids_from_command(command) -> list[str]:
+    runtime_ids: list[str] = []
     if not isinstance(command, list):
-        return ""
+        return runtime_ids
     for arg in command:
         text = str(arg).strip()
         if text.startswith("runtime_id="):
-            return text.split("=", 1)[1].strip()
-    return ""
+            _append_unique_runtime_id(runtime_ids, text.split("=", 1)[1].strip())
+        elif text.startswith("runtime_ids="):
+            for runtime_id in text.split("=", 1)[1].split(","):
+                _append_unique_runtime_id(runtime_ids, runtime_id.strip())
+    return runtime_ids
+
+
+def _runtime_id_from_command(command) -> str:
+    runtime_ids = _runtime_ids_from_command(command)
+    return runtime_ids[0] if runtime_ids else ""
+
+
+def _append_unique_runtime_id(out: list[str], value: str) -> None:
+    if value and value not in out:
+        out.append(value)
 
 
 def _scheduled_source_runtime_ids(source_runtimes: list[dict], scheduled_runtime_ids: set[str]) -> list[str]:
@@ -1146,7 +1160,8 @@ def create_monitoring(
 
     runtime_ids = sorted({
         runtime_id
-        for runtime_id in (_runtime_id_from_command(schedule.get("command")) for schedule in orchestrator_schedules or [])
+        for schedule in orchestrator_schedules or []
+        for runtime_id in _runtime_ids_from_command(schedule.get("command") if isinstance(schedule, dict) else None)
         if runtime_id
     })
     for runtime_id in runtime_ids:
@@ -1165,7 +1180,7 @@ def create_monitoring(
         runtime_id: schedule
         for schedule in orchestrator_schedules or []
         if isinstance(schedule, dict)
-        for runtime_id in [_runtime_id_from_command(schedule.get("command"))]
+        for runtime_id in _runtime_ids_from_command(schedule.get("command"))
         if runtime_id
     }
     for runtime_id in _scheduled_source_runtime_ids(source_runtimes or [], set(runtime_ids)):

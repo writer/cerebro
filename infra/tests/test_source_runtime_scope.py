@@ -10,6 +10,21 @@ from aws import source_runtime_scope
 
 
 class SourceRuntimeScopeTest(unittest.TestCase):
+    def test_runtime_ids_from_command_accepts_singular_and_grouped_filters(self) -> None:
+        self.assertEqual(
+            source_runtime_scope.runtime_ids_from_command([
+                "orchestrator",
+                "run",
+                "runtime_id=writer-okta-audit",
+                "runtime_ids=writer-cosmo-session, writer-cosmo-message",
+            ]),
+            ["writer-okta-audit", "writer-cosmo-session", "writer-cosmo-message"],
+        )
+        self.assertEqual(
+            source_runtime_scope.runtime_id_from_command(["orchestrator", "run", "runtime_ids=runtime-a,runtime-b"]),
+            "runtime-a",
+        )
+
     def test_declared_runtime_ids_filter_by_source_requested_and_family(self) -> None:
         config = {
             "sourceRuntimes": [

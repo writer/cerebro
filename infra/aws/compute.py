@@ -569,20 +569,31 @@ def _source_runtime_by_id(source_runtimes: list[dict]) -> dict[str, dict]:
     }
 
 
-def _runtime_id_from_orchestrator_command(command: list[str]) -> str:
+def _append_unique_text(out: list[str], value: str) -> None:
+    if value and value not in out:
+        out.append(value)
+
+
+def _runtime_ids_from_orchestrator_command(command: list[str]) -> list[str]:
+    runtime_ids: list[str] = []
     for part in command or []:
         text = str(part).strip()
         if text.startswith("runtime_id="):
-            return text.split("=", 1)[1].strip()
-    return ""
+            _append_unique_text(runtime_ids, text.split("=", 1)[1].strip())
+        elif text.startswith("runtime_ids="):
+            for runtime_id in text.split("=", 1)[1].split(","):
+                _append_unique_text(runtime_ids, runtime_id.strip())
+    return runtime_ids
 
 
 def _orchestrator_schedule_bootstrap_payload(command: list[str], runtime_by_id: dict[str, dict]) -> str:
-    runtime_id = _runtime_id_from_orchestrator_command(command)
-    runtime = runtime_by_id.get(runtime_id)
-    if not runtime:
+    runtime_ids = _runtime_ids_from_orchestrator_command(command)
+    if not runtime_ids:
         return ""
-    return _source_runtime_bootstrap_payload([runtime])
+    runtimes = [runtime_by_id.get(runtime_id) for runtime_id in runtime_ids]
+    if any(runtime is None for runtime in runtimes):
+        return ""
+    return _source_runtime_bootstrap_payload([runtime for runtime in runtimes if runtime is not None])
 
 
 def _orchestrator_target_input(command: list[str], bootstrap_payload: str = "") -> str:

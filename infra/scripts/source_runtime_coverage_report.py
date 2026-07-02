@@ -122,14 +122,28 @@ def _runtime_field(runtime: dict[str, Any], *keys: str) -> str:
     return ""
 
 
-def _runtime_id_from_command(command: Any) -> str:
+def _runtime_ids_from_command(command: Any) -> list[str]:
+    runtime_ids: list[str] = []
     if not isinstance(command, list):
-        return ""
+        return runtime_ids
     for arg in command:
         text = str(arg).strip()
         if text.startswith("runtime_id="):
-            return text.split("=", 1)[1].strip()
-    return ""
+            _append_unique(runtime_ids, text.split("=", 1)[1].strip())
+        elif text.startswith("runtime_ids="):
+            for runtime_id in text.split("=", 1)[1].split(","):
+                _append_unique(runtime_ids, runtime_id.strip())
+    return runtime_ids
+
+
+def _runtime_id_from_command(command: Any) -> str:
+    runtime_ids = _runtime_ids_from_command(command)
+    return runtime_ids[0] if runtime_ids else ""
+
+
+def _append_unique(out: list[str], value: str) -> None:
+    if value and value not in out:
+        out.append(value)
 
 
 def _family(runtime: dict[str, Any]) -> str:
@@ -144,8 +158,7 @@ def _schedule_map(schedules: list[Any]) -> dict[str, list[dict[str, Any]]]:
     for schedule in schedules:
         if not isinstance(schedule, dict):
             continue
-        runtime_id = _runtime_id_from_command(schedule.get("command"))
-        if runtime_id:
+        for runtime_id in _runtime_ids_from_command(schedule.get("command")):
             mapped.setdefault(runtime_id, []).append(schedule)
     return mapped
 

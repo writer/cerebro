@@ -258,6 +258,7 @@ config:
         role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - organizations_account
@@ -271,6 +272,7 @@ config:
         role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - organizations_account
@@ -284,6 +286,7 @@ config:
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - organizations_account
@@ -297,6 +300,7 @@ config:
         role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - organizations_account
@@ -311,6 +315,7 @@ config:
         role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - cloudfront_distribution
@@ -343,6 +348,7 @@ config:
         role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - elbv2_load_balancer
@@ -371,6 +377,7 @@ config:
         role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - cloudfront_distribution
@@ -403,6 +410,7 @@ config:
         role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - elbv2_load_balancer
@@ -431,6 +439,7 @@ config:
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - cloudfront_distribution
@@ -463,6 +472,7 @@ config:
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - elbv2_load_balancer
@@ -491,6 +501,7 @@ config:
         role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - cloudfront_distribution
@@ -523,6 +534,7 @@ config:
         role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
       schedule:
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
       families:
         - elbv2_load_balancer
@@ -551,6 +563,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -582,6 +595,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -596,6 +610,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -610,6 +625,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -624,6 +640,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -638,6 +655,7 @@ config:
       schedule:
         backend: scheduler
         cadenceHours: 6
+        groupSize: 10
         nameMaxLength: 29
         pageLimit: 5
         graphPageLimit: 5
@@ -2171,7 +2189,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: panopticon-alerts-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -2181,7 +2199,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: panopticon-cases-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -2191,7 +2209,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: panopticon-iocs-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -2201,7 +2219,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-audit-live
-      scheduleExpression: cron(2,12,22,32,42,52 * * * ? *)
+      scheduleExpression: cron(2,32 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -2233,7 +2251,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: okta-user-inventory
-      scheduleExpression: cron(7,37 * * * ? *)
+      scheduleExpression: cron(7 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -2243,7 +2261,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-group-inventory
-      scheduleExpression: cron(12,42 * * * ? *)
+      scheduleExpression: cron(12 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -2253,7 +2271,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-application-inventory
-      scheduleExpression: cron(17,47 * * * ? *)
+      scheduleExpression: cron(17 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -2263,7 +2281,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-security-group-members
-      scheduleExpression: cron(22,52 * * * ? *)
+      scheduleExpression: cron(22 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -2273,7 +2291,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-authenticator-inventory
-      scheduleExpression: cron(27,57 * * * ? *)
+      scheduleExpression: cron(27 * * * ? *)
       backend: scheduler
       taskCount: 1
       command:
@@ -2284,7 +2302,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-policy-rule-inventory
-      scheduleExpression: cron(4,34 * * * ? *)
+      scheduleExpression: cron(4 * * * ? *)
       backend: scheduler
       taskCount: 1
       command:

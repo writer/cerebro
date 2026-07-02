@@ -456,15 +456,28 @@ def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
     return requirements
 
 
-def _runtime_id_from_command(command: Any) -> str | None:
+def _runtime_ids_from_command(command: Any) -> list[str]:
+    runtime_ids: list[str] = []
     if not isinstance(command, list):
-        return None
+        return runtime_ids
     for arg in command:
         text = str(arg).strip()
         if text.startswith("runtime_id="):
-            runtime_id = text.split("=", 1)[1].strip()
-            return runtime_id or None
-    return None
+            _append_unique(runtime_ids, text.split("=", 1)[1].strip())
+        elif text.startswith("runtime_ids="):
+            for runtime_id in text.split("=", 1)[1].split(","):
+                _append_unique(runtime_ids, runtime_id.strip())
+    return runtime_ids
+
+
+def _runtime_id_from_command(command: Any) -> str | None:
+    runtime_ids = _runtime_ids_from_command(command)
+    return runtime_ids[0] if runtime_ids else None
+
+
+def _append_unique(out: list[str], value: str) -> None:
+    if value and value not in out:
+        out.append(value)
 
 
 def _schedule_suffix(value: Any) -> str:
@@ -704,8 +717,7 @@ def _validate_cosmo_gitops(
     schedules_by_runtime: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, schedule in enumerate(schedules):
         if isinstance(schedule, dict):
-            runtime_id = _runtime_id_from_command(schedule.get("command"))
-            if runtime_id:
+            for runtime_id in _runtime_ids_from_command(schedule.get("command")):
                 schedules_by_runtime.setdefault(runtime_id, []).append((index, schedule))
 
     for runtime_id, family in cosmo_runtime_families.items():
@@ -846,8 +858,7 @@ def _validate_sec_dev_aws_coverage(
     schedules_by_runtime: dict[str, list[int]] = {}
     for index, schedule in enumerate(schedules):
         if isinstance(schedule, dict):
-            runtime_id = _runtime_id_from_command(schedule.get("command"))
-            if runtime_id:
+            for runtime_id in _runtime_ids_from_command(schedule.get("command")):
                 schedules_by_runtime.setdefault(runtime_id, []).append(index)
 
     required: dict[str, dict[str, str]] = {}
@@ -927,8 +938,7 @@ def _validate_go_prod_aws_coverage(
     schedules_by_runtime: dict[str, list[int]] = {}
     for index, schedule in enumerate(schedules):
         if isinstance(schedule, dict):
-            runtime_id = _runtime_id_from_command(schedule.get("command"))
-            if runtime_id:
+            for runtime_id in _runtime_ids_from_command(schedule.get("command")):
                 schedules_by_runtime.setdefault(runtime_id, []).append(index)
 
     required: dict[str, dict[str, str]] = {}
@@ -981,9 +991,9 @@ def _normalize_s3_prefix(value: Any) -> str:
 
 
 def _panopticon_runtime_id_from_schedule(schedule: Any) -> str | None:
-    runtime_id = _runtime_id_from_command(schedule.get("command") if isinstance(schedule, dict) else None)
-    if runtime_id in PANOPTICON_RUNTIME_FAMILIES:
-        return runtime_id
+    for runtime_id in _runtime_ids_from_command(schedule.get("command") if isinstance(schedule, dict) else None):
+        if runtime_id in PANOPTICON_RUNTIME_FAMILIES:
+            return runtime_id
     return None
 
 
@@ -2069,34 +2079,35 @@ def validate_stack(path: Path) -> list[Finding]:
 
     scheduled_runtime_ids: set[str] = set()
     top_level_command = config.get("orchestratorCommand")
-    top_level_runtime_id = _runtime_id_from_command(top_level_command)
+    top_level_runtime_ids = _runtime_ids_from_command(top_level_command)
     if top_level_command:
-        if top_level_runtime_id is None:
+        if not top_level_runtime_ids:
             if not schedules:
                 scheduled_runtime_ids.update(runtime_ids)
-        elif top_level_runtime_id in disabled_runtime_ids:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    "cerebro:orchestratorCommand",
-                    f"quarantined runtime {top_level_runtime_id!r} must not be referenced by cerebro:orchestratorCommand",
-                )
-            )
-        elif top_level_runtime_id not in runtime_ids:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    "cerebro:orchestratorCommand",
-                    f"unknown runtime id {top_level_runtime_id!r}",
-                )
-            )
         else:
-            if not schedules:
-                scheduled_runtime_ids.add(top_level_runtime_id)
+            for top_level_runtime_id in top_level_runtime_ids:
+                if top_level_runtime_id in disabled_runtime_ids:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            "cerebro:orchestratorCommand",
+                            f"quarantined runtime {top_level_runtime_id!r} must not be referenced by cerebro:orchestratorCommand",
+                        )
+                    )
+                elif top_level_runtime_id not in runtime_ids:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            "cerebro:orchestratorCommand",
+                            f"unknown runtime id {top_level_runtime_id!r}",
+                        )
+                    )
+                elif not schedules:
+                    scheduled_runtime_ids.add(top_level_runtime_id)
         if not schedules:
-            guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
+            guarded_runtime_ids = top_level_runtime_ids or sorted(runtime_ids)
             for guarded_runtime_id in guarded_runtime_ids:
                 _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
@@ -2150,23 +2161,25 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(task_count, int) or task_count < 1:
             findings.append(_finding("error", stack, f"{schedule_path}.taskCount", "taskCount must be a positive integer"))
 
-        runtime_id = _runtime_id_from_command(schedule.get("command"))
-        if runtime_id is None:
-            findings.append(_finding("error", stack, f"{schedule_path}.command", "command must include runtime_id=<id>"))
-        elif runtime_id in disabled_runtime_ids:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    f"{schedule_path}.command",
-                    f"quarantined runtime {runtime_id!r} must not be referenced by cerebro:orchestratorSchedules",
+        schedule_runtime_ids = _runtime_ids_from_command(schedule.get("command"))
+        if not schedule_runtime_ids:
+            findings.append(_finding("error", stack, f"{schedule_path}.command", "command must include runtime_id=<id> or runtime_ids=<id>,<id>"))
+            continue
+        for runtime_id in schedule_runtime_ids:
+            if runtime_id in disabled_runtime_ids:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{schedule_path}.command",
+                        f"quarantined runtime {runtime_id!r} must not be referenced by cerebro:orchestratorSchedules",
+                    )
                 )
-            )
-        elif runtime_id not in runtime_ids:
-            findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
-        else:
-            scheduled_runtime_ids.add(runtime_id)
-            _validate_graph_page_budget(stack, runtime_id, schedule.get("command"), f"{schedule_path}.command", findings)
+            elif runtime_id not in runtime_ids:
+                findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
+            else:
+                scheduled_runtime_ids.add(runtime_id)
+                _validate_graph_page_budget(stack, runtime_id, schedule.get("command"), f"{schedule_path}.command", findings)
 
         if "backfill" in name.lower():
             retirement_key = next((key for key in ("expiresAt", "removeAfter", "expires_after") if key in schedule), "")

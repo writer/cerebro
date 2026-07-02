@@ -156,6 +156,10 @@ def _load_config(path: Path) -> dict[str, Any]:
     return source_runtime_scope.load_cerebro_config(path)
 
 
+def _runtime_ids_from_command(command: Any) -> list[str]:
+    return source_runtime_scope.runtime_ids_from_command(command)
+
+
 def _runtime_id_from_command(command: Any) -> str:
     return source_runtime_scope.runtime_id_from_command(command)
 
@@ -215,9 +219,9 @@ def _task_command(task: dict[str, Any]) -> list[str]:
 
 
 def _task_matches_target(task: dict[str, Any], target: RuntimeTarget) -> bool:
-    runtime_id = _runtime_id_from_command(_task_command(task))
-    if runtime_id:
-        return runtime_id == target.runtime_id
+    runtime_ids = _runtime_ids_from_command(_task_command(task))
+    if runtime_ids:
+        return target.runtime_id in runtime_ids
     if _target_command(target):
         return False
     return _task_family(str(task.get("taskDefinitionArn") or "")) == _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
@@ -336,7 +340,7 @@ def _runtime_targets(
         matches = [
             schedule
             for schedule in schedules
-            if isinstance(schedule, dict) and _runtime_id_from_command(schedule.get("command")) == runtime_id
+            if isinstance(schedule, dict) and runtime_id in _runtime_ids_from_command(schedule.get("command"))
         ]
         if len(matches) != 1:
             raise ValueError(f"runtime {runtime_id!r} must have exactly one orchestrator schedule, found {len(matches)}")
