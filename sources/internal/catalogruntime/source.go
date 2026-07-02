@@ -164,7 +164,6 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Attributes:            attributePaths(resource, class),
 		StaticAttributes:      staticAttributes(sourceID, name, class),
 		Config:                config,
-		AuthModel:             strings.TrimSpace(resource.AuthModel),
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
 		ListKeys:              listKeys(resource),
@@ -239,6 +238,7 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		ConfigQuery:       cloneStringMap(resource.ConfigQuery),
 		RedactPayloadKeys: sensitivePayloadKeys(resource.SensitivePayloadPaths),
 		Method:            strings.ToUpper(strings.TrimSpace(resource.Method)),
+		AuthModel:         strings.TrimSpace(resource.AuthModel),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)

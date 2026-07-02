@@ -91,7 +91,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
 	}
 	if rawAuthModel == "" {
-		if familyAuthModel := normalizedAuthModel(family.AuthModel); familyAuthModel != "" {
+		if familyAuthModel := normalizedAuthModel(family.Config.AuthModel); familyAuthModel != "" {
 			resolved.authModel = familyAuthModel
 		}
 	}

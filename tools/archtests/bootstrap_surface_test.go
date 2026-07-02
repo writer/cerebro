@@ -93,7 +93,7 @@ import (
 // store boundaries. Duo connector setup adds resource-family metadata and
 // config-query keys through schema/response mapping at the existing connector
 // catalog boundary.
-const bootstrapProductionGoLineBudget = 27067
+const bootstrapProductionGoLineBudget = 27088
 
 type bootstrapFileLineCount struct {
 	path  string

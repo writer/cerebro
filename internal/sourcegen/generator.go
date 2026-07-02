@@ -709,16 +709,14 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			}
 		}
 		families = append(families, familyData{
-			Name:          name,
-			Schema:        schemaNameFromRef(schemaRef, name),
-			Class:         class,
-			ConstName:     "family" + pascalIdentifier(name),
-			ProjectorName: lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
-			Path:          resource.Path,
-			familyRequestData: familyRequestData{
-				Method:    methodForResource(resource),
-				AuthModel: authModel,
-			},
+			Name:                  name,
+			Schema:                schemaNameFromRef(schemaRef, name),
+			Class:                 class,
+			ConstName:             "family" + pascalIdentifier(name),
+			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
+			Path:                  resource.Path,
+			Method:                methodForResource(resource),
+			AuthModel:             authModel,
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
@@ -1307,9 +1305,6 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
-		if strings.TrimSpace(family.AuthModel) != "" {
-			fmt.Fprintf(&b, "\t\t\t\tAuthModel: %s,\n", strconv.Quote(family.AuthModel))
-		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1336,10 +1331,13 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
-		if strings.TrimSpace(family.Method) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
+		if strings.TrimSpace(family.Method) != "" || strings.TrimSpace(family.AuthModel) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
 			if strings.TrimSpace(family.Method) != "" {
 				fmt.Fprintf(&b, "\t\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
+			}
+			if strings.TrimSpace(family.AuthModel) != "" {
+				fmt.Fprintf(&b, "\t\t\t\t\tAuthModel: %s,\n", strconv.Quote(family.AuthModel))
 			}
 			if len(family.Config.StaticQuery) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))

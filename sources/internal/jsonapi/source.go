@@ -19,7 +19,6 @@ type Family struct {
 	DetailPath            string
 	AllowBareDetailRecord bool
 	PathParams            []string
-	AuthModel             string
 	CursorParam           string
 	NextCursorKeys        []string
 	NextCursorHeaders     []string
@@ -66,6 +65,7 @@ type FamilyConfig struct {
 	LimitKeys           []string
 	LastItemCursorKeys  []string
 	Method              string
+	AuthModel           string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while
