@@ -676,7 +676,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `smartsheet` | Smartsheet source | smartsheet.audit_events, smartsheet.documents, smartsheet.groups, smartsheet.users, smartsheet.workspaces |
 | `smartsuite` | Smartsuite source | smartsuite.accounts, smartsuite.audit_events, smartsuite.policies, smartsuite.records, smartsuite.users |
 | `snowflake` | Snowflake source | snowflake.assets, snowflake.audit_events, snowflake.cortex_search_services, snowflake.vulnerabilities |
-| `snyk` | Snyk source | snyk.assets, snyk.findings, snyk.vulnerabilities |
+| `snyk` | Snyk source | snyk.orgs, snyk.groups, snyk.projects, snyk.targets, snyk.assets, snyk.findings, snyk.vulnerabilities, snyk.org_memberships, snyk.service_accounts, snyk.audit_logs, snyk.collections, snyk.cloud_environments, snyk.cloud_resources, snyk.cloud_scans, snyk.group_memberships, snyk.group_service_accounts, snyk.group_audit_logs, snyk.asset_project_relationships, snyk.asset_target_relationships |
 | `soda_cloud` | Soda Cloud source | soda_cloud.accounts, soda_cloud.audit_events, soda_cloud.policies, soda_cloud.records, soda_cloud.users |
 | `sonarcloud` | Sonarcloud source | sonarcloud.assets, sonarcloud.findings, sonarcloud.vulnerabilities |
 | `sonatype_lifecycle` | Sonatype Lifecycle source | sonatype_lifecycle.assets, sonatype_lifecycle.audit_events, sonatype_lifecycle.findings, sonatype_lifecycle.policies, sonatype_lifecycle.vulnerabilities |

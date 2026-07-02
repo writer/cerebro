@@ -1,0 +1,41 @@
+[
+  {
+    "id": "snyk-org-membership-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.org_memberships",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/org_memberships/v1",
+    "payload": {
+      "id": "membership-1",
+      "relationships": {
+        "user": {
+          "data": {
+            "id": "user-1",
+            "type": "user"
+          }
+        },
+        "role": {
+          "data": {
+            "id": "admin"
+          }
+        }
+      }
+    },
+    "attributes": {
+      "external_id": "membership-1",
+      "family": "org_memberships",
+      "org_id": "org-1",
+      "group_id": "org-1",
+      "membership_id": "membership-1",
+      "member_user_id": "user-1",
+      "member_type": "user",
+      "role": "admin",
+      "role_id": "admin",
+      "record_class": "identity_group_membership",
+      "resource_type": "user",
+      "source_event_id": "membership-1",
+      "source_provider": "snyk"
+    }
+  }
+]
