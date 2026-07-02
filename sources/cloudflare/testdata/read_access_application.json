@@ -2,7 +2,7 @@
   {
     "attributes": {
       "account_id": "account-1",
-      "allowed_idps": "[\"idp-1\"]",
+      "allowed_idps": "idp-1",
       "application_id": "app-1",
       "aud": "aud-app-1",
       "auto_redirect_to_identity": "true",
@@ -10,7 +10,7 @@
       "external_id": "app-1",
       "family": "access_application",
       "name": "Admin Console",
-      "policies": "[{\"id\":\"policy-1\",\"decision\":\"allow\"}]",
+      "policies": "{\"decision\":\"allow\",\"id\":\"policy-1\"}",
       "resource_id": "app-1",
       "resource_name": "Admin Console",
       "resource_type": "access_application",

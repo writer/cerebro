@@ -2,7 +2,7 @@
   {
     "attributes": {
       "account_id": "account-1",
-      "bindings": "[{\"name\":\"SESSION_STORE\",\"type\":\"kv_namespace\"}]",
+      "bindings": "{\"name\":\"SESSION_STORE\",\"namespace_id\":\"kv-session\",\"type\":\"kv_namespace\"}",
       "compatibility_date": "2026-05-01",
       "created_on": "2026-05-15T00:00:00Z",
       "external_id": "edge-auth",
@@ -19,7 +19,7 @@
       "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
-      "tags": "[\"production\"]",
+      "tags": "production",
       "tenant_id": "tenant"
     },
     "id": "cloudflare-worker_script-event-1",

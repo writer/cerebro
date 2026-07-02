@@ -12,7 +12,7 @@
       "resource_name": "Zone WAF",
       "resource_type": "zone_ruleset",
       "resource_urn": "urn:cerebro:tenant:cloudflare_zone_ruleset:zone-ruleset-1",
-      "rules": "[{\"id\":\"zone-rule-1\",\"action\":\"challenge\"}]",
+      "rules": "{\"action\":\"challenge\",\"id\":\"zone-rule-1\"}",
       "ruleset_id": "zone-ruleset-1",
       "source_event_id": "zone-ruleset-1",
       "source_product": "cloudflare",

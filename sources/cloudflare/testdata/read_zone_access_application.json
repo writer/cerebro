@@ -1,14 +1,14 @@
 [
   {
     "attributes": {
-      "allowed_idps": "[\"idp-1\"]",
+      "allowed_idps": "idp-1",
       "application_id": "zone-app-1",
       "aud": "aud-zone-app-1",
       "domain": "zone-admin.example.com",
       "external_id": "zone-app-1",
       "family": "zone_access_application",
       "name": "Zone Admin",
-      "policies": "[{\"id\":\"zone-policy-1\",\"decision\":\"allow\"}]",
+      "policies": "{\"decision\":\"allow\",\"id\":\"zone-policy-1\"}",
       "resource_id": "zone-app-1",
       "resource_name": "Zone Admin",
       "resource_type": "zone_access_application",

@@ -4,7 +4,7 @@
       "decision": "allow",
       "external_id": "access-policy-1",
       "family": "roles",
-      "include": "[{\"group\":{\"id\":\"access-group-1\"}}]",
+      "include": "{\"group\":{\"id\":\"access-group-1\"}}",
       "policy_created_at": "2026-05-01T00:00:00Z",
       "policy_description": "Access policy requiring MFA group membership",
       "policy_id": "access-policy-1",

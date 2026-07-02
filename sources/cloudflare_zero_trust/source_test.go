@@ -278,9 +278,9 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 				"created_at": "2026-06-01T00:00:00Z",
 			},
 			wantType: "application",
-			wantID:   "access-app-1",
+			wantID:   "access-request-1",
 			wantName: "admin.example.com",
-			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_audit_events:access-app-1",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_audit_events:access-request-1",
 		},
 	}
 

@@ -2,13 +2,13 @@
   {
     "attributes": {
       "account_id": "account-1",
-      "check_regions": "[\"WNAM\"]",
+      "check_regions": "WNAM",
       "enabled": "true",
       "external_id": "pool-1",
       "family": "load_balancer_pool",
       "minimum_origins": "1",
       "name": "primary-pool",
-      "origins": "[{\"name\":\"origin-1\",\"address\":\"203.0.113.20\"}]",
+      "origins": "{\"address\":\"203.0.113.20\",\"enabled\":true,\"name\":\"origin-1\"}",
       "pool_id": "pool-1",
       "resource_id": "pool-1",
       "resource_name": "primary-pool",

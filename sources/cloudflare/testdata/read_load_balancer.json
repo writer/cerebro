@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "default_pools": "[\"pool-1\"]",
+      "default_pools": "pool-1",
       "enabled": "true",
       "external_id": "lb-1",
       "fallback_pool": "pool-1",

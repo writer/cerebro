@@ -2,13 +2,12 @@
   {
     "attributes": {
       "account_id": "account-1",
-      "exclude": "[]",
       "external_id": "group-1",
       "family": "access_group",
       "group_id": "group-1",
-      "include": "[{\"email_domain\":{\"domain\":\"example.com\"}}]",
+      "include": "{\"email_domain\":{\"domain\":\"example.com\"}}",
       "name": "Employees",
-      "require": "[{\"group\":{\"id\":\"idp-group-1\"}}]",
+      "require": "{\"group\":{\"id\":\"idp-group-1\"}}",
       "resource_id": "group-1",
       "resource_name": "Employees",
       "resource_type": "access_group",

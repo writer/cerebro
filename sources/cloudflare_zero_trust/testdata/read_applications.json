@@ -7,7 +7,7 @@
       "family": "applications",
       "id": "access-app-1",
       "name": "Admin Console",
-      "policies": "[{\"id\":\"access-policy-1\",\"decision\":\"allow\"}]",
+      "policies": "{\"decision\":\"allow\",\"id\":\"access-policy-1\"}",
       "record_class": "asset",
       "resource_id": "access-app-1",
       "resource_name": "Admin Console",

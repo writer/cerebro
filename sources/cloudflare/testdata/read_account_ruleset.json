@@ -13,7 +13,7 @@
       "resource_name": "Account WAF",
       "resource_type": "account_ruleset",
       "resource_urn": "urn:cerebro:tenant:cloudflare_account_ruleset:ruleset-account-1",
-      "rules": "[{\"id\":\"rule-block-bots\",\"action\":\"block\"}]",
+      "rules": "{\"action\":\"block\",\"expression\":\"cf.bot_management.score lt 10\",\"id\":\"rule-block-bots\"}",
       "ruleset_id": "ruleset-account-1",
       "source_event_id": "ruleset-account-1",
       "source_product": "cloudflare",

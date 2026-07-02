@@ -1,13 +1,12 @@
 [
   {
     "attributes": {
-      "exclude": "[]",
       "external_id": "zone-group-1",
       "family": "zone_access_group",
       "group_id": "zone-group-1",
-      "include": "[{\"email_domain\":{\"domain\":\"example.com\"}}]",
+      "include": "{\"email_domain\":{\"domain\":\"example.com\"}}",
       "name": "Zone Employees",
-      "require": "[{\"group\":{\"id\":\"idp-group-1\"}}]",
+      "require": "{\"group\":{\"id\":\"idp-group-1\"}}",
       "resource_id": "zone-group-1",
       "resource_name": "Zone Employees",
       "resource_type": "zone_access_group",
