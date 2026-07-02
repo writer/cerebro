@@ -1099,6 +1099,46 @@ func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
 	}
 }
 
+func TestReadSingletonKeepsProviderDataField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "setting-1",
+			"name":   "Sync settings",
+			"data":   map[string]any{"mode": "manual"},
+			"status": "enabled",
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:      "setting",
+		Path:      "/setting",
+		URNKind:   "test_setting",
+		IDKeys:    []string{"id"},
+		Singleton: true,
+		Attributes: map[string]string{
+			"mode":        "data.mode",
+			"resource_id": "id",
+			"status":      "status",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "setting",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["resource_id"] != "setting-1" || attrs["mode"] != "manual" || attrs["status"] != "enabled" {
+		t.Fatalf("attributes = %#v, want outer singleton fields preserved", attrs)
+	}
+}
+
 func TestReadAppliesFamilyStaticHeaders(t *testing.T) {
 	acceptByPath := map[string]string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

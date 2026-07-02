@@ -514,7 +514,7 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 			continue
 		}
 		var nested map[string]json.RawMessage
-		if err := json.Unmarshal(value, &nested); err == nil {
+		if err := json.Unmarshal(value, &nested); err == nil && singletonEnvelopeCanUnwrap(object, key) {
 			object = nested
 			break
 		}
@@ -523,6 +523,32 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 		object["id"] = json.RawMessage(strconv.Quote(strings.TrimSpace(fallbackID)))
 	}
 	return json.Marshal(object)
+}
+
+func singletonEnvelopeCanUnwrap(object map[string]json.RawMessage, recordKey string) bool {
+	for key, value := range object {
+		if key == recordKey {
+			continue
+		}
+		if !singletonEnvelopeSibling(key, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func singletonEnvelopeSibling(key string, value json.RawMessage) bool {
+	switch strings.TrimSpace(key) {
+	case "code", "message", "error", "errors", "meta", "metadata", "pagination", "page", "links", "next_cursor", "cursor":
+		return true
+	case "ok", "success":
+		return true
+	case "status":
+		status := strings.ToLower(rawString(value))
+		return status == "ok" || status == "success" || status == "succeeded"
+	default:
+		return false
+	}
 }
 
 func responseCursor(family Family, object map[string]json.RawMessage) (string, bool) {

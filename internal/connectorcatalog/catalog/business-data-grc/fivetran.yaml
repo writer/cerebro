@@ -774,7 +774,7 @@ entries:
           event:
             kind: fivetran.connection_schemas
             required_attributes: [tenant_id, source_event_id, connection_id, resource_id]
-            required_payload_fields: [schemas]
+            required_payload_fields: [id]
             schema_ref: fivetran/connection_schemas/v1
             urn_kind: fivetran_connection_schemas
           id: connection_schemas
