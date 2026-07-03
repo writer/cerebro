@@ -111,6 +111,41 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
                 ["writer-missing-runtime"],
             )
 
+    def test_orchestrator_schedule_bootstrap_payload_scopes_runtime_ids(self) -> None:
+        runtimes = [
+            {"id": "writer-cosmo-session", "sourceId": "cosmo", "config": {"token": "env:COSMO_TOKEN"}},
+            {"id": "writer-cosmo-message", "sourceId": "cosmo", "config": {"token": "env:COSMO_TOKEN"}},
+            {"id": "writer-okta-audit", "sourceId": "okta", "config": {"api_token": "env:OKTA_TOKEN"}},
+        ]
+
+        payload = compute._orchestrator_schedule_bootstrap_payload(
+            ["orchestrator", "run", "runtime_ids=writer-cosmo-session,writer-cosmo-message"],
+            compute._source_runtime_by_id(runtimes),
+        )
+
+        scoped = json.loads(payload)
+        self.assertEqual([runtime["id"] for runtime in scoped["runtimes"]], ["writer-cosmo-session", "writer-cosmo-message"])
+        self.assertNotIn("OKTA_TOKEN", payload)
+
+    def test_orchestrator_schedule_bootstrap_payload_uses_full_file_when_group_reference_is_missing(self) -> None:
+        payload = compute._orchestrator_schedule_bootstrap_payload(
+            ["orchestrator", "run", "runtime_ids=writer-cosmo-session,writer-missing"],
+            compute._source_runtime_by_id([{"id": "writer-cosmo-session", "sourceId": "cosmo"}]),
+        )
+
+        self.assertEqual(payload, "")
+
+    def test_orchestrator_target_input_embeds_group_bootstrap_payload(self) -> None:
+        target_input = compute._orchestrator_target_input(
+            ["orchestrator", "run", "runtime_ids=writer-cosmo-session,writer-cosmo-message"],
+            '{"runtimes":[]}',
+        )
+
+        override = json.loads(target_input)
+        bootstrap_override = next(item for item in override["containerOverrides"] if item["name"] == "source-runtime-bootstrap")
+        self.assertEqual(bootstrap_override["environmentFiles"], [])
+        self.assertEqual(bootstrap_override["environment"][0]["name"], "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON")
+
 
 class SourceRuntimeBootstrapRegistryTest(unittest.TestCase):
     def test_environment_files_are_retained_and_expose_prefix_arn(self) -> None:

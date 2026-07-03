@@ -83,6 +83,46 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertEqual(expansion.orchestrator_schedules[0]["flexibleWindowMinutes"], 10)
         self.assertEqual(expansion.orchestrator_schedules[0]["state"], "DISABLED")
 
+    def test_schedule_group_size_chunks_compatible_runtimes(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "runtimePrefix": "writer-example",
+                "schedule": {"cadenceHours": 6, "groupSize": 2, "minuteStep": 5, "nameMaxLength": 32},
+                "families": ["user", "group", "application"],
+            }
+        ])
+
+        self.assertEqual([schedule["name"] for schedule in expansion.orchestrator_schedules], [
+            "example-inventory-group-01",
+            "example-application-inventory",
+        ])
+        self.assertEqual(expansion.orchestrator_schedules[0]["scheduleExpression"], "cron(0 0/6 * * ? *)")
+        self.assertEqual(expansion.orchestrator_schedules[0]["command"][2], "runtime_ids=writer-example-user,writer-example-group")
+        self.assertEqual(expansion.orchestrator_schedules[1]["command"][2], "runtime_id=writer-example-application")
+
+    def test_schedule_group_size_keeps_different_limits_separate(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "runtimePrefix": "writer-example",
+                "schedule": {"expression": "rate(1 hour)", "groupSize": 10},
+                "families": [
+                    {"name": "user", "schedule": {"pageLimit": 5}},
+                    {"name": "group", "schedule": {"pageLimit": 5}},
+                    "application",
+                    "policy",
+                ],
+            }
+        ])
+
+        self.assertEqual([schedule["command"][2] for schedule in expansion.orchestrator_schedules], [
+            "runtime_ids=writer-example-user,writer-example-group",
+            "runtime_ids=writer-example-application,writer-example-policy",
+        ])
+        self.assertEqual(expansion.orchestrator_schedules[0]["command"][3], "page_limit=5")
+        self.assertEqual(expansion.orchestrator_schedules[1]["command"][3], "page_limit=20")
+
     def test_schedule_backend_must_be_known(self) -> None:
         with self.assertRaisesRegex(ValueError, "schedule.backend"):
             expand_source_runtime_rollouts([

@@ -16,6 +16,15 @@ class SourceRuntimeRolloutExpansion:
     orchestrator_schedules: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _ScheduleCandidate:
+    runtime_id: str
+    config: dict[str, Any]
+    schedule: dict[str, Any]
+    group_size: int
+    group_key: tuple[Any, ...]
+
+
 def expand_source_runtime_rollouts(rollouts: Any) -> SourceRuntimeRolloutExpansion:
     if rollouts in (None, ""):
         return SourceRuntimeRolloutExpansion()
@@ -50,6 +59,7 @@ def expand_source_runtime_rollouts(rollouts: Any) -> SourceRuntimeRolloutExpansi
         if not isinstance(families, list) or not families:
             raise SourceRuntimeRolloutError(f"sourceRuntimeRollouts[{rollout_index}].families must be a non-empty list")
 
+        rollout_schedule_candidates: list[_ScheduleCandidate] = []
         for family_index, family in enumerate(families):
             family_path = f"sourceRuntimeRollouts[{rollout_index}].families[{family_index}]"
             family_name, local_id, family_config, family_token_key, family_token_config_key, family_schedule_config = _family_settings(
@@ -76,8 +86,10 @@ def expand_source_runtime_rollouts(rollouts: Any) -> SourceRuntimeRolloutExpansi
                 _append_unique(secret_keys, _string(key))
 
             if schedule_enabled:
-                schedules.append(_schedule(runtime_id, {**schedule_config, **family_schedule_config}, runtime_index))
+                rollout_schedule_candidates.append(_schedule_candidate(runtime_id, {**schedule_config, **family_schedule_config}, runtime_index))
             runtime_index += 1
+
+        schedules.extend(_rollout_schedules(runtime_prefix, rollout_schedule_candidates))
 
     return SourceRuntimeRolloutExpansion(secret_keys, runtimes, schedules)
 
@@ -135,15 +147,92 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
         "backend": _schedule_backend(config.get("backend")),
         "flexibleWindowMinutes": _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 60),
         "state": _schedule_state(config.get("state") or config.get("scheduleState")),
-        "command": [
-            "orchestrator",
-            "run",
-            f"runtime_id={runtime_id}",
-            f"page_limit={_positive_int(config.get('pageLimit'), 'schedule.pageLimit', 20)}",
-            f"graph_page_limit={_positive_int(config.get('graphPageLimit'), 'schedule.graphPageLimit', 100)}",
-            f"event_limit={_positive_int(config.get('eventLimit'), 'schedule.eventLimit', 1000)}",
-        ],
+        "command": _schedule_command(f"runtime_id={runtime_id}", config),
     }
+
+
+def _schedule_candidate(runtime_id: str, config: dict[str, Any], index: int) -> _ScheduleCandidate:
+    schedule = _schedule(runtime_id, config, index)
+    return _ScheduleCandidate(
+        runtime_id=runtime_id,
+        config=config,
+        schedule=schedule,
+        group_size=_positive_int(config.get("groupSize"), "schedule.groupSize", 1),
+        group_key=_schedule_group_key(config),
+    )
+
+
+def _rollout_schedules(runtime_prefix: str, candidates: list[_ScheduleCandidate]) -> list[dict[str, Any]]:
+    schedules: list[dict[str, Any]] = []
+    grouped: dict[tuple[Any, ...], list[_ScheduleCandidate]] = {}
+    for candidate in candidates:
+        if candidate.group_size <= 1:
+            schedules.append(candidate.schedule)
+            continue
+        grouped.setdefault(candidate.group_key, []).append(candidate)
+
+    group_number = 1
+    for compatible_candidates in grouped.values():
+        group_size = compatible_candidates[0].group_size
+        for start in range(0, len(compatible_candidates), group_size):
+            chunk = compatible_candidates[start:start + group_size]
+            if len(chunk) == 1:
+                schedules.append(chunk[0].schedule)
+                continue
+            schedules.append(_grouped_schedule(runtime_prefix, chunk, group_number))
+            group_number += 1
+    return schedules
+
+
+def _schedule_group_key(config: dict[str, Any]) -> tuple[Any, ...]:
+    expression = _string(config.get("expression"))
+    cadence_key: tuple[str, str | int]
+    if expression:
+        cadence_key = ("expression", expression)
+    else:
+        cadence_key = ("cadenceHours", _positive_int(config.get("cadenceHours"), "schedule.cadenceHours", 6))
+    return (
+        _positive_int(config.get("groupSize"), "schedule.groupSize", 1),
+        cadence_key,
+        _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
+        _schedule_backend(config.get("backend")),
+        _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 60),
+        _schedule_state(config.get("state") or config.get("scheduleState")),
+        _positive_int(config.get("pageLimit"), "schedule.pageLimit", 20),
+        _positive_int(config.get("graphPageLimit"), "schedule.graphPageLimit", 100),
+        _positive_int(config.get("eventLimit"), "schedule.eventLimit", 1000),
+    )
+
+
+def _grouped_schedule(runtime_prefix: str, candidates: list[_ScheduleCandidate], group_number: int) -> dict[str, Any]:
+    config = candidates[0].config
+    runtime_ids = [candidate.runtime_id for candidate in candidates]
+    suffix = _string(config.get("groupNameSuffix")) or _string(config.get("nameSuffix")) or "inventory"
+    name_base = _string(config.get("groupName")) or f"{runtime_prefix.removeprefix('writer-')}-{suffix}"
+    name = f"{name_base}-group-{group_number:02d}"
+    max_name_length = _positive_int(config.get("nameMaxLength"), "schedule.nameMaxLength", 0)
+    if max_name_length and len(name) > max_name_length:
+        name = _short_name(name, max_name_length)
+    return {
+        "name": name,
+        "scheduleExpression": candidates[0].schedule["scheduleExpression"],
+        "taskCount": _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
+        "backend": _schedule_backend(config.get("backend")),
+        "flexibleWindowMinutes": _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 60),
+        "state": _schedule_state(config.get("state") or config.get("scheduleState")),
+        "command": _schedule_command(f"runtime_ids={','.join(runtime_ids)}", config),
+    }
+
+
+def _schedule_command(runtime_filter: str, config: dict[str, Any]) -> list[str]:
+    return [
+        "orchestrator",
+        "run",
+        runtime_filter,
+        f"page_limit={_positive_int(config.get('pageLimit'), 'schedule.pageLimit', 20)}",
+        f"graph_page_limit={_positive_int(config.get('graphPageLimit'), 'schedule.graphPageLimit', 100)}",
+        f"event_limit={_positive_int(config.get('eventLimit'), 'schedule.eventLimit', 1000)}",
+    ]
 
 
 def _schedule_backend(value: Any) -> str:

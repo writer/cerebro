@@ -102,6 +102,28 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
         self.assertTrue(any(f.severity == "error" and f.runtime_id == "writer-okta-audit" and f.check == "schedule" for f in report.findings))
         self.assertTrue(any(f.severity == "warning" and f.runtime_id == "writer-okta-audit-missing" for f in report.findings))
 
+    def test_grouped_schedule_counts_each_runtime(self) -> None:
+        grouped = STACK_YAML.replace(
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_ids=writer-okta-audit,writer-aws-prod-us1-public-endpoint\n",
+            1,
+        ).replace(
+            """    - name: aws-public-endpoint
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-us1-public-endpoint
+""",
+            "",
+        )
+
+        report = build_report(self._stack_file(grouped), now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertEqual(report.scheduled_runtime_count, 3)
+        self.assertFalse(any(f.runtime_id == "writer-aws-prod-us1-public-endpoint" and f.check == "schedule" for f in report.findings))
+
     def test_duplicate_schedule_is_error(self) -> None:
         duplicate = """
     - name: okta-audit-duplicate

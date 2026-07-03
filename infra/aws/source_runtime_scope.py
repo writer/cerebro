@@ -22,14 +22,28 @@ def load_cerebro_config(path: Path) -> dict[str, Any]:
     return apply_source_runtime_rollouts(scoped)
 
 
-def runtime_id_from_command(command: Any) -> str:
+def runtime_ids_from_command(command: Any) -> list[str]:
+    runtime_ids: list[str] = []
     if not isinstance(command, list):
-        return ""
+        return runtime_ids
     for arg in command:
         text = str(arg).strip()
         if text.startswith("runtime_id="):
-            return text.split("=", 1)[1].strip()
-    return ""
+            _append_unique(runtime_ids, text.split("=", 1)[1].strip())
+        elif text.startswith("runtime_ids="):
+            for runtime_id in text.split("=", 1)[1].split(","):
+                _append_unique(runtime_ids, runtime_id.strip())
+    return runtime_ids
+
+
+def runtime_id_from_command(command: Any) -> str:
+    runtime_ids = runtime_ids_from_command(command)
+    return runtime_ids[0] if runtime_ids else ""
+
+
+def _append_unique(out: list[str], value: str) -> None:
+    if value and value not in out:
+        out.append(value)
 
 
 def runtime_value(runtime: dict[str, Any], *keys: str) -> str:

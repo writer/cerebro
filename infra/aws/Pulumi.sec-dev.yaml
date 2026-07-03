@@ -177,7 +177,7 @@ config:
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
         tenant_id: writer
       schedule:
-        expression: rate(15 minutes)
+        expression: rate(1 hour)
         backend: scheduler
         nameSuffix: live
         pageLimit: 5
@@ -202,7 +202,8 @@ config:
         stale_after_seconds: "86400"
       schedule:
         backend: scheduler
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 29
       families:
         - name: channel
@@ -341,7 +342,8 @@ config:
         region: us-east-1
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 29
       families:
         - organizations_account
@@ -355,7 +357,8 @@ config:
         region: us-east-1
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 29
       families:
         - cloudfront_distribution
@@ -387,7 +390,8 @@ config:
         region: us-west-2
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 29
       families:
         - elbv2_load_balancer
@@ -414,7 +418,8 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
@@ -444,7 +449,8 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
@@ -457,7 +463,8 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
@@ -470,7 +477,8 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
-        cadenceHours: 6
+        cadenceHours: 12
+        groupSize: 10
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
@@ -694,7 +702,7 @@ config:
         - graph_page_limit=1
         - event_limit=500
     - name: okta-audit-live
-      scheduleExpression: cron(0,10,20,30,40,50 * * * ? *)
+      scheduleExpression: cron(0,30 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -726,7 +734,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: okta-user-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -736,7 +744,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-group-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -746,7 +754,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-application-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -756,7 +764,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-dept-security-group-membership
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -766,7 +774,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-authenticator-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -776,7 +784,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-policy-rule-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -796,7 +804,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-threat-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -806,7 +814,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-agent-inventory
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(2 hours)
       taskCount: 1
       command:
         - orchestrator
@@ -816,7 +824,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-application-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: rate(6 hours)
       taskCount: 1
       command:
         - orchestrator
@@ -826,7 +834,7 @@ config:
         - graph_page_limit=1
         - event_limit=500
     - name: sentinelone-exclusion-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: rate(6 hours)
       taskCount: 1
       command:
         - orchestrator
@@ -836,7 +844,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-activity-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -846,7 +854,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-site-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: rate(6 hours)
       taskCount: 1
       command:
         - orchestrator
@@ -856,7 +864,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: sentinelone-group-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: rate(6 hours)
       taskCount: 1
       command:
         - orchestrator
@@ -866,7 +874,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: github-audit-writerinternal
-      scheduleExpression: cron(12,27,42,57 * * * ? *)
+      scheduleExpression: cron(12 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -1256,7 +1264,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: aurelius-verdicts-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -1266,7 +1274,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: aurelius-findings-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -1276,7 +1284,7 @@ config:
         - graph_page_limit=1
         - event_limit=2000
     - name: aurelius-image-scans-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -1286,7 +1294,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: aurelius-catalog-promotions-live
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -1296,7 +1304,7 @@ config:
         - graph_page_limit=100
         - event_limit=500
     - name: aurelius-policy-exceptions-live
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: rate(1 hour)
       taskCount: 1
       command:
         - orchestrator
@@ -1306,7 +1314,7 @@ config:
         - graph_page_limit=100
         - event_limit=500
     - name: panopticon-alerts-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -1316,7 +1324,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: panopticon-cases-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -1326,7 +1334,7 @@ config:
         - graph_page_limit=5
         - event_limit=1000
     - name: panopticon-iocs-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator

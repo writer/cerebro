@@ -490,8 +490,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_panopticon_schedule_task_count_must_be_one(self) -> None:
         content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
-            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(15 minutes)\n      taskCount: 1\n",
-            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(15 minutes)\n      taskCount: 2\n",
+            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(20 minutes)\n      taskCount: 1\n",
+            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(20 minutes)\n      taskCount: 2\n",
             1,
         )
 
@@ -502,7 +502,7 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_panopticon_duplicate_schedule_is_error(self) -> None:
         schedule = """\
     - name: panopticon-alerts-live
-      scheduleExpression: rate(15 minutes)
+      scheduleExpression: rate(20 minutes)
       taskCount: 1
       command:
         - orchestrator
@@ -1222,9 +1222,10 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
         aws_scheduled_runtime_ids = {
-            validator._runtime_id_from_command(schedule.get("command"))
+            runtime_id
             for schedule in config["orchestratorSchedules"]
             if isinstance(schedule, dict)
+            for runtime_id in validator._runtime_ids_from_command(schedule.get("command"))
         }
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
@@ -1291,9 +1292,10 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
         aws_scheduled_runtime_ids = {
-            validator._runtime_id_from_command(schedule.get("command"))
+            runtime_id
             for schedule in config["orchestratorSchedules"]
             if isinstance(schedule, dict)
+            for runtime_id in validator._runtime_ids_from_command(schedule.get("command"))
         }
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
@@ -1341,16 +1343,17 @@ class ValidateStackConfigTest(unittest.TestCase):
                 )
                 gcp_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "gcp"]
                 gcp_scheduled_runtime_ids = {
-                    validator._runtime_id_from_command(schedule.get("command"))
+                    runtime_id
                     for schedule in config["orchestratorSchedules"]
                     if isinstance(schedule, dict)
+                    for runtime_id in validator._runtime_ids_from_command(schedule.get("command"))
                 }
 
                 self.assertEqual(len(gcp_runtimes), expected_count)
                 self.assertTrue(all(runtime["id"] in gcp_scheduled_runtime_ids for runtime in gcp_runtimes))
                 gcp_runtime_ids = {runtime["id"] for runtime in gcp_runtimes}
                 for schedule in config["orchestratorSchedules"]:
-                    if validator._runtime_id_from_command(schedule.get("command")) in gcp_runtime_ids:
+                    if any(runtime_id in gcp_runtime_ids for runtime_id in validator._runtime_ids_from_command(schedule.get("command"))):
                         self.assertLessEqual(
                             len(validator._orchestrator_rule_name(config["environment"], schedule["name"])),
                             64,
@@ -1374,7 +1377,7 @@ class ValidateStackConfigTest(unittest.TestCase):
         gcp_schedules = [
             schedule
             for schedule in config["orchestratorSchedules"]
-            if validator._runtime_id_from_command(schedule.get("command")) in gcp_runtime_ids
+            if any(runtime_id in gcp_runtime_ids for runtime_id in validator._runtime_ids_from_command(schedule.get("command")))
         ]
         eventbridge_schedules = [
             schedule
