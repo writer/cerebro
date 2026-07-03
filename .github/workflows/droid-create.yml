@@ -38,6 +38,9 @@ concurrency:
 
 env:
   DROID_INSTALL_SHA256: 6e7905f5f41513e629bb8061d567896f240cd43f64c360345c20276a8bbb7e56
+  DISPATCH_MODE: ${{ inputs.mode || '' }}
+  DISPATCH_PROMPT: ${{ inputs.prompt || '' }}
+  DISPATCH_TARGET: ${{ inputs.target || '' }}
 
 jobs:
   resolve-concurrency:
@@ -49,7 +52,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
-      DISPATCH_TARGET: ${{ inputs.target || '' }}
     outputs:
       key: ${{ steps.key.outputs.key }}
     steps:
@@ -194,9 +196,6 @@ jobs:
       issues: read
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      DISPATCH_MODE: ${{ inputs.mode || '' }}
-      DISPATCH_PROMPT: ${{ inputs.prompt || '' }}
-      DISPATCH_TARGET: ${{ inputs.target || '' }}
     outputs:
       mode: ${{ steps.ctx.outputs.mode }}
       mode_name: ${{ steps.ctx.outputs.mode_name }}
@@ -648,14 +647,14 @@ jobs:
           python-version: "3.12"
 
       - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
+        uses: WriterInternal/devops-github-actions/infisical-secrets@2b7c38445cb1b9c43f88d7ec990ccb1534078ae8 # v2.4.0
         with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: FACTORY_API_KEY
 
       - name: Run self-test
         if: needs.droid-context.outputs.mode == 'self-test'

@@ -38,11 +38,11 @@ class DroidReviewWorkflowTest(unittest.TestCase):
         self.assertIn("needs: droid-review-preflight", self.workflow)
 
     def test_internal_secret_flow_is_preserved(self) -> None:
-        self.assertIn("Infisical/secrets-action@", self.workflow)
+        self.assertIn("WriterInternal/devops-github-actions/infisical-secrets@", self.workflow)
         self.assertIn("INFISICAL_REPO_IDENTITY_UUID", self.workflow)
         self.assertIn("INFISICAL_REPO_PROJECT_SLUG", self.workflow)
-        self.assertIn("Resolve Factory API key", self.workflow)
-        self.assertIn("steps.factory_key.outputs.factory_api_key", self.workflow)
+        self.assertIn("required-keys: FACTORY_API_KEY", self.workflow)
+        self.assertIn("factory_api_key: ${{ env.FACTORY_API_KEY }}", self.workflow)
 
     def test_legacy_code_review_workflow_removed(self) -> None:
         self.assertFalse(LEGACY_DROID_REVIEW.exists())

@@ -34,6 +34,8 @@ concurrency:
 
 env:
   GHCR_IMAGE: ghcr.io/writer/cerebro
+  INPUT_TAG: ${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || '' }}
+  STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
 
 jobs:
   propose:
@@ -69,7 +71,7 @@ jobs:
         id: image
         shell: bash
         env:
-          INPUT_TAG: ${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || '' }}
+          INPUT_TAG: ${{ env.INPUT_TAG }}
           EXPECTED_DIGEST: ${{ github.event.client_payload.image_digest || '' }}
         run: |
           set -euo pipefail
@@ -201,7 +203,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
-          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
+          STACK_NAME: ${{ env.STACK_NAME }}
           COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
@@ -245,7 +247,7 @@ jobs:
         id: update
         shell: bash
         env:
-          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
+          STACK_NAME: ${{ env.STACK_NAME }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           CONTRACT_PATH: ${{ steps.contract.outputs.path }}
         run: |
@@ -323,7 +325,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
           DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
-          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
+          STACK_NAME: ${{ env.STACK_NAME }}
           APPLY_MODE: ${{ github.event.client_payload.apply_mode || 'pull_request' }}
           EVENT_NAME: ${{ github.event_name }}
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}

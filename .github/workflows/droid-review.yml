@@ -245,69 +245,19 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
-      - name: Check auth availability
-        id: auth_check
-        env:
-          DIRECT_FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
-          INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID || secrets.INFISICAL_REPO_IDENTITY_UUID || secrets.INFISICAL_ORG_IDENTITY_UUID }}
-          INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG || secrets.INFISICAL_REPO_PROJECT_SLUG || secrets.INFISICAL_ORG_PROJECT_SLUG }}
-          INFISICAL_ENV_SLUG: ${{ secrets.INFISICAL_ENV_SLUG || 'prod' }}
-        run: |
-          set -euo pipefail
-          has_direct_key=false
-          has_infisical=false
-          if [ -n "${DIRECT_FACTORY_API_KEY}" ]; then
-            has_direct_key=true
-          fi
-          if [ -n "${INFISICAL_IDENTITY_ID}" ] && [ -n "${INFISICAL_PROJECT_SLUG}" ] && [ -n "${INFISICAL_ENV_SLUG}" ]; then
-            has_infisical=true
-          fi
-          should_run=false
-          if [ "${has_direct_key}" = "true" ] || [ "${has_infisical}" = "true" ]; then
-            should_run=true
-          fi
-          if [ "${should_run}" != "true" ]; then
-            echo "::error::Droid Auto Review requires either FACTORY_API_KEY or Infisical OIDC secret config. Supported Infisical secret names: INFISICAL_IDENTITY_ID/INFISICAL_PROJECT_SLUG or INFISICAL_REPO_IDENTITY_UUID/INFISICAL_REPO_PROJECT_SLUG."
-            exit 1
-          fi
-          {
-            echo "has_direct_key=${has_direct_key}"
-            echo "has_infisical=${has_infisical}"
-            echo "should_run=${should_run}"
-          } >> "${GITHUB_OUTPUT}"
       - name: Fetch secrets from Infisical
-        if: steps.auth_check.outputs.should_run == 'true' && steps.auth_check.outputs.has_direct_key != 'true'
-        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
+        uses: WriterInternal/devops-github-actions/infisical-secrets@2b7c38445cb1b9c43f88d7ec990ccb1534078ae8 # v2.4.0
         with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID || secrets.INFISICAL_REPO_IDENTITY_UUID || secrets.INFISICAL_ORG_IDENTITY_UUID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG || secrets.INFISICAL_REPO_PROJECT_SLUG || secrets.INFISICAL_ORG_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG || 'prod' }}
-          export-type: env
-      - name: Resolve Factory API key
-        id: factory_key
-        if: steps.auth_check.outputs.should_run == 'true'
-        env:
-          DIRECT_FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
-        run: |
-          set -euo pipefail
-          factory_api_key="${DIRECT_FACTORY_API_KEY:-${FACTORY_API_KEY:-}}"
-          if [ -z "${factory_api_key}" ]; then
-            echo "FACTORY_API_KEY is required from GitHub secrets or Infisical."
-            exit 1
-          fi
-          echo "::add-mask::${factory_api_key}"
-          {
-            echo "factory_api_key<<EOF"
-            echo "${factory_api_key}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: FACTORY_API_KEY
       - name: Run Droid Auto Review
-        if: steps.auth_check.outputs.should_run == 'true'
         uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
         with:
-          factory_api_key: ${{ steps.factory_key.outputs.factory_api_key }}
+          factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
           review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
