@@ -224,6 +224,34 @@ func TestSanitizeEventIDPreservesProviderIdentifiers(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/graphql" {
+			t.Fatalf("path = %q, want /graphql", r.URL.Path)
+		}
+		http.Error(w, `{"error":{"message":"temporarily unavailable"}}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":   "test-api-key",
+		"base_url":  server.URL,
+		"family":    familyAssets,
+		"tenant_id": "tenant",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "new_relic GraphQL status 503") || !strings.Contains(got, "temporarily unavailable") {
+		t.Fatalf("Read() error = %q, want provider status and message", got)
+	}
+}
+
 func TestNewFindingEventKeepsRequiredAttributesForPartialIssue(t *testing.T) {
 	event := newrelicapi.NewFindingEvent(newrelicapi.Settings{TenantID: "tenant"}, newrelicapi.Record{
 		"issueId": "ISSUE-1",

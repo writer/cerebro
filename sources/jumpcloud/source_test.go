@@ -367,6 +367,29 @@ func TestSourceReadsDirectoryInsightsAuditEvents(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireJumpCloudHeaders(t, r)
+		if r.URL.Path != "/systemusers" {
+			t.Fatalf("path = %q, want /systemusers", r.URL.Path)
+		}
+		http.Error(w, `{"message":"temporarily unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := source.Read(context.Background(), jumpCloudConfig(server.URL, map[string]string{
+		"family":   familyUsers,
+		"per_page": "2",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "jumpcloud API returned 503") || !strings.Contains(got, "temporarily unavailable") {
+		t.Fatalf("Read() error = %q, want provider status and message", got)
+	}
+}
+
 func newTestSource(t *testing.T) *Source {
 	t.Helper()
 	source, err := New()

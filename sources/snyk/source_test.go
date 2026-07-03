@@ -76,6 +76,37 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Token test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/orgs" {
+			t.Fatalf("path = %q, want /orgs", r.URL.Path)
+		}
+		http.Error(w, `{"message":"temporarily unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyOrgs,
+		"tenant_id": "tenant",
+		"token":     "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "snyk API returned 503") || !strings.Contains(got, "temporarily unavailable") {
+		t.Fatalf("Read() error = %q, want provider status and message", got)
+	}
+}
+
 func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 	for _, tt := range []struct {
 		family    string
