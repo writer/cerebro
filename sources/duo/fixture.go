@@ -1,3 +1,4 @@
+// Hand-maintained fixture source for Duo's HMAC-backed runtime.
 package duo
 
 import (
