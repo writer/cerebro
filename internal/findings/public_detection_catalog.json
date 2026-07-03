@@ -3095,6 +3095,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -3297,28 +3320,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.5"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "files_com",
-          "dimension_id": "user",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "user"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -13901,6 +13902,29 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.26"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
+            }
+          ]
+        },
+        {
+          "source_id": "datadog",
+          "dimension_id": "incidents",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "incidents"
+          ],
+          "evidence_types": [
+            "incident_record"
+          ],
+          "control_domains": [
+            "availability_resilience",
+            "security_operations"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.4"
@@ -34651,6 +34675,28 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_roles",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "onelogin",
           "dimension_id": "directory_inventory",
           "dimension_type": "entity_family",
@@ -49228,6 +49274,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "pagerduty",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -53035,6 +53104,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "groups",
           "dimension_type": "entity_family",
@@ -53130,28 +53222,6 @@
           "dimension_id": "groups",
           "dimension_type": "entity_family",
           "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "group"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "files_com",
-          "dimension_id": "group",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
           "high_value": true,
           "families": [
             "group"
@@ -60834,6 +60904,29 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -70742,6 +70835,29 @@
             "logging_configuration"
           ],
           "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
+        {
+          "source_id": "datadog",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit_events"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "identity_access",
             "logging_monitoring"
           ],
           "matched_control_refs": [
@@ -265821,6 +265937,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -266393,6 +266532,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -266822,6 +266984,33 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -267206,6 +267395,28 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_roles",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            }
+          ]
+        },
+        {
           "source_id": "onelogin",
           "dimension_id": "assignments",
           "dimension_type": "relationship",
@@ -267548,6 +267759,33 @@
             {
               "framework_name": "CIS Controls v8",
               "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
             },
             {
               "framework_name": "SOC 2",
@@ -288836,6 +289074,29 @@
           ]
         },
         {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "pagerduty",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -289420,6 +289681,29 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "datadog",
+          "dimension_id": "identity_users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
