@@ -2,6 +2,7 @@ sourceId: microsoft_entra_id
 secretKeys:
   - MICROSOFT_ENTRA_ID_CLIENT_ID
   - MICROSOFT_ENTRA_ID_CLIENT_SECRET
+  - MICROSOFT_ENTRA_ID_TENANT_ID
 runtimes:
   - localId: users
     config:
@@ -13,3 +14,26 @@ runtimes:
       per_page: "100"
       client_id: env:MICROSOFT_ENTRA_ID_CLIENT_ID
       client_secret: env:MICROSOFT_ENTRA_ID_CLIENT_SECRET
+      tenant_id: env:MICROSOFT_ENTRA_ID_TENANT_ID
+  - localId: groups
+    config:
+      family: groups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1.0/organization
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:MICROSOFT_ENTRA_ID_CLIENT_ID
+      client_secret: env:MICROSOFT_ENTRA_ID_CLIENT_SECRET
+      tenant_id: env:MICROSOFT_ENTRA_ID_TENANT_ID
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1.0/organization
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      client_id: env:MICROSOFT_ENTRA_ID_CLIENT_ID
+      client_secret: env:MICROSOFT_ENTRA_ID_CLIENT_SECRET
+      tenant_id: env:MICROSOFT_ENTRA_ID_TENANT_ID
