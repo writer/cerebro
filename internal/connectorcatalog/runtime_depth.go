@@ -54,12 +54,23 @@ type RuntimeProviderAPIDepth struct {
 	HasContract           bool     `json:"has_contract,omitempty"`
 	HasMapping            bool     `json:"has_mapping,omitempty"`
 	HasRuntimeTransport   bool     `json:"has_runtime_transport,omitempty"`
+	HasProof              bool     `json:"has_proof,omitempty"`
+	ProofScore            int      `json:"proof_score,omitempty"`
+	ProofLevel            string   `json:"proof_level,omitempty"`
+	ProofGaps             []string `json:"proof_gaps,omitempty"`
 	Status                string   `json:"status,omitempty"`
+	Basis                 string   `json:"basis,omitempty"`
+	VerifiedAt            string   `json:"verified_at,omitempty"`
 	Transport             string   `json:"transport,omitempty"`
 	Auth                  string   `json:"auth,omitempty"`
+	AuthMechanics         string   `json:"auth_mechanics,omitempty"`
 	BaseURL               string   `json:"base_url,omitempty"`
 	Endpoint              string   `json:"endpoint,omitempty"`
+	SpecURL               string   `json:"spec_url,omitempty"`
+	SpecKind              string   `json:"spec_kind,omitempty"`
 	References            []string `json:"references,omitempty"`
+	AuthEvidence          []string `json:"auth_evidence,omitempty"`
+	ScopeEvidence         []string `json:"scope_evidence,omitempty"`
 	MappedFamilies        []string `json:"mapped_families,omitempty"`
 	MissingFamilyMappings []string `json:"missing_family_mappings,omitempty"`
 }
@@ -79,13 +90,20 @@ type runtimeCatalogFields struct {
 }
 
 type runtimeProviderAPIFields struct {
-	Status     string   `yaml:"status"`
-	Transport  string   `yaml:"transport"`
-	Auth       string   `yaml:"auth"`
-	BaseURL    string   `yaml:"base_url"`
-	Endpoint   string   `yaml:"endpoint"`
-	References []string `yaml:"references"`
-	Families   []struct {
+	Status        string   `yaml:"status"`
+	Basis         string   `yaml:"basis"`
+	VerifiedAt    string   `yaml:"verified_at"`
+	Transport     string   `yaml:"transport"`
+	Auth          string   `yaml:"auth"`
+	AuthMechanics string   `yaml:"auth_mechanics"`
+	BaseURL       string   `yaml:"base_url"`
+	Endpoint      string   `yaml:"endpoint"`
+	SpecURL       string   `yaml:"spec_url"`
+	SpecKind      string   `yaml:"spec_kind"`
+	References    []string `yaml:"references"`
+	AuthEvidence  []string `yaml:"auth_evidence"`
+	ScopeEvidence []string `yaml:"scope_evidence"`
+	Families      []struct {
 		ID        string `yaml:"id"`
 		Method    string `yaml:"method"`
 		Path      string `yaml:"path"`
@@ -158,15 +176,27 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.HasEventContracts = len(catalog.EventContracts) > 0
 		depth.HasCoverageContract = catalog.CoverageContract != nil
 		depth.ProviderAPI.Status = strings.TrimSpace(catalog.ProviderAPI.Status)
+		depth.ProviderAPI.Basis = strings.TrimSpace(catalog.ProviderAPI.Basis)
+		depth.ProviderAPI.VerifiedAt = strings.TrimSpace(catalog.ProviderAPI.VerifiedAt)
 		depth.ProviderAPI.Transport = strings.TrimSpace(catalog.ProviderAPI.Transport)
 		depth.ProviderAPI.Auth = strings.TrimSpace(catalog.ProviderAPI.Auth)
+		depth.ProviderAPI.AuthMechanics = strings.TrimSpace(catalog.ProviderAPI.AuthMechanics)
 		depth.ProviderAPI.BaseURL = strings.TrimSpace(catalog.ProviderAPI.BaseURL)
 		depth.ProviderAPI.Endpoint = strings.TrimSpace(catalog.ProviderAPI.Endpoint)
+		depth.ProviderAPI.SpecURL = strings.TrimSpace(catalog.ProviderAPI.SpecURL)
+		depth.ProviderAPI.SpecKind = strings.TrimSpace(catalog.ProviderAPI.SpecKind)
 		depth.ProviderAPI.References = normalizedList(catalog.ProviderAPI.References)
+		depth.ProviderAPI.AuthEvidence = normalizedList(catalog.ProviderAPI.AuthEvidence)
+		depth.ProviderAPI.ScopeEvidence = normalizedList(catalog.ProviderAPI.ScopeEvidence)
 		depth.ProviderAPI.HasContract = hasProviderAPIContract(catalog.ProviderAPI)
 		depth.ProviderAPI.MappedFamilies = providerAPIFamilies(catalog.ProviderAPI)
 		depth.ProviderAPI.MissingFamilyMappings = missingValues(depth.RuntimeFamilies, depth.ProviderAPI.MappedFamilies)
 		depth.ProviderAPI.HasMapping = depth.ProviderAPI.HasContract && len(depth.ProviderAPI.MissingFamilyMappings) == 0
+		proof := providerAPIProofScore(catalog.ProviderAPI, depth.ProviderAPI.MissingFamilyMappings)
+		depth.ProviderAPI.HasProof = proof.HasProof
+		depth.ProviderAPI.ProofScore = proof.Score
+		depth.ProviderAPI.ProofLevel = proof.Level
+		depth.ProviderAPI.ProofGaps = proof.Gaps
 	}
 	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
 	sourceGoPath := filepath.ToSlash(filepath.Join(depth.PackagePath, "source.go"))
@@ -196,8 +226,11 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 	sort.Strings(depth.ProjectedKinds)
 	sort.Strings(depth.MissingProjectorKinds)
 	sort.Strings(depth.ProviderAPI.References)
+	sort.Strings(depth.ProviderAPI.AuthEvidence)
+	sort.Strings(depth.ProviderAPI.ScopeEvidence)
 	sort.Strings(depth.ProviderAPI.MappedFamilies)
 	sort.Strings(depth.ProviderAPI.MissingFamilyMappings)
+	sort.Strings(depth.ProviderAPI.ProofGaps)
 	sort.Strings(depth.Missing)
 	return depth, nil
 }
@@ -227,18 +260,25 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 	} else {
 		missing = append(missing, "runtime:catalog")
 	}
-	if depth.ProviderAPI.HasContract && depth.ProviderAPI.HasMapping && depth.ProviderAPI.HasRuntimeTransport {
+	if depth.ProviderAPI.HasContract && depth.ProviderAPI.HasMapping && depth.ProviderAPI.HasRuntimeTransport && depth.ProviderAPI.HasProof {
 		score += 15
 	} else {
-		missing = append(missing, "runtime:provider_api_contract")
 		if !depth.ProviderAPI.HasContract {
+			missing = append(missing, "runtime:provider_api_contract")
 			missing = append(missing, "runtime:provider_api_reference")
 		}
-		for _, family := range depth.ProviderAPI.MissingFamilyMappings {
-			missing = append(missing, "runtime:provider_api_family:"+family)
+		if depth.ProviderAPI.HasContract && !depth.ProviderAPI.HasMapping {
+			missing = append(missing, "runtime:provider_api_mapping")
+			for _, family := range depth.ProviderAPI.MissingFamilyMappings {
+				missing = append(missing, "runtime:provider_api_family:"+family)
+			}
 		}
 		if depth.ProviderAPI.HasContract && !depth.ProviderAPI.HasRuntimeTransport {
 			missing = append(missing, "runtime:provider_api_transport_mismatch")
+		}
+		if depth.ProviderAPI.HasContract && !depth.ProviderAPI.HasProof {
+			missing = append(missing, "runtime:provider_api_proof")
+			missing = append(missing, depth.ProviderAPI.ProofGaps...)
 		}
 	}
 	if depth.HasEventContracts && depth.HasCoverageContract {

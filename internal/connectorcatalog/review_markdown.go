@@ -31,6 +31,8 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 		writeMetric(&b, "Needs provider API discovery", report.Summary.RuntimeDepth.NeedsProviderAPIDiscovery)
 		writeMetric(&b, "Sources with provider API contract", report.Summary.RuntimeDepth.SourcesWithProviderAPIContract)
 		writeMetric(&b, "Sources with provider API family mapping", report.Summary.RuntimeDepth.SourcesWithProviderAPIMapping)
+		writeMetric(&b, "Sources with provider API proof", report.Summary.RuntimeDepth.SourcesWithProviderAPIProof)
+		writeMetric(&b, "Needs provider API proof", report.Summary.RuntimeDepth.NeedsProviderAPIProof)
 		writeMetric(&b, "Sources with matching runtime transport", report.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch)
 		writeMetric(&b, "Sources with runtime fixtures", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
 		writeMetric(&b, "Sources with deploy manifest", report.Summary.RuntimeDepth.SourcesWithDeployManifest)
@@ -120,6 +122,29 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 					escapeCell(strings.Join(limitStrings(candidate.MissingFamilies, 6), ", ")),
 					escapeCell(strings.Join(limitStrings(candidate.ExistingReferences, 2), ", ")),
 					escapeCell(search),
+					escapeCell(candidate.NextAction),
+				)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if report.Summary.RuntimeDepth != nil || len(report.ProviderAPIProofQueue) > 0 {
+		b.WriteString("## Provider API Proof Queue\n\n")
+		if len(report.ProviderAPIProofQueue) == 0 {
+			b.WriteString("No sources need provider API proof updates.\n\n")
+		} else {
+			b.WriteString("| Source | Score | Spec | Missing | Next action |\n| --- | ---: | --- | --- | --- |\n")
+			for i, candidate := range report.ProviderAPIProofQueue {
+				if i >= maxItems {
+					fmt.Fprintf(&b, "| ... | ... | ... | ... | %d more |\n", len(report.ProviderAPIProofQueue)-maxItems)
+					break
+				}
+				fmt.Fprintf(&b, "| `%s` | %d | %s | %s | %s |\n",
+					escapeCell(candidate.SourceID),
+					candidate.Score,
+					inlineCodeOrDash(candidate.SpecURL),
+					escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")),
 					escapeCell(candidate.NextAction),
 				)
 			}

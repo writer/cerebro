@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -325,6 +327,50 @@ var _ = []struct {
 	}
 	if len(issues) != 0 {
 		t.Fatalf("issues = %#v, want none", issues)
+	}
+}
+
+func TestBespokeRuntimeReadyUsesPackageReadinessSignals(t *testing.T) {
+	entry := connectorcatalog.Entry{
+		Status:     connectorcatalog.StatusNeedsBespokeRuntime,
+		Definition: connectordefinitions.Definition{SourceID: "custom_bespoke"},
+	}
+	inventory := connectorcatalog.RuntimeDepthInventory{
+		"custom_bespoke": {
+			SourceID:                "custom_bespoke",
+			Score:                   35,
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasSourceTests:          true,
+			HasFixturePair:          true,
+			HasDeployManifest:       true,
+		},
+	}
+
+	if !bespokeRuntimeReady(entry, inventory) {
+		t.Fatal("bespokeRuntimeReady() = false, want true for complete bespoke package despite reference-depth gaps")
+	}
+}
+
+func TestBespokeRuntimeReadyRequiresPackageTestFixtures(t *testing.T) {
+	entry := connectorcatalog.Entry{
+		Status:     connectorcatalog.StatusNeedsBespokeRuntime,
+		Definition: connectordefinitions.Definition{SourceID: "custom_bespoke"},
+	}
+	inventory := connectorcatalog.RuntimeDepthInventory{
+		"custom_bespoke": {
+			SourceID:                "custom_bespoke",
+			Score:                   95,
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasDeployManifest:       true,
+		},
+	}
+
+	if bespokeRuntimeReady(entry, inventory) {
+		t.Fatal("bespokeRuntimeReady() = true, want false without tests and fixture pair")
 	}
 }
 

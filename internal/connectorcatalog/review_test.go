@@ -222,6 +222,13 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 			Missing:    []string{"family:users:event_contract"},
 			NextAction: "Add event schema fields.",
 		}},
+		ProviderAPIProofQueue: []ProviderAPIProofCandidate{{
+			SourceID:   "okta",
+			Score:      85,
+			Missing:    []string{"provider_api:verified_at"},
+			SpecURL:    "https://developer.okta.com/openapi.yaml",
+			NextAction: "Record provider API proof.",
+		}},
 		Questions: []ReviewQuestion{{
 			SourceID:   "okta",
 			Category:   "graph_projection",
@@ -232,7 +239,7 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	}
 
 	markdown := RenderReviewMarkdown(report, 10)
-	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Review Q&A", "Do users project?"} {
+	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Provider API Proof Queue", "provider_api:verified_at", "## Review Q&A", "Do users project?"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, markdown)
 		}
@@ -369,6 +376,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 				HasContract:         true,
 				HasMapping:          true,
 				HasRuntimeTransport: true,
+				HasProof:            true,
+				ProofScore:          providerAPIProofThreshold,
+				ProofLevel:          "verified",
 				Status:              "verified",
 				Transport:           "rest",
 				Auth:                "github_app",
@@ -392,6 +402,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			ProviderAPI: RuntimeProviderAPIDepth{
 				HasContract:         true,
 				HasRuntimeTransport: true,
+				ProofScore:          35,
+				ProofLevel:          "needs_proof",
+				ProofGaps:           []string{"provider_api:basis", "provider_api:machine_readable_spec"},
 				Transport:           "rest",
 			},
 			RuntimeFamilies: []string{"users"},
@@ -418,6 +431,12 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures != 1 {
 		t.Fatalf("sources with runtime fixture pairs = %d, want 1", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
 	}
+	if report.Summary.RuntimeDepth.SourcesWithProviderAPIProof != 1 {
+		t.Fatalf("sources with provider API proof = %d, want 1", report.Summary.RuntimeDepth.SourcesWithProviderAPIProof)
+	}
+	if report.Summary.RuntimeDepth.NeedsProviderAPIProof != 1 {
+		t.Fatalf("needs provider API proof = %d, want 1", report.Summary.RuntimeDepth.NeedsProviderAPIProof)
+	}
 	if _, ok := runtimeDepthFor(report, "github"); ok {
 		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
 	}
@@ -426,6 +445,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 	if _, ok := apiDiscoveryFor(report, "generated"); !ok {
 		t.Fatalf("api discovery queue = %#v, want generated source", report.APIDiscoveryQueue)
+	}
+	if _, ok := apiProofFor(report, "generated"); !ok {
+		t.Fatalf("provider API proof queue = %#v, want generated source", report.ProviderAPIProofQueue)
 	}
 	candidate, ok := runtimeDepthFor(report, "catalog_only")
 	if !ok {
@@ -439,6 +461,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 	if !hasQuestion(report, "catalog_only", "provider_api_discovery") {
 		t.Fatalf("questions = %#v, want provider_api_discovery question", report.Questions)
+	}
+	if !hasQuestion(report, "generated", "provider_api_proof") {
+		t.Fatalf("questions = %#v, want provider_api_proof question", report.Questions)
 	}
 	if !hasQueue(report, "runtime_depth", "generated") {
 		t.Fatalf("promotion queues = %#v, want generated in runtime_depth queue", report.PromotionQueues)
@@ -558,6 +583,15 @@ func apiDiscoveryFor(report ReviewReport, sourceID string) (APIDiscoveryCandidat
 		}
 	}
 	return APIDiscoveryCandidate{}, false
+}
+
+func apiProofFor(report ReviewReport, sourceID string) (ProviderAPIProofCandidate, bool) {
+	for _, candidate := range report.ProviderAPIProofQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return ProviderAPIProofCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {
