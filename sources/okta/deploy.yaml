@@ -10,16 +10,19 @@ runtimes:
       per_page: "200"
       since: "2026-05-01T00:00:00Z"
       token: env:OKTA_API_TOKEN
-  - localId: user
+  - localId: admin-role
     config:
       domain: env:OKTA_DOMAIN
-      family: user
+      family: admin_role
       per_page: "200"
       token: env:OKTA_API_TOKEN
-  - localId: group
+      user_id: config:OKTA_ADMIN_ROLE_USER_ID
+      user_email: config:OKTA_ADMIN_ROLE_USER_EMAIL
+  - localId: app-assignment
     config:
+      app_id: config:OKTA_APP_ID
       domain: env:OKTA_DOMAIN
-      family: group
+      family: app_assignment
       per_page: "200"
       token: env:OKTA_API_TOKEN
   - localId: application
@@ -28,10 +31,77 @@ runtimes:
       family: application
       per_page: "200"
       token: env:OKTA_API_TOKEN
+  - localId: api-token
+    config:
+      domain: env:OKTA_DOMAIN
+      family: api_token
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: authorization-server
+    config:
+      domain: env:OKTA_DOMAIN
+      family: authorization_server
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
   - localId: authenticator
     config:
       domain: env:OKTA_DOMAIN
       family: authenticator
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: brand
+    config:
+      domain: env:OKTA_DOMAIN
+      family: brand
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: device-assurance
+    config:
+      domain: env:OKTA_DOMAIN
+      family: device_assurance
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: event-hook
+    config:
+      domain: env:OKTA_DOMAIN
+      family: event_hook
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: group
+    config:
+      domain: env:OKTA_DOMAIN
+      family: group
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: group-membership
+    config:
+      domain: env:OKTA_DOMAIN
+      family: group_membership
+      group_id: config:OKTA_GROUP_ID
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: identity-provider
+    config:
+      domain: env:OKTA_DOMAIN
+      family: identity_provider
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: inline-hook
+    config:
+      domain: env:OKTA_DOMAIN
+      family: inline_hook
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: log-stream
+    config:
+      domain: env:OKTA_DOMAIN
+      family: log_stream
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: network-zone
+    config:
+      domain: env:OKTA_DOMAIN
+      family: network_zone
       per_page: "200"
       token: env:OKTA_API_TOKEN
   - localId: policy-rule
@@ -44,5 +114,17 @@ runtimes:
     config:
       domain: env:OKTA_DOMAIN
       family: threat_insight
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: trusted-origin
+    config:
+      domain: env:OKTA_DOMAIN
+      family: trusted_origin
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: user
+    config:
+      domain: env:OKTA_DOMAIN
+      family: user
       per_page: "200"
       token: env:OKTA_API_TOKEN
