@@ -2,7 +2,7 @@
   "adapter_health_path": "/api/v4/user",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "gitlab.evidence_cas_reference",
-  "expected_cadence_seconds": 3600,
+  "expected_cadence_seconds": 86400,
   "failure_modes": [
     "api_error",
     "auth_error",
@@ -13,5 +13,5 @@
   "receipt_kind": "source_health.receipt",
   "source_id": "gitlab",
   "source_type": "json_api",
-  "stale_after_seconds": 7200
+  "stale_after_seconds": 86400
 }
