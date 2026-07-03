@@ -187,6 +187,105 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+
+	tests := []struct {
+		family string
+		config map[string]string
+		kind   string
+	}{
+		{family: "api_token", kind: "okta.api_token"},
+		{family: "authorization_server", kind: "okta.authorization_server"},
+		{family: "brand", kind: "okta.brand"},
+		{family: "device_assurance", kind: "okta.device_assurance"},
+		{family: "event_hook", kind: "okta.event_hook"},
+		{family: "inline_hook", kind: "okta.inline_hook"},
+		{family: "log_stream", kind: "okta.log_stream"},
+		{family: familyAdminRole, config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"}, kind: "okta.admin_role"},
+		{family: familyAppAssign, config: map[string]string{"app_id": "app-prod"}, kind: "okta.app_assignment"},
+		{family: familyApplication, kind: "okta.application"},
+		{family: familyAudit, kind: "okta.audit"},
+		{family: familyAuthenticator, kind: "okta.authenticator"},
+		{family: familyGroup, kind: "okta.group"},
+		{family: familyGroupMember, config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
+		{family: familyIDP, kind: "okta.identity_provider"},
+		{family: familyNetworkZone, kind: "okta.network_zone"},
+		{family: familyPolicyRule, kind: "okta.policy_rule"},
+		{family: familyThreatInsight, kind: "okta.threat_insight"},
+		{family: familyTrustedOrigin, kind: "okta.trusted_origin"},
+		{family: familyUser, kind: "okta.user"},
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, tt := range tests {
+		values := map[string]string{
+			"domain": "writer.okta.com",
+			"family": tt.family,
+			"token":  "test-token",
+		}
+		for key, value := range tt.config {
+			values[key] = value
+		}
+		familyConfigs[tt.family] = sourcecdk.NewConfig(values)
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
+			t.Fatalf("Authorization = %q, want SSWS token", got)
+		}
+		if r.URL.Path != "/api/v1/users" {
+			t.Fatalf("path = %q, want Okta users endpoint", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"errorSummary": "maintenance"})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   familyUser,
+		"per_page": "200",
+		"token":    "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "okta API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newOktaAPIHandler(t))
 	defer server.Close()
