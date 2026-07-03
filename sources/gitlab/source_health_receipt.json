@@ -1,5 +1,5 @@
 {
-  "adapter_health_path": "/v4/user",
+  "adapter_health_path": "/api/v4/user",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "gitlab.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
