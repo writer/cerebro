@@ -31,7 +31,15 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"entries": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"entries": []map[string]string{{
+			"id":          "user-1",
+			"type":        "user",
+			"name":        "User One",
+			"login":       "user@example.test",
+			"status":      "active",
+			"created_at":  "2026-05-01T00:00:00Z",
+			"modified_at": "2026-06-01T00:00:00Z",
+		}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
@@ -52,6 +60,49 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	for key, want := range map[string]string{
+		"user_id":       "user-1",
+		"login":         "user@example.test",
+		"display_name":  "User One",
+		"status":        "active",
+		"resource_type": "user",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/users" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "maintenance"})
+	}))
+	defer server.Close()
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyUsers,
+		"tenant_id": "tenant",
+		"token":     "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "box API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
 	}
 }
 
