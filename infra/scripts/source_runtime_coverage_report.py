@@ -163,6 +163,19 @@ def _schedule_map(schedules: list[Any]) -> dict[str, list[dict[str, Any]]]:
     return mapped
 
 
+def _disabled_runtime_map(entries: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(entries, list):
+        return {}
+    mapped: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        runtime_id = str(entry.get("runtimeId") or "").strip()
+        if runtime_id:
+            mapped[runtime_id] = entry
+    return mapped
+
+
 def _schedule_cadence_seconds(expression: Any) -> int | None:
     text = str(expression or "").strip().lower()
     match = re.fullmatch(r"rate\(\s*(\d+)\s+([a-z]+)\s*\)", text)
@@ -277,6 +290,8 @@ def build_report(
         if runtime_id in external_declared:
             findings.append(CoverageFinding("error", runtime_id, "external_runtime_id", "external runtime id is declared more than once"))
         external_declared[runtime_id] = runtime
+
+    disabled_declared = _disabled_runtime_map(config.get("temporarilyDisabledSourceRuntimes") or [])
 
     schedules_by_runtime = _schedule_map(schedules)
     actual_by_id: dict[str, dict[str, Any]] | None = None
@@ -399,11 +414,44 @@ def build_report(
             )
         )
 
+    for runtime_id in sorted(disabled_declared):
+        live = actual_by_id.get(runtime_id) if actual_by_id is not None else None
+        live_present = None if actual_by_id is None else live is not None
+        live_status = "disabled"
+        last_activity_at = ""
+        age_hours: float | None = None
+        if live is not None:
+            live_status = _runtime_field(live, "status", "state") or "disabled"
+            last_activity = _last_activity(live)
+            if last_activity is not None:
+                last_activity_at = last_activity.isoformat().replace("+00:00", "Z")
+                age_hours = max(0.0, (now - last_activity).total_seconds() / 3600)
+        rows.append(
+            CoverageRow(
+                stack=stack,
+                runtime_id=runtime_id,
+                source_id="",
+                family="",
+                tenant_id="",
+                schedule_name="disabled",
+                schedule_expression="",
+                schedule_cadence_seconds=None,
+                stale_after_seconds=None,
+                task_count=None,
+                backfill=False,
+                remove_after="",
+                live_present=live_present,
+                live_status=live_status,
+                last_activity_at=last_activity_at,
+                age_hours=round(age_hours, 2) if age_hours is not None else None,
+            )
+        )
+
     for runtime_id in sorted(scheduled_runtime_ids - set(declared)):
         findings.append(CoverageFinding("warning", runtime_id, "schedule", "orchestrator schedule targets an undeclared runtime"))
 
     if actual_by_id is not None:
-        expected_runtime_ids = set(declared) | set(external_declared)
+        expected_runtime_ids = set(declared) | set(external_declared) | set(disabled_declared)
         for runtime_id in sorted(set(actual_by_id) - expected_runtime_ids):
             findings.append(CoverageFinding("warning", runtime_id, "live", "live runtime is not declared in stack config"))
 
@@ -413,6 +461,7 @@ def build_report(
             1
             for row in rows
             if row.live_present
+            and row.schedule_name != "disabled"
             and (
                 row.age_hours is None
                 or row.stale_after_seconds is None
@@ -423,7 +472,7 @@ def build_report(
     return CoverageReport(
         generated_at=now.isoformat().replace("+00:00", "Z"),
         stack=stack,
-        declared_runtime_count=len(declared) + len(external_declared),
+        declared_runtime_count=len(declared) + len(external_declared) + len(disabled_declared),
         scheduled_runtime_count=len(set(declared) & scheduled_runtime_ids),
         schedule_count=len([schedule for schedule in schedules if isinstance(schedule, dict)]),
         live_runtime_count=len(actual_by_id) if actual_by_id is not None else None,
