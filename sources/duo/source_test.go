@@ -77,6 +77,18 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 			want: map[string]string{"admin_id": "admin-1", "user_id": "admin-1", "email": "secadmin@writer.com", "role": "Owner", "status": "Active"},
 		},
 		{
+			name:   "endpoint",
+			family: "endpoint",
+			kind:   "duo.endpoint",
+			path:   "/admin/v1/endpoints",
+			response: map[string]any{"stat": "OK", "response": []map[string]any{{
+				"endpoint_id": "endpoint-1", "hostname": "macbook-1", "os": "macOS",
+				"os_version": "15.5", "browser": "Safari", "disk_encryption_status": "encrypted",
+				"last_seen": 1700000000,
+			}}},
+			want: map[string]string{"endpoint_id": "endpoint-1", "hostname": "macbook-1", "os": "macOS", "os_version": "15.5", "disk_encryption_status": "encrypted"},
+		},
+		{
 			name:   "phone",
 			family: "phone",
 			kind:   "duo.phone",
@@ -384,6 +396,58 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range duoFixtureFamilies {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
+			t.Fatalf("request path = %q, want /admin/v1/users", got)
+		}
+		assertDuoHMACAuth(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "temporarily unavailable", "stat": "FAIL"})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":      server.URL,
+		"client_id":     testDuoIntegrationKey,
+		"client_secret": testDuoSecretKey,
+		"family":        "user",
+		"tenant_id":     "writer",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "duo API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
 	}
 }
 
