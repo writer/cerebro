@@ -179,13 +179,20 @@ type TransportSpec struct {
 // ProviderAPISpec records the provider-owned API source that backs a generated
 // or promoted connector definition.
 type ProviderAPISpec struct {
-	Status     string                  `json:"status,omitempty" yaml:"status,omitempty"`
-	Transport  string                  `json:"transport,omitempty" yaml:"transport,omitempty"`
-	Auth       string                  `json:"auth,omitempty" yaml:"auth,omitempty"`
-	BaseURL    string                  `json:"base_url,omitempty" yaml:"base_url,omitempty"`
-	Endpoint   string                  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	References []string                `json:"references,omitempty" yaml:"references,omitempty"`
-	Families   []ProviderAPIFamilySpec `json:"families,omitempty" yaml:"families,omitempty"`
+	Status        string                  `json:"status,omitempty" yaml:"status,omitempty"`
+	Basis         string                  `json:"basis,omitempty" yaml:"basis,omitempty"`
+	VerifiedAt    string                  `json:"verified_at,omitempty" yaml:"verified_at,omitempty"`
+	Transport     string                  `json:"transport,omitempty" yaml:"transport,omitempty"`
+	Auth          string                  `json:"auth,omitempty" yaml:"auth,omitempty"`
+	AuthMechanics string                  `json:"auth_mechanics,omitempty" yaml:"auth_mechanics,omitempty"`
+	BaseURL       string                  `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	Endpoint      string                  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	SpecURL       string                  `json:"spec_url,omitempty" yaml:"spec_url,omitempty"`
+	SpecKind      string                  `json:"spec_kind,omitempty" yaml:"spec_kind,omitempty"`
+	References    []string                `json:"references,omitempty" yaml:"references,omitempty"`
+	AuthEvidence  []string                `json:"auth_evidence,omitempty" yaml:"auth_evidence,omitempty"`
+	ScopeEvidence []string                `json:"scope_evidence,omitempty" yaml:"scope_evidence,omitempty"`
+	Families      []ProviderAPIFamilySpec `json:"families,omitempty" yaml:"families,omitempty"`
 }
 
 // ProviderAPIFamilySpec maps one runtime family to a documented provider API
@@ -1218,11 +1225,18 @@ func normalizeProviderAPISpec(api *ProviderAPISpec) *ProviderAPISpec {
 	}
 	next := *api
 	next.Status = strings.TrimSpace(next.Status)
+	next.Basis = strings.TrimSpace(next.Basis)
+	next.VerifiedAt = strings.TrimSpace(next.VerifiedAt)
 	next.Transport = strings.TrimSpace(next.Transport)
 	next.Auth = strings.TrimSpace(next.Auth)
+	next.AuthMechanics = strings.TrimSpace(next.AuthMechanics)
 	next.BaseURL = strings.TrimSpace(next.BaseURL)
 	next.Endpoint = strings.TrimSpace(next.Endpoint)
+	next.SpecURL = strings.TrimSpace(next.SpecURL)
+	next.SpecKind = strings.TrimSpace(next.SpecKind)
 	next.References = normalizeStringList(next.References)
+	next.AuthEvidence = normalizeStringList(next.AuthEvidence)
+	next.ScopeEvidence = normalizeStringList(next.ScopeEvidence)
 	families := make([]ProviderAPIFamilySpec, 0, len(next.Families))
 	seen := map[string]struct{}{}
 	for _, family := range next.Families {

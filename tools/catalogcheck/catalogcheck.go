@@ -227,7 +227,15 @@ func bespokeRuntimeReady(entry connectorcatalog.Entry, runtimeInventory connecto
 	if !ok {
 		return false
 	}
-	return depth.Score >= 80 && depth.HasSourcePackage && depth.HasSourceImplementation
+	// Sourcegen readiness accepts a complete hand-written runtime package here.
+	// Reference-runtime proof, provider API proof, and projector gaps are checked
+	// by the runtime-depth ratchet instead.
+	return depth.HasSourcePackage &&
+		depth.HasSourceCatalog &&
+		depth.HasSourceImplementation &&
+		depth.HasSourceTests &&
+		depth.HasFixturePair &&
+		depth.HasDeployManifest
 }
 
 func printConnectorDefinitionCatalogSummary(root string) error {

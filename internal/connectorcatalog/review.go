@@ -14,15 +14,16 @@ import (
 // and review questions that can be published by CI without mutating catalog
 // files.
 type ReviewReport struct {
-	Summary            ReviewSummary           `json:"summary"`
-	PromotionQueues    []PromotionQueue        `json:"promotion_queues,omitempty"`
-	FidelityQueue      []FidelityCandidate     `json:"fidelity_queue,omitempty"`
-	RuntimeDepthQueue  []RuntimeDepthCandidate `json:"runtime_depth_queue,omitempty"`
-	APIDiscoveryQueue  []APIDiscoveryCandidate `json:"api_discovery_queue,omitempty"`
-	CleanupFindings    []ReviewFinding         `json:"cleanup_findings,omitempty"`
-	Questions          []ReviewQuestion        `json:"questions,omitempty"`
-	SourceReviews      []SourceReview          `json:"source_reviews,omitempty"`
-	ProjectionCoverage []ProjectionCoverage    `json:"projection_coverage,omitempty"`
+	Summary               ReviewSummary               `json:"summary"`
+	PromotionQueues       []PromotionQueue            `json:"promotion_queues,omitempty"`
+	FidelityQueue         []FidelityCandidate         `json:"fidelity_queue,omitempty"`
+	RuntimeDepthQueue     []RuntimeDepthCandidate     `json:"runtime_depth_queue,omitempty"`
+	APIDiscoveryQueue     []APIDiscoveryCandidate     `json:"api_discovery_queue,omitempty"`
+	ProviderAPIProofQueue []ProviderAPIProofCandidate `json:"provider_api_proof_queue,omitempty"`
+	CleanupFindings       []ReviewFinding             `json:"cleanup_findings,omitempty"`
+	Questions             []ReviewQuestion            `json:"questions,omitempty"`
+	SourceReviews         []SourceReview              `json:"source_reviews,omitempty"`
+	ProjectionCoverage    []ProjectionCoverage        `json:"projection_coverage,omitempty"`
 }
 
 type ReviewSummary struct {
@@ -58,6 +59,8 @@ type RuntimeDepthSummary struct {
 	NeedsProviderAPIDiscovery        int `json:"needs_provider_api_discovery"`
 	SourcesWithProviderAPIContract   int `json:"sources_with_provider_api_contract"`
 	SourcesWithProviderAPIMapping    int `json:"sources_with_provider_api_mapping"`
+	SourcesWithProviderAPIProof      int `json:"sources_with_provider_api_proof"`
+	NeedsProviderAPIProof            int `json:"needs_provider_api_proof"`
 	SourcesWithRuntimeTransportMatch int `json:"sources_with_runtime_transport_match"`
 	SourcesWithRuntimeFixtures       int `json:"sources_with_runtime_fixtures"`
 	SourcesWithDeployManifest        int `json:"sources_with_deploy_manifest"`
@@ -113,6 +116,19 @@ type APIDiscoveryCandidate struct {
 	Endpoint           string   `json:"endpoint,omitempty"`
 	SearchQueries      []string `json:"search_queries,omitempty"`
 	NextAction         string   `json:"next_action"`
+}
+
+type ProviderAPIProofCandidate struct {
+	SourceID      string   `json:"source_id"`
+	DisplayName   string   `json:"display_name,omitempty"`
+	Path          string   `json:"path,omitempty"`
+	PackagePath   string   `json:"package_path,omitempty"`
+	Score         int      `json:"score"`
+	Missing       []string `json:"missing,omitempty"`
+	References    []string `json:"references,omitempty"`
+	SpecURL       string   `json:"spec_url,omitempty"`
+	AuthMechanics string   `json:"auth_mechanics,omitempty"`
+	NextAction    string   `json:"next_action"`
 }
 
 type ReviewFinding struct {
@@ -181,6 +197,7 @@ type RuntimeDepthFields struct {
 	HasProjectorTests          bool     `json:"has_projector_tests,omitempty"`
 	HasProviderAPIContract     bool     `json:"has_provider_api_contract,omitempty"`
 	HasProviderAPIMapping      bool     `json:"has_provider_api_mapping,omitempty"`
+	HasProviderAPIProof        bool     `json:"has_provider_api_proof,omitempty"`
 	HasRuntimeTransportMatch   bool     `json:"has_runtime_transport_match,omitempty"`
 	ProviderAPIReviewFields
 	RuntimeFamilies []string `json:"runtime_families,omitempty"`
@@ -188,13 +205,23 @@ type RuntimeDepthFields struct {
 
 type ProviderAPIReviewFields struct {
 	ProviderAPIStatus          string   `json:"provider_api_status,omitempty"`
+	ProviderAPIBasis           string   `json:"provider_api_basis,omitempty"`
+	ProviderAPIVerifiedAt      string   `json:"provider_api_verified_at,omitempty"`
 	ProviderAPITransport       string   `json:"provider_api_transport,omitempty"`
 	ProviderAPIAuth            string   `json:"provider_api_auth,omitempty"`
+	ProviderAPIAuthMechanics   string   `json:"provider_api_auth_mechanics,omitempty"`
 	ProviderAPIBaseURL         string   `json:"provider_api_base_url,omitempty"`
 	ProviderAPIEndpoint        string   `json:"provider_api_endpoint,omitempty"`
+	ProviderAPISpecURL         string   `json:"provider_api_spec_url,omitempty"`
+	ProviderAPISpecKind        string   `json:"provider_api_spec_kind,omitempty"`
 	ProviderAPIReferences      []string `json:"provider_api_references,omitempty"`
+	ProviderAPIAuthEvidence    []string `json:"provider_api_auth_evidence,omitempty"`
+	ProviderAPIScopeEvidence   []string `json:"provider_api_scope_evidence,omitempty"`
 	ProviderAPIMappedFamilies  []string `json:"provider_api_mapped_families,omitempty"`
 	ProviderAPIMissingFamilies []string `json:"provider_api_missing_families,omitempty"`
+	ProviderAPIProofScore      int      `json:"provider_api_proof_score,omitempty"`
+	ProviderAPIProofLevel      string   `json:"provider_api_proof_level,omitempty"`
+	ProviderAPIProofGaps       []string `json:"provider_api_proof_gaps,omitempty"`
 }
 
 type SourceFamilyReadinessFields struct {
@@ -308,6 +335,12 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			}
 			if sourceReview.HasProviderAPIMapping {
 				review.Summary.RuntimeDepth.SourcesWithProviderAPIMapping++
+			}
+			if sourceReview.HasProviderAPIProof {
+				review.Summary.RuntimeDepth.SourcesWithProviderAPIProof++
+			} else if sourceReview.HasProviderAPIContract {
+				review.Summary.RuntimeDepth.NeedsProviderAPIProof++
+				review.ProviderAPIProofQueue = append(review.ProviderAPIProofQueue, providerAPIProofCandidate(sourceReview))
 			}
 			if sourceReview.HasProviderAPIContract && sourceReview.HasRuntimeTransportMatch {
 				review.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch++
@@ -431,15 +464,26 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.HasProjectorTests = runtimeDepth.HasProjectorTests
 		review.HasProviderAPIContract = runtimeDepth.ProviderAPI.HasContract
 		review.HasProviderAPIMapping = runtimeDepth.ProviderAPI.HasMapping
+		review.HasProviderAPIProof = runtimeDepth.ProviderAPI.HasProof
 		review.HasRuntimeTransportMatch = runtimeDepth.ProviderAPI.HasRuntimeTransport
 		review.ProviderAPIStatus = runtimeDepth.ProviderAPI.Status
+		review.ProviderAPIBasis = runtimeDepth.ProviderAPI.Basis
+		review.ProviderAPIVerifiedAt = runtimeDepth.ProviderAPI.VerifiedAt
 		review.ProviderAPITransport = runtimeDepth.ProviderAPI.Transport
 		review.ProviderAPIAuth = runtimeDepth.ProviderAPI.Auth
+		review.ProviderAPIAuthMechanics = runtimeDepth.ProviderAPI.AuthMechanics
 		review.ProviderAPIBaseURL = runtimeDepth.ProviderAPI.BaseURL
 		review.ProviderAPIEndpoint = runtimeDepth.ProviderAPI.Endpoint
+		review.ProviderAPISpecURL = runtimeDepth.ProviderAPI.SpecURL
+		review.ProviderAPISpecKind = runtimeDepth.ProviderAPI.SpecKind
 		review.ProviderAPIReferences = append([]string(nil), runtimeDepth.ProviderAPI.References...)
+		review.ProviderAPIAuthEvidence = append([]string(nil), runtimeDepth.ProviderAPI.AuthEvidence...)
+		review.ProviderAPIScopeEvidence = append([]string(nil), runtimeDepth.ProviderAPI.ScopeEvidence...)
 		review.ProviderAPIMappedFamilies = append([]string(nil), runtimeDepth.ProviderAPI.MappedFamilies...)
 		review.ProviderAPIMissingFamilies = append([]string(nil), runtimeDepth.ProviderAPI.MissingFamilyMappings...)
+		review.ProviderAPIProofScore = runtimeDepth.ProviderAPI.ProofScore
+		review.ProviderAPIProofLevel = runtimeDepth.ProviderAPI.ProofLevel
+		review.ProviderAPIProofGaps = append([]string(nil), runtimeDepth.ProviderAPI.ProofGaps...)
 		review.RuntimeFamilies = append([]string(nil), runtimeDepth.RuntimeFamilies...)
 		switch {
 		case review.RuntimeDepthScore >= runtimeDepthReviewThreshold:
@@ -456,8 +500,11 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 	sort.Strings(review.ProjectionTemplates)
 	sort.Strings(review.ProjectionGapFamilies)
 	sort.Strings(review.ProviderAPIReferences)
+	sort.Strings(review.ProviderAPIAuthEvidence)
+	sort.Strings(review.ProviderAPIScopeEvidence)
 	sort.Strings(review.ProviderAPIMappedFamilies)
 	sort.Strings(review.ProviderAPIMissingFamilies)
+	sort.Strings(review.ProviderAPIProofGaps)
 	sort.Strings(review.RuntimeFamilies)
 	sort.Strings(review.RuntimeDepthGaps)
 	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry, review)
@@ -569,6 +616,17 @@ func sourceQuestions(source SourceReview, entry Entry, includeRuntimeDepth bool)
 			Question:   "Which provider-owned API source proves the runtime mappings?",
 			Answer:     fmt.Sprintf("Missing provider API coverage for families: %s.", listOrNoFamilies(providerAPIMissingFamilies(source, entry))),
 			NextAction: providerAPIDiscoveryNextAction(source.SourceID),
+		})
+	}
+	if includeRuntimeDepth && source.HasProviderAPIContract && !source.HasProviderAPIProof {
+		questions = append(questions, ReviewQuestion{
+			ID:         questionID(source.SourceID, "provider_api_proof"),
+			SourceID:   source.SourceID,
+			Path:       source.Path,
+			Category:   "provider_api_proof",
+			Question:   "Does the provider API record prove the runtime mappings?",
+			Answer:     fmt.Sprintf("Proof score %d of 100. Missing: %s.", source.ProviderAPIProofScore, listOrNone(limitStrings(source.ProviderAPIProofGaps, 8))),
+			NextAction: providerAPIProofNextAction(source),
 		})
 	}
 	return questions
@@ -745,6 +803,32 @@ func providerAPIDiscoveryNextAction(sourceID string) string {
 
 func needsProviderAPIDiscovery(source SourceReview) bool {
 	return !source.HasProviderAPIContract || !source.HasProviderAPIMapping
+}
+
+func providerAPIProofCandidate(source SourceReview) ProviderAPIProofCandidate {
+	return ProviderAPIProofCandidate{
+		SourceID:      source.SourceID,
+		DisplayName:   source.DisplayName,
+		Path:          source.Path,
+		PackagePath:   source.RuntimePackagePath,
+		Score:         source.ProviderAPIProofScore,
+		Missing:       append([]string(nil), source.ProviderAPIProofGaps...),
+		References:    append([]string(nil), source.ProviderAPIReferences...),
+		SpecURL:       strings.TrimSpace(source.ProviderAPISpecURL),
+		AuthMechanics: strings.TrimSpace(source.ProviderAPIAuthMechanics),
+		NextAction:    providerAPIProofNextAction(source),
+	}
+}
+
+func providerAPIProofNextAction(source SourceReview) string {
+	packagePath := strings.TrimSpace(source.RuntimePackagePath)
+	if packagePath == "" {
+		packagePath = "sources/" + strings.TrimSpace(source.SourceID)
+	}
+	if strings.TrimSpace(source.SourceID) == "" {
+		packagePath = "the source package"
+	}
+	return "Record provider API proof under " + packagePath + "/catalog.yaml: basis, verified_at, machine-readable spec URL, auth mechanics, required auth or scope evidence, and family mappings for each runtime family."
 }
 
 func providerAPIDiscoveryCandidate(entry Entry, source SourceReview) APIDiscoveryCandidate {
@@ -1095,6 +1179,12 @@ func sortReview(review *ReviewReport) {
 			return len(review.APIDiscoveryQueue[i].MissingFamilies) > len(review.APIDiscoveryQueue[j].MissingFamilies)
 		}
 		return review.APIDiscoveryQueue[i].SourceID < review.APIDiscoveryQueue[j].SourceID
+	})
+	sort.SliceStable(review.ProviderAPIProofQueue, func(i int, j int) bool {
+		if review.ProviderAPIProofQueue[i].Score != review.ProviderAPIProofQueue[j].Score {
+			return review.ProviderAPIProofQueue[i].Score < review.ProviderAPIProofQueue[j].Score
+		}
+		return review.ProviderAPIProofQueue[i].SourceID < review.ProviderAPIProofQueue[j].SourceID
 	})
 	sort.SliceStable(review.CleanupFindings, func(i int, j int) bool {
 		if review.CleanupFindings[i].SourceID != review.CleanupFindings[j].SourceID {

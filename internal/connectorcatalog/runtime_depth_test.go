@@ -15,11 +15,19 @@ emitted_kinds: [github.audit, github.code.repository]
 runtime_families: [audit, repository]
 provider_api:
   status: verified
+  basis: detected
+  verified_at: 2026-07-02T00:00:00Z
   transport: rest
   auth: github_app
+  auth_mechanics: github_app_installation
   base_url: https://api.github.com
+  spec_url: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+  spec_kind: openapi
   references:
     - https://docs.github.com/rest
+    - https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+  auth_evidence:
+    - https://docs.github.com/apps/creating-github-apps/authenticating-with-a-github-app
   families:
     - id: audit
       method: GET
@@ -60,8 +68,11 @@ func TestProjectGitHubAudit(t *testing.T) {
 	if depth.Score != 100 {
 		t.Fatalf("runtime depth score = %d missing=%v, want 100", depth.Score, depth.Missing)
 	}
-	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping || !depth.ProviderAPI.HasRuntimeTransport || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
+	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping || !depth.ProviderAPI.HasRuntimeTransport || !depth.ProviderAPI.HasProof || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
 		t.Fatalf("runtime depth flags = %#v, want all reference-runtime flags", depth)
+	}
+	if depth.ProviderAPI.ProofScore != providerAPIProofThreshold || depth.ProviderAPI.ProofLevel != "verified" {
+		t.Fatalf("provider API proof = %#v, want verified proof", depth.ProviderAPI)
 	}
 	if depth.ProviderAPI.BaseURL != "https://api.github.com" || !containsString(depth.ProviderAPI.References, "https://docs.github.com/rest") || !containsString(depth.ProviderAPI.MappedFamilies, "repository") {
 		t.Fatalf("provider API details = %#v", depth.ProviderAPI)

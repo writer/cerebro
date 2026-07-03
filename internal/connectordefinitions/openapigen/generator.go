@@ -149,6 +149,7 @@ func providerAPISpec(request Request, baseURL string, authModel string, selected
 	if len(references) == 0 {
 		return nil
 	}
+	specURL := providerAPISpecURL(references)
 	families := make([]connectordefinitions.ProviderAPIFamilySpec, 0, len(selected))
 	for _, next := range selected {
 		families = append(families, connectordefinitions.ProviderAPIFamilySpec{
@@ -157,13 +158,60 @@ func providerAPISpec(request Request, baseURL string, authModel string, selected
 			Path:   next.endpoint.Path,
 		})
 	}
+	// Generated definitions carry detected API evidence, but verified_at is
+	// reserved for a human catalog review timestamp.
 	return &connectordefinitions.ProviderAPISpec{
-		Status:     "verified",
-		Transport:  "rest",
-		Auth:       authModel,
-		BaseURL:    baseURL,
-		References: references,
-		Families:   families,
+		Status:        "verified",
+		Basis:         "detected",
+		Transport:     "rest",
+		Auth:          authModel,
+		AuthMechanics: providerAPIAuthMechanics(authModel),
+		BaseURL:       baseURL,
+		SpecURL:       specURL,
+		SpecKind:      providerAPISpecKind(specURL),
+		References:    references,
+		AuthEvidence:  references,
+		Families:      families,
+	}
+}
+
+func providerAPISpecURL(references []string) string {
+	for _, reference := range references {
+		kind := providerAPISpecKind(reference)
+		if kind != "" {
+			return strings.TrimSpace(reference)
+		}
+	}
+	return ""
+}
+
+func providerAPISpecKind(reference string) string {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return ""
+	}
+	parsed, err := url.Parse(reference)
+	if err != nil {
+		return ""
+	}
+	path := strings.ToLower(parsed.EscapedPath())
+	lower := strings.ToLower(reference)
+	switch {
+	case strings.Contains(lower, "openapi") || strings.Contains(lower, "swagger") || strings.HasSuffix(path, ".json") || strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml"):
+		return "openapi"
+	case strings.HasSuffix(path, ".graphql") || strings.Contains(path, "graphql"):
+		return "graphql"
+	default:
+		return ""
+	}
+}
+
+func providerAPIAuthMechanics(authModel string) string {
+	switch strings.TrimSpace(authModel) {
+	case "", "none":
+		return "public"
+	default:
+		return "openapi_security"
 	}
 }
 

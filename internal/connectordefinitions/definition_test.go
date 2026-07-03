@@ -90,11 +90,18 @@ func TestNormalizePreservesProviderAPIMapping(t *testing.T) {
 		Auth:        AuthSpec{Model: "none"},
 		Transport:   &TransportSpec{BaseURL: "https://api.example.test"},
 		ProviderAPI: &ProviderAPISpec{
-			Status:     " verified ",
-			Transport:  " rest ",
-			Auth:       " none ",
-			BaseURL:    " https://api.example.test ",
-			References: []string{" https://docs.example.test/openapi.yaml ", "https://docs.example.test/openapi.yaml"},
+			Status:        " verified ",
+			Basis:         " detected ",
+			VerifiedAt:    " 2026-07-02T00:00:00Z ",
+			Transport:     " rest ",
+			Auth:          " none ",
+			AuthMechanics: " public ",
+			BaseURL:       " https://api.example.test ",
+			SpecURL:       " https://docs.example.test/openapi.yaml ",
+			SpecKind:      " openapi ",
+			References:    []string{" https://docs.example.test/openapi.yaml ", "https://docs.example.test/openapi.yaml"},
+			AuthEvidence:  []string{" https://docs.example.test/auth ", "https://docs.example.test/auth"},
+			ScopeEvidence: []string{" https://docs.example.test/scopes "},
 			Families: []ProviderAPIFamilySpec{{
 				ID:     " Assets ",
 				Method: " get ",
@@ -117,8 +124,20 @@ func TestNormalizePreservesProviderAPIMapping(t *testing.T) {
 	if definition.ProviderAPI.Status != "verified" || definition.ProviderAPI.Transport != "rest" || definition.ProviderAPI.Auth != "none" {
 		t.Fatalf("provider API = %#v", definition.ProviderAPI)
 	}
+	if definition.ProviderAPI.Basis != "detected" || definition.ProviderAPI.VerifiedAt != "2026-07-02T00:00:00Z" || definition.ProviderAPI.AuthMechanics != "public" {
+		t.Fatalf("provider API proof fields = %#v", definition.ProviderAPI)
+	}
+	if definition.ProviderAPI.SpecURL != "https://docs.example.test/openapi.yaml" || definition.ProviderAPI.SpecKind != "openapi" {
+		t.Fatalf("provider API spec fields = %#v", definition.ProviderAPI)
+	}
 	if len(definition.ProviderAPI.References) != 1 || definition.ProviderAPI.References[0] != "https://docs.example.test/openapi.yaml" {
 		t.Fatalf("provider API references = %#v", definition.ProviderAPI.References)
+	}
+	if len(definition.ProviderAPI.AuthEvidence) != 1 || definition.ProviderAPI.AuthEvidence[0] != "https://docs.example.test/auth" {
+		t.Fatalf("provider API auth evidence = %#v", definition.ProviderAPI.AuthEvidence)
+	}
+	if len(definition.ProviderAPI.ScopeEvidence) != 1 || definition.ProviderAPI.ScopeEvidence[0] != "https://docs.example.test/scopes" {
+		t.Fatalf("provider API scope evidence = %#v", definition.ProviderAPI.ScopeEvidence)
 	}
 	if len(definition.ProviderAPI.Families) != 1 || definition.ProviderAPI.Families[0].ID != "assets" || definition.ProviderAPI.Families[0].Method != "GET" || definition.ProviderAPI.Families[0].Path != "/v1/assets" {
 		t.Fatalf("provider API families = %#v", definition.ProviderAPI.Families)
@@ -161,11 +180,20 @@ auth:
   model: none
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-02T00:00:00Z
   transport: rest
   auth: none
+  auth_mechanics: public
   base_url: https://api.example.test
+  spec_url: https://docs.example.test/openapi.yaml
+  spec_kind: openapi
   references:
     - https://docs.example.test/openapi.yaml
+  auth_evidence:
+    - https://docs.example.test/auth
+  scope_evidence:
+    - https://docs.example.test/scopes
   families:
     - id: assets
       method: GET
@@ -179,6 +207,9 @@ provider_api:
 	}
 	if definition.ProviderAPI.BaseURL != "https://api.example.test" {
 		t.Fatalf("provider API base URL = %q", definition.ProviderAPI.BaseURL)
+	}
+	if definition.ProviderAPI.Basis != "declared" || definition.ProviderAPI.AuthMechanics != "public" || definition.ProviderAPI.SpecURL == "" {
+		t.Fatalf("provider API proof fields = %#v", definition.ProviderAPI)
 	}
 	if len(definition.ProviderAPI.Families) != 1 || definition.ProviderAPI.Families[0].Operation != "listAssets" {
 		t.Fatalf("provider API families = %#v", definition.ProviderAPI.Families)

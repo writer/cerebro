@@ -151,6 +151,15 @@ func TestGenerateReportsOpenAPIOperationProvenance(t *testing.T) {
 	if definition.ProviderAPI.Status != "verified" || definition.ProviderAPI.Transport != "rest" {
 		t.Fatalf("definition provider API = %#v", definition.ProviderAPI)
 	}
+	if definition.ProviderAPI.Basis != "detected" || definition.ProviderAPI.SpecURL != "https://github.com/provider/api/openapi.yaml" || definition.ProviderAPI.SpecKind != "openapi" {
+		t.Fatalf("definition provider API proof fields = %#v", definition.ProviderAPI)
+	}
+	if definition.ProviderAPI.VerifiedAt != "" {
+		t.Fatalf("definition provider API verified_at = %q, want empty human review timestamp", definition.ProviderAPI.VerifiedAt)
+	}
+	if definition.ProviderAPI.AuthMechanics == "" || !reflect.DeepEqual(definition.ProviderAPI.AuthEvidence, []string{"https://github.com/provider/api/openapi.yaml"}) {
+		t.Fatalf("definition provider API auth evidence = %#v", definition.ProviderAPI)
+	}
 	if !reflect.DeepEqual(definition.ProviderAPI.References, []string{"https://github.com/provider/api/openapi.yaml"}) {
 		t.Fatalf("definition provider API references = %#v", definition.ProviderAPI.References)
 	}
