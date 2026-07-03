@@ -44,6 +44,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads JumpCloud API v1 /systemusers with x-api-key auth, results records, totalCount metadata, and skip/limit pagination.
     - id: groups
@@ -54,6 +63,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads JumpCloud API v2 /usergroups with x-api-key auth and skip/limit pagination.
     - id: systems
@@ -64,6 +82,17 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, endpoint_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC6.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.7
       notes:
         - Reads JumpCloud API v1 /systems for device inventory, agent state, operating system, and last contact fields.
     - id: applications
@@ -74,6 +103,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access, saas_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads JumpCloud API v1 /applications for SSO application inventory and application URLs.
     - id: system_groups
@@ -84,6 +122,17 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, endpoint_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC6.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.7
       notes:
         - Reads JumpCloud API v2 /systemgroups for device grouping context.
     - id: group_members
@@ -94,6 +143,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads JumpCloud API v2 /usergroups/{group_id}/members across configured group_ids and projects group-to-user membership.
     - id: audit_events
@@ -104,6 +162,23 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads Directory Insights POST /events with service/start_time filters and X-Search_after continuation.
     - id: incremental_sync
@@ -112,6 +187,11 @@ coverage_contract:
       support: partial
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
         - Collection endpoints use provider skip cursors; Directory Insights uses provider search_after cursors and checkpoint watermarks.
 event_contracts:

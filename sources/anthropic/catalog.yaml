@@ -71,6 +71,15 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: compliance_activity
       type: audit_event
       title: Compliance activity feed
@@ -79,6 +88,15 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: compliance_directory
       type: app_entitlement
       title: Compliance organizations, users, roles, role permissions, groups, and group members
@@ -87,6 +105,15 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: compliance_settings
       type: lifecycle_state
       title: Effective compliance organization settings
@@ -95,6 +122,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: compliance_projects
       type: app_entitlement
       title: Claude projects and active collaborator role assignments
@@ -103,6 +139,15 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: external_keys
       type: lifecycle_state
       title: External key configurations
@@ -111,6 +156,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: organization_profile
       type: entity_family
       title: Current organization
@@ -119,6 +173,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
     - id: rate_limits
       type: lifecycle_state
       title: Organization and workspace rate limits
@@ -127,6 +186,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: spend_limits
       type: lifecycle_state
       title: Effective spend limits and increase requests
@@ -135,6 +203,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: usage_and_costs
       type: entity_family
       title: Usage, Claude Code analytics, and cost report buckets
@@ -143,6 +220,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
     - id: users_and_access
       type: app_entitlement
       title: Organization users, invites, and workspace membership
@@ -151,6 +233,15 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: workload_identity
       type: app_entitlement
       title: Service accounts and workload identity federation
@@ -159,6 +250,15 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: workspaces
       type: entity_family
       title: Workspaces
@@ -167,6 +267,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
 event_contracts:
   - kind: anthropic.organization
     schema_ref: anthropic/organization/v1

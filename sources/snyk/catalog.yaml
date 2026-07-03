@@ -178,6 +178,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
         - Reads `/orgs` and `/groups` with Snyk REST versioning and preserves organization and group IDs, names, slugs, and relationships.
     - id: org_access
@@ -188,6 +193,15 @@ coverage_contract:
       high_value: true
       evidence_types: [access_review]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads `/orgs/{org_id}/memberships` and `/orgs/{org_id}/service_accounts` to project users, service accounts, groups, and role assignments.
     - id: group_access
@@ -198,6 +212,15 @@ coverage_contract:
       high_value: true
       evidence_types: [access_review]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Fans out across configured group IDs for `/groups/{group_id}/memberships` and `/groups/{group_id}/service_accounts`.
     - id: audit_activity
@@ -208,6 +231,23 @@ coverage_contract:
       high_value: true
       evidence_types: [audit_log]
       control_domains: [logging_monitoring, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
         - Reads Snyk audit search endpoints using `cursor` and `size` pagination and projects actors to acted-on resources.
     - id: application_inventory
@@ -218,6 +258,17 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, remediation]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC7.4
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.25
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
       notes:
         - Reads projects, targets, and collections for Snyk application scope and remediation grouping.
     - id: cloud_inventory
@@ -228,6 +279,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
         - Reads Snyk inventory assets, cloud environments, cloud resources, cloud scans, and configured asset relationships to connect assets to projects and targets.
     - id: remediation_state
@@ -238,6 +294,13 @@ coverage_contract:
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.4
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.25
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
       notes:
         - Reads `/orgs/{org_id}/issues` for Snyk issues and package vulnerabilities, preserving severity, status, title, type, and scan item references.
     - id: incremental_sync
@@ -247,6 +310,11 @@ coverage_contract:
       support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
         - Uses Snyk REST `version`, `links.next`, `starting_after`/`limit`, and audit `cursor`/`size` pagination through the Source CDK cursor envelope.
 event_contracts:
