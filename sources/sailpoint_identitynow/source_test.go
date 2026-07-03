@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -526,6 +527,63 @@ func TestSourceRolesEmitStaticPolicyAttributes(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["role_type"]; got != "role" {
 		t.Fatalf("role_type = %q, want role", got)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	var mu sync.Mutex
+	requests := []struct {
+		auth string
+		path string
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, struct {
+			auth string
+			path string
+		}{auth: r.Header.Get("Authorization"), path: r.URL.Path})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "maintenance"})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL + "/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyIdentities,
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Read() error = %v, want HTTP 503", err)
+	}
+	mu.Lock()
+	gotRequests := append([]struct {
+		auth string
+		path string
+	}{}, requests...)
+	mu.Unlock()
+	if len(gotRequests) == 0 {
+		t.Fatal("provider server saw no requests")
+	}
+	for _, request := range gotRequests {
+		if request.auth != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want Bearer token", request.auth)
+		}
+		if request.path != "/v2025/identities" {
+			t.Fatalf("path = %q, want SailPoint identities endpoint", request.path)
+		}
 	}
 }
 
