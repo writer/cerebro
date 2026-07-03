@@ -58,7 +58,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("$top query is empty")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{"id": "user-1", "displayName": "Record One", "mail": "record@example.test", "userPrincipalName": "record@example.test", "accountEnabled": true, "createdDateTime": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{
+			"id":                "user-1",
+			"displayName":       "Ada Lovelace",
+			"mail":              "ada@example.test",
+			"userPrincipalName": "ada@example.test",
+			"accountEnabled":    true,
+			"createdDateTime":   "2026-06-01T00:00:00Z",
+		}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret"}
@@ -85,6 +92,12 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if got := event.Attributes["account_enabled"]; got != "true" {
 		t.Fatalf("account_enabled = %q", got)
+	}
+	if got := event.Attributes["display_name"]; got != "Ada Lovelace" {
+		t.Fatalf("display_name = %q", got)
+	}
+	if got := event.Attributes["email"]; got != "ada@example.test" {
+		t.Fatalf("email = %q", got)
 	}
 	if got := event.Attributes["status"]; got != "" {
 		t.Fatalf("status = %q, want empty when only accountEnabled is present", got)
@@ -142,6 +155,45 @@ func TestSourceReadAuditEventsDoesNotInventResourceURN(t *testing.T) {
 		t.Fatalf("resource_type = %q, want Group", got)
 	}
 	assertNoResourceURN(t, pull.Events[0].Attributes)
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/v1.0/users" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "maintenance"})
+	}))
+	defer server.Close()
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":      server.URL,
+		"family":        familyUsers,
+		"tenant_id":     "tenant",
+		"token_url":     server.URL + "/oauth/token",
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "microsoft_entra_id API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
 }
 
 func TestNewFixtureReplaysMicrosoftEntraIDFamilies(t *testing.T) {
