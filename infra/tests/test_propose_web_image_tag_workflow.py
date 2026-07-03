@@ -23,7 +23,7 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('DISPATCH_SOURCE_REF}" =~ ^[0-9a-f]{40}$', workflow)
         self.assertIn('Repository dispatch must include web_image_digest', workflow)
         self.assertIn('"sha-${DISPATCH_SOURCE_REF:0:12}"', workflow)
-        self.assertIn("steps.inputs.outputs.expected_digest", workflow)
+        self.assertIn("steps.resolved.outputs.expected_digest", workflow)
 
     def test_web_image_signature_uses_public_release_workflow_identity(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
