@@ -156,6 +156,49 @@ config:
       tenantId: writer
       owner: cerebro-slack-companion
       reason: "External Slack companion service writes Cerebro claims and runtime health through the API."
+  cerebro:temporarilyDisabledSourceRuntimes:
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_COSMO_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=cosmo, and re-enable the Cosmo rollout."
+    - runtimeId: writer-cosmo-fact
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_COSMO_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=cosmo, and re-enable the Cosmo rollout."
+    - runtimeId: writer-cosmo-survey-feedback
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_COSMO_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=cosmo, and re-enable the Cosmo rollout."
+    - runtimeId: writer-slack-channels
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_SLACK_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=slack, and re-enable the Slack rollout."
+    - runtimeId: writer-slack-teams
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_SLACK_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=slack, and re-enable the Slack rollout."
+    - runtimeId: writer-slack-user-groups
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_SLACK_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=slack, and re-enable the Slack rollout."
+    - runtimeId: writer-slack-users
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-07-03"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate CEREBRO_SOURCE_SLACK_TOKEN in Infisical, run Source Runtime Verify for sec-dev source_id=slack, and re-enable the Slack rollout."
   cerebro:sourceRuntimeRollouts:
     - sourceId: archetype
       enabled: true
@@ -171,6 +214,7 @@ config:
       families:
         - vulnerability
     - sourceId: cosmo
+      enabled: false
       runtimePrefix: writer-cosmo
       tokenKey: CEREBRO_SOURCE_COSMO_TOKEN
       commonConfig:
@@ -194,6 +238,7 @@ config:
           schedule:
             name: cosmo-survey-feedback
     - sourceId: slack
+      enabled: false
       runtimePrefix: writer-slack
       tokenKey: CEREBRO_SOURCE_SLACK_TOKEN
       commonConfig:

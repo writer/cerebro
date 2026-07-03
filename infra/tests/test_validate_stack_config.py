@@ -1467,6 +1467,21 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertFalse(any("required Cosmo runtime 'writer-cosmo-survey-feedback' is missing" in finding.message for finding in findings))
 
+    def test_temporarily_disabled_slack_runtime_is_supported(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-slack-users\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-07-03\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate the Slack source token and pass live source runtime verification.\"\n"
+            "  cerebro:sourceRuntimeObservability:",
+        )
+        findings = self._validate(content)
+        self.assertFalse(any("unsupported temporary runtime bypasses" in finding.message for finding in findings))
+
     def test_unknown_temporary_runtime_bypass_is_rejected(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:sourceRuntimeObservability:",
@@ -1508,6 +1523,54 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "reason must be one of" in finding.message for finding in findings))
+
+    def test_quarantined_slack_runtime_cannot_remain_active_or_scheduled(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-slack-users\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-07-03\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate the Slack source token and pass live source runtime verification.\"\n"
+            "  cerebro:sourceRuntimeObservability:",
+        ).replace(
+            "  cerebro:orchestratorSchedules:\n",
+            "  cerebro:orchestratorSchedules:\n"
+            "    - name: slack-users\n"
+            "      scheduleExpression: rate(12 hours)\n"
+            "      taskCount: 1\n"
+            "      command:\n"
+            "        - orchestrator\n"
+            "        - run\n"
+            "        - runtime_id=writer-slack-users\n",
+            1,
+        ).replace(
+            "  cerebro:sourceRuntimes:\n",
+            "  cerebro:sourceRuntimes:\n"
+            "    - id: writer-slack-users\n"
+            "      sourceId: slack\n"
+            "      tenantId: writer\n"
+            "      config:\n"
+            "        family: user\n",
+            1,
+        )
+        findings = self._validate(content)
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "quarantined runtime 'writer-slack-users' must not be declared in active sourceRuntimes" in finding.message
+                for finding in findings
+            )
+        )
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "quarantined runtime 'writer-slack-users' must not be referenced by cerebro:orchestratorSchedules" in finding.message
+                for finding in findings
+            )
+        )
 
     def test_quarantined_runtime_cannot_remain_active_or_scheduled(self) -> None:
         content = BASE_STACK.replace(

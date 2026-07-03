@@ -115,6 +115,63 @@ class SourceRuntimeDriftTest(unittest.TestCase):
 
         self.assertEqual(find_drift(expected, actual), [])
 
+    def test_stack_temporarily_disabled_runtime_is_expected_when_live(self) -> None:
+        path = self._stack_file()
+        path.write_text(
+            "config:\n"
+            "  cerebro:domain: cerebro.adm.prod.writer.com\n"
+            "  cerebro:sourceRuntimes:\n"
+            "    - id: writer-okta-audit\n"
+            "      sourceId: okta\n"
+            "      tenantId: writer\n"
+            "      config:\n"
+            "        family: audit\n"
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-slack-users\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-07-03\"\n"
+            "      reviewDeadline: \"2026-07-10\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n",
+            encoding="utf-8",
+        )
+
+        expected = _load_stack_runtimes(path)
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "tenant_id": "writer", "config": {"family": "audit"}},
+            {"id": "writer-slack-users", "source_id": "slack", "tenant_id": "writer", "config": {"family": "user"}},
+        ]
+
+        self.assertEqual(find_drift(expected, actual), [])
+
+    def test_stack_temporarily_disabled_runtime_can_be_missing_from_live(self) -> None:
+        path = self._stack_file()
+        path.write_text(
+            "config:\n"
+            "  cerebro:domain: cerebro.adm.prod.writer.com\n"
+            "  cerebro:sourceRuntimes:\n"
+            "    - id: writer-okta-audit\n"
+            "      sourceId: okta\n"
+            "      tenantId: writer\n"
+            "      config:\n"
+            "        family: audit\n"
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-slack-users\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-07-03\"\n"
+            "      reviewDeadline: \"2026-07-10\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n",
+            encoding="utf-8",
+        )
+
+        expected = _load_stack_runtimes(path)
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "tenant_id": "writer", "config": {"family": "audit"}},
+        ]
+
+        self.assertEqual(find_drift(expected, actual), [])
+
     def test_canonical_last_synced_at_satisfies_freshness_check(self) -> None:
         actual = [{
             "id": "writer-okta-audit",

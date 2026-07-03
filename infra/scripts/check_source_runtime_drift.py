@@ -49,6 +49,15 @@ def _load_stack_runtimes(path: Path) -> dict[str, dict[str, Any]]:
         runtime_id = str(runtime.get("id", "")).strip()
         if runtime_id:
             result[runtime_id] = runtime
+    disabled_runtimes = config.get("cerebro:temporarilyDisabledSourceRuntimes") or []
+    if not isinstance(disabled_runtimes, list):
+        raise ValueError(f"{path} cerebro:temporarilyDisabledSourceRuntimes must be a list")
+    for runtime in disabled_runtimes:
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = str(runtime.get("runtimeId", "")).strip()
+        if runtime_id and runtime_id not in result:
+            result[runtime_id] = {"id": runtime_id, "lifecycleState": "quarantined"}
     return result
 
 
@@ -171,8 +180,13 @@ def find_drift(
 
     for runtime_id, expected_runtime in expected.items():
         actual_runtime = actual_by_id.get(runtime_id)
+        disabled = str(expected_runtime.get("lifecycleState") or "").strip() == "quarantined"
         if actual_runtime is None:
+            if disabled:
+                continue
             drift.append(Drift("error", runtime_id, "expected runtime is missing from the live API"))
+            continue
+        if disabled:
             continue
 
         expected_source = str(expected_runtime.get("sourceId", "")).strip()

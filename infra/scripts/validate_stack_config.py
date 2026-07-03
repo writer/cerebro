@@ -52,7 +52,13 @@ COSMO_OPTIONAL_RUNTIME_FAMILIES = {
     "writer-cosmo-message": "message",
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
-TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+SLACK_RUNTIME_FAMILIES = {
+    "writer-slack-channels": "channel",
+    "writer-slack-teams": "team",
+    "writer-slack-user-groups": "user_group",
+    "writer-slack-users": "user",
+}
+TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES) | set(SLACK_RUNTIME_FAMILIES)
 
 
 class QuarantineReason(str, Enum):
