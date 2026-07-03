@@ -56,8 +56,22 @@ coverage_contract:
           control_id: CC6.1
         - framework_name: "ISO 27001:2022"
           control_id: A.5.9
-      notes:
-        - Reads NerdGraph entitySearch results with nextCursor pagination.
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: findings
       type: remediation_state
       title: "AI issues"
@@ -79,8 +93,26 @@ coverage_contract:
           control_id: CC7.2
         - framework_name: "ISO 27001:2022"
           control_id: A.8.16
-      notes:
-        - Reads account-scoped NerdGraph AI issues and links issues to entity GUIDs when present.
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: RA-7
+        - framework_name: "CIS Controls v8"
+          control_id: "7"
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: IR-4
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
+        - framework_name: "CIS Controls v8"
+          control_id: "17"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.24
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.26
     - id: audit_events
       type: audit_event
       title: "Audit events"
@@ -98,8 +130,16 @@ coverage_contract:
           control_id: A.8.15
         - framework_name: "ISO 27001:2022"
           control_id: A.8.16
-      notes:
-        - Reads account-scoped NrAuditEvent rows through NerdGraph NRQL.
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -112,8 +152,6 @@ coverage_contract:
           control_id: CC7.2
         - framework_name: "ISO 27001:2022"
           control_id: A.8.16
-      notes:
-        - Entity search and issue reads use NerdGraph nextCursor pagination. Audit events use bounded NRQL configured through audit_nrql.
 event_contracts:
   - kind: new_relic.assets
     schema_ref: new_relic/assets/v1
