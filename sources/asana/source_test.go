@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -210,6 +211,62 @@ func TestProjectsUseModifiedAtForOccurredAt(t *testing.T) {
 	want := time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC)
 	if got := event.OccurredAt.AsTime(); !got.Equal(want) {
 		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	var mu sync.Mutex
+	requests := []struct {
+		auth string
+		path string
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, struct {
+			auth string
+			path string
+		}{auth: r.Header.Get("Authorization"), path: r.URL.Path})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "maintenance"})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        familyUsers,
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "asana API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+	mu.Lock()
+	gotRequests := append([]struct {
+		auth string
+		path string
+	}{}, requests...)
+	mu.Unlock()
+	if len(gotRequests) == 0 {
+		t.Fatal("provider server saw no requests")
+	}
+	for _, request := range gotRequests {
+		if request.auth != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want Bearer token", request.auth)
+		}
+		if request.path != "/users" {
+			t.Fatalf("path = %q, want Asana users endpoint", request.path)
+		}
 	}
 }
 
