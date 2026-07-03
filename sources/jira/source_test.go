@@ -499,3 +499,97 @@ func TestReadProjectRolesRequiresRoleActorDetail(t *testing.T) {
 		t.Fatal("Read() error = nil, want required role detail error")
 	}
 }
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice@example.test:api-token"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != wantAuth {
+			t.Fatalf("Authorization = %q, want %q", got, wantAuth)
+		}
+		if r.URL.Path != "/rest/api/3/users/search" {
+			t.Fatalf("path = %q, want Jira users endpoint", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "maintenance"})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    jiraapi.FamilyUsers,
+		"username":  "alice@example.test",
+		"password":  "api-token",
+		"site_url":  "example.atlassian.net",
+		"per_page":  "100",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "jira API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range jiraapi.FamilyNames() {
+		values := map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		}
+		switch family {
+		case jiraapi.FamilyGroupMembers:
+			values["group_ids"] = "group-1"
+		case jiraapi.FamilyProjectRoles:
+			values["project_id_or_keys"] = "ENG"
+		}
+		familyConfigs[family] = sourcecdk.NewConfig(values)
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family          string
+		kind            string
+		wantResourceURN string
+	}{
+		{family: jiraapi.FamilyUsers, kind: "jira.users", wantResourceURN: "urn:cerebro:tenant:jira_users:acct-1"},
+		{family: jiraapi.FamilyGroups, kind: "jira.groups", wantResourceURN: "urn:cerebro:tenant:jira_groups:group-1"},
+		{family: jiraapi.FamilyGroupMembers, kind: "jira.group_members", wantResourceURN: "urn:cerebro:tenant:jira_users:acct-1"},
+		{family: jiraapi.FamilyProjects, kind: "jira.projects", wantResourceURN: "urn:cerebro:tenant:jira_projects:10001"},
+		{family: jiraapi.FamilyProjectRoles, kind: "jira.project_roles", wantResourceURN: "urn:cerebro:tenant:jira_project_roles:10002"},
+		{family: jiraapi.FamilyPermissionSchemes, kind: "jira.permission_schemes", wantResourceURN: "urn:cerebro:tenant:jira_permission_schemes:1001"},
+		{family: jiraapi.FamilyAuditEvents, kind: "jira.audit_events", wantResourceURN: "urn:cerebro:tenant:jira_audit_events:audit-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if got := event.Kind; got != tt.kind {
+				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if got := event.Attributes["resource_urn"]; got != tt.wantResourceURN {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.wantResourceURN)
+			}
+		})
+	}
+}
