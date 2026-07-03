@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -234,6 +235,62 @@ func TestSourceRejectsMissingProviderListKey(t *testing.T) {
 	_, err = source.Read(context.Background(), cfg, nil)
 	if sourcecdk.SourceErrorKind(err) != sourcecdk.ErrorKindProvider {
 		t.Fatalf("Read() error kind = %q, want provider; err=%v", sourcecdk.SourceErrorKind(err), err)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	var mu sync.Mutex
+	requests := []struct {
+		auth string
+		path string
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, struct {
+			auth string
+			path string
+		}{auth: r.Header.Get("Authorization"), path: r.URL.Path})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "maintenance"})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    familyDatasets,
+		"token":     "test-token",
+		"per_page":  "1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "cohere API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+	mu.Lock()
+	gotRequests := append([]struct {
+		auth string
+		path string
+	}{}, requests...)
+	mu.Unlock()
+	if len(gotRequests) == 0 {
+		t.Fatal("provider server saw no requests")
+	}
+	for _, request := range gotRequests {
+		if request.auth != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want Bearer token", request.auth)
+		}
+		if request.path != "/v1/datasets" {
+			t.Fatalf("path = %q, want Cohere datasets endpoint", request.path)
+		}
 	}
 }
 

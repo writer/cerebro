@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -268,6 +269,58 @@ func TestSourceReadReturnsOpenRouterErrorBody(t *testing.T) {
 	var statusErr interface{ StatusCode() int }
 	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusUnauthorized {
 		t.Fatalf("Read() error = %v, want HTTP 401", err)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source := newTestSource(t)
+	var mu sync.Mutex
+	requests := []struct {
+		auth string
+		path string
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, struct {
+			auth string
+			path string
+		}{auth: r.Header.Get("Authorization"), path: r.URL.Path})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": 503, "message": "maintenance"}})
+	}))
+	defer server.Close()
+
+	_, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    familyApiKeys,
+		"token":     "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Read() error = %v, want HTTP 503", err)
+	}
+	mu.Lock()
+	gotRequests := append([]struct {
+		auth string
+		path string
+	}{}, requests...)
+	mu.Unlock()
+	if len(gotRequests) == 0 {
+		t.Fatal("provider server saw no requests")
+	}
+	for _, request := range gotRequests {
+		if request.auth != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want Bearer token", request.auth)
+		}
+		if request.path != "/v1/keys" {
+			t.Fatalf("path = %q, want OpenRouter keys endpoint", request.path)
+		}
 	}
 }
 
