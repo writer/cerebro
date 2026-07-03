@@ -25,6 +25,7 @@ const (
 	FamilyChannelMember   = "channel_member"
 	FamilyUserGroupMember = "user_group_member"
 	FamilyAuditLog        = "audit_log"
+	auditLogCursorMode    = "rolling_window"
 
 	DefaultWebAPIBaseURL = "https://slack.com/api"
 	DefaultAuditBaseURL  = "https://api.slack.com/audit/v1"
@@ -207,13 +208,17 @@ func readAuditLogs(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.
 	}
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(options.PageSize))
-	for _, key := range []string{"oldest", "latest", "action", "actor", "entity"} {
+	cursorState := parseAuditLogCursor(cursor)
+	if err := addAuditLogTimeRange(query, cfg, cursorState); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	for _, key := range []string{"action", "actor", "entity"} {
 		if value := sourcecdk.ConfigValue(cfg, key); value != "" {
 			query.Set(key, value)
 		}
 	}
-	if cursorToken := sourcecdk.CursorToken(cursor); cursorToken != "" {
-		query.Set("cursor", cursorToken)
+	if cursorState.token != "" {
+		query.Set("cursor", cursorState.token)
 	}
 	var response map[string]any
 	if err := getJSON(ctx, cfg, options, DefaultAuditBaseURL, "audit_log_base_url", "/logs", query, &response); err != nil {
@@ -243,7 +248,90 @@ func readAuditLogs(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.
 		events = append(events, event(tenantID, FamilyAuditLog, entryID, entry, attrs, unixTime(entry["date_create"])))
 	}
 	next := firstNonEmpty(nestedString(response, "response_metadata.next_cursor"), nestedString(response, "response_metadata.cursor"))
+	next = auditLogNextCursor(next, query, cfg)
 	return pull(events, next), nil
+}
+
+type auditLogCursorState struct {
+	token  string
+	oldest string
+	latest string
+}
+
+func parseAuditLogCursor(cursor *cerebrov1.SourceCursor) auditLogCursorState {
+	opaque := ""
+	if cursor != nil {
+		opaque = strings.TrimSpace(cursor.GetOpaque())
+	}
+	if envelope, ok := sourcecdk.DecodeCursorEnvelope(opaque); ok && envelope.Source == SourceID && envelope.Family == FamilyAuditLog && envelope.Mode == auditLogCursorMode {
+		return auditLogCursorState{
+			token:  envelope.Token,
+			oldest: strings.TrimSpace(envelope.Extra["oldest"]),
+			latest: strings.TrimSpace(envelope.Extra["latest"]),
+		}
+	}
+	return auditLogCursorState{token: sourcecdk.CursorToken(cursor)}
+}
+
+func addAuditLogTimeRange(query url.Values, cfg sourcecdk.Config, cursorState auditLogCursorState) error {
+	oldest := sourcecdk.ConfigValue(cfg, "oldest")
+	latest := sourcecdk.ConfigValue(cfg, "latest")
+	lookbackSeconds := sourcecdk.ConfigValue(cfg, "lookback_seconds")
+	if lookbackSeconds != "" {
+		if oldest != "" || latest != "" {
+			return fmt.Errorf("%s audit_log lookback_seconds cannot be combined with oldest or latest", SourceID)
+		}
+		if cursorState.oldest != "" && cursorState.latest != "" {
+			query.Set("oldest", cursorState.oldest)
+			query.Set("latest", cursorState.latest)
+			return nil
+		}
+		if cursorState.token != "" {
+			return nil
+		}
+		lookback, err := strconv.ParseInt(lookbackSeconds, 10, 64)
+		if err != nil || lookback < 1 {
+			return fmt.Errorf("%s audit_log lookback_seconds must be a positive integer", SourceID)
+		}
+		now := time.Now().UTC()
+		query.Set("oldest", strconv.FormatInt(now.Unix()-lookback, 10))
+		query.Set("latest", strconv.FormatInt(now.Unix(), 10))
+		return nil
+	}
+	if oldest != "" {
+		query.Set("oldest", oldest)
+	}
+	if latest != "" {
+		query.Set("latest", latest)
+	}
+	return nil
+}
+
+func auditLogNextCursor(next string, query url.Values, cfg sourcecdk.Config) string {
+	next = strings.TrimSpace(next)
+	if next == "" || sourcecdk.ConfigValue(cfg, "lookback_seconds") == "" {
+		return next
+	}
+	oldest := strings.TrimSpace(query.Get("oldest"))
+	latest := strings.TrimSpace(query.Get("latest"))
+	if oldest == "" || latest == "" {
+		return next
+	}
+	opaque, err := sourcecdk.EncodeCursorEnvelope(sourcecdk.CursorEnvelope{
+		Version: 1,
+		Source:  SourceID,
+		Family:  FamilyAuditLog,
+		Mode:    auditLogCursorMode,
+		Token:   next,
+		Extra: map[string]string{
+			"latest": latest,
+			"oldest": oldest,
+		},
+	})
+	if err != nil {
+		return next
+	}
+	return opaque
 }
 
 func getJSON(ctx context.Context, cfg sourcecdk.Config, options Options, defaultBaseURL string, configKey string, path string, query url.Values, target any) error {
