@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -496,6 +497,142 @@ func TestReadSlackAuditLogsUsesAuditBaseURL(t *testing.T) {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("attribute %q = %q, want %q", key, got, want)
 		}
+	}
+}
+
+func TestReadSlackAuditLogsUsesRollingLookback(t *testing.T) {
+	requests := 0
+	var firstOldest string
+	var firstLatest string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/logs" {
+			t.Fatalf("request path = %q, want /logs", got)
+		}
+		oldestValue := r.URL.Query().Get("oldest")
+		latestValue := r.URL.Query().Get("latest")
+		oldest, err := strconv.ParseInt(oldestValue, 10, 64)
+		if err != nil {
+			t.Fatalf("oldest query = %q, want unix seconds", oldestValue)
+		}
+		latest, err := strconv.ParseInt(latestValue, 10, 64)
+		if err != nil {
+			t.Fatalf("latest query = %q, want unix seconds", latestValue)
+		}
+		if got := latest - oldest; got != 90000 {
+			t.Fatalf("lookback window = %d, want 90000", got)
+		}
+		responseMetadata := map[string]any{}
+		entries := []map[string]any{{
+			"id":          "Ev1",
+			"date_create": 1780272000,
+			"action":      "user_login",
+		}}
+		switch requests {
+		case 0:
+			firstOldest = oldestValue
+			firstLatest = latestValue
+			responseMetadata["next_cursor"] = "cursor-2"
+		case 1:
+			entries[0]["id"] = "Ev2"
+			entries[0]["date_create"] = 1780275600
+			if got := r.URL.Query().Get("cursor"); got != "cursor-2" {
+				t.Fatalf("cursor = %q, want cursor-2", got)
+			}
+			if oldestValue != firstOldest || latestValue != firstLatest {
+				t.Fatalf("window = %s..%s, want first page window %s..%s", oldestValue, latestValue, firstOldest, firstLatest)
+			}
+		default:
+			t.Fatalf("unexpected request %d", requests+1)
+		}
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries":           entries,
+			"response_metadata": responseMetadata,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"audit_log_base_url": server.URL,
+		"family":             familyAuditLog,
+		"lookback_seconds":   "90000",
+		"tenant_id":          "writer",
+		"token":              "slack-token",
+	})
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("first Read() error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor = nil, want rolling-window cursor")
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first Events = %d, want 1", len(first.Events))
+	}
+	if first.Checkpoint == nil {
+		t.Fatal("first Checkpoint = nil, want checkpoint with rolling-window cursor")
+	}
+	if first.Checkpoint.GetCursorOpaque() != first.NextCursor.GetOpaque() {
+		t.Fatalf("first checkpoint cursor = %q, want next cursor %q", first.Checkpoint.GetCursorOpaque(), first.NextCursor.GetOpaque())
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(first.NextCursor.GetOpaque())
+	if !ok {
+		t.Fatalf("first NextCursor = %q, want cursor envelope", first.NextCursor.GetOpaque())
+	}
+	if envelope.Source != sourceID || envelope.Family != familyAuditLog || envelope.Token != "cursor-2" {
+		t.Fatalf("first NextCursor envelope = %#v, want Slack audit cursor-2", envelope)
+	}
+	second, err := source.Read(context.Background(), config, first.NextCursor)
+	if err != nil {
+		t.Fatalf("second Read() error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestReadSlackAuditLogsPreservesLegacyPlainCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/logs" {
+			t.Fatalf("request path = %q, want /logs", got)
+		}
+		if got := r.URL.Query().Get("cursor"); got != "legacy-cursor" {
+			t.Fatalf("cursor = %q, want legacy-cursor", got)
+		}
+		for _, key := range []string{"oldest", "latest"} {
+			if got := r.URL.Query().Get(key); got != "" {
+				t.Fatalf("%s = %q, want empty for legacy cursor continuation", key, got)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries":           []map[string]any{},
+			"response_metadata": map[string]any{},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"audit_log_base_url": server.URL,
+		"family":             familyAuditLog,
+		"lookback_seconds":   "90000",
+		"tenant_id":          "writer",
+		"token":              "slack-token",
+	})
+	if _, err := source.Read(context.Background(), config, &cerebrov1.SourceCursor{Opaque: "legacy-cursor"}); err != nil {
+		t.Fatalf("Read() error = %v", err)
 	}
 }
 

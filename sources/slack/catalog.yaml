@@ -172,7 +172,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring, identity_access]
       notes:
-        - Enterprise Grid audit logs use the Slack Audit Logs API host and preserve actor, entity, context, and cursor state.
+        - Enterprise Grid audit logs use a rolling lookback window on the Slack Audit Logs API host and preserve actor, entity, context, and cursor state.
     - id: pagination
       type: incremental_sync
       title: Slack pagination
