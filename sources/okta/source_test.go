@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -258,13 +259,18 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackBaseURL = true
+	var mu sync.Mutex
+	requests := []struct {
+		auth string
+		path string
+	}{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
-			t.Fatalf("Authorization = %q, want SSWS token", got)
-		}
-		if r.URL.Path != "/api/v1/users" {
-			t.Fatalf("path = %q, want Okta users endpoint", r.URL.Path)
-		}
+		mu.Lock()
+		requests = append(requests, struct {
+			auth string
+			path string
+		}{auth: r.Header.Get("Authorization"), path: r.URL.Path})
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{"errorSummary": "maintenance"})
@@ -283,6 +289,23 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "okta API returned 503") {
 		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+	mu.Lock()
+	gotRequests := append([]struct {
+		auth string
+		path string
+	}{}, requests...)
+	mu.Unlock()
+	if len(gotRequests) == 0 {
+		t.Fatal("provider server saw no requests")
+	}
+	for _, request := range gotRequests {
+		if request.auth != "SSWS test-token" {
+			t.Fatalf("Authorization = %q, want SSWS token", request.auth)
+		}
+		if request.path != "/api/v1/users" {
+			t.Fatalf("path = %q, want Okta users endpoint", request.path)
+		}
 	}
 }
 
