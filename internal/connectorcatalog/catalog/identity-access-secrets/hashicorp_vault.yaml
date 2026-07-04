@@ -84,6 +84,9 @@ entries:
           label: Secrets
           method: GET
           path: /v1/sys/mounts
+          config:
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             entity:
               entity_type: secret
@@ -137,6 +140,9 @@ entries:
           label: Audit events
           method: GET
           path: /v1/sys/audit
+          config:
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             fields:
               id: id

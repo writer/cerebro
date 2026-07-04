@@ -389,6 +389,22 @@ func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	}
 }
 
+func TestBuiltinCatalogHashicorpVaultFamiliesCarryTenantConfigAttribute(t *testing.T) {
+	entry, ok, err := BuiltinEntry("hashicorp_vault")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(hashicorp_vault) ok = false, want true")
+	}
+	for _, familyID := range []string{"users", "secrets", "audit_events"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
+			t.Fatalf("%s config = %#v, want tenant_id config attribute", familyID, family.Config)
+		}
+	}
+}
+
 func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	entry, ok, err := BuiltinEntry("auth0")
 	if err != nil {
