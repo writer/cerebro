@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: sendgrid.invalid_email
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.sendgrid.com/v3
+  spec_url: https://api.apis.guru/v2/specs/sendgrid.com/1.0.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/sendgrid.com/1.0.0/openapi.json
+    - https://raw.githubusercontent.com/sendgrid/sendgrid-oai/main/oai.json
+  families:
+    - id: activity
+      method: GET
+      path: /access_settings/activity
+    - id: api_key
+      method: GET
+      path: /api_keys
+    - id: group
+      method: GET
+      path: /asm/groups
+    - id: invalid_email
+      method: GET
+      path: /suppression/invalid_emails
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: sendgrid

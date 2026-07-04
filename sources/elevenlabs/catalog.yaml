@@ -28,6 +28,40 @@ kind_lifecycle:
     status: active
   - kind: elevenlabs.auth_connections
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: xi_api_key_header
+  base_url: https://api.elevenlabs.io
+  spec_url: https://api.elevenlabs.io/openapi.json
+  spec_kind: openapi
+  references:
+    - https://elevenlabs.io/docs/api-reference/introduction
+    - https://api.elevenlabs.io/openapi.json
+  auth_evidence:
+    - https://elevenlabs.io/docs/api-reference/authentication
+  families:
+    - id: model_catalog
+      method: GET
+      path: /v1/models
+    - id: voices
+      method: GET
+      path: /v2/voices
+    - id: service_accounts
+      method: GET
+      path: /v1/service-accounts
+    - id: service_account_api_keys
+      method: GET
+      path: /v1/service-accounts/{service_account_user_id}/api-keys
+    - id: webhooks
+      method: GET
+      path: /v1/workspace/webhooks
+    - id: auth_connections
+      method: GET
+      path: /v1/workspace/auth-connections
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: elevenlabs

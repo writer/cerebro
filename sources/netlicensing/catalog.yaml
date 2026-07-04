@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: netlicensing.licensetemplate
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: basic_authorization_header
+  base_url: https://go.netlicensing.io/core/v2/rest
+  spec_url: https://api.apis.guru/v2/specs/netlicensing.io/2.x/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/netlicensing.io/2.x/openapi.json
+    - http://io.labs64.com/NetLicensing-API/v2.x/netlicensing.json
+  families:
+    - id: license
+      method: GET
+      path: /license
+    - id: licensee
+      method: GET
+      path: /licensee
+    - id: licensetemplate
+      method: GET
+      path: /licensetemplate
+    - id: token
+      method: GET
+      path: /token
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: netlicensing

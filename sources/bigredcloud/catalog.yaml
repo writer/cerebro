@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: bigredcloud.bankaccount
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://app.bigredcloud.com/api
+  spec_url: https://api.apis.guru/v2/specs/bigredcloud.com/v1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/bigredcloud.com/v1/openapi.json
+    - https://app.bigredcloud.com/api/swagger/docs/v1
+  families:
+    - id: account
+      method: GET
+      path: /v1/accounts
+    - id: analysiscategory
+      method: GET
+      path: /v1/analysisCategories
+    - id: bankaccount
+      method: GET
+      path: /v1/bankAccounts
+    - id: ownertypegroup
+      method: GET
+      path: /v1/ownerTypeGroups
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: bigredcloud

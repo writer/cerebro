@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: fire.batche
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.fire.com/business
+  spec_url: https://api.apis.guru/v2/specs/fire.com/1.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/fire.com/1.0/openapi.json
+    - https://raw.githubusercontent.com/firefinancialservices/fire-business-api-openapi/master/fire-business-api-v1.yaml
+  families:
+    - id: account
+      method: GET
+      path: /v1/accounts
+    - id: aspsp
+      method: GET
+      path: /v1/aspsps
+    - id: batche
+      method: GET
+      path: /v1/batches
+    - id: user
+      method: GET
+      path: /v1/users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: fire

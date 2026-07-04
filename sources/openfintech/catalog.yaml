@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: openfintech.currency
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.openfintech.io/v1
+  spec_url: https://api.apis.guru/v2/specs/openfintech.io/2017-08-24/swagger.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/openfintech.io/2017-08-24/swagger.json
+    - https://docs.openfintech.io/swagger.yaml
+  families:
+    - id: bank
+      method: GET
+      path: /banks
+    - id: country
+      method: GET
+      path: /countries
+    - id: currency
+      method: GET
+      path: /currencies
+    - id: organization
+      method: GET
+      path: /organizations
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: openfintech

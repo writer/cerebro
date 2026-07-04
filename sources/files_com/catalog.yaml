@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: files_com.user
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://app.files.com/api/rest/v1
+  spec_url: https://api.apis.guru/v2/specs/files.com/0.0.1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/files.com/0.0.1/openapi.json
+    - https://app.files.com/api/rest/v1/swagger_doc.json
+  families:
+    - id: action_notification_export_result
+      method: GET
+      path: /action_notification_export_results
+    - id: api_key
+      method: GET
+      path: /api_keys
+    - id: exavault_reserved
+      method: GET
+      path: /ip_addresses/exavault-reserved
+    - id: external_event
+      method: GET
+      path: /external_events
+    - id: group
+      method: GET
+      path: /groups
+    - id: group_user
+      method: GET
+      path: /group_users
+    - id: login
+      method: GET
+      path: /history/login
+    - id: permission
+      method: GET
+      path: /permissions
+    - id: site_api_key
+      method: GET
+      path: /site/api_keys
+    - id: user
+      method: GET
+      path: /users
+    - id: user_api_key
+      method: GET
+      path: /user/api_keys
+    - id: user_group
+      method: GET
+      path: /user/groups
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: files_com

@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: increase.card
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.increase.com
+  spec_url: https://api.apis.guru/v2/specs/increase.com/0.0.1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/increase.com/0.0.1/openapi.json
+    - https://increase.com/openapi.json
+  families:
+    - id: account
+      method: GET
+      path: /accounts
+    - id: account_number
+      method: GET
+      path: /account_numbers
+    - id: account_statement
+      method: GET
+      path: /account_statements
+    - id: account_transfer
+      method: GET
+      path: /account_transfers
+    - id: ach_prenotification
+      method: GET
+      path: /ach_prenotifications
+    - id: ach_transfer
+      method: GET
+      path: /ach_transfers
+    - id: card
+      method: GET
+      path: /cards
+    - id: digital_wallet_token
+      method: GET
+      path: /digital_wallet_tokens
+    - id: event
+      method: GET
+      path: /events
+    - id: event_subscription
+      method: GET
+      path: /event_subscriptions
+    - id: external_account
+      method: GET
+      path: /external_accounts
+    - id: oauth_connection
+      method: GET
+      path: /oauth_connections
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: increase

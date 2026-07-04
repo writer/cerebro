@@ -24,6 +24,42 @@ kind_lifecycle:
     status: active
   - kind: azure_openai.private_endpoint_connections
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: azure_ad_bearer
+  auth_mechanics: oauth2_client_credentials_bearer
+  base_url: https://management.azure.com
+  spec_url: https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/cognitiveservices/resource-manager/Microsoft.CognitiveServices/stable/2024-10-01/cognitiveservices.json
+  spec_kind: openapi
+  references:
+    - https://learn.microsoft.com/en-us/rest/api/azure/
+    - https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts/deployments
+    - https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts/raipolicies
+    - https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts/raiblocklists
+    - https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts/privateendpointconnections
+    - https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/cognitiveservices/resource-manager/Microsoft.CognitiveServices/stable/2024-10-01/cognitiveservices.json
+  auth_evidence:
+    - https://learn.microsoft.com/en-us/rest/api/azure/#authorization-code-grant-interactive-clients
+    - https://learn.microsoft.com/en-us/rest/api/azure/#client-credentials-grant-non-interactive-clients
+  families:
+    - id: deployments
+      method: GET
+      path: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.CognitiveServices/accounts/{accountName}/deployments
+    - id: model_catalog
+      method: GET
+      path: /subscriptions/{subscriptionId}/providers/Microsoft.CognitiveServices/locations/{location}/models
+    - id: rai_policies
+      method: GET
+      path: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.CognitiveServices/accounts/{accountName}/raiPolicies
+    - id: rai_blocklists
+      method: GET
+      path: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.CognitiveServices/accounts/{accountName}/raiBlocklists
+    - id: private_endpoint_connections
+      method: GET
+      path: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.CognitiveServices/accounts/{accountName}/privateEndpointConnections
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: azure_openai

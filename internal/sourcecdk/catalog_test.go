@@ -188,6 +188,18 @@ provider_api:
     - id: audit_events
       method: GET
       path: /logs
+provider_api_disproof:
+  status: invalidated
+  reason: runtime_families_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://example.test/openapi.json
+  affected_families:
+    - teams
+  missing_paths:
+    - /teams
+  notes:
+    - provider API does not expose team inventory
 `))
 	if err != nil {
 		t.Fatalf("LoadSourceCatalog() error = %v", err)
@@ -197,6 +209,9 @@ provider_api:
 	}
 	if catalog.ProviderAPI.Families[0].Method != "GET" {
 		t.Fatalf("ProviderAPI family method = %q, want GET", catalog.ProviderAPI.Families[0].Method)
+	}
+	if catalog.ProviderAPI.Disproof.Status != "invalidated" || len(catalog.ProviderAPI.Disproof.MissingPaths) != 1 {
+		t.Fatalf("ProviderAPI disproof = %#v, want invalidated missing /teams", catalog.ProviderAPI.Disproof)
 	}
 	if len(catalog.RuntimeFamilies) != 2 || catalog.RuntimeFamilies[0] != "audit_events" || catalog.RuntimeFamilies[1] != "users" {
 		t.Fatalf("RuntimeFamilies = %#v, want sorted audit_events/users", catalog.RuntimeFamilies)
@@ -208,13 +223,54 @@ provider_api:
 	if api.Status != "verified" || api.SpecURL != "https://example.test/openapi.json" {
 		t.Fatalf("registered provider API = %#v", api)
 	}
+	if api.Disproof.Reason != "runtime_families_not_in_provider_spec" || api.Disproof.AffectedFamilies[0] != "teams" {
+		t.Fatalf("registered provider API disproof = %#v", api.Disproof)
+	}
 	if len(runtimeFamilies) != 2 || runtimeFamilies[0] != "audit_events" || runtimeFamilies[1] != "users" {
 		t.Fatalf("registered runtime families = %#v, want sorted audit_events/users", runtimeFamilies)
 	}
 	api.References[0] = "mutated"
+	api.Disproof.References[0] = "mutated"
 	api, _, ok = CatalogProviderAPIForSource("catalog_provider_api_test")
-	if !ok || api.References[0] != "https://example.test/docs" {
+	if !ok || api.References[0] != "https://example.test/docs" || api.Disproof.References[0] != "https://example.test/openapi.json" {
 		t.Fatalf("registered provider API clone = %#v, ok=%v", api, ok)
+	}
+}
+
+func TestLoadSourceCatalogRegistersProviderAPIDisproofWithoutProof(t *testing.T) {
+	catalog, err := LoadSourceCatalog([]byte(`
+id: catalog_provider_api_disproof_test
+name: Catalog Provider API Disproof Test
+emitted_kinds:
+  - catalog_provider_api_disproof_test.team
+runtime_families:
+  - teams
+provider_api_disproof:
+  status: invalidated
+  reason: runtime_families_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://example.test/openapi.json
+  affected_families:
+    - teams
+  missing_paths:
+    - /teams
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	if catalog.ProviderAPI == nil || catalog.ProviderAPI.Disproof.Status != "invalidated" {
+		t.Fatalf("ProviderAPI disproof = %#v, want registered disproof-only catalog", catalog.ProviderAPI)
+	}
+	api, runtimeFamilies, ok := CatalogProviderAPIForSource("catalog_provider_api_disproof_test")
+	if !ok {
+		t.Fatal("CatalogProviderAPIForSource() ok = false, want disproof-only provider API registration")
+	}
+	if api.Disproof.Reason != "runtime_families_not_in_provider_spec" || api.Disproof.MissingPaths[0] != "/teams" {
+		t.Fatalf("registered provider API disproof = %#v", api.Disproof)
+	}
+	if len(runtimeFamilies) != 1 || runtimeFamilies[0] != "teams" {
+		t.Fatalf("registered runtime families = %#v, want teams", runtimeFamilies)
 	}
 }
 

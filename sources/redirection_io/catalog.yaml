@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: redirection_io.rule_set_version
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.redirection.io
+  spec_url: https://api.apis.guru/v2/specs/redirection.io/1.1.0/swagger.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/redirection.io/1.1.0/swagger.json
+    - https://api.redirection.io/docs.json
+  families:
+    - id: agent_rule
+      method: GET
+      path: /agent-rules
+    - id: agent_rule_complexe
+      method: GET
+      path: /agent-rule-complexes
+    - id: agent_rule_straight
+      method: GET
+      path: /agent-rule-straights
+    - id: aggregate_log
+      method: GET
+      path: /aggregate-logs
+    - id: export_rule
+      method: GET
+      path: /export-rules
+    - id: log
+      method: GET
+      path: /logs
+    - id: notification
+      method: GET
+      path: /notifications
+    - id: rule
+      method: GET
+      path: /rules
+    - id: rule_change
+      method: GET
+      path: /rule-changes
+    - id: rule_set_version
+      method: GET
+      path: /rule-set-versions
+    - id: smart_list
+      method: GET
+      path: /smart-lists
+    - id: user
+      method: GET
+      path: /users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: redirection_io

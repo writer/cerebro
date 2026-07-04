@@ -226,6 +226,82 @@ func TestProjectWizAsset(t *testing.T) {
 	}
 }
 
+func TestDiscoverRuntimeDepthRequiresMappedProviderFamilies(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeDepthFile(t, root, "sources/empty/catalog.yaml", `
+id: empty
+name: Empty
+provider_api:
+  status: verified
+  basis: declared
+  transport: rest
+  auth: bearer_token
+  base_url: https://api.example.test
+  references:
+    - https://api.example.test/docs
+coverage_contract:
+  dimensions: []
+`)
+	writeRuntimeDepthFile(t, root, "sources/empty/source.go", "package empty\n")
+
+	inventory, err := DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth() error = %v", err)
+	}
+	depth := inventory["empty"]
+	if !depth.ProviderAPI.HasContract {
+		t.Fatalf("provider API flags = %#v, want contract present", depth.ProviderAPI)
+	}
+	if depth.ProviderAPI.HasMapping {
+		t.Fatalf("provider API mapping = true for empty mapped families: %#v", depth.ProviderAPI)
+	}
+}
+
+func TestDiscoverRuntimeDepthReadsProviderAPIDisproof(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeDepthFile(t, root, "sources/digitalocean/catalog.yaml", `
+id: digitalocean
+name: DigitalOcean
+runtime_families: [droplets, teams, audit_events]
+provider_api_disproof:
+  status: invalidated
+  reason: runtime_families_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml
+  affected_families:
+    - teams
+    - audit_events
+  missing_paths:
+    - /v2/teams
+  notes:
+    - The public v2 OpenAPI lists actions but not actor-scoped audit events.
+coverage_contract:
+  dimensions: []
+`)
+	writeRuntimeDepthFile(t, root, "sources/digitalocean/source.go", "package digitalocean\n")
+
+	inventory, err := DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth() error = %v", err)
+	}
+	depth := inventory["digitalocean"]
+	if !depth.ProviderAPI.HasDisproof {
+		t.Fatalf("provider API disproof = %#v, want present", depth.ProviderAPI)
+	}
+	if depth.ProviderAPI.DisproofReason != "runtime_families_not_in_provider_spec" || depth.ProviderAPI.DisproofCheckedAt == "" {
+		t.Fatalf("provider API disproof = %#v, want reason and checked timestamp", depth.ProviderAPI)
+	}
+	for _, want := range []string{"teams", "audit_events"} {
+		if !containsString(depth.ProviderAPI.DisproofFamilies, want) {
+			t.Fatalf("disproof families = %v, want %s", depth.ProviderAPI.DisproofFamilies, want)
+		}
+	}
+	if !containsString(depth.ProviderAPI.DisproofMissingPaths, "/v2/teams") {
+		t.Fatalf("disproof missing paths = %v, want /v2/teams", depth.ProviderAPI.DisproofMissingPaths)
+	}
+}
+
 func TestSourceIDsFromProjectorTestRequiresSourceEvent(t *testing.T) {
 	got := sourceIDsFromProjectorTest(`package sourceprojection
 

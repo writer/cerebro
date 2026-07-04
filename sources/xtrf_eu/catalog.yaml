@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: xtrf_eu.quotes_id
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://presentation.s.xtrf.eu/home-api
+  spec_url: https://api.apis.guru/v2/specs/xtrf.eu/2.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/xtrf.eu/2.0/openapi.json
+    - https://presentation.s.xtrf.eu/home-api/openapi.json
+  families:
+    - id: active
+      method: GET
+      path: /dictionaries/active
+    - id: all
+      method: GET
+      path: /dictionaries/all
+    - id: customer
+      method: GET
+      path: /customers
+    - id: customers_id
+      method: GET
+      path: /customers/ids
+    - id: id
+      method: GET
+      path: /accounting/customers/invoices/ids
+    - id: id_2
+      method: GET
+      path: /providers/persons/ids
+    - id: invoices_id
+      method: GET
+      path: /accounting/providers/invoices/ids
+    - id: persons_id
+      method: GET
+      path: /customers/persons/ids
+    - id: projects_id
+      method: GET
+      path: /projects/ids
+    - id: providers_id
+      method: GET
+      path: /providers/ids
+    - id: quotes_id
+      method: GET
+      path: /quotes/ids
+    - id: user
+      method: GET
+      path: /users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: xtrf_eu

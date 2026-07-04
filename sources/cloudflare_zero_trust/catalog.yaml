@@ -24,6 +24,38 @@ kind_lifecycle:
     status: active
   - kind: cloudflare_zero_trust.audit_events
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: cloudflare_api_token
+  auth_mechanics: bearer_token
+  base_url: https://api.cloudflare.com/client/v4
+  spec_url: https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+  spec_kind: openapi
+  references:
+    - https://developers.cloudflare.com/api/
+    - https://developers.cloudflare.com/cloudflare-one/
+    - https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+  auth_evidence:
+    - https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+  families:
+    - id: users
+      method: GET
+      path: /accounts/{account_id}/access/users
+    - id: groups
+      method: GET
+      path: /accounts/{account_id}/access/groups
+    - id: roles
+      method: GET
+      path: /accounts/{account_id}/access/policies
+    - id: applications
+      method: GET
+      path: /accounts/{account_id}/access/apps
+    - id: audit_events
+      method: GET
+      path: /accounts/{account_id}/access/logs/access_requests
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: cloudflare_zero_trust

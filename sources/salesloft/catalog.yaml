@@ -20,6 +20,36 @@ kind_lifecycle:
     status: active
   - kind: salesloft.groups_json
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: oauth_client_credentials
+  auth_mechanics: oauth_client_credentials_bearer_token
+  base_url: https://api.salesloft.com
+  spec_url: https://api.apis.guru/v2/specs/salesloft.com/v2/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/salesloft.com/v2/openapi.json
+    - https://developers.salesloft.com/v2_api_def.json
+  auth_evidence:
+    - https://api.apis.guru/v2/specs/salesloft.com/v2/openapi.json
+  scope_evidence:
+    - https://api.apis.guru/v2/specs/salesloft.com/v2/openapi.json
+  families:
+    - id: account_stages_json
+      method: GET
+      path: /v2/account_stages.json
+    - id: cadence_memberships_json
+      method: GET
+      path: /v2/cadence_memberships.json
+    - id: crm_activity_fields_json
+      method: GET
+      path: /v2/crm_activity_fields.json
+    - id: groups_json
+      method: GET
+      path: /v2/groups.json
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: salesloft

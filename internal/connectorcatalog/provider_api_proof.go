@@ -147,6 +147,10 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 	if strings.Contains(lowerURL, "asyncapi") {
 		return false
 	}
+	if lowerKind == "google_discovery" {
+		return strings.Contains(lowerURL, "googleapis.com/$discovery/rest") ||
+			strings.Contains(lowerURL, "googleapis.com/discovery/v1/apis/")
+	}
 	hasMachineURL := strings.Contains(lowerURL, "openapi") ||
 		strings.Contains(lowerURL, "swagger") ||
 		strings.HasSuffix(providerAPIURLPath(lowerURL), ".json") ||

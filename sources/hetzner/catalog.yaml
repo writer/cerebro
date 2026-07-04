@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: hetzner.ssh_key
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.hetzner.cloud/v1
+  spec_url: https://api.apis.guru/v2/specs/hetzner.cloud/1.0.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/hetzner.cloud/1.0.0/openapi.json
+    - https://docs.hetzner.cloud/spec.json
+  families:
+    - id: certificate
+      method: GET
+      path: /certificates
+    - id: firewall
+      method: GET
+      path: /firewalls
+    - id: placement_group
+      method: GET
+      path: /placement_groups
+    - id: ssh_key
+      method: GET
+      path: /ssh_keys
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: hetzner

@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: probely.framework
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.probely.com
+  spec_url: https://api.apis.guru/v2/specs/probely.com/1.2.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/probely.com/1.2.0/openapi.json
+    - https://developers.probely.com/openapi.yaml
+  families:
+    - id: event
+      method: GET
+      path: /events/
+    - id: framework
+      method: GET
+      path: /frameworks/
+    - id: needs_attention_top
+      method: GET
+      path: /targets/all/needs_attention_top/
+    - id: user
+      method: GET
+      path: /users/
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: probely

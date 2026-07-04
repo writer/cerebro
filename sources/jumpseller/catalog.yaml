@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: jumpseller.products_json
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.jumpseller.com/v1
+  spec_url: https://api.apis.guru/v2/specs/jumpseller.com/1.0.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/jumpseller.com/1.0.0/openapi.json
+    - https://api.jumpseller.com/swagger.json
+  families:
+    - id: checkout_custom_fields_json
+      method: GET
+      path: /checkout_custom_fields.json
+    - id: countries_json
+      method: GET
+      path: /countries.json
+    - id: custom_fields_json
+      method: GET
+      path: /custom_fields.json
+    - id: customer_categories_json
+      method: GET
+      path: /customer_categories.json
+    - id: customers_json
+      method: GET
+      path: /customers.json
+    - id: fulfillments_json
+      method: GET
+      path: /fulfillments.json
+    - id: hooks_json
+      method: GET
+      path: /hooks.json
+    - id: jsapps_json
+      method: GET
+      path: /jsapps.json
+    - id: orders_json
+      method: GET
+      path: /orders.json
+    - id: pages_json
+      method: GET
+      path: /pages.json
+    - id: payment_methods_json
+      method: GET
+      path: /payment_methods.json
+    - id: products_json
+      method: GET
+      path: /products.json
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: jumpseller

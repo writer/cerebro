@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestProviderAPIProofScoreRequiresGroundedEvidence(t *testing.T) {
@@ -97,6 +98,16 @@ func TestProviderAPISpecPointerAcceptsExplicitPostmanCollection(t *testing.T) {
 	}
 }
 
+func TestProviderAPISpecPointerAcceptsGoogleDiscovery(t *testing.T) {
+	specURL := "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&alt=json"
+	if !providerAPISpecPointerOK(specURL, "google_discovery", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, google_discovery) = false, want true", specURL)
+	}
+	if providerAPISpecPointerOK("https://generativelanguage.googleapis.com/v1beta/models", "google_discovery", "rest") {
+		t.Fatal("providerAPISpecPointerOK(non-discovery Google API URL, google_discovery) = true, want false")
+	}
+}
+
 func TestProviderAPIURLIsOAuthEndpointRequiresAuthPathSegment(t *testing.T) {
 	for _, value := range []string{
 		"https://api.provider.io/oauth/token",
@@ -149,5 +160,33 @@ func TestProviderAPIDepthForDefinitionSummarizesCatalogProof(t *testing.T) {
 	}
 	if len(depth.ProofGaps) != 0 || !containsString(depth.MappedFamilies, "users") {
 		t.Fatalf("depth families/gaps = %#v/%#v, want users and no gaps", depth.MappedFamilies, depth.ProofGaps)
+	}
+}
+
+func TestProviderAPIDepthForSourceCatalogPropagatesDisproof(t *testing.T) {
+	depth := ProviderAPIDepthForSourceCatalog(sourcecdk.CatalogProviderAPI{
+		Disproof: sourcecdk.CatalogProviderAPIDisproof{
+			Status:           "invalidated",
+			Reason:           "runtime_families_not_in_provider_spec",
+			CheckedAt:        "2026-07-04T00:00:00Z",
+			References:       []string{"https://developer.provider.io/openapi.yaml"},
+			AffectedFamilies: []string{"teams"},
+			MissingPaths:     []string{"/v1/teams"},
+			Notes:            []string{"provider API does not expose team inventory"},
+		},
+	}, []string{"teams"})
+
+	if !depth.HasDisproof {
+		t.Fatalf("depth.HasDisproof = false, want true: %#v", depth)
+	}
+	if depth.DisproofReason != "runtime_families_not_in_provider_spec" || !containsString(depth.DisproofFamilies, "teams") {
+		t.Fatalf("depth disproof = %#v, want teams invalidation", depth.RuntimeProviderAPIDisproofDepth)
+	}
+	view, present := ProviderAPIViewForDepth(depth)
+	if !present || !view.HasProviderAPIDisproof {
+		t.Fatalf("provider API view = %#v, present=%v, want disproof view", view, present)
+	}
+	if view.ProviderAPIDisproofMissingPaths[0] != "/v1/teams" {
+		t.Fatalf("provider API view missing paths = %v, want /v1/teams", view.ProviderAPIDisproofMissingPaths)
 	}
 }

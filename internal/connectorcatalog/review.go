@@ -14,16 +14,17 @@ import (
 // and review questions that can be published by CI without mutating catalog
 // files.
 type ReviewReport struct {
-	Summary               ReviewSummary               `json:"summary"`
-	PromotionQueues       []PromotionQueue            `json:"promotion_queues,omitempty"`
-	FidelityQueue         []FidelityCandidate         `json:"fidelity_queue,omitempty"`
-	RuntimeDepthQueue     []RuntimeDepthCandidate     `json:"runtime_depth_queue,omitempty"`
-	APIDiscoveryQueue     []APIDiscoveryCandidate     `json:"api_discovery_queue,omitempty"`
-	ProviderAPIProofQueue []ProviderAPIProofCandidate `json:"provider_api_proof_queue,omitempty"`
-	CleanupFindings       []ReviewFinding             `json:"cleanup_findings,omitempty"`
-	Questions             []ReviewQuestion            `json:"questions,omitempty"`
-	SourceReviews         []SourceReview              `json:"source_reviews,omitempty"`
-	ProjectionCoverage    []ProjectionCoverage        `json:"projection_coverage,omitempty"`
+	Summary                ReviewSummary                      `json:"summary"`
+	PromotionQueues        []PromotionQueue                   `json:"promotion_queues,omitempty"`
+	FidelityQueue          []FidelityCandidate                `json:"fidelity_queue,omitempty"`
+	RuntimeDepthQueue      []RuntimeDepthCandidate            `json:"runtime_depth_queue,omitempty"`
+	APIDiscoveryQueue      []APIDiscoveryCandidate            `json:"api_discovery_queue,omitempty"`
+	ProviderAPIProofQueue  []ProviderAPIProofCandidate        `json:"provider_api_proof_queue,omitempty"`
+	ProviderAPIInvalidated []ProviderAPIInvalidationCandidate `json:"provider_api_invalidated,omitempty"`
+	CleanupFindings        []ReviewFinding                    `json:"cleanup_findings,omitempty"`
+	Questions              []ReviewQuestion                   `json:"questions,omitempty"`
+	SourceReviews          []SourceReview                     `json:"source_reviews,omitempty"`
+	ProjectionCoverage     []ProjectionCoverage               `json:"projection_coverage,omitempty"`
 }
 
 type ReviewSummary struct {
@@ -60,6 +61,7 @@ type RuntimeDepthSummary struct {
 	SourcesWithProviderAPIContract   int `json:"sources_with_provider_api_contract"`
 	SourcesWithProviderAPIMapping    int `json:"sources_with_provider_api_mapping"`
 	SourcesWithProviderAPIProof      int `json:"sources_with_provider_api_proof"`
+	SourcesWithProviderAPIDisproof   int `json:"sources_with_provider_api_disproof"`
 	NeedsProviderAPIProof            int `json:"needs_provider_api_proof"`
 	SourcesWithRuntimeTransportMatch int `json:"sources_with_runtime_transport_match"`
 	SourcesWithRuntimeFixtures       int `json:"sources_with_runtime_fixtures"`
@@ -131,6 +133,20 @@ type ProviderAPIProofCandidate struct {
 	NextAction    string   `json:"next_action"`
 }
 
+type ProviderAPIInvalidationCandidate struct {
+	SourceID         string   `json:"source_id"`
+	DisplayName      string   `json:"display_name,omitempty"`
+	Path             string   `json:"path,omitempty"`
+	PackagePath      string   `json:"package_path,omitempty"`
+	Reason           string   `json:"reason"`
+	CheckedAt        string   `json:"checked_at,omitempty"`
+	AffectedFamilies []string `json:"affected_families,omitempty"`
+	MissingPaths     []string `json:"missing_paths,omitempty"`
+	References       []string `json:"references,omitempty"`
+	Notes            []string `json:"notes,omitempty"`
+	NextAction       string   `json:"next_action"`
+}
+
 type ReviewFinding struct {
 	Level      string `json:"level"`
 	SourceID   string `json:"source_id,omitempty"`
@@ -198,12 +214,19 @@ type RuntimeDepthFields struct {
 	HasProviderAPIContract     bool     `json:"has_provider_api_contract,omitempty"`
 	HasProviderAPIMapping      bool     `json:"has_provider_api_mapping,omitempty"`
 	HasProviderAPIProof        bool     `json:"has_provider_api_proof,omitempty"`
+	HasProviderAPIDisproof     bool     `json:"has_provider_api_disproof,omitempty"`
 	HasRuntimeTransportMatch   bool     `json:"has_runtime_transport_match,omitempty"`
 	ProviderAPIReviewFields
 	RuntimeFamilies []string `json:"runtime_families,omitempty"`
 }
 
 type ProviderAPIReviewFields struct {
+	ProviderAPIContractReviewFields
+	ProviderAPIProofReviewFields
+	ProviderAPIDisproofReviewFields
+}
+
+type ProviderAPIContractReviewFields struct {
 	ProviderAPIStatus          string   `json:"provider_api_status,omitempty"`
 	ProviderAPIBasis           string   `json:"provider_api_basis,omitempty"`
 	ProviderAPIVerifiedAt      string   `json:"provider_api_verified_at,omitempty"`
@@ -219,9 +242,22 @@ type ProviderAPIReviewFields struct {
 	ProviderAPIScopeEvidence   []string `json:"provider_api_scope_evidence,omitempty"`
 	ProviderAPIMappedFamilies  []string `json:"provider_api_mapped_families,omitempty"`
 	ProviderAPIMissingFamilies []string `json:"provider_api_missing_families,omitempty"`
-	ProviderAPIProofScore      int      `json:"provider_api_proof_score,omitempty"`
-	ProviderAPIProofLevel      string   `json:"provider_api_proof_level,omitempty"`
-	ProviderAPIProofGaps       []string `json:"provider_api_proof_gaps,omitempty"`
+}
+
+type ProviderAPIProofReviewFields struct {
+	ProviderAPIProofScore int      `json:"provider_api_proof_score,omitempty"`
+	ProviderAPIProofLevel string   `json:"provider_api_proof_level,omitempty"`
+	ProviderAPIProofGaps  []string `json:"provider_api_proof_gaps,omitempty"`
+}
+
+type ProviderAPIDisproofReviewFields struct {
+	ProviderAPIDisproofStatus       string   `json:"provider_api_disproof_status,omitempty"`
+	ProviderAPIDisproofReason       string   `json:"provider_api_disproof_reason,omitempty"`
+	ProviderAPIDisproofCheckedAt    string   `json:"provider_api_disproof_checked_at,omitempty"`
+	ProviderAPIDisproofReferences   []string `json:"provider_api_disproof_references,omitempty"`
+	ProviderAPIDisproofFamilies     []string `json:"provider_api_disproof_families,omitempty"`
+	ProviderAPIDisproofMissingPaths []string `json:"provider_api_disproof_missing_paths,omitempty"`
+	ProviderAPIDisproofNotes        []string `json:"provider_api_disproof_notes,omitempty"`
 }
 
 type SourceFamilyReadinessFields struct {
@@ -338,9 +374,13 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			}
 			if sourceReview.HasProviderAPIProof {
 				review.Summary.RuntimeDepth.SourcesWithProviderAPIProof++
-			} else if sourceReview.HasProviderAPIContract {
+			} else if sourceReview.HasProviderAPIContract && !sourceReview.HasProviderAPIDisproof {
 				review.Summary.RuntimeDepth.NeedsProviderAPIProof++
 				review.ProviderAPIProofQueue = append(review.ProviderAPIProofQueue, providerAPIProofCandidate(sourceReview))
+			}
+			if sourceReview.HasProviderAPIDisproof {
+				review.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof++
+				review.ProviderAPIInvalidated = append(review.ProviderAPIInvalidated, providerAPIInvalidationCandidate(sourceReview))
 			}
 			if sourceReview.HasProviderAPIContract && sourceReview.HasRuntimeTransportMatch {
 				review.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch++
@@ -465,6 +505,7 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.HasProviderAPIContract = runtimeDepth.ProviderAPI.HasContract
 		review.HasProviderAPIMapping = runtimeDepth.ProviderAPI.HasMapping
 		review.HasProviderAPIProof = runtimeDepth.ProviderAPI.HasProof
+		review.HasProviderAPIDisproof = runtimeDepth.ProviderAPI.HasDisproof
 		review.HasRuntimeTransportMatch = runtimeDepth.ProviderAPI.HasRuntimeTransport
 		review.ProviderAPIStatus = runtimeDepth.ProviderAPI.Status
 		review.ProviderAPIBasis = runtimeDepth.ProviderAPI.Basis
@@ -484,6 +525,13 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.ProviderAPIProofScore = runtimeDepth.ProviderAPI.ProofScore
 		review.ProviderAPIProofLevel = runtimeDepth.ProviderAPI.ProofLevel
 		review.ProviderAPIProofGaps = append([]string(nil), runtimeDepth.ProviderAPI.ProofGaps...)
+		review.ProviderAPIDisproofStatus = runtimeDepth.ProviderAPI.DisproofStatus
+		review.ProviderAPIDisproofReason = runtimeDepth.ProviderAPI.DisproofReason
+		review.ProviderAPIDisproofCheckedAt = runtimeDepth.ProviderAPI.DisproofCheckedAt
+		review.ProviderAPIDisproofReferences = append([]string(nil), runtimeDepth.ProviderAPI.DisproofReferences...)
+		review.ProviderAPIDisproofFamilies = append([]string(nil), runtimeDepth.ProviderAPI.DisproofFamilies...)
+		review.ProviderAPIDisproofMissingPaths = append([]string(nil), runtimeDepth.ProviderAPI.DisproofMissingPaths...)
+		review.ProviderAPIDisproofNotes = append([]string(nil), runtimeDepth.ProviderAPI.DisproofNotes...)
 		review.RuntimeFamilies = append([]string(nil), runtimeDepth.RuntimeFamilies...)
 		switch {
 		case review.RuntimeDepthScore >= runtimeDepthReviewThreshold:
@@ -505,6 +553,10 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 	sort.Strings(review.ProviderAPIMappedFamilies)
 	sort.Strings(review.ProviderAPIMissingFamilies)
 	sort.Strings(review.ProviderAPIProofGaps)
+	sort.Strings(review.ProviderAPIDisproofReferences)
+	sort.Strings(review.ProviderAPIDisproofFamilies)
+	sort.Strings(review.ProviderAPIDisproofMissingPaths)
+	sort.Strings(review.ProviderAPIDisproofNotes)
 	sort.Strings(review.RuntimeFamilies)
 	sort.Strings(review.RuntimeDepthGaps)
 	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry, review)
@@ -618,7 +670,18 @@ func sourceQuestions(source SourceReview, entry Entry, includeRuntimeDepth bool)
 			NextAction: providerAPIDiscoveryNextAction(source.SourceID),
 		})
 	}
-	if includeRuntimeDepth && source.HasProviderAPIContract && !source.HasProviderAPIProof {
+	if includeRuntimeDepth && source.HasProviderAPIDisproof {
+		questions = append(questions, ReviewQuestion{
+			ID:         questionID(source.SourceID, "provider_api_invalidated"),
+			SourceID:   source.SourceID,
+			Path:       source.Path,
+			Category:   "provider_api_invalidated",
+			Question:   "Which runtime families failed provider API verification?",
+			Answer:     providerAPIInvalidationAnswer(source),
+			NextAction: providerAPIInvalidationNextAction(source),
+		})
+	}
+	if includeRuntimeDepth && source.HasProviderAPIContract && !source.HasProviderAPIProof && !source.HasProviderAPIDisproof {
 		questions = append(questions, ReviewQuestion{
 			ID:         questionID(source.SourceID, "provider_api_proof"),
 			SourceID:   source.SourceID,
@@ -802,7 +865,58 @@ func providerAPIDiscoveryNextAction(sourceID string) string {
 }
 
 func needsProviderAPIDiscovery(source SourceReview) bool {
+	if source.HasProviderAPIDisproof {
+		return false
+	}
 	return !source.HasProviderAPIContract || !source.HasProviderAPIMapping
+}
+
+func providerAPIInvalidationCandidate(source SourceReview) ProviderAPIInvalidationCandidate {
+	return ProviderAPIInvalidationCandidate{
+		SourceID:         source.SourceID,
+		DisplayName:      source.DisplayName,
+		Path:             source.Path,
+		PackagePath:      source.RuntimePackagePath,
+		Reason:           strings.TrimSpace(source.ProviderAPIDisproofReason),
+		CheckedAt:        strings.TrimSpace(source.ProviderAPIDisproofCheckedAt),
+		AffectedFamilies: append([]string(nil), source.ProviderAPIDisproofFamilies...),
+		MissingPaths:     append([]string(nil), source.ProviderAPIDisproofMissingPaths...),
+		References:       append([]string(nil), source.ProviderAPIDisproofReferences...),
+		Notes:            append([]string(nil), source.ProviderAPIDisproofNotes...),
+		NextAction:       providerAPIInvalidationNextAction(source),
+	}
+}
+
+func providerAPIInvalidationAnswer(source SourceReview) string {
+	parts := []string{}
+	if strings.TrimSpace(source.ProviderAPIDisproofReason) != "" {
+		parts = append(parts, "Reason: "+source.ProviderAPIDisproofReason+".")
+	}
+	if len(source.ProviderAPIDisproofFamilies) > 0 {
+		parts = append(parts, "Affected families: "+strings.Join(source.ProviderAPIDisproofFamilies, ", ")+".")
+	}
+	if len(source.ProviderAPIDisproofMissingPaths) > 0 {
+		parts = append(parts, "Missing provider paths: "+strings.Join(source.ProviderAPIDisproofMissingPaths, ", ")+".")
+	}
+	if strings.TrimSpace(source.ProviderAPIDisproofCheckedAt) != "" {
+		parts = append(parts, "Checked at: "+source.ProviderAPIDisproofCheckedAt+".")
+	}
+	if len(parts) == 0 {
+		return "Provider API verification failed for this source."
+	}
+	return strings.Join(parts, " ")
+}
+
+func providerAPIInvalidationNextAction(source SourceReview) string {
+	packagePath := strings.TrimSpace(source.RuntimePackagePath)
+	if packagePath == "" {
+		packagePath = "sources/" + strings.TrimSpace(source.SourceID)
+	}
+	if strings.TrimSpace(source.SourceID) == "" {
+		packagePath = "the source package"
+	}
+	families := listOrNoFamilies(source.ProviderAPIDisproofFamilies)
+	return "Rewrite or remove the invalidated runtime families in " + packagePath + ": " + families + ". Keep only families backed by provider-owned API paths and rename any misclassified family before promotion."
 }
 
 func providerAPIProofCandidate(source SourceReview) ProviderAPIProofCandidate {
@@ -1185,6 +1299,12 @@ func sortReview(review *ReviewReport) {
 			return review.ProviderAPIProofQueue[i].Score < review.ProviderAPIProofQueue[j].Score
 		}
 		return review.ProviderAPIProofQueue[i].SourceID < review.ProviderAPIProofQueue[j].SourceID
+	})
+	sort.SliceStable(review.ProviderAPIInvalidated, func(i int, j int) bool {
+		if len(review.ProviderAPIInvalidated[i].AffectedFamilies) != len(review.ProviderAPIInvalidated[j].AffectedFamilies) {
+			return len(review.ProviderAPIInvalidated[i].AffectedFamilies) > len(review.ProviderAPIInvalidated[j].AffectedFamilies)
+		}
+		return review.ProviderAPIInvalidated[i].SourceID < review.ProviderAPIInvalidated[j].SourceID
 	})
 	sort.SliceStable(review.CleanupFindings, func(i int, j int) bool {
 		if review.CleanupFindings[i].SourceID != review.CleanupFindings[j].SourceID {

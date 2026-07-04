@@ -24,6 +24,38 @@ kind_lifecycle:
     status: active
   - kind: google_gemini.batch_jobs
     status: active
+provider_api:
+  status: verified
+  basis: detected
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x-goog-api-key_header
+  base_url: https://generativelanguage.googleapis.com
+  spec_url: https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&alt=json
+  spec_kind: google_discovery
+  references:
+    - https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&alt=json
+    - https://ai.google.dev/gemini-api/docs/api-key
+  auth_evidence:
+    - https://ai.google.dev/gemini-api/docs/api-key
+  families:
+    - id: model_catalog
+      method: GET
+      path: /v1beta/models
+    - id: tuned_models
+      method: GET
+      path: /v1beta/tunedModels
+    - id: files
+      method: GET
+      path: /v1beta/files
+    - id: cached_contents
+      method: GET
+      path: /v1beta/cachedContents
+    - id: batch_jobs
+      method: GET
+      path: /v1beta/batches
+      operation: generativelanguage.batches.list
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: google_gemini

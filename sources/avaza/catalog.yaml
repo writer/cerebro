@@ -52,6 +52,56 @@ kind_lifecycle:
     status: active
   - kind: avaza.expense
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.avaza.com
+  spec_url: https://api.apis.guru/v2/specs/avaza.com/v1/swagger.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/avaza.com/v1/swagger.json
+    - https://api.avaza.com/swagger/docs/v1
+  families:
+    - id: bill
+      method: GET
+      path: /api/Bill
+    - id: billpayment
+      method: GET
+      path: /api/BillPayment
+    - id: company
+      method: GET
+      path: /api/Company
+    - id: contact
+      method: GET
+      path: /api/Contact
+    - id: creditnote
+      method: GET
+      path: /api/CreditNote
+    - id: currency
+      method: GET
+      path: /api/Currency
+    - id: estimate
+      method: GET
+      path: /api/Estimate
+    - id: expense
+      method: GET
+      path: /api/Expense
+    - id: lookup
+      method: GET
+      path: /api/ExpenseGroup/Lookup
+    - id: projectmember
+      method: GET
+      path: /api/ProjectMember
+    - id: userprofile
+      method: GET
+      path: /api/UserProfile
+    - id: webhook
+      method: GET
+      path: /api/Webhook
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: avaza

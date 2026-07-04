@@ -30,6 +30,15 @@ func ProviderAPIDepthForSourceCatalog(api sourcecdk.CatalogProviderAPI, runtimeF
 		References:    normalizedList(api.References),
 		AuthEvidence:  normalizedList(api.AuthEvidence),
 		ScopeEvidence: normalizedList(api.ScopeEvidence),
+		Disproof: runtimeProviderAPIDisproofFields{
+			Status:           api.Disproof.Status,
+			Reason:           api.Disproof.Reason,
+			CheckedAt:        api.Disproof.CheckedAt,
+			References:       normalizedList(api.Disproof.References),
+			AffectedFamilies: normalizedList(api.Disproof.AffectedFamilies),
+			MissingPaths:     normalizedList(api.Disproof.MissingPaths),
+			Notes:            normalizedList(api.Disproof.Notes),
+		},
 		Families: make([]struct {
 			ID        string `yaml:"id"`
 			Method    string `yaml:"method"`
@@ -101,27 +110,32 @@ func providerAPIDepthForFields(fields runtimeProviderAPIFields, runtimeFamilies 
 	missingFamilies := missingValues(normalizedList(runtimeFamilies), mappedFamilies)
 	proof := providerAPIProofScore(fields, missingFamilies)
 	depth := RuntimeProviderAPIDepth{
-		HasContract:           hasProviderAPIContract(fields),
-		HasMapping:            hasProviderAPIContract(fields) && len(missingFamilies) == 0 && len(mappedFamilies) > 0,
-		HasProof:              proof.HasProof,
-		ProofScore:            proof.Score,
-		ProofLevel:            proof.Level,
-		ProofGaps:             append([]string(nil), proof.Gaps...),
-		Status:                fields.Status,
-		Basis:                 fields.Basis,
-		VerifiedAt:            fields.VerifiedAt,
-		Transport:             fields.Transport,
-		Auth:                  fields.Auth,
-		AuthMechanics:         fields.AuthMechanics,
-		BaseURL:               fields.BaseURL,
-		Endpoint:              fields.Endpoint,
-		SpecURL:               fields.SpecURL,
-		SpecKind:              fields.SpecKind,
-		References:            append([]string(nil), fields.References...),
-		AuthEvidence:          append([]string(nil), fields.AuthEvidence...),
-		ScopeEvidence:         append([]string(nil), fields.ScopeEvidence...),
-		MappedFamilies:        append([]string(nil), mappedFamilies...),
-		MissingFamilyMappings: append([]string(nil), missingFamilies...),
+		RuntimeProviderAPIContractDepth: RuntimeProviderAPIContractDepth{
+			HasContract:           hasProviderAPIContract(fields),
+			HasMapping:            hasProviderAPIContract(fields) && len(missingFamilies) == 0 && len(mappedFamilies) > 0,
+			Status:                fields.Status,
+			Basis:                 fields.Basis,
+			VerifiedAt:            fields.VerifiedAt,
+			Transport:             fields.Transport,
+			Auth:                  fields.Auth,
+			AuthMechanics:         fields.AuthMechanics,
+			BaseURL:               fields.BaseURL,
+			Endpoint:              fields.Endpoint,
+			SpecURL:               fields.SpecURL,
+			SpecKind:              fields.SpecKind,
+			References:            append([]string(nil), fields.References...),
+			AuthEvidence:          append([]string(nil), fields.AuthEvidence...),
+			ScopeEvidence:         append([]string(nil), fields.ScopeEvidence...),
+			MappedFamilies:        append([]string(nil), mappedFamilies...),
+			MissingFamilyMappings: append([]string(nil), missingFamilies...),
+		},
+		RuntimeProviderAPIProofDepth: RuntimeProviderAPIProofDepth{
+			HasProof:   proof.HasProof,
+			ProofScore: proof.Score,
+			ProofLevel: proof.Level,
+			ProofGaps:  append([]string(nil), proof.Gaps...),
+		},
+		RuntimeProviderAPIDisproofDepth: providerAPIDisproofDepth(fields.Disproof),
 	}
 	sort.Strings(depth.ProofGaps)
 	sort.Strings(depth.References)
@@ -129,6 +143,10 @@ func providerAPIDepthForFields(fields runtimeProviderAPIFields, runtimeFamilies 
 	sort.Strings(depth.ScopeEvidence)
 	sort.Strings(depth.MappedFamilies)
 	sort.Strings(depth.MissingFamilyMappings)
+	sort.Strings(depth.DisproofReferences)
+	sort.Strings(depth.DisproofFamilies)
+	sort.Strings(depth.DisproofMissingPaths)
+	sort.Strings(depth.DisproofNotes)
 	return depth
 }
 
