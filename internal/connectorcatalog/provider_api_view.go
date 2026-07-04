@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 type ProviderAPIView struct {
@@ -35,8 +36,10 @@ func ProviderAPIViewForDefinition(definition connectordefinitions.Definition) (P
 }
 
 func ProviderAPIViewForSource(sourceID string, definition connectordefinitions.Definition) ProviderAPIView {
-	if view, ok := ProviderAPIViewForDepth(WorktreeRuntimeProviderAPIDepth(sourceID)); ok {
-		return view
+	if api, runtimeFamilies, ok := sourcecdk.CatalogProviderAPIForSource(sourceID); ok {
+		if view, present := ProviderAPIViewForDepth(ProviderAPIDepthForSourceCatalog(api, runtimeFamilies)); present {
+			return view
+		}
 	}
 	view, _ := ProviderAPIViewForDefinition(definition)
 	return view

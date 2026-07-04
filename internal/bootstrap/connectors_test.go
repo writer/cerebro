@@ -31,6 +31,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	auth0source "github.com/writer/cerebro/sources/auth0"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1607,7 +1608,11 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 
 func TestConnectorCatalogExposesProviderAPIProofFields(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
-	registry, err := sourcecdk.NewRegistry(source)
+	auth0Source, err := auth0source.New()
+	if err != nil {
+		t.Fatalf("auth0.New() error = %v", err)
+	}
+	registry, err := sourcecdk.NewRegistry(source, auth0Source)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}

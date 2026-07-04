@@ -26,7 +26,6 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
-	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/deviceauth"
@@ -141,7 +140,6 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
-	connectorcatalog.LoadWorktreeRuntimeDepth()
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {
 		return nil, err

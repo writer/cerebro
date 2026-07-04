@@ -4,12 +4,53 @@ import (
 	"sort"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 // ProviderAPIDepthForDefinition summarizes the provider-owned API proof
 // declared on a connector definition without reading repository runtime files.
 func ProviderAPIDepthForDefinition(definition connectordefinitions.Definition) RuntimeProviderAPIDepth {
 	return ProviderAPIDepthForSpec(definition.ProviderAPI, definitionProviderFamilies(definition))
+}
+
+// ProviderAPIDepthForSourceCatalog summarizes provider-owned API proof declared
+// by a compiled source catalog.
+func ProviderAPIDepthForSourceCatalog(api sourcecdk.CatalogProviderAPI, runtimeFamilies []string) RuntimeProviderAPIDepth {
+	fields := runtimeProviderAPIFields{
+		Status:        api.Status,
+		Basis:         api.Basis,
+		VerifiedAt:    api.VerifiedAt,
+		Transport:     api.Transport,
+		Auth:          api.Auth,
+		AuthMechanics: api.AuthMechanics,
+		BaseURL:       api.BaseURL,
+		Endpoint:      api.Endpoint,
+		SpecURL:       api.SpecURL,
+		SpecKind:      api.SpecKind,
+		References:    normalizedList(api.References),
+		AuthEvidence:  normalizedList(api.AuthEvidence),
+		ScopeEvidence: normalizedList(api.ScopeEvidence),
+		Families: make([]struct {
+			ID        string `yaml:"id"`
+			Method    string `yaml:"method"`
+			Path      string `yaml:"path"`
+			Operation string `yaml:"operation"`
+		}, 0, len(api.Families)),
+	}
+	for _, family := range api.Families {
+		fields.Families = append(fields.Families, struct {
+			ID        string `yaml:"id"`
+			Method    string `yaml:"method"`
+			Path      string `yaml:"path"`
+			Operation string `yaml:"operation"`
+		}{
+			ID:        family.ID,
+			Method:    family.Method,
+			Path:      family.Path,
+			Operation: family.Operation,
+		})
+	}
+	return providerAPIDepthForFields(fields, runtimeFamilies)
 }
 
 // ProviderAPIDepthForSpec applies the catalog provider API proof rules to an
@@ -52,6 +93,10 @@ func ProviderAPIDepthForSpec(api *connectordefinitions.ProviderAPISpec, runtimeF
 			Operation: family.Operation,
 		})
 	}
+	return providerAPIDepthForFields(fields, runtimeFamilies)
+}
+
+func providerAPIDepthForFields(fields runtimeProviderAPIFields, runtimeFamilies []string) RuntimeProviderAPIDepth {
 	mappedFamilies := providerAPIFamilies(fields)
 	missingFamilies := missingValues(normalizedList(runtimeFamilies), mappedFamilies)
 	proof := providerAPIProofScore(fields, missingFamilies)
