@@ -4247,7 +4247,7 @@ func int32Ptr(value int) *int32 {
 	if value == 0 {
 		return nil
 	}
-	parsed := int32(min(max(value, math.MinInt32), math.MaxInt32)) //nolint:gosec // value is clamped to int32 bounds before conversion.
+	parsed := int32(min(max(value, math.MinInt32), math.MaxInt32)) // #nosec G115 -- value is clamped to int32 bounds before conversion.
 	return &parsed
 }
 

@@ -339731,7 +339731,10 @@
         "evidence_type"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "tenant_id",
+        "evidence_id",
+        "primary_resource_urn",
+        "action"
       ],
       "control_refs": [
         {

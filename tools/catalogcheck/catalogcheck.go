@@ -369,7 +369,7 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 		if rel != findingdsl.ControlMappingRelPath {
 			return nil
 		}
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) // #nosec G122 -- repository policy path checked by this build-time catalog validator.
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
@@ -481,7 +481,7 @@ func checkSourceCatalogsWithControlCatalog(root string, controlCatalog *complian
 			issues = append(issues, issue{path: rel, message: "symlinked source catalogs are not allowed"})
 			return nil
 		}
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) // #nosec G122 -- repository source catalog path checked by this build-time catalog validator.
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
@@ -662,7 +662,7 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 			return nil
 		}
 		rel := slashRel(root, path)
-		content, readErr := os.ReadFile(path)
+		content, readErr := os.ReadFile(path) // #nosec G122 -- repository fixture path checked by this build-time catalog validator.
 		if readErr != nil {
 			issues = append(issues, issue{path: rel, message: "read fixture: " + readErr.Error()})
 			return nil

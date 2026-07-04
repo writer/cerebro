@@ -18,6 +18,8 @@ var (
 	componentsLine = []byte("\ncomponents:\n")
 )
 
+const openAPIPath = "api/openapi.yaml"
+
 type route struct {
 	Method string
 	Path   string
@@ -31,7 +33,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	paths, methods, err := openAPIPaths("api/openapi.yaml")
+	paths, methods, err := openAPIPaths(openAPIPath)
 	if err != nil {
 		fail(err)
 	}
@@ -49,7 +51,7 @@ func main() {
 		return
 	}
 	if *write {
-		if err := appendPlaceholders("api/openapi.yaml", missing); err != nil {
+		if err := appendPlaceholders(missing); err != nil {
 			fail(err)
 		}
 		return
@@ -128,12 +130,12 @@ func isParityMethod(method string) bool {
 	}
 }
 
-func appendPlaceholders(path string, routes []route) error {
-	payload, err := os.ReadFile(path)
+func appendPlaceholders(routes []route) error {
+	payload, err := os.ReadFile(openAPIPath)
 	if err != nil {
 		return err
 	}
-	paths, _, err := openAPIPaths(path)
+	paths, _, err := openAPIPaths(openAPIPath)
 	if err != nil {
 		return err
 	}
@@ -160,7 +162,7 @@ func appendPlaceholders(path string, routes []route) error {
 	next := append([]byte{}, payload[:insertAt]...)
 	next = append(next, []byte(addition.String())...)
 	next = append(next, payload[insertAt:]...)
-	return os.WriteFile(path, next, 0o644)
+	return os.WriteFile(openAPIPath, next, 0o644) // #nosec G703 -- writes only the repository OpenAPI file selected by this build-time tool.
 }
 
 func fail(err error) {

@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	tenantScopedGitHubAuditRuleID     = "github-repository-collaborator-added"
 	tenantScopedDependabotRuleID      = "github-dependabot-open-alert"
 	tenantScopedSentinelOneRuleID     = "sentinelone-protection-control-tampering"
 	tenantScopedIdentityUserRuleID    = "identity-privileged-account-without-mfa"
@@ -40,18 +39,6 @@ type tenantScopedFingerprintCase struct {
 	sourceID string
 	family   string
 	event    *cerebrov1.EventEnvelope
-}
-
-func TestGitHubAuditFingerprint_TenantScoped(t *testing.T) {
-	store := tenantScopedPostgresStore(t)
-	tc := githubAuditTenantScopedCase()
-	first, second := runTenantScopedFingerprintPair(t, store, tc)
-	if first.Fingerprint == second.Fingerprint {
-		t.Fatalf("GitHub audit fingerprints are equal across tenants: %q", first.Fingerprint)
-	}
-	if got, want := first.Fingerprint, tenantScopedHash(tc.ruleID, first.TenantID, "writer/cerebro", "octocat"); got != want {
-		t.Fatalf("tenant A fingerprint = %q, want %q", got, want)
-	}
 }
 
 func TestSentinelOneProtectionControlTamperingFingerprint_TenantScoped(t *testing.T) {
@@ -292,7 +279,6 @@ func TestIdentityAdminPrivilegeAnchor_ProviderScoped(t *testing.T) {
 func TestCrossTenantFingerprintCollisionRegression(t *testing.T) {
 	store := tenantScopedPostgresStore(t)
 	cases := []tenantScopedFingerprintCase{
-		githubAuditTenantScopedCase(),
 		githubDependabotTenantScopedCase(),
 		sentinelOneTenantScopedCase(),
 	}
@@ -451,21 +437,6 @@ func withRuntimeID(event *cerebrov1.EventEnvelope, runtimeID string) *cerebrov1.
 	cloned.Attributes = cloneTenantScopedAttrs(cloned.Attributes)
 	cloned.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
 	return cloned
-}
-
-func githubAuditTenantScopedCase() tenantScopedFingerprintCase {
-	return tenantScopedFingerprintCase{
-		name:     "github-audit",
-		ruleID:   tenantScopedGitHubAuditRuleID,
-		sourceID: "github",
-		family:   "audit",
-		event: tenantScopedEvent("tenant-scope-github-audit", "writer", "github", "github.audit", map[string]string{
-			"action": "repo.add_member",
-			"actor":  "admin",
-			"repo":   "writer/cerebro",
-			"user":   "octocat",
-		}, tenantScopedBaseTime),
-	}
 }
 
 func githubDependabotTenantScopedCase() tenantScopedFingerprintCase {

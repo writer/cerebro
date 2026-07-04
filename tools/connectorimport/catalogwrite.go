@@ -95,7 +95,7 @@ func existingCatalogSourceIDs(catalogDir string) (map[string]struct{}, error) {
 		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
 			return nil
 		}
-		existing, err := os.ReadFile(path) //nolint:gosec // operator-provided catalog dir for a build-time tool.
+		existing, err := os.ReadFile(path) // #nosec G122 -- operator-provided catalog dir for a build-time tool.
 		if err != nil {
 			return fmt.Errorf("read catalog file %s: %w", path, err)
 		}

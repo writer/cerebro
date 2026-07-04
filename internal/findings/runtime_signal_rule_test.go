@@ -35,6 +35,25 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:runtime_evidence:evidence-1")
+	originalFingerprint := records[0].Fingerprint
+
+	reemit := &cerebrov1.EventEnvelope{
+		Id:         "runtime-evidence-1-reemit",
+		TenantId:   "writer",
+		SourceId:   "runtime",
+		Kind:       "runtime.evidence",
+		Attributes: event.GetAttributes(),
+	}
+	records, err = rule.Evaluate(context.Background(), runtime, reemit)
+	if err != nil {
+		t.Fatalf("Evaluate(reemit) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(reemit records) = %d, want 1", len(records))
+	}
+	if records[0].Fingerprint != originalFingerprint {
+		t.Fatalf("reemit fingerprint = %q, want original %q", records[0].Fingerprint, originalFingerprint)
+	}
 
 	benign := &cerebrov1.EventEnvelope{Id: "runtime-evidence-benign", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "process_exec", "verdict": "benign"}}
 	records, err = rule.Evaluate(context.Background(), runtime, benign)
