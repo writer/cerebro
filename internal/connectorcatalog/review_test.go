@@ -570,6 +570,9 @@ func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
 	if hasQuestion(report, "digitalocean", "provider_api_discovery") {
 		t.Fatalf("questions = %#v, did not expect provider_api_discovery question", report.Questions)
 	}
+	if hasQuestion(report, "digitalocean", "provider_api_proof") {
+		t.Fatalf("questions = %#v, did not expect provider_api_proof question", report.Questions)
+	}
 }
 
 func scoredRuntimeDepth(depth RuntimeDepth) RuntimeDepth {

@@ -681,7 +681,7 @@ func sourceQuestions(source SourceReview, entry Entry, includeRuntimeDepth bool)
 			NextAction: providerAPIInvalidationNextAction(source),
 		})
 	}
-	if includeRuntimeDepth && source.HasProviderAPIContract && !source.HasProviderAPIProof {
+	if includeRuntimeDepth && source.HasProviderAPIContract && !source.HasProviderAPIProof && !source.HasProviderAPIDisproof {
 		questions = append(questions, ReviewQuestion{
 			ID:         questionID(source.SourceID, "provider_api_proof"),
 			SourceID:   source.SourceID,
