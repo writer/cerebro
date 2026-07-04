@@ -1,16 +1,17 @@
 ## Summary
 
-- Adds the `google_drive` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Deepens Google Drive runtime coverage for files, shared drives, and Drive changes.
+- Adds provider-shaped fixtures, provider-unavailable coverage, and shared-drive deploy runtime coverage.
+- Maps Drive file, shared-drive, and change fields into stable graph resource attributes.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `oauth_authorization_code`
-- Health endpoint: `/source-runtimes/health?source_id=google_drive`
-- Freshness: `24h0m0s`
+- Runtime families: `files`, `shared_drives`
+- Fixture families: `files`, `shared_drives`, `changes`
 
 ## Tests
 
-- `go test ./sources/google_drive ./internal/sourceprojection -count=1`
+- `go test ./sources/google_drive ./internal/connectorcatalog ./internal/sourceprojection -count=1`
 - `make catalog-check`
