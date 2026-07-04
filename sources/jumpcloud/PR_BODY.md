@@ -17,3 +17,4 @@
 - `go test ./sources/jumpcloud ./internal/sourceprojection -count=1`
 - `make lint-sources catalog-check sourcegen-check check-structural check-structural-test check-arch`
 - `make connector-catalog-review connector-api-discovery`
+- `make docs-drift-check oss-audit`
