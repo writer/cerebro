@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi risk record without policy procedure documentation fails
+      resource:
+          risk_record_id: hr-300
+          ephi_scope: true
+          policy_procedure_documented: false
+          owner_id: compliance-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: policy procedure documentation recorded passes
+      resource:
+          risk_record_id: hr-301
+          ephi_scope: true
+          policy_procedure_documented: true
+          owner_id: compliance-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

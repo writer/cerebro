@@ -1,0 +1,101 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-security-policy-documentation-missing
+    name: HIPAA Security Policy Documentation Missing
+    description: Flags HIPAA risk records for ePHI scope that do not show current policy and procedure documentation.
+    tags:
+        - hipaa
+        - policies-documentation
+        - administrative-safeguards
+        - governance
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.316
+spec:
+    severity: high
+    effect: forbid
+    resource: hipaa_risk_assessment::safeguard_risk_record
+    match:
+        conditions:
+            - cmp_eq(path(resource, "ephi_scope"), true)
+            - cmp_ne(path(resource, "policy_procedure_documented"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Attach current HIPAA security policy and procedure documentation to the risk record.
+        steps:
+            - Confirm the ePHI systems and safeguards covered by the record.
+            - Attach current policy and procedure evidence.
+            - Record the owner and review date for the documentation.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.316(a)
+    input:
+        sourceKinds:
+            - hipaa_risk_assessment.safeguard_risk_record
+        requiredFields:
+            - risk_record_id
+            - ephi_scope
+            - policy_procedure_documented
+            - owner_id
+            - reviewed_at
+        freshnessSLA: 180d
+    evidence:
+        type: control_review
+        assessmentMethods:
+            - examine
+            - interview
+        requiredForAudit: true
+        acceptableSources:
+            - hipaa_risk_assessment
+        requiredFields:
+            - risk_record_id
+            - ephi_scope
+            - policy_procedure_documented
+            - owner_id
+            - reviewed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - risk_record_id
+    audit:
+        evidenceType: control_review
+        assessmentMethods:
+            - examine
+            - interview
+        freshnessSLA: 180d
+        auditorStatement: HIPAA security policies and procedures are documented for the ePHI safeguard scope.
+        auditorGuidance: Review the risk record, linked policy evidence, procedure evidence, owner, and most recent review date.
+        riskStatement: Missing policy and procedure documentation can leave HIPAA safeguard operation unsupported during review.
+        remediationIntent: Attach current policy and procedure evidence to the risk record and record the owner review.
+        acceptableEvidence:
+            - source: hipaa_risk_assessment
+              fields:
+                - risk_record_id
+                - ephi_scope
+                - policy_procedure_documented
+                - owner_id
+                - reviewed_at
+        exceptionPolicy:
+            maxAge: 180d
+            requiresApproval: true
+        falsePositives:
+            - The record is outside ePHI scope or documentation is maintained in a linked GRC policy repository record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: compliance.owner
+        remediation:
+            type: hipaa_documentation_update
+            steps:
+                - Attach current policy and procedure evidence.
+                - Confirm owner and review date.
+                - Rerun HIPAA risk assessment evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

@@ -223156,6 +223156,290 @@
       ]
     },
     {
+      "id": "hipaa-breach-individual-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Individual Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Individual Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required individual notice is past the source-calculated notification deadline. Audit impact: Overdue individual breach notice can leave affected people uninformed and weaken HIPAA breach notification evidence.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hipaa",
+        "individual-notice",
+        "phi",
+        "policy",
+        "privacy-breach"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.404"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The incident was not a breach of unsecured PHI or individual notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, discovery date, affected individual count, notice deadline, notice state, send evidence, and any approved delay. Send the required individual breach notice or attach the approved delay evidence. Action plan: Send or document the required individual notice; Attach delivery evidence and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, discovery date, affected individual count, notice deadline, notice state, send evidence, and any approved delay.",
+      "risk_statement": "Overdue individual breach notice can leave affected people uninformed and weaken HIPAA breach notification evidence.",
+      "remediation_intent": "Send the required notice or attach approved delay evidence, then retain delivery and closure evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "notification_deadline",
+        "subject_notice_overdue",
+        "subject_notice_required",
+        "subject_notice_state",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.404(a)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-breach-media-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Media Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Media Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required media notice is past the source-calculated notification deadline. Audit impact: Overdue media breach notice can leave the affected jurisdiction without required public breach information.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hipaa",
+        "media-notice",
+        "phi",
+        "policy",
+        "privacy-breach"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.406"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state. Send the required media notice for the affected jurisdiction or attach approved delay evidence. Action plan: Send or document the required media notice; Attach outlet, delivery, and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state.",
+      "risk_statement": "Overdue media breach notice can leave the affected jurisdiction without required public breach information.",
+      "remediation_intent": "Send the media notice or attach approved delay evidence, then retain outlet and delivery evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "media_notice_overdue",
+        "media_notice_required",
+        "media_notice_state",
+        "notification_deadline",
+        "state_or_jurisdiction",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.406(a)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-breach-secretary-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Secretary Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Secretary Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required HHS Secretary notice is past the source-calculated notification deadline. Audit impact: Overdue Secretary notice can leave required regulator reporting incomplete for a HIPAA breach.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hhs-notice",
+        "hipaa",
+        "phi",
+        "policy",
+        "privacy-breach",
+        "secretary-notice"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.408"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Secretary notice was not required yet for the breach track or the notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, discovery date, affected subject count, Secretary notice requirement, notice deadline, submission receipt, and delay state. Submit the required HHS Secretary notice or attach approved delay evidence. Action plan: Submit or document the required HHS Secretary notice; Attach submission receipt and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, discovery date, affected subject count, Secretary notice requirement, notice deadline, submission receipt, and delay state.",
+      "risk_statement": "Overdue Secretary notice can leave required regulator reporting incomplete for a HIPAA breach.",
+      "remediation_intent": "Submit the HHS Secretary notice or attach approved delay evidence, then retain submission and closure evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "notification_deadline",
+        "regulator_notice_overdue",
+        "regulator_notice_required",
+        "regulator_notice_state",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.408(a)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-business-associate-contract-safeguard-terms-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Business Associate Safeguard Terms Missing",
+      "description": "Flags failed resource-state evidence for business associate register business associate agreement: HIPAA Business Associate Safeguard Terms Missing. Flags active business associate agreements for ePHI scope that do not show required safeguard, subcontractor, and incident reporting terms. Audit impact: Missing business associate safeguard terms can leave ePHI handling obligations unsupported in the contract record.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "business-associate",
+        "cel",
+        "contract-evidence",
+        "ephi",
+        "evidence:control_review",
+        "hipaa",
+        "organizational-requirements",
+        "policy"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.314"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The vendor does not create, receive, maintain, or transmit ePHI, or the terms are present in a linked signed agreement."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the agreement, ePHI scope, vendor, safeguard terms, subcontractor terms, incident reporting terms, owner, and review date. Add required HIPAA safeguard terms to the business associate agreement evidence. Action plan: Attach or amend safeguard, subcontractor, and security incident reporting terms; Confirm active agreement and ePHI scope; Rerun business associate register evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "control_review",
+      "assessment_methods": [
+        "examine",
+        "interview"
+      ],
+      "auditor_guidance": "Review the agreement, ePHI scope, vendor, safeguard terms, subcontractor terms, incident reporting terms, owner, and review date.",
+      "risk_statement": "Missing business associate safeguard terms can leave ePHI handling obligations unsupported in the contract record.",
+      "remediation_intent": "Add required safeguard terms or attach signed agreement evidence and owner approval.",
+      "required_attributes": [
+        "agreement_active",
+        "agreement_id",
+        "handles_ephi",
+        "owner_id",
+        "reviewed_at",
+        "security_incident_reporting_terms_present",
+        "security_safeguard_terms_present",
+        "subcontractor_safeguard_terms_present",
+        "vendor_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "agreement_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.314(a)(1)"
+        }
+      ]
+    },
+    {
       "id": "hipaa-phi-encryption",
       "pack_id": "policy",
       "pack_name": "Policy",
@@ -223206,6 +223490,596 @@
         {
           "framework_name": "HIPAA",
           "control_id": "164.312"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-system-access-control-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI System Access Control Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI System Access Control Missing. Flags ePHI systems without access control policy evidence. Audit impact: Missing access control evidence can allow ePHI access outside the approved user or software boundary.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "access-control",
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "ephi",
+        "evidence:identity_configuration",
+        "hipaa",
+        "phi-system",
+        "policy",
+        "technical-safeguards"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not maintain ePHI or access control evidence is held in a linked identity provider record."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, access control state, owner, access boundary, and last observed timestamp. Enable or document access controls for the ePHI system. Action plan: Enable or document system access controls; Confirm the owner and ePHI boundary; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "identity_configuration",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, access control state, owner, access boundary, and last observed timestamp.",
+      "risk_statement": "Missing access control evidence can allow ePHI access outside the approved user or software boundary.",
+      "remediation_intent": "Enable access controls or attach evidence showing the system restricts ePHI access to approved identities and programs.",
+      "required_attributes": [
+        "access_control_policy_enabled",
+        "contains_ephi",
+        "observed_at",
+        "owner_id",
+        "system_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(a)(1)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-system-automatic-logoff-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI System Automatic Logoff Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI System Automatic Logoff Missing. Flags ePHI systems without automatic logoff evidence. Audit impact: Missing automatic logoff can leave ePHI sessions active after user inactivity.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "automatic-logoff",
+        "cel",
+        "ephi",
+        "evidence:control_review",
+        "hipaa",
+        "policy",
+        "session-control",
+        "technical-safeguards"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not maintain ePHI or an approved compensating session-control mechanism is linked to the record."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, logoff state, timeout value, exception evidence, owner, and last observed timestamp. Enable automatic logoff or attach the approved session-control exception. Action plan: Enable automatic logoff; Confirm the timeout value and exception state; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "control_review",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, logoff state, timeout value, exception evidence, owner, and last observed timestamp.",
+      "risk_statement": "Missing automatic logoff can leave ePHI sessions active after user inactivity.",
+      "remediation_intent": "Enable automatic logoff and retain session-control evidence for the ePHI system.",
+      "required_attributes": [
+        "automatic_logoff_enabled",
+        "contains_ephi",
+        "observed_at",
+        "owner_id",
+        "session_timeout_minutes",
+        "system_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(a)(2)(iii)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-system-integrity-control-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI System Integrity Control Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI System Integrity Control Missing. Flags ePHI systems without integrity control evidence. Audit impact: Missing integrity controls can leave ePHI changes or destruction without required protection evidence.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "ephi",
+        "evidence:control_review",
+        "hipaa",
+        "integrity",
+        "phi-system",
+        "policy",
+        "technical-safeguards"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not maintain ePHI or integrity control evidence is linked from a change-management system."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, integrity-control state, change paths, owner, and last observed timestamp. Enable integrity controls for the ePHI system. Action plan: Enable integrity controls; Confirm change and destruction protections; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "control_review",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, integrity-control state, change paths, owner, and last observed timestamp.",
+      "risk_statement": "Missing integrity controls can leave ePHI changes or destruction without required protection evidence.",
+      "remediation_intent": "Enable integrity controls and retain evidence for the ePHI system.",
+      "required_attributes": [
+        "contains_ephi",
+        "integrity_controls_enabled",
+        "observed_at",
+        "owner_id",
+        "system_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(c)(1)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-system-person-authentication-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI System Person Authentication Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI System Person Authentication Missing. Flags ePHI systems without person or entity authentication evidence. Audit impact: Missing person or entity authentication evidence can leave ePHI access without verified identity.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "authentication",
+        "cel",
+        "ephi",
+        "evidence:identity_configuration",
+        "hipaa",
+        "identity",
+        "policy",
+        "technical-safeguards"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not maintain ePHI or authentication evidence is held in a linked identity provider record."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, authentication mechanism, owner, access boundary, and last observed timestamp. Enable person or entity authentication for the ePHI system. Action plan: Enable person or entity authentication; Confirm the authentication boundary and owner; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "identity_configuration",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, authentication mechanism, owner, access boundary, and last observed timestamp.",
+      "risk_statement": "Missing person or entity authentication evidence can leave ePHI access without verified identity.",
+      "remediation_intent": "Enable authentication controls and retain evidence for the ePHI system.",
+      "required_attributes": [
+        "contains_ephi",
+        "observed_at",
+        "owner_id",
+        "person_or_entity_authentication_enabled",
+        "system_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(d)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-system-unique-user-id-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI System Unique User ID Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI System Unique User ID Missing. Flags ePHI systems without unique user identification evidence. Audit impact: Missing unique user identification can weaken accountability for ePHI access and activity review.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "ephi",
+        "evidence:identity_configuration",
+        "hipaa",
+        "identity",
+        "policy",
+        "technical-safeguards",
+        "unique-user-id"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not maintain ePHI or unique identity evidence is held in a linked identity provider record."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, identity model, shared-account exceptions, owner, and last observed timestamp. Enable unique user identification for the ePHI system. Action plan: Enable unique user identification; Remove or document shared account exceptions; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "identity_configuration",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, identity model, shared-account exceptions, owner, and last observed timestamp.",
+      "risk_statement": "Missing unique user identification can weaken accountability for ePHI access and activity review.",
+      "remediation_intent": "Enable unique user identification and retain identity control evidence for the system.",
+      "required_attributes": [
+        "contains_ephi",
+        "observed_at",
+        "owner_id",
+        "system_id",
+        "unique_user_identification_enabled"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(a)(2)(i)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-phi-transmission-encryption-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA PHI Transmission Encryption Missing",
+      "description": "Flags failed resource-state evidence for phi system inventory phi system: HIPAA PHI Transmission Encryption Missing. Flags ePHI systems with electronic transmission scope that do not show transmission encryption evidence. Audit impact: Missing transmission encryption evidence can leave ePHI exposed during electronic transmission.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "encryption",
+        "ephi",
+        "evidence:data_protection",
+        "hipaa",
+        "policy",
+        "technical-safeguards",
+        "transmission-security"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The system does not transmit ePHI electronically or an approved transmission-security exception is linked to the record."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the PHI system record, transmission paths, encryption state, owner, and last observed timestamp. Enable transmission encryption for ePHI sent over electronic networks. Action plan: Enable transmission encryption; Confirm ePHI transmission paths; Rerun PHI system inventory collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "data_protection",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the PHI system record, transmission paths, encryption state, owner, and last observed timestamp.",
+      "risk_statement": "Missing transmission encryption evidence can leave ePHI exposed during electronic transmission.",
+      "remediation_intent": "Enable transmission encryption and retain evidence for the ePHI transmission paths.",
+      "required_attributes": [
+        "contains_ephi",
+        "electronic_transmission_enabled",
+        "observed_at",
+        "owner_id",
+        "system_id",
+        "transmission_encryption_enabled"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "system_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312(e)(2)(ii)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-risk-management-measures-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Risk Management Measures Missing",
+      "description": "Flags failed resource-state evidence for hipaa risk assessment safeguard risk record: HIPAA Risk Management Measures Missing. Flags HIPAA risk records for ePHI scope that do not show risk management measures. Audit impact: Missing risk management measures can leave ePHI risks accepted by default rather than reduced to an approved level.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "administrative-safeguards",
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "cel",
+        "ephi",
+        "evidence:governance_review",
+        "hipaa",
+        "policy",
+        "risk-management",
+        "risk-treatment"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.308"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The record is outside ePHI scope or mitigation evidence is linked from a risk treatment plan.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the risk analysis, risk level, mitigation evidence, owner approval, and review timestamp. Add risk management measures for the ePHI risk record. Action plan: Add risk management measures to the risk record; Link mitigation and approval evidence; Rerun HIPAA risk assessment evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "governance_review",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the risk analysis, risk level, mitigation evidence, owner approval, and review timestamp.",
+      "risk_statement": "Missing risk management measures can leave ePHI risks accepted by default rather than reduced to an approved level.",
+      "remediation_intent": "Record implemented security measures, owner approval, and current review evidence.",
+      "required_attributes": [
+        "ephi_scope",
+        "owner_id",
+        "reviewed_at",
+        "risk_level",
+        "risk_management_measures_implemented",
+        "risk_record_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "risk_record_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.308(a)(1)(ii)(B)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-security-management-process-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Security Management Process Missing",
+      "description": "Flags failed resource-state evidence for hipaa risk assessment safeguard risk record: HIPAA Security Management Process Missing. Flags HIPAA risk records for ePHI scope that do not show a security management process. Audit impact: Missing security management process evidence weakens the record for how ePHI security violations are prevented, detected, contained, and corrected.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "administrative-safeguards",
+        "assessment:examine",
+        "assessment:interview",
+        "cel",
+        "ephi",
+        "evidence:governance_review",
+        "hipaa",
+        "policy",
+        "risk-assessment",
+        "security-management"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.308"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The record is outside ePHI scope or the process evidence is stored in a linked risk assessment artifact.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the risk record, ePHI scope, process evidence, owner, review date, and linked safeguard decisions. Record the security management process for the ePHI risk scope. Action plan: Add security management process evidence to the risk record; Link the evidence to the ePHI systems in scope; Rerun HIPAA risk assessment evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "governance_review",
+      "assessment_methods": [
+        "examine",
+        "interview"
+      ],
+      "auditor_guidance": "Review the risk record, ePHI scope, process evidence, owner, review date, and linked safeguard decisions.",
+      "risk_statement": "Missing security management process evidence weakens the record for how ePHI security violations are prevented, detected, contained, and corrected.",
+      "remediation_intent": "Add source-backed process evidence and link it to the in-scope HIPAA risk record.",
+      "required_attributes": [
+        "ephi_scope",
+        "owner_id",
+        "reviewed_at",
+        "risk_record_id",
+        "security_management_process_implemented"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "risk_record_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.308(a)(1)(i)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-security-policy-documentation-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Security Policy Documentation Missing",
+      "description": "Flags failed resource-state evidence for hipaa risk assessment safeguard risk record: HIPAA Security Policy Documentation Missing. Flags HIPAA risk records for ePHI scope that do not show current policy and procedure documentation. Audit impact: Missing policy and procedure documentation can leave HIPAA safeguard operation unsupported during review.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "administrative-safeguards",
+        "assessment:examine",
+        "assessment:interview",
+        "cel",
+        "ephi",
+        "evidence:control_review",
+        "governance",
+        "hipaa",
+        "policies-documentation",
+        "policy"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.316"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The record is outside ePHI scope or documentation is maintained in a linked GRC policy repository record.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the risk record, linked policy evidence, procedure evidence, owner, and most recent review date. Attach current HIPAA security policy and procedure documentation to the risk record. Action plan: Attach current policy and procedure evidence; Confirm owner and review date; Rerun HIPAA risk assessment evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "control_review",
+      "assessment_methods": [
+        "examine",
+        "interview"
+      ],
+      "auditor_guidance": "Review the risk record, linked policy evidence, procedure evidence, owner, and most recent review date.",
+      "risk_statement": "Missing policy and procedure documentation can leave HIPAA safeguard operation unsupported during review.",
+      "remediation_intent": "Attach current policy and procedure evidence to the risk record and record the owner review.",
+      "required_attributes": [
+        "ephi_scope",
+        "owner_id",
+        "policy_procedure_documented",
+        "reviewed_at",
+        "risk_record_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "risk_record_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.316(a)"
         }
       ]
     },

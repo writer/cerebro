@@ -1,0 +1,101 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-system-person-authentication-missing
+    name: HIPAA PHI System Person Authentication Missing
+    description: Flags ePHI systems without person or entity authentication evidence.
+    tags:
+        - hipaa
+        - technical-safeguards
+        - authentication
+        - identity
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+spec:
+    severity: high
+    effect: forbid
+    resource: phi_system_inventory::phi_system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ephi"), true)
+            - cmp_ne(path(resource, "person_or_entity_authentication_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable person or entity authentication for the ePHI system.
+        steps:
+            - Confirm the ePHI system and authentication boundary.
+            - Enable controls that verify each person or entity seeking access.
+            - Retain authentication evidence in the PHI system inventory.
+    riskCategories:
+        - IDENTITY_RISK
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.312(d)
+    input:
+        sourceKinds:
+            - phi_system_inventory.phi_system
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - person_or_entity_authentication_enabled
+            - owner_id
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - phi_system_inventory
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - person_or_entity_authentication_enabled
+            - owner_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - system_id
+    audit:
+        evidenceType: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: ePHI systems verify the person or entity seeking ePHI access.
+        auditorGuidance: Review the PHI system record, authentication mechanism, owner, access boundary, and last observed timestamp.
+        riskStatement: Missing person or entity authentication evidence can leave ePHI access without verified identity.
+        remediationIntent: Enable authentication controls and retain evidence for the ePHI system.
+        acceptableEvidence:
+            - source: phi_system_inventory
+              fields:
+                - system_id
+                - contains_ephi
+                - person_or_entity_authentication_enabled
+                - owner_id
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The system does not maintain ePHI or authentication evidence is held in a linked identity provider record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: security.owner
+        remediation:
+            type: phi_system_authentication_update
+            steps:
+                - Enable person or entity authentication.
+                - Confirm the authentication boundary and owner.
+                - Rerun PHI system inventory collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

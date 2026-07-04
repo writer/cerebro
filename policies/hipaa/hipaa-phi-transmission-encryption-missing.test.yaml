@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi transmission without encryption fails
+      resource:
+          system_id: ps-600
+          contains_ephi: true
+          electronic_transmission_enabled: true
+          transmission_encryption_enabled: false
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: true
+    - name: ephi transmission with encryption passes
+      resource:
+          system_id: ps-601
+          contains_ephi: true
+          electronic_transmission_enabled: true
+          transmission_encryption_enabled: true
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: false

@@ -1,0 +1,123 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-breach-media-notice-overdue
+    name: HIPAA Media Breach Notice Overdue
+    description: Flags confirmed unsecured PHI breaches whose required media notice is past the source-calculated notification deadline.
+    tags:
+        - hipaa
+        - breach-notification
+        - media-notice
+        - privacy-breach
+        - phi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.406
+spec:
+    severity: high
+    effect: forbid
+    resource: breach_response_system::privacy_incident_record
+    match:
+        conditions:
+            - cmp_eq(path(resource, "breach_confirmed"), true)
+            - cmp_eq(path(resource, "unsecured_phi"), true)
+            - cmp_eq(path(resource, "media_notice_required"), true)
+            - cmp_ne(path(resource, "media_notice_state"), "sent")
+            - cmp_eq(path(resource, "media_notice_overdue"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Send the required media notice for the affected jurisdiction or attach approved delay evidence.
+        steps:
+            - Confirm the affected jurisdiction, subject count, discovery date, and media-notice deadline.
+            - Send notice to prominent media outlets serving the affected jurisdiction.
+            - Retain notice content, outlets, send date, and exception evidence.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.406(a)
+    input:
+        sourceKinds:
+            - breach_response_system.privacy_incident_record
+        requiredFields:
+            - incident_id
+            - breach_confirmed
+            - unsecured_phi
+            - affected_subject_count
+            - state_or_jurisdiction
+            - discovered_at
+            - notification_deadline
+            - media_notice_required
+            - media_notice_state
+            - media_notice_overdue
+        freshnessSLA: 24h
+    evidence:
+        type: privacy_breach
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - breach_response_system
+        requiredFields:
+            - incident_id
+            - breach_confirmed
+            - unsecured_phi
+            - affected_subject_count
+            - state_or_jurisdiction
+            - discovered_at
+            - notification_deadline
+            - media_notice_required
+            - media_notice_state
+            - media_notice_overdue
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - incident_id
+    audit:
+        evidenceType: privacy_breach
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        freshnessSLA: 24h
+        auditorStatement: Confirmed unsecured PHI breaches with required media notice have the notice sent by the source-calculated deadline or carry approved delay evidence.
+        auditorGuidance: Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state.
+        riskStatement: Overdue media breach notice can leave the affected jurisdiction without required public breach information.
+        remediationIntent: Send the media notice or attach approved delay evidence, then retain outlet and delivery evidence.
+        acceptableEvidence:
+            - source: breach_response_system
+              fields:
+                - incident_id
+                - breach_confirmed
+                - unsecured_phi
+                - affected_subject_count
+                - state_or_jurisdiction
+                - discovered_at
+                - notification_deadline
+                - media_notice_required
+                - media_notice_state
+                - media_notice_overdue
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        exceptionGuidance:
+            - Delay evidence must include the legal basis, approver, start date, and expected notice date.
+        falsePositives:
+            - Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: breach_notice_response
+            steps:
+                - Send or document the required media notice.
+                - Attach outlet, delivery, and approved delay evidence.
+                - Rerun breach response evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true
