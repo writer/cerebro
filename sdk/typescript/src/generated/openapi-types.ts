@@ -102,6 +102,9 @@ export type AgentContextResponse = {
 
 export type AgentMutationContract = {
   approval_field?: string;
+  attempt_tracking?: string;
+  audit?: string;
+  cancellation?: string;
   default_behavior?: string;
   dry_run_field?: string;
   execution_rules?: string[];
@@ -623,6 +626,20 @@ export type AgentResourceRef = {
   type?: string;
 };
 
+export type AgentTaskAttemptRef = {
+  audit?: AgentTaskAuditRef[];
+  cancellation_supported: boolean;
+  duplicate_detection: "caller_provided_key" | "not_available";
+  id?: string;
+  idempotency_key_present: boolean;
+  replay_supported: boolean;
+};
+
+export type AgentTaskAuditRef = {
+  event: string;
+  surface: string;
+};
+
 export type AgentTaskRequest = {
   approved?: boolean;
   dry_run?: boolean;
@@ -634,6 +651,7 @@ export type AgentTaskRequest = {
 
 export type AgentTaskResponse = {
   approved: boolean;
+  attempt: AgentTaskAttemptRef;
   dry_run: boolean;
   id: string;
   idempotency_key?: string;
