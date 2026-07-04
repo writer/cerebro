@@ -591,6 +591,10 @@ func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[str
 		default:
 			continue
 		}
+		dimensionID := strings.TrimSpace(dimension.ID)
+		if dimensionID != "" {
+			families[dimensionID] = struct{}{}
+		}
 		for _, family := range dimension.Families {
 			family = strings.TrimSpace(family)
 			if family != "" {

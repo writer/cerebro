@@ -861,6 +861,32 @@ runtimes:
 	}
 }
 
+func TestCheckStrictDeployRuntimeCoverageAllowsDimensionIDToCoverRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/addigy/deploy.yaml", `
+runtimes:
+  - localId: devices
+    config:
+      family: devices
+`)
+	dimensions := map[string]map[string]sourcecdk.CoverageDimension{
+		"addigy": {
+			"devices": {
+				ID:      "devices",
+				Support: sourcecdk.CoverageSupportPartial,
+				Families: []string{
+					"device",
+				},
+			},
+		},
+	}
+
+	issues := checkStrictDeployRuntimeCoverage(root, dimensions)
+	if len(issues) > 0 {
+		t.Fatalf("issues = %#v, want dimension id to cover deploy runtime family", issues)
+	}
+}
+
 func TestCheckRequiredCloudCoverageDimensionsRejectsMissingMinimum(t *testing.T) {
 	issues := checkRequiredCloudCoverageDimensions(map[string]map[string]sourcecdk.CoverageDimension{
 		"azure": {

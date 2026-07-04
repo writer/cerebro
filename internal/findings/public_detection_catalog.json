@@ -14494,6 +14494,29 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "addigy",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "endpoint_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -103306,7 +103329,7 @@
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "devices"
+            "device"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -103629,7 +103652,7 @@
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "devices"
+            "device"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -104333,7 +104356,7 @@
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "devices"
+            "device"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -104951,6 +104974,29 @@
               "control_id": "1"
             }
           ]
+        },
+        {
+          "source_id": "addigy",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "endpoint_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "1"
+            }
+          ]
         }
       ]
     },
@@ -105543,7 +105589,7 @@
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "devices"
+            "device"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -340725,7 +340771,7 @@
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "devices"
+            "device"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -341009,6 +341055,29 @@
             "asset_inventory",
             "identity_access",
             "network_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "addigy",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "endpoint_security"
           ],
           "matched_control_refs": [
             {

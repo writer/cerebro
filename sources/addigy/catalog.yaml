@@ -72,7 +72,7 @@ coverage_contract:
     - id: devices
       type: entity_family
       title: "Devices"
-      families: [devices]
+      families: [device]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
