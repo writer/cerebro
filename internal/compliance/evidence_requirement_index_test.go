@@ -9,9 +9,9 @@ func TestControlEvidenceRequirementIndexLooksUpRequirements(t *testing.T) {
 	index := BuildControlEvidenceRequirementIndex(ControlEvidenceRequirementResolution{
 		Version: "2026-07-04",
 		Requirements: []ResolvedControlEvidenceRequirement{
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "identity-access", "okta", "identity_user", []string{"user_id"}),
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "governance-risk", "risk_register", "risk_record", []string{"risk_id"}),
-			testResolvedEvidenceRequirement("SOC 2", "CC7.1", "logging", "aws", "cloudtrail_trail", []string{"trail_arn"}),
+			testResolvedEvidenceRequirement("CC6.1", "identity-access", "okta", "identity_user", []string{"user_id"}),
+			testResolvedEvidenceRequirement("CC6.1", "governance-risk", "risk_register", "risk_record", []string{"risk_id"}),
+			testResolvedEvidenceRequirement("CC7.1", "logging", "aws", "cloudtrail_trail", []string{"trail_arn"}),
 		},
 	})
 	if index.Version() != "2026-07-04" {
@@ -45,10 +45,10 @@ func TestAssessControlEvidenceRequirementsReportsOperatingStates(t *testing.T) {
 	index := BuildControlEvidenceRequirementIndex(ControlEvidenceRequirementResolution{
 		Version: "2026-07-04",
 		Requirements: []ResolvedControlEvidenceRequirement{
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "identity-access", "okta", "identity_user", []string{"user_id", "status"}),
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "repository-access", "github", "repository_access", []string{"repository_id", "permission"}),
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "governance-risk", "risk_register", "risk_record", []string{"risk_id"}),
-			testResolvedEvidenceRequirement("SOC 2", "CC6.1", "policy-document", "grc_policy_lifecycle", "policy_document", []string{"document_id"}),
+			testResolvedEvidenceRequirement("CC6.1", "identity-access", "okta", "identity_user", []string{"user_id", "status"}),
+			testResolvedEvidenceRequirement("CC6.1", "repository-access", "github", "repository_access", []string{"repository_id", "permission"}),
+			testResolvedEvidenceRequirement("CC6.1", "governance-risk", "risk_register", "risk_record", []string{"risk_id"}),
+			testResolvedEvidenceRequirement("CC6.1", "policy-document", "grc_policy_lifecycle", "policy_document", []string{"document_id"}),
 		},
 	})
 	assessments := AssessControlEvidenceRequirements(ControlEvidenceRequirementAssessmentInput{
@@ -103,7 +103,7 @@ func TestAssessControlEvidenceRequirementsReportsOperatingStates(t *testing.T) {
 
 func TestAssessControlEvidenceRequirementsMarksManualReview(t *testing.T) {
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
-	requirement := testResolvedEvidenceRequirement("SOC 2", "CC6.1", "owner-review", "control_owner_review", "control_evidence_packet", []string{"reviewer"})
+	requirement := testResolvedEvidenceRequirement("CC6.1", "owner-review", "control_owner_review", "control_evidence_packet", []string{"reviewer"})
 	requirement.SourceRequirement.AssessmentMethods = []string{"examine", "interview"}
 	index := BuildControlEvidenceRequirementIndex(ControlEvidenceRequirementResolution{
 		Version:      "2026-07-04",
@@ -129,9 +129,9 @@ func TestAssessControlEvidenceRequirementsMarksManualReview(t *testing.T) {
 	}
 }
 
-func testResolvedEvidenceRequirement(framework string, controlID string, profileID string, sourceID string, entityType string, requiredFields []string) ResolvedControlEvidenceRequirement {
+func testResolvedEvidenceRequirement(controlID string, profileID string, sourceID string, entityType string, requiredFields []string) ResolvedControlEvidenceRequirement {
 	return ResolvedControlEvidenceRequirement{
-		FrameworkName:      framework,
+		FrameworkName:      "SOC 2",
 		FrameworkVersion:   "2026",
 		FrameworkLifecycle: "current",
 		FamilyID:           "CC",
