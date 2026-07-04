@@ -86,6 +86,53 @@ func TestParseOrchestratorOptionsAcceptsRuntimeIDs(t *testing.T) {
 	}
 }
 
+func TestOrchestratorDownstreamSkipReasonTreatsWatermarkBoundaryAsUnchanged(t *testing.T) {
+	resp := &cerebrov1.SyncSourceRuntimeResponse{
+		ShortCircuitReason: string(sourcecdk.PullShortCircuitReasonWatermarkReached),
+		Runtime:            &cerebrov1.SourceRuntime{},
+	}
+	if got := orchestratorDownstreamSkipReason(resp); got != "source_unchanged" {
+		t.Fatalf("orchestratorDownstreamSkipReason() = %q, want source_unchanged", got)
+	}
+}
+
+func TestOrchestratorDownstreamSkipReasonKeepsCoverageGuards(t *testing.T) {
+	tests := []struct {
+		name string
+		resp *cerebrov1.SyncSourceRuntimeResponse
+	}{
+		{
+			name: "events appended",
+			resp: &cerebrov1.SyncSourceRuntimeResponse{
+				EventsAppended:     1,
+				ShortCircuitReason: string(sourcecdk.PullShortCircuitReasonWatermarkReached),
+				Runtime:            &cerebrov1.SourceRuntime{},
+			},
+		},
+		{
+			name: "continuation cursor",
+			resp: &cerebrov1.SyncSourceRuntimeResponse{
+				ShortCircuitReason: string(sourcecdk.PullShortCircuitReasonWatermarkReached),
+				Runtime:            &cerebrov1.SourceRuntime{NextCursor: &cerebrov1.SourceCursor{Opaque: "next-page"}},
+			},
+		},
+		{
+			name: "unrelated short circuit",
+			resp: &cerebrov1.SyncSourceRuntimeResponse{
+				ShortCircuitReason: string(sourcecdk.PullShortCircuitReasonScopeExcluded),
+				Runtime:            &cerebrov1.SourceRuntime{},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := orchestratorDownstreamSkipReason(test.resp); got != "" {
+				t.Fatalf("orchestratorDownstreamSkipReason() = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 	signals := orchestratorShutdownSignals()
 	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {

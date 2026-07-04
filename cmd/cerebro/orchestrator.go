@@ -479,7 +479,9 @@ func orchestratorDownstreamSkipReason(syncResult *cerebrov1.SyncSourceRuntimeRes
 		return ""
 	}
 	switch strings.TrimSpace(syncResult.GetShortCircuitReason()) {
-	case string(sourcecdk.PullShortCircuitReasonNotModified), string(sourcecdk.PullShortCircuitReasonCheckpointAdvanced):
+	case string(sourcecdk.PullShortCircuitReasonNotModified),
+		string(sourcecdk.PullShortCircuitReasonCheckpointAdvanced),
+		string(sourcecdk.PullShortCircuitReasonWatermarkReached):
 		return "source_unchanged"
 	default:
 		return ""
@@ -688,6 +690,9 @@ func runOrchestratorIteration(
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_skip_reason", downstreamSkipReason)
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", downstreamSkipReason)
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", downstreamSkipReason)
+					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_ingest", downstreamSkipReason)
+					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.finding_rules", downstreamSkipReason)
+					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_rules", downstreamSkipReason)
 					runtimeResult.Health = withOrchestratorFreshGraphHealth(runtimeResult.Health)
 				}
 			}
@@ -770,6 +775,7 @@ func runOrchestratorIteration(
 			} else {
 				runtimeResult.GraphRules = "skipped"
 				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
+				recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_rules", "graph_ingest_not_caught_up")
 			}
 		}
 		cancelRuntime()
@@ -887,6 +893,17 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 		WithField(telemetryField("phase.tenant_id", runtime.GetTenantId())))
 	telemetry.End(span, status, endAttrs)
 	return result, err
+}
+
+func recordOrchestratorPhaseSkip(ctx context.Context, runtime *cerebrov1.SourceRuntime, name string, reason string) {
+	if runtime == nil {
+		return
+	}
+	observability.RecordOrchestratorPhaseSkip(ctx, observability.OrchestratorPhaseSkipMetrics{
+		PhaseKey:   orchestratorPhaseTelemetryKey(name),
+		SourceID:   runtime.GetSourceId(),
+		SkipReason: reason,
+	})
 }
 
 func errorKindForMetric(err error) string {

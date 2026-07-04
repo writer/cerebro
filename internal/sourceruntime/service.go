@@ -277,6 +277,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		linksProjected         uint32
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
+		shortCircuitReason     string
+		reconciliationReason   string
 	)
 	defer func() {
 		if err != nil {
@@ -314,20 +316,22 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			_, watermarkLagSeconds, hasWatermarkLag = runtimeWatermarkLag(runtime, time.Now().UTC())
 		}
 		observability.RecordSourceRuntimeSync(ctx, observability.SourceRuntimeSyncMetrics{
-			SourceID:            sourceID,
-			Status:              status,
-			ErrorKind:           sourceRuntimeTelemetryErrorKind(err),
-			ContractConfigured:  contractConfigured,
-			Duration:            time.Since(started),
-			PagesRead:           pagesRead,
-			RecordsScanned:      recordsScanned,
-			RecordsAccepted:     eventsAppended,
-			RecordsRejected:     recordsRejected,
-			EventsAppended:      eventsAppended,
-			EntitiesProjected:   entitiesProjected,
-			LinksProjected:      linksProjected,
-			WatermarkLagSeconds: watermarkLagSeconds,
-			HasWatermarkLag:     hasWatermarkLag,
+			SourceID:             sourceID,
+			Status:               status,
+			ErrorKind:            sourceRuntimeTelemetryErrorKind(err),
+			ContractConfigured:   contractConfigured,
+			Duration:             time.Since(started),
+			PagesRead:            pagesRead,
+			RecordsScanned:       recordsScanned,
+			RecordsAccepted:      eventsAppended,
+			RecordsRejected:      recordsRejected,
+			EventsAppended:       eventsAppended,
+			EntitiesProjected:    entitiesProjected,
+			LinksProjected:       linksProjected,
+			WatermarkLagSeconds:  watermarkLagSeconds,
+			HasWatermarkLag:      hasWatermarkLag,
+			ShortCircuitReason:   shortCircuitReason,
+			ReconciliationReason: reconciliationReason,
 		})
 		telemetry.End(span, status, spanAttributes)
 	}()
@@ -371,8 +375,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	contractConfigured = len(eventContracts) > 0
 	sourceConfig := sourcecdk.NewConfig(runtimeConfig)
 	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
-	shortCircuitReason := ""
-	reconciliationReason := ""
 	for i := uint32(0); i < pageLimit; i++ {
 		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
 		if err != nil {
