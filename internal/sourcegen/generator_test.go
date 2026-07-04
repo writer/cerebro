@@ -1178,6 +1178,80 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionCarriesPathParams(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_idp",
+			TenantID:      "tenant-a",
+			SourceID:      "example_idp",
+			DisplayName:   "Example IDP",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "workspace_members",
+				Path:           "/v1/workspaces/{workspace_id}/members",
+				RecordSelector: "$.data[*]",
+				Read:           &connectordefinitions.ResourceReadSpec{PathParams: []string{"workspace_id"}},
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_idp.workspace_members",
+					SchemaRef: "example_idp/workspace_members/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/example_idp/source.go")
+	for _, want := range []string{
+		`Path:             "/v1/workspaces/{workspace_id}/members"`,
+		`PathParams:       []string{"workspace_id"}`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
+	for _, want := range []string{
+		`path:               "/v1/workspaces/test-workspace_id/members"`,
+		`"workspace_id": "test-workspace_id"`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/example_idp/deploy.yaml")
+	for _, want := range []string{
+		`- EXAMPLE_IDP_WORKSPACE_ID`,
+		`workspace_id: env:EXAMPLE_IDP_WORKSPACE_ID`,
+	} {
+		if !strings.Contains(deploy, want) {
+			t.Fatalf("deploy.yaml missing %q:\n%s", want, deploy)
+		}
+	}
+}
+
 func TestGenerateDefinitionSupportsCustomTokenHeader(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
