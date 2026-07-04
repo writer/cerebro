@@ -3,10 +3,16 @@ name: Tailscale
 description: Tailscale source for tailnet settings, user inventory, device inventory, ACL groups, tag ownership, Services inventory, and policy grants.
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: bearer_token_or_oauth_client
   base_url: https://api.tailscale.com/api/v2
+  spec_url: https://api.tailscale.com/api/v2?format=openapi
+  spec_kind: openapi
   references:
+    - https://api.tailscale.com/api/v2?format=openapi
     - https://tailscale.com/docs/reference/tailscale-api
     - https://tailscale.com/api
     - https://tailscale.com/docs/reference/trust-credentials

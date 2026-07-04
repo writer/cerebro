@@ -9,9 +9,14 @@ emitted_kinds:
   - box.audit_events
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: oauth_client_credentials
+  auth_mechanics: oauth2_client_credentials_bearer
   base_url: https://api.box.com/2.0
+  spec_url: https://raw.githubusercontent.com/box/box-openapi/main/openapi/openapi.json
+  spec_kind: openapi
   references:
     - https://github.com/box/box-openapi
     - https://raw.githubusercontent.com/box/box-openapi/main/openapi/openapi.json
@@ -21,6 +26,8 @@ provider_api:
     - https://developer.box.com/reference/get-groups-id-memberships/
     - https://developer.box.com/reference/get-folders-id-items/
     - https://developer.box.com/reference/get-events/
+  auth_evidence:
+    - https://developer.box.com/guides/authentication/client-credentials/
   families:
     - id: users
       method: GET

@@ -3,9 +3,14 @@ name: "Akeneo"
 description: "Collects attribute, attribute group, option, reference entities attribute, attributes option, and asset from Akeneo and projects them into the Cerebro graph as assets and groups for inventory, access review, audit, risk, and operational context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: oauth2_bearer_token
   base_url: https://{tenant}.akeneo.com
+  spec_url: https://storage.googleapis.com/akecld-prd-pim-saas-shared-openapi-spec/openapi.yaml
+  spec_kind: openapi
   references:
     - https://storage.googleapis.com/akecld-prd-pim-saas-shared-openapi-spec/openapi.yaml
     - https://api.akeneo.com/

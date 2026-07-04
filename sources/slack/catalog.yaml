@@ -3,10 +3,16 @@ name: Slack
 description: Slack collaboration governance source covering workspaces, users, public and private channels, user groups, memberships, team access logs, and Enterprise Grid audit logs. The runtime emits team context, user privilege and MFA enrollment posture, channel ownership context, membership edges, login activity, and audit events for graph projection and review.
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: slack_oauth_bearer_token
   base_url: https://slack.com/api
+  spec_url: https://raw.githubusercontent.com/slackapi/slack-api-specs/master/web-api/slack_web_openapi_v2_without_examples.json
+  spec_kind: openapi
   references:
+    - https://raw.githubusercontent.com/slackapi/slack-api-specs/master/web-api/slack_web_openapi_v2_without_examples.json
     - https://docs.slack.dev/reference/methods/users.list
     - https://docs.slack.dev/reference/methods/conversations.list
     - https://docs.slack.dev/reference/methods/conversations.members

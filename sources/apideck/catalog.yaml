@@ -3,9 +3,14 @@ name: "Apideck"
 description: "Collects ledger account, bill, credit note, and customer from Apideck and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: api_key
+  auth_mechanics: bearer_token_and_consumer_headers
   base_url: https://unify.apideck.com
+  spec_url: https://raw.githubusercontent.com/apideck-libraries/openapi-specs/master/accounting.yml
+  spec_kind: openapi
   references:
     - https://raw.githubusercontent.com/apideck-libraries/openapi-specs/master/accounting.yml
     - https://developers.apideck.com/apis/accounting/reference

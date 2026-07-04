@@ -3,9 +3,14 @@ name: Cloudflare
 description: Collects Cloudflare accounts, members, roles, Access applications and groups, Gateway rules, rulesets, Workers, load balancers, zones, DNS records, and account audit logs.
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: api_token_bearer
   base_url: https://api.cloudflare.com/client/v4
+  spec_url: https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+  spec_kind: openapi
   references:
     - https://github.com/cloudflare/api-schemas/blob/main/openapi.json
   families:

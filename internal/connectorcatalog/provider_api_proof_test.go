@@ -83,6 +83,16 @@ func TestProviderAPIProofScoreRejectsPlaceholderSurface(t *testing.T) {
 	}
 }
 
+func TestProviderAPISpecPointerAcceptsExplicitPostmanCollection(t *testing.T) {
+	specURL := "https://raw.githubusercontent.com/duosecurity/duo_postman_collection/main/duo-admin-api/Duo%20Admin%20API%20v4.1.0.postman_collection.json"
+	if !providerAPISpecPointerOK(specURL, "postman_collection", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, postman_collection) = false, want true", specURL)
+	}
+	if providerAPISpecPointerOK(specURL, "", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, empty kind) = true, want false", specURL)
+	}
+}
+
 func TestProviderAPIURLIsOAuthEndpointRequiresAuthPathSegment(t *testing.T) {
 	for _, value := range []string{
 		"https://api.provider.io/oauth/token",

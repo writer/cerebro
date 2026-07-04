@@ -3,14 +3,21 @@ name: SailPoint Identity Security Cloud
 description: Collects SailPoint Identity Security Cloud identities, accounts, sources, access profiles, roles, entitlements, certification reviews, access requests, account activity, workgroups, tokens, and segments from the provider v2025 REST API and projects identity governance state into the Cerebro graph.
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: oauth_client_credentials
+  auth_mechanics: oauth2_client_credentials_bearer
   base_url: https://{tenant}.api.identitynow.com/v2025
+  spec_url: https://raw.githubusercontent.com/sailpoint-oss/api-specs/refs/heads/main/dereferenced/deref-sailpoint-api.v2025.yaml
+  spec_kind: openapi
   references:
     - https://developer.sailpoint.com/docs/api/
     - https://developer.sailpoint.com/docs/api/authentication/
     - https://developer.sailpoint.com/docs/api/standard-collection-parameters/
     - https://raw.githubusercontent.com/sailpoint-oss/api-specs/refs/heads/main/dereferenced/deref-sailpoint-api.v2025.yaml
+  auth_evidence:
+    - https://developer.sailpoint.com/docs/api/authentication/
   pagination:
     type: offset
     limit_param: limit

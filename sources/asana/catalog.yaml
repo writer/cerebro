@@ -7,9 +7,14 @@ emitted_kinds:
   - asana.audit_events
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: bearer_token
   base_url: https://app.asana.com/api/1.0
+  spec_url: https://raw.githubusercontent.com/Asana/openapi/master/defs/asana_oas.yaml
+  spec_kind: openapi
   references:
     - https://github.com/Asana/openapi/blob/master/defs/asana_oas.yaml
     - https://developers.asana.com/reference/getusers

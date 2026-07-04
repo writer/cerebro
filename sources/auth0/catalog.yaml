@@ -31,11 +31,17 @@ runtime_families:
   - guardian_factors
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: oauth_client_credentials
+  auth_mechanics: oauth2_client_credentials_bearer
   base_url: https://{tenant}.auth0.com/api/v2
+  spec_url: https://auth0.com/docs/oas/management/v2/management-api-oas.json
+  spec_kind: openapi
   references:
     - https://auth0.com/docs/get-started/authentication-and-authorization-flow/client-credentials-flow
+    - https://auth0.com/docs/oas/management/v2/management-api-oas.json
     - https://auth0.com/docs/api/management/v2/users/get-users
     - https://auth0.com/docs/api/management/v2/roles/get-roles
     - https://auth0.com/docs/api/management/v2/logs/get-logs
@@ -52,6 +58,10 @@ provider_api:
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/users/get-users.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/roles/get-roles.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/logs/get-logs.mdx
+  auth_evidence:
+    - https://auth0.com/docs/get-started/authentication-and-authorization-flow/client-credentials-flow
+  scope_evidence:
+    - https://auth0.com/docs/secure/tokens/access-tokens/management-api-access-tokens
   families:
     - id: users
       method: GET

@@ -3,9 +3,14 @@ name: "New Relic"
 description: "Collects New Relic monitored entities, AI issues, and NrAuditEvent records through NerdGraph for asset inventory, finding review, and audit context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: graphql
   auth: api_key
+  auth_mechanics: api_key_header
   endpoint: https://api.newrelic.com/graphql
+  spec_url: introspection
+  spec_kind: graphql_introspection
   references:
     - https://docs.newrelic.com/docs/apis/nerdgraph/get-started/introduction-new-relic-nerdgraph/
     - https://docs.newrelic.com/docs/apis/nerdgraph/examples/nerdgraph-entities-api-tutorial/

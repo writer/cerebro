@@ -3,9 +3,14 @@ name: Okta
 description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, control-plane asset, and admin role source.
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: ssws_api_token
+  auth_mechanics: ssws_api_token_header
   base_url: https://{yourOktaDomain}
+  spec_url: https://raw.githubusercontent.com/okta/okta-management-openapi-spec/master/dist/current/management-minimal.yaml
+  spec_kind: openapi
   references:
     - https://github.com/okta/okta-management-openapi-spec/blob/master/dist/current/management-minimal.yaml
     - https://developer.okta.com/docs/api/openapi/okta-management/guides/overview

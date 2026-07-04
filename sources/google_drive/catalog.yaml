@@ -10,15 +10,24 @@ runtime_families:
   - shared_drives
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: oauth_authorization_code
+  auth_mechanics: oauth2_authorization_code_bearer
   base_url: https://www.googleapis.com/drive/v3
+  spec_url: https://raw.githubusercontent.com/googleapis/google-api-go-client/main/drive/v3/drive-api.json
+  spec_kind: google_discovery
   references:
     - https://raw.githubusercontent.com/googleapis/google-api-go-client/main/drive/v3/drive-api.json
     - https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list
     - https://developers.google.com/workspace/drive/api/reference/rest/v3/drives/list
     - https://developers.google.com/workspace/drive/api/reference/rest/v3/changes/list
     - https://developers.google.com/workspace/drive/api/reference/rest/v3/changes/getStartPageToken
+  auth_evidence:
+    - https://developers.google.com/workspace/guides/create-credentials
+  scope_evidence:
+    - https://developers.google.com/drive/api/guides/api-specific-auth
   families:
     - id: files
       method: GET

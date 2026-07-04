@@ -11,10 +11,16 @@ emitted_kinds:
   - github.secret_scanning_alert
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: token_or_github_app
+  auth_mechanics: pat_or_github_app_bearer
   base_url: https://api.github.com
+  spec_url: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+  spec_kind: openapi
   references:
+    - https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
     - https://docs.github.com/en/enterprise-cloud@latest/rest/orgs/orgs?apiVersion=2022-11-28#get-the-audit-log-for-an-organization
     - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-organization-repositories
     - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repositories-for-a-user

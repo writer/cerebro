@@ -46,9 +46,14 @@ emitted_kinds:
   - fivetran.transformation_package_details
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: basic
+  auth_mechanics: basic_auth_api_key_secret
   base_url: https://api.fivetran.com
+  spec_url: https://fivetran.com/assets-docs/openapi/file_v1.json
+  spec_kind: openapi
   references:
     - https://fivetran.com/assets-docs/openapi/file_v1.json
     - https://fivetran.com/docs/rest-api
