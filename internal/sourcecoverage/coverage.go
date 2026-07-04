@@ -340,6 +340,7 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		return Record{}
 	}
 	runtimeFamilies := coverageRuntimeFamilies(dimension)
+	supportedRuntimeFamilies := coverageSupportedRuntimeFamilies(dimension)
 	record := Record{
 		SourceID:                 contract.SourceID,
 		TenantID:                 options.TenantID,
@@ -355,7 +356,7 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		EvidenceTypes:            append([]string(nil), dimension.EvidenceTypes...),
 		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
 		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
-		SupportedRuntimeFamilies: runtimeFamilies,
+		SupportedRuntimeFamilies: supportedRuntimeFamilies,
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
 		record.State = StateUnsupported
@@ -384,19 +385,25 @@ func coverageRuntimeFamilies(dimension sourcecdk.CoverageDimension) []string {
 	return uniqueNonEmptyStrings(dimension.Families)
 }
 
-func uniqueNonEmptyStrings(values []string) []string {
+func coverageSupportedRuntimeFamilies(dimension sourcecdk.CoverageDimension) []string {
+	return uniqueNonEmptyStrings(dimension.Families, dimension.RuntimeFamilies)
+}
+
+func uniqueNonEmptyStrings(groups ...[]string) []string {
 	seen := map[string]struct{}{}
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
+	var result []string
+	for _, values := range groups {
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, value)
 		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
 	}
 	return result
 }

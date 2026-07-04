@@ -93,8 +93,14 @@ func TestEvaluateMatchesDeclaredRuntimeFamilies(t *testing.T) {
 	if got.State != StateHealthy || got.RuntimeID != "addigy-devices" || got.Family != "devices" {
 		t.Fatalf("record = %#v, want healthy devices runtime match", got)
 	}
-	if len(got.SupportedRuntimeFamilies) != 1 || got.SupportedRuntimeFamilies[0] != "devices" {
-		t.Fatalf("SupportedRuntimeFamilies = %#v, want [devices]", got.SupportedRuntimeFamilies)
+	wantRuntimeFamilies := []string{"device", "devices"}
+	if len(got.SupportedRuntimeFamilies) != len(wantRuntimeFamilies) {
+		t.Fatalf("SupportedRuntimeFamilies = %#v, want %#v", got.SupportedRuntimeFamilies, wantRuntimeFamilies)
+	}
+	for i, want := range wantRuntimeFamilies {
+		if got.SupportedRuntimeFamilies[i] != want {
+			t.Fatalf("SupportedRuntimeFamilies = %#v, want %#v", got.SupportedRuntimeFamilies, wantRuntimeFamilies)
+		}
 	}
 }
 
