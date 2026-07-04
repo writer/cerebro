@@ -581,6 +581,8 @@ func cloneProviderAPI(api *connectordefinitions.ProviderAPISpec) *connectordefin
 	}
 	cloned := *api
 	cloned.References = append([]string(nil), api.References...)
+	cloned.AuthEvidence = append([]string(nil), api.AuthEvidence...)
+	cloned.ScopeEvidence = append([]string(nil), api.ScopeEvidence...)
 	cloned.Families = append([]connectordefinitions.ProviderAPIFamilySpec(nil), api.Families...)
 	return &cloned
 }
@@ -1048,11 +1050,20 @@ func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPI
 	if strings.TrimSpace(api.Status) != "" {
 		fmt.Fprintf(b, "  status: %s\n", yamlString(api.Status))
 	}
+	if strings.TrimSpace(api.Basis) != "" {
+		fmt.Fprintf(b, "  basis: %s\n", yamlString(api.Basis))
+	}
+	if strings.TrimSpace(api.VerifiedAt) != "" {
+		fmt.Fprintf(b, "  verified_at: %s\n", yamlString(api.VerifiedAt))
+	}
 	if strings.TrimSpace(api.Transport) != "" {
 		fmt.Fprintf(b, "  transport: %s\n", yamlString(api.Transport))
 	}
 	if strings.TrimSpace(api.Auth) != "" {
 		fmt.Fprintf(b, "  auth: %s\n", yamlString(api.Auth))
+	}
+	if strings.TrimSpace(api.AuthMechanics) != "" {
+		fmt.Fprintf(b, "  auth_mechanics: %s\n", yamlString(api.AuthMechanics))
 	}
 	if strings.TrimSpace(api.BaseURL) != "" {
 		fmt.Fprintf(b, "  base_url: %s\n", yamlString(api.BaseURL))
@@ -1060,9 +1071,31 @@ func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPI
 	if strings.TrimSpace(api.Endpoint) != "" {
 		fmt.Fprintf(b, "  endpoint: %s\n", yamlString(api.Endpoint))
 	}
+	if strings.TrimSpace(api.SpecURL) != "" {
+		fmt.Fprintf(b, "  spec_url: %s\n", yamlString(api.SpecURL))
+	}
+	if strings.TrimSpace(api.SpecKind) != "" {
+		fmt.Fprintf(b, "  spec_kind: %s\n", yamlString(api.SpecKind))
+	}
 	if len(api.References) > 0 {
 		fmt.Fprintf(b, "  references:\n")
 		for _, ref := range api.References {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.AuthEvidence) > 0 {
+		fmt.Fprintf(b, "  auth_evidence:\n")
+		for _, ref := range api.AuthEvidence {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.ScopeEvidence) > 0 {
+		fmt.Fprintf(b, "  scope_evidence:\n")
+		for _, ref := range api.ScopeEvidence {
 			if strings.TrimSpace(ref) != "" {
 				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
 			}
