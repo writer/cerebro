@@ -3,12 +3,19 @@ name: "Appwrite"
 description: "Collects team, log, membership, and continent from Appwrite and projects them into the Cerebro graph as groups, audit events, group memberships, and assets for repository, build, deployment, and release context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: api_key
+  auth_mechanics: project_id_and_api_key_headers
   base_url: https://cloud.appwrite.io/v1
+  spec_url: https://raw.githubusercontent.com/appwrite/specs/main/specs/latest/open-api3-latest-server.json
+  spec_kind: openapi
   references:
-    - https://appwrite.io/specs/open-api3?platform=client
-    - https://appwrite.io/specs/open-api3?platform=server
+    - https://appwrite.io/docs/apis/rest
+    - https://appwrite.io/docs/references
+    - https://github.com/appwrite/specs
+    - https://raw.githubusercontent.com/appwrite/specs/main/specs/latest/open-api3-latest-server.json
   families:
     - id: team
       method: GET

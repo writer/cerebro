@@ -141,7 +141,10 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 	}
 	lowerURL := strings.ToLower(specURL)
 	lowerKind := strings.ToLower(specKind)
-	if strings.Contains(lowerURL, "postman") || strings.Contains(lowerURL, "asyncapi") {
+	if strings.Contains(lowerURL, "postman") {
+		return strings.Contains(lowerKind, "postman")
+	}
+	if strings.Contains(lowerURL, "asyncapi") {
 		return false
 	}
 	hasMachineURL := strings.Contains(lowerURL, "openapi") ||

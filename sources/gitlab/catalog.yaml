@@ -3,9 +3,14 @@ name: "GitLab"
 description: "Collects repositories, users, and audit events from GitLab and projects them into the Cerebro graph as repositories, users, and audit events for repository, build, deployment, and release context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: bearer_token
+  auth_mechanics: bearer_token_or_private_token
   base_url: https://gitlab.com
+  spec_url: https://raw.githubusercontent.com/gitlabhq/gitlabhq/master/doc/api/openapi/openapi_v3.yaml
+  spec_kind: openapi
   references:
     - https://github.com/gitlabhq/gitlabhq/blob/master/doc/api/openapi/openapi_v3.yaml
     - https://docs.gitlab.com/api/rest/

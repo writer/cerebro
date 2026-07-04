@@ -3,11 +3,18 @@ name: "OneLogin"
 description: "Collects OneLogin users, groups, roles, applications, assignments, MFA devices, delegated administration privileges, mappings, app rules, and audit events for identity and access graph context."
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: oauth_client_credentials
+  auth_mechanics: oauth2_client_credentials_bearer
   base_url: https://{subdomain}.onelogin.com
+  spec_url: https://api.swaggerhub.com/apis/OneLogin-Auth/onelogin-api/1.0.0-oas3/swagger.json
+  spec_kind: openapi
   references:
     - https://developers.onelogin.com/api-docs/2/oauth20-tokens/generate-tokens-2
+    - https://developers.onelogin.com/api-docs/2/getting-started/client-sdks
+    - https://api.swaggerhub.com/apis/OneLogin-Auth/onelogin-api/1.0.0-oas3/swagger.json
     - https://developers.onelogin.com/api-docs/2/getting-started/using-query-parameters
     - https://developers.onelogin.com/api-docs/2/users/list-users
     - https://developers.onelogin.com/api-docs/2/roles/list-roles
@@ -17,6 +24,8 @@ provider_api:
     - https://developers.onelogin.com/api-docs/2/multi-factor-authentication/enrolled-factors
     - https://developers.onelogin.com/api-docs/2/user-mappings/list-mappings
     - https://developers.onelogin.com/api-docs/1/privileges/list-privileges
+  auth_evidence:
+    - https://developers.onelogin.com/api-docs/2/oauth20-tokens/generate-tokens-2
   families:
     - id: users
       method: GET

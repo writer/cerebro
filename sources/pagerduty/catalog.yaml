@@ -11,9 +11,14 @@ emitted_kinds:
   - pagerduty.vendor
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: pagerduty_api_token
+  auth_mechanics: token_header
   base_url: https://api.pagerduty.com
+  spec_url: https://raw.githubusercontent.com/PagerDuty/api-schema/main/reference/REST/openapiv3.json
+  spec_kind: openapi
   references:
     - https://github.com/PagerDuty/api-schema/blob/main/reference/REST/openapiv3.json
     - https://developer.pagerduty.com/api-reference

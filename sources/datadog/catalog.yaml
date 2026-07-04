@@ -12,9 +12,14 @@ emitted_kinds:
   - datadog.audit_events
 provider_api:
   status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
   transport: rest
   auth: dd_api_and_application_keys
+  auth_mechanics: api_key_and_application_key_headers
   base_url: https://api.datadoghq.com
+  spec_url: https://raw.githubusercontent.com/DataDog/datadog-api-client-python/master/.generator/schemas/v2/openapi.yaml
+  spec_kind: openapi
   references:
     - https://github.com/DataDog/datadog-api-client-python/blob/master/.generator/schemas/v1/openapi.yaml
     - https://github.com/DataDog/datadog-api-client-python/blob/master/.generator/schemas/v2/openapi.yaml
