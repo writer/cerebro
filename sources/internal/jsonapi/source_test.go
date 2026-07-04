@@ -2872,6 +2872,43 @@ func TestSafeRoundTripperRejectsUnsafeResolvedHostnameBeforeDial(t *testing.T) {
 	}
 }
 
+func TestStaticAttributesOverrideDynamicAttributes(t *testing.T) {
+	attrs := attributesFor("vault", settings{
+		request: requestSettings{
+			pathParams: map[string]string{
+				"resource_type": "path-value",
+			},
+			configAttributes: map[string]string{
+				"event_type": "config-value",
+			},
+		},
+	}, Family{
+		Name: "audit_devices",
+		Attributes: map[string]string{
+			"event_type":    "event.type",
+			"resource_type": "type",
+		},
+		StaticAttributes: map[string]string{
+			"event_type":    "vault.audit_device.enabled",
+			"resource_type": "vault_audit_device",
+		},
+	}, record{
+		ID: "audit-file",
+		Values: map[string]any{
+			"event": map[string]any{
+				"type": "runtime-value",
+			},
+			"type": "dynamic-value",
+		},
+	})
+	if got := attrs["event_type"]; got != "vault.audit_device.enabled" {
+		t.Fatalf("event_type = %q, want static value", got)
+	}
+	if got := attrs["resource_type"]; got != "vault_audit_device" {
+		t.Fatalf("resource_type = %q, want static value", got)
+	}
+}
+
 func newTestSource(t *testing.T, baseURL string) *Source {
 	t.Helper()
 	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{

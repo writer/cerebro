@@ -1216,9 +1216,7 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	for key, value := range settings.request.pathParams {
 		addAttribute(attrs, key, value)
 	}
-	for key, value := range family.StaticAttributes {
-		addAttribute(attrs, key, value)
-	}
+	addStaticAttributes(attrs, family.StaticAttributes)
 	for key, value := range settings.request.configAttributes {
 		addAttribute(attrs, key, value)
 	}
@@ -1237,6 +1235,7 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 			resourceIDEncoded = false
 		}
 	}
+	addStaticAttributes(attrs, family.StaticAttributes)
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
 		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record, resourceIDEncoded))
 	}
@@ -1777,6 +1776,12 @@ func addAttribute(attrs map[string]string, key string, value string) {
 		return
 	}
 	attrs[strings.TrimSpace(key)] = strings.TrimSpace(value)
+}
+
+func addStaticAttributes(attrs map[string]string, staticAttributes map[string]string) {
+	for key, value := range staticAttributes {
+		addAttribute(attrs, key, value)
+	}
 }
 
 func trimEmptyAttributes(attrs map[string]string) {
