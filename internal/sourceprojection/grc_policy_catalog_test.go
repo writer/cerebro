@@ -60,7 +60,7 @@ func TestProjectGRCPolicyRuleLinksPolicyControlsRequirementsOwnerDocumentAndEvid
 	if entity := state.entities[ruleURN]; entity == nil || entity.EntityType != "policy.rule" || entity.Attributes["claim_strength"] != "source_backed" {
 		t.Fatalf("policy rule entity = %#v, want typed policy rule", entity)
 	}
-	assertProjectedLink(t, state, ruleURN, relationBelongsTo, policyURN)
+	assertProjectedLink(t, state, ruleURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, ruleURN, relationAssociatedWith, versionURN)
 	assertProjectedLink(t, state, ruleURN, relationSupports, controlURN)
 	assertProjectedLink(t, state, ruleURN, relationAssociatedWith, firstRequirementURN)

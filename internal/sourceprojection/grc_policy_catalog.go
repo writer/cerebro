@@ -33,7 +33,7 @@ func grcPolicyRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 			"sufficiency_rule": firstAttribute(ctx.attrs, "sufficiency_rule"),
 		},
 	)
-	addGRCPolicyRuleSubjectLinks(ctx, ruleURN)
+	addGRCPolicyLifecycleSubjectLinks(ctx, ruleURN, firstAttribute(ctx.attrs, "policy_id"), firstAttribute(ctx.attrs, "policy_version_id", "version_id"))
 	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ruleURN, ctx.provider)
 	addMITREAttackContextLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.event, ruleURN, ctx.attrs)
 	addMITREDefendContextLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.event, ruleURN, ctx.attrs)
@@ -136,15 +136,6 @@ func grcCoverageGapProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, gapURN, "coverage_gap_type", firstAttribute(ctx.attrs, "gap_type", "coverage_gap_type"))
 	entities, links := ctx.done()
 	return entities, links, nil
-}
-
-func addGRCPolicyRuleSubjectLinks(ctx *grcProjectionContext, ruleURN string) {
-	policyID := firstAttribute(ctx.attrs, "policy_id")
-	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
-	addGRCPolicyLifecycleSubjectLinks(ctx, ruleURN, policyID, versionID)
-	if policyURN := addGRCPolicyReference(ctx, policyID); policyURN != "" {
-		ctx.addEventLink(ruleURN, policyURN, relationBelongsTo)
-	}
 }
 
 func addGRCPolicyRuleReferenceLinks(ctx *grcProjectionContext, fromURN string) {

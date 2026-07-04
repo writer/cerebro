@@ -37,8 +37,11 @@ func TestInventorySurfaceForEntityType(t *testing.T) {
 	}{
 		{name: "reviewable asset", entityType: "sentinelone.agent", want: InventorySurfaceAsset},
 		{name: "component", entityType: "sentinelone.installed_application", want: InventorySurfaceComponent},
+		{name: "policy rule component", entityType: "policy.rule", want: InventorySurfaceComponent},
+		{name: "evidence requirement component", entityType: "evidence.requirement", want: InventorySurfaceComponent},
 		{name: "alias", entityType: "identifier.login", want: InventorySurfaceAlias},
 		{name: "signal", entityType: "panopticon.alert", want: InventorySurfaceSignal},
+		{name: "coverage gap signal", entityType: "coverage.gap", want: InventorySurfaceSignal},
 		{name: "raw record", entityType: "okta.resource", want: InventorySurfaceRawRecord},
 		{name: "known finding signal", entityType: "aws.securityhub.finding", want: InventorySurfaceSignal},
 		{name: "unknown alert suffix", entityType: "custom_vendor.alert", want: InventorySurfaceAsset},
