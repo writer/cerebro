@@ -133,10 +133,13 @@ type familyData struct {
 }
 
 type familyConfigData struct {
-	StaticQuery  map[string]string
-	ConfigQuery  map[string]string
-	IdentityKeys []string
-	PathParams   []string
+	StaticQuery           map[string]string
+	ConfigQuery           map[string]string
+	IdentityKeys          []string
+	DetailPath            string
+	AllowBareDetailRecord bool
+	PathParams            []string
+	MapRecords            map[string]string
 }
 
 type oauthClientCredentialsData struct {
@@ -731,7 +734,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			SchemaRef:             schemaRef,
 			IDKeys:                idKeysForResource(resource),
 			ListKeys:              listKeysForResource(resource),
-			Singleton:             resource.Singleton,
+			Singleton:             singletonForResource(resource),
 			CursorParam:           cursorParamForResource(resource),
 			NextCursorKeys:        nextCursorKeysForResource(resource),
 			LinkHeader:            linkHeaderForResource(resource),
@@ -775,6 +778,12 @@ func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData
 	config := familyConfigData{
 		StaticQuery: cloneStringMap(resource.StaticQuery),
 		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+	}
+	if resource.Read != nil {
+		config.DetailPath = strings.TrimSpace(resource.Read.DetailPath)
+		config.AllowBareDetailRecord = resource.Read.AllowBareDetailRecord
+		config.PathParams = uniqueStrings(resource.Read.PathParams)
+		config.MapRecords = cloneStringMap(resource.Read.MapRecords)
 	}
 	if resource.Config == nil {
 		return config
@@ -861,7 +870,17 @@ func pageSizeParamsForResource(resource connectordefinitions.ResourceFamily) []s
 }
 
 func disablePageSizeForResource(resource connectordefinitions.ResourceFamily) bool {
+	if resource.Read != nil && resource.Read.DisablePageSize {
+		return true
+	}
 	return resource.Pagination != nil && resource.Pagination.DisablePageSize
+}
+
+func singletonForResource(resource connectordefinitions.ResourceFamily) bool {
+	if resource.Singleton {
+		return true
+	}
+	return resource.Read != nil && resource.Read.Singleton
 }
 
 func uniqueStrings(values []string) []string {
@@ -1372,6 +1391,12 @@ func renderSourceGo(request normalizedRequest) string {
 		if len(family.Config.PathParams) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tPathParams: []string{%s},\n", quotedStrings(family.Config.PathParams))
 		}
+		if strings.TrimSpace(family.Config.DetailPath) != "" {
+			fmt.Fprintf(&b, "\t\t\t\tDetailPath: %s,\n", strconv.Quote(family.Config.DetailPath))
+		}
+		if family.Config.AllowBareDetailRecord {
+			fmt.Fprintf(&b, "\t\t\t\tAllowBareDetailRecord: true,\n")
+		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1398,6 +1423,9 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
+		if len(family.Config.MapRecords) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tMapRecords: map[string]string{%s},\n", renderedAttributeMap(family.Config.MapRecords))
+		}
 		if strings.TrimSpace(family.Method) != "" || strings.TrimSpace(family.AuthModel) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
 			if strings.TrimSpace(family.Method) != "" {
