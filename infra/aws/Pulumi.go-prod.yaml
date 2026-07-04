@@ -820,6 +820,7 @@ config:
   cerebro:orchestratorCpu: 16384
   cerebro:orchestratorMemory: 32768
   cerebro:orchestratorFargateSpotWeight: 1
+  cerebro:orchestratorTaskStopEventsEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(30 minutes)"
   cerebro:orchestratorCommand:
     - orchestrator

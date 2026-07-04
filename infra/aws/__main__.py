@@ -359,6 +359,7 @@ runtime_controls_appconfig_enabled = _config_bool("runtimeControlsAppConfigEnabl
 orchestrator_step_functions_enabled = _config_bool("orchestratorStepFunctionsEnabled", False)
 orchestrator_sqs_buffer_enabled = _config_bool("orchestratorSqsBufferEnabled", False)
 orchestrator_sqs_buffer_pipe_state = str(config.get("orchestratorSqsBufferPipeState") or "STOPPED").strip().upper()
+orchestrator_task_stop_events_enabled = _config_bool("orchestratorTaskStopEventsEnabled", False)
 synthetics_canary_enabled = _config_bool("syntheticsCanaryEnabled", False)
 synthetics_canary_start = _config_bool("syntheticsCanaryStart", False)
 cloudtrail_audit_log_group_name = config.get("cloudTrailAuditLogGroupName") or ""
@@ -1082,6 +1083,13 @@ buffer_stack = resilience.create_orchestrator_buffer(
     enabled=orchestrator_sqs_buffer_enabled,
     desired_state=orchestrator_sqs_buffer_pipe_state,
 )
+task_stop_events_stack = resilience.create_orchestrator_task_stop_events(
+    name=f"cerebro-{environment}",
+    cluster_arn=ecs_stack["cluster"].arn,
+    task_definition_arn=ecs_stack["orchestrator_task_definition"].arn if ecs_stack.get("orchestrator_task_definition") else "",
+    log_retention_days=log_retention_days,
+    enabled=orchestrator_task_stop_events_enabled and bool(ecs_stack.get("orchestrator_task_definition")),
+)
 synthetics_stack = resilience.create_synthetic_canary(
     name=f"cerebro-{environment}",
     url=pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
@@ -1302,6 +1310,8 @@ if step_functions_stack.get("state_machine"):
     pulumi.export("orchestrator_state_machine_arn", step_functions_stack["state_machine"].arn)
 if buffer_stack.get("queue"):
     pulumi.export("orchestrator_buffer_queue_name", buffer_stack["queue"].name)
+if task_stop_events_stack.get("log_group"):
+    pulumi.export("orchestrator_task_stop_log_group_name", task_stop_events_stack["log_group"].name)
 if synthetics_stack.get("canary"):
     pulumi.export("synthetics_canary_name", synthetics_stack["canary"].name)
 if cost_controls_stack.get("anomaly_monitor"):

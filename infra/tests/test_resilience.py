@@ -150,3 +150,72 @@ class ResilienceTest(unittest.TestCase):
     def test_step_function_definition_serializes(self) -> None:
         definition = resilience._state_machine_definition("cluster", "task-def", ["subnet-a"], "sg-a")
         self.assertIn("RunOrchestratorTask", json.dumps(definition))
+
+    def test_task_stop_events_are_disabled_by_default(self) -> None:
+        self.assertEqual(
+            resilience.create_orchestrator_task_stop_events(
+                "cerebro-test",
+                cluster_arn="cluster-arn",
+                task_definition_arn="task-def-arn",
+            ),
+            {},
+        )
+
+    def test_task_stop_event_pattern_scopes_orchestrator_family(self) -> None:
+        pattern = resilience._orchestrator_task_stop_event_pattern(
+            "arn:aws:ecs:us-east-1:123456789012:cluster/cerebro-test",
+            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-test-orchestrator:187",
+        )
+
+        detail = pattern["detail"]
+        self.assertEqual(detail["clusterArn"], ["arn:aws:ecs:us-east-1:123456789012:cluster/cerebro-test"])
+        self.assertEqual(detail["lastStatus"], ["STOPPED"])
+        self.assertEqual(
+            detail["taskDefinitionArn"],
+            [{"prefix": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-test-orchestrator:"}],
+        )
+
+    def test_task_stop_events_wire_log_group_rule_and_target(self) -> None:
+        calls = []
+
+        class FakeApply:
+            def __init__(self, value):
+                self.value = value
+
+            def apply(self, func):
+                return func(self.value)
+
+        def fake_log_group(*args, **kwargs):
+            calls.append(("log_group", args, kwargs))
+            return SimpleNamespace(arn=FakeApply("arn:aws:logs:us-east-1:123456789012:log-group:/aws/events/cerebro-test-orchestrator-task-stops"), name=kwargs["name"])
+
+        def fake_resource(kind):
+            def inner(*args, **kwargs):
+                calls.append((kind, args, kwargs))
+                return SimpleNamespace(name=kwargs.get("name", "rule-name"))
+            return inner
+
+        with patch.object(resilience.aws.cloudwatch, "LogGroup", fake_log_group), \
+             patch.object(resilience.aws.cloudwatch, "LogResourcePolicy", fake_resource("resource_policy")), \
+             patch.object(resilience.aws.cloudwatch, "EventRule", fake_resource("event_rule")), \
+             patch.object(resilience.aws.cloudwatch, "EventTarget", fake_resource("event_target")), \
+             patch.object(resilience.pulumi.Output, "all", lambda *values: FakeApply(values)):
+            resources = resilience.create_orchestrator_task_stop_events(
+                "cerebro-test",
+                cluster_arn="cluster-arn",
+                task_definition_arn="task-def:187",
+                log_retention_days=14,
+                enabled=True,
+            )
+
+        self.assertEqual(set(resources), {"log_group", "rule", "target"})
+        log_group = next(call for call in calls if call[0] == "log_group")
+        self.assertEqual(log_group[2]["retention_in_days"], 14)
+        resource_policy = next(call for call in calls if call[0] == "resource_policy")
+        policy = json.loads(resource_policy[2]["policy_document"])
+        self.assertEqual(policy["Statement"][0]["Action"], ["logs:CreateLogStream", "logs:PutLogEvents"])
+        event_rule = next(call for call in calls if call[0] == "event_rule")
+        event_pattern = json.loads(event_rule[2]["event_pattern"])
+        self.assertEqual(event_pattern["detail"]["taskDefinitionArn"], [{"prefix": "task-def:"}])
+        event_target = next(call for call in calls if call[0] == "event_target")
+        self.assertEqual(event_target[2]["target_id"], "orchestrator-task-stop-log")

@@ -290,6 +290,10 @@ config:
     type: string
     default: STOPPED
     description: Desired state for the optional orchestrator SQS buffer pipe; use STOPPED until deliberately cut over.
+  cerebro:orchestratorTaskStopEventsEnabled:
+    type: boolean
+    default: false
+    description: Log stopped ECS orchestrator tasks so Spot interruptions and failed commands can be measured and replayed.
   cerebro:syntheticsCanaryEnabled:
     type: boolean
     default: false

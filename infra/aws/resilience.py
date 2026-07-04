@@ -218,6 +218,72 @@ def create_orchestrator_buffer(
     return {"queue": queue, "dlq": dlq, "role": role, "pipe": pipe}
 
 
+def create_orchestrator_task_stop_events(
+    name: str,
+    cluster_arn: pulumi.Input[str],
+    task_definition_arn: pulumi.Input[str],
+    log_retention_days: int = 30,
+    enabled: bool = False,
+) -> dict:
+    if not enabled:
+        return {}
+
+    log_group = aws.cloudwatch.LogGroup(
+        f"{name}-orchestrator-task-stops",
+        name=f"/aws/events/{name}-orchestrator-task-stops",
+        retention_in_days=log_retention_days,
+        tags={"Name": f"{name}-orchestrator-task-stops"},
+    )
+    aws.cloudwatch.LogResourcePolicy(
+        f"{name}-orchestrator-task-stops-policy",
+        policy_name=f"{name}-orchestrator-task-stops",
+        policy_document=log_group.arn.apply(
+            lambda arn: json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": ["events.amazonaws.com", "delivery.logs.amazonaws.com"]},
+                        "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+                        "Resource": f"{arn}:*",
+                    }
+                ],
+            })
+        ),
+    )
+    rule = aws.cloudwatch.EventRule(
+        f"{name}-orchestrator-task-stops-rule",
+        name=f"{name}-orchestrator-task-stops",
+        description="Log stopped Cerebro orchestrator tasks for interruption and replay analysis.",
+        event_pattern=pulumi.Output.all(cluster_arn, task_definition_arn).apply(
+            lambda args: json.dumps(_orchestrator_task_stop_event_pattern(args[0], args[1]))
+        ),
+        tags={"Name": f"{name}-orchestrator-task-stops"},
+    )
+    target = aws.cloudwatch.EventTarget(
+        f"{name}-orchestrator-task-stops-target",
+        rule=rule.name,
+        arn=log_group.arn,
+        target_id="orchestrator-task-stop-log",
+    )
+    return {"log_group": log_group, "rule": rule, "target": target}
+
+
+def _orchestrator_task_stop_event_pattern(cluster_arn: str, task_definition_arn: str) -> dict:
+    detail: dict[str, object] = {
+        "clusterArn": [cluster_arn],
+        "lastStatus": ["STOPPED"],
+    }
+    task_definition_prefix = str(task_definition_arn or "").rsplit(":", 1)[0]
+    if task_definition_prefix:
+        detail["taskDefinitionArn"] = [{"prefix": f"{task_definition_prefix}:"}]
+    return {
+        "source": ["aws.ecs"],
+        "detail-type": ["ECS Task State Change"],
+        "detail": detail,
+    }
+
+
 def create_synthetic_canary(
     name: str,
     url: pulumi.Input[str],
