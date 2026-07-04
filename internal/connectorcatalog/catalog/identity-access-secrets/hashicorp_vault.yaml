@@ -54,6 +54,8 @@ entries:
               user_id: id
               resource_id: id
               resource_name: entity.name|name
+            static_fields:
+              resource_type: vault_identity_entity
             template: identity_user
           read:
             disable_page_size: true
@@ -100,6 +102,9 @@ entries:
               secret_status: secret_status|status|state
               secret_type: mount.type
               vault_id: mount.accessor|id
+            static_fields:
+              resource_type: vault_secret_engine
+              secret_status: enabled
             relationships:
               - match_type: secret_vault
                 relation: belongs_to
