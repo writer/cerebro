@@ -7343,6 +7343,12 @@ components:
           type: string
         idempotency:
           type: string
+        attempt_tracking:
+          type: string
+        cancellation:
+          type: string
+        audit:
+          type: string
         default_behavior:
           type: string
         execution_rules:
@@ -7442,6 +7448,7 @@ components:
         - kind
         - status
         - resource
+        - attempt
         - dry_run
         - approved
       properties:
@@ -7454,6 +7461,8 @@ components:
           enum: [planned, dry_run, succeeded]
         resource:
           $ref: '#/components/schemas/AgentResourceRef'
+        attempt:
+          $ref: '#/components/schemas/AgentTaskAttemptRef'
         dry_run:
           type: boolean
         approved:
@@ -7480,6 +7489,44 @@ components:
         id:
           type: string
         path:
+          type: string
+    AgentTaskAttemptRef:
+      type: object
+      required:
+        - idempotency_key_present
+        - duplicate_detection
+        - replay_supported
+        - cancellation_supported
+      properties:
+        id:
+          type: string
+          description: Stable hashed attempt identifier when the caller supplied an idempotency key. The raw key is not embedded in this value.
+        idempotency_key_present:
+          type: boolean
+          description: True when Idempotency-Key or idempotency_key was supplied on the request.
+        duplicate_detection:
+          type: string
+          enum: [caller_provided_key, not_available]
+          description: Whether retries can be correlated by a caller-provided key. This field does not claim persisted replay unless replay_supported is true.
+        replay_supported:
+          type: boolean
+          description: False for agent task endpoints until task attempts are persisted and replayed by the execution layer.
+        cancellation_supported:
+          type: boolean
+          description: False for agent task endpoints. Use platform jobs for work that must accept cancellation requests.
+        audit:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentTaskAuditRef'
+    AgentTaskAuditRef:
+      type: object
+      required:
+        - surface
+        - event
+      properties:
+        surface:
+          type: string
+        event:
           type: string
     AgentMutationRef:
       type: object

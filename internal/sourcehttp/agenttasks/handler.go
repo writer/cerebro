@@ -2,6 +2,8 @@ package agenttasks
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,9 @@ const (
 	idempotencyHeader       = "Idempotency-Key"
 	maxIdempotencyKeyBytes  = 255
 	maxTaskRequestBodyBytes = 1 << 20
+
+	taskDuplicateDetectionCallerKey   = "caller_provided_key"
+	taskDuplicateDetectionUnavailable = "not_available"
 )
 
 var ErrInvalidRequest = errors.New("invalid agent task request")
@@ -86,6 +91,9 @@ type MutationContract struct {
 	DryRunField      string   `json:"dry_run_field"`
 	ApprovalField    string   `json:"approval_field"`
 	Idempotency      string   `json:"idempotency"`
+	AttemptTracking  string   `json:"attempt_tracking"`
+	Cancellation     string   `json:"cancellation"`
+	Audit            string   `json:"audit"`
 	DefaultBehavior  string   `json:"default_behavior"`
 	ExecutionRules   []string `json:"execution_rules"`
 	SupportedActions []string `json:"supported_actions"`
@@ -131,6 +139,7 @@ type TaskResponse struct {
 	Kind           string         `json:"kind"`
 	Status         string         `json:"status"`
 	Resource       ResourceRef    `json:"resource"`
+	Attempt        TaskAttemptRef `json:"attempt"`
 	DryRun         bool           `json:"dry_run"`
 	Approved       bool           `json:"approved"`
 	Reason         string         `json:"reason,omitempty"`
@@ -144,6 +153,20 @@ type ResourceRef struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
 	Path string `json:"path"`
+}
+
+type TaskAttemptRef struct {
+	ID                    string         `json:"id,omitempty"`
+	IdempotencyKeyPresent bool           `json:"idempotency_key_present"`
+	DuplicateDetection    string         `json:"duplicate_detection"`
+	ReplaySupported       bool           `json:"replay_supported"`
+	CancellationSupported bool           `json:"cancellation_supported"`
+	Audit                 []TaskAuditRef `json:"audit,omitempty"`
+}
+
+type TaskAuditRef struct {
+	Surface string `json:"surface"`
+	Event   string `json:"event"`
 }
 
 type MutationRef struct {
@@ -524,6 +547,9 @@ func mutationContract() MutationContract {
 		DryRunField:     "dry_run",
 		ApprovalField:   "approved",
 		Idempotency:     "Use Idempotency-Key or idempotency_key on approved writes that may be retried; values must match when both are sent and must not exceed 255 bytes.",
+		AttemptTracking: "Responses include attempt.id only when the caller sends Idempotency-Key or idempotency_key. Reuse that key to correlate approval retries for the same task.",
+		Cancellation:    "Agent task endpoints do not expose cancellation. Use platform jobs for work that needs a cancel request.",
+		Audit:           "Every agent task request emits the platform HTTP access audit event. Mutating results include runtime or report identifiers when execution succeeds.",
 		DefaultBehavior: "Agent task endpoints return a plan unless approved=true and dry_run is false.",
 		ExecutionRules: []string{
 			"Read and explain actions require the read scope only.",
@@ -545,11 +571,43 @@ func (h Handler) baseTaskResponse(kind string, resourceType string, resourceID s
 		Kind:           kind,
 		Status:         "planned",
 		Resource:       ResourceRef{Type: resourceType, ID: resourceID, Path: path},
+		Attempt:        taskAttemptRef(kind, resourceType, resourceID, req),
 		DryRun:         req.DryRun,
 		Approved:       req.Approved,
 		Reason:         strings.TrimSpace(req.Reason),
 		IdempotencyKey: req.Idempotency,
 	}
+}
+
+func taskAttemptRef(kind string, resourceType string, resourceID string, req TaskRequest) TaskAttemptRef {
+	key := strings.TrimSpace(req.Idempotency)
+	attempt := TaskAttemptRef{
+		IdempotencyKeyPresent: key != "",
+		DuplicateDetection:    taskDuplicateDetectionUnavailable,
+		ReplaySupported:       false,
+		CancellationSupported: false,
+		Audit: []TaskAuditRef{{
+			Surface: "platform_http_access",
+			Event:   "cerebro.api.access",
+		}},
+	}
+	if key == "" {
+		return attempt
+	}
+	attempt.ID = taskAttemptID(kind, resourceType, resourceID, key)
+	attempt.DuplicateDetection = taskDuplicateDetectionCallerKey
+	return attempt
+}
+
+func taskAttemptID(kind string, resourceType string, resourceID string, idempotencyKey string) string {
+	parts := []string{
+		strings.TrimSpace(kind),
+		strings.TrimSpace(resourceType),
+		strings.TrimSpace(resourceID),
+		strings.TrimSpace(idempotencyKey),
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return "agent-task-attempt:" + strings.TrimSpace(kind) + ":" + strings.TrimSpace(resourceID) + ":" + hex.EncodeToString(sum[:])[:24]
 }
 
 func (h Handler) findingNextActions(findingID string) []NextAction {

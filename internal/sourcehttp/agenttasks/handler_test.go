@@ -98,6 +98,52 @@ func TestRuntimeRetryDryRunEchoesIdempotencyMetadata(t *testing.T) {
 	if response.Mutation.Headers[idempotencyHeader] != "retry-runtime-1" {
 		t.Fatalf("mutation headers = %+v, want Idempotency-Key", response.Mutation.Headers)
 	}
+	if response.Attempt.ID == "" || strings.Contains(response.Attempt.ID, "retry-runtime-1") {
+		t.Fatalf("attempt id = %q, want hashed attempt id without raw key", response.Attempt.ID)
+	}
+	if !response.Attempt.IdempotencyKeyPresent || response.Attempt.DuplicateDetection != taskDuplicateDetectionCallerKey {
+		t.Fatalf("attempt = %+v, want caller-key duplicate detection", response.Attempt)
+	}
+	if response.Attempt.ReplaySupported || response.Attempt.CancellationSupported {
+		t.Fatalf("attempt = %+v, want no replay or cancellation support", response.Attempt)
+	}
+	if len(response.Attempt.Audit) != 1 || response.Attempt.Audit[0].Event != "cerebro.api.access" {
+		t.Fatalf("attempt audit = %+v, want platform access audit", response.Attempt.Audit)
+	}
+}
+
+func TestTaskAttemptIDIsStableForSameRetryKey(t *testing.T) {
+	request := TaskRequest{Idempotency: " retry-runtime-1 "}
+	first := New(Dependencies{}).baseTaskResponse("source_runtime_retry", "source_runtime", "runtime-1", "/source-runtimes/runtime-1", request)
+	replay := New(Dependencies{}).baseTaskResponse("source_runtime_retry", "source_runtime", "runtime-1", "/source-runtimes/runtime-1", request)
+	other := New(Dependencies{}).baseTaskResponse("source_runtime_retry", "source_runtime", "runtime-1", "/source-runtimes/runtime-1", TaskRequest{Idempotency: "retry-runtime-2"})
+
+	if first.Attempt.ID == "" {
+		t.Fatal("attempt id is empty, want stable id")
+	}
+	if first.Attempt.ID != replay.Attempt.ID {
+		t.Fatalf("attempt id changed across replay: %q != %q", first.Attempt.ID, replay.Attempt.ID)
+	}
+	if first.Attempt.ID == other.Attempt.ID {
+		t.Fatalf("attempt id = %q for different idempotency keys", first.Attempt.ID)
+	}
+	if strings.Contains(first.Attempt.ID, "retry-runtime-1") {
+		t.Fatalf("attempt id = %q, want no raw idempotency key", first.Attempt.ID)
+	}
+}
+
+func TestTaskAttemptWithoutIdempotencyKeyMarksDuplicateDetectionUnavailable(t *testing.T) {
+	response := New(Dependencies{}).baseTaskResponse("report_run", "report", "risk-summary", "/reports/risk-summary/runs", TaskRequest{})
+
+	if response.Attempt.ID != "" {
+		t.Fatalf("attempt id = %q, want empty without idempotency key", response.Attempt.ID)
+	}
+	if response.Attempt.IdempotencyKeyPresent {
+		t.Fatalf("attempt = %+v, want idempotency_key_present=false", response.Attempt)
+	}
+	if response.Attempt.DuplicateDetection != taskDuplicateDetectionUnavailable {
+		t.Fatalf("duplicate detection = %q, want unavailable", response.Attempt.DuplicateDetection)
+	}
 }
 
 func TestTaskParametersNormalizesTenantToAuthorizedValue(t *testing.T) {
