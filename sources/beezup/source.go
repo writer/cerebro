@@ -19,8 +19,8 @@ const (
 	defaultFamily          = familyChannelcatalog
 	defaultHealthPath      = "/v2/user/marketplaces/channelcatalogs/"
 	defaultBaseURLTemplate = "https://api.beezup.com"
-	tokenHeader            = ""
-	tokenScheme            = "Token"
+	tokenHeader            = "Ocp-Apim-Subscription-Key"
+	tokenScheme            = ""
 	familyChannelcatalog   = "channelcatalog"
 	familyOffer            = "offer"
 	familyFilter           = "filter"
@@ -156,7 +156,7 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyFilteroperator,
-				Path:             "/v2/user/channelCatalogs/filterOperators",
+				Path:             "/v2/user/channelCatalogs/exclusionFilterOperators",
 				URNKind:          "beezup_filteroperator",
 				IDKeys:           []string{"name", "event_id", "id", "uuid", "request_id"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},

@@ -52,6 +52,85 @@ kind_lifecycle:
     status: active
   - kind: beezup.autoimport
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: Ocp-Apim-Subscription-Key header
+  base_url: https://api.beezup.com
+  spec_url: https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CatalogsCatalogApi.md
+  spec_kind: provider_reference_markdown
+  references:
+    - https://github.com/BeezUP/api-php-client
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/README.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CatalogsAutoApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CatalogsCatalogApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CatalogsGlobalApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/ChannelCatalogsExclusionFiltersApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CustomerAlertsApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/CustomerContractsApi.md
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/docs/Api/MarketplacesChannelCatalogsGlobalApi.md
+  auth_evidence:
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/README.md
+  families:
+    - id: alert
+      method: GET
+      path: /v2/user/customer/stores/{storeId}/alerts
+      operation: getStoreAlerts
+    - id: autoimport
+      method: GET
+      path: /v2/user/catalogs/{storeId}/autoImport
+      operation: autoGetAutoImportConfiguration
+    - id: beezupcolumn
+      method: GET
+      path: /v2/user/catalogs/beezupColumns
+      operation: catalogGetBeezUPColumns
+    - id: catalogcolumn
+      method: GET
+      path: /v2/user/catalogs/{storeId}/catalogColumns
+      operation: catalogGetCatalogColumns
+    - id: category
+      method: GET
+      path: /v2/user/catalogs/{storeId}/categories
+      operation: catalogGetCategories
+    - id: channelcatalog
+      method: GET
+      path: /v2/user/marketplaces/channelcatalogs/
+      operation: getMarketplaceChannelCatalogs
+    - id: customcolumn
+      method: GET
+      path: /v2/user/catalogs/{storeId}/customColumns
+      operation: catalogGetCustomColumns
+    - id: filteroperator
+      method: GET
+      path: /v2/user/channelCatalogs/exclusionFilterOperators
+      operation: getChannelCatalogExclusionFilterOperators
+    - id: offer
+      method: GET
+      path: /v2/user/customer/offers
+      operation: getStandardOffers
+    - id: random
+      method: GET
+      path: /v2/user/catalogs/{storeId}/products/random
+      operation: catalogGetRandomProducts
+provider_api_disproof:
+  status: invalidated
+  reason: generated_runtime_paths_not_in_provider_reference
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://github.com/BeezUP/api-php-client
+    - https://raw.githubusercontent.com/BeezUP/api-php-client/master/README.md
+  affected_families:
+    - filter
+    - rule
+  missing_paths:
+    - /v2/user/analytics/{storeId}/reports/filters
+    - /v2/user/analytics/{storeId}/rules
+  notes:
+    - The provider-generated client exposes report filters and rules as link model targets, but not as generated API operation rows.
+    - Rewrite these families from a provider operation reference or remove them before promotion.
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: beezup
