@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -165,6 +167,72 @@ func TestAgentSourceRuntimeRetryTaskPlansWithReadScopeAndExecutesWithWriteScope(
 	}
 }
 
+func TestAgentReportRunRequiresTenantBeforeExecution(t *testing.T) {
+	cfg := agentPlatformAuthConfig()
+	cfg.Auth.APICredentials[0].Scopes = []string{scopeCosmoSecurityRead, scopeReportsRun}
+	store := &stubRuntimeStore{}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent/tasks/reports/finding-summary/run", bytes.NewReader([]byte(`{"approved":true}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST report run task: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if len(store.reportRuns) != 0 {
+		t.Fatalf("report runs persisted = %d, want none before tenant authorization", len(store.reportRuns))
+	}
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !strings.Contains(string(payload), "tenant_id is required") {
+		t.Fatalf("body = %q, want tenant_id guidance", string(payload))
+	}
+}
+
+func TestAgentTaskInternalErrorsAreSanitized(t *testing.T) {
+	store := &stubRuntimeStore{err: errors.New("database password leaked")}
+	app := New(agentPlatformAuthConfig(), Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent/tasks/findings/finding-1/explain", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST finding task: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.Contains(string(payload), "database password leaked") {
+		t.Fatalf("body leaked raw internal error: %q", string(payload))
+	}
+	if !strings.Contains(string(payload), "agent task failed") {
+		t.Fatalf("body = %q, want sanitized agent task failure", string(payload))
+	}
+}
+
 func TestAgentAuthErrorIncludesDiscoveryAndRequiredScope(t *testing.T) {
 	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -191,6 +259,40 @@ func TestAgentAuthErrorIncludesDiscoveryAndRequiredScope(t *testing.T) {
 	auth, ok := body["auth"].(map[string]any)
 	if !ok || auth["token_endpoint"] == "" {
 		t.Fatalf("auth discovery = %#v, want token endpoint", body["auth"])
+	}
+}
+
+func TestTenantForbiddenAuthChallengeDoesNotAdvertiseScope(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+agentContextPath+"?tenant_id=other", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET tenant-forbidden agent context: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	challenge := resp.Header.Get("WWW-Authenticate")
+	if strings.Contains(challenge, "insufficient_scope") || strings.Contains(challenge, `scope="`) {
+		t.Fatalf("WWW-Authenticate = %q, want tenant denial without scope challenge", challenge)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode auth error: %v", err)
+	}
+	if body["required_scope"] != nil {
+		t.Fatalf("auth error = %+v, want no required scope for tenant denial", body)
+	}
+	if body["next_action"] != "Use a credential allowed for the requested tenant." {
+		t.Fatalf("next_action = %#v, want tenant credential guidance", body["next_action"])
 	}
 }
 

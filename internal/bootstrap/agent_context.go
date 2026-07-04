@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -42,6 +43,7 @@ func (a *App) agentTaskHandler() agenttasks.Handler {
 		SyncRuntime:             a.syncAgentTaskRuntime,
 		RunReport:               a.runAgentTaskReport,
 		ErrorStatus:             agentTaskErrorStatus,
+		ErrorMessage:            agentTaskErrorMessage,
 	})
 }
 
@@ -111,12 +113,19 @@ func (a *App) syncAgentTaskRuntime(ctx context.Context, runtimeID string, pageLi
 }
 
 func (a *App) runAgentTaskReport(ctx context.Context, reportID string, parameters map[string]string) (agenttasks.ReportRunResult, error) {
+	tenantID := strings.TrimSpace(parameters["tenant_id"])
+	if tenantID == "" {
+		return agenttasks.ReportRunResult{}, fmt.Errorf("%w: tenant_id is required", reports.ErrInvalidRequest)
+	}
+	if err := authorizeTenantScopeRequired(ctx, tenantID); err != nil {
+		return agenttasks.ReportRunResult{}, err
+	}
 	runResp, err := a.reportService().Run(ctx, &cerebrov1.RunReportRequest{ReportId: reportID, Parameters: parameters})
 	if err != nil {
 		return agenttasks.ReportRunResult{}, err
 	}
 	run := runResp.GetRun()
-	if err := authorizeTenantID(ctx, run.GetParameters()["tenant_id"]); err != nil {
+	if err := authorizeTenantScopeRequired(ctx, run.GetParameters()["tenant_id"]); err != nil {
 		return agenttasks.ReportRunResult{}, err
 	}
 	result := agenttasks.ReportRunResult{
@@ -142,5 +151,22 @@ func agentTaskErrorStatus(err error) int {
 		return http.StatusServiceUnavailable
 	default:
 		return 0
+	}
+}
+
+func agentTaskErrorMessage(status int, err error) string {
+	switch {
+	case status == http.StatusBadRequest:
+		return err.Error()
+	case errors.Is(err, errTenantForbidden):
+		return "tenant forbidden"
+	case errors.Is(err, errScopeForbidden):
+		return "scope forbidden"
+	case status == http.StatusNotFound:
+		return "resource not found"
+	case status == http.StatusServiceUnavailable:
+		return "agent task service unavailable"
+	default:
+		return "agent task failed"
 	}
 }

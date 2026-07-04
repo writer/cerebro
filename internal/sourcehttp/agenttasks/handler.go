@@ -14,7 +14,10 @@ import (
 	"github.com/writer/cerebro/internal/agentplatform"
 )
 
-const ContextPath = "/api/v1/agent/context"
+const (
+	ContextPath             = "/api/v1/agent/context"
+	maxTaskRequestBodyBytes = 1 << 20
+)
 
 var ErrInvalidRequest = errors.New("invalid agent task request")
 
@@ -325,7 +328,9 @@ func (h Handler) ReportRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	if tenantID := strings.TrimSpace(firstNonEmpty(req.TenantID, req.Parameters["tenant_id"])); tenantID != "" {
+	tenantID := strings.TrimSpace(firstNonEmpty(req.TenantID, req.Parameters["tenant_id"]))
+	parameters := taskParameters(req, tenantID)
+	if tenantID != "" {
 		if err := h.authorizeTenant(r.Context(), tenantID); err != nil {
 			h.writeError(w, err)
 			return
@@ -338,7 +343,7 @@ func (h Handler) ReportRun(w http.ResponseWriter, r *http.Request) {
 		RequiredScope:    h.deps.Scopes.ReportsRun,
 		ApprovalRequired: true,
 		DryRunSupported:  true,
-		Parameters:       req.Parameters,
+		Parameters:       parameters,
 	}
 	if req.DryRun || !req.Approved {
 		response.Status = "dry_run"
@@ -353,7 +358,11 @@ func (h Handler) ReportRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	result, err := h.runReport(r.Context(), reportID, req.Parameters)
+	if tenantID == "" {
+		h.writeError(w, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest))
+		return
+	}
+	result, err := h.runReport(r.Context(), reportID, parameters)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -548,7 +557,7 @@ func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error
 	if r == nil || r.Body == nil {
 		return request, nil
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTaskRequestBodyBytes))
 	if err := decoder.Decode(&request); err != nil {
 		if errors.Is(err, io.EOF) {
 			return request, nil
@@ -559,6 +568,17 @@ func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error
 		request.Parameters = map[string]string{}
 	}
 	return request, nil
+}
+
+func taskParameters(req TaskRequest, tenantID string) map[string]string {
+	parameters := make(map[string]string, len(req.Parameters)+1)
+	for key, value := range req.Parameters {
+		parameters[key] = value
+	}
+	if strings.TrimSpace(parameters["tenant_id"]) == "" && strings.TrimSpace(tenantID) != "" {
+		parameters["tenant_id"] = strings.TrimSpace(tenantID)
+	}
+	return parameters
 }
 
 func pageLimitFromTask(req TaskRequest) (uint32, error) {
