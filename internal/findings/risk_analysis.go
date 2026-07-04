@@ -1206,8 +1206,16 @@ func findingRiskMetadata(finding *ports.FindingRecord) map[string]string {
 		"data_classification": firstNonEmpty(attributes["data_classification"], attributes["sensitivity"], attributes["data_sensitivity"]),
 		"epss_score":          firstNonEmpty(attributes["epss_score"], attributes["epss"], attributes["exploit_probability"]),
 		"is_kev":              firstNonEmpty(attributes["is_kev"], attributes["kev"], attributes["known_exploited"], attributes["known_exploited_vulnerability"]),
+		"attack_tactic":       firstNonEmpty(attributes["attack_tactic"], attributes["attack_tactics"]),
+		"attack_technique":    firstNonEmpty(attributes["attack_technique"], attributes["attack_techniques"]),
+		"mitre_tactic":        firstNonEmpty(attributes["mitre_tactic"], attributes["mitre_tactics"], attributes["mitre_attack_tactic"], attributes["mitre_attack_tactics"], attributes["rule_mitre_attack_tactic"], attributes["rule_mitre_attack_tactics"]),
+		"mitre_technique":     firstNonEmpty(attributes["mitre_technique"], attributes["mitre_techniques"], attributes["mitre_attack_technique"], attributes["mitre_attack_techniques"], attributes["rule_mitre_attack_technique"], attributes["rule_mitre_attack_techniques"]),
+		"policy_mitre":        firstNonEmpty(attributes["policy_mitre"], attributes["mitre"], attributes["mitre_attack"], attributes["rule_mitre"], attributes["rule_mitre_attack"]),
 		"public":              firstNonEmpty(attributes["public"], attributes["internet_exposed"], attributes["externally_exposed"], attributes["external_exposure"]),
 		"privileged":          firstNonEmpty(attributes["privileged"], attributes["actor_privileged"], attributes["admin"], attributes["is_admin"], attributes["has_admin"]),
+		"rule_references":     attributes["rule_references"],
+		"rule_tags":           attributes["rule_tags"],
+		"tags":                firstNonEmpty(attributes["tags"], attributes["metadata_tags"], attributes["derived_tags"], attributes["all_tags"]),
 	}
 	trimEmptyAttributes(metadata)
 	return metadata

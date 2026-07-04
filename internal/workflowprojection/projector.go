@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/mitre"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -28,10 +29,50 @@ const (
 	relationExecutedBy    = "executed_by"
 	relationEvaluates     = "evaluates"
 	relationHasFinding    = "has_finding"
+	relationHasContext    = "has_context"
 	relationAnnotatedWith = "annotated_with"
 	relationTrackedBy     = "tracked_by"
 	graphEntityLabelLimit = 160
 )
+
+var workflowMITREAttackTacticKeys = []string{
+	"attack_tactic",
+	"attack_tactics",
+	"rule_attack_tactic",
+	"rule_attack_tactics",
+	"mitre_attack_tactic",
+	"mitre_attack_tactics",
+	"rule_mitre_attack_tactic",
+	"rule_mitre_attack_tactics",
+	"mitre_tactic",
+	"mitre_tactics",
+	"policy_mitre",
+	"rule_mitre_attack",
+}
+
+var workflowMITREAttackTechniqueKeys = []string{
+	"attack_technique",
+	"attack_techniques",
+	"rule_attack_technique",
+	"rule_attack_techniques",
+	"mitre_attack_technique",
+	"mitre_attack_techniques",
+	"rule_mitre_attack_technique",
+	"rule_mitre_attack_techniques",
+	"mitre_technique",
+	"mitre_techniques",
+	"policy_mitre",
+	"rule_mitre_attack",
+}
+
+var workflowMITREAttackTagKeys = []string{
+	"all_tags",
+	"derived_tags",
+	"metadata_tags",
+	"rule_references",
+	"rule_tags",
+	"tags",
+}
 
 // Service projects durable workflow events into graph entities and links.
 type Service struct {
@@ -438,6 +479,9 @@ func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevent
 	if err := s.ensureFindingActiveLinks(ctx, finding, result); err != nil {
 		return nil, err
 	}
+	if err := s.ensureFindingMITREContext(ctx, finding, result); err != nil {
+		return nil, err
+	}
 	return findingTargetURNs(finding), nil
 }
 
@@ -447,6 +491,9 @@ func (s *Service) ensureFindingForWorkflow(ctx context.Context, finding workflow
 	}
 	if findingStatusProjectsToGraph(finding.Status) {
 		if err := s.ensureFindingActiveLinks(ctx, finding, result); err != nil {
+			return nil, err
+		}
+		if err := s.ensureFindingMITREContext(ctx, finding, result); err != nil {
 			return nil, err
 		}
 	}
@@ -488,6 +535,74 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 		}
 	}
 	if err := s.pruneFindingActiveLinks(ctx, tenantID, sourceID, anchorURN, targetURNs, result); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) error {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	anchorURN := findingURN(tenantID, finding.FindingID)
+	currentContextURNs := []string{}
+	tactics := mitre.ExtractAttackTactics(append(findingMetadataValues(finding.Metadata, workflowMITREAttackTacticKeys...), findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
+	for _, tactic := range tactics {
+		tacticURN := mitre.AttackTacticURN(tenantID, tactic)
+		if tacticURN == "" {
+			continue
+		}
+		currentContextURNs = append(currentContextURNs, tacticURN)
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        tacticURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.AttackTacticEntityType,
+			Label:      mitre.AttackTacticLabel(tactic),
+			Attributes: mitre.AttackTacticAttributes(tactic),
+		}, result); err != nil {
+			return err
+		}
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    anchorURN,
+			ToURN:      tacticURN,
+			Relation:   relationHasContext,
+			Attributes: findingMITRELinkAttributes(finding, "attack_tactic", tactic.SourceValue),
+		}, result); err != nil {
+			return err
+		}
+	}
+	techniques := mitre.ExtractAttackTechniques(findingMetadataValues(finding.Metadata, workflowMITREAttackTechniqueKeys...)...)
+	techniques = append(techniques, mitre.ExtractAttackTechniqueIDs(findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
+	for _, technique := range techniques {
+		techniqueURN := mitre.AttackTechniqueURN(tenantID, technique)
+		if techniqueURN == "" {
+			continue
+		}
+		currentContextURNs = append(currentContextURNs, techniqueURN)
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        techniqueURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.AttackTechniqueEntityType,
+			Label:      mitre.AttackTechniqueLabel(technique),
+			Attributes: mitre.AttackTechniqueAttributes(technique),
+		}, result); err != nil {
+			return err
+		}
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    anchorURN,
+			ToURN:      techniqueURN,
+			Relation:   relationHasContext,
+			Attributes: findingMITRELinkAttributes(finding, "attack_technique", technique.SourceValue),
+		}, result); err != nil {
+			return err
+		}
+	}
+	if err := s.pruneFindingMITREContextLinks(ctx, tenantID, sourceID, anchorURN, currentContextURNs, result); err != nil {
 		return err
 	}
 	return nil
@@ -549,6 +664,74 @@ LIMIT $row_limit`,
 				FromURN:  resourceURN,
 				ToURN:    anchorURN,
 				Relation: relationHasFinding,
+			}); err != nil {
+				return err
+			}
+			result.LinksDeleted++
+		}
+		if len(rows) < ports.MaxCypherQueryRows {
+			return nil
+		}
+	}
+}
+
+func (s *Service) pruneFindingMITREContextLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentContextURNs []string, result *ports.ProjectionResult) error {
+	reader, ok := s.graph.(findingActiveLinkReader)
+	if !ok {
+		return nil
+	}
+	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
+	if !ok {
+		return nil
+	}
+	current := make(map[string]struct{}, len(currentContextURNs))
+	for _, contextURN := range currentContextURNs {
+		if contextURN = strings.TrimSpace(contextURN); contextURN != "" {
+			current[contextURN] = struct{}{}
+		}
+	}
+	lastSeen := ""
+	for {
+		rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+			Query: `MATCH (:Entity {tenant_id: $tenant_id, urn: $finding_urn})-[r:RELATION {relation: 'has_context'}]->(context:Entity {tenant_id: $tenant_id})
+WHERE context.entity_type IN $entity_types
+  AND context.urn > $last_seen
+RETURN context.urn AS context_urn
+ORDER BY context.urn
+LIMIT $row_limit`,
+			Params: map[string]any{
+				"tenant_id":   tenantID,
+				"finding_urn": anchorURN,
+				"entity_types": []string{
+					mitre.AttackTacticEntityType,
+					mitre.AttackTechniqueEntityType,
+				},
+				"last_seen": lastSeen,
+				"row_limit": int64(ports.MaxCypherQueryRows),
+			},
+			RowLimit: ports.MaxCypherQueryRows,
+		})
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			contextURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["context_urn"]))
+			if contextURN == "" || contextURN == "<nil>" {
+				continue
+			}
+			lastSeen = contextURN
+			if _, keep := current[contextURN]; keep {
+				continue
+			}
+			if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+				TenantID: tenantID,
+				SourceID: sourceID,
+				FromURN:  anchorURN,
+				ToURN:    contextURN,
+				Relation: relationHasContext,
 			}); err != nil {
 				return err
 			}
@@ -854,6 +1037,40 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 	}
 	trimEmptyProjectionAttributes(attributes)
 	return attributes
+}
+
+func findingMITRELinkAttributes(finding workflowevents.FindingSnapshot, contextType string, sourceValue string) map[string]string {
+	attributes := map[string]string{
+		"finding_id":           strings.TrimSpace(finding.FindingID),
+		"rule_id":              strings.TrimSpace(finding.RuleID),
+		"severity":             strings.TrimSpace(finding.Severity),
+		"status":               strings.TrimSpace(finding.Status),
+		"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
+		"source_system":        strings.TrimSpace(finding.SourceSystem),
+		"source_event_id":      findingSourceEventID(finding),
+		"observed_at":          strings.TrimSpace(finding.LastObservedAt),
+		"valid_from":           strings.TrimSpace(finding.FirstObservedAt),
+		"context_type":         strings.TrimSpace(contextType),
+		"source_value":         strings.TrimSpace(sourceValue),
+	}
+	if finding.RiskScore != 0 {
+		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
+	}
+	if strings.TrimSpace(finding.EffectiveSeverity) != "" {
+		attributes["effective_severity"] = strings.TrimSpace(finding.EffectiveSeverity)
+	}
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
+func findingMetadataValues(metadata map[string]string, keys ...string) []string {
+	values := []string{}
+	for _, key := range keys {
+		if value := strings.TrimSpace(metadata[key]); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func findingSourceEventID(finding workflowevents.FindingSnapshot) string {

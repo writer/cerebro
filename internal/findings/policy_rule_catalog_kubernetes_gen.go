@@ -112,6 +112,10 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1098"},
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"!(in_list(path(resource, \"metadata.name\"), [\"cluster-admin\",\"system:*\"]))", "list_value(path(resource, \"rules\")).exists(item, (contains_value(path(item, \"resources\"), \"*\")) || (contains_value(path(item, \"verbs\"), \"*\")) || (contains_value(path(item, \"api_groups\"), \"*\")))"},
@@ -365,6 +369,10 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "12"},
 				{FrameworkName: "CIS Controls v8", ControlID: "13"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1190"},
+				{Tactic: "Collection", Technique: "T1530"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -658,6 +666,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "CIS Kubernetes Benchmark", ControlID: "5.3.2"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Lateral Movement", Technique: "T1021"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"!(in_list(path(resource, \"metadata.name\"), [\"kube-system\",\"kube-public\",\"kube-node-lease\",\"gatekeeper-system\"]))", "!(list_value(path(resource, \"network_policies\")).exists(item, (cmp_eq(path(item, \"spec.pod_selector\"), \"{}\")) && (contains_value(path(item, \"spec.policy_types\"), \"Ingress\")) && (cmp_eq(path(item, \"spec.ingress\"), null))))"},
@@ -781,6 +792,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "SOC 2", ControlID: "CC6.6"},
 				{FrameworkName: "CIS Controls v8", ControlID: "12"},
 				{FrameworkName: "CIS Controls v8", ControlID: "13"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1190"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -1322,6 +1336,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_eq(path(resource, \"spec.containers.security_context.privileged\"), true)"},
@@ -1356,6 +1373,10 @@ var generatedKubernetesRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "CIS Kubernetes Benchmark", ControlID: "5.2.6"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1098"},
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -1475,6 +1496,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "CIS Kubernetes Benchmark", ControlID: "5.2.4"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -2034,6 +2058,11 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "3.5"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1078"},
+				{Tactic: "Credential Access", Technique: "T1552"},
+				{Tactic: "Collection", Technique: "T1530"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"matches_value(path(resource, \"spec.containers.env.name\"), \"(?i)(password|secret|api_key|token|credential)\")", "cmp_eq(path(resource, \"spec.containers.env.value_from.secret_key_ref\"), null)"},
@@ -2123,6 +2152,10 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
+				{Tactic: "Credential Access", Technique: "T1552"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_ne(path(resource, \"spec.automount_service_account_token\"), false)", "!(in_list(path(resource, \"spec.service_account_name\"), [\"default\"]))"},
@@ -2169,6 +2202,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "13"},
 				{FrameworkName: "CIS Controls v8", ControlID: "7"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1190"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_ne(path(resource, \"spec.external_ips\"), null)", "cmp_gt(path(resource, \"spec.external_ips_count\"), 0)"},
@@ -2209,6 +2245,9 @@ var generatedKubernetesRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "1.3.1"},
 				{FrameworkName: "CIS Controls v8", ControlID: "12"},
 				{FrameworkName: "CIS Controls v8", ControlID: "13"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1190"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},

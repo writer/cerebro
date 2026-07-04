@@ -134,6 +134,7 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 		RequiredAttributes: []string{"action", "repository"},
 		FingerprintFields:  []string{"repository", "action"},
 		ControlRefs:        []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
+		MITREAttack:        []MITREAttackRef{{Tactic: "Defense Evasion", Technique: "T1562"}},
 		Lifecycle:          Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	if err := definition.Validate(); err != nil {
@@ -152,6 +153,15 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 	}
 	if got := attributes["required_attributes"]; got != "action,repository" {
 		t.Fatalf("AttributeMap()[required_attributes] = %q, want action,repository", got)
+	}
+	if got := attributes["mitre_attack_tactics"]; got != "Defense Evasion" {
+		t.Fatalf("AttributeMap()[mitre_attack_tactics] = %q, want Defense Evasion", got)
+	}
+	if got := attributes["mitre_attack_techniques"]; got != "T1562" {
+		t.Fatalf("AttributeMap()[mitre_attack_techniques] = %q, want T1562", got)
+	}
+	if got := attributes["mitre_attack"]; got != "Defense Evasion:T1562" {
+		t.Fatalf("AttributeMap()[mitre_attack] = %q, want Defense Evasion:T1562", got)
 	}
 }
 

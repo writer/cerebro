@@ -101,6 +101,7 @@ type PublicDetection struct {
 	FingerprintFields        []string                  `json:"fingerprint_fields,omitempty"`
 	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
 	SourceCoverageRefs       []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
+	MITREAttack              []MITREAttackRef          `json:"mitre_attack,omitempty"`
 }
 
 type PublicDetectionAuditDepth struct {
@@ -406,6 +407,7 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		RequiredAttributesByKind: normalizedStringSliceMap(metadata.RequiredAttributesByKind),
 		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
+		MITREAttack:              cloneMITREAttackRefs(metadata.MITREAttack),
 	}
 }
 
@@ -433,8 +435,28 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		RequiredAttributesByKind: cloneStringSliceMap(definition.RequiredAttributesByKind),
 		FingerprintFields:        cloneStringSlice(definition.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(definition.ControlRefs),
+		MITREAttack:              cloneMITREAttackRefs(definition.MITREAttack),
 		Lifecycle:                definition.Lifecycle,
 	}
+}
+
+func cloneMITREAttackRefs(refs []MITREAttackRef) []MITREAttackRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	cloned := make([]MITREAttackRef, 0, len(refs))
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		if tactic == "" && technique == "" {
+			continue
+		}
+		cloned = append(cloned, MITREAttackRef{Tactic: tactic, Technique: technique})
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
 }
 
 func cloneStringSliceMap(values map[string][]string) map[string][]string {

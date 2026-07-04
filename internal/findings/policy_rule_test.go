@@ -25,6 +25,7 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		Runbook:           "Review policy evidence.",
 		FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+		MITREAttack:       []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
 		Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	rule := newPolicyCatalogRule(policyRuleConfig{
@@ -54,10 +55,13 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		SourceId: policyRuleSourceID,
 		Kind:     policyRuleResultEventKind,
 		Attributes: map[string]string{
-			"policy_id":    "policy-test",
-			"result":       "failed",
-			"resource_urn": "urn:cerebro:tenant-1:test:resource-1",
-			"resource_id":  "resource-1",
+			"policy_id":               "policy-test",
+			"result":                  "failed",
+			"resource_urn":            "urn:cerebro:tenant-1:test:resource-1",
+			"resource_id":             "resource-1",
+			"mitre_attack_tactics":    "Discovery",
+			"mitre_attack_techniques": "T1087",
+			"policy_mitre":            "Discovery:T1087",
 		},
 	}
 	findings, err := rule.Evaluate(context.Background(), runtime, event)
@@ -121,6 +125,18 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	}
 	if got := finding.Attributes["policy_action_effort"]; got != "low" {
 		t.Fatalf("policy_action_effort = %q, want low", got)
+	}
+	if got := finding.Attributes["mitre_attack_tactics"]; got != "Discovery,Initial Access" {
+		t.Fatalf("mitre_attack_tactics = %q, want Discovery,Initial Access", got)
+	}
+	if got := finding.Attributes["mitre_attack_techniques"]; got != "T1087,T1190" {
+		t.Fatalf("mitre_attack_techniques = %q, want T1087,T1190", got)
+	}
+	if got := finding.Attributes["policy_mitre"]; got != "Discovery:T1087,Initial Access:T1190" {
+		t.Fatalf("policy_mitre = %q, want Discovery:T1087,Initial Access:T1190", got)
+	}
+	if got := finding.Attributes["rule_mitre_attack_techniques"]; got != "T1190" {
+		t.Fatalf("rule_mitre_attack_techniques = %q, want T1190", got)
 	}
 }
 
@@ -226,6 +242,7 @@ func TestPolicyGraphCatalogRuleEmitsGraphFinding(t *testing.T) {
 			Runbook:           "Review graph evidence.",
 			FingerprintFields: []string{"primary_urn"},
 			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
+			MITREAttack:       []MITREAttackRef{{Tactic: "Discovery", Technique: "T1087"}},
 			Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		EvidenceMode:      "graph",
@@ -307,6 +324,8 @@ LIMIT $row_limit`,
 		"policy_evidence":            "graph",
 		"policy_graph_query_present": "true",
 		"policy_input_source_kinds":  "graph",
+		"policy_mitre":               "Discovery:T1087",
+		"rule_mitre_attack":          "Discovery:T1087",
 	} {
 		if got := finding.Attributes[key]; got != want {
 			t.Fatalf("Attributes[%s] = %q, want %q; attrs=%#v", key, got, want, finding.Attributes)

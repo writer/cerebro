@@ -38,6 +38,7 @@ type policyFile struct {
 	Remediation      string                            `json:"remediation"`
 	RemediationSteps []string                          `json:"remediation_steps"`
 	Frameworks       []policyFramework                 `json:"frameworks"`
+	MITREAttack      []findingdsl.PolicyMITREAttack    `json:"mitre_attack"`
 	Input            findingdsl.PolicyRuleInput        `json:"input"`
 	Assert           findingdsl.PolicyRuleAssert       `json:"assert"`
 	Context          findingdsl.PolicyRuleContext      `json:"context"`
@@ -356,6 +357,7 @@ func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
 		Remediation:      legacy.Remediation,
 		RemediationSteps: legacy.RemediationSteps,
 		Frameworks:       policyFrameworksFromDSL(legacy.Frameworks),
+		MITREAttack:      clonePolicyMITREAttack(legacy.MITREAttack),
 		Input:            rule.Spec.Input,
 		Assert:           rule.Spec.Assert,
 		Context:          rule.Spec.Context,
@@ -368,6 +370,25 @@ func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
 		relPath:          rule.RelPath,
 		domain:           rule.Domain,
 	}
+}
+
+func clonePolicyMITREAttack(refs []findingdsl.PolicyMITREAttack) []findingdsl.PolicyMITREAttack {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]findingdsl.PolicyMITREAttack, 0, len(refs))
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		if tactic == "" && technique == "" {
+			continue
+		}
+		out = append(out, findingdsl.PolicyMITREAttack{Tactic: tactic, Technique: technique})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func policyFrameworksFromDSL(frameworks []findingdsl.PolicyFramework) []policyFramework {
@@ -510,6 +531,7 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	writeStringSliceMap(buf, "RequiredAttributesByKind", policyRequiredAttributesByKind(policy))
 	writePolicyFingerprintFields(buf, policy)
 	writeControlRefs(buf, policy.Frameworks)
+	writeMITREAttackRefs(buf, policy.MITREAttack)
 	writePolicyLifecycle(buf, policy)
 	fmt.Fprintf(buf, "},\n")
 	writeStringSlice(buf, "Conditions", trimStrings(policy.Conditions))
@@ -698,6 +720,22 @@ func writeControlRefs(buf *bytes.Buffer, frameworks []policyFramework) {
 	fmt.Fprintf(buf, "ControlRefs: []ports.FindingControlRef{\n")
 	for _, ref := range refs {
 		fmt.Fprintf(buf, "{FrameworkName: %s, ControlID: %s},\n", quote(ref[0]), quote(ref[1]))
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func writeMITREAttackRefs(buf *bytes.Buffer, refs []findingdsl.PolicyMITREAttack) {
+	if len(refs) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "MITREAttack: []MITREAttackRef{\n")
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		if tactic == "" && technique == "" {
+			continue
+		}
+		fmt.Fprintf(buf, "{Tactic: %s, Technique: %s},\n", quote(tactic), quote(technique))
 	}
 	fmt.Fprintf(buf, "},\n")
 }

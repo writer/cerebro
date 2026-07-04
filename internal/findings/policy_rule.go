@@ -212,6 +212,7 @@ func (r *policyGraphCatalogRule) EvaluateRows(ctx context.Context, runtime *cere
 		finding.Attributes["policy_name"] = r.config.Definition.Name
 		finding.Attributes["policy_evidence"] = "graph"
 		finding.Attributes["policy_graph_query_present"] = "true"
+		addMITREAttackFindingAttributes(finding.Attributes, r.config.Definition.MITREAttack)
 		for key, value := range r.config.ContractAttributes {
 			if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
 				finding.Attributes[trimmedKey] = strings.TrimSpace(value)
@@ -291,6 +292,7 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
+	addMITREAttackFindingAttributes(findingAttributes, definition.MITREAttack)
 	if len(r.config.Conditions) != 0 {
 		findingAttributes["policy_condition_count"] = strconv.Itoa(len(r.config.Conditions))
 	}
@@ -325,6 +327,16 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,
 	}
+}
+
+func addMITREAttackFindingAttributes(attributes map[string]string, refs []MITREAttackRef) {
+	if attributes == nil {
+		return
+	}
+	tactics, techniques, pairs := mitreAttackAttributeValues(refs)
+	mergePolicyAttributeList(attributes, "mitre_attack_tactics", tactics)
+	mergePolicyAttributeList(attributes, "mitre_attack_techniques", techniques)
+	mergePolicyAttributeList(attributes, "policy_mitre", pairs)
 }
 
 func policyFindingTitle(name string) string {
@@ -531,6 +543,34 @@ func addPolicyAttributeList(attributes map[string]string, key string, values []s
 	}
 	if len(trimmed) != 0 {
 		attributes[key] = strings.Join(trimmed, ",")
+	}
+}
+
+func mergePolicyAttributeList(attributes map[string]string, key string, values []string) {
+	if attributes == nil {
+		return
+	}
+	merged := []string{}
+	seen := map[string]struct{}{}
+	add := func(raw string) {
+		for _, part := range strings.Split(raw, ",") {
+			item := strings.TrimSpace(part)
+			if item == "" {
+				continue
+			}
+			if _, exists := seen[item]; exists {
+				continue
+			}
+			seen[item] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+	add(attributes[key])
+	for _, value := range values {
+		add(value)
+	}
+	if len(merged) != 0 {
+		attributes[key] = strings.Join(merged, ",")
 	}
 }
 

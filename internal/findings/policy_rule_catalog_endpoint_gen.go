@@ -67,6 +67,9 @@ var generatedEndpointRules = []policyRuleConfig{
 				{FrameworkName: "NIST 800-53 r5", ControlID: "SI-3"},
 				{FrameworkName: "HIPAA", ControlID: "164.308(a)(5)(ii)(B)"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Defense Evasion", Technique: "T1562.001"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_ne(path(resource, \"edr_agent_installed\"), true)", "cmp_eq(path(resource, \"device_type\"), path(resource, \"WORKSTATION\"))"},

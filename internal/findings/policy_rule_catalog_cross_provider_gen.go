@@ -27,6 +27,10 @@ var generatedCrossProviderRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1098"},
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_eq(path(resource, \"has_admin_role\"), true)", "cmp_gt(path(resource, \"last_login_days_ago\"), 90)"},
@@ -71,6 +75,10 @@ var generatedCrossProviderRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1098"},
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
