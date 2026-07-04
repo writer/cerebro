@@ -59,6 +59,153 @@ runtime_families:
   - workspace
   - workspace_member
   - workspace_rate_limit
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key_or_bearer_token
+  auth_mechanics: x_api_key_admin_key_or_org_admin_bearer_with_anthropic_version_header
+  base_url: https://api.anthropic.com
+  spec_url: https://platform.claude.com/docs/en/api/admin.md
+  spec_kind: api_reference_markdown
+  references:
+    - https://platform.claude.com/docs/en/manage-claude/admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/admin-api-keys.md
+    - https://platform.claude.com/docs/en/manage-claude/wif-admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/usage-cost-api.md
+    - https://platform.claude.com/docs/en/manage-claude/analytics-api.md
+    - https://platform.claude.com/docs/en/manage-claude/rate-limits-api.md
+    - https://platform.claude.com/docs/en/manage-claude/spend-limits-api.md
+    - https://platform.claude.com/docs/en/manage-claude/compliance-api.md
+    - https://platform.claude.com/docs/en/manage-claude/compliance-api-access.md
+    - https://platform.claude.com/docs/en/api/admin/organizations/me.md
+    - https://platform.claude.com/docs/en/api/admin/users/list.md
+    - https://platform.claude.com/docs/en/api/admin/invites/list.md
+    - https://platform.claude.com/docs/en/api/admin/workspaces/list.md
+    - https://platform.claude.com/docs/en/api/admin/workspaces/members/list.md
+    - https://platform.claude.com/docs/en/api/admin/api_keys/list.md
+    - https://platform.claude.com/docs/en/api/admin/external_keys/list.md
+    - https://platform.claude.com/docs/en/api/admin/service_accounts/list.md
+    - https://platform.claude.com/docs/en/api/admin/federation_issuers/list.md
+    - https://platform.claude.com/docs/en/api/admin/federation_rules/list.md
+    - https://platform.claude.com/docs/en/api/admin/usage_report/retrieve_messages.md
+    - https://platform.claude.com/docs/en/api/admin/usage_report/retrieve_claude_code.md
+    - https://platform.claude.com/docs/en/api/admin/cost_report/retrieve.md
+    - https://platform.claude.com/docs/en/api/admin/analytics/cost/list.md
+    - https://platform.claude.com/docs/en/api/admin/rate_limits/list.md
+    - https://platform.claude.com/docs/en/api/admin/workspaces/rate_limits/list.md
+    - https://platform.claude.com/docs/en/api/admin/spend_limits/list_effective.md
+    - https://platform.claude.com/docs/en/api/admin/spend_limits/increase_requests/list.md
+    - https://platform.claude.com/docs/en/api/compliance/activities/list.md
+    - https://platform.claude.com/docs/en/api/compliance/organizations/list.md
+    - https://platform.claude.com/docs/en/api/compliance/organizations/users/list.md
+    - https://platform.claude.com/docs/en/api/compliance/organizations/roles/list.md
+    - https://platform.claude.com/docs/en/api/compliance/organizations/roles/permissions/list.md
+    - https://platform.claude.com/docs/en/api/compliance/groups/list.md
+    - https://platform.claude.com/docs/en/api/compliance/groups/members/list.md
+    - https://platform.claude.com/docs/en/api/compliance/apps/projects/list.md
+    - https://platform.claude.com/docs/en/api/compliance/apps/projects/collaborators/list.md
+    - https://platform.claude.com/docs/en/api/compliance/organizations/settings/retrieve.md
+  auth_evidence:
+    - https://platform.claude.com/docs/en/manage-claude/admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/admin-api-keys.md
+    - https://platform.claude.com/docs/en/manage-claude/wif-admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/compliance-api-access.md
+  scope_evidence:
+    - https://platform.claude.com/docs/en/manage-claude/admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/wif-admin-api.md
+    - https://platform.claude.com/docs/en/manage-claude/usage-cost-api.md
+    - https://platform.claude.com/docs/en/manage-claude/analytics-api.md
+    - https://platform.claude.com/docs/en/manage-claude/rate-limits-api.md
+    - https://platform.claude.com/docs/en/manage-claude/spend-limits-api.md
+    - https://platform.claude.com/docs/en/manage-claude/compliance-api.md
+    - https://platform.claude.com/docs/en/manage-claude/compliance-api-access.md
+  families:
+    - id: analytics_cost
+      method: GET
+      path: /v1/organizations/analytics/cost_report
+    - id: api_key
+      method: GET
+      path: /v1/organizations/api_keys
+    - id: compliance_activity
+      method: GET
+      path: /v1/compliance/activities
+    - id: compliance_group
+      method: GET
+      path: /v1/compliance/groups
+    - id: compliance_group_member
+      method: GET
+      path: /v1/compliance/groups/{group_id}/members
+    - id: compliance_organization
+      method: GET
+      path: /v1/compliance/organizations
+    - id: compliance_organization_setting
+      method: GET
+      path: /v1/compliance/organizations/{organization_id}/settings
+    - id: compliance_organization_user
+      method: GET
+      path: /v1/compliance/organizations/{org_uuid}/users
+    - id: compliance_project
+      method: GET
+      path: /v1/compliance/apps/projects
+    - id: compliance_project_collaborator
+      method: GET
+      path: /v1/compliance/apps/projects/{project_id}/collaborators
+    - id: compliance_role
+      method: GET
+      path: /v1/compliance/organizations/{org_uuid}/roles
+    - id: compliance_role_permission
+      method: GET
+      path: /v1/compliance/organizations/{org_uuid}/roles/{role_id}/permissions
+    - id: cost_report
+      method: GET
+      path: /v1/organizations/cost_report
+    - id: external_key
+      method: GET
+      path: /v1/organizations/external_keys
+    - id: federation_issuer
+      method: GET
+      path: /v1/organizations/federation_issuers
+    - id: federation_rule
+      method: GET
+      path: /v1/organizations/federation_rules
+    - id: invite
+      method: GET
+      path: /v1/organizations/invites
+    - id: organization
+      method: GET
+      path: /v1/organizations/me
+    - id: rate_limit
+      method: GET
+      path: /v1/organizations/rate_limits
+    - id: service_account
+      method: GET
+      path: /v1/organizations/service_accounts
+    - id: spend_limit
+      method: GET
+      path: /v1/organizations/spend_limits/effective
+    - id: spend_limit_increase_request
+      method: GET
+      path: /v1/organizations/spend_limit_increase_requests
+    - id: usage_report_claude_code
+      method: GET
+      path: /v1/organizations/usage_report/claude_code
+    - id: usage_report_message
+      method: GET
+      path: /v1/organizations/usage_report/messages
+    - id: user
+      method: GET
+      path: /v1/organizations/users
+    - id: workspace
+      method: GET
+      path: /v1/organizations/workspaces
+    - id: workspace_member
+      method: GET
+      path: /v1/organizations/workspaces/{workspace_id}/members
+    - id: workspace_rate_limit
+      method: GET
+      path: /v1/organizations/workspaces/{workspace_id}/rate_limits
 coverage_contract:
   owner_domain: ai
   authority_domain: anthropic

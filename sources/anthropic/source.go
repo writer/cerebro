@@ -83,7 +83,7 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicReportFamily("usage_report_message", "/organizations/usage_report/messages"),
 		anthropicReportFamily("usage_report_claude_code", "/organizations/usage_report/claude_code"),
 		anthropicReportFamily("cost_report", "/organizations/cost_report"),
-		anthropicReportFamily("analytics_cost", "/organizations/analytics/cost"),
+		anthropicReportFamily("analytics_cost", "/organizations/analytics/cost_report"),
 		anthropicListFamily("rate_limit", "/organizations/rate_limits", "anthropic_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withQuery(map[string]string{"model": "model"}), withPageCursor()),
 		anthropicListFamily("workspace_rate_limit", "/organizations/workspaces/{workspace_id}/rate_limits", "anthropic_workspace_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withPathParams("workspace_id"), withPageCursor()),
 		anthropicListFamily("spend_limit", "/organizations/spend_limits/effective", "anthropic_spend_limit", []string{"spend_limit_id", "id", "scope.user_id", "actor.user_id"}, []string{"created_at", "updated_at"}, map[string]string{"spend_limit_id": "spend_limit_id|id", "scope_type": "scope.type", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "amount": "amount", "currency": "currency", "period": "period", "source_type": "source.type", "period_to_date_spend": "period_to_date_spend", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor(), withQuery(map[string]string{"actor_ids[]": "actor_ids", "period[]": "periods", "user_ids[]": "user_ids"})),

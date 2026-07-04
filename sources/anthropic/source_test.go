@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -18,6 +20,133 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 	if got := source.Spec().GetId(); got != "anthropic" {
 		t.Fatalf("Spec().Id = %q, want anthropic", got)
+	}
+}
+
+func TestCatalogDeclaresVerifiedAnthropicProviderAPI(t *testing.T) {
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	var catalog struct {
+		RuntimeFamilies []string `yaml:"runtime_families"`
+		ProviderAPI     struct {
+			Status        string   `yaml:"status"`
+			Basis         string   `yaml:"basis"`
+			Transport     string   `yaml:"transport"`
+			Auth          string   `yaml:"auth"`
+			AuthMechanics string   `yaml:"auth_mechanics"`
+			BaseURL       string   `yaml:"base_url"`
+			SpecURL       string   `yaml:"spec_url"`
+			SpecKind      string   `yaml:"spec_kind"`
+			References    []string `yaml:"references"`
+			AuthEvidence  []string `yaml:"auth_evidence"`
+			ScopeEvidence []string `yaml:"scope_evidence"`
+			Families      []struct {
+				ID     string `yaml:"id"`
+				Method string `yaml:"method"`
+				Path   string `yaml:"path"`
+			} `yaml:"families"`
+		} `yaml:"provider_api"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog: %v", err)
+	}
+	wantFamilies := []string{
+		"analytics_cost",
+		"api_key",
+		"compliance_activity",
+		"compliance_group",
+		"compliance_group_member",
+		"compliance_organization",
+		"compliance_organization_setting",
+		"compliance_organization_user",
+		"compliance_project",
+		"compliance_project_collaborator",
+		"compliance_role",
+		"compliance_role_permission",
+		"cost_report",
+		"external_key",
+		"federation_issuer",
+		"federation_rule",
+		"invite",
+		"organization",
+		"rate_limit",
+		"service_account",
+		"spend_limit",
+		"spend_limit_increase_request",
+		"usage_report_claude_code",
+		"usage_report_message",
+		"user",
+		"workspace",
+		"workspace_member",
+		"workspace_rate_limit",
+	}
+	assertStringSet(t, catalog.RuntimeFamilies, wantFamilies)
+	if catalog.ProviderAPI.Status != "verified" || catalog.ProviderAPI.Basis != "declared" || catalog.ProviderAPI.Transport != "rest" || catalog.ProviderAPI.Auth != "api_key_or_bearer_token" || catalog.ProviderAPI.BaseURL != "https://api.anthropic.com" {
+		t.Fatalf("provider_api = %#v, want verified declared REST API", catalog.ProviderAPI)
+	}
+	if catalog.ProviderAPI.AuthMechanics != "x_api_key_admin_key_or_org_admin_bearer_with_anthropic_version_header" {
+		t.Fatalf("auth_mechanics = %q", catalog.ProviderAPI.AuthMechanics)
+	}
+	if catalog.ProviderAPI.SpecURL != "https://platform.claude.com/docs/en/api/admin.md" || catalog.ProviderAPI.SpecKind != "api_reference_markdown" {
+		t.Fatalf("provider_api spec = %q/%q, want provider Markdown reference", catalog.ProviderAPI.SpecURL, catalog.ProviderAPI.SpecKind)
+	}
+	for _, ref := range []string{
+		"https://platform.claude.com/docs/en/manage-claude/admin-api.md",
+		"https://platform.claude.com/docs/en/manage-claude/wif-admin-api.md",
+		"https://platform.claude.com/docs/en/manage-claude/compliance-api.md",
+		"https://platform.claude.com/docs/en/api/admin/analytics/cost/list.md",
+		"https://platform.claude.com/docs/en/api/compliance/apps/projects/collaborators/list.md",
+	} {
+		if !hasString(catalog.ProviderAPI.References, ref) {
+			t.Fatalf("provider references = %v, want %s", catalog.ProviderAPI.References, ref)
+		}
+	}
+	if len(catalog.ProviderAPI.AuthEvidence) == 0 || len(catalog.ProviderAPI.ScopeEvidence) == 0 {
+		t.Fatalf("provider evidence incomplete: auth=%v scopes=%v", catalog.ProviderAPI.AuthEvidence, catalog.ProviderAPI.ScopeEvidence)
+	}
+	wantPaths := map[string]string{
+		"analytics_cost":                  "/v1/organizations/analytics/cost_report",
+		"api_key":                         "/v1/organizations/api_keys",
+		"compliance_activity":             "/v1/compliance/activities",
+		"compliance_group":                "/v1/compliance/groups",
+		"compliance_group_member":         "/v1/compliance/groups/{group_id}/members",
+		"compliance_organization":         "/v1/compliance/organizations",
+		"compliance_organization_setting": "/v1/compliance/organizations/{organization_id}/settings",
+		"compliance_organization_user":    "/v1/compliance/organizations/{org_uuid}/users",
+		"compliance_project":              "/v1/compliance/apps/projects",
+		"compliance_project_collaborator": "/v1/compliance/apps/projects/{project_id}/collaborators",
+		"compliance_role":                 "/v1/compliance/organizations/{org_uuid}/roles",
+		"compliance_role_permission":      "/v1/compliance/organizations/{org_uuid}/roles/{role_id}/permissions",
+		"cost_report":                     "/v1/organizations/cost_report",
+		"external_key":                    "/v1/organizations/external_keys",
+		"federation_issuer":               "/v1/organizations/federation_issuers",
+		"federation_rule":                 "/v1/organizations/federation_rules",
+		"invite":                          "/v1/organizations/invites",
+		"organization":                    "/v1/organizations/me",
+		"rate_limit":                      "/v1/organizations/rate_limits",
+		"service_account":                 "/v1/organizations/service_accounts",
+		"spend_limit":                     "/v1/organizations/spend_limits/effective",
+		"spend_limit_increase_request":    "/v1/organizations/spend_limit_increase_requests",
+		"usage_report_claude_code":        "/v1/organizations/usage_report/claude_code",
+		"usage_report_message":            "/v1/organizations/usage_report/messages",
+		"user":                            "/v1/organizations/users",
+		"workspace":                       "/v1/organizations/workspaces",
+		"workspace_member":                "/v1/organizations/workspaces/{workspace_id}/members",
+		"workspace_rate_limit":            "/v1/organizations/workspaces/{workspace_id}/rate_limits",
+	}
+	gotPaths := map[string]string{}
+	for _, family := range catalog.ProviderAPI.Families {
+		if family.Method != http.MethodGet {
+			t.Fatalf("provider family %s method = %q, want GET", family.ID, family.Method)
+		}
+		gotPaths[family.ID] = family.Path
+	}
+	for family, want := range wantPaths {
+		if got := gotPaths[family]; got != want {
+			t.Fatalf("provider path for %s = %q, want %q", family, got, want)
+		}
 	}
 }
 
@@ -39,6 +168,60 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 		FamilyConfigs:   familyConfigs,
 		RequireDiscover: true,
 	})
+}
+
+func TestReadAnalyticsCostUsesDocumentedCostReportPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/organizations/analytics/cost_report" {
+			t.Fatalf("request path = %q, want /organizations/analytics/cost_report", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-admin-key" {
+			t.Fatalf("x-api-key = %q, want fixture-admin-key", got)
+		}
+		if got := r.URL.Query().Get("starting_at"); got != "2026-06-01T00:00:00Z" {
+			t.Fatalf("starting_at = %q, want 2026-06-01T00:00:00Z", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":          "analytics_cost_2026_06_01",
+				"starting_at": "2026-06-01T00:00:00Z",
+				"ending_at":   "2026-06-02T00:00:00Z",
+				"model":       "claude-sonnet-4-20250514",
+				"cost_usd":    12.48,
+			}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":     "fixture-admin-key",
+		"base_url":    server.URL,
+		"family":      "analytics_cost",
+		"starting_at": "2026-06-01T00:00:00Z",
+		"tenant_id":   "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "anthropic.analytics_cost" {
+		t.Fatalf("Kind = %q, want anthropic.analytics_cost", event.Kind)
+	}
+	if got := event.Attributes["cost_usd"]; got != "12.48" {
+		t.Fatalf("cost_usd = %q, want 12.48", got)
+	}
 }
 
 func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
@@ -866,4 +1049,24 @@ func TestReadComplianceOrganizationSettingsUsesSettingsListKey(t *testing.T) {
 	if got := event.Attributes["setting_value"]; got != "true" {
 		t.Fatalf("setting_value = %q, want true", got)
 	}
+}
+
+func assertStringSet(t *testing.T, got []string, want []string) {
+	t.Helper()
+	gotCopy := append([]string(nil), got...)
+	wantCopy := append([]string(nil), want...)
+	sort.Strings(gotCopy)
+	sort.Strings(wantCopy)
+	if strings.Join(gotCopy, "\n") != strings.Join(wantCopy, "\n") {
+		t.Fatalf("set = %v, want %v", gotCopy, wantCopy)
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
