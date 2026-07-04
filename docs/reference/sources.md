@@ -399,7 +399,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `jfrog_xray` | Jfrog Xray source | jfrog_xray.audit_events, jfrog_xray.deployments, jfrog_xray.projects, jfrog_xray.repositories, jfrog_xray.users |
 | `jira` | Jira source | jira.audit_events, jira.projects, jira.users |
 | `journy_io` | Journy Io source | journy_io.account, journy_io.event, journy_io.segments_account, journy_io.segments_user, journy_io.user |
-| `jumpcloud` | Jumpcloud source | jumpcloud.audit_events, jumpcloud.groups, jumpcloud.users |
+| `jumpcloud` | Jumpcloud source | jumpcloud.applications, jumpcloud.audit_events, jumpcloud.group_members, jumpcloud.groups, jumpcloud.system_groups, jumpcloud.systems, jumpcloud.users |
 | `jumpseller` | Jumpseller source | jumpseller.checkout_custom_fields_json, jumpseller.countries_json, jumpseller.custom_fields_json, jumpseller.customer_categories_json, jumpseller.customers_json, jumpseller.fulfillments_json, jumpseller.hooks_json, jumpseller.jsapps_json, jumpseller.orders_json, jumpseller.pages_json, jumpseller.payment_methods_json, jumpseller.products_json |
 | `justworks` | Justworks source | justworks.accounts, justworks.audit_events, justworks.policies, justworks.records, justworks.users |
 | `k6_cloud` | K6 Cloud source | k6_cloud.audit_events, k6_cloud.deployments, k6_cloud.projects, k6_cloud.repositories, k6_cloud.users |

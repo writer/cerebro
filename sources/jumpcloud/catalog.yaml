@@ -17,6 +17,70 @@ runtime_families:
   - system_groups
   - group_members
   - audit_events
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x_api_key_header_with_optional_x_org_id_header
+  base_url: https://console.jumpcloud.com/api
+  spec_url: https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemusersApi.md
+  spec_kind: api_reference_markdown
+  references:
+    - https://docs.jumpcloud.com/api/1.0/index.html
+    - https://docs.jumpcloud.com/api/2.0/index.html
+    - https://docs.jumpcloud.com/api/insights/directory/1.0/index.html
+    - https://jumpcloud.com/support/directory-insights-api
+    - https://github.com/TheJumpCloud/jcapi-python
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/README.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/README.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemusersApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/ApplicationsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/docs/UserGroupsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/docs/SystemGroupsApi.md
+  auth_evidence:
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/README.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/README.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemusersApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/docs/UserGroupsApi.md
+  scope_evidence:
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemusersApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/SystemsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv1/docs/ApplicationsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/docs/UserGroupsApi.md
+    - https://raw.githubusercontent.com/TheJumpCloud/jcapi-python/master/jcapiv2/docs/SystemGroupsApi.md
+    - https://jumpcloud.com/support/directory-insights-api
+  families:
+    - id: applications
+      method: GET
+      path: /applications
+      operation: applications_list
+    - id: audit_events
+      method: POST
+      path: https://api.jumpcloud.com/insights/directory/v1/events
+      operation: directory_insights_events
+    - id: group_members
+      method: GET
+      path: /v2/usergroups/{group_id}/members
+      operation: graph_user_group_members_list
+    - id: groups
+      method: GET
+      path: /v2/usergroups
+      operation: groups_user_list
+    - id: system_groups
+      method: GET
+      path: /v2/systemgroups
+      operation: groups_system_list
+    - id: systems
+      method: GET
+      path: /systems
+      operation: systems_list
+    - id: users
+      method: GET
+      path: /systemusers
+      operation: systemusers_list
 kind_lifecycle:
   - kind: jumpcloud.users
     status: active
