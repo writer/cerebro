@@ -332,6 +332,8 @@ func questionnaireEvidenceTopic(question string) string {
 		terms.hasPhrase("mapped control")) &&
 		(terms.hasAnswerContext() || terms.has("show")):
 		return "control_coverage"
+	case terms.has("questionnaire") && answerContext && (terms.has("attack") || terms.has("attck") || terms.has("mitre")) && (terms.has("defense") || terms.has("defensive") || terms.has("defend") || terms.has("d3fend")):
+		return "attack_defense"
 	default:
 		return ""
 	}
@@ -573,19 +575,19 @@ func inferIntent(question string, cypher string) string {
 		return IntentOktaDormantAccess
 	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "group") && (strings.Contains(haystack, "risk") || strings.Contains(haystack, "membership") || strings.Contains(haystack, "access")):
 		return IntentOktaGroupAccessRisk
-	case looksLikeMITREAttackCoverageQuestion(haystack):
-		return IntentMITREAttackCoverage
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
 	case looksLikeQuestionnaireEvidenceQuestion(haystack):
 		return IntentQuestionnaireEvidence
+	case looksLikeMITREAttackCoverageQuestion(haystack):
+		return IntentMITREAttackCoverage
 	default:
 		return IntentRawCypher
 	}
 }
 
 func looksLikeMITREAttackCoverageQuestion(haystack string) bool {
-	if !containsAny(haystack, "mitre", "att&ck", "attack", "d3fend", "defend") {
+	if !containsAny(haystack, "mitre", "att&ck", "d3fend", "attack coverage", "attack data component", "attack data source") {
 		return false
 	}
 	return containsAny(haystack, "coverage", "gap", "gaps", "technique", "techniques", "tactic", "tactics", "data component", "data source", "defense", "defensive")
@@ -1184,6 +1186,16 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
 		)
 	case "control_coverage":
 		return "WHERE " + questionnaireMatchWordPredicate("coverage") + " OR questionnaire_match_text CONTAINS 'coverage_gap' OR " + questionnaireMatchWordPredicate("gap") + " OR " + questionnaireMatchWordPredicate("missing")
+	case "attack_defense":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("attack"),
+			questionnaireMatchWordPredicate("attck"),
+			questionnaireMatchWordPredicate("mitre"),
+			questionnaireMatchWordPredicate("defense"),
+			questionnaireMatchWordPredicate("defensive"),
+			questionnaireMatchWordPredicate("defend"),
+			questionnaireMatchWordPredicate("d3fend"),
+		)
 	default:
 		return ""
 	}

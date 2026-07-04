@@ -753,6 +753,17 @@ func TestAnalyzeFindingRiskContextUsesMITREContext(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextDoesNotTreatImpactTagAsMITRETactic(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-impact-tag", "policy-impact-tag", "MEDIUM", "", "", "urn:cerebro:writer:service:billing", "control.coverage")
+	finding.Attributes["tags"] = "business_impact,service_owner"
+
+	context := AnalyzeFindingRiskContext(finding, now)
+	if stringSliceContains(context.Reasons, "mitre_high_pressure_tactic") {
+		t.Fatalf("Risk reasons = %#v, did not want MITRE high-pressure tactic from generic tag", context.Reasons)
+	}
+}
+
 func TestFindingRiskFactorsDoNotChangeFindingFingerprint(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	baseline := compoundRiskFinding("finding-risk-factor-baseline", "identity-risk", "HIGH", "", "", "urn:cerebro:writer:okta_user:00u1", "")

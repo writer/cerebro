@@ -229,6 +229,21 @@ func TestInferIntentRecognizesMITREAttackCoverage(t *testing.T) {
 	}
 }
 
+func TestInferIntentDoesNotStealGenericAttackQuestions(t *testing.T) {
+	for _, tc := range []struct {
+		question string
+		want     string
+	}{
+		{question: "Explain the attack technique finding", want: IntentExplainFinding},
+		{question: "Answer the attack defense questionnaire", want: IntentQuestionnaireEvidence},
+		{question: "Show findings related to attack techniques", want: IntentRawCypher},
+	} {
+		if got := inferIntent(tc.question, ""); got != tc.want {
+			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
+		}
+	}
+}
+
 func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentOktaPrivilegedWeakMFA, Limit: 25},

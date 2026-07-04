@@ -597,9 +597,6 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	currentContextURNs := []string{}
-	attackTechniqueURNs := []string{}
-	defendTechniqueURNs := []string{}
-	defendArtifactURNs := []string{}
 	appendContextURN := func(urn string) {
 		if urn = strings.TrimSpace(urn); urn != "" {
 			currentContextURNs = append(currentContextURNs, urn)
@@ -621,9 +618,6 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 			return err
 		}
 		appendContextURN(techniqueURN)
-		if techniqueURN != "" {
-			attackTechniqueURNs = append(attackTechniqueURNs, techniqueURN)
-		}
 		knowledgeURNs, err := s.ensureFindingMITREAttackTechniqueKnowledge(ctx, finding, anchorURN, technique, techniqueURN, result)
 		if err != nil {
 			return err
@@ -643,9 +637,6 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 			return err
 		}
 		appendContextURN(techniqueURN)
-		if techniqueURN != "" {
-			defendTechniqueURNs = append(defendTechniqueURNs, techniqueURN)
-		}
 	}
 	for _, artifact := range mitre.ExtractDefendArtifacts(findingMetadataValues(finding.Metadata, workflowMITREDefendArtifactKeys...)...) {
 		artifactURN, err := s.ensureFindingMITREDefendArtifact(ctx, finding, anchorURN, artifact, result)
@@ -653,35 +644,6 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 			return err
 		}
 		appendContextURN(artifactURN)
-		if artifactURN != "" {
-			defendArtifactURNs = append(defendArtifactURNs, artifactURN)
-		}
-	}
-	for _, defendTechniqueURN := range uniqueStringsPreserveOrder(defendTechniqueURNs) {
-		for _, attackTechniqueURN := range uniqueStringsPreserveOrder(attackTechniqueURNs) {
-			if err := s.upsertLink(ctx, &ports.ProjectedLink{
-				TenantID:   tenantID,
-				SourceID:   sourceID,
-				FromURN:    defendTechniqueURN,
-				ToURN:      attackTechniqueURN,
-				Relation:   relationSupports,
-				Attributes: findingMITREKnowledgeLinkAttributes(finding, "defends_against", ""),
-			}, result); err != nil {
-				return err
-			}
-		}
-		for _, artifactURN := range uniqueStringsPreserveOrder(defendArtifactURNs) {
-			if err := s.upsertLink(ctx, &ports.ProjectedLink{
-				TenantID:   tenantID,
-				SourceID:   sourceID,
-				FromURN:    defendTechniqueURN,
-				ToURN:      artifactURN,
-				Relation:   relationHasContext,
-				Attributes: findingMITREKnowledgeLinkAttributes(finding, "defense_artifact", ""),
-			}, result); err != nil {
-				return err
-			}
-		}
 	}
 	if err := s.pruneFindingMITREContextLinks(ctx, tenantID, sourceID, anchorURN, currentContextURNs, result); err != nil {
 		return err

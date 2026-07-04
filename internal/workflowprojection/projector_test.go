@@ -443,8 +443,12 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	assertWorkflowLink(t, graph, appLogComponent.URN, relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
 	assertWorkflowLink(t, graph, appLogComponent.URN, relationBelongsTo, appLogSource.URN)
 	assertWorkflowLink(t, graph, "urn:cerebro:writer:mitre_defend_technique:InboundTrafficFiltering", relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
-	assertWorkflowLink(t, graph, "urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication", relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
-	assertWorkflowLink(t, graph, "urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication", relationHasContext, "urn:cerebro:writer:mitre_defend_artifact:Credential")
+	if _, ok := graph.links["urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication|supports|urn:cerebro:writer:mitre_attack_technique:T1190"]; ok {
+		t.Fatal("explicit D3FEND metadata should not create cross-product ATT&CK support links")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication|has_context|urn:cerebro:writer:mitre_defend_artifact:Credential"]; ok {
+		t.Fatal("explicit D3FEND metadata should not create cross-product artifact links")
+	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   finding,
 		NoteID:    "note-1",

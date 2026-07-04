@@ -822,10 +822,12 @@ func AnalyzeFindingRiskContextWithConfig(finding *ports.FindingRecord, now time.
 		attributes["attack_tactics"],
 		attributes["policy_mitre"],
 		attributes["rule_mitre_attack"],
+	))
+	mitreTagContext := strings.ToLower(firstNonEmpty(
 		attributes["tags"],
 		attributes["rule_tags"],
 	))
-	if containsAny(mitreTacticContext, "credential access", "privilege escalation", "defense evasion", "lateral movement", "exfiltration", "impact", "ta0006", "ta0004", "ta0005", "ta0008", "ta0010", "ta0040") {
+	if hasHighPressureMITRETactic(mitreTacticContext, true) || hasHighPressureMITRETactic(mitreTagContext, false) {
 		applyRiskScoringFactor(settings, "mitre_high_pressure_tactic", "mitre_high_pressure_tactic", ports.RiskScoringFactorWeight{Likelihood: 5, Impact: 8}, &likelihood, &impact, &confidence, &reasons)
 	}
 	coverageContext := strings.ToLower(firstNonEmpty(attributes["mitre_coverage_state"], attributes["coverage_state"], attributes["coverage_status"], attributes["coverage"]))
@@ -1296,6 +1298,13 @@ func containsAny(value string, fragments ...string) bool {
 		}
 	}
 	return false
+}
+
+func hasHighPressureMITRETactic(value string, allowImpactName bool) bool {
+	if containsAny(value, "credential access", "privilege escalation", "defense evasion", "lateral movement", "exfiltration", "ta0006", "ta0004", "ta0005", "ta0008", "ta0010", "ta0040") {
+		return true
+	}
+	return allowImpactName && containsAny(value, "impact")
 }
 
 func findingAttributeBool(attributes map[string]string, keys ...string) bool {
