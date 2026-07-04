@@ -67,12 +67,19 @@ type RuleDefinition struct {
 	FingerprintFields        []string
 	ControlRefs              []ports.FindingControlRef
 	MITREAttack              []MITREAttackRef
+	MITREDefend              []MITREDefendRef
 	Lifecycle                Lifecycle
 }
 
 type MITREAttackRef struct {
 	Tactic    string `json:"tactic"`
 	Technique string `json:"technique"`
+}
+
+type MITREDefendRef struct {
+	Tactic    string `json:"tactic,omitempty"`
+	Technique string `json:"technique,omitempty"`
+	Artifact  string `json:"artifact,omitempty"`
 }
 
 type eventRuleConfig struct {
@@ -191,6 +198,11 @@ func (d RuleDefinition) AttributeMap() map[string]string {
 	joinAttribute(attributes, "mitre_attack", mitrePairs)
 	joinAttribute(attributes, "mitre_attack_tactics", mitreTactics)
 	joinAttribute(attributes, "mitre_attack_techniques", mitreTechniques)
+	defendTactics, defendTechniques, defendArtifacts, defendRefs := mitreDefendAttributeValues(d.MITREDefend)
+	joinAttribute(attributes, "mitre_defend", defendRefs)
+	joinAttribute(attributes, "mitre_defend_tactics", defendTactics)
+	joinAttribute(attributes, "mitre_defend_techniques", defendTechniques)
+	joinAttribute(attributes, "mitre_defend_artifacts", defendArtifacts)
 	joinAttribute(attributes, "tags", d.Tags)
 	if strings.TrimSpace(d.Runbook) != "" {
 		attributes["runbook"] = strings.TrimSpace(d.Runbook)
@@ -241,6 +253,60 @@ func mitreAttackAttributeValues(refs []MITREAttackRef) ([]string, []string, []st
 		}
 	}
 	return tactics, techniques, pairs
+}
+
+func mitreDefendAttributeValues(refs []MITREDefendRef) ([]string, []string, []string, []string) {
+	tacticSeen := map[string]struct{}{}
+	techniqueSeen := map[string]struct{}{}
+	artifactSeen := map[string]struct{}{}
+	refSeen := map[string]struct{}{}
+	var tactics []string
+	var techniques []string
+	var artifacts []string
+	var values []string
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		artifact := strings.TrimSpace(ref.Artifact)
+		if tactic != "" {
+			if _, ok := tacticSeen[tactic]; !ok {
+				tacticSeen[tactic] = struct{}{}
+				tactics = append(tactics, tactic)
+			}
+		}
+		if technique != "" {
+			if _, ok := techniqueSeen[technique]; !ok {
+				techniqueSeen[technique] = struct{}{}
+				techniques = append(techniques, technique)
+			}
+		}
+		if artifact != "" {
+			if _, ok := artifactSeen[artifact]; !ok {
+				artifactSeen[artifact] = struct{}{}
+				artifacts = append(artifacts, artifact)
+			}
+		}
+		parts := []string{}
+		if tactic != "" {
+			parts = append(parts, tactic)
+		}
+		if technique != "" {
+			parts = append(parts, technique)
+		}
+		if artifact != "" {
+			parts = append(parts, artifact)
+		}
+		if len(parts) == 0 {
+			continue
+		}
+		value := strings.Join(parts, ":")
+		if _, ok := refSeen[value]; ok {
+			continue
+		}
+		refSeen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return tactics, techniques, artifacts, values
 }
 
 func joinAttribute(attributes map[string]string, key string, values []string) {

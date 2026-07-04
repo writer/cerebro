@@ -735,6 +735,24 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextUsesMITREContext(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-mitre", "policy-mitre", "MEDIUM", "", "", "urn:cerebro:writer:security_tool:agent-gateway", "control.coverage")
+	finding.Attributes["mitre_attack_tactics"] = "Defense Evasion"
+	finding.Attributes["mitre_attack_techniques"] = "T1562"
+	finding.Attributes["coverage_status"] = "gap"
+
+	context := AnalyzeFindingRiskContext(finding, now)
+	for _, reason := range []string{"mitre_attack_context", "mitre_high_pressure_tactic", "mitre_coverage_gap"} {
+		if !stringSliceContains(context.Reasons, reason) {
+			t.Fatalf("Risk reasons = %#v, want %q", context.Reasons, reason)
+		}
+	}
+	if context.ConfidenceScore <= 85 {
+		t.Fatalf("ConfidenceScore = %d, want MITRE confidence context to increase baseline", context.ConfidenceScore)
+	}
+}
+
 func TestFindingRiskFactorsDoNotChangeFindingFingerprint(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	baseline := compoundRiskFinding("finding-risk-factor-baseline", "identity-risk", "HIGH", "", "", "urn:cerebro:writer:okta_user:00u1", "")

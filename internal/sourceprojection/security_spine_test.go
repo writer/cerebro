@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/mitre"
 )
 
 func TestProjectBackstageComponent(t *testing.T) {
@@ -351,6 +352,46 @@ func TestProjectSecurityToolingMapControlMappingLinksMITRECoverage(t *testing.T)
 	if got := state.links[defendTechniqueURN+"|"+relationSupports+"|"+attackTechniqueURN].Attributes["relationship"]; got != "defends_against" {
 		t.Fatalf("defend attack relationship = %q, want defends_against", got)
 	}
+	coverageURN := mitre.AttackCoverageURN("writer", toolURN, attackTechniqueURN)
+	coverage := state.entities[coverageURN]
+	if coverage == nil || coverage.EntityType != mitre.AttackCoverageEntityType {
+		t.Fatalf("coverage entity = %#v, want MITRE ATT&CK coverage node", coverage)
+	}
+	if got := coverage.Attributes["coverage_state"]; got != "gap" {
+		t.Fatalf("coverage_state = %q, want gap", got)
+	}
+	if got := coverage.Attributes["evidence_surface"]; got != "endpoint" {
+		t.Fatalf("evidence_surface = %q, want endpoint", got)
+	}
+	assertProjectedLink(t, state, toolURN, relationHasContext, coverageURN)
+	assertProjectedLink(t, state, coverageURN, relationSupports, attackTechniqueURN)
+	componentURN := securitySpineEntityURNByAttribute(state, mitre.AttackDataComponentEntityType, "data_component_name", "Application Log Content")
+	if componentURN == "" {
+		t.Fatalf("MITRE ATT&CK data component Application Log Content missing: %#v", state.entities)
+	}
+	sourceURN := securitySpineEntityURNByAttribute(state, mitre.AttackDataSourceEntityType, "data_source_id", "DS0015")
+	if sourceURN == "" {
+		t.Fatalf("MITRE ATT&CK data source DS0015 missing: %#v", state.entities)
+	}
+	assertProjectedLink(t, state, coverageURN, relationHasEvidence, componentURN)
+	assertProjectedLink(t, state, componentURN, relationSupports, attackTechniqueURN)
+	assertProjectedLink(t, state, componentURN, relationBelongsTo, sourceURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:mitre_defend_technique:InboundTrafficFiltering", relationSupports, attackTechniqueURN)
+}
+
+func securitySpineEntityURNByAttribute(recorder *projectionRecorder, entityType string, key string, value string) string {
+	if recorder == nil {
+		return ""
+	}
+	for _, entity := range recorder.entities {
+		if entity == nil || entity.EntityType != entityType {
+			continue
+		}
+		if entity.Attributes[key] == value {
+			return entity.URN
+		}
+	}
+	return ""
 }
 
 func TestRegistryRoutesSecurityToolingMapDeclaredKinds(t *testing.T) {

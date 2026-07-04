@@ -22,6 +22,7 @@ const (
 	IntentOktaDormantAccess         = "okta_dormant_access"
 	IntentOktaGroupAccessRisk       = "okta_group_access_risk"
 	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
+	IntentMITREAttackCoverage       = "mitre_attack_coverage"
 
 	postProcessingCandidateRowLimit        = ports.MaxCypherQueryRows
 	questionnaireEvidenceCandidateRowLimit = postProcessingCandidateRowLimit
@@ -216,6 +217,8 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 		plan.Filters = fastPathTopRiskFilters(question)
 	case IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
 		plan.Filters = map[string]string{}
+	case IntentMITREAttackCoverage:
+		plan.Filters = fastPathMITREAttackCoverageFilters(question)
 	case IntentQuestionnaireEvidence:
 		plan.Filters = fastPathQuestionnaireEvidenceFilters(question)
 		if planFilterValue(plan.Filters, "topic") == "" {
@@ -261,6 +264,15 @@ func fastPathTopRiskFilters(question string) map[string]string {
 
 func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
 	return planFilterValue(fastPathQuestionnaireEvidenceFilters(haystack), "topic") != ""
+}
+
+func fastPathMITREAttackCoverageFilters(question string) map[string]string {
+	filters := map[string]string{}
+	lower := strings.ToLower(question)
+	if containsAny(lower, "gap", "gaps", "missing", "uncovered", "unsupported", "unconfigured", "failed", "stale") {
+		filters["coverage_state"] = "gap"
+	}
+	return filters
 }
 
 func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
@@ -412,6 +424,15 @@ func containsWord(haystack string, needle string) bool {
 	return pattern.MatchString(strings.ToLower(haystack))
 }
 
+func containsAny(value string, fragments ...string) bool {
+	for _, fragment := range fragments {
+		if fragment != "" && strings.Contains(value, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
 func mentionsOktaMFAPosture(haystack string) bool {
 	return strings.Contains(haystack, "mfa") || strings.Contains(haystack, "factor") || strings.Contains(haystack, "phishing resistant")
 }
@@ -524,6 +545,8 @@ func canonicalIntent(value string) string {
 		return IntentOktaGroupAccessRisk
 	case "questionnaire_evidence_answer", "questionnaire_answer", "compliance_answer", "control_coverage":
 		return IntentQuestionnaireEvidence
+	case "mitre_attack_coverage", "attack_coverage", "mitre_coverage", "attack_coverage_gaps", "mitre_coverage_gaps":
+		return IntentMITREAttackCoverage
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
@@ -550,6 +573,8 @@ func inferIntent(question string, cypher string) string {
 		return IntentOktaDormantAccess
 	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "group") && (strings.Contains(haystack, "risk") || strings.Contains(haystack, "membership") || strings.Contains(haystack, "access")):
 		return IntentOktaGroupAccessRisk
+	case looksLikeMITREAttackCoverageQuestion(haystack):
+		return IntentMITREAttackCoverage
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
 	case looksLikeQuestionnaireEvidenceQuestion(haystack):
@@ -557,6 +582,13 @@ func inferIntent(question string, cypher string) string {
 	default:
 		return IntentRawCypher
 	}
+}
+
+func looksLikeMITREAttackCoverageQuestion(haystack string) bool {
+	if !containsAny(haystack, "mitre", "att&ck", "attack", "d3fend", "defend") {
+		return false
+	}
+	return containsAny(haystack, "coverage", "gap", "gaps", "technique", "techniques", "tactic", "tactics", "data component", "data source", "defense", "defensive")
 }
 
 func renderDeterministicPlan(plan AskQueryPlan, defaultMaxRows int) (string, bool) {
@@ -815,9 +847,57 @@ LIMIT %d`, cypherJSONStringAttributes("assignment.attributes_json", "event_id", 
 			return "", false
 		}
 		return renderQuestionnaireEvidenceQuery(topicPredicate), true
+	case IntentMITREAttackCoverage:
+		return renderMITREAttackCoverageQuery(plan, limit), true
 	default:
 		return "", false
 	}
+}
+
+func renderMITREAttackCoverageQuery(plan AskQueryPlan, limit int) string {
+	coverageStateFilter := strings.ToLower(strings.TrimSpace(planFilterValue(plan.Filters, "coverage_state")))
+	coverageStatePredicate := ""
+	if coverageStateFilter != "" {
+		coverageStatePredicate = "\nWHERE toLower(coverage_state) = " + cypherStringLiteral(coverageStateFilter)
+	}
+	return fmt.Sprintf(`MATCH (anchor:Entity {tenant_id: $tenant_id})-[ctx:RELATION {relation: 'has_context'}]->(coverage:Entity {tenant_id: $tenant_id, entity_type: 'mitre.attack.coverage'})
+WHERE ctx.tenant_id = $tenant_id
+  AND (
+    $scope_urn = ''
+    OR anchor.urn = $scope_urn
+    OR coverage.urn = $scope_urn
+  )
+MATCH (coverage)-[coverageTechnique:RELATION {relation: 'supports'}]->(technique:Entity {tenant_id: $tenant_id, entity_type: 'mitre.attack.technique'})
+WHERE coverageTechnique.tenant_id = $tenant_id
+WITH anchor, coverage, technique,
+     coalesce(%s, '') AS coverage_state,
+     coalesce(%s, '') AS coverage_status,
+     coalesce(%s, '') AS evidence_surface%s
+OPTIONAL MATCH (coverage)-[evidenceRel:RELATION {relation: 'has_evidence'}]->(component:Entity {tenant_id: $tenant_id, entity_type: 'mitre.attack.data_component'})
+WHERE evidenceRel.tenant_id = $tenant_id
+OPTIONAL MATCH (component)-[sourceRel:RELATION {relation: 'belongs_to'}]->(dataSource:Entity {tenant_id: $tenant_id, entity_type: 'mitre.attack.data_source'})
+WHERE sourceRel.tenant_id = $tenant_id
+OPTIONAL MATCH (defend:Entity {tenant_id: $tenant_id, entity_type: 'mitre.defend.technique'})-[defends:RELATION {relation: 'supports'}]->(technique)
+WHERE defends.tenant_id = $tenant_id
+RETURN anchor.urn AS anchor_urn,
+       coalesce(anchor.label, anchor.urn) AS anchor_label,
+       anchor.entity_type AS anchor_type,
+       coverage.urn AS coverage_urn,
+       coalesce(coverage.label, coverage.urn) AS coverage_label,
+       coverage_state,
+       coverage_status,
+       evidence_surface,
+       technique.urn AS technique_urn,
+       coalesce(technique.label, technique.urn) AS technique_label,
+       component.urn AS data_component_urn,
+       coalesce(component.label, component.urn) AS data_component_label,
+       dataSource.urn AS data_source_urn,
+       coalesce(dataSource.label, dataSource.urn) AS data_source_label,
+       defend.urn AS defend_technique_urn,
+       coalesce(defend.label, defend.urn) AS defend_technique_label,
+       'MITRE coverage rows are projected graph context; treat missing data components as missing projected evidence, not proof no telemetry exists.' AS overclaim_guard
+ORDER BY coverage_state DESC, technique_label, anchor_label, data_component_label
+LIMIT %d`, cypherJSONStringAttributes("coverage.attributes_json", "coverage_state"), cypherJSONStringAttributes("coverage.attributes_json", "coverage_status"), cypherJSONStringAttributes("coverage.attributes_json", "evidence_surface"), coverageStatePredicate, limit)
 }
 
 var questionnaireEvidenceQueryFragments = []string{
@@ -1152,6 +1232,10 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 			}
 		case IntentQuestionnaireEvidence:
 			if normalized != "topic" && normalized != "answer_mode" {
+				return true
+			}
+		case IntentMITREAttackCoverage:
+			if normalized != "coverage_state" {
 				return true
 			}
 		case IntentFailingControls:

@@ -135,6 +135,7 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 		FingerprintFields:  []string{"repository", "action"},
 		ControlRefs:        []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
 		MITREAttack:        []MITREAttackRef{{Tactic: "Defense Evasion", Technique: "T1562"}},
+		MITREDefend:        []MITREDefendRef{{Technique: "ProcessTermination", Artifact: "Process"}},
 		Lifecycle:          Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	if err := definition.Validate(); err != nil {
@@ -162,6 +163,15 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 	}
 	if got := attributes["mitre_attack"]; got != "Defense Evasion:T1562" {
 		t.Fatalf("AttributeMap()[mitre_attack] = %q, want Defense Evasion:T1562", got)
+	}
+	if got := attributes["mitre_defend_techniques"]; got != "ProcessTermination" {
+		t.Fatalf("AttributeMap()[mitre_defend_techniques] = %q, want ProcessTermination", got)
+	}
+	if got := attributes["mitre_defend_artifacts"]; got != "Process" {
+		t.Fatalf("AttributeMap()[mitre_defend_artifacts] = %q, want Process", got)
+	}
+	if got := attributes["mitre_defend"]; got != "ProcessTermination:Process" {
+		t.Fatalf("AttributeMap()[mitre_defend] = %q, want ProcessTermination:Process", got)
 	}
 }
 

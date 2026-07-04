@@ -123,6 +123,7 @@ func addMITREAttackTechniqueLinks(entities map[string]*ports.ProjectedEntity, li
 			Attributes: mitre.AttackTechniqueAttributes(technique),
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, techniqueURN, relation, mitreLinkAttributes(event, "attack_technique", technique.SourceValue, extraAttrs)))
+		addMITREAttackTechniqueKnowledgeLinks(entities, links, tenantID, event, fromURN, technique, techniqueURN, relation, extraAttrs)
 		urns = append(urns, techniqueURN)
 	}
 	return urns
@@ -203,6 +204,116 @@ func addMITREDefendArtifactLinks(entities map[string]*ports.ProjectedEntity, lin
 	}
 }
 
+func addMITREAttackTechniqueKnowledgeLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, technique mitre.AttackTechnique, techniqueURN string, relation string, extraAttrs map[string]string) {
+	knowledge, ok := mitre.AttackTechniqueKnowledgeFor(technique)
+	if !ok {
+		return
+	}
+	knowledgeTechnique := mitre.AttackTechnique{ID: knowledge.ID, Name: knowledge.Name, SourceValue: technique.SourceValue}
+	if strings.TrimSpace(knowledgeTechnique.ID) == "" {
+		knowledgeTechnique.ID = technique.ID
+	}
+	if strings.TrimSpace(knowledgeTechnique.Name) == "" {
+		knowledgeTechnique.Name = technique.Name
+	}
+	for _, tactic := range mitre.AttackTacticsForTechnique(knowledgeTechnique) {
+		tacticURN := mitre.AttackTacticURN(tenantID, tactic)
+		if tacticURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        tacticURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: mitre.AttackTacticEntityType,
+			Label:      mitre.AttackTacticLabel(tactic),
+			Attributes: mitre.AttackTacticAttributes(tactic),
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), techniqueURN, tacticURN, relationBelongsTo, mitreKnowledgeLinkAttributes(event, "attack_technique_tactic", technique.SourceValue, extraAttrs)))
+	}
+	coverageURN := mitre.AttackCoverageURN(tenantID, fromURN, techniqueURN)
+	if coverageURN != "" {
+		coverageState := mitreCoverageState(relation, extraAttrs)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        coverageURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: mitre.AttackCoverageEntityType,
+			Label:      mitre.AttackTechniqueLabel(knowledgeTechnique) + " coverage",
+			Attributes: mitre.AttackCoverageAttributes(knowledgeTechnique, coverageState, fromURN, technique.SourceValue, mitreKnowledgeLinkAttributes(event, "attack_coverage", technique.SourceValue, extraAttrs)),
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, coverageURN, relationHasContext, mitreKnowledgeLinkAttributes(event, "attack_coverage_anchor", technique.SourceValue, extraAttrs)))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), coverageURN, techniqueURN, relationSupports, mitreKnowledgeLinkAttributes(event, "attack_coverage_technique", technique.SourceValue, extraAttrs)))
+	}
+	for _, component := range knowledge.DataComponents {
+		componentURN := mitre.AttackDataComponentURN(tenantID, component)
+		if componentURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        componentURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: mitre.AttackDataComponentEntityType,
+			Label:      firstNonEmpty(component.Name, component.ID),
+			Attributes: mitre.AttackDataComponentAttributes(component),
+		})
+		if source, ok := mitre.AttackDataSourceForComponent(component); ok {
+			sourceURN := mitre.AttackDataSourceURN(tenantID, source)
+			if sourceURN != "" {
+				addEntity(entities, &ports.ProjectedEntity{
+					URN:        sourceURN,
+					TenantID:   tenantID,
+					SourceID:   event.GetSourceId(),
+					EntityType: mitre.AttackDataSourceEntityType,
+					Label:      firstNonEmpty(source.Name, source.ID),
+					Attributes: mitre.AttackDataSourceAttributes(source),
+				})
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, sourceURN, relationBelongsTo, mitreKnowledgeLinkAttributes(event, "attack_data_component_source", technique.SourceValue, extraAttrs)))
+			}
+		}
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, techniqueURN, relationSupports, mitreKnowledgeLinkAttributes(event, "detects_attack_technique", technique.SourceValue, extraAttrs)))
+		if coverageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), coverageURN, componentURN, relationHasEvidence, mitreKnowledgeLinkAttributes(event, "coverage_data_component", technique.SourceValue, extraAttrs)))
+		}
+	}
+	for _, defendTechnique := range knowledge.DefendTechniques {
+		defendTechniqueURN := mitre.DefendTechniqueURN(tenantID, defendTechnique)
+		if defendTechniqueURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        defendTechniqueURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: mitre.DefendTechniqueEntityType,
+			Label:      mitre.DefendTechniqueLabel(defendTechnique),
+			Attributes: mitre.DefendTechniqueAttributes(defendTechnique),
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), defendTechniqueURN, techniqueURN, relationSupports, mitreKnowledgeLinkAttributes(event, "defends_against", technique.SourceValue, extraAttrs)))
+	}
+	for _, artifact := range knowledge.DefendArtifacts {
+		artifactURN := mitre.DefendArtifactURN(tenantID, artifact)
+		if artifactURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        artifactURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: mitre.DefendArtifactEntityType,
+			Label:      mitre.DefendArtifactLabel(artifact),
+			Attributes: mitre.DefendArtifactAttributes(artifact),
+		})
+		for _, defendTechnique := range knowledge.DefendTechniques {
+			defendTechniqueURN := mitre.DefendTechniqueURN(tenantID, defendTechnique)
+			if defendTechniqueURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), defendTechniqueURN, artifactURN, relationHasContext, mitreKnowledgeLinkAttributes(event, "defense_artifact", technique.SourceValue, extraAttrs)))
+			}
+		}
+	}
+}
+
 func mitreAttributeValues(attrs map[string]string, keys ...string) []string {
 	values := []string{}
 	if attrs == nil {
@@ -229,4 +340,26 @@ func mitreLinkAttributes(event *cerebrov1.EventEnvelope, contextType string, sou
 		}
 	}
 	return compactAttributes(attrs)
+}
+
+func mitreKnowledgeLinkAttributes(event *cerebrov1.EventEnvelope, relationship string, sourceValue string, extra map[string]string) map[string]string {
+	attrs := mitreLinkAttributes(event, relationship, sourceValue, extra)
+	attrs["relationship"] = strings.TrimSpace(relationship)
+	attrs["knowledge_pack_id"] = mitre.KnowledgePackID
+	return compactAttributes(attrs)
+}
+
+func mitreCoverageState(relation string, attrs map[string]string) mitre.CoverageState {
+	status := ""
+	evidenceSurface := ""
+	if attrs != nil {
+		status = firstNonEmpty(attrs["coverage_state"], attrs["coverage_status"], attrs["coverage"], attrs["status"])
+		evidenceSurface = attrs["evidence_surface"]
+	}
+	state := mitre.NormalizeCoverageState(status)
+	if relation == relationHasContext && state == "mapped" {
+		state = "observed"
+		status = firstNonEmpty(status, "observed")
+	}
+	return mitre.CoverageState{State: state, Status: status, EvidenceSurface: evidenceSurface}
 }

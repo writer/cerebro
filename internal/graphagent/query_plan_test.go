@@ -217,6 +217,18 @@ func TestInferIntentDetectsFailingControls(t *testing.T) {
 	}
 }
 
+func TestInferIntentRecognizesMITREAttackCoverage(t *testing.T) {
+	for _, question := range []string{
+		"Show MITRE ATT&CK coverage gaps by technique",
+		"Which D3FEND techniques cover attack techniques?",
+		"List attack data components for MITRE coverage",
+	} {
+		if got := inferIntent(question, ""); got != IntentMITREAttackCoverage {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentMITREAttackCoverage)
+		}
+	}
+}
+
 func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentOktaPrivilegedWeakMFA, Limit: 25},
@@ -648,6 +660,37 @@ func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
 	}
 }
 
+func TestConvertDraftToQueryUsesMITREAttackCoverageTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show MITRE ATT&CK coverage gaps by technique",
+		ScopeURN: "urn:cerebro:writer:security_tool:agent-gateway",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentMITREAttackCoverage, Filters: map[string]string{"coverage_state": "gap"}, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentMITREAttackCoverage || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic MITRE ATT&CK coverage template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'mitre.attack.coverage'",
+		"entity_type: 'mitre.attack.technique'",
+		"entity_type: 'mitre.attack.data_component'",
+		"entity_type: 'mitre.attack.data_source'",
+		"entity_type: 'mitre.defend.technique'",
+		"relation: 'has_context'",
+		"relation: 'supports'",
+		"relation: 'has_evidence'",
+		"WHERE toLower(coverage_state) = 'gap'",
+		"$scope_urn",
+		"overclaim_guard",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("MITRE coverage cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
 func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
@@ -938,6 +981,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
 		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},
 		{name: "questionnaire evidence", intent: IntentQuestionnaireEvidence, scope: "urn:cerebro:writer:policy:control:ac-1", filters: map[string]string{"topic": "okta_mfa"}},
+		{name: "mitre coverage", intent: IntentMITREAttackCoverage, scope: "urn:cerebro:writer:security_tool:agent-gateway", filters: map[string]string{"coverage_state": "gap"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertDraftToQuery(AskRequest{

@@ -26,6 +26,7 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
 		MITREAttack:       []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
+		MITREDefend:       []MITREDefendRef{{Technique: "InboundTrafficFiltering", Artifact: "NetworkTraffic"}},
 		Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	rule := newPolicyCatalogRule(policyRuleConfig{
@@ -61,6 +62,8 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 			"resource_id":             "resource-1",
 			"mitre_attack_tactics":    "Discovery",
 			"mitre_attack_techniques": "T1087",
+			"mitre_defend_techniques": "LocalAccountMonitoring",
+			"mitre_defend_artifacts":  "UserAccount",
 			"policy_mitre":            "Discovery:T1087",
 		},
 	}
@@ -137,6 +140,18 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	}
 	if got := finding.Attributes["rule_mitre_attack_techniques"]; got != "T1190" {
 		t.Fatalf("rule_mitre_attack_techniques = %q, want T1190", got)
+	}
+	if got := finding.Attributes["mitre_defend_techniques"]; got != "LocalAccountMonitoring,InboundTrafficFiltering" {
+		t.Fatalf("mitre_defend_techniques = %q, want LocalAccountMonitoring,InboundTrafficFiltering", got)
+	}
+	if got := finding.Attributes["mitre_defend_artifacts"]; got != "UserAccount,NetworkTraffic" {
+		t.Fatalf("mitre_defend_artifacts = %q, want UserAccount,NetworkTraffic", got)
+	}
+	if got := finding.Attributes["mitre_defend"]; got != "InboundTrafficFiltering:NetworkTraffic" {
+		t.Fatalf("mitre_defend = %q, want InboundTrafficFiltering:NetworkTraffic", got)
+	}
+	if got := finding.Attributes["rule_mitre_defend_techniques"]; got != "InboundTrafficFiltering" {
+		t.Fatalf("rule_mitre_defend_techniques = %q, want InboundTrafficFiltering", got)
 	}
 }
 

@@ -102,6 +102,7 @@ type PublicDetection struct {
 	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
 	SourceCoverageRefs       []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
 	MITREAttack              []MITREAttackRef          `json:"mitre_attack,omitempty"`
+	MITREDefend              []MITREDefendRef          `json:"mitre_defend,omitempty"`
 }
 
 type PublicDetectionAuditDepth struct {
@@ -408,6 +409,7 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
 		MITREAttack:              cloneMITREAttackRefs(metadata.MITREAttack),
+		MITREDefend:              cloneMITREDefendRefs(metadata.MITREDefend),
 	}
 }
 
@@ -436,6 +438,7 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		FingerprintFields:        cloneStringSlice(definition.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(definition.ControlRefs),
 		MITREAttack:              cloneMITREAttackRefs(definition.MITREAttack),
+		MITREDefend:              cloneMITREDefendRefs(definition.MITREDefend),
 		Lifecycle:                definition.Lifecycle,
 	}
 }
@@ -452,6 +455,26 @@ func cloneMITREAttackRefs(refs []MITREAttackRef) []MITREAttackRef {
 			continue
 		}
 		cloned = append(cloned, MITREAttackRef{Tactic: tactic, Technique: technique})
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneMITREDefendRefs(refs []MITREDefendRef) []MITREDefendRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	cloned := make([]MITREDefendRef, 0, len(refs))
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		artifact := strings.TrimSpace(ref.Artifact)
+		if tactic == "" && technique == "" && artifact == "" {
+			continue
+		}
+		cloned = append(cloned, MITREDefendRef{Tactic: tactic, Technique: technique, Artifact: artifact})
 	}
 	if len(cloned) == 0 {
 		return nil

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/fabriccontract"
+	"github.com/writer/cerebro/internal/mitre"
 )
 
 type OntologyEntity struct {
@@ -40,6 +41,62 @@ var canonicalGraphOntology = GraphOntology{
 			Aliases:     []string{"Finding", "FINDING", "finding", "alert", "issue"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:finding:finding-1"},
+		},
+		{
+			Type:        mitre.AttackTacticEntityType,
+			Description: "MITRE ATT&CK tactic nodes linked from findings, controls, resources, and ATT&CK techniques.",
+			Aliases:     []string{"attack tactic", "MITRE tactic", "ATT&CK tactic", "mitre attack tactic"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_attack_tactic:TA0001"},
+		},
+		{
+			Type:        mitre.AttackTechniqueEntityType,
+			Description: "MITRE ATT&CK technique nodes linked from findings, controls, resources, coverage nodes, data components, and D3FEND techniques.",
+			Aliases:     []string{"attack technique", "MITRE technique", "ATT&CK technique", "mitre attack technique"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_attack_technique:T1190"},
+		},
+		{
+			Type:        mitre.AttackCoverageEntityType,
+			Description: "ATT&CK coverage nodes that connect a finding, control, tool, or resource to a technique and evidence data components.",
+			Aliases:     []string{"attack coverage", "MITRE coverage", "ATT&CK coverage", "coverage gap"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_attack_coverage:abc123"},
+		},
+		{
+			Type:        mitre.AttackDataSourceEntityType,
+			Description: "MITRE ATT&CK data source nodes such as Process, Application Log, or Network Traffic.",
+			Aliases:     []string{"attack data source", "MITRE data source", "ATT&CK data source"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_attack_data_source:DS0015"},
+		},
+		{
+			Type:        mitre.AttackDataComponentEntityType,
+			Description: "MITRE ATT&CK data component nodes that support detection or coverage for a technique.",
+			Aliases:     []string{"attack data component", "MITRE data component", "ATT&CK data component", "detection data component"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_attack_data_component:DS0015%3AApplication%20Log%20Content"},
+		},
+		{
+			Type:        mitre.DefendTacticEntityType,
+			Description: "MITRE D3FEND tactic nodes linked from findings or source facts when defensive tactic metadata is present.",
+			Aliases:     []string{"d3fend tactic", "defend tactic", "MITRE D3FEND tactic"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_defend_tactic:Harden"},
+		},
+		{
+			Type:        mitre.DefendTechniqueEntityType,
+			Description: "MITRE D3FEND technique nodes. These support ATT&CK techniques through defensive relationship edges.",
+			Aliases:     []string{"d3fend technique", "defend technique", "MITRE D3FEND technique"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_defend_technique:InboundTrafficFiltering"},
+		},
+		{
+			Type:        mitre.DefendArtifactEntityType,
+			Description: "MITRE D3FEND artifact nodes linked from D3FEND techniques or findings when defensive artifact metadata is present.",
+			Aliases:     []string{"d3fend artifact", "defend artifact", "MITRE D3FEND artifact"},
+			Properties:  []string{"urn", "label", "source_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:mitre_defend_artifact:WebServer"},
 		},
 		{
 			Type:        fabriccontract.EntityTypeGithubCodeRepository,
@@ -248,17 +305,17 @@ var canonicalGraphOntology = GraphOntology{
 		},
 		{
 			Relation:    fabriccontract.RelationSupports,
-			Description: "Evidence, policy, questionnaire, and source-fact edge to the control or object it supports.",
-			Aliases:     []string{"SUPPORTS", "control support", "mapped control"},
+			Description: "Evidence, policy, questionnaire, source-fact, ATT&CK data component, coverage, or D3FEND edge to the control or object it supports.",
+			Aliases:     []string{"SUPPORTS", "control support", "mapped control", "defends against", "detects attack technique"},
 			FromTypes:   []string{"*"},
-			ToTypes:     []string{"policy"},
+			ToTypes:     []string{"policy", mitre.AttackTechniqueEntityType},
 		},
 		{
 			Relation:    fabriccontract.RelationHasEvidence,
-			Description: "Resource or GRC artifact edge to runtime evidence or attached evidence.",
-			Aliases:     []string{"HAS_EVIDENCE", "evidence", "source evidence"},
+			Description: "Resource, GRC artifact, or ATT&CK coverage edge to runtime evidence, attached evidence, or ATT&CK data components.",
+			Aliases:     []string{"HAS_EVIDENCE", "evidence", "source evidence", "coverage evidence"},
 			FromTypes:   []string{"*"},
-			ToTypes:     []string{"runtime_evidence", "evidence"},
+			ToTypes:     []string{"runtime_evidence", "evidence", mitre.AttackDataComponentEntityType},
 		},
 		{
 			Relation:    fabriccontract.RelationAssociatedWith,
@@ -283,6 +340,7 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Connector/source health nodes use `entity_type: 'source'`; there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property. Read source health metadata from controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
+	fmt.Fprintf(&b, "- MITRE ATT&CK/D3FEND graph context uses `mitre.attack.*` and `mitre.defend.*` entity types. Findings, controls, tools, and resources link to explicit ATT&CK/D3FEND context with `has_context`; ATT&CK coverage nodes link to techniques with `supports` and to data components with `has_evidence`; D3FEND techniques link to ATT&CK techniques with `supports` when the relationship attribute is `defends_against`.\n")
 	fmt.Fprintf(&b, "- Okta access-review evidence is graph-shaped: use `okta.user` -> `okta.group` via `member_of`, user/group -> `okta.application` via `assigned_to`, user -> `okta.admin_role` via `can_admin`, and application/admin-role -> `okta.entitlement` -> `privileged.capability` before claiming app, admin, or privileged capability access.\n")
 	fmt.Fprintf(&b, "- Okta lifecycle and MFA fields such as `status`, `last_login_at`, `mfa_enrolled`, `mfa_factor_count`, `mfa_factor_types`, `mfa_phishing_resistant`, `source_event_id`, and `observed_at` live in `attributes_json`; do not treat missing factor detail as proof of weak MFA or infer contractor approval from Okta profile hints alone.\n")
 	fmt.Fprintf(&b, "- Questionnaire answers must start from bounded graph evidence: controls are `policy` nodes with `attributes_json.policy_type = 'control'`, support links use relation `supports`, evidence links use relation `has_evidence`, and policy/source freshness metadata lives in `attributes_json`.\n")

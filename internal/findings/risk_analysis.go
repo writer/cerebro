@@ -793,6 +793,45 @@ func AnalyzeFindingRiskContextWithConfig(finding *ports.FindingRecord, now time.
 	if activeExploit {
 		applyRiskScoringFactor(settings, "active_threat", "active_threat", ports.RiskScoringFactorWeight{Likelihood: 25}, &likelihood, &impact, &confidence, &reasons)
 	}
+	mitreAttackContext := firstNonEmpty(
+		attributes["policy_mitre"],
+		attributes["mitre_attack"],
+		attributes["rule_mitre_attack"],
+		attributes["mitre_attack_technique"],
+		attributes["mitre_attack_techniques"],
+		attributes["rule_mitre_attack_technique"],
+		attributes["rule_mitre_attack_techniques"],
+		attributes["attack_technique"],
+		attributes["attack_techniques"],
+		attributes["mitre_attack_tactic"],
+		attributes["mitre_attack_tactics"],
+		attributes["rule_mitre_attack_tactic"],
+		attributes["rule_mitre_attack_tactics"],
+		attributes["attack_tactic"],
+		attributes["attack_tactics"],
+	)
+	if strings.TrimSpace(mitreAttackContext) != "" {
+		applyRiskScoringFactor(settings, "mitre_attack_context", "mitre_attack_context", ports.RiskScoringFactorWeight{Impact: 5, Confidence: 3}, &likelihood, &impact, &confidence, &reasons)
+	}
+	mitreTacticContext := strings.ToLower(firstNonEmpty(
+		attributes["mitre_attack_tactic"],
+		attributes["mitre_attack_tactics"],
+		attributes["rule_mitre_attack_tactic"],
+		attributes["rule_mitre_attack_tactics"],
+		attributes["attack_tactic"],
+		attributes["attack_tactics"],
+		attributes["policy_mitre"],
+		attributes["rule_mitre_attack"],
+		attributes["tags"],
+		attributes["rule_tags"],
+	))
+	if containsAny(mitreTacticContext, "credential access", "privilege escalation", "defense evasion", "lateral movement", "exfiltration", "impact", "ta0006", "ta0004", "ta0005", "ta0008", "ta0010", "ta0040") {
+		applyRiskScoringFactor(settings, "mitre_high_pressure_tactic", "mitre_high_pressure_tactic", ports.RiskScoringFactorWeight{Likelihood: 5, Impact: 8}, &likelihood, &impact, &confidence, &reasons)
+	}
+	coverageContext := strings.ToLower(firstNonEmpty(attributes["mitre_coverage_state"], attributes["coverage_state"], attributes["coverage_status"], attributes["coverage"]))
+	if strings.TrimSpace(mitreAttackContext) != "" && containsAny(coverageContext, "gap", "missing", "uncovered", "unsupported", "unconfigured", "failed", "stale") {
+		applyRiskScoringFactor(settings, "mitre_coverage_gap", "mitre_coverage_gap", ports.RiskScoringFactorWeight{Likelihood: 10, Confidence: 3}, &likelihood, &impact, &confidence, &reasons)
+	}
 	if findingAttributeBool(attributes, "is_kev", "kev", "known_exploited", "known_exploited_vulnerability") {
 		applyRiskScoringFactor(settings, "known_exploited", "known_exploited", ports.RiskScoringFactorWeight{Likelihood: 35}, &likelihood, &impact, &confidence, &reasons)
 	}

@@ -213,6 +213,7 @@ func (r *policyGraphCatalogRule) EvaluateRows(ctx context.Context, runtime *cere
 		finding.Attributes["policy_evidence"] = "graph"
 		finding.Attributes["policy_graph_query_present"] = "true"
 		addMITREAttackFindingAttributes(finding.Attributes, r.config.Definition.MITREAttack)
+		addMITREDefendFindingAttributes(finding.Attributes, r.config.Definition.MITREDefend)
 		for key, value := range r.config.ContractAttributes {
 			if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
 				finding.Attributes[trimmedKey] = strings.TrimSpace(value)
@@ -293,6 +294,7 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		findingAttributes["rule_"+key] = value
 	}
 	addMITREAttackFindingAttributes(findingAttributes, definition.MITREAttack)
+	addMITREDefendFindingAttributes(findingAttributes, definition.MITREDefend)
 	if len(r.config.Conditions) != 0 {
 		findingAttributes["policy_condition_count"] = strconv.Itoa(len(r.config.Conditions))
 	}
@@ -337,6 +339,17 @@ func addMITREAttackFindingAttributes(attributes map[string]string, refs []MITREA
 	mergePolicyAttributeList(attributes, "mitre_attack_tactics", tactics)
 	mergePolicyAttributeList(attributes, "mitre_attack_techniques", techniques)
 	mergePolicyAttributeList(attributes, "policy_mitre", pairs)
+}
+
+func addMITREDefendFindingAttributes(attributes map[string]string, refs []MITREDefendRef) {
+	if attributes == nil {
+		return
+	}
+	tactics, techniques, artifacts, values := mitreDefendAttributeValues(refs)
+	mergePolicyAttributeList(attributes, "mitre_defend_tactics", tactics)
+	mergePolicyAttributeList(attributes, "mitre_defend_techniques", techniques)
+	mergePolicyAttributeList(attributes, "mitre_defend_artifacts", artifacts)
+	mergePolicyAttributeList(attributes, "mitre_defend", values)
 }
 
 func policyFindingTitle(name string) string {
