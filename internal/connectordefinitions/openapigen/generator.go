@@ -721,25 +721,41 @@ func queryParameterNames(pathItem *openapi3.PathItem, operation *openapi3.Operat
 
 func renderPathTemplate(path string) (string, []connectordefinitions.Field) {
 	fields := []connectordefinitions.Field{}
-	seen := map[string]struct{}{}
+	rawToKey := map[string]string{}
+	used := map[string]struct{}{}
 	rendered := pathParamPattern.ReplaceAllStringFunc(path, func(match string) string {
-		raw := strings.Trim(match, "{}")
+		raw := strings.TrimSpace(strings.Trim(match, "{}"))
+		if key, ok := rawToKey[raw]; ok {
+			return "${config." + key + "}"
+		}
 		key := normalizeID(raw)
 		if key == "" {
 			key = "path_value"
 		}
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			fields = append(fields, connectordefinitions.Field{
-				Key:      key,
-				Label:    titleFromID(key),
-				Required: true,
-				Help:     "Path parameter inferred from the OpenAPI operation.",
-			})
-		}
+		key = uniquePathFieldKey(key, used)
+		rawToKey[raw] = key
+		used[key] = struct{}{}
+		fields = append(fields, connectordefinitions.Field{
+			Key:      key,
+			Label:    titleFromID(key),
+			Required: true,
+			Help:     "Path parameter inferred from the OpenAPI operation.",
+		})
 		return "${config." + key + "}"
 	})
 	return rendered, fields
+}
+
+func uniquePathFieldKey(base string, used map[string]struct{}) string {
+	if _, ok := used[base]; !ok {
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := fmt.Sprintf("%s_%d", base, suffix)
+		if _, ok := used[candidate]; !ok {
+			return candidate
+		}
+	}
 }
 
 func readSpecForPathFields(fields []connectordefinitions.Field) *connectordefinitions.ResourceReadSpec {

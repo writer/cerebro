@@ -65,6 +65,23 @@ func TestGenerateBuildsSourcegenReadyDefinition(t *testing.T) {
 	}
 }
 
+func TestRenderPathTemplateDisambiguatesNormalizedPathParams(t *testing.T) {
+	rendered, fields := renderPathTemplate("/orgs/{org-id}/users/{org_id}/links/{org-id}")
+	if rendered != "/orgs/${config.org_id}/users/${config.org_id_2}/links/${config.org_id}" {
+		t.Fatalf("rendered path = %q", rendered)
+	}
+	if len(fields) != 2 {
+		t.Fatalf("path fields = %#v, want two distinct fields", fields)
+	}
+	if fields[0].Key != "org_id" || fields[1].Key != "org_id_2" {
+		t.Fatalf("path field keys = %#v, want org_id and org_id_2", fields)
+	}
+	read := readSpecForPathFields(fields)
+	if read == nil || !reflect.DeepEqual(read.PathParams, []string{"org_id", "org_id_2"}) {
+		t.Fatalf("path params = %#v, want org_id and org_id_2", read)
+	}
+}
+
 func TestGenerateInfersAPIKeyAndRootArray(t *testing.T) {
 	doc := loadFixture(t, headerCredentialFixture)
 	definition, report, err := Generate(doc, Request{MaxFamilies: 1, AllFamilies: true})
