@@ -2,7 +2,7 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/v1/groups",
+      "api_path": "/public/groups",
       "description": "Bitwarden Groups Fixture identity_group",
       "domain": "domain-source-bitwarden-groups-1",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-bitwarden-groups-1",
@@ -34,7 +34,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "api_method": "GET",
-      "api_path": "/v1/groups",
+      "api_path": "/public/groups",
       "description": "Bitwarden Groups Fixture identity_group",
       "domain": "domain-source-bitwarden-groups-1",
       "event_id": "source-bitwarden-groups-1",

@@ -152,6 +152,9 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 		return strings.Contains(lowerURL, "googleapis.com/$discovery/rest") ||
 			strings.Contains(lowerURL, "googleapis.com/discovery/v1/apis/")
 	}
+	if lowerKind == "openapi_embedded_html" {
+		return providerAPIEmbeddedOpenAPIHTMLOK(lowerURL)
+	}
 	if providerAPIMarkdownReferenceOK(lowerURL, lowerKind) {
 		return true
 	}
@@ -165,6 +168,26 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 		return true
 	}
 	return strings.Contains(lowerKind, "graphql") && strings.Contains(lowerURL, "graphql")
+}
+
+func providerAPIEmbeddedOpenAPIHTMLOK(lowerURL string) bool {
+	path := providerAPIURLPath(lowerURL)
+	if path == "" {
+		return false
+	}
+	if strings.Contains(path, "swagger") || strings.Contains(path, "openapi") || strings.Contains(path, "api-reference") || strings.Contains(path, "api_reference") {
+		return true
+	}
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) == 0 {
+		return false
+	}
+	switch segments[len(segments)-1] {
+	case "api", "apis", "reference", "swagger", "openapi":
+		return true
+	default:
+		return false
+	}
 }
 
 func providerAPIMarkdownReferenceOK(lowerURL string, lowerKind string) bool {

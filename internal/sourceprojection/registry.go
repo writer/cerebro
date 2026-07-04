@@ -1473,10 +1473,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"bitsight.vulnerabilities": bitsightVulnerabilitiesProjections,
 
 	// bitwarden generated projectors (sourcegen promotion)
-	"bitwarden.applications": bitwardenApplicationsProjections,
 	"bitwarden.audit_events": bitwardenAuditEventsProjections,
+	"bitwarden.collections":  bitwardenCollectionsProjections,
 	"bitwarden.groups":       bitwardenGroupsProjections,
-	"bitwarden.roles":        bitwardenRolesProjections,
+	"bitwarden.policies":     bitwardenPoliciesProjections,
 	"bitwarden.users":        bitwardenUsersProjections,
 
 	// bitwarden_enterprise generated projectors (sourcegen promotion)

@@ -1,5 +1,5 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/public/organization/subscription",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "bitwarden.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

@@ -7,8 +7,8 @@ import (
 )
 
 func TestBitwardenAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "bitwarden", Kind: "bitwarden.applications", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := bitwardenApplicationsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "bitwarden", Kind: "bitwarden.collections", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "collection", "resource_name": "Collection One", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := bitwardenCollectionsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -21,8 +21,8 @@ func TestBitwardenAssetProjection(t *testing.T) {
 }
 
 func TestBitwardenPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "bitwarden", Kind: "bitwarden.roles", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := bitwardenRolesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "bitwarden", Kind: "bitwarden.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
+	entities, links, err := bitwardenPoliciesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

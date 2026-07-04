@@ -15,11 +15,11 @@ func bitwardenGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "bitwarden"})
 }
 
-func bitwardenRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func bitwardenPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return bitwardenGenericPolicyProjections(event)
 }
 
-func bitwardenApplicationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func bitwardenCollectionsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return bitwardenGenericAssetProjections(event)
 }
 

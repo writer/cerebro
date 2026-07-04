@@ -1,6 +1,6 @@
 # Bitwarden
 
-Generated Source Runtime SDK scaffold for `bitwarden`.
+Bitwarden Public API source runtime for `bitwarden`.
 
 ## Runtime input
 
@@ -18,11 +18,11 @@ Generated Source Runtime SDK scaffold for `bitwarden`.
 
 ## Families
 
-- `users`, emits `bitwarden.users`, reads `/v1/users`
-- `groups`, emits `bitwarden.groups`, reads `/v1/groups`
-- `roles`, emits `bitwarden.roles`, reads `/v1/roles`
-- `applications`, emits `bitwarden.applications`, reads `/v1/applications`
-- `audit_events`, emits `bitwarden.audit_events`, reads `/v1/audit_events`
+- `users`, emits `bitwarden.users`, reads `/public/members`
+- `groups`, emits `bitwarden.groups`, reads `/public/groups`
+- `collections`, emits `bitwarden.collections`, reads `/public/collections`
+- `policies`, emits `bitwarden.policies`, reads `/public/policies`
+- `audit_events`, emits `bitwarden.audit_events`, reads `/public/events`
 
 ## Tests
 
