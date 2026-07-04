@@ -55,6 +55,7 @@ type RuntimeProviderAPIDepth struct {
 	HasMapping            bool     `json:"has_mapping,omitempty"`
 	HasRuntimeTransport   bool     `json:"has_runtime_transport,omitempty"`
 	HasProof              bool     `json:"has_proof,omitempty"`
+	HasDisproof           bool     `json:"has_disproof,omitempty"`
 	ProofScore            int      `json:"proof_score,omitempty"`
 	ProofLevel            string   `json:"proof_level,omitempty"`
 	ProofGaps             []string `json:"proof_gaps,omitempty"`
@@ -73,6 +74,13 @@ type RuntimeProviderAPIDepth struct {
 	ScopeEvidence         []string `json:"scope_evidence,omitempty"`
 	MappedFamilies        []string `json:"mapped_families,omitempty"`
 	MissingFamilyMappings []string `json:"missing_family_mappings,omitempty"`
+	DisproofStatus        string   `json:"disproof_status,omitempty"`
+	DisproofReason        string   `json:"disproof_reason,omitempty"`
+	DisproofCheckedAt     string   `json:"disproof_checked_at,omitempty"`
+	DisproofReferences    []string `json:"disproof_references,omitempty"`
+	DisproofFamilies      []string `json:"disproof_families,omitempty"`
+	DisproofMissingPaths  []string `json:"disproof_missing_paths,omitempty"`
+	DisproofNotes         []string `json:"disproof_notes,omitempty"`
 }
 
 type runtimeCatalogFields struct {
@@ -85,8 +93,9 @@ type runtimeCatalogFields struct {
 	EventContracts []struct {
 		Kind string `yaml:"kind"`
 	} `yaml:"event_contracts"`
-	CoverageContract *struct{}                `yaml:"coverage_contract"`
-	ProviderAPI      runtimeProviderAPIFields `yaml:"provider_api"`
+	CoverageContract    *struct{}                        `yaml:"coverage_contract"`
+	ProviderAPI         runtimeProviderAPIFields         `yaml:"provider_api"`
+	ProviderAPIDisproof runtimeProviderAPIDisproofFields `yaml:"provider_api_disproof"`
 }
 
 type runtimeProviderAPIFields struct {
@@ -109,6 +118,16 @@ type runtimeProviderAPIFields struct {
 		Path      string `yaml:"path"`
 		Operation string `yaml:"operation"`
 	} `yaml:"families"`
+}
+
+type runtimeProviderAPIDisproofFields struct {
+	Status           string   `yaml:"status"`
+	Reason           string   `yaml:"reason"`
+	CheckedAt        string   `yaml:"checked_at"`
+	References       []string `yaml:"references"`
+	AffectedFamilies []string `yaml:"affected_families"`
+	MissingPaths     []string `yaml:"missing_paths"`
+	Notes            []string `yaml:"notes"`
 }
 
 // DiscoverRuntimeDepth scans repository source packages and sourceprojection
@@ -197,6 +216,16 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.ProviderAPI.ProofScore = proof.Score
 		depth.ProviderAPI.ProofLevel = proof.Level
 		depth.ProviderAPI.ProofGaps = proof.Gaps
+		if hasProviderAPIDisproof(catalog.ProviderAPIDisproof) {
+			depth.ProviderAPI.HasDisproof = true
+			depth.ProviderAPI.DisproofStatus = strings.TrimSpace(catalog.ProviderAPIDisproof.Status)
+			depth.ProviderAPI.DisproofReason = strings.TrimSpace(catalog.ProviderAPIDisproof.Reason)
+			depth.ProviderAPI.DisproofCheckedAt = strings.TrimSpace(catalog.ProviderAPIDisproof.CheckedAt)
+			depth.ProviderAPI.DisproofReferences = normalizedList(catalog.ProviderAPIDisproof.References)
+			depth.ProviderAPI.DisproofFamilies = normalizedList(catalog.ProviderAPIDisproof.AffectedFamilies)
+			depth.ProviderAPI.DisproofMissingPaths = normalizedList(catalog.ProviderAPIDisproof.MissingPaths)
+			depth.ProviderAPI.DisproofNotes = normalizedList(catalog.ProviderAPIDisproof.Notes)
+		}
 	}
 	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
 	sourceGoPath := filepath.ToSlash(filepath.Join(depth.PackagePath, "source.go"))
@@ -231,6 +260,10 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 	sort.Strings(depth.ProviderAPI.MappedFamilies)
 	sort.Strings(depth.ProviderAPI.MissingFamilyMappings)
 	sort.Strings(depth.ProviderAPI.ProofGaps)
+	sort.Strings(depth.ProviderAPI.DisproofReferences)
+	sort.Strings(depth.ProviderAPI.DisproofFamilies)
+	sort.Strings(depth.ProviderAPI.DisproofMissingPaths)
+	sort.Strings(depth.ProviderAPI.DisproofNotes)
 	sort.Strings(depth.Missing)
 	return depth, nil
 }
@@ -552,6 +585,19 @@ func hasProviderAPIContract(api runtimeProviderAPIFields) bool {
 		return false
 	}
 	return len(normalizedList(api.References)) > 0
+}
+
+func hasProviderAPIDisproof(disproof runtimeProviderAPIDisproofFields) bool {
+	if strings.TrimSpace(disproof.Status) != "invalidated" {
+		return false
+	}
+	if strings.TrimSpace(disproof.Reason) == "" || strings.TrimSpace(disproof.CheckedAt) == "" {
+		return false
+	}
+	if len(normalizedList(disproof.References)) == 0 {
+		return false
+	}
+	return len(normalizedList(disproof.AffectedFamilies)) > 0 || len(normalizedList(disproof.MissingPaths)) > 0
 }
 
 func providerAPIFamilies(api runtimeProviderAPIFields) []string {

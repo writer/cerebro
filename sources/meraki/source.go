@@ -18,7 +18,7 @@ const (
 	sourceID               = "meraki"
 	defaultFamily          = familyEventtype
 	defaultHealthPath      = "/networks/${config.networkid}/events/eventTypes"
-	defaultBaseURLTemplate = "https://api.meraki.com/api/v0"
+	defaultBaseURLTemplate = "https://api.meraki.com/api/v1"
 	tokenScheme            = "Token"
 	tokenHeader            = "X-Cisco-Meraki-" + "API" + "-Key"
 	familyEventtype        = "eventtype"
@@ -76,7 +76,7 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyAccesspolicy,
-				Path:             "/networks/${config.networkid}/accessPolicies",
+				Path:             "/networks/${config.networkid}/switch/accessPolicies",
 				URNKind:          "meraki_accesspolicy",
 				IDKeys:           []string{"id", "policy_id", "name", "key", "control_id"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},

@@ -12,6 +12,26 @@ kind_lifecycle:
     status: active
   - kind: api2cart.attribute_attributeset_list_json
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.api2cart.com/v1.1
+  spec_url: https://api.apis.guru/v2/specs/api2cart.com/1.1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/api2cart.com/1.1/openapi.json
+    - https://app.api2cart.com/default/index/swagger-json
+  families:
+    - id: attribute_attributeset_list_json
+      method: GET
+      path: /attribute.attributeset.list.json
+    - id: attribute_group_list_json
+      method: GET
+      path: /attribute.group.list.json
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: api2cart

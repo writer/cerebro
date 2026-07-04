@@ -28,6 +28,42 @@ kind_lifecycle:
     status: active
   - kind: google_vertex_ai.reasoning_engines
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: google_oauth_bearer
+  auth_mechanics: oauth2_service_account_bearer
+  base_url: https://${config.location}-aiplatform.googleapis.com
+  spec_url: https://aiplatform.googleapis.com/$discovery/rest?version=v1
+  spec_kind: google_discovery
+  references:
+    - https://cloud.google.com/vertex-ai/docs/reference/rest
+    - https://aiplatform.googleapis.com/$discovery/rest?version=v1
+  auth_evidence:
+    - https://cloud.google.com/docs/authentication
+  scope_evidence:
+    - https://www.googleapis.com/auth/cloud-platform
+  families:
+    - id: models
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/models
+    - id: endpoints
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/endpoints
+    - id: custom_jobs
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/customJobs
+    - id: batch_prediction_jobs
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/batchPredictionJobs
+    - id: indexes
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/indexes
+    - id: reasoning_engines
+      method: GET
+      path: /v1/projects/{project_id}/locations/{location}/reasoningEngines
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: google_vertex_ai

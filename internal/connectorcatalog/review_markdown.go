@@ -32,6 +32,7 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 		writeMetric(&b, "Sources with provider API contract", report.Summary.RuntimeDepth.SourcesWithProviderAPIContract)
 		writeMetric(&b, "Sources with provider API family mapping", report.Summary.RuntimeDepth.SourcesWithProviderAPIMapping)
 		writeMetric(&b, "Sources with provider API proof", report.Summary.RuntimeDepth.SourcesWithProviderAPIProof)
+		writeMetric(&b, "Sources with provider API disproof", report.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof)
 		writeMetric(&b, "Needs provider API proof", report.Summary.RuntimeDepth.NeedsProviderAPIProof)
 		writeMetric(&b, "Sources with matching runtime transport", report.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch)
 		writeMetric(&b, "Sources with runtime fixtures", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
@@ -145,6 +146,29 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 					candidate.Score,
 					inlineCodeOrDash(candidate.SpecURL),
 					escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")),
+					escapeCell(candidate.NextAction),
+				)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if report.Summary.RuntimeDepth != nil || len(report.ProviderAPIInvalidated) > 0 {
+		b.WriteString("## Provider API Invalidated\n\n")
+		if len(report.ProviderAPIInvalidated) == 0 {
+			b.WriteString("No sources have provider API disproof records.\n\n")
+		} else {
+			b.WriteString("| Source | Families | Missing paths | Reason | Next action |\n| --- | --- | --- | --- | --- |\n")
+			for i, candidate := range report.ProviderAPIInvalidated {
+				if i >= maxItems {
+					fmt.Fprintf(&b, "| ... | ... | ... | ... | %d more |\n", len(report.ProviderAPIInvalidated)-maxItems)
+					break
+				}
+				fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s |\n",
+					escapeCell(candidate.SourceID),
+					escapeCell(strings.Join(limitStrings(candidate.AffectedFamilies, 6), ", ")),
+					escapeCell(strings.Join(limitStrings(candidate.MissingPaths, 4), ", ")),
+					escapeCell(candidate.Reason),
 					escapeCell(candidate.NextAction),
 				)
 			}

@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: callfire.call
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: basic_authorization_header
+  base_url: https://api.callfire.com/v2
+  spec_url: https://api.apis.guru/v2/specs/callfire.com/V2/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/callfire.com/V2/openapi.json
+    - https://www.callfire.com/v2/api-docs/swagger.json
+  families:
+    - id: account
+      method: GET
+      path: /me/account
+    - id: broadcast
+      method: GET
+      path: /calls/broadcasts
+    - id: call
+      method: GET
+      path: /calls
+    - id: credential
+      method: GET
+      path: /me/api/credentials
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: callfire

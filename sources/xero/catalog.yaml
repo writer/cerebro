@@ -24,6 +24,28 @@ kind_lifecycle:
     status: active
   - kind: xero.audit_events
     status: active
+provider_api_disproof:
+  status: invalidated
+  reason: generated_runtime_paths_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://api.apis.guru/v2/specs/xero.com/xero-identity/2.9.4/openapi.json
+    - https://raw.githubusercontent.com/XeroAPI/Xero-OpenAPI/master/xero-identity.yaml
+  affected_families:
+    - users
+    - accounts
+    - records
+    - policies
+    - audit_events
+  missing_paths:
+    - /v1/users
+    - /v1/accounts
+    - /v1/records
+    - /v1/policies
+    - /v1/audit_events
+  notes:
+    - Provider-origin OpenAPI coverage did not contain the generated runtime paths for these families.
+    - Rewrite this source from documented provider resources before promotion.
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: xero

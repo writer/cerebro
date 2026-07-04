@@ -24,6 +24,42 @@ kind_lifecycle:
     status: active
   - kind: aws_bedrock.guardrails
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: aws_sigv4
+  auth_mechanics: aws_sigv4_authorization_header
+  base_url: https://bedrock.${config.region}.amazonaws.com
+  spec_url: https://raw.githubusercontent.com/boto/botocore/develop/botocore/data/bedrock/2023-04-20/service-2.json
+  spec_kind: smithy_json
+  references:
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/Welcome.html
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.html
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListCustomModels.html
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListProvisionedModelThroughputs.html
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListModelCustomizationJobs.html
+    - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListGuardrails.html
+    - https://raw.githubusercontent.com/boto/botocore/develop/botocore/data/bedrock/2023-04-20/service-2.json
+  auth_evidence:
+    - https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html
+  families:
+    - id: foundation_models
+      method: GET
+      path: /foundation-models
+    - id: custom_models
+      method: GET
+      path: /custom-models
+    - id: provisioned_model_throughputs
+      method: GET
+      path: /provisioned-model-throughputs
+    - id: model_customization_jobs
+      method: GET
+      path: /model-customization-jobs
+    - id: guardrails
+      method: GET
+      path: /guardrails
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: aws_bedrock

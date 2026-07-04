@@ -18,7 +18,7 @@ const (
 	sourceID                             = "files_com"
 	defaultFamily                        = familyExternalEvent
 	defaultHealthPath                    = "/external_events"
-	defaultBaseURLTemplate               = "//app.files.com/api/rest/v1"
+	defaultBaseURLTemplate               = "https://app.files.com/api/rest/v1"
 	tokenHeader                          = ""
 	tokenScheme                          = "Token"
 	familyExternalEvent                  = "external_event"

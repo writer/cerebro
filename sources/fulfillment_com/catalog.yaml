@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: fulfillment_com.track
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.fulfillment.com/v2
+  spec_url: https://api.apis.guru/v2/specs/fulfillment.com/2.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/fulfillment.com/2.0/openapi.json
+    - https://fulfillment.github.io/api/openapi.json
+  families:
+    - id: accounting
+      method: GET
+      path: /accounting
+    - id: inventory
+      method: GET
+      path: /inventory
+    - id: return
+      method: GET
+      path: /returns
+    - id: track
+      method: GET
+      path: /track
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: fulfillment_com

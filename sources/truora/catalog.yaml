@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: truora.config
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.truora.com
+  spec_url: https://api.apis.guru/v2/specs/truora.com/1.0.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/truora.com/1.0.0/openapi.json
+    - https://docs.truora.com/openapi.json
+  families:
+    - id: check
+      method: GET
+      path: /v1/checks
+    - id: config
+      method: GET
+      path: /v1/config
+    - id: hook
+      method: GET
+      path: /v1/hooks
+    - id: report
+      method: GET
+      path: /v1/reports
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: truora

@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: rebilly.aml
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api-sandbox.rebilly.com
+  spec_url: https://api.apis.guru/v2/specs/rebilly.com/2.1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/rebilly.com/2.1/openapi.json
+    - https://api-reference.rebilly.com/openapi.json
+  families:
+    - id: aml
+      method: GET
+      path: /aml
+    - id: authentication_token
+      method: GET
+      path: /authentication-tokens
+    - id: bank_account
+      method: GET
+      path: /bank-accounts
+    - id: customer_timeline_custom_event
+      method: GET
+      path: /customer-timeline-custom-events
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: rebilly

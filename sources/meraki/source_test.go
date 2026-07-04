@@ -63,7 +63,7 @@ func TestAccessPolicyMapsPolicyName(t *testing.T) {
 		switch r.URL.Path {
 		case "/networks/network-1/events/eventTypes":
 			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "event-type-1"}})
-		case "/networks/network-1/accessPolicies":
+		case "/networks/network-1/switch/accessPolicies":
 			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "policy-1", "name": "Guest WiFi", "resource_urn": "urn:cerebro:tenant:policy:policy-1"}})
 		default:
 			t.Fatalf("path = %q", r.URL.Path)

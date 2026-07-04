@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: winsms.optout
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://www.winsms.co.za/api/rest/v1
+  spec_url: https://api.apis.guru/v2/specs/winsms.co.za/1.0.0/swagger.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/winsms.co.za/1.0.0/swagger.json
+    - https://www.winsms.co.za/api/restdocs/swagger.json
+  families:
+    - id: incoming
+      method: GET
+      path: /shortcode/incoming
+    - id: optout
+      method: GET
+      path: /sms/incoming/optout
+    - id: sms_incoming
+      method: GET
+      path: /sms/incoming
+    - id: subaccount
+      method: GET
+      path: /subaccounts
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: winsms

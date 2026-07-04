@@ -229,6 +229,13 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 			SpecURL:    "https://developer.okta.com/openapi.yaml",
 			NextAction: "Record provider API proof.",
 		}},
+		ProviderAPIInvalidated: []ProviderAPIInvalidationCandidate{{
+			SourceID:         "digitalocean",
+			Reason:           "runtime_families_not_in_provider_spec",
+			AffectedFamilies: []string{"teams"},
+			MissingPaths:     []string{"/v2/teams"},
+			NextAction:       "Rewrite or remove the invalidated runtime family.",
+		}},
 		Questions: []ReviewQuestion{{
 			SourceID:   "okta",
 			Category:   "graph_projection",
@@ -239,7 +246,7 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	}
 
 	markdown := RenderReviewMarkdown(report, 10)
-	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Provider API Proof Queue", "provider_api:verified_at", "## Review Q&A", "Do users project?"} {
+	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Provider API Proof Queue", "provider_api:verified_at", "## Provider API Invalidated", "runtime_families_not_in_provider_spec", "## Review Q&A", "Do users project?"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, markdown)
 		}
@@ -476,6 +483,71 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 1, Generateable: 1},
+		Entries: []Entry{{
+			Path:         "cloud/digitalocean.yaml",
+			Status:       StatusGenerateable,
+			Generateable: true,
+			Definition: reviewDefinition("digitalocean", "DigitalOcean", []connectordefinitions.ResourceFamily{
+				reviewDetailedFamily("teams", "identity_group"),
+			}),
+		}},
+	}
+	inventory := RuntimeDepthInventory{
+		"digitalocean": scoredRuntimeDepth(RuntimeDepth{
+			SourceID:                "digitalocean",
+			PackagePath:             "sources/digitalocean",
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasSourceTests:          true,
+			HasReadFixtures:         true,
+			HasDiscoverFixtures:     true,
+			HasFixturePair:          true,
+			HasDeployManifest:       true,
+			HasEventContracts:       true,
+			HasCoverageContract:     true,
+			ProviderAPI: RuntimeProviderAPIDepth{
+				HasDisproof:          true,
+				DisproofStatus:       "invalidated",
+				DisproofReason:       "runtime_families_not_in_provider_spec",
+				DisproofCheckedAt:    "2026-07-04T00:00:00Z",
+				DisproofReferences:   []string{"https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml"},
+				DisproofFamilies:     []string{"teams"},
+				DisproofMissingPaths: []string{"/v2/teams"},
+			},
+			RuntimeFamilies: []string{"teams"},
+		}),
+	}
+
+	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
+
+	if report.Summary.RuntimeDepth == nil {
+		t.Fatal("runtime depth summary = nil, want runtime depth summary")
+	}
+	if report.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof != 1 {
+		t.Fatalf("sources with provider API disproof = %d, want 1", report.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof)
+	}
+	if _, ok := apiDiscoveryFor(report, "digitalocean"); ok {
+		t.Fatalf("api discovery queue = %#v, did not expect invalidated source", report.APIDiscoveryQueue)
+	}
+	candidate, ok := apiInvalidationFor(report, "digitalocean")
+	if !ok {
+		t.Fatalf("provider API invalidated = %#v, want digitalocean", report.ProviderAPIInvalidated)
+	}
+	if !containsString(candidate.AffectedFamilies, "teams") || !containsString(candidate.MissingPaths, "/v2/teams") {
+		t.Fatalf("provider API invalidation candidate = %#v, want affected family and missing path", candidate)
+	}
+	if !hasQuestion(report, "digitalocean", "provider_api_invalidated") {
+		t.Fatalf("questions = %#v, want provider_api_invalidated question", report.Questions)
+	}
+	if hasQuestion(report, "digitalocean", "provider_api_discovery") {
+		t.Fatalf("questions = %#v, did not expect provider_api_discovery question", report.Questions)
+	}
+}
+
 func scoredRuntimeDepth(depth RuntimeDepth) RuntimeDepth {
 	depth.Score, depth.Missing = runtimeDepthScore(depth)
 	return depth
@@ -592,6 +664,15 @@ func apiProofFor(report ReviewReport, sourceID string) (ProviderAPIProofCandidat
 		}
 	}
 	return ProviderAPIProofCandidate{}, false
+}
+
+func apiInvalidationFor(report ReviewReport, sourceID string) (ProviderAPIInvalidationCandidate, bool) {
+	for _, candidate := range report.ProviderAPIInvalidated {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return ProviderAPIInvalidationCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {

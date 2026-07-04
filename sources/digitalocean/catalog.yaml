@@ -16,6 +16,21 @@ kind_lifecycle:
     status: active
   - kind: digitalocean.audit_events
     status: active
+provider_api_disproof:
+  status: invalidated
+  reason: runtime_families_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml
+    - https://github.com/digitalocean/openapi
+  affected_families:
+    - audit_events
+    - teams
+  missing_paths:
+    - /v2/teams
+  notes:
+    - The public v2 OpenAPI lists /v2/droplets and /v2/actions, but no teams collection.
+    - The /v2/actions collection returns provider action records, not actor-scoped audit events, so audit_events needs a rewrite as actions or removal.
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: digitalocean

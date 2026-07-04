@@ -20,6 +20,36 @@ kind_lifecycle:
     status: active
   - kind: velopayments.webhook
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: oauth_client_credentials
+  auth_mechanics: oauth_client_credentials_bearer_token
+  base_url: https://api.sandbox.velopayments.com
+  spec_url: https://api.apis.guru/v2/specs/velopayments.com/2.34.63/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/velopayments.com/2.34.63/openapi.json
+    - https://raw.githubusercontent.com/velopaymentsapi/VeloOpenApi/master/spec/openapi.yaml
+  auth_evidence:
+    - https://api.apis.guru/v2/specs/velopayments.com/2.34.63/openapi.json
+  scope_evidence:
+    - https://api.apis.guru/v2/specs/velopayments.com/2.34.63/openapi.json
+  families:
+    - id: delta
+      method: GET
+      path: /v4/payments/deltas
+    - id: paymentchannelrule
+      method: GET
+      path: /v1/paymentChannelRules
+    - id: sourceaccount
+      method: GET
+      path: /v3/sourceAccounts
+    - id: webhook
+      method: GET
+      path: /v1/webhooks
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: velopayments

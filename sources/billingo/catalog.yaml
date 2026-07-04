@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: billingo.partner
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.billingo.hu/v3
+  spec_url: https://api.apis.guru/v2/specs/billingo.hu/3.0.7/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/billingo.hu/3.0.7/openapi.json
+    - https://api.swaggerhub.com/apis/Billingo/Billingo/3.0.7
+  families:
+    - id: bank_account
+      method: GET
+      path: /bank-accounts
+    - id: document
+      method: GET
+      path: /documents
+    - id: document_block
+      method: GET
+      path: /document-blocks
+    - id: partner
+      method: GET
+      path: /partners
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: billingo

@@ -24,6 +24,35 @@ kind_lifecycle:
     status: active
   - kind: journy_io.segments_user
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://api.journy.io
+  spec_url: https://api.apis.guru/v2/specs/journy.io/1.0.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/journy.io/1.0.0/openapi.json
+    - https://api.journy.io/spec.json
+  families:
+    - id: account
+      method: GET
+      path: /properties/accounts
+    - id: event
+      method: GET
+      path: /events
+    - id: segments_account
+      method: GET
+      path: /segments/accounts
+    - id: segments_user
+      method: GET
+      path: /segments/users
+    - id: user
+      method: GET
+      path: /properties/users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: journy_io

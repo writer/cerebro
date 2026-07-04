@@ -18,7 +18,7 @@ const (
 	sourceID               = "sendgrid"
 	defaultFamily          = familyActivity
 	defaultHealthPath      = "/access_settings/activity"
-	defaultBaseURLTemplate = "http://api.sendgrid.com/v3"
+	defaultBaseURLTemplate = "https://api.sendgrid.com/v3"
 	tokenHeader            = ""
 	tokenScheme            = "Token"
 	familyActivity         = "activity"

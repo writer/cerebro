@@ -28,6 +28,43 @@ kind_lifecycle:
     status: active
   - kind: cloudflare_workers_ai.vectorize_indexes
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: cloudflare_api_token
+  auth_mechanics: bearer_token
+  base_url: https://api.cloudflare.com/client/v4
+  spec_url: https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+  spec_kind: openapi
+  references:
+    - https://developers.cloudflare.com/api/
+    - https://developers.cloudflare.com/workers-ai/
+    - https://developers.cloudflare.com/ai-gateway/
+    - https://developers.cloudflare.com/vectorize/
+    - https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+  auth_evidence:
+    - https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+  families:
+    - id: model_catalog
+      method: GET
+      path: /accounts/{account_id}/ai/models/search
+    - id: ai_gateways
+      method: GET
+      path: /accounts/{account_id}/ai-gateway/gateways
+    - id: gateway_provider_configs
+      method: GET
+      path: /accounts/{account_id}/ai-gateway/gateways/{gateway_id}/provider_configs
+    - id: gateway_evaluations
+      method: GET
+      path: /accounts/{account_id}/ai-gateway/gateways/{gateway_id}/evaluations
+    - id: gateway_logs
+      method: GET
+      path: /accounts/{account_id}/ai-gateway/gateways/{gateway_id}/logs
+    - id: vectorize_indexes
+      method: GET
+      path: /accounts/{account_id}/vectorize/v2/indexes
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: cloudflare_workers_ai

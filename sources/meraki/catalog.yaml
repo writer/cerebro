@@ -20,6 +20,34 @@ kind_lifecycle:
     status: active
   - kind: meraki.accesspolicy
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x_cisco_meraki_api_key_header
+  base_url: https://api.meraki.com/api/v1
+  spec_url: https://api.meraki.com/api/v1/openapiSpec
+  spec_kind: openapi
+  references:
+    - https://developer.cisco.com/meraki/api-v1/
+    - https://api.meraki.com/api/v1/openapiSpec
+  auth_evidence:
+    - https://developer.cisco.com/meraki/api-v1/authorization/
+  families:
+    - id: eventtype
+      method: GET
+      path: /networks/{networkId}/events/eventTypes
+    - id: organization
+      method: GET
+      path: /organizations
+    - id: merakiauthuser
+      method: GET
+      path: /networks/{networkId}/merakiAuthUsers
+    - id: accesspolicy
+      method: GET
+      path: /networks/{networkId}/switch/accessPolicies
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: meraki

@@ -97,6 +97,16 @@ func TestProviderAPISpecPointerAcceptsExplicitPostmanCollection(t *testing.T) {
 	}
 }
 
+func TestProviderAPISpecPointerAcceptsGoogleDiscovery(t *testing.T) {
+	specURL := "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&alt=json"
+	if !providerAPISpecPointerOK(specURL, "google_discovery", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, google_discovery) = false, want true", specURL)
+	}
+	if providerAPISpecPointerOK("https://generativelanguage.googleapis.com/v1beta/models", "google_discovery", "rest") {
+		t.Fatal("providerAPISpecPointerOK(non-discovery Google API URL, google_discovery) = true, want false")
+	}
+}
+
 func TestProviderAPIURLIsOAuthEndpointRequiresAuthPathSegment(t *testing.T) {
 	for _, value := range []string{
 		"https://api.provider.io/oauth/token",

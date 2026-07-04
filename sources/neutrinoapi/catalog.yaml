@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: neutrinoapi.geocode_address
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://neutrinoapi.net
+  spec_url: https://api.apis.guru/v2/specs/neutrinoapi.net/3.6.3/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/neutrinoapi.net/3.6.3/openapi.json
+    - https://www.neutrinoapi.com/api/swagger.json
+  families:
+    - id: bin_lookup
+      method: GET
+      path: /bin-lookup
+    - id: geocode_address
+      method: GET
+      path: /geocode-address
+    - id: host_reputation
+      method: GET
+      path: /host-reputation
+    - id: ip_blocklist
+      method: GET
+      path: /ip-blocklist
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: neutrinoapi

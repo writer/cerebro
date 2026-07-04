@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: stream_io_api.query_banned_user
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://chat.stream-io-api.com
+  spec_url: https://api.apis.guru/v2/specs/stream-io-api.com/v79.19.1/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/stream-io-api.com/v79.19.1/openapi.json
+    - https://stream-openapi.s3.us-east-1.amazonaws.com/chat/openapi-latest.yaml
+  families:
+    - id: device
+      method: GET
+      path: /devices
+    - id: member
+      method: GET
+      path: /members
+    - id: query_banned_user
+      method: GET
+      path: /query_banned_users
+    - id: role
+      method: GET
+      path: /roles
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: stream_io_api

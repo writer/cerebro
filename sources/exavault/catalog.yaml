@@ -20,6 +20,32 @@ kind_lifecycle:
     status: active
   - kind: exavault.ssh_key
     status: active
+provider_api:
+  status: verified
+  basis: discovered
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_authorization_header
+  base_url: https://accountname.exavault.com/api/v2
+  spec_url: https://api.apis.guru/v2/specs/exavault.com/2.0/openapi.json
+  spec_kind: openapi
+  references:
+    - https://api.apis.guru/v2/specs/exavault.com/2.0/openapi.json
+    - https://exavault-website.cdn.prismic.io/exavault-website/2d2d871e-394d-433e-9305-f38b6656f279_evapi_2.0_public.yaml
+  families:
+    - id: email_list
+      method: GET
+      path: /email-lists
+    - id: notification
+      method: GET
+      path: /notifications
+    - id: session
+      method: GET
+      path: /activity/session
+    - id: ssh_key
+      method: GET
+      path: /ssh-keys
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: exavault
