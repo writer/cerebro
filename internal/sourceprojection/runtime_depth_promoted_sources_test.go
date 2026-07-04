@@ -152,7 +152,7 @@ func TestRuntimeDepthPromotedSourcesProjectMissingKinds(t *testing.T) {
 }
 
 func runtimeDepthPromotionAttributes() map[string]string {
-	return map[string]string{
+	return map[string]string{ // #nosec G101 -- static test fixture identifiers, not credentials.
 		"account_id":         "account-1",
 		"admin_id":           "admin-1",
 		"actor_email":        "user@example.test",
