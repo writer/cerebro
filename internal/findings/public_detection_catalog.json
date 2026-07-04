@@ -223156,6 +223156,221 @@
       ]
     },
     {
+      "id": "hipaa-breach-individual-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Individual Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Individual Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required individual notice is past the source-calculated notification deadline. Audit impact: Overdue individual breach notice can leave affected people uninformed and weaken HIPAA breach notification evidence.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hipaa",
+        "individual-notice",
+        "phi",
+        "policy",
+        "privacy-breach"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.404"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The incident was not a breach of unsecured PHI or individual notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, discovery date, affected individual count, notice deadline, notice state, send evidence, and any approved delay. Send the required individual breach notice or attach the approved delay evidence. Action plan: Send or document the required individual notice; Attach delivery evidence and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, discovery date, affected individual count, notice deadline, notice state, send evidence, and any approved delay.",
+      "risk_statement": "Overdue individual breach notice can leave affected people uninformed and weaken HIPAA breach notification evidence.",
+      "remediation_intent": "Send the required notice or attach approved delay evidence, then retain delivery and closure evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "notification_deadline",
+        "subject_notice_overdue",
+        "subject_notice_required",
+        "subject_notice_state",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.404(a)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-breach-media-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Media Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Media Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required media notice is past the source-calculated notification deadline. Audit impact: Overdue media breach notice can leave the affected jurisdiction without required public breach information.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hipaa",
+        "media-notice",
+        "phi",
+        "policy",
+        "privacy-breach"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.406"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state. Send the required media notice for the affected jurisdiction or attach approved delay evidence. Action plan: Send or document the required media notice; Attach outlet, delivery, and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state.",
+      "risk_statement": "Overdue media breach notice can leave the affected jurisdiction without required public breach information.",
+      "remediation_intent": "Send the media notice or attach approved delay evidence, then retain outlet and delivery evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "media_notice_overdue",
+        "media_notice_required",
+        "media_notice_state",
+        "notification_deadline",
+        "state_or_jurisdiction",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.406(a)"
+        }
+      ]
+    },
+    {
+      "id": "hipaa-breach-secretary-notice-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "HIPAA Secretary Breach Notice Overdue",
+      "description": "Flags failed resource-state evidence for breach response system privacy incident record: HIPAA Secretary Breach Notice Overdue. Flags confirmed unsecured PHI breaches whose required HHS Secretary notice is past the source-calculated notification deadline. Audit impact: Overdue Secretary notice can leave required regulator reporting incomplete for a HIPAA breach.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "assessment:test",
+        "breach-notification",
+        "cel",
+        "evidence:privacy_breach",
+        "hhs-notice",
+        "hipaa",
+        "phi",
+        "policy",
+        "privacy-breach",
+        "secretary-notice"
+      ],
+      "references": [
+        "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.408"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Secretary notice was not required yet for the breach track or the notice was delayed under an approved law-enforcement request.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the incident record, discovery date, affected subject count, Secretary notice requirement, notice deadline, submission receipt, and delay state. Submit the required HHS Secretary notice or attach approved delay evidence. Action plan: Submit or document the required HHS Secretary notice; Attach submission receipt and approved delay evidence; Rerun breach response evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_breach",
+      "assessment_methods": [
+        "examine",
+        "interview",
+        "test"
+      ],
+      "auditor_guidance": "Review the incident record, discovery date, affected subject count, Secretary notice requirement, notice deadline, submission receipt, and delay state.",
+      "risk_statement": "Overdue Secretary notice can leave required regulator reporting incomplete for a HIPAA breach.",
+      "remediation_intent": "Submit the HHS Secretary notice or attach approved delay evidence, then retain submission and closure evidence.",
+      "required_attributes": [
+        "affected_subject_count",
+        "breach_confirmed",
+        "discovered_at",
+        "incident_id",
+        "notification_deadline",
+        "regulator_notice_overdue",
+        "regulator_notice_state",
+        "secretary_notice_required",
+        "unsecured_phi"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "incident_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.408(a)"
+        }
+      ]
+    },
+    {
       "id": "hipaa-phi-encryption",
       "pack_id": "policy",
       "pack_name": "Policy",

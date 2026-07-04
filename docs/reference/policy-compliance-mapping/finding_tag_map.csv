@@ -1358,6 +1358,9 @@ assessment:examine,assessment,catalog,hipaa-access-controls,HIPAA Unique User Id
 assessment:examine,assessment,catalog,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
@@ -2123,6 +2126,9 @@ assessment:interview,assessment,catalog,hipaa-access-controls,HIPAA Unique User 
 assessment:interview,assessment,catalog,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 assessment:interview,assessment,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 assessment:interview,assessment,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 assessment:interview,assessment,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
@@ -2917,6 +2923,9 @@ assessment:test,assessment,catalog,gke-wildcard-permissions,GKE role/cluster rol
 assessment:test,assessment,catalog,group-excessive-admin,Group with excessive admin privileges,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,group-excessive-data-priv,Group with excessive data privileges,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,group-excessive-high-priv,Group with excessive high privileges,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,iam-inactive-privileged-account,Service account with high privileges is inactive for over 90 days,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,iam-unknown-account-trusted,Unknown AWS account with trusted access to IAM role,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
@@ -3597,6 +3606,9 @@ branch-protection,routing,catalog,github-public-repo-branch-protection,GitHub Pu
 branch-protection,routing,catalog,github-repo-branch-protection,GitHub Repository Branch Protection,policy,policy,event,high,active,candidate
 branch-protection,routing,catalog,github-repository-ruleset-modified,GitHub Repository Ruleset Modified,github,github,event,high,open,retired
 breach-notification,routing,catalog,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+breach-notification,routing,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+breach-notification,routing,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+breach-notification,routing,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 break,routing,catalog,identity-break-glass-account-review,Identity Break Glass Account Review,policy,policy,event,medium,active,candidate
 break-glass,routing,catalog,azure-entra-break-glass-account-missing,Azure Entra Break Glass Account Missing,policy,policy,event,medium,active,candidate
 break-glass,routing,catalog,identity-break-glass-account-review,Identity Break Glass Account Review,policy,policy,event,medium,active,candidate
@@ -4414,6 +4426,9 @@ cel,generated,catalog,gke-wildcard-permissions,GKE role/cluster role assigned pe
 cel,generated,catalog,group-excessive-admin,Group with excessive admin privileges,policy,policy,event,high,active,candidate
 cel,generated,catalog,group-excessive-data-priv,Group with excessive data privileges,policy,policy,event,high,active,candidate
 cel,generated,catalog,group-excessive-high-priv,Group with excessive high privileges,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 cel,generated,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
 cel,generated,catalog,hubspot-no-next-step,Open Deal Without Next Step,policy,policy,event,low,active,candidate
 cel,generated,catalog,hubspot-stale-deal,Stale High-Value Deal,policy,policy,event,high,active,candidate
@@ -6579,6 +6594,9 @@ control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-b
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
+control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-6-planning,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-8-operation,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-12-a-12-controls,compliance,control_ref,github-dependabot-open-alert,GitHub Dependabot Open Alert,github,github,event,dynamic,open,test
@@ -14892,6 +14910,9 @@ control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-jamf-disk-encryptio
 control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-kandji-disk-encryption,Kandji Devices Without Disk Encryption,policy,policy,event,high,active,candidate
 control:hipaa:164-312-b,compliance,control_ref,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
 control:hipaa:164-312-e-1,compliance,control_ref,aws-s3-https-only,S3 Buckets Enforce HTTPS Only,policy,policy,event,medium,active,candidate
+control:hipaa:164-404-a,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+control:hipaa:164-406-a,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+control:hipaa:164-408-a,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 control:iso-27001-2022:6-1-2,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control:iso-27001-2022:8-2,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-12-6,compliance,control_ref,github-dependabot-open-alert,GitHub Dependabot Open Alert,github,github,event,dynamic,open,test
@@ -25847,6 +25868,9 @@ evidence:organizational_process,evidence,catalog,org-customer-touchpoints-low,Cu
 evidence:organizational_process,evidence,catalog,org-relationship-decay-customer,Customer Relationship Weakening,policy,policy,event,high,active,candidate
 evidence:organizational_process,evidence,catalog,org-silo-shared-dependency,Teams Sharing Dependencies With No Communication,policy,policy,event,medium,active,candidate
 evidence:organizational_process,evidence,catalog,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,policy,policy,event,high,active,candidate
+evidence:privacy_breach,evidence,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+evidence:privacy_breach,evidence,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+evidence:privacy_breach,evidence,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 evidence:privacy_inventory,evidence,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
 evidence:privacy_inventory,evidence,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 evidence:privacy_preference,evidence,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
@@ -26949,6 +26973,9 @@ framework:hipaa,compliance,control_ref,hipaa-access-controls,HIPAA Unique User I
 framework:hipaa,compliance,control_ref,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 framework:hipaa,compliance,control_ref,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
@@ -32712,6 +32739,7 @@ heroku_api_key,routing,catalog,github-secops-secret-heroku-api-key-push-protecti
 heroku_api_key,routing,catalog,github-secops-secret-heroku-api-key-resolution-false-positive,GitHub Secret Scanning Heroku Api Key Resolution False Positive,policy,policy,event,medium,active,candidate
 heroku_api_key,routing,catalog,github-secops-secret-heroku-api-key-resolution-used-in-tests,GitHub Secret Scanning Heroku Api Key Resolution Used In Tests,policy,policy,event,medium,active,candidate
 heroku_api_key,routing,catalog,github-secops-secret-heroku-api-key-resolution-wont-fix,GitHub Secret Scanning Heroku Api Key Resolution Wont Fix,policy,policy,event,medium,active,candidate
+hhs-notice,routing,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 high,routing,catalog,ai-high-risk-use-case-registered,AI High Risk Use Case Registered,policy,policy,event,medium,active,candidate
 high,routing,catalog,compliance-p2-security-issues,P2 Security Issues Resolved Timely,policy,policy,event,high,active,candidate
 high,routing,catalog,gcp-container-vuln-high,GCP Container High Vulnerabilities Addressed,policy,policy,event,high,active,candidate
@@ -32761,6 +32789,9 @@ hipaa,compliance,catalog,hipaa-access-controls,HIPAA Unique User Identification,
 hipaa,compliance,catalog,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 hipaa,compliance,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 hipaa,compliance,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 host,routing,catalog,container-host-network,Container Host Network Disabled,policy,policy,event,high,active,candidate
@@ -33389,6 +33420,7 @@ incident-response,routing,catalog,compliance-p1-security-issues,P1 Security Issu
 incident-response,routing,catalog,pagerduty-service-without-escalation-policy,PagerDuty Service Without Escalation Policy,pagerduty,pagerduty,event,medium,open,test
 incident-response,routing,catalog,sentinelone-threat-detected,SentinelOne Threat Detected,policy,policy,event,critical,active,candidate
 incident-response,routing,catalog,threat-intel-malicious-ip-connection,Connection to Threat Intelligence IP,policy,policy,event,critical,active,candidate
+individual-notice,routing,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 infection,routing,catalog,sentinelone-endpoint-active-infection,SentinelOne Endpoint Active Infection,sentinelone,sentinelone,graph,critical,open,test
 infrastructure,routing,catalog,k8s-node-public-exposure,Kubernetes Node with Public IP,policy,policy,event,high,active,candidate
 ingress,routing,catalog,gcp-cloudrun-ingress-all,GCP Cloudrun Ingress All,policy,policy,event,medium,active,candidate
@@ -33864,6 +33896,7 @@ maven,routing,catalog,github-secops-dependabot-maven-high-runtime-no-patch,GitHu
 maven,routing,catalog,github-secops-dependabot-maven-low-open,GitHub Dependabot Maven Low Alert Open,policy,policy,event,low,active,candidate
 maven,routing,catalog,github-secops-dependabot-maven-medium-open,GitHub Dependabot Maven Medium Alert Open,policy,policy,event,high,active,candidate
 mdm,routing,catalog,endpoint-mdm-enrolled,Endpoints Enrolled in MDM,policy,policy,event,high,active,candidate
+media-notice,routing,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 medium,routing,catalog,gcp-container-vuln-medium,GCP Container Medium Vulnerabilities Addressed,policy,policy,event,medium,active,candidate
 medium,routing,catalog,github-secops-dependabot-cargo-medium-open,GitHub Dependabot Cargo Medium Alert Open,policy,policy,event,high,active,candidate
 medium,routing,catalog,github-secops-dependabot-composer-medium-open,GitHub Dependabot Composer Medium Alert Open,policy,policy,event,high,active,candidate
@@ -34458,6 +34491,9 @@ persistence,routing,catalog,identity-api-token-or-oauth-app-created,Identity API
 persistence,routing,catalog,identity-okta-admin-privilege-grant-events-30d,Okta Admin Privilege Grant Events (30 days),policy,policy,event,high,active,candidate
 persistence,routing,catalog,identity-okta-api-token-created-30d,Okta API Token Created (30 days),policy,policy,event,high,active,candidate
 personal-access-token,routing,catalog,github-personal-access-token-created,GitHub Personal Access Token Created,github,github,event,medium,open,retired
+phi,routing,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+phi,routing,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+phi,routing,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 phi,routing,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 phishing,routing,catalog,email-domain-authentication-misconfigured,Email Domain Authentication Misconfigured,email_domain,email_domain_health,event,high,open,test
 phishing,routing,catalog,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
@@ -35344,6 +35380,9 @@ policy,generated,catalog,hipaa-access-controls,HIPAA Unique User Identification,
 policy,generated,catalog,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 policy,generated,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 policy,generated,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 policy,generated,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
@@ -36079,6 +36118,9 @@ privacy,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy 
 privacy,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 privacy,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 privacy,routing,catalog,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
+privacy-breach,routing,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
+privacy-breach,routing,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
+privacy-breach,routing,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 privacy-request-system,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
 privacy-request-system,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 privacy-request-system,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
@@ -37750,6 +37792,7 @@ secret-scanning-org-disabled,risk,catalog,github-secops-audit-org-secret-scannin
 secret_scanning_alert,risk,catalog,github-secops-app-installation-all-repos-event-secret-scanning-alert,GitHub App Installation All Repos Event Secret Scanning Alert,policy,policy,event,high,active,candidate
 secret_scanning_alerts,risk,catalog,github-secops-app-installation-all-repos-secret-scanning-alerts-read,GitHub App Installation All Repos Secret Scanning Alerts Read,policy,policy,event,high,active,candidate
 secret_scanning_alerts,risk,catalog,github-secops-app-installation-all-repos-secret-scanning-alerts-write,GitHub App Installation All Repos Secret Scanning Alerts Write,policy,policy,event,high,active,candidate
+secretary-notice,risk,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 secrets,risk,catalog,ai-agent-secret-redaction,AI Agent Secret Redaction,policy,policy,event,medium,active,candidate
 secrets,risk,catalog,aws-codebuild-plaintext-secrets,AWS CodeBuild Plaintext Secrets,policy,policy,event,critical,active,candidate
 secrets,risk,catalog,aws-codebuild-secrets-in-env-vars,CodeBuild Secrets in Environment Variables,policy,policy,event,high,active,candidate

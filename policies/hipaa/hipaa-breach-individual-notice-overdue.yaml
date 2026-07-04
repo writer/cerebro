@@ -1,0 +1,120 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-breach-individual-notice-overdue
+    name: HIPAA Individual Breach Notice Overdue
+    description: Flags confirmed unsecured PHI breaches whose required individual notice is past the source-calculated notification deadline.
+    tags:
+        - hipaa
+        - breach-notification
+        - individual-notice
+        - privacy-breach
+        - phi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.404
+spec:
+    severity: high
+    effect: forbid
+    resource: breach_response_system::privacy_incident_record
+    match:
+        conditions:
+            - cmp_eq(path(resource, "breach_confirmed"), true)
+            - cmp_eq(path(resource, "unsecured_phi"), true)
+            - cmp_eq(path(resource, "subject_notice_required"), true)
+            - cmp_ne(path(resource, "subject_notice_state"), "sent")
+            - cmp_eq(path(resource, "subject_notice_overdue"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Send the required individual breach notice or attach the approved delay evidence.
+        steps:
+            - Confirm the affected individuals, discovery date, and source-calculated notification deadline.
+            - Send the individual notice or record the approved law-enforcement delay.
+            - Retain notice content, send date, delivery channel, and exception evidence.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.404(a)
+    input:
+        sourceKinds:
+            - breach_response_system.privacy_incident_record
+        requiredFields:
+            - incident_id
+            - breach_confirmed
+            - unsecured_phi
+            - affected_subject_count
+            - discovered_at
+            - notification_deadline
+            - subject_notice_required
+            - subject_notice_state
+            - subject_notice_overdue
+        freshnessSLA: 24h
+    evidence:
+        type: privacy_breach
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - breach_response_system
+        requiredFields:
+            - incident_id
+            - breach_confirmed
+            - unsecured_phi
+            - affected_subject_count
+            - discovered_at
+            - notification_deadline
+            - subject_notice_required
+            - subject_notice_state
+            - subject_notice_overdue
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - incident_id
+    audit:
+        evidenceType: privacy_breach
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        freshnessSLA: 24h
+        auditorStatement: Confirmed unsecured PHI breaches have required individual notice sent by the source-calculated deadline or carry approved delay evidence.
+        auditorGuidance: Review the incident record, discovery date, affected individual count, notice deadline, notice state, send evidence, and any approved delay.
+        riskStatement: Overdue individual breach notice can leave affected people uninformed and weaken HIPAA breach notification evidence.
+        remediationIntent: Send the required notice or attach approved delay evidence, then retain delivery and closure evidence.
+        acceptableEvidence:
+            - source: breach_response_system
+              fields:
+                - incident_id
+                - breach_confirmed
+                - unsecured_phi
+                - affected_subject_count
+                - discovered_at
+                - notification_deadline
+                - subject_notice_required
+                - subject_notice_state
+                - subject_notice_overdue
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        exceptionGuidance:
+            - Delay evidence must include the legal basis, approver, start date, and expected notice date.
+        falsePositives:
+            - The incident was not a breach of unsecured PHI or individual notice was delayed under an approved law-enforcement request.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: breach_notice_response
+            steps:
+                - Send or document the required individual notice.
+                - Attach delivery evidence and approved delay evidence.
+                - Rerun breach response evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

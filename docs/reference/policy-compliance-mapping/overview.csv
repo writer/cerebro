@@ -1,29 +1,29 @@
 metric,value
-policy finding rules,1517
-policy-control rows,10100
-tag rows,15147
-unique tags,1043
+policy finding rules,1520
+policy-control rows,10103
+tag rows,15181
+unique tags,1049
 domains,37
 frameworks,23
 
 all finding metric,value
-public detections,1603
+public detections,1606
 non-policy detections,86
-finding-control rows,10284
-finding-tag rows,38763
+finding-control rows,10287
+finding-tag rows,38806
 source-coverage rows,6175
-finding compliance review rows,1603
-unique finding review tags,1612
+finding compliance review rows,1606
+unique finding review tags,1622
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,320
+detections missing source coverage refs,323
 detections source-backed,469
 detections partial source-backed,814
-detections control-only,320
+detections control-only,323
 
 evidence mode,rules
-cel,1000
+cel,1003
 query,507
 graph,10
 
@@ -45,13 +45,13 @@ compliance,15
 endpoint,15
 container,14
 pci,11
+hipaa,9
 org,8
 privacy,8
 certificate,7
 salesforce,7
 database,6
 dspm,6
-hipaa,6
 backup,5
 network,5
 okta,5
@@ -76,7 +76,7 @@ CIS AWS Foundations Benchmark v2.0,50
 CIS Kubernetes Benchmark,42
 ISO 42001,39
 EU AI Act,32
-HIPAA,26
+HIPAA,29
 GDPR,14
 CCPA,11
 Cerebro Revenue Operations,10
@@ -92,11 +92,11 @@ CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1563
+event,1566
 graph,40
 
 finding pack,detections
-policy,1517
+policy,1520
 github,15
 grc,15
 identity,15
@@ -129,7 +129,7 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1507
+policy,1510
 github,16
 okta,15
 grc,12
@@ -174,7 +174,7 @@ CIS Kubernetes Benchmark,133
 EU AI Act,62
 CIS AWS Foundations Benchmark v2.0,54
 GDPR,50
-HIPAA,27
+HIPAA,30
 CCPA,24
 Cerebro Revenue Operations,13
 Cerebro Organizational Resilience,11
@@ -211,6 +211,7 @@ incident_response,12
 database,9
 okta,9
 org,9
+hipaa,8
 network,8
 pci,8
 privacy,8
@@ -221,7 +222,6 @@ cloud,6
 salesforce,6
 sentinelone,6
 collaboration,5
-hipaa,5
 dspm,4
 vendor,4
 hubspot,3

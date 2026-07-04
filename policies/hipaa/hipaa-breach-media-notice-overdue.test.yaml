@@ -1,0 +1,29 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: overdue media notice fails
+      resource:
+          incident_id: br-200
+          breach_confirmed: true
+          unsecured_phi: true
+          affected_subject_count: 650
+          state_or_jurisdiction: CA
+          discovered_at: "2026-04-01T00:00:00Z"
+          notification_deadline: "2026-05-31T00:00:00Z"
+          media_notice_required: true
+          media_notice_state: pending
+          media_notice_overdue: true
+      wantFinding: true
+    - name: sent media notice passes
+      resource:
+          incident_id: br-201
+          breach_confirmed: true
+          unsecured_phi: true
+          affected_subject_count: 780
+          state_or_jurisdiction: NY
+          discovered_at: "2026-06-01T00:00:00Z"
+          notification_deadline: "2026-07-31T00:00:00Z"
+          media_notice_required: true
+          media_notice_state: sent
+          media_notice_overdue: false
+      wantFinding: false
