@@ -339,6 +339,8 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 	if dimension.ID == "" || dimension.Type == "" || dimension.Title == "" {
 		return Record{}
 	}
+	runtimeFamilies := coverageRuntimeFamilies(dimension)
+	supportedRuntimeFamilies := coverageSupportedRuntimeFamilies(dimension)
 	record := Record{
 		SourceID:                 contract.SourceID,
 		TenantID:                 options.TenantID,
@@ -354,13 +356,13 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		EvidenceTypes:            append([]string(nil), dimension.EvidenceTypes...),
 		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
 		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
-		SupportedRuntimeFamilies: append([]string(nil), dimension.Families...),
+		SupportedRuntimeFamilies: supportedRuntimeFamilies,
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
 		record.State = StateUnsupported
 		return withBlindSpot(record)
 	}
-	matches := matchingObservations(observations, dimension.Families, options.TenantID)
+	matches := matchingObservations(observations, runtimeFamilies, options.TenantID)
 	if len(matches) == 0 {
 		record.State = StateUnconfigured
 		return withBlindSpot(record)
@@ -374,6 +376,36 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		record.State = StatePartial
 	}
 	return withBlindSpot(record)
+}
+
+func coverageRuntimeFamilies(dimension sourcecdk.CoverageDimension) []string {
+	if runtimeFamilies := uniqueNonEmptyStrings(dimension.RuntimeFamilies); len(runtimeFamilies) != 0 {
+		return runtimeFamilies
+	}
+	return uniqueNonEmptyStrings(dimension.Families)
+}
+
+func coverageSupportedRuntimeFamilies(dimension sourcecdk.CoverageDimension) []string {
+	return uniqueNonEmptyStrings(dimension.Families, dimension.RuntimeFamilies)
+}
+
+func uniqueNonEmptyStrings(groups ...[]string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, values := range groups {
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func withBlindSpot(record Record) Record {

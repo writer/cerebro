@@ -508,7 +508,7 @@ func checkStrictDeployRuntimeCoverage(root string, dimensions map[string]map[str
 			continue
 		}
 		coveredFamilies := coverageFamilies(sourceDimensions)
-		missing := sortedStringSetDifference(deployFamilies, coveredFamilies)
+		missing := missingDeployRuntimeFamilies(deployFamilies, coveredFamilies)
 		if len(missing) > 0 {
 			issues = append(issues, issue{
 				path:    fmt.Sprintf("sources/%s/catalog.yaml", sourceID),
@@ -597,19 +597,26 @@ func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[str
 				families[family] = struct{}{}
 			}
 		}
+		for _, family := range dimension.RuntimeFamilies {
+			family = strings.TrimSpace(family)
+			if family != "" {
+				families[family] = struct{}{}
+			}
+		}
 	}
 	return families
 }
 
-func sortedStringSetDifference(left map[string]struct{}, right map[string]struct{}) []string {
-	out := make([]string, 0)
-	for value := range left {
-		if _, ok := right[value]; !ok {
-			out = append(out, value)
+func missingDeployRuntimeFamilies(deployFamilies map[string]struct{}, coveredFamilies map[string]struct{}) []string {
+	var missing []string
+	for family := range deployFamilies {
+		if _, ok := coveredFamilies[family]; ok {
+			continue
 		}
+		missing = append(missing, family)
 	}
-	sort.Strings(out)
-	return out
+	sort.Strings(missing)
+	return missing
 }
 
 func splitPolicyResources(value string) []string {

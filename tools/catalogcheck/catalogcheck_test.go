@@ -927,6 +927,50 @@ runtimes:
 	}
 }
 
+func TestCheckStrictDeployRuntimeCoverageAllowsExplicitRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/addigy/deploy.yaml", `
+runtimes:
+  - localId: devices
+    config:
+      family: devices
+`)
+	writeFile(t, root, "sources/custom/deploy.yaml", `
+runtimes:
+  - localId: devices
+    config:
+      family: devices
+`)
+	dimensions := map[string]map[string]sourcecdk.CoverageDimension{
+		"addigy": {
+			"devices": {
+				ID:      "devices",
+				Support: sourcecdk.CoverageSupportPartial,
+				Families: []string{
+					"device",
+				},
+				RuntimeFamilies: []string{
+					"devices",
+				},
+			},
+		},
+		"custom": {
+			"devices": {
+				ID:      "devices",
+				Support: sourcecdk.CoverageSupportPartial,
+				Families: []string{
+					"device",
+				},
+			},
+		},
+	}
+
+	issues := checkStrictDeployRuntimeCoverage(root, dimensions)
+	if len(issues) != 1 || issues[0].path != "sources/custom/catalog.yaml" {
+		t.Fatalf("issues = %#v, want explicit runtime family to cover only addigy deploy runtime family", issues)
+	}
+}
+
 func TestCheckRequiredCloudCoverageDimensionsRejectsMissingMinimum(t *testing.T) {
 	issues := checkRequiredCloudCoverageDimensions(map[string]map[string]sourcecdk.CoverageDimension{
 		"azure": {

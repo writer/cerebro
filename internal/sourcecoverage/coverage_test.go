@@ -53,6 +53,57 @@ func TestEvaluateDistinguishesCoverageStates(t *testing.T) {
 	}
 }
 
+func TestEvaluateMatchesDeclaredRuntimeFamilies(t *testing.T) {
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID:        "addigy",
+		OwnerDomain:     "device_management",
+		AuthorityDomain: "addigy",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:              "devices",
+			Type:            "entity_family",
+			Title:           "Devices",
+			Families:        []string{"device"},
+			RuntimeFamilies: []string{"devices"},
+			Support:         sourcecdk.CoverageSupportSupported,
+			HighValue:       true,
+		}},
+	}}
+	records := Evaluate(contracts, []RuntimeObservation{
+		{
+			RuntimeID:           "semantic-token",
+			SourceID:            "addigy",
+			TenantID:            "writer",
+			Family:              "device",
+			Status:              "failing",
+			LastFailureCategory: "schema",
+		},
+		{
+			RuntimeID: "addigy-devices",
+			SourceID:  "addigy",
+			TenantID:  "writer",
+			Family:    "devices",
+			Status:    "healthy",
+		},
+	}, Options{TenantID: "writer"})
+
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1: %#v", len(records), records)
+	}
+	got := records[0]
+	if got.State != StateHealthy || got.RuntimeID != "addigy-devices" || got.Family != "devices" {
+		t.Fatalf("record = %#v, want healthy devices runtime match", got)
+	}
+	wantRuntimeFamilies := []string{"device", "devices"}
+	if len(got.SupportedRuntimeFamilies) != len(wantRuntimeFamilies) {
+		t.Fatalf("SupportedRuntimeFamilies = %#v, want %#v", got.SupportedRuntimeFamilies, wantRuntimeFamilies)
+	}
+	for i, want := range wantRuntimeFamilies {
+		if got.SupportedRuntimeFamilies[i] != want {
+			t.Fatalf("SupportedRuntimeFamilies = %#v, want %#v", got.SupportedRuntimeFamilies, wantRuntimeFamilies)
+		}
+	}
+}
+
 func TestBuildReportSummarizesRecordsAndBlindSpots(t *testing.T) {
 	generatedAt := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
 	records := []Record{
