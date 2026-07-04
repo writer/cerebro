@@ -427,6 +427,11 @@ func TestBuiltinCatalogHashicorpVaultFamiliesMirrorRuntimeConfig(t *testing.T) {
 			}
 		}
 	}
+
+	secrets := catalogFamily(t, entry.Definition.ResourceFamilies, "secrets")
+	if _, ok := secrets.Projection.Fields["secret_status"]; ok {
+		t.Fatal("secrets projection fields include secret_status, want final static field only")
+	}
 }
 
 func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {

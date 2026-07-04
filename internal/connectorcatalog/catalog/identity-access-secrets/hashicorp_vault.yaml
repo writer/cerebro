@@ -99,7 +99,6 @@ entries:
             fields:
               secret_id: id
               secret_name: name
-              secret_status: secret_status|status|state
               secret_type: mount.type
               vault_id: mount.accessor|id
             static_fields:

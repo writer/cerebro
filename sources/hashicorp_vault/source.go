@@ -88,7 +88,6 @@ func New() (*Source, error) {
 					"resource_type":   "resource_type",
 					"secret_id":       "id",
 					"secret_name":     "name",
-					"secret_status":   "secret_status",
 					"secret_type":     "mount.type",
 					"source_event_id": "id",
 					"vault_id":        "mount.accessor|id",
