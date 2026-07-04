@@ -13,6 +13,54 @@ runtime_families:
   - groups
   - roles
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_api_token_or_oauth_access_token
+  base_url: ${config.base_url}/api/v3
+  spec_url: https://raw.githubusercontent.com/goauthentik/authentik/main/schema.yml
+  spec_kind: openapi
+  references:
+    - https://api.goauthentik.io/
+    - https://api.goauthentik.io/authentication/
+    - https://api.goauthentik.io/reference/core-users-list/
+    - https://api.goauthentik.io/reference/core-groups-list/
+    - https://api.goauthentik.io/reference/rbac-roles-list/
+    - https://api.goauthentik.io/reference/core-applications-list/
+    - https://api.goauthentik.io/reference/events-events-list/
+    - https://raw.githubusercontent.com/goauthentik/authentik/main/schema.yml
+  auth_evidence:
+    - https://api.goauthentik.io/authentication/
+  scope_evidence:
+    - https://api.goauthentik.io/reference/core-users-list/
+    - https://api.goauthentik.io/reference/core-groups-list/
+    - https://api.goauthentik.io/reference/rbac-roles-list/
+    - https://api.goauthentik.io/reference/core-applications-list/
+    - https://api.goauthentik.io/reference/events-events-list/
+  families:
+    - id: applications
+      method: GET
+      path: /core/applications/
+      operation: core_applications_list
+    - id: audit_events
+      method: GET
+      path: /events/events/
+      operation: events_events_list
+    - id: groups
+      method: GET
+      path: /core/groups/
+      operation: core_groups_list
+    - id: roles
+      method: GET
+      path: /rbac/roles/
+      operation: rbac_roles_list
+    - id: users
+      method: GET
+      path: /core/users/
+      operation: core_users_list
 kind_lifecycle:
   - kind: authentik_cloud.users
     status: active
@@ -37,7 +85,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses the authentik OpenAPI schema and API reference for users; live tenant sample certification is still pending.
     - id: groups
       type: entity_family
       title: "Groups"
@@ -47,7 +95,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses the authentik OpenAPI schema and API reference for groups; live tenant sample certification is still pending.
     - id: roles
       type: lifecycle_state
       title: "Roles"
@@ -57,7 +105,7 @@ coverage_contract:
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses the authentik OpenAPI schema and API reference for RBAC roles; live tenant sample certification is still pending.
     - id: applications
       type: entity_family
       title: "Applications"
@@ -67,7 +115,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses the authentik OpenAPI schema and API reference for applications; live tenant sample certification is still pending.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +125,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses the authentik OpenAPI schema and API reference for events; live tenant sample certification is still pending.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -92,7 +140,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
+      - pk
   - kind: authentik_cloud.groups
     schema_ref: authentik_cloud/groups/v1
     required_attributes:
@@ -100,7 +148,7 @@ event_contracts:
       - source_event_id
       - group_id
     required_payload_fields:
-      - id
+      - pk
   - kind: authentik_cloud.roles
     schema_ref: authentik_cloud/roles/v1
     required_attributes:
@@ -109,7 +157,7 @@ event_contracts:
       - policy_id
       - policy_name
     required_payload_fields:
-      - id
+      - pk
   - kind: authentik_cloud.applications
     schema_ref: authentik_cloud/applications/v1
     required_attributes:
@@ -119,7 +167,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - pk
   - kind: authentik_cloud.audit_events
     schema_ref: authentik_cloud/audit_events/v1
     required_attributes:
@@ -128,4 +176,4 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - pk

@@ -1,6 +1,6 @@
 # Authentik Cloud
 
-Generated Source Runtime SDK scaffold for `authentik_cloud`.
+Source Runtime SDK package for `authentik_cloud`.
 
 ## Runtime input
 
@@ -18,11 +18,11 @@ Generated Source Runtime SDK scaffold for `authentik_cloud`.
 
 ## Families
 
-- `users`, emits `authentik_cloud.users`, reads `/v1/users`
-- `groups`, emits `authentik_cloud.groups`, reads `/v1/groups`
-- `roles`, emits `authentik_cloud.roles`, reads `/v1/roles`
-- `applications`, emits `authentik_cloud.applications`, reads `/v1/applications`
-- `audit_events`, emits `authentik_cloud.audit_events`, reads `/v1/audit_events`
+- `users`, emits `authentik_cloud.users`, reads `/api/v3/core/users/`
+- `groups`, emits `authentik_cloud.groups`, reads `/api/v3/core/groups/`
+- `roles`, emits `authentik_cloud.roles`, reads `/api/v3/rbac/roles/`
+- `applications`, emits `authentik_cloud.applications`, reads `/api/v3/core/applications/`
+- `audit_events`, emits `authentik_cloud.audit_events`, reads `/api/v3/events/events/`
 
 ## Tests
 

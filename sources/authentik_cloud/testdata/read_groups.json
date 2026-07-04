@@ -2,7 +2,7 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/v1/groups",
+      "api_path": "/api/v3/core/groups/",
       "description": "Authentik Cloud Groups Fixture identity_group",
       "domain": "domain-source-authentik_cloud-groups-1",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-authentik_cloud-groups-1",
@@ -18,7 +18,7 @@
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "authentik_cloud",
       "record_class": "identity_group",
-      "record_selector": "$.data[*]",
+      "record_selector": "$.results[*]",
       "resource_id": "source-authentik_cloud-groups-1",
       "resource_name": "Authentik Cloud Groups Fixture",
       "resource_type": "groups",
@@ -34,7 +34,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "api_method": "GET",
-      "api_path": "/v1/groups",
+      "api_path": "/api/v3/core/groups/",
       "description": "Authentik Cloud Groups Fixture identity_group",
       "domain": "domain-source-authentik_cloud-groups-1",
       "event_id": "source-authentik_cloud-groups-1",
@@ -54,8 +54,9 @@
       "id": "source-authentik_cloud-groups-1",
       "name": "Authentik Cloud Groups Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
+      "pk": "source-authentik_cloud-groups-1",
       "record_class": "identity_group",
-      "record_selector": "$.data[*]",
+      "record_selector": "$.results[*]",
       "resource_id": "source-authentik_cloud-groups-1",
       "resource_type": "groups",
       "resource_urn": "urn:cerebro:tenant:authentik_cloud_groups:source-authentik_cloud-groups-1",
