@@ -1,5 +1,5 @@
 {
-  "adapter_health_path": "/v2/systeminsights",
+  "adapter_health_path": "/systemusers?limit=1&skip=0",
   "auth_model": "api_key",
   "evidence_cas_reference_kind": "jumpcloud.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
