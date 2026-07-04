@@ -106,7 +106,7 @@ provider_api:
       path: /organization/admin_api_keys
     - id: api_key
       method: GET
-      path: /organization/projects/{project_id}/api_keys
+      path: /organization/projects/default/api_keys
     - id: audit_log
       method: GET
       path: /organization/audit_logs
@@ -148,7 +148,7 @@ provider_api:
       path: /organization/projects/{project_id}/groups
     - id: project_group_role
       method: GET
-      path: /projects/{project_id}/groups/{group_id}/roles
+      path: /organization/projects/{project_id}/groups/{group_id}/roles
     - id: project_hosted_tool_permission
       method: GET
       path: /organization/projects/{project_id}/hosted_tool_permissions
@@ -178,7 +178,7 @@ provider_api:
       path: /organization/roles
     - id: service_account
       method: GET
-      path: /organization/projects/{project_id}/service_accounts
+      path: /organization/projects/default/service_accounts
     - id: spend_alert
       method: GET
       path: /organization/spend_alerts
