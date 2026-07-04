@@ -671,6 +671,9 @@ var generatedApiRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.4"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Discovery", Technique: "T1087"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"!(contains_value(path(resource, \"default_actions\"), {\"type\":\"authenticate-oidc\"}))", "!(contains_value(path(resource, \"default_actions\"), {\"type\":\"authenticate-cognito\"}))"},
@@ -717,6 +720,9 @@ var generatedApiRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "12"},
 				{FrameworkName: "CIS Controls v8", ControlID: "13"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1190"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -801,6 +807,9 @@ var generatedApiRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Execution", Technique: "T1059"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},

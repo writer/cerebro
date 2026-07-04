@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -58,6 +59,45 @@ func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.
 	limit := request.RowLimit
 	if limit <= 0 {
 		limit = ports.MaxCypherQueryRows
+	}
+	if strings.Contains(request.Query, "context_urn") {
+		allowedTypes := map[string]struct{}{}
+		if entityTypes, ok := request.Params["entity_types"].([]string); ok {
+			for _, entityType := range entityTypes {
+				allowedTypes[entityType] = struct{}{}
+			}
+		}
+		matching := make([]string, 0, len(r.links))
+		for _, link := range r.links {
+			if link == nil || link.FromURN != findingURN || link.Relation != relationHasContext {
+				continue
+			}
+			if tenantID != "" && link.TenantID != tenantID {
+				continue
+			}
+			if link.ToURN <= lastSeen {
+				continue
+			}
+			entity := r.entities[link.ToURN]
+			if len(allowedTypes) != 0 {
+				if entity == nil {
+					continue
+				}
+				if _, ok := allowedTypes[entity.EntityType]; !ok {
+					continue
+				}
+			}
+			matching = append(matching, link.ToURN)
+		}
+		sort.Strings(matching)
+		if len(matching) > limit {
+			matching = matching[:limit]
+		}
+		rows := make([]ports.CypherRow, 0, len(matching))
+		for _, urn := range matching {
+			rows = append(rows, ports.CypherRow{Values: map[string]any{"context_urn": urn}})
+		}
+		return rows, nil
 	}
 	matching := make([]string, 0, len(r.links))
 	for _, link := range r.links {
@@ -278,9 +318,11 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 			RiskReasons:       []string{"privileged_actor", "risky_action"},
 		},
 		Metadata: map[string]string{
-			"actor_urn":     "urn:cerebro:writer:okta_actor:user:00u1",
-			"resource_type": "okta_resource",
-			"source_family": "okta",
+			"actor_urn":         "urn:cerebro:writer:okta_actor:user:00u1",
+			"resource_type":     "okta_resource",
+			"rule_mitre_attack": "Initial Access:T1190",
+			"rule_tags":         "okta,identity,defense-evasion,attack.t1562,mitre-ta0005",
+			"source_family":     "okta",
 		},
 	}
 	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
@@ -327,6 +369,18 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:okta_user:00u1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
 		t.Fatal("actor finding link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_attack_technique:T1562"]; !ok {
+		t.Fatal("finding MITRE ATT&CK technique context link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0005"]; !ok {
+		t.Fatal("finding MITRE ATT&CK tactic context link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_attack_technique:T1190"]; !ok {
+		t.Fatal("finding rule MITRE ATT&CK technique context link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; !ok {
+		t.Fatal("finding rule MITRE ATT&CK tactic context link missing after recorded event")
 	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   finding,
@@ -605,6 +659,74 @@ func TestProjectFindingRecordedPrunesStaleActiveLinks(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:resource:other|has_finding|urn:cerebro:writer:finding:other"]; !ok {
 		t.Fatal("unrelated finding link was pruned")
+	}
+}
+
+func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
+	graph := &projectionRecorder{}
+	service := New(graph)
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "writer",
+		SourceSystem:       "findings",
+		FindingID:          "finding-mitre",
+		Fingerprint:        "fp-mitre",
+		Title:              "Finding with MITRE context",
+		RuleID:             "policy-test",
+		Severity:           "high",
+		Status:             "open",
+		RuntimeID:          "runtime-graph",
+		PrimaryResourceURN: "urn:cerebro:writer:resource:a",
+		ResourceURNs:       []string{"urn:cerebro:writer:resource:a"},
+		Metadata: map[string]string{
+			"rule_mitre_attack": "Initial Access:T1190",
+		},
+	}
+	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T11:59:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent(initial) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(initial recorded) error = %v", err)
+	}
+	anchorURN := "urn:cerebro:writer:finding:finding-mitre"
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1190"]; !ok {
+		t.Fatal("initial MITRE ATT&CK technique link missing")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; !ok {
+		t.Fatal("initial MITRE ATT&CK tactic link missing")
+	}
+
+	finding.Metadata = map[string]string{
+		"rule_mitre_attack": "Discovery:T1087",
+	}
+	recordedEvent, err = workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T12:05:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent(updated) error = %v", err)
+	}
+	result, err := service.Project(context.Background(), recordedEvent)
+	if err != nil {
+		t.Fatalf("Project(updated recorded) error = %v", err)
+	}
+	if result.LinksDeleted != 2 {
+		t.Fatalf("LinksDeleted = %d, want 2 stale MITRE context links", result.LinksDeleted)
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1190"]; ok {
+		t.Fatal("stale MITRE ATT&CK technique link was not pruned")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; ok {
+		t.Fatal("stale MITRE ATT&CK tactic link was not pruned")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1087"]; !ok {
+		t.Fatal("updated MITRE ATT&CK technique link missing")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0007"]; !ok {
+		t.Fatal("updated MITRE ATT&CK tactic link missing")
 	}
 }
 

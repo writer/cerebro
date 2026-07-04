@@ -29,6 +29,9 @@ var generatedIdentityRules = []policyRuleConfig{
 				{FrameworkName: "HIPAA", ControlID: "164.312(a)(2)(ii)"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.1.3"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1078"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_eq(path(resource, \"employee_status\"), path(resource, \"TERMINATED\"))", "cmp_eq(path(resource, \"account_active\"), true)", "cmp_gt(path(resource, \"days_since_termination\"), 3)"},
@@ -10999,6 +11002,10 @@ var generatedIdentityRules = []policyRuleConfig{
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.5"},
 				{FrameworkName: "NIST 800-53 r5", ControlID: "IA-2"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.4.2"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Credential Access", Technique: "T1110"},
+				{Tactic: "Initial Access", Technique: "T1078"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},

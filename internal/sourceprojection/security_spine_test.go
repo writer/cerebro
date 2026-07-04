@@ -301,6 +301,58 @@ func TestProjectSecurityToolingMapControlMapping(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:security_tool:agent-gateway", relationSupports, "urn:cerebro:writer:control:SOC2:CC6.1")
 }
 
+func TestProjectSecurityToolingMapControlMappingLinksMITRECoverage(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-mitre-coverage",
+		TenantId:   "writer",
+		SourceId:   "security_tooling_map",
+		Kind:       "security_tooling_map.control_mapping",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"mapping_id":       "agent-gateway-t1190-token-binding",
+			"tool_id":          "agent-gateway",
+			"control_id":       "CC6.1",
+			"control_name":     "Logical access",
+			"framework":        "SOC2",
+			"coverage":         "partial",
+			"coverage_status":  "gap",
+			"attack_tactic":    "Initial Access",
+			"attack_technique": "T1190",
+			"d3fend_technique": "TokenBinding",
+			"d3fend_artifact":  "AuthorizationToken",
+			"evidence_surface": "endpoint",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
+	controlURN := "urn:cerebro:writer:control:SOC2:CC6.1"
+	attackTacticURN := "urn:cerebro:writer:mitre_attack_tactic:TA0001"
+	attackTechniqueURN := "urn:cerebro:writer:mitre_attack_technique:T1190"
+	defendTechniqueURN := "urn:cerebro:writer:mitre_defend_technique:TokenBinding"
+	defendArtifactURN := "urn:cerebro:writer:mitre_defend_artifact:AuthorizationToken"
+	assertProjectedLink(t, state, controlURN, relationHasContext, attackTacticURN)
+	assertProjectedLink(t, state, controlURN, relationHasContext, attackTechniqueURN)
+	assertProjectedLink(t, state, controlURN, relationHasContext, defendTechniqueURN)
+	assertProjectedLink(t, state, controlURN, relationHasContext, defendArtifactURN)
+	assertProjectedLink(t, state, toolURN, relationSupports, attackTacticURN)
+	assertProjectedLink(t, state, toolURN, relationSupports, attackTechniqueURN)
+	assertProjectedLink(t, state, toolURN, relationSupports, defendTechniqueURN)
+	assertProjectedLink(t, state, toolURN, relationSupports, defendArtifactURN)
+	assertProjectedLink(t, state, defendTechniqueURN, relationSupports, attackTechniqueURN)
+	if got := state.links[toolURN+"|"+relationSupports+"|"+attackTechniqueURN].Attributes["coverage_status"]; got != "gap" {
+		t.Fatalf("tool attack coverage_status = %q, want gap", got)
+	}
+	if got := state.links[defendTechniqueURN+"|"+relationSupports+"|"+attackTechniqueURN].Attributes["relationship"]; got != "defends_against" {
+		t.Fatalf("defend attack relationship = %q, want defends_against", got)
+	}
+}
+
 func TestRegistryRoutesSecurityToolingMapDeclaredKinds(t *testing.T) {
 	cases := []struct {
 		kind       string

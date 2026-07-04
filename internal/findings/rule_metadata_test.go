@@ -170,6 +170,13 @@ func TestBuiltinPublicDetectionCatalogPublishesPolicyAuditDepth(t *testing.T) {
 		if detection.AuditorGuidance == "" || detection.RiskStatement == "" || detection.RemediationIntent == "" {
 			t.Fatalf("policy audit depth missing: guidance=%q risk=%q remediation=%q", detection.AuditorGuidance, detection.RiskStatement, detection.RemediationIntent)
 		}
+		wantMITRE := []MITREAttackRef{
+			{Tactic: "Initial Access", Technique: "T1190"},
+			{Tactic: "Collection", Technique: "T1530"},
+		}
+		if !slices.Equal(detection.MITREAttack, wantMITRE) {
+			t.Fatalf("MITREAttack = %#v, want %#v", detection.MITREAttack, wantMITRE)
+		}
 		return
 	}
 	t.Fatal("BuiltinPublicDetectionCatalog() missing aws-s3-bucket-no-public-access")
@@ -185,6 +192,7 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 			Tags:                      []string{"aws", "policy", "s3"},
 			PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "cloud_configuration"},
 			ControlRefs:               []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+			MITREAttack:               []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
 		}},
 	}
 	contracts := []sourcecdk.CoverageContract{{
@@ -214,6 +222,9 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 	}
 	if got, want := ref.MatchedControlRefs, []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}, {FrameworkName: "SOC 2", ControlID: "CC6.7"}}; !slices.Equal(got, want) {
 		t.Fatalf("MatchedControlRefs = %#v, want %#v", got, want)
+	}
+	if got, want := enriched.Detections[0].MITREAttack, []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}}; !slices.Equal(got, want) {
+		t.Fatalf("MITREAttack = %#v, want %#v", got, want)
 	}
 }
 

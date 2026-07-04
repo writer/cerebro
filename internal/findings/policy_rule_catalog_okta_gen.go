@@ -27,6 +27,9 @@ var generatedOktaRules = []policyRuleConfig{
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Privilege Escalation", Technique: "T1078"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_eq(path(resource, \"is_admin\"), true)", "cmp_gt(path(resource, \"last_login_days_ago\"), 90)"},
@@ -104,6 +107,9 @@ var generatedOktaRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.3"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.4"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Credential Access", Technique: "T1552"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -186,6 +192,9 @@ var generatedOktaRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.3"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.4"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
+			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Persistence", Technique: "T1098"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},

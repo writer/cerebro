@@ -90,12 +90,14 @@ func TestReadControlMappingFamily(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"control_mappings": []map[string]any{
 				{
-					"id":           "agent-gateway-soc2-cc6",
-					"tool_id":      "agent-gateway",
-					"control_id":   "SOC2-CC6",
-					"control_name": "Logical access",
-					"framework":    "SOC2",
-					"coverage":     "partial",
+					"id":                "agent-gateway-soc2-cc6",
+					"tool_id":           "agent-gateway",
+					"control_id":        "SOC2-CC6",
+					"control_name":      "Logical access",
+					"framework":         "SOC2",
+					"coverage":          "partial",
+					"attack_techniques": "T1190",
+					"d3fend_techniques": "TokenBinding",
 				},
 			},
 		})
@@ -124,6 +126,12 @@ func TestReadControlMappingFamily(t *testing.T) {
 	}
 	if pull.Events[0].Attributes["control_id"] != "SOC2-CC6" {
 		t.Fatalf("control_id = %q, want SOC2-CC6", pull.Events[0].Attributes["control_id"])
+	}
+	if pull.Events[0].Attributes["attack_techniques"] != "T1190" {
+		t.Fatalf("attack_techniques = %q, want T1190", pull.Events[0].Attributes["attack_techniques"])
+	}
+	if pull.Events[0].Attributes["d3fend_techniques"] != "TokenBinding" {
+		t.Fatalf("d3fend_techniques = %q, want TokenBinding", pull.Events[0].Attributes["d3fend_techniques"])
 	}
 }
 

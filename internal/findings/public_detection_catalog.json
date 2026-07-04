@@ -16080,6 +16080,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -16916,6 +16926,20 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -17754,6 +17778,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -18591,6 +18629,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -18850,6 +18902,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -21667,6 +21729,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -28790,6 +28858,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Discovery",
+          "technique": "T1087"
+        }
       ]
     },
     {
@@ -29194,6 +29268,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -29391,6 +29471,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -30402,6 +30488,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -32807,6 +32903,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        }
       ]
     },
     {
@@ -32990,6 +33092,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562.008"
+        }
       ]
     },
     {
@@ -33150,6 +33258,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1070"
         }
       ]
     },
@@ -33538,6 +33652,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        }
       ]
     },
     {
@@ -33716,6 +33836,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        }
       ]
     },
     {
@@ -33878,6 +34004,12 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
         }
       ]
     },
@@ -34071,6 +34203,20 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -34405,6 +34551,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -34769,6 +34925,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -34981,6 +35155,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        }
       ]
     },
     {
@@ -35144,6 +35328,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -35306,6 +35504,20 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -35954,6 +36166,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -36143,6 +36361,16 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -36454,6 +36682,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -36691,6 +36925,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -37151,6 +37395,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -37314,6 +37568,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -37945,6 +38205,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -38432,6 +38710,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -38620,6 +38916,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -38807,6 +39109,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -39554,6 +39862,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -39965,6 +40279,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -40608,6 +40932,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -40825,6 +41155,24 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -41529,6 +41877,16 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021.004"
         }
       ]
     },
@@ -43351,6 +43709,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        }
       ]
     },
     {
@@ -43754,6 +44118,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -43914,6 +44284,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -44062,6 +44438,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -44234,6 +44620,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Discovery",
+          "technique": "T1087"
+        }
       ]
     },
     {
@@ -44404,6 +44796,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Discovery",
+          "technique": "T1087"
         }
       ]
     },
@@ -44660,6 +45058,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -45151,6 +45555,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -47854,6 +48264,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -48972,6 +49396,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -49501,6 +49935,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -49742,6 +50186,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -50049,6 +50503,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -50619,6 +51087,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -50909,6 +51395,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -51403,6 +51903,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -51966,6 +52480,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -52449,6 +52973,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -52626,6 +53164,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -53205,6 +53753,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -54719,6 +55281,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        }
       ]
     },
     {
@@ -55600,6 +56168,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        }
       ]
     },
     {
@@ -56394,6 +56968,16 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -57291,6 +57875,20 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -58451,6 +59049,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -58613,6 +59217,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        }
       ]
     },
     {
@@ -58740,6 +59350,20 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -58933,6 +59557,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        }
       ]
     },
     {
@@ -59079,6 +59713,12 @@
               "control_id": "CC7.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
         }
       ]
     },
@@ -59263,6 +59903,28 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -59690,6 +60352,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -59871,6 +60543,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -61244,6 +61926,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -61413,6 +62101,12 @@
               "control_id": "A1.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -61811,6 +62505,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -62008,6 +62712,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -62146,6 +62860,12 @@
               "control_id": "A1.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -62367,6 +63087,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -62606,6 +63336,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -62729,6 +63469,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -62918,6 +63664,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -63417,6 +64173,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -63543,6 +64317,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -63755,6 +64535,16 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -64049,6 +64839,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -64236,6 +65032,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -64425,6 +65231,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -64551,6 +65367,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -64718,6 +65540,12 @@
               "control_id": "A1.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -65821,6 +66649,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -66118,6 +66960,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -66328,6 +67176,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -66523,6 +67381,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        },
+        {
+          "tactic": "Exfiltration",
+          "technique": "T1537"
         }
       ]
     },
@@ -66862,6 +67734,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -67139,6 +68017,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -67263,6 +68147,16 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -67667,6 +68561,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -69291,6 +70191,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -69808,6 +70714,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -70983,6 +71895,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -71823,6 +72745,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -72665,6 +73597,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -72840,6 +73782,16 @@
               "control_id": "CC7.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -73547,6 +74499,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
         }
       ]
     },
@@ -74989,6 +75947,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -75198,6 +76166,16 @@
               "control_id": "AC-3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -75486,6 +76464,12 @@
               "control_id": "CC7.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -75954,6 +76938,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        }
       ]
     },
     {
@@ -76075,6 +77065,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
         }
       ]
     },
@@ -76216,6 +77212,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -76529,6 +77531,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -76780,6 +77792,16 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -77214,6 +78236,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -77365,6 +78397,12 @@
               "control_id": "AC-3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -77570,6 +78608,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -77943,6 +78991,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -78293,6 +79347,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -78414,6 +79474,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -79050,6 +80116,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -79129,6 +80205,16 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "8"
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -79236,6 +80322,16 @@
               "control_id": "8.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -79622,6 +80718,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -79874,6 +80980,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -80229,6 +81341,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -80430,6 +81552,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -80552,6 +81688,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -80836,6 +81978,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -80971,6 +82119,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -81104,6 +82262,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -81399,6 +82563,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -81599,6 +82773,24 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -81971,6 +83163,12 @@
               "control_id": "IA-2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
         }
       ]
     },
@@ -82642,6 +83840,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -82750,6 +83954,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -82851,6 +84061,12 @@
               "control_id": "SC-28"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -83558,6 +84774,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        }
       ]
     },
     {
@@ -83847,6 +85069,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -84028,6 +85264,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -84133,6 +85379,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -84685,6 +85937,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -84790,6 +86056,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        },
+        {
+          "tactic": "Exfiltration",
+          "technique": "T1537"
         }
       ]
     },
@@ -84926,6 +86206,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -85135,6 +86425,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        },
+        {
+          "tactic": "Exfiltration",
+          "technique": "T1567"
+        }
       ]
     },
     {
@@ -85212,6 +86512,12 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "3"
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -90566,6 +91872,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1550"
+        }
       ]
     },
     {
@@ -91014,6 +92330,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -91681,6 +93011,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -96133,6 +97473,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -97040,6 +98390,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -97525,6 +98885,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -97721,6 +99087,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -97926,6 +99298,16 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -98176,6 +99558,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -99014,6 +100402,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -99119,6 +100521,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -99268,6 +100676,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -99714,6 +101128,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -100434,6 +101854,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -100584,6 +102010,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -100794,6 +102230,12 @@
               "control_id": "CC6.8"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562.001"
         }
       ]
     },
@@ -104124,6 +105566,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -104328,6 +105776,12 @@
               "control_id": "CC7.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
         }
       ]
     },
@@ -104733,6 +106187,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -104896,6 +106360,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -105061,6 +106539,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -105610,6 +107102,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -105871,6 +107377,24 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -106844,6 +108368,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -107466,6 +108996,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -108238,6 +109774,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -108390,6 +109936,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -108886,6 +110438,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        }
       ]
     },
     {
@@ -109043,6 +110601,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -109203,6 +110767,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -109355,6 +110925,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
         }
       ]
     },
@@ -111349,6 +112925,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -111614,6 +113200,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -112895,6 +114487,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -113762,6 +115360,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -114757,6 +116361,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -115158,6 +116772,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -116014,6 +117642,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -116700,6 +118338,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -117044,6 +118692,16 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -117578,6 +119236,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -118022,6 +119698,12 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
         }
       ]
     },
@@ -121074,6 +122756,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -121855,6 +123547,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -122656,6 +124358,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -123149,6 +124861,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -124609,6 +126331,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -124778,6 +126510,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -124902,6 +126640,12 @@
               "control_id": "3.5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -125116,6 +126860,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -125397,6 +127151,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -125553,6 +127321,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -125715,6 +127489,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -125900,6 +127688,12 @@
               "control_id": "AC-3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -127346,6 +129140,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -127850,6 +129650,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -128245,6 +130051,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -128662,6 +130474,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -129962,6 +131780,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
         }
       ]
     },
@@ -131329,6 +133153,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -131712,6 +133546,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -131960,6 +133800,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -132085,6 +133939,16 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -133106,6 +134970,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -133266,6 +135140,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
         }
       ]
     },
@@ -216601,6 +218485,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -217374,6 +219276,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -218210,6 +220118,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -218979,6 +220897,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -219322,6 +221246,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -219661,6 +221591,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -220079,6 +222019,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -220323,6 +222269,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -220565,6 +222521,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -221558,6 +223520,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -222058,6 +224026,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1550"
         }
       ]
     },
@@ -222673,6 +224651,12 @@
               "control_id": "CC6.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1078"
         }
       ]
     },
@@ -257056,6 +259040,16 @@
           "framework_name": "PCI DSS v4.0.1",
           "control_id": "8.4.2"
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1110"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -268768,6 +270762,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -269557,6 +271569,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -270515,6 +272537,16 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -271602,6 +273634,12 @@
           "framework_name": "CIS Kubernetes Benchmark",
           "control_id": "5.3.2"
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -272021,6 +274059,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -273524,6 +275568,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -274713,6 +276763,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -274766,6 +276822,16 @@
         {
           "framework_name": "CIS Kubernetes Benchmark",
           "control_id": "5.2.6"
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -275054,6 +277120,12 @@
         {
           "framework_name": "CIS Kubernetes Benchmark",
           "control_id": "5.2.4"
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -279978,6 +282050,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -280070,6 +282148,20 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -281027,6 +283119,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -281151,6 +283253,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -281304,6 +283412,12 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -281875,6 +283989,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -282843,6 +284967,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -283039,6 +285169,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -283820,6 +285956,20 @@
               "control_id": "AC-3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -284884,6 +287034,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -285091,6 +287255,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -287785,6 +289959,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -288717,6 +290901,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        }
       ]
     },
     {
@@ -288862,6 +291052,12 @@
               "control_id": "CC7.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -289144,6 +291340,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -290549,6 +292751,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -291024,6 +293232,12 @@
               "control_id": "8.3"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -291723,6 +293937,12 @@
               "control_id": "IA-2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
         }
       ]
     },
@@ -295805,6 +298025,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -296660,6 +298894,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -296878,6 +299126,24 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -297207,6 +299473,24 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -297709,6 +299993,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -297945,6 +300247,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -298139,6 +300455,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -298801,6 +301127,28 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -298955,6 +301303,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -299240,6 +301594,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -299570,6 +301938,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -302218,6 +304600,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -302435,6 +304827,16 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -302856,6 +305258,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1550"
         }
       ]
     },
@@ -303505,6 +305917,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -304000,6 +306426,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -304497,6 +306929,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -304900,6 +307338,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -305100,6 +307548,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -309133,6 +311595,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -309270,6 +311746,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -310181,6 +312671,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -310907,6 +313411,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1648"
         }
       ]
     },
@@ -312839,6 +315353,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -313197,6 +315717,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -313475,6 +316009,20 @@
               "control_id": "IA-5"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -314073,6 +316621,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -314658,6 +317212,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -315933,6 +318493,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -316873,6 +319443,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -317643,6 +320227,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -318409,6 +321003,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -319173,6 +321781,16 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -319939,6 +322557,20 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -320776,6 +323408,20 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -321659,6 +324305,20 @@
               "control_id": "CC6.1"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
         }
       ]
     },
@@ -322646,6 +325306,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1550"
+        }
       ]
     },
     {
@@ -323206,6 +325876,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -323701,6 +326385,12 @@
               "control_id": "CC6.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -324287,6 +326977,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -324718,6 +327418,16 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
         }
       ]
     },
@@ -325198,6 +327908,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -325385,6 +328105,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -325523,6 +328253,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
+        }
       ]
     },
     {
@@ -325649,6 +328389,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -325755,6 +328501,12 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -325893,6 +328645,20 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -326413,6 +329179,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -326846,6 +329622,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        }
       ]
     },
     {
@@ -327128,6 +329914,12 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        }
       ]
     },
     {
@@ -327377,6 +330169,12 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
         }
       ]
     },
@@ -328001,6 +330799,24 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Persistence",
+          "technique": "T1098"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -328146,6 +330962,16 @@
               "control_id": "CC6.6"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
         }
       ]
     },
@@ -328619,6 +331445,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        }
       ]
     },
     {
@@ -328899,6 +331739,16 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -329213,6 +332063,20 @@
               "control_id": "7"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Credential Access",
+          "technique": "T1552"
+        },
+        {
+          "tactic": "Collection",
+          "technique": "T1530"
         }
       ]
     },
@@ -329544,6 +332408,20 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Initial Access",
+          "technique": "T1190"
+        },
+        {
+          "tactic": "Privilege Escalation",
+          "technique": "T1078"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -329699,6 +332577,12 @@
               "control_id": "CC7.2"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562"
         }
       ]
     },
@@ -330014,6 +332898,16 @@
             }
           ]
         }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Execution",
+          "technique": "T1059"
+        },
+        {
+          "tactic": "Lateral Movement",
+          "technique": "T1021"
+        }
       ]
     },
     {
@@ -330238,6 +333132,12 @@
               "control_id": "CC7.4"
             }
           ]
+        }
+      ],
+      "mitre_attack": [
+        {
+          "tactic": "Command and Control",
+          "technique": "T1071"
         }
       ]
     },

@@ -25,6 +25,11 @@ var generatedTelemetryRules = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "3.5"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.6"},
 			},
+			MITREAttack: []MITREAttackRef{
+				{Tactic: "Initial Access", Technique: "T1078"},
+				{Tactic: "Execution", Technique: "T1059"},
+				{Tactic: "Credential Access", Technique: "T1552"},
+			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
 		Conditions:        []string{"cmp_eq(path(resource, \"status\"), \"open\")", "in_list(path(resource, \"secret_type\"), [\"aws_access_key\",\"github_token\",\"private_key\",\"generic_password\",\"api_key\",\"database_connection_string\"])"},

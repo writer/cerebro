@@ -1487,6 +1487,9 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	if _, ok := graph.links[primaryResourceURN+"|has_finding|"+findingURN]; !ok {
 		t.Fatalf("graph has_finding link missing for %s -> %s", primaryResourceURN, findingURN)
 	}
+	if _, ok := graph.links[findingURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; !ok {
+		t.Fatalf("graph MITRE ATT&CK tactic context link missing for %s", findingURN)
+	}
 	if got := len(appendLog.events); got != 1 {
 		t.Fatalf("len(appendLog.events) = %d, want 1", got)
 	}

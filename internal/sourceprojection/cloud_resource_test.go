@@ -57,6 +57,43 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	}
 }
 
+func TestProjectCloudResourceMetadataLinksMITREContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceID := "/subscriptions/sub-1/providers/Microsoft.Security/alerts/alert-1"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "azure-defender-alert-1",
+		TenantId: "writer",
+		SourceId: "azure",
+		Kind:     "azure.defender_alert",
+		Attributes: map[string]string{
+			"mitre_techniques":  "T1078",
+			"policy_mitre":      "Collection:T1530",
+			"resource_id":       resourceID,
+			"resource_name":     "Suspicious sign-in",
+			"resource_provider": "azure",
+			"resource_type":     "defender_alert",
+			"rule_mitre_attack": "Initial Access:T1190",
+			"subscription_id":   "sub-1",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:azure_defender_alert:" + resourceID
+	techniqueURN := "urn:cerebro:writer:mitre_attack_technique:T1078"
+	assertProjectedLink(t, state, resourceURN, relationHasContext, techniqueURN)
+	assertProjectedLink(t, state, resourceURN, relationHasContext, "urn:cerebro:writer:mitre_attack_tactic:TA0001")
+	assertProjectedLink(t, state, resourceURN, relationHasContext, "urn:cerebro:writer:mitre_attack_tactic:TA0009")
+	assertProjectedLink(t, state, resourceURN, relationHasContext, "urn:cerebro:writer:mitre_attack_technique:T1190")
+	assertProjectedLink(t, state, resourceURN, relationHasContext, "urn:cerebro:writer:mitre_attack_technique:T1530")
+	if entity := state.entities[techniqueURN]; entity == nil || entity.EntityType != "mitre.attack.technique" {
+		t.Fatalf("MITRE technique entity missing or wrong type: %#v", entity)
+	}
+}
+
 func TestProjectCloudResourceRejectsCrossTenantCerebroResourceURN(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

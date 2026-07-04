@@ -849,6 +849,7 @@ func clonePublicDetection(detection PublicDetection) PublicDetection {
 		FingerprintFields:        cloneStringSlice(detection.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(detection.ControlRefs),
 		SourceCoverageRefs:       cloneSourceCoverageRefs(detection.SourceCoverageRefs),
+		MITREAttack:              cloneMITREAttackRefs(detection.MITREAttack),
 	}
 }
 
