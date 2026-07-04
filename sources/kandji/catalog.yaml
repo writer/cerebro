@@ -9,6 +9,36 @@ runtime_families:
   - application
   - device
   - vulnerability
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_token
+  base_url: https://{sub_domain}.api.kandji.io/api/v1
+  spec_url: https://www.postman.com/ksapitest/kandji-api-support-flows/collection/r796tjz/kandji-api
+  spec_kind: postman_collection
+  references:
+    - https://api-docs.iru.com/
+    - https://www.postman.com/ksapitest/kandji-api-support-flows/collection/r796tjz/kandji-api
+    - https://support.kandji.io/kb/kandji-api
+    - https://support.kandji.io/kb/prism
+  auth_evidence:
+    - https://support.kandji.io/kb/kandji-api
+  families:
+    - id: application
+      method: GET
+      path: /prism/apps
+    - id: device
+      method: GET
+      path: /devices
+    - id: device
+      method: GET
+      path: /devices/{device_id}/details
+    - id: vulnerability
+      method: GET
+      path: /vulnerability-management/detections
 event_contracts:
   - kind: kandji.application
     schema_ref: kandji/application/v1
