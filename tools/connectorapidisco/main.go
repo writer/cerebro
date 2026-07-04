@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -44,14 +45,19 @@ type Worklist struct {
 }
 
 type WorklistSummary struct {
-	Candidates      int `json:"candidates"`
-	APIsGuruMatches int `json:"apis_guru_matches"`
+	Candidates      int            `json:"candidates"`
+	APIsGuruMatches int            `json:"apis_guru_matches"`
+	ByPriorityTier  map[string]int `json:"by_priority_tier,omitempty"`
 }
 
 type WorklistItem struct {
 	SourceID           string               `json:"source_id"`
 	DisplayName        string               `json:"display_name,omitempty"`
+	CatalogPath        string               `json:"catalog_path,omitempty"`
 	PackagePath        string               `json:"package_path,omitempty"`
+	Priority           int                  `json:"priority"`
+	PriorityTier       string               `json:"priority_tier"`
+	PriorityReasons    []string             `json:"priority_reasons,omitempty"`
 	MissingFamilies    []string             `json:"missing_families,omitempty"`
 	ExistingReferences []string             `json:"existing_references,omitempty"`
 	APIsGuru           []APIsGuruSuggestion `json:"apis_guru,omitempty"`
@@ -108,31 +114,247 @@ func readAPIsGuru(path string) (apisGuruRegistry, error) {
 }
 
 func buildWorklist(candidates []connectorcatalog.APIDiscoveryCandidate, registry apisGuruRegistry) Worklist {
-	worklist := Worklist{Items: make([]WorklistItem, 0, len(candidates))}
+	worklist := Worklist{
+		Summary: WorklistSummary{ByPriorityTier: map[string]int{}},
+		Items:   make([]WorklistItem, 0, len(candidates)),
+	}
 	for _, candidate := range candidates {
 		suggestions := apisGuruSuggestions(registry, candidate)
 		if len(suggestions) > 0 {
 			worklist.Summary.APIsGuruMatches++
 		}
+		priority := priorityFor(candidate, suggestions)
 		worklist.Items = append(worklist.Items, WorklistItem{
 			SourceID:           candidate.SourceID,
 			DisplayName:        candidate.DisplayName,
+			CatalogPath:        candidate.Path,
 			PackagePath:        candidate.PackagePath,
+			Priority:           priority.Score,
+			PriorityTier:       priority.Tier,
+			PriorityReasons:    priority.Reasons,
 			MissingFamilies:    append([]string(nil), candidate.MissingFamilies...),
 			ExistingReferences: append([]string(nil), candidate.ExistingReferences...),
 			APIsGuru:           suggestions,
-			SearchQueries:      append([]string(nil), candidate.SearchQueries...),
+			SearchQueries:      discoveryQueries(candidate),
 			NextAction:         candidate.NextAction,
 		})
+		worklist.Summary.ByPriorityTier[priority.Tier]++
 	}
 	sort.SliceStable(worklist.Items, func(i int, j int) bool {
+		if worklist.Items[i].Priority != worklist.Items[j].Priority {
+			return worklist.Items[i].Priority > worklist.Items[j].Priority
+		}
 		if len(worklist.Items[i].APIsGuru) != len(worklist.Items[j].APIsGuru) {
 			return len(worklist.Items[i].APIsGuru) > len(worklist.Items[j].APIsGuru)
+		}
+		if len(worklist.Items[i].MissingFamilies) != len(worklist.Items[j].MissingFamilies) {
+			return len(worklist.Items[i].MissingFamilies) > len(worklist.Items[j].MissingFamilies)
 		}
 		return worklist.Items[i].SourceID < worklist.Items[j].SourceID
 	})
 	worklist.Summary.Candidates = len(worklist.Items)
+	if len(worklist.Summary.ByPriorityTier) == 0 {
+		worklist.Summary.ByPriorityTier = nil
+	}
 	return worklist
+}
+
+type priority struct {
+	Score   int
+	Tier    string
+	Reasons []string
+}
+
+func priorityFor(candidate connectorcatalog.APIDiscoveryCandidate, suggestions []APIsGuruSuggestion) priority {
+	score := 0
+	reasons := map[string]struct{}{}
+	add := func(points int, reason string) {
+		score += points
+		if reason != "" {
+			reasons[reason] = struct{}{}
+		}
+	}
+	if len(suggestions) > 0 {
+		add(35, "machine_readable_spec_match")
+	}
+	switch catalogCategory(candidate.Path) {
+	case "identity-access-secrets":
+		add(35, "identity_access_source")
+	case "security-posture-vulnerability":
+		add(32, "security_posture_source")
+	case "cloud-infrastructure-devops":
+		add(28, "cloud_infrastructure_source")
+	case "observability-soar-threat-intel":
+		add(24, "incident_and_alert_source")
+	case "ai-governance":
+		add(20, "ai_governance_source")
+	case "collaboration-productivity":
+		add(16, "collaboration_source")
+	case "business-data-grc":
+		add(12, "business_grc_source")
+	}
+	missingFamilies := normalizedOrderedList(candidate.MissingFamilies)
+	if len(missingFamilies) >= 4 {
+		add(min(len(missingFamilies)*2, 12), "multi_family_runtime")
+	}
+	familyReasons := map[string]int{}
+	for _, family := range missingFamilies {
+		points, reason := familyPriority(family)
+		if reason == "" {
+			continue
+		}
+		if points > familyReasons[reason] {
+			familyReasons[reason] = points
+		}
+	}
+	for reason, points := range familyReasons {
+		add(points, reason)
+	}
+	auth := strings.TrimSpace(candidate.Auth)
+	switch {
+	case strings.HasPrefix(auth, "oauth_"):
+		add(8, "oauth_scope_docs_needed")
+	case auth == "aws_sigv4" || auth == "signature" || auth == "jwt" || auth == "two_step" || strings.HasPrefix(auth, "duo_hmac"):
+		add(10, "nontrivial_auth_docs_needed")
+	case auth != "":
+		add(4, "auth_model_known")
+	}
+	if strings.TrimSpace(candidate.BaseURL) != "" {
+		add(5, "base_url_hint")
+	}
+	if len(candidate.ExistingReferences) > 0 {
+		add(8, "existing_reference_hint")
+	}
+	out := priority{
+		Score:   score,
+		Tier:    priorityTier(score),
+		Reasons: sortedReasonKeys(reasons),
+	}
+	return out
+}
+
+func catalogCategory(path string) string {
+	parts := strings.Split(filepathSlash(path), "/")
+	for i, part := range parts {
+		if part == "catalog" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func filepathSlash(path string) string {
+	return strings.ReplaceAll(path, "\\", "/")
+}
+
+func familyPriority(family string) (int, string) {
+	family = normalizedFamily(family)
+	switch {
+	case family == "users" || family == "user" || strings.Contains(family, "identity"):
+		return 12, "identity_family"
+	case family == "groups" || family == "group" || strings.Contains(family, "membership"):
+		return 10, "access_relationship_family"
+	case strings.Contains(family, "role") || strings.Contains(family, "permission") || strings.Contains(family, "entitlement"):
+		return 12, "privilege_family"
+	case strings.Contains(family, "audit") || strings.Contains(family, "log"):
+		return 12, "audit_trail_family"
+	case strings.Contains(family, "finding") || strings.Contains(family, "vulnerab") || strings.Contains(family, "threat") || strings.Contains(family, "incident") || strings.Contains(family, "alert"):
+		return 12, "risk_signal_family"
+	case strings.Contains(family, "secret") || strings.Contains(family, "token") || strings.Contains(family, "key") || strings.Contains(family, "credential") || strings.Contains(family, "service_account"):
+		return 12, "secret_or_service_account_family"
+	case strings.Contains(family, "asset") || strings.Contains(family, "device") || strings.Contains(family, "application") || strings.Contains(family, "repository") || strings.Contains(family, "project") || strings.Contains(family, "workspace"):
+		return 8, "asset_inventory_family"
+	case strings.Contains(family, "policy") || strings.Contains(family, "control") || strings.Contains(family, "configuration") || strings.Contains(family, "setting"):
+		return 8, "control_configuration_family"
+	default:
+		return 0, ""
+	}
+}
+
+func normalizedFamily(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizedOrderedList(values []string) []string {
+	seen := map[string]struct{}{}
+	ordered := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		ordered = append(ordered, value)
+	}
+	return ordered
+}
+
+func priorityTier(score int) string {
+	switch {
+	case score >= 70:
+		return "urgent"
+	case score >= 50:
+		return "high"
+	case score >= 25:
+		return "standard"
+	default:
+		return "backlog"
+	}
+}
+
+func sortedReasonKeys(values map[string]struct{}) []string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func discoveryQueries(candidate connectorcatalog.APIDiscoveryCandidate) []string {
+	values := append([]string(nil), candidate.SearchQueries...)
+	display := strings.TrimSpace(candidate.DisplayName)
+	if display == "" {
+		display = strings.TrimSpace(candidate.SourceID)
+	}
+	if display != "" {
+		values = append(values,
+			"web search: "+display+" developer API reference",
+			"web search: "+display+" OpenAPI spec",
+		)
+	}
+	if auth := strings.TrimSpace(candidate.Auth); strings.HasPrefix(auth, "oauth_") && display != "" {
+		values = append(values, "web search: "+display+" OAuth scopes API")
+	}
+	if host := hostFromURL(candidate.BaseURL); host != "" {
+		values = append(values,
+			"web search: "+host+" openapi",
+			"web search: "+host+" swagger",
+		)
+	}
+	return normalizedOrderedList(values)
+}
+
+func hostFromURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.Contains(raw, "{") || strings.Contains(raw, "}") {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Hostname() == "" {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+func min(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func apisGuruSuggestions(registry apisGuruRegistry, candidate connectorcatalog.APIDiscoveryCandidate) []APIsGuruSuggestion {
