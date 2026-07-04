@@ -209,6 +209,8 @@ Each requirement declares:
 
 `finding_evidence_requirement_map.csv` joins public findings to the expanded requirements through direct control refs. Use `requirement_match_status` to see whether the finding source or source coverage already matches the requirement source, or whether the requirement is defined but not source-matched yet.
 
+`BuildControlEvidenceRequirementIndex` turns the resolved requirements into a runtime lookup surface by control, source/entity, and profile. Use `AssessControlEvidenceRequirements` when an API, graph projection, or report needs to evaluate supplied evidence against required source, entity type, fields, freshness, manual-review, claim-strength, sufficiency, coverage-claim, and overclaim-guard metadata. Generated CSVs remain review artifacts; the index is the typed contract for executable policy and control evidence checks.
+
 ## Commands
 
 ```bash
