@@ -342,7 +342,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `hadrian_security` | Hadrian Security source | hadrian_security.assets, hadrian_security.audit_events, hadrian_security.findings, hadrian_security.policies, hadrian_security.vulnerabilities |
 | `harness` | Harness source | harness.audit_events, harness.findings, harness.pipelines |
 | `harness_platform` | Harness Platform source | harness_platform.audit_events, harness_platform.deployments, harness_platform.projects, harness_platform.repositories, harness_platform.users |
-| `hashicorp_vault` | HashiCorp Vault secrets management source | users, secrets, audit events |
+| `hashicorp_vault` | HashiCorp Vault secrets management source | identity entities, secret engines, audit devices |
 | `haveibeenpwned` | Haveibeenpwned source | haveibeenpwned.affected_accounts, haveibeenpwned.audit_events, haveibeenpwned.breaches |
 | `healthchecks` | Healthchecks source | healthchecks.alerts, healthchecks.audit_events, healthchecks.dashboards, healthchecks.incidents, healthchecks.monitors |
 | `heap` | Heap source | heap.accounts, heap.audit_events, heap.policies, heap.records, heap.users |

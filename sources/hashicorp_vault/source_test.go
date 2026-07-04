@@ -79,27 +79,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
-			http.Error(w, "unexpected authorization", http.StatusUnauthorized)
-			return
-		}
-		if r.URL.RequestURI() == defaultHealthPath {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/v1/users" {
-			t.Errorf("path = %q", r.URL.Path)
-			http.Error(w, "unexpected path", http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
-	}))
+	server := httptest.NewServer(vaultFamilyHandler(t, "/v1/identity/entity/id", true, vaultEntitiesPayload()))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": fixtureToken})
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
@@ -121,13 +103,15 @@ func TestSourceCheckAndRead(t *testing.T) {
 
 func TestDiscoverReturnsURNsForEachFamily(t *testing.T) {
 	for _, tt := range []struct {
-		family  string
-		path    string
-		payload map[string]any
+		family    string
+		path      string
+		wantList  bool
+		payload   map[string]any
+		wantURNID string
 	}{
-		{family: familyUsers, path: "/v1/users", payload: map[string]any{"data": []map[string]any{{"id": "user-1", "email": "alice@example.com", "display_name": "Alice", "status": "active"}}}},
-		{family: familySecrets, path: "/v1/secrets", payload: map[string]any{"data": []map[string]any{{"id": "secret-1", "name": "API Key", "secret_id": "secret-1"}}}},
-		{family: familyAuditEvents, path: "/v1/audit/events", payload: map[string]any{"data": []map[string]any{{"id": "evt-1", "event_type": "secret.read", "actor_id": "user-1"}}}},
+		{family: familyUsers, path: "/v1/identity/entity/id", wantList: true, payload: vaultEntitiesPayload(), wantURNID: "user-1"},
+		{family: familySecrets, path: "/v1/sys/mounts", payload: vaultMountsPayload(), wantURNID: "secret/"},
+		{family: familyAuditEvents, path: "/v1/sys/audit", payload: vaultAuditDevicesPayload(), wantURNID: "file/"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			source, err := New()
@@ -135,19 +119,7 @@ func TestDiscoverReturnsURNsForEachFamily(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.allowLoopbackForTest()
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.RequestURI() == defaultHealthPath {
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
-				if r.URL.Path != tt.path {
-					t.Errorf("path = %q, want %q", r.URL.Path, tt.path)
-					http.Error(w, "unexpected path", http.StatusNotFound)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(tt.payload)
-			}))
+			server := httptest.NewServer(vaultFamilyHandler(t, tt.path, tt.wantList, tt.payload))
 			defer server.Close()
 			cfg := sourcecdk.NewConfig(newFixtureConfig(tt.family, map[string]string{"base_url": server.URL}))
 			urns, err := source.Discover(context.Background(), cfg)
@@ -157,38 +129,76 @@ func TestDiscoverReturnsURNsForEachFamily(t *testing.T) {
 			if len(urns) != 1 {
 				t.Fatalf("len(Discover(%s)) = %d, want 1", tt.family, len(urns))
 			}
+			if !strings.Contains(urns[0].String(), tt.wantURNID) {
+				t.Fatalf("Discover(%s) URN = %q, want id %q", tt.family, urns[0].String(), tt.wantURNID)
+			}
 		})
 	}
 }
 
 func TestReadAllFamilies(t *testing.T) {
 	for _, tt := range []struct {
-		family  string
-		path    string
-		kind    string
-		payload map[string]any
-		attrs   map[string]string
+		family   string
+		path     string
+		wantList bool
+		kind     string
+		payload  map[string]any
+		attrs    map[string]string
 	}{
 		{
-			family:  familyUsers,
-			path:    "/v1/users",
-			kind:    "hashicorp_vault.users",
-			payload: map[string]any{"data": []map[string]any{{"id": "user-1", "email": "alice@example.com", "display_name": "Alice", "status": "active", "login": "alice", "department": "Engineering", "job_title": "SRE"}}},
-			attrs:   map[string]string{"user_id": "user-1", "email": "alice@example.com", "display_name": "Alice", "status": "active", "login": "alice", "department": "Engineering", "job_title": "SRE", "resource_id": "user-1", "resource_name": "Alice", "source_system": "hashicorp_vault", "record_class": "identity_user"},
+			family:   familyUsers,
+			path:     "/v1/identity/entity/id",
+			wantList: true,
+			kind:     "hashicorp_vault.users",
+			payload:  vaultEntitiesPayload(),
+			attrs: map[string]string{
+				"user_id":         "user-1",
+				"email":           "alice@example.com",
+				"display_name":    "Alice",
+				"status":          "active",
+				"login":           "alice",
+				"resource_id":     "user-1",
+				"resource_name":   "Alice",
+				"resource_type":   "vault_identity_entity",
+				"source_event_id": "user-1",
+				"source_system":   "hashicorp_vault",
+				"record_class":    "identity_user",
+			},
 		},
 		{
 			family:  familySecrets,
-			path:    "/v1/secrets",
+			path:    "/v1/sys/mounts",
 			kind:    "hashicorp_vault.secrets",
-			payload: map[string]any{"data": []map[string]any{{"id": "secret-1", "name": "API Key", "secret_id": "secret-1", "secret_name": "API Key", "secret_status": "active", "secret_type": "kv", "owner_id": "user-1", "updated_at": "2026-06-01T00:00:00Z"}}},
-			attrs:   map[string]string{"secret_id": "secret-1", "secret_name": "API Key", "secret_status": "active", "secret_type": "kv", "owner_user_id": "user-1", "resource_id": "secret-1", "resource_name": "API Key", "source_system": "hashicorp_vault", "record_class": "secret"},
+			payload: vaultMountsPayload(),
+			attrs: map[string]string{
+				"secret_id":       "secret/",
+				"secret_name":     "secret/",
+				"secret_status":   "enabled",
+				"secret_type":     "kv",
+				"resource_id":     "secret/",
+				"resource_name":   "secret/",
+				"resource_type":   "vault_secret_engine",
+				"source_event_id": "secret/",
+				"source_system":   "hashicorp_vault",
+				"record_class":    "secret",
+				"vault_id":        "kv_123",
+			},
 		},
 		{
 			family:  familyAuditEvents,
-			path:    "/v1/audit/events",
+			path:    "/v1/sys/audit",
 			kind:    "hashicorp_vault.audit_events",
-			payload: map[string]any{"data": []map[string]any{{"id": "evt-1", "event_type": "secret.read", "actor_id": "user-1", "actor_email": "alice@example.com", "actor_name": "Alice", "resource_id": "secret-1", "resource_name": "API Key", "resource_type": "secret"}}},
-			attrs:   map[string]string{"event_type": "secret.read", "actor_id": "user-1", "actor_email": "alice@example.com", "actor_name": "Alice", "resource_id": "secret-1", "resource_name": "API Key", "resource_type": "secret", "source_system": "hashicorp_vault", "record_class": "audit_event"},
+			payload: vaultAuditDevicesPayload(),
+			attrs: map[string]string{
+				"event_type":      "vault.audit_device.enabled",
+				"actor_id":        "vault",
+				"resource_id":     "file/",
+				"resource_name":   "file/",
+				"resource_type":   "vault_audit_device",
+				"source_event_id": "file/",
+				"source_system":   "hashicorp_vault",
+				"record_class":    "audit_event",
+			},
 		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -197,19 +207,7 @@ func TestReadAllFamilies(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.allowLoopbackForTest()
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.RequestURI() == defaultHealthPath {
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
-				if r.URL.Path != tt.path {
-					t.Errorf("path = %q, want %q", r.URL.Path, tt.path)
-					http.Error(w, "unexpected path", http.StatusNotFound)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(tt.payload)
-			}))
+			server := httptest.NewServer(vaultFamilyHandler(t, tt.path, tt.wantList, tt.payload))
 			defer server.Close()
 			cfg := sourcecdk.NewConfig(newFixtureConfig(tt.family, map[string]string{"base_url": server.URL}))
 			if err := source.Check(context.Background(), cfg); err != nil {
@@ -264,18 +262,15 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 	}
 }
 
-func TestSecretEmitsOwnerJoinAttribute(t *testing.T) {
+func TestSecretEngineEmitsVaultJoinAttribute(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "secret-1", "name": "API Key", "secret_id": "secret-1", "owner_id": "user-1"}}})
-	}))
+	server := httptest.NewServer(vaultFamilyHandler(t, "/v1/sys/mounts", false, vaultMountsPayload()))
 	defer server.Close()
-	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familySecrets, "token": "test-token"})
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familySecrets, "token": fixtureToken})
 	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
@@ -283,8 +278,8 @@ func TestSecretEmitsOwnerJoinAttribute(t *testing.T) {
 	if len(pull.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
-	if got := pull.Events[0].Attributes["owner_user_id"]; got != "user-1" {
-		t.Fatalf("owner_user_id = %q, want user-1 (attrs=%#v)", got, pull.Events[0].Attributes)
+	if got := pull.Events[0].Attributes["vault_id"]; got != "kv_123" {
+		t.Fatalf("vault_id = %q, want kv_123 (attrs=%#v)", got, pull.Events[0].Attributes)
 	}
 }
 
@@ -294,19 +289,7 @@ func TestUserAttributeMapping(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
-			"id":           "user-42",
-			"email":        "sre@example.com",
-			"display_name": "SRE Team Lead",
-			"login":        "sre-lead",
-			"status":       "active",
-			"department":   "Platform",
-			"job_title":    "Team Lead",
-			"domain":       "example.com",
-		}}})
-	}))
+	server := httptest.NewServer(vaultFamilyHandler(t, "/v1/identity/entity/id", true, vaultEntitiesPayload()))
 	defer server.Close()
 	cfg := sourcecdk.NewConfig(newFixtureConfig(familyUsers, map[string]string{"base_url": server.URL}))
 	pull, err := source.Read(context.Background(), cfg, nil)
@@ -317,16 +300,13 @@ func TestUserAttributeMapping(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	for key, want := range map[string]string{
-		"user_id":       "user-42",
-		"email":         "sre@example.com",
-		"display_name":  "SRE Team Lead",
-		"login":         "sre-lead",
+		"user_id":       "user-1",
+		"email":         "alice@example.com",
+		"display_name":  "Alice",
+		"login":         "alice",
 		"status":        "active",
-		"department":    "Platform",
-		"job_title":     "Team Lead",
-		"domain":        "example.com",
-		"resource_id":   "user-42",
-		"resource_name": "SRE Team Lead",
+		"resource_id":   "user-1",
+		"resource_name": "Alice",
 	} {
 		if got := pull.Events[0].Attributes[key]; got != want {
 			t.Fatalf("attribute %s = %q, want %q", key, got, want)
@@ -334,27 +314,13 @@ func TestUserAttributeMapping(t *testing.T) {
 	}
 }
 
-func TestSecretAttributeMapping(t *testing.T) {
+func TestSecretEngineAttributeMapping(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
-			"id":                      "secret-99",
-			"name":                    "db-root-password",
-			"secret_id":               "secret-99",
-			"secret_name":             "db-root-password",
-			"secret_status":           "active",
-			"secret_type":             "kv_v2",
-			"secret_rotation_enabled": "true",
-			"owner_id":                "user-42",
-			"created_at":              "2026-01-01T00:00:00Z",
-			"updated_at":              "2026-06-01T00:00:00Z",
-		}}})
-	}))
+	server := httptest.NewServer(vaultFamilyHandler(t, "/v1/sys/mounts", false, vaultMountsPayload()))
 	defer server.Close()
 	cfg := sourcecdk.NewConfig(newFixtureConfig(familySecrets, map[string]string{"base_url": server.URL}))
 	pull, err := source.Read(context.Background(), cfg, nil)
@@ -365,17 +331,89 @@ func TestSecretAttributeMapping(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	for key, want := range map[string]string{
-		"secret_id":               "secret-99",
-		"secret_name":             "db-root-password",
-		"secret_status":           "active",
-		"secret_type":             "kv_v2",
-		"secret_rotation_enabled": "true",
-		"owner_user_id":           "user-42",
-		"resource_id":             "secret-99",
-		"resource_name":           "db-root-password",
+		"secret_id":     "secret/",
+		"secret_name":   "secret/",
+		"secret_status": "enabled",
+		"secret_type":   "kv",
+		"resource_id":   "secret/",
+		"resource_name": "secret/",
+		"vault_id":      "kv_123",
 	} {
 		if got := pull.Events[0].Attributes[key]; got != want {
 			t.Fatalf("attribute %s = %q, want %q", key, got, want)
 		}
+	}
+}
+
+func vaultFamilyHandler(t *testing.T, wantPath string, wantList bool, payload map[string]any) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Vault-Token"); got != fixtureToken {
+			t.Errorf("X-Vault-Token = %q", got)
+			http.Error(w, "unexpected token", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.RequestURI() == defaultHealthPath {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.URL.Path != wantPath {
+			t.Errorf("path = %q, want %q", r.URL.Path, wantPath)
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
+		}
+		if wantList && r.URL.Query().Get("list") != "true" {
+			t.Errorf("list query = %q, want true", r.URL.RawQuery)
+			http.Error(w, "unexpected query", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
+
+func vaultEntitiesPayload() map[string]any {
+	return map[string]any{
+		"data": map[string]any{
+			"key_info": map[string]any{
+				"user-1": map[string]any{
+					"name":                "Alice",
+					"creation_time":       "2026-01-01T00:00:00Z",
+					"last_update_time":    "2026-06-01T00:00:00Z",
+					"disabled":            false,
+					"aliases":             []map[string]string{{"name": "alice", "mount_type": "oidc"}},
+					"metadata":            map[string]string{"email": "alice@example.com", "login": "alice", "status": "active"},
+					"direct_group_ids":    []string{"group-1"},
+					"inherited_group_ids": []string{"group-2"},
+				},
+			},
+			"keys": []string{"user-1"},
+		},
+	}
+}
+
+func vaultMountsPayload() map[string]any {
+	return map[string]any{
+		"data": map[string]any{
+			"secret/": map[string]any{
+				"accessor":    "kv_123",
+				"type":        "kv",
+				"description": "application secrets",
+				"options":     map[string]string{"version": "2"},
+				"config":      map[string]any{"default_lease_ttl": 0, "max_lease_ttl": 0},
+			},
+		},
+	}
+}
+
+func vaultAuditDevicesPayload() map[string]any {
+	return map[string]any{
+		"data": map[string]any{
+			"file/": map[string]any{
+				"type":        "file",
+				"description": "file audit log",
+				"options":     map[string]string{"file_path": "/var/log/vault_audit.log"},
+			},
+		},
 	}
 }

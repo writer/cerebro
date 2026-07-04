@@ -6,11 +6,12 @@ entries:
           - key: token
             reference_only: true
             secret: true
-        model: bearer_token
+        model: api_key
+        token_header: X-Vault-Token
       categories:
         - identity
         - secrets
-      description: Collects users, secrets, and audit events from HashiCorp Vault and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context.
+      description: Collects identity entities, mounted secret engines, and enabled audit devices from HashiCorp Vault and projects them into the Cerebro graph for identity, secret-management, and logging-configuration context.
       display_name: HashiCorp Vault
       id: builtin-hashicorp_vault
       resource_families:
@@ -24,7 +25,9 @@ entries:
               high_value: true
               id: users
               support: partial
-              title: Identity users
+              notes:
+                - Reads Vault identity entities from /identity/entity/id with list=true.
+              title: Identity entities
               type: entity_family
           event:
             kind: hashicorp_vault.users
@@ -36,20 +39,24 @@ entries:
           id_field: id
           label: Users
           method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+          path: /v1/identity/entity/id
+          config:
+            static_query:
+              list: "true"
           projection:
             fields:
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
+              display_name: entity.name|name
+              email: entity.metadata.email
+              login: entity.metadata.login|entity.name
+              status: entity.metadata.status
               user_id: id
+              resource_id: id
+              resource_name: entity.name|name
             template: identity_user
-          record_selector: $.data[*]
+          read:
+            disable_page_size: true
+            map_records:
+              data.key_info: entity
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -60,7 +67,9 @@ entries:
               high_value: true
               id: secrets
               support: partial
-              title: Secrets
+              notes:
+                - Reads mounted Vault secret engines from /sys/mounts. This does not read secret values.
+              title: Secret engines
               type: entity_family
           event:
             kind: hashicorp_vault.secrets
@@ -72,13 +81,7 @@ entries:
           id_field: id
           label: Secrets
           method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/secrets
+          path: /v1/sys/mounts
           projection:
             entity:
               entity_type: secret
@@ -87,19 +90,26 @@ entries:
               label_attribute: secret_name
               urn_kind: secret
             fields:
-              owner_user_id: owner_id|created_by.id|created_by|user_id
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: mount.type
+              vault_id: mount.accessor|id
             relationships:
-              - match_type: secret_owner
-                relation: owned_by
+              - match_type: secret_vault
+                relation: belongs_to
                 required_attributes:
-                  - owner_user_id
+                  - vault_id
                 to:
-                  entity_type: hashicorp_vault.user
+                  entity_type: hashicorp_vault.vault
                   id_attributes:
-                    - owner_user_id
-                  urn_kind: hashicorp_vault_user
+                    - vault_id
+                  urn_kind: hashicorp_vault_vault
             template: secret
-          record_selector: $.data[*]
+          read:
+            disable_page_size: true
+            map_records:
+              data: mount
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -110,7 +120,9 @@ entries:
               high_value: true
               id: audit_events
               support: partial
-              title: Audit events
+              notes:
+                - Reads enabled audit devices from /sys/audit as logging configuration evidence.
+              title: Audit devices
               type: audit_event
           event:
             kind: hashicorp_vault.audit_events
@@ -122,21 +134,21 @@ entries:
           id_field: id
           label: Audit events
           method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+          path: /v1/sys/audit
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
               id: id
+              resource_id: id
+              resource_name: name
+            static_fields:
+              actor_id: vault
+              event_type: vault.audit_device.enabled
+              resource_type: vault_audit_device
             template: audit_event
-          record_selector: $.data[*]
+          read:
+            disable_page_size: true
+            map_records:
+              data: audit_device
       schema_version: cerebro.integration/v1
       source_id: hashicorp_vault
       tenant_id: builtin_catalog

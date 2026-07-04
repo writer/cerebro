@@ -261,6 +261,7 @@ type EventMappingSpec struct {
 type ProjectionSpec struct {
 	Template      string                       `json:"template,omitempty"`
 	Fields        map[string]string            `json:"fields,omitempty"`
+	StaticFields  map[string]string            `json:"static_fields,omitempty"`
 	Entity        *ProjectionEntitySpec        `json:"entity,omitempty"`
 	Relationships []ProjectionRelationshipSpec `json:"relationships,omitempty"`
 }
@@ -1101,6 +1102,9 @@ func knownProjectionAttributes(family ResourceFamily) map[string]struct{} {
 		for key := range family.Projection.Fields {
 			addKnown(key)
 		}
+		for key := range family.Projection.StaticFields {
+			addKnown(key)
+		}
 	}
 	return known
 }
@@ -1396,6 +1400,7 @@ func normalizeProjectionSpec(projection *ProjectionSpec) *ProjectionSpec {
 	next := *projection
 	next.Template = normalizeIdentifier(next.Template)
 	next.Fields = normalizeStringMap(next.Fields)
+	next.StaticFields = normalizeStringMap(next.StaticFields)
 	next.Entity = normalizeProjectionEntitySpec(next.Entity)
 	next.Relationships = normalizeProjectionRelationshipSpecs(next.Relationships)
 	return &next

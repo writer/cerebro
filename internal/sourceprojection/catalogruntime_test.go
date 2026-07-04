@@ -948,7 +948,7 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 		}
 	})
 
-	t.Run("hashicorp_vault secrets owned_by user", func(t *testing.T) {
+	t.Run("hashicorp_vault secrets belongs_to vault", func(t *testing.T) {
 		projector := registry.projectors["hashicorp_vault.secrets"]
 		if projector == nil {
 			t.Fatal("missing registered projector for hashicorp_vault.secrets")
@@ -959,16 +959,16 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 			SourceId: "hashicorp_vault",
 			Kind:     "hashicorp_vault.secrets",
 			Attributes: map[string]string{
-				"secret_id":     "secret-1",
-				"secret_name":   "kv/db",
-				"owner_user_id": "user-1",
+				"secret_id":   "secret-1",
+				"secret_name": "kv/db",
+				"vault_id":    "kv",
 			},
 		})
 		if err != nil {
 			t.Fatalf("hashicorp_vault.secrets projector error = %v", err)
 		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationOwnedBy, "urn:cerebro:tenant:hashicorp_vault_user:user-1") {
-			t.Fatalf("declared owned_by edge not emitted by registered projector: %#v", links)
+		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
 		}
 	})
 }

@@ -439,6 +439,48 @@ func TestValidateDepositFamilyReferencesNormalizeWithFamilyIDs(t *testing.T) {
 	}
 }
 
+func TestNormalizeProjectionStaticFields(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "audit_events",
+			Path:    "/v1/audit",
+			IDField: "id",
+			Event: EventMappingSpec{
+				Kind:      "example.audit_events",
+				SchemaRef: "example/audit_events/v1",
+			},
+			Projection: &ProjectionSpec{
+				Template: "audit_event",
+				StaticFields: map[string]string{
+					" actor_id ":   " system ",
+					"event_type":   "audit.configuration.enabled",
+					"empty_value":  "",
+					"            ": "drop",
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	staticFields := definition.ResourceFamilies[0].Projection.StaticFields
+	if got := staticFields["actor_id"]; got != "system" {
+		t.Fatalf("actor_id = %q, want normalized static field", got)
+	}
+	if got := staticFields["event_type"]; got != "audit.configuration.enabled" {
+		t.Fatalf("event_type = %q, want static field", got)
+	}
+	if _, ok := staticFields["empty_value"]; ok {
+		t.Fatalf("empty_value was not dropped: %#v", staticFields)
+	}
+	if len(staticFields) != 2 {
+		t.Fatalf("static fields = %#v, want only normalized non-empty entries", staticFields)
+	}
+}
+
 func TestValidateDepositBlocksUnknownFamily(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",

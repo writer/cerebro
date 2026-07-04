@@ -1,6 +1,7 @@
 {
   "adapter_health_path": "/v1/sys/health",
-  "auth_model": "bearer_token",
+  "auth_model": "api_key",
+  "auth_mechanics": "X-Vault-Token",
   "evidence_cas_reference_kind": "hashicorp_vault.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [
