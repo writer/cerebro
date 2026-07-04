@@ -7,6 +7,8 @@
       "external_id": "3252",
       "family": "members",
       "last_login_at": "2026-06-25T09:00:00Z",
+      "login": "john.smith@example.com",
+      "primary_email": "john.smith@example.com",
       "provider": "gitguardian",
       "record_class": "identity_user",
       "resource_id": "3252",

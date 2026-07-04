@@ -54,8 +54,10 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"last_login":   "2026-06-25T09:00:00Z",
 			}},
 			wantAttrs: map[string]string{
-				"resource_urn": "urn:cerebro:tenant:gitguardian_members:3252",
-				"user_id":      "3252",
+				"login":         "john.smith@example.com",
+				"primary_email": "john.smith@example.com",
+				"resource_urn":  "urn:cerebro:tenant:gitguardian_members:3252",
+				"user_id":       "3252",
 			},
 		},
 		{
