@@ -410,6 +410,38 @@ func TestValidatePolicyRuleRequiresDepthMetadataWhenRequirementRefsSet(t *testin
 	}
 }
 
+func TestValidatePolicyRuleRequiresDepthFreshnessSLAForGraphPolicy(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Match = PolicyRuleMatch{}
+	rule.Spec.Graph = PolicyRuleGraphFinding{
+		Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+		RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+		RowLimit:        100,
+	}
+	rule.Spec.Input.SourceKinds = nil
+	rule.Spec.Input.EventKinds = nil
+	rule.Spec.Input.RequiredFields = nil
+	rule.Spec.Input.FreshnessSLA = ""
+
+	issues := ValidatePolicyRule(rule)
+	if !policyIssueContains(issues, "spec.input.freshnessSLA is required when spec.evidence.requirementRefs is set") {
+		t.Fatalf("issues = %#v, want freshness SLA issue", issues)
+	}
+	for _, notWant := range []string{
+		"spec.input.sourceKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.eventKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.requiredFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if policyIssueContains(issues, notWant) {
+			t.Fatalf("issues = %#v, did not expect %q", issues, notWant)
+		}
+	}
+}
+
 func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
 	rule := PolicyFindingRule{
 		APIVersion: APIVersion,

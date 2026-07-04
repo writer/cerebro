@@ -128,7 +128,7 @@ func TestCheckPoliciesRejectsUnknownDepthRequirementRef(t *testing.T) {
 	}
 }
 
-func TestCheckPoliciesRejectsShallowDepthBackedPolicy(t *testing.T) {
+func TestCheckPoliciesReportsDSLDepthContractIssue(t *testing.T) {
 	root := t.TempDir()
 	writePolicyDepthControlCatalog(t, root)
 	writePolicyDepthRequirementCatalog(t, root)

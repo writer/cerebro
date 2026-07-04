@@ -25,7 +25,6 @@ func checkPolicyDepthContracts(root string, rules []findingdsl.PolicyFindingRule
 	requirementIndex := buildPolicyDepthRequirementRefIndex(requirements)
 	for _, rule := range rules {
 		issues = append(issues, validatePolicyDepthRequirementRefs(rule, requirementIndex)...)
-		issues = append(issues, validatePolicyDepthStrictContract(rule)...)
 	}
 	return issues, nil
 }
@@ -96,26 +95,6 @@ func validatePolicyDepthRequirementRefs(rule findingdsl.PolicyFindingRule, requi
 	return issues
 }
 
-func validatePolicyDepthStrictContract(rule findingdsl.PolicyFindingRule) []issue {
-	if len(trimPolicyDepthRequirementRefs(rule.Spec.Evidence.RequirementRefs)) == 0 {
-		return nil
-	}
-	var issues []issue
-	if len(rule.Spec.Audit.AcceptableEvidence) == 0 {
-		issues = append(issues, issue{path: rule.RelPath, message: "spec.audit.acceptableEvidence is required when spec.evidence.requirementRefs is set"})
-	}
-	if !policyDepthFixtureExpectation(rule, "finding") {
-		issues = append(issues, issue{path: rule.RelPath, message: "spec.verification.fixtures must include expect=finding when spec.evidence.requirementRefs is set"})
-	}
-	if !policyDepthFixtureExpectation(rule, "pass") {
-		issues = append(issues, issue{path: rule.RelPath, message: "spec.verification.fixtures must include expect=pass when spec.evidence.requirementRefs is set"})
-	}
-	if len(trimPolicyDepthStrings(rule.Spec.Verification.MutationChecks)) == 0 {
-		issues = append(issues, issue{path: rule.RelPath, message: "spec.verification.mutationChecks is required when spec.evidence.requirementRefs is set"})
-	}
-	return issues
-}
-
 func policyRulesDeclareEvidenceRequirementRefs(rules []findingdsl.PolicyFindingRule) bool {
 	for _, rule := range rules {
 		if len(trimPolicyDepthRequirementRefs(rule.Spec.Evidence.RequirementRefs)) != 0 {
@@ -123,16 +102,6 @@ func policyRulesDeclareEvidenceRequirementRefs(rules []findingdsl.PolicyFindingR
 		}
 	}
 	return false
-}
-
-func trimPolicyDepthStrings(values []string) []string {
-	trimmed := []string{}
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			trimmed = append(trimmed, value)
-		}
-	}
-	return trimmed
 }
 
 func policyDepthControlKeys(rule findingdsl.PolicyFindingRule) []string {
@@ -171,15 +140,6 @@ func policyDepthRequirementRef(profileID string, sourceID string, entityType str
 		return ""
 	}
 	return profileID + "/" + sourceID + "/" + entityType
-}
-
-func policyDepthFixtureExpectation(rule findingdsl.PolicyFindingRule, expect string) bool {
-	for _, fixture := range rule.Spec.Verification.Fixtures {
-		if strings.EqualFold(strings.TrimSpace(fixture.Expect), expect) {
-			return true
-		}
-	}
-	return false
 }
 
 func appendUniqueCatalogString(values []string, value string) []string {
