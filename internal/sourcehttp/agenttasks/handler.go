@@ -16,6 +16,8 @@ import (
 
 const (
 	ContextPath             = "/api/v1/agent/context"
+	idempotencyHeader       = "Idempotency-Key"
+	maxIdempotencyKeyBytes  = 255
 	maxTaskRequestBodyBytes = 1 << 20
 )
 
@@ -125,16 +127,17 @@ type TaskRequest struct {
 }
 
 type TaskResponse struct {
-	ID          string         `json:"id"`
-	Kind        string         `json:"kind"`
-	Status      string         `json:"status"`
-	Resource    ResourceRef    `json:"resource"`
-	DryRun      bool           `json:"dry_run"`
-	Approved    bool           `json:"approved"`
-	Reason      string         `json:"reason,omitempty"`
-	Mutation    *MutationRef   `json:"mutation,omitempty"`
-	NextActions []NextAction   `json:"next_actions,omitempty"`
-	Result      map[string]any `json:"result,omitempty"`
+	ID             string         `json:"id"`
+	Kind           string         `json:"kind"`
+	Status         string         `json:"status"`
+	Resource       ResourceRef    `json:"resource"`
+	DryRun         bool           `json:"dry_run"`
+	Approved       bool           `json:"approved"`
+	Reason         string         `json:"reason,omitempty"`
+	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+	Mutation       *MutationRef   `json:"mutation,omitempty"`
+	NextActions    []NextAction   `json:"next_actions,omitempty"`
+	Result         map[string]any `json:"result,omitempty"`
 }
 
 type ResourceRef struct {
@@ -149,6 +152,8 @@ type MutationRef struct {
 	RequiredScope    string            `json:"required_scope"`
 	ApprovalRequired bool              `json:"approval_required"`
 	DryRunSupported  bool              `json:"dry_run_supported"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	IdempotencyKey   string            `json:"idempotency_key,omitempty"`
 	Parameters       map[string]string `json:"parameters,omitempty"`
 }
 
@@ -285,6 +290,8 @@ func (h Handler) SourceRuntimeRetry(w http.ResponseWriter, r *http.Request) {
 		RequiredScope:    h.deps.Scopes.SourceRuntimesWrite,
 		ApprovalRequired: true,
 		DryRunSupported:  true,
+		Headers:          taskMutationHeaders(req),
+		IdempotencyKey:   req.Idempotency,
 		Parameters:       req.Parameters,
 	}
 	if req.DryRun || !req.Approved {
@@ -343,6 +350,8 @@ func (h Handler) ReportRun(w http.ResponseWriter, r *http.Request) {
 		RequiredScope:    h.deps.Scopes.ReportsRun,
 		ApprovalRequired: true,
 		DryRunSupported:  true,
+		Headers:          taskMutationHeaders(req),
+		IdempotencyKey:   req.Idempotency,
 		Parameters:       parameters,
 	}
 	if req.DryRun || !req.Approved {
@@ -514,7 +523,7 @@ func mutationContract() MutationContract {
 	return MutationContract{
 		DryRunField:     "dry_run",
 		ApprovalField:   "approved",
-		Idempotency:     "Use Idempotency-Key or idempotency_key on approved writes that may be retried.",
+		Idempotency:     "Use Idempotency-Key or idempotency_key on approved writes that may be retried; values must match when both are sent and must not exceed 255 bytes.",
 		DefaultBehavior: "Agent task endpoints return a plan unless approved=true and dry_run is false.",
 		ExecutionRules: []string{
 			"Read and explain actions require the read scope only.",
@@ -532,13 +541,14 @@ func mutationContract() MutationContract {
 
 func (h Handler) baseTaskResponse(kind string, resourceType string, resourceID string, path string, req TaskRequest) TaskResponse {
 	return TaskResponse{
-		ID:       "agent-task:" + kind + ":" + resourceID,
-		Kind:     kind,
-		Status:   "planned",
-		Resource: ResourceRef{Type: resourceType, ID: resourceID, Path: path},
-		DryRun:   req.DryRun,
-		Approved: req.Approved,
-		Reason:   strings.TrimSpace(req.Reason),
+		ID:             "agent-task:" + kind + ":" + resourceID,
+		Kind:           kind,
+		Status:         "planned",
+		Resource:       ResourceRef{Type: resourceType, ID: resourceID, Path: path},
+		DryRun:         req.DryRun,
+		Approved:       req.Approved,
+		Reason:         strings.TrimSpace(req.Reason),
+		IdempotencyKey: req.Idempotency,
 	}
 }
 
@@ -555,6 +565,9 @@ func (h Handler) findingNextActions(findingID string) []NextAction {
 func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error) {
 	request := TaskRequest{Parameters: map[string]string{}}
 	if r == nil || r.Body == nil {
+		if err := normalizeTaskIdempotency(r, &request); err != nil {
+			return TaskRequest{}, err
+		}
 		return request, nil
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTaskRequestBodyBytes))
@@ -567,7 +580,43 @@ func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error
 	if request.Parameters == nil {
 		request.Parameters = map[string]string{}
 	}
+	if err := normalizeTaskIdempotency(r, &request); err != nil {
+		return TaskRequest{}, err
+	}
 	return request, nil
+}
+
+func normalizeTaskIdempotency(r *http.Request, request *TaskRequest) error {
+	bodyKey := strings.TrimSpace(request.Idempotency)
+	headerKey := ""
+	if r != nil {
+		headerKey = strings.TrimSpace(r.Header.Get(idempotencyHeader))
+	}
+	if bodyKey != "" && headerKey != "" && bodyKey != headerKey {
+		return fmt.Errorf("%w: Idempotency-Key header and idempotency_key body must match", ErrInvalidRequest)
+	}
+	key := firstNonEmpty(headerKey, bodyKey)
+	if key == "" {
+		request.Idempotency = ""
+		return nil
+	}
+	if len([]byte(key)) > maxIdempotencyKeyBytes {
+		return fmt.Errorf("%w: Idempotency-Key exceeds %d bytes", ErrInvalidRequest, maxIdempotencyKeyBytes)
+	}
+	for _, value := range key {
+		if value < 0x20 || value == 0x7f {
+			return fmt.Errorf("%w: Idempotency-Key must not contain control characters", ErrInvalidRequest)
+		}
+	}
+	request.Idempotency = key
+	return nil
+}
+
+func taskMutationHeaders(req TaskRequest) map[string]string {
+	if strings.TrimSpace(req.Idempotency) == "" {
+		return nil
+	}
+	return map[string]string{idempotencyHeader: strings.TrimSpace(req.Idempotency)}
 }
 
 func taskParameters(req TaskRequest, tenantID string) map[string]string {

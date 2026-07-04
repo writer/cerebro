@@ -71,6 +71,67 @@ export type A2AProtocolContract = {
   unsupported_methods: string[];
 };
 
+export type AgentAuthDiscovery = {
+  authorization_server?: string;
+  protected_resource_metadata?: string;
+  required_default_scope?: string;
+  schemes?: string[];
+  supported_scopes?: string[];
+  token_endpoint?: string;
+};
+
+export type AgentCallerContext = {
+  actor_id?: string;
+  actor_type?: "human" | "agent" | "service" | "automation" | "unknown";
+  auth_mode?: string;
+  authenticated?: boolean;
+  scopes?: string[];
+  tenant_id?: string;
+  user_agent?: string;
+};
+
+export type AgentContextResponse = {
+  auth: AgentAuthDiscovery;
+  caller: AgentCallerContext;
+  links: Record<string, string>;
+  mutation_contract: AgentMutationContract;
+  telemetry: AgentTelemetryContext;
+  version: string;
+  workflows: AgentWorkflow[];
+};
+
+export type AgentMutationContract = {
+  approval_field?: string;
+  default_behavior?: string;
+  dry_run_field?: string;
+  execution_rules?: string[];
+  idempotency?: string;
+  supported_actions?: string[];
+};
+
+export type AgentMutationRef = {
+  approval_required?: boolean;
+  dry_run_supported?: boolean;
+  headers?: Record<string, string>;
+  idempotency_key?: string;
+  method?: string;
+  parameters?: Record<string, string>;
+  path?: string;
+  required_scope?: string;
+};
+
+export type AgentNextAction = {
+  approval_required?: boolean;
+  dry_run_supported?: boolean;
+  id: string;
+  label: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+  required_scope: string;
+  stage: "observe" | "explain" | "recommend" | "dry_run" | "execute" | "close_loop";
+  when: string;
+};
+
 export type AgentPlatformCapability = {
   connector_dependencies?: AgentPlatformConnectorDependency[];
   console_surfaces: string[];
@@ -554,6 +615,61 @@ export type AgentPlatformWriteBackContract = {
   required: boolean;
   required_events: string[];
   trace_id_required: boolean;
+};
+
+export type AgentResourceRef = {
+  id?: string;
+  path?: string;
+  type?: string;
+};
+
+export type AgentTaskRequest = {
+  approved?: boolean;
+  dry_run?: boolean;
+  idempotency_key?: string;
+  parameters?: Record<string, string>;
+  reason?: string;
+  tenant_id?: string;
+};
+
+export type AgentTaskResponse = {
+  approved: boolean;
+  dry_run: boolean;
+  id: string;
+  idempotency_key?: string;
+  kind: string;
+  mutation?: AgentMutationRef;
+  next_actions?: AgentNextAction[];
+  reason?: string;
+  resource: AgentResourceRef;
+  result?: Record<string, unknown>;
+  status: "planned" | "dry_run" | "succeeded";
+};
+
+export type AgentTelemetryContext = {
+  actor_type_attribute?: string;
+  request_headers?: string[];
+  user_agent_attribute?: string;
+};
+
+export type AgentWorkflow = {
+  id: string;
+  next_actions: AgentNextAction[];
+  resource: string;
+  slack_bot_intent?: string;
+  state_check: AgentNextAction;
+};
+
+export type AuthErrorResponse = {
+  auth: AgentAuthDiscovery;
+  error: string;
+  method?: string;
+  next_action: string;
+  path?: string;
+  required_role?: string;
+  required_scope?: string;
+  retryable?: boolean;
+  status: number;
 };
 
 export type Claim = {

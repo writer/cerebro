@@ -1,6 +1,7 @@
 package agenttasks
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,74 @@ func TestReadTaskRequestUsesInboundBodyLimit(t *testing.T) {
 	var maxBytesErr *http.MaxBytesError
 	if !errors.As(err, &maxBytesErr) {
 		t.Fatalf("readTaskRequest() error = %v, want MaxBytesError", err)
+	}
+}
+
+func TestReadTaskRequestNormalizesIdempotencyHeader(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(`{"dry_run":true}`))
+	request.Header.Set(idempotencyHeader, " retry-1 ")
+	recorder := httptest.NewRecorder()
+
+	task, err := readTaskRequest(recorder, request)
+	if err != nil {
+		t.Fatalf("readTaskRequest() error = %v", err)
+	}
+	if task.Idempotency != "retry-1" {
+		t.Fatalf("idempotency = %q, want trimmed header key", task.Idempotency)
+	}
+}
+
+func TestReadTaskRequestRejectsMismatchedIdempotencySources(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(`{"idempotency_key":"body-key"}`))
+	request.Header.Set(idempotencyHeader, "header-key")
+	recorder := httptest.NewRecorder()
+
+	_, err := readTaskRequest(recorder, request)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("readTaskRequest() error = %v, want ErrInvalidRequest", err)
+	}
+	if !strings.Contains(err.Error(), "must match") {
+		t.Fatalf("readTaskRequest() error = %v, want mismatch guidance", err)
+	}
+}
+
+func TestReadTaskRequestRejectsLongIdempotencyKey(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(`{}`))
+	request.Header.Set(idempotencyHeader, strings.Repeat("a", maxIdempotencyKeyBytes+1))
+	recorder := httptest.NewRecorder()
+
+	_, err := readTaskRequest(recorder, request)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("readTaskRequest() error = %v, want ErrInvalidRequest", err)
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("readTaskRequest() error = %v, want length guidance", err)
+	}
+}
+
+func TestRuntimeRetryDryRunEchoesIdempotencyMetadata(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(`{"dry_run":true}`))
+	request.SetPathValue("runtimeID", "runtime-1")
+	request.Header.Set(idempotencyHeader, "retry-runtime-1")
+	recorder := httptest.NewRecorder()
+
+	New(Dependencies{Scopes: ScopeSet{SourceRuntimesWrite: "source.runtimes.write"}}).SourceRuntimeRetry(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response TaskResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.IdempotencyKey != "retry-runtime-1" {
+		t.Fatalf("response idempotency_key = %q, want request key", response.IdempotencyKey)
+	}
+	if response.Mutation == nil || response.Mutation.IdempotencyKey != "retry-runtime-1" {
+		t.Fatalf("mutation = %+v, want idempotency key", response.Mutation)
+	}
+	if response.Mutation.Headers[idempotencyHeader] != "retry-runtime-1" {
+		t.Fatalf("mutation headers = %+v, want Idempotency-Key", response.Mutation.Headers)
 	}
 }
 

@@ -149,6 +149,7 @@ paths:
         - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
+        - $ref: '#/components/parameters/idempotencyKey'
       requestBody:
         required: false
         content:
@@ -162,6 +163,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTaskResponse'
+        '400':
+          description: Malformed task request or conflicting idempotency keys.
   /api/v1/agent/tasks/findings/{findingID}/triage:
     post:
       operationId: triageFindingForAgent
@@ -171,6 +174,7 @@ paths:
         - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
+        - $ref: '#/components/parameters/idempotencyKey'
       requestBody:
         required: false
         content:
@@ -184,6 +188,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTaskResponse'
+        '400':
+          description: Malformed task request or conflicting idempotency keys.
   /api/v1/agent/tasks/findings/{findingID}/audit-packet:
     post:
       operationId: buildFindingAuditPacketForAgent
@@ -193,6 +199,7 @@ paths:
         - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
+        - $ref: '#/components/parameters/idempotencyKey'
       requestBody:
         required: false
         content:
@@ -206,6 +213,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTaskResponse'
+        '400':
+          description: Malformed task request or conflicting idempotency keys.
   /api/v1/agent/tasks/source-runtimes/{runtimeID}/retry:
     post:
       operationId: retrySourceRuntimeForAgent
@@ -216,6 +225,7 @@ paths:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - $ref: '#/components/parameters/idempotencyKey'
       requestBody:
         required: false
         content:
@@ -229,6 +239,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTaskResponse'
+        '400':
+          description: Malformed task request or conflicting idempotency keys.
         '403':
           description: Approved execution is missing the source runtime write scope.
   /api/v1/agent/tasks/reports/{reportID}/run:
@@ -241,6 +253,7 @@ paths:
         - Reports
       parameters:
         - $ref: '#/components/parameters/reportID'
+        - $ref: '#/components/parameters/idempotencyKey'
       requestBody:
         required: false
         content:
@@ -254,6 +267,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTaskResponse'
+        '400':
+          description: Malformed task request or conflicting idempotency keys.
         '403':
           description: Approved execution is missing the report run scope.
   /api/v1/agent-platform/contract:
@@ -5605,6 +5620,14 @@ components:
         type: integer
         minimum: 1
         maximum: 500
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional retry key for agent task requests. When also present as idempotency_key in the JSON body, both values must match.
+      schema:
+        type: string
+        maxLength: 255
   schemas:
     GRCEvidencePacketsResponse:
       type: object
@@ -7412,6 +7435,8 @@ components:
             type: string
         idempotency_key:
           type: string
+          maxLength: 255
+          description: Optional retry key. Equivalent to the Idempotency-Key header; if both are sent, they must match.
     AgentTaskResponse:
       type: object
       required:
@@ -7437,6 +7462,9 @@ components:
           type: boolean
         reason:
           type: string
+        idempotency_key:
+          type: string
+          description: Normalized retry key from Idempotency-Key or idempotency_key when one was supplied.
         mutation:
           $ref: '#/components/schemas/AgentMutationRef'
         next_actions:
@@ -7468,6 +7496,14 @@ components:
           type: boolean
         dry_run_supported:
           type: boolean
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Request headers to reuse when approving or retrying the mutation.
+        idempotency_key:
+          type: string
+          description: Retry key to reuse for this mutation when supplied by the caller.
         parameters:
           type: object
           additionalProperties:
