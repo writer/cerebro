@@ -458,7 +458,7 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if _, ok := runtimeDepthFor(report, "generated"); !ok {
 		t.Fatalf("runtime depth queue = %#v, want generated source", report.RuntimeDepthQueue)
 	}
-	if _, ok := apiDiscoveryFor(report, "generated"); !ok {
+	if !hasAPIDiscovery(report, "generated") {
 		t.Fatalf("api discovery queue = %#v, want generated source", report.APIDiscoveryQueue)
 	}
 	if _, ok := apiProofFor(report, "generated"); !ok {
@@ -554,7 +554,7 @@ func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
 	if report.Summary.RuntimeDepth.NeedsProviderAPIProof != 0 || len(report.ProviderAPIProofQueue) != 0 {
 		t.Fatalf("provider API proof queue = %#v, want disproof to suppress proof queue", report.ProviderAPIProofQueue)
 	}
-	if _, ok := apiDiscoveryFor(report, "digitalocean"); ok {
+	if hasAPIDiscovery(report, "digitalocean") {
 		t.Fatalf("api discovery queue = %#v, did not expect invalidated source", report.APIDiscoveryQueue)
 	}
 	candidate, ok := apiInvalidationFor(report, "digitalocean")
@@ -672,13 +672,13 @@ func runtimeDepthFor(report ReviewReport, sourceID string) (RuntimeDepthCandidat
 	return RuntimeDepthCandidate{}, false
 }
 
-func apiDiscoveryFor(report ReviewReport, sourceID string) (APIDiscoveryCandidate, bool) {
+func hasAPIDiscovery(report ReviewReport, sourceID string) bool {
 	for _, candidate := range report.APIDiscoveryQueue {
 		if candidate.SourceID == sourceID {
-			return candidate, true
+			return true
 		}
 	}
-	return APIDiscoveryCandidate{}, false
+	return false
 }
 
 func apiProofFor(report ReviewReport, sourceID string) (ProviderAPIProofCandidate, bool) {
