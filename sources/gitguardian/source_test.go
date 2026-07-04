@@ -3,6 +3,7 @@ package gitguardian
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -103,7 +104,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 					w.Header().Set("Link", "<"+server.URL+tt.path+"?cursor="+tt.wantCursor+"&per_page=2>; rel=\"next\"")
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(tt.records)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": tt.records})
 			}))
 			defer server.Close()
 
@@ -163,5 +164,9 @@ func TestSourceCheckReportsProviderUnavailable(t *testing.T) {
 	err = source.Check(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("Check() error = nil, want provider unavailable failure")
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Check() error = %v, want provider unavailable status", err)
 	}
 }

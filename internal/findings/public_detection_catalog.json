@@ -141840,6 +141840,28 @@
           ]
         },
         {
+          "source_id": "gitguardian",
+          "dimension_id": "members",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "members"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "onelogin",
           "dimension_id": "application_inventory",
           "dimension_type": "entity_family",
@@ -222423,6 +222445,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "gitguardian",
+          "dimension_id": "members",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "members"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
             }
           ]
         }
