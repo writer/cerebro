@@ -15,19 +15,21 @@ import (
 func TestRecordSourceRuntimeSyncMetricsAreLowCardinality(t *testing.T) {
 	reader, shutdown := installManualMetricReader(t)
 	RecordSourceRuntimeSync(context.Background(), SourceRuntimeSyncMetrics{
-		SourceID:            "GitHub",
-		Status:              "completed",
-		ContractConfigured:  true,
-		Duration:            150 * time.Millisecond,
-		PagesRead:           2,
-		RecordsScanned:      10,
-		RecordsAccepted:     9,
-		RecordsRejected:     1,
-		EventsAppended:      9,
-		EntitiesProjected:   7,
-		LinksProjected:      4,
-		WatermarkLagSeconds: 42,
-		HasWatermarkLag:     true,
+		SourceID:             "GitHub",
+		Status:               "completed",
+		ContractConfigured:   true,
+		Duration:             150 * time.Millisecond,
+		PagesRead:            2,
+		RecordsScanned:       10,
+		RecordsAccepted:      9,
+		RecordsRejected:      1,
+		EventsAppended:       9,
+		EntitiesProjected:    7,
+		LinksProjected:       4,
+		WatermarkLagSeconds:  42,
+		HasWatermarkLag:      true,
+		ShortCircuitReason:   "not_modified",
+		ReconciliationReason: "max_consecutive_skips",
 	})
 	t.Cleanup(shutdown)
 
@@ -37,14 +39,18 @@ func TestRecordSourceRuntimeSyncMetricsAreLowCardinality(t *testing.T) {
 		"cerebro.source_runtime.sync.duration",
 		"cerebro.source_runtime.records",
 		"cerebro.source_runtime.watermark.lag",
+		"cerebro.source_runtime.sync.short_circuits",
 	} {
 		if _, ok := metrics[name]; !ok {
 			t.Fatalf("metric %q missing from %#v", name, metricNames(metrics))
 		}
 	}
 	assertNoForbiddenMetricAttributes(t, metrics["cerebro.source_runtime.records"])
+	assertNoForbiddenMetricAttributes(t, metrics["cerebro.source_runtime.sync.short_circuits"])
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.records"], "record.kind", "accepted")
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.records"], "source_id", "github")
+	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.sync.short_circuits"], "short_circuit_reason", "not_modified")
+	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.sync.short_circuits"], "reconciliation_reason", "max_consecutive_skips")
 }
 
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
@@ -97,6 +103,26 @@ func TestRecordGraphActionMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasAttribute(t, metric, "status", "succeeded")
 	assertMetricHasAttribute(t, metric, "external_status", "suspended")
 	assertMetricHasBoolAttribute(t, metric, "dry_run", false)
+}
+
+func TestRecordOrchestratorPhaseSkipMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordOrchestratorPhaseSkip(context.Background(), OrchestratorPhaseSkipMetrics{
+		PhaseKey:   "Graph Ingest",
+		SourceID:   "GitHub",
+		SkipReason: "source_unchanged",
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	metric, ok := metrics["cerebro.orchestrator.phase.skips"]
+	if !ok {
+		t.Fatalf("metric %q missing from %#v", "cerebro.orchestrator.phase.skips", metricNames(metrics))
+	}
+	assertNoForbiddenMetricAttributes(t, metric)
+	assertMetricHasAttribute(t, metric, "phase_key", "graph_ingest")
+	assertMetricHasAttribute(t, metric, "source_id", "github")
+	assertMetricHasAttribute(t, metric, "skip_reason", "source_unchanged")
 }
 
 func TestRecordJetStreamPublishMetricsAreLowCardinality(t *testing.T) {

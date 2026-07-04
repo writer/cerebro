@@ -134,9 +134,11 @@ safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
 | `cerebro.source_runtime.sync.duration` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync duration distribution |
 | `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, appended events, and projected entities/links |
 | `cerebro.source_runtime.watermark.lag` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Observed source freshness lag when a checkpoint watermark exists |
+| `cerebro.source_runtime.sync.short_circuits` | `{sync}` | `source_id`, `status`, `error_kind`, `contract_configured`, `short_circuit_reason`, `reconciliation_reason` | Source syncs that intentionally skipped full work after an unchanged or advanced checkpoint |
 | `cerebro.source_projection.runs` | `{projection}` | `source_id`, `event_kind`, `status` | Projection success/failure rate |
 | `cerebro.source_projection.duration` | `s` | `source_id`, `event_kind`, `status` | Projection latency distribution |
 | `cerebro.source_projection.records` | `{record}` | `source_id`, `event_kind`, `status`, `record.kind` | Graph/current-state records projected or deleted |
+| `cerebro.orchestrator.phase.skips` | `{phase}` | `phase_key`, `source_id`, `skip_reason` | Orchestrator phases skipped before execution because prior work proved they were unnecessary |
 | `cerebro.graph_action.recorded` | `{action}` | `provider`, `action`, `status`, `external_status`, `dry_run` | Provider-backed graph actions successfully recorded into the workflow/event path |
 | `cerebro.jetstream.publish.requests` | `{request}` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Append-log publish success and failure counts by bounded subject and error category |
 | `cerebro.jetstream.publish.retries` | `{retry}` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Publish retry attempts by bounded subject and error category |

@@ -44,6 +44,14 @@ func otelSourceRuntimeWatermarkLag() otelmetric.Float64Histogram {
 	return instrument
 }
 
+func otelSourceRuntimeShortCircuits() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.source_runtime.sync.short_circuits",
+		otelmetric.WithDescription("Source runtime syncs that intentionally skipped full work after an unchanged or advanced checkpoint."),
+	)
+	return instrument
+}
+
 func otelSourceProjectionRuns() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.source_projection.runs",
@@ -136,6 +144,14 @@ func otelOrchestratorPhaseDuration() otelmetric.Float64Histogram {
 	return instrument
 }
 
+func otelOrchestratorPhaseSkips() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.orchestrator.phase.skips",
+		otelmetric.WithDescription("Orchestrator phases skipped before execution by bounded phase, source, and skip reason."),
+	)
+	return instrument
+}
+
 func otelJetStreamPublishRequests() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.jetstream.publish.requests",
@@ -198,20 +214,22 @@ func otelJetStreamReplayRecords() otelmetric.Int64Counter {
 // metrics. Runtime IDs, tenant IDs, resource URNs, evidence IDs, request IDs,
 // and trace IDs belong in spans/wide events, not metric labels.
 type SourceRuntimeSyncMetrics struct {
-	SourceID            string
-	Status              string
-	ErrorKind           string
-	ContractConfigured  bool
-	Duration            time.Duration
-	PagesRead           uint32
-	RecordsScanned      uint32
-	RecordsAccepted     uint32
-	RecordsRejected     uint32
-	EventsAppended      uint32
-	EntitiesProjected   uint32
-	LinksProjected      uint32
-	WatermarkLagSeconds int64
-	HasWatermarkLag     bool
+	SourceID             string
+	Status               string
+	ErrorKind            string
+	ContractConfigured   bool
+	Duration             time.Duration
+	PagesRead            uint32
+	RecordsScanned       uint32
+	RecordsAccepted      uint32
+	RecordsRejected      uint32
+	EventsAppended       uint32
+	EntitiesProjected    uint32
+	LinksProjected       uint32
+	WatermarkLagSeconds  int64
+	HasWatermarkLag      bool
+	ShortCircuitReason   string
+	ReconciliationReason string
 }
 
 // SourceProjectionMetrics is intentionally scoped to bounded event dimensions.
@@ -273,6 +291,14 @@ type OrchestratorPhaseMetrics struct {
 	TimeoutExceeded bool
 }
 
+// OrchestratorPhaseSkipMetrics records work intentionally not run. Runtime IDs
+// and tenant IDs belong in spans/wide events, not metric labels.
+type OrchestratorPhaseSkipMetrics struct {
+	PhaseKey   string
+	SourceID   string
+	SkipReason string
+}
+
 // JetStreamPublishMetrics is intentionally scoped to bounded operational
 // dimensions. Message IDs, tenant IDs, runtime IDs, and resource identifiers
 // belong in spans/wide events rather than metric labels.
@@ -314,6 +340,13 @@ func RecordSourceRuntimeSync(ctx context.Context, metrics SourceRuntimeSyncMetri
 	otelSourceRuntimeRuns().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 	if metrics.Duration >= 0 {
 		otelSourceRuntimeDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+	if strings.TrimSpace(metrics.ShortCircuitReason) != "" {
+		shortCircuitAttrs := append(cloneMetricAttributes(attrs),
+			attribute.String("short_circuit_reason", boundedMetricValue(metrics.ShortCircuitReason, "unknown")),
+			attribute.String("reconciliation_reason", boundedMetricValue(metrics.ReconciliationReason, "none")),
+		)
+		otelSourceRuntimeShortCircuits().Add(ctx, 1, otelmetric.WithAttributes(shortCircuitAttrs...))
 	}
 	recordSourceRuntimeRecordCount(ctx, attrs, "page", int64(metrics.PagesRead))
 	recordSourceRuntimeRecordCount(ctx, attrs, "scanned", int64(metrics.RecordsScanned))
@@ -395,6 +428,15 @@ func RecordOrchestratorPhase(ctx context.Context, metrics OrchestratorPhaseMetri
 	if metrics.Duration >= 0 {
 		otelOrchestratorPhaseDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
 	}
+}
+
+func RecordOrchestratorPhaseSkip(ctx context.Context, metrics OrchestratorPhaseSkipMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("phase_key", boundedMetricValue(metrics.PhaseKey, "unknown")),
+		attribute.String("source_id", boundedMetricValue(metrics.SourceID, "unknown")),
+		attribute.String("skip_reason", boundedMetricValue(metrics.SkipReason, "unknown")),
+	}
+	otelOrchestratorPhaseSkips().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 }
 
 func RecordJetStreamPublish(ctx context.Context, metrics JetStreamPublishMetrics) {
