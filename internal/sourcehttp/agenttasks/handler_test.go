@@ -38,6 +38,20 @@ func TestReadTaskRequestNormalizesIdempotencyHeader(t *testing.T) {
 	}
 }
 
+func TestReadTaskRequestNormalizesIdempotencyHeaderWithEmptyBody(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(""))
+	request.Header.Set(idempotencyHeader, "retry-empty-body")
+	recorder := httptest.NewRecorder()
+
+	task, err := readTaskRequest(recorder, request)
+	if err != nil {
+		t.Fatalf("readTaskRequest() error = %v", err)
+	}
+	if task.Idempotency != "retry-empty-body" {
+		t.Fatalf("idempotency = %q, want header key", task.Idempotency)
+	}
+}
+
 func TestReadTaskRequestRejectsMismatchedIdempotencySources(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/source-runtimes/runtime-1/retry", strings.NewReader(`{"idempotency_key":"body-key"}`))
 	request.Header.Set(idempotencyHeader, "header-key")

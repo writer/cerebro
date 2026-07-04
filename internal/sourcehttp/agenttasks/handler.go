@@ -573,6 +573,9 @@ func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTaskRequestBodyBytes))
 	if err := decoder.Decode(&request); err != nil {
 		if errors.Is(err, io.EOF) {
+			if err := normalizeTaskIdempotency(r, &request); err != nil {
+				return TaskRequest{}, err
+			}
 			return request, nil
 		}
 		return TaskRequest{}, fmt.Errorf("%w: decode agent task request: %w", ErrInvalidRequest, err)
