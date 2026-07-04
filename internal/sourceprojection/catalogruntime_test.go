@@ -688,6 +688,45 @@ func catalogRuntimeRegistry(projectors map[string]ProjectFunc) (*Registry, error
 	return NewRegistry(entries...)
 }
 
+func TestCatalogRuntimeSyntheticAttributesIncludeStaticFields(t *testing.T) {
+	attrs := catalogRuntimeSyntheticAttributes("hashicorp_vault", connectordefinitions.ResourceFamily{
+		ID: "secrets",
+		Event: connectordefinitions.EventMappingSpec{
+			RequiredAttributes: []string{"secret_status"},
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Fields: map[string]string{
+				"resource_type": "resource_type",
+				"secret_status": "status",
+			},
+			StaticFields: map[string]string{
+				"resource_type": "vault_secret_engine",
+				"secret_status": "enabled",
+				"vault_scope":   "system",
+			},
+			Relationships: []connectordefinitions.ProjectionRelationshipSpec{{
+				Relation:           "belongs_to",
+				RequiredAttributes: []string{"secret_status", "vault_scope"},
+				LinkAttributes:     []string{"resource_type"},
+				To: connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "hashicorp_vault.vault",
+					IDAttributes:   []string{"vault_scope"},
+					LabelAttribute: "resource_name",
+				},
+			}},
+		},
+	})
+	if got := attrs["resource_type"]; got != "vault_secret_engine" {
+		t.Fatalf("resource_type = %q, want static field value", got)
+	}
+	if got := attrs["secret_status"]; got != "enabled" {
+		t.Fatalf("secret_status = %q, want static field value", got)
+	}
+	if got := attrs["vault_scope"]; got != "system" {
+		t.Fatalf("vault_scope = %q, want static field value", got)
+	}
+}
+
 func catalogRuntimeSyntheticAttributes(sourceID string, resource connectordefinitions.ResourceFamily) map[string]string {
 	familyID := firstNonEmpty(strings.TrimSpace(resource.ID), "resource")
 	token := catalogRuntimeSyntheticToken(sourceID, familyID)
@@ -828,6 +867,9 @@ func catalogRuntimeSyntheticAttributes(sourceID string, resource connectordefini
 				catalogRuntimeFillEntitySpec(attrs, *relationship.From, recordID, label, familyID, resourceURN, email)
 			}
 			catalogRuntimeFillEntitySpec(attrs, relationship.To, recordID, label, familyID, resourceURN, email)
+		}
+		for target, value := range resource.Projection.StaticFields {
+			catalogRuntimeSetSyntheticField(attrs, target, value)
 		}
 	}
 	return attrs
