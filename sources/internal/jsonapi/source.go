@@ -49,29 +49,30 @@ type RecordFilter func(map[string]any) bool
 // FamilyConfig groups request and event bindings that are derived from family
 // configuration rather than directly from provider records.
 type FamilyConfig struct {
-	BaseURL             string
-	StaticQuery         map[string]string
-	ConfigQuery         map[string]string
-	JSONBody            JSONBodyConfig
-	ConfigAttributes    map[string]string
-	StaticHeaders       map[string]string
-	RedactPayloadKeys   []string
-	IDTemplate          string
-	EncodeURNID         bool
-	IdentityKeys        []string
-	IdentityResourceID  bool
-	OffsetCursor        bool
-	RequireDetail       bool
-	RepeatedCursorParam bool
-	ResourceURNKind     string
-	TotalKeys           []string
-	OffsetKeys          []string
-	LimitKeys           []string
-	LastItemCursorKeys  []string
-	CursorContainers    []string
-	Method              string
-	AuthModel           string
-	DefaultPageSize     int
+	BaseURL               string
+	StaticQuery           map[string]string
+	ConfigQuery           map[string]string
+	JSONBody              JSONBodyConfig
+	ConfigAttributes      map[string]string
+	FinalStaticAttributes map[string]string
+	StaticHeaders         map[string]string
+	RedactPayloadKeys     []string
+	IDTemplate            string
+	EncodeURNID           bool
+	IdentityKeys          []string
+	IdentityResourceID    bool
+	OffsetCursor          bool
+	RequireDetail         bool
+	RepeatedCursorParam   bool
+	ResourceURNKind       string
+	TotalKeys             []string
+	OffsetKeys            []string
+	LimitKeys             []string
+	LastItemCursorKeys    []string
+	CursorContainers      []string
+	Method                string
+	AuthModel             string
+	DefaultPageSize       int
 }
 
 type JSONBodyConfig struct {

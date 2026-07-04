@@ -1235,7 +1235,7 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 			resourceIDEncoded = false
 		}
 	}
-	addStaticAttributes(attrs, family.StaticAttributes)
+	addStaticAttributes(attrs, family.Config.FinalStaticAttributes)
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
 		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record, resourceIDEncoded))
 	}

@@ -147,6 +147,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	}
 	config := familyConfig(resource)
 	config.Method = method
+	config.FinalStaticAttributes = finalStaticAttributes(resource.Projection)
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -162,7 +163,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		IDKeys:                idKeys(resource, class),
 		TimestampKeys:         timestampKeys(resource),
 		Attributes:            attributePaths(resource, class),
-		StaticAttributes:      staticAttributes(sourceID, name, class, resource.Projection),
+		StaticAttributes:      staticAttributes(sourceID, name, class),
 		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
@@ -454,20 +455,27 @@ func attributePaths(resource connectordefinitions.ResourceFamily, class string) 
 	return attrs
 }
 
-func staticAttributes(sourceID string, family string, class string, projection *connectordefinitions.ProjectionSpec) map[string]string {
-	attrs := map[string]string{
+func staticAttributes(sourceID string, family string, class string) map[string]string {
+	return map[string]string{
 		"source_system": sourceID,
 		"record_class":  class,
 		"family":        family,
 	}
+}
+
+func finalStaticAttributes(projection *connectordefinitions.ProjectionSpec) map[string]string {
 	if projection != nil {
+		attrs := map[string]string{}
 		for key, value := range projection.StaticFields {
 			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 				attrs[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			}
 		}
+		if len(attrs) > 0 {
+			return attrs
+		}
 	}
-	return attrs
+	return nil
 }
 
 func titleFromID(value string) string {

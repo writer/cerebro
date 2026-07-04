@@ -2872,7 +2872,7 @@ func TestSafeRoundTripperRejectsUnsafeResolvedHostnameBeforeDial(t *testing.T) {
 	}
 }
 
-func TestStaticAttributesOverrideDynamicAttributes(t *testing.T) {
+func TestStaticAttributesRemainDynamicDefaults(t *testing.T) {
 	attrs := attributesFor("vault", settings{
 		request: requestSettings{
 			pathParams: map[string]string{
@@ -2901,11 +2901,53 @@ func TestStaticAttributesOverrideDynamicAttributes(t *testing.T) {
 			"type": "dynamic-value",
 		},
 	})
+	if got := attrs["event_type"]; got != "runtime-value" {
+		t.Fatalf("event_type = %q, want dynamic value", got)
+	}
+	if got := attrs["resource_type"]; got != "dynamic-value" {
+		t.Fatalf("resource_type = %q, want dynamic value", got)
+	}
+}
+
+func TestFinalStaticAttributesOverrideDynamicAttributes(t *testing.T) {
+	attrs := attributesFor("vault", settings{
+		request: requestSettings{
+			pathParams: map[string]string{
+				"resource_type": "path-value",
+			},
+			configAttributes: map[string]string{
+				"event_type": "config-value",
+			},
+		},
+	}, Family{
+		Name: "audit_devices",
+		Attributes: map[string]string{
+			"event_type":    "event.type",
+			"resource_type": "type",
+		},
+		StaticAttributes: map[string]string{
+			"record_class": "audit_event",
+		},
+		Config: FamilyConfig{
+			FinalStaticAttributes: map[string]string{
+				"event_type":    "vault.audit_device.enabled",
+				"resource_type": "vault_audit_device",
+			},
+		},
+	}, record{
+		ID: "audit-file",
+		Values: map[string]any{
+			"event": map[string]any{
+				"type": "runtime-value",
+			},
+			"type": "dynamic-value",
+		},
+	})
 	if got := attrs["event_type"]; got != "vault.audit_device.enabled" {
-		t.Fatalf("event_type = %q, want static value", got)
+		t.Fatalf("event_type = %q, want final static value", got)
 	}
 	if got := attrs["resource_type"]; got != "vault_audit_device" {
-		t.Fatalf("resource_type = %q, want static value", got)
+		t.Fatalf("resource_type = %q, want final static value", got)
 	}
 }
 
