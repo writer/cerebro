@@ -84,7 +84,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `baselime` | Baselime source | baselime.alerts, baselime.audit_events, baselime.dashboards, baselime.incidents, baselime.monitors |
 | `bazaarvoice` | Bazaarvoice source | bazaarvoice.accounts, bazaarvoice.audit_events, bazaarvoice.policies, bazaarvoice.records, bazaarvoice.users |
 | `beeline` | Beeline source | beeline.accounts, beeline.audit_events, beeline.policies, beeline.records, beeline.users |
-| `beezup` | Beezup source | beezup.alert, beezup.autoimport, beezup.beezupcolumn, beezup.catalogcolumn, beezup.category, beezup.channelcatalog, beezup.customcolumn, beezup.filter, beezup.filteroperator, beezup.offer, beezup.random, beezup.rule |
+| `beezup` | Beezup source | beezup.alert, beezup.autoimport, beezup.beezupcolumn, beezup.catalogcolumn, beezup.category, beezup.channelcatalog, beezup.customcolumn, beezup.filteroperator, beezup.offer, beezup.random |
 | `better_stack` | Better Stack source | better_stack.alerts, better_stack.audit_events, better_stack.dashboards, better_stack.incidents, better_stack.monitors |
 | `bettercloud` | Bettercloud source | bettercloud.applications, bettercloud.audit_events, bettercloud.groups, bettercloud.roles, bettercloud.users |
 | `beyondtrust` | Beyondtrust source | beyondtrust.audit_events, beyondtrust.secrets, beyondtrust.users |
