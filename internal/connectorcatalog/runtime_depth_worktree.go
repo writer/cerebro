@@ -5,18 +5,26 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var worktreeRuntimeDepth struct {
-	once      sync.Once
-	inventory RuntimeDepthInventory
+	once  sync.Once
+	value atomic.Value
+}
+
+func LoadWorktreeRuntimeDepth() {
+	worktreeRuntimeDepth.once.Do(func() {
+		worktreeRuntimeDepth.value.Store(discoverWorktreeRuntimeDepth())
+	})
 }
 
 func WorktreeRuntimeDepth() RuntimeDepthInventory {
-	worktreeRuntimeDepth.once.Do(func() {
-		worktreeRuntimeDepth.inventory = discoverWorktreeRuntimeDepth()
-	})
-	return worktreeRuntimeDepth.inventory
+	inventory, _ := worktreeRuntimeDepth.value.Load().(RuntimeDepthInventory)
+	if inventory == nil {
+		return RuntimeDepthInventory{}
+	}
+	return inventory
 }
 
 func WorktreeRuntimeProviderAPIDepth(sourceID string) RuntimeProviderAPIDepth {
