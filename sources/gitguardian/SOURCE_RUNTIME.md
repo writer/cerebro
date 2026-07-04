@@ -1,6 +1,6 @@
 # GitGuardian
 
-Generated Source Runtime SDK scaffold for `gitguardian`.
+GitGuardian Source Runtime adapter for incident, member, and audit log collection.
 
 ## Runtime input
 
@@ -18,9 +18,9 @@ Generated Source Runtime SDK scaffold for `gitguardian`.
 
 ## Families
 
-- `incidents`, emits `gitguardian.incidents`, reads `/v1/incidents/secrets`
-- `members`, emits `gitguardian.members`, reads `/v1/members`
-- `audit_events`, emits `gitguardian.audit_events`, reads `/v1/audit_logs`
+- `incidents`, emits `gitguardian.incidents`, reads `GET /v1/incidents/secrets`
+- `members`, emits `gitguardian.members`, reads `GET /v1/members`
+- `audit_events`, emits `gitguardian.audit_events`, reads `GET /v1/audit_logs`
 
 ## Tests
 
