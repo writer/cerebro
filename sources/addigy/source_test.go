@@ -65,6 +65,7 @@ func TestSourceCheckAndReadDevices(t *testing.T) {
 	if got := pull.Events[0].Attributes["resource_name"]; got != "MacBook One" {
 		t.Fatalf("resource_name = %q", got)
 	}
+	requireSourceEventID(t, pull.Events[0].Attributes, "agent-1")
 	if pull.NextCursor == nil || sourcecdk.CursorToken(pull.NextCursor) != "2" {
 		t.Fatalf("next cursor = %#v, want page 2", pull.NextCursor)
 	}
@@ -111,6 +112,49 @@ func TestSourceReadsOrganizationUsers(t *testing.T) {
 	if event.Attributes["email"] != "admin@example.test" || event.Attributes["addigy_role"] != "Owner" {
 		t.Fatalf("attributes = %#v", event.Attributes)
 	}
+	requireSourceEventID(t, event.Attributes, "admin@example.test")
+}
+
+func TestSourceReadsEndUserGroups(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/o/org-1/end-users/groups/query" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "test-key" {
+			t.Fatalf("x-api-key = %q", r.Header.Get("x-api-key"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
+				"displayName": "Engineering",
+				"id":          "group-1",
+				"orgid":       "org-1",
+			}},
+			"metadata": map[string]any{"page": 1, "page_count": 1, "per_page": 100, "result_count": 1, "total": 1},
+		})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "api_key": "test-key", "family": familyGroups, "organization_id": "org-1"})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "addigy.groups" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.Attributes["group_name"] != "Engineering" {
+		t.Fatalf("attributes = %#v", event.Attributes)
+	}
+	requireSourceEventID(t, event.Attributes, "group-1")
 }
 
 func TestSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
@@ -148,6 +192,7 @@ func TestSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
 	if event.Attributes["policy_status"] != "configured" || event.Attributes["policy_type"] != "device_policy" {
 		t.Fatalf("policy attributes = %#v", event.Attributes)
 	}
+	requireSourceEventID(t, event.Attributes, "policy-1")
 }
 
 func TestSourceReadsAuditEvents(t *testing.T) {
@@ -199,6 +244,14 @@ func TestSourceReadsAuditEvents(t *testing.T) {
 	}
 	if event.Attributes["event_type"] != "policy.updated" || event.Attributes["resource_id"] != "policy-1" {
 		t.Fatalf("attributes = %#v", event.Attributes)
+	}
+	requireSourceEventID(t, event.Attributes, "evt-1")
+}
+
+func requireSourceEventID(t *testing.T, attrs map[string]string, want string) {
+	t.Helper()
+	if got := attrs["source_event_id"]; got != want {
+		t.Fatalf("source_event_id = %q, want %q in %#v", got, want, attrs)
 	}
 }
 
