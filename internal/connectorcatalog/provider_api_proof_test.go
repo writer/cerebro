@@ -1,6 +1,10 @@
 package connectorcatalog
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
+)
 
 func TestProviderAPIProofScoreRequiresGroundedEvidence(t *testing.T) {
 	api := runtimeProviderAPIFields{
@@ -112,5 +116,38 @@ func TestProviderAPIURLIsOAuthEndpointRequiresAuthPathSegment(t *testing.T) {
 		if providerAPIURLIsOAuthEndpoint(value) {
 			t.Fatalf("providerAPIURLIsOAuthEndpoint(%q) = true, want false", value)
 		}
+	}
+}
+
+func TestProviderAPIDepthForDefinitionSummarizesCatalogProof(t *testing.T) {
+	depth := ProviderAPIDepthForDefinition(connectordefinitions.Definition{
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{ID: "users"}},
+		ProviderAPI: &connectordefinitions.ProviderAPISpec{
+			Status:        "verified",
+			Basis:         "declared",
+			VerifiedAt:    "2026-07-03T00:00:00Z",
+			Transport:     "rest",
+			Auth:          "api_key",
+			AuthMechanics: "header token",
+			BaseURL:       "https://api.provider.io",
+			SpecURL:       "https://developer.provider.io/openapi.yaml",
+			SpecKind:      "openapi",
+			References:    []string{"https://developer.provider.io/reference"},
+			Families: []connectordefinitions.ProviderAPIFamilySpec{{
+				ID:     "users",
+				Method: "GET",
+				Path:   "/v1/users",
+			}},
+		},
+	})
+
+	if !depth.HasContract || !depth.HasMapping || !depth.HasProof {
+		t.Fatalf("depth flags = %#v, want contract, mapping, and proof", depth)
+	}
+	if depth.ProofScore != providerAPIProofThreshold || depth.ProofLevel != "verified" {
+		t.Fatalf("proof = %d/%q, want verified threshold", depth.ProofScore, depth.ProofLevel)
+	}
+	if len(depth.ProofGaps) != 0 || !containsString(depth.MappedFamilies, "users") {
+		t.Fatalf("depth families/gaps = %#v/%#v, want users and no gaps", depth.MappedFamilies, depth.ProofGaps)
 	}
 }
