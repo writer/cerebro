@@ -162,6 +162,7 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 			if err != nil {
 				return Pull{}, err
 			}
+			pull = e.applyIncrementalWatermark(family, cursor, readCheckpoint, pull)
 			return applyResourceScopePolicy(pull, policy), nil
 		}
 	}
@@ -180,17 +181,25 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		return Pull{}, err
 	}
 	if family.IncrementalWatermark && e.sourceID != "" {
-		readCheckpoint = IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, readCheckpoint)
-		next := ""
-		if pull.NextCursor != nil {
-			next = CursorToken(pull.NextCursor)
-		}
-		pull = IncrementalPullFromEvents(e.sourceID, family.Name, pull.Events, next, readCheckpoint)
-		if family.Probe != nil {
-			pull = attachFamilyFreshnessToPull(e.sourceID, family.Name, readCheckpoint, pull)
-		}
+		pull = e.applyIncrementalWatermark(family, cursor, readCheckpoint, pull)
 	}
 	return applyResourceScopePolicy(pull, policy), nil
+}
+
+func (e *FamilyEngine[S]) applyIncrementalWatermark(family Family[S], cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pull Pull) Pull {
+	if !family.IncrementalWatermark || e.sourceID == "" {
+		return pull
+	}
+	readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, checkpoint)
+	next := ""
+	if pull.NextCursor != nil {
+		next = CursorToken(pull.NextCursor)
+	}
+	pull = IncrementalPullFromEvents(e.sourceID, family.Name, pull.Events, next, readCheckpoint)
+	if family.Probe != nil {
+		pull = attachFamilyFreshnessToPull(e.sourceID, family.Name, readCheckpoint, pull)
+	}
+	return pull
 }
 
 func attachFamilyFreshnessToPull(source string, family string, checkpoint *cerebrov1.SourceCheckpoint, pull Pull) Pull {

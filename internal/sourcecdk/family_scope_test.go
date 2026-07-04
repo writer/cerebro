@@ -232,6 +232,61 @@ func TestFamilyEnginePassesChangedProbeToReadWithChange(t *testing.T) {
 	}
 }
 
+func TestFamilyEngineReadWithChangeKeepsIncrementalFreshnessAcrossPages(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	checkpoint := &cerebrov1.SourceCheckpoint{
+		Watermark: timestamppb.New(watermark),
+	}
+	probeCheckpoint := FamilyFreshnessCheckpoint("okta", "user", checkpoint, FamilyFreshnessProbe{
+		Kind:       "okta_user_latest_record",
+		ResourceID: "00u1",
+		UpdatedAt:  watermark.Add(time.Hour),
+		ObservedAt: watermark.Add(time.Hour),
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+	})
+	engine, err := NewFamilyEngineWithSourceID("okta", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name:                 "user",
+		IncrementalWatermark: true,
+		Probe: func(context.Context, string, *cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+			return ChangeProbe{
+				Checkpoint:         probeCheckpoint,
+				ChangedResourceIDs: []string{"00u1"},
+			}, nil
+		},
+		ReadWithChange: func(context.Context, string, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint, ChangeProbe) (Pull, error) {
+			return Pull{
+				Events: []*primitives.Event{
+					{Id: "user-1", OccurredAt: timestamppb.New(watermark.Add(2 * time.Minute))},
+				},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "page-2"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "user"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "user-1" {
+		t.Fatalf("events = %#v, want user-1", pull.Events)
+	}
+	if pull.NextCursor == nil || CursorToken(pull.NextCursor) != "page-2" {
+		t.Fatalf("next cursor = %#v, want page-2 provider token", pull.NextCursor)
+	}
+	if _, ok := FamilyFreshnessProbeFromCheckpoint("okta", "user", pull.Checkpoint); !ok {
+		t.Fatalf("checkpoint %q missing freshness probe", pull.Checkpoint.GetCursorOpaque())
+	}
+	if _, ok := FamilyFreshnessProbeFromCheckpoint("okta", "user", &cerebrov1.SourceCheckpoint{CursorOpaque: pull.NextCursor.GetOpaque()}); !ok {
+		t.Fatalf("next cursor %q missing freshness probe", pull.NextCursor.GetOpaque())
+	}
+}
+
 func TestFamilyEngineSkipsProbeOnContinuationAndCarriesFreshness(t *testing.T) {
 	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	checkpoint := IncrementalWatermarkCheckpoint("okta", "user", []*primitives.Event{
