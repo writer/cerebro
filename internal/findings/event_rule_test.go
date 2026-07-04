@@ -134,8 +134,7 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 		RequiredAttributes: []string{"action", "repository"},
 		FingerprintFields:  []string{"repository", "action"},
 		ControlRefs:        []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
-		MITREAttack:        []MITREAttackRef{{Tactic: "Defense Evasion", Technique: "T1562"}},
-		MITREDefend:        []MITREDefendRef{{Technique: "ProcessTermination", Artifact: "Process"}},
+		MITREAttack:        []MITREAttackRef{{Tactic: "Defense Evasion", Technique: "T1562", DefendTechnique: "ProcessTermination", DefendArtifact: "Process"}},
 		Lifecycle:          Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	if err := definition.Validate(); err != nil {

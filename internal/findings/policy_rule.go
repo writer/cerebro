@@ -213,7 +213,7 @@ func (r *policyGraphCatalogRule) EvaluateRows(ctx context.Context, runtime *cere
 		finding.Attributes["policy_evidence"] = "graph"
 		finding.Attributes["policy_graph_query_present"] = "true"
 		addMITREAttackFindingAttributes(finding.Attributes, r.config.Definition.MITREAttack)
-		addMITREDefendFindingAttributes(finding.Attributes, r.config.Definition.MITREDefend)
+		addMITREDefendFindingAttributes(finding.Attributes, mitreDefendRefsFromAttackRefs(r.config.Definition.MITREAttack))
 		for key, value := range r.config.ContractAttributes {
 			if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
 				finding.Attributes[trimmedKey] = strings.TrimSpace(value)
@@ -294,7 +294,7 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		findingAttributes["rule_"+key] = value
 	}
 	addMITREAttackFindingAttributes(findingAttributes, definition.MITREAttack)
-	addMITREDefendFindingAttributes(findingAttributes, definition.MITREDefend)
+	addMITREDefendFindingAttributes(findingAttributes, mitreDefendRefsFromAttackRefs(definition.MITREAttack))
 	if len(r.config.Conditions) != 0 {
 		findingAttributes["policy_condition_count"] = strconv.Itoa(len(r.config.Conditions))
 	}

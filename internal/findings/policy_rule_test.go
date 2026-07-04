@@ -25,8 +25,7 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		Runbook:           "Review policy evidence.",
 		FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
-		MITREAttack:       []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
-		MITREDefend:       []MITREDefendRef{{Technique: "InboundTrafficFiltering", Artifact: "NetworkTraffic"}},
+		MITREAttack:       []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190", DefendTechnique: "InboundTrafficFiltering", DefendArtifact: "NetworkTraffic"}},
 		Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	rule := newPolicyCatalogRule(policyRuleConfig{

@@ -67,13 +67,15 @@ type RuleDefinition struct {
 	FingerprintFields        []string
 	ControlRefs              []ports.FindingControlRef
 	MITREAttack              []MITREAttackRef
-	MITREDefend              []MITREDefendRef
 	Lifecycle                Lifecycle
 }
 
 type MITREAttackRef struct {
-	Tactic    string `json:"tactic"`
-	Technique string `json:"technique"`
+	Tactic          string `json:"tactic"`
+	Technique       string `json:"technique"`
+	DefendTactic    string `json:"-"`
+	DefendTechnique string `json:"-"`
+	DefendArtifact  string `json:"-"`
 }
 
 type MITREDefendRef struct {
@@ -198,7 +200,7 @@ func (d RuleDefinition) AttributeMap() map[string]string {
 	joinAttribute(attributes, "mitre_attack", mitrePairs)
 	joinAttribute(attributes, "mitre_attack_tactics", mitreTactics)
 	joinAttribute(attributes, "mitre_attack_techniques", mitreTechniques)
-	defendTactics, defendTechniques, defendArtifacts, defendRefs := mitreDefendAttributeValues(d.MITREDefend)
+	defendTactics, defendTechniques, defendArtifacts, defendRefs := mitreDefendAttributeValues(mitreDefendRefsFromAttackRefs(d.MITREAttack))
 	joinAttribute(attributes, "mitre_defend", defendRefs)
 	joinAttribute(attributes, "mitre_defend_tactics", defendTactics)
 	joinAttribute(attributes, "mitre_defend_techniques", defendTechniques)
@@ -253,6 +255,21 @@ func mitreAttackAttributeValues(refs []MITREAttackRef) ([]string, []string, []st
 		}
 	}
 	return tactics, techniques, pairs
+}
+
+func mitreDefendRefsFromAttackRefs(refs []MITREAttackRef) []MITREDefendRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	var defendRefs []MITREDefendRef
+	for _, ref := range refs {
+		defendRefs = append(defendRefs, MITREDefendRef{
+			Tactic:    ref.DefendTactic,
+			Technique: ref.DefendTechnique,
+			Artifact:  ref.DefendArtifact,
+		})
+	}
+	return cloneMITREDefendRefs(defendRefs)
 }
 
 func mitreDefendAttributeValues(refs []MITREDefendRef) ([]string, []string, []string, []string) {

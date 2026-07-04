@@ -409,7 +409,7 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
 		MITREAttack:              cloneMITREAttackRefs(metadata.MITREAttack),
-		MITREDefend:              cloneMITREDefendRefs(metadata.MITREDefend),
+		MITREDefend:              mitreDefendRefsFromAttackRefs(metadata.MITREAttack),
 	}
 }
 
@@ -438,7 +438,6 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		FingerprintFields:        cloneStringSlice(definition.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(definition.ControlRefs),
 		MITREAttack:              cloneMITREAttackRefs(definition.MITREAttack),
-		MITREDefend:              cloneMITREDefendRefs(definition.MITREDefend),
 		Lifecycle:                definition.Lifecycle,
 	}
 }
@@ -454,7 +453,13 @@ func cloneMITREAttackRefs(refs []MITREAttackRef) []MITREAttackRef {
 		if tactic == "" && technique == "" {
 			continue
 		}
-		cloned = append(cloned, MITREAttackRef{Tactic: tactic, Technique: technique})
+		cloned = append(cloned, MITREAttackRef{
+			Tactic:          tactic,
+			Technique:       technique,
+			DefendTactic:    strings.TrimSpace(ref.DefendTactic),
+			DefendTechnique: strings.TrimSpace(ref.DefendTechnique),
+			DefendArtifact:  strings.TrimSpace(ref.DefendArtifact),
+		})
 	}
 	if len(cloned) == 0 {
 		return nil
