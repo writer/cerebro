@@ -152,6 +152,9 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 		return strings.Contains(lowerURL, "googleapis.com/$discovery/rest") ||
 			strings.Contains(lowerURL, "googleapis.com/discovery/v1/apis/")
 	}
+	if lowerKind == "openapi_embedded_html" {
+		return providerAPIURLLooksGrounded(specURL)
+	}
 	if providerAPIMarkdownReferenceOK(lowerURL, lowerKind) {
 		return true
 	}

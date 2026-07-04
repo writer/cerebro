@@ -18,7 +18,7 @@ entries:
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, groups, roles, applications, and audit events from Bitwarden and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context.
+      description: Collects members, groups, collections, policies, and event logs from the Bitwarden Public API and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, and secret-management context.
       display_name: Bitwarden
       id: builtin-bitwarden
       ingest:
@@ -45,16 +45,14 @@ entries:
             urn_kind: bitwarden_users
           id: users
           id_field: id
-          label: Users
+          label: Members
           method: GET
-          name_field: name
+          name_field: email
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.continuationToken
+            cursor_param: continuationToken
             type: cursor
-          path: /v1/users
+          path: /public/members
           projection:
             fields:
               display_name: name
@@ -88,12 +86,10 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.continuationToken
+            cursor_param: continuationToken
             type: cursor
-          path: /v1/groups
+          path: /public/groups
           projection:
             fields:
               group_id: id
@@ -102,41 +98,40 @@ entries:
           record_selector: $.data[*]
         - coverage:
             - control_domains:
-                - access_review
+                - security_operations
               evidence_types:
-                - source_snapshot
+                - configuration_state
               families:
-                - roles
+                - policies
               high_value: true
-              id: roles
+              id: policies
               support: partial
-              title: Roles
-              type: entity_family
+              title: Policies
+              type: lifecycle_state
           default_enabled: true
           event:
-            kind: bitwarden.roles
+            kind: bitwarden.policies
             required_payload_fields:
               - id
-            schema_ref: bitwarden/roles/v1
-            urn_kind: bitwarden_roles
-          id: roles
+              - type
+            schema_ref: bitwarden/policies/v1
+            urn_kind: bitwarden_policies
+          id: policies
           id_field: id
-          label: Roles
+          label: Policies
           method: GET
-          name_field: name
+          name_field: type
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.continuationToken
+            cursor_param: continuationToken
             type: cursor
-          path: /v1/roles
+          path: /public/policies
           projection:
             fields:
               policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: role
+              policy_name: type
+              policy_status: enabled
+              policy_type: type
             template: policy
           record_selector: $.data[*]
         - coverage:
@@ -145,38 +140,36 @@ entries:
               evidence_types:
                 - source_snapshot
               families:
-                - applications
+                - collections
               high_value: true
-              id: applications
+              id: collections
               support: partial
-              title: Applications
+              title: Collections
               type: entity_family
           default_enabled: true
           event:
-            kind: bitwarden.applications
+            kind: bitwarden.collections
             required_payload_fields:
               - id
-            schema_ref: bitwarden/applications/v1
-            urn_kind: bitwarden_applications
-          id: applications
+            schema_ref: bitwarden/collections/v1
+            urn_kind: bitwarden_collections
+          id: collections
           id_field: id
-          label: Applications
+          label: Collections
           method: GET
-          name_field: name
+          name_field: externalId
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.continuationToken
+            cursor_param: continuationToken
             type: cursor
-          path: /v1/applications
+          path: /public/collections
           projection:
             fields:
               id: id
-              name: name
+              name: externalId
               resource_id: id
-              resource_name: name
-              resource_type: application
+              resource_name: externalId
+              resource_type: collection
             template: asset
           record_selector: $.data[*]
         - coverage:
@@ -195,29 +188,27 @@ entries:
           event:
             kind: bitwarden.audit_events
             required_payload_fields:
-              - id
+              - type
+              - date
             schema_ref: bitwarden/audit_events/v1
             urn_kind: bitwarden_audit_events
           id: audit_events
-          id_field: id
+          id_field: date
           label: Audit events
           method: GET
-          name_field: name
+          name_field: type
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.continuationToken
+            cursor_param: continuationToken
             type: cursor
-          path: /v1/audit_events
+          path: /public/events
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_id: actingUserId
+              event_type: type
+              id: date
+              resource_id: itemId
+              resource_type: object
             template: audit_event
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1
@@ -229,4 +220,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /public/organization/subscription

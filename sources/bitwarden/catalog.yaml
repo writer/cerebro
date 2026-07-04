@@ -1,26 +1,65 @@
 id: bitwarden
 name: "Bitwarden"
-description: "Collects users, groups, roles, applications, and audit events from Bitwarden and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+description: "Collects members, groups, collections, policies, and event logs from the Bitwarden Public API and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, and secret-management context."
 emitted_kinds:
   - bitwarden.users
   - bitwarden.groups
-  - bitwarden.roles
-  - bitwarden.applications
+  - bitwarden.collections
+  - bitwarden.policies
   - bitwarden.audit_events
 runtime_families:
-  - applications
   - audit_events
+  - collections
   - groups
-  - roles
+  - policies
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: oauth2_client_credentials_access_token_scope_api_organization
+  base_url: ${config.base_url}/public
+  spec_url: https://bitwarden.com/help/api/
+  spec_kind: openapi_embedded_html
+  references:
+    - https://bitwarden.com/help/public-api/
+    - https://bitwarden.com/help/api/
+  auth_evidence:
+    - https://bitwarden.com/help/public-api/
+  scope_evidence:
+    - https://bitwarden.com/help/public-api/
+    - https://bitwarden.com/help/api/
+  families:
+    - id: audit_events
+      method: GET
+      path: /public/events
+      operation: Events_List
+    - id: collections
+      method: GET
+      path: /public/collections
+      operation: Collections_List
+    - id: groups
+      method: GET
+      path: /public/groups
+      operation: Groups_List
+    - id: policies
+      method: GET
+      path: /public/policies
+      operation: Policies_List
+    - id: users
+      method: GET
+      path: /public/members
+      operation: Members_List
 kind_lifecycle:
   - kind: bitwarden.users
     status: active
   - kind: bitwarden.groups
     status: active
-  - kind: bitwarden.roles
+  - kind: bitwarden.collections
     status: active
-  - kind: bitwarden.applications
+  - kind: bitwarden.policies
     status: active
   - kind: bitwarden.audit_events
     status: active
@@ -37,7 +76,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Bitwarden Public API members to identity users; live tenant sample certification is still pending.
     - id: groups
       type: entity_family
       title: "Groups"
@@ -47,27 +86,27 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: roles
-      type: lifecycle_state
-      title: "Roles"
-      families: [roles]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: applications
+        - Maps Bitwarden Public API groups to identity groups; live tenant sample certification is still pending.
+    - id: collections
       type: entity_family
-      title: "Applications"
-      families: [applications]
+      title: "Collections"
+      families: [collections]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Bitwarden Public API collections to graph assets; live tenant sample certification is still pending.
+    - id: policies
+      type: lifecycle_state
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Maps Bitwarden Public API policies to graph policies; live tenant sample certification is still pending.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +116,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Bitwarden Public API event logs to graph audit events; live tenant sample certification is still pending.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -101,8 +140,17 @@ event_contracts:
       - group_id
     required_payload_fields:
       - id
-  - kind: bitwarden.roles
-    schema_ref: bitwarden/roles/v1
+  - kind: bitwarden.collections
+    schema_ref: bitwarden/collections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_id
+      - resource_type
+    required_payload_fields:
+      - id
+  - kind: bitwarden.policies
+    schema_ref: bitwarden/policies/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -110,22 +158,13 @@ event_contracts:
       - policy_name
     required_payload_fields:
       - id
-  - kind: bitwarden.applications
-    schema_ref: bitwarden/applications/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
+      - type
   - kind: bitwarden.audit_events
     schema_ref: bitwarden/audit_events/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
     required_payload_fields:
-      - id
+      - type
+      - date

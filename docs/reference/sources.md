@@ -99,7 +99,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `bitbucket_cloud` | Bitbucket Cloud source | bitbucket_cloud.audit_events, bitbucket_cloud.repositories, bitbucket_cloud.users |
 | `bitrise` | Bitrise source | bitrise.audit_events, bitrise.deployments, bitrise.projects, bitrise.repositories, bitrise.users |
 | `bitsight` | Bitsight source | bitsight.assets, bitsight.audit_events, bitsight.findings, bitsight.policies, bitsight.vulnerabilities |
-| `bitwarden` | Bitwarden source | bitwarden.applications, bitwarden.audit_events, bitwarden.groups, bitwarden.roles, bitwarden.users |
+| `bitwarden` | Bitwarden source | bitwarden.audit_events, bitwarden.collections, bitwarden.groups, bitwarden.policies, bitwarden.users |
 | `bitwarden_enterprise` | Bitwarden Enterprise source | bitwarden_enterprise.audit_events, bitwarden_enterprise.secrets, bitwarden_enterprise.users |
 | `black_kite` | Black Kite source | black_kite.assets, black_kite.audit_events, black_kite.findings, black_kite.policies, black_kite.vulnerabilities |
 | `blackduck` | Blackduck source | blackduck.assets, blackduck.audit_events, blackduck.findings, blackduck.policies, blackduck.vulnerabilities |

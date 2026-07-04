@@ -141,6 +141,16 @@ func TestProviderAPISpecPointerAcceptsGoogleDiscovery(t *testing.T) {
 	}
 }
 
+func TestProviderAPISpecPointerAcceptsEmbeddedOpenAPIHTML(t *testing.T) {
+	specURL := "https://bitwarden.com/help/api/"
+	if !providerAPISpecPointerOK(specURL, "openapi_embedded_html", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, openapi_embedded_html) = false, want true", specURL)
+	}
+	if providerAPISpecPointerOK(specURL, "", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, empty kind) = true, want false", specURL)
+	}
+}
+
 func TestProviderAPISpecPointerAcceptsExplicitProviderMarkdownReference(t *testing.T) {
 	specURL := "https://platform.provider.io/docs/en/api/admin.md"
 	if !providerAPISpecPointerOK(specURL, "api_reference_markdown", "rest") {
