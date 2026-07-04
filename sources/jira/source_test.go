@@ -6,13 +6,95 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jiraapi"
+	"gopkg.in/yaml.v3"
 )
+
+func TestCatalogDeclaresVerifiedJiraProviderAPI(t *testing.T) {
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	var catalog struct {
+		RuntimeFamilies []string `yaml:"runtime_families"`
+		ProviderAPI     struct {
+			Status     string   `yaml:"status"`
+			Transport  string   `yaml:"transport"`
+			Auth       string   `yaml:"auth"`
+			BaseURL    string   `yaml:"base_url"`
+			SpecURL    string   `yaml:"spec_url"`
+			References []string `yaml:"references"`
+			Families   []struct {
+				ID        string `yaml:"id"`
+				Method    string `yaml:"method"`
+				Path      string `yaml:"path"`
+				Operation string `yaml:"operation"`
+			} `yaml:"families"`
+		} `yaml:"provider_api"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog: %v", err)
+	}
+	assertStringSet(t, catalog.RuntimeFamilies, []string{
+		jiraapi.FamilyAuditEvents,
+		jiraapi.FamilyGroupMembers,
+		jiraapi.FamilyGroups,
+		jiraapi.FamilyPermissionSchemes,
+		jiraapi.FamilyProjectRoles,
+		jiraapi.FamilyProjects,
+		jiraapi.FamilyUsers,
+	})
+	if catalog.ProviderAPI.Status != "verified" || catalog.ProviderAPI.Transport != "rest" || catalog.ProviderAPI.Auth != "basic" || catalog.ProviderAPI.BaseURL != defaultBaseURLTemplate {
+		t.Fatalf("provider_api = %#v, want verified REST basic-auth API", catalog.ProviderAPI)
+	}
+	if catalog.ProviderAPI.SpecURL != "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json" {
+		t.Fatalf("provider_api spec_url = %q", catalog.ProviderAPI.SpecURL)
+	}
+	for _, ref := range []string{
+		"https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
+		"https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-users/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-groups/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-project-roles/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-permission-schemes/",
+		"https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-audit-records/",
+	} {
+		if !hasString(catalog.ProviderAPI.References, ref) {
+			t.Fatalf("provider references = %v, want %s", catalog.ProviderAPI.References, ref)
+		}
+	}
+	wantPaths := map[string]string{
+		jiraapi.FamilyAuditEvents:       "/rest/api/3/auditing/record",
+		jiraapi.FamilyGroupMembers:      "/rest/api/3/group/member",
+		jiraapi.FamilyGroups:            "/rest/api/3/group/bulk",
+		jiraapi.FamilyPermissionSchemes: "/rest/api/3/permissionscheme",
+		jiraapi.FamilyProjectRoles:      "/rest/api/3/project/{projectIdOrKey}/roledetails",
+		jiraapi.FamilyProjects:          "/rest/api/3/project/search",
+		jiraapi.FamilyUsers:             "/rest/api/3/users/search",
+	}
+	gotPaths := map[string]string{}
+	for _, family := range catalog.ProviderAPI.Families {
+		if family.Method != http.MethodGet {
+			t.Fatalf("provider family %s method = %q, want GET", family.ID, family.Method)
+		}
+		if strings.TrimSpace(family.Operation) == "" {
+			t.Fatalf("provider family %s operation is empty", family.ID)
+		}
+		gotPaths[family.ID] = family.Path
+	}
+	for family, want := range wantPaths {
+		if got := gotPaths[family]; got != want {
+			t.Fatalf("provider path for %s = %q, want %q", family, got, want)
+		}
+	}
+}
 
 func TestSourceCheckAndReadUsersUsesJiraREST(t *testing.T) {
 	source, err := New()
@@ -91,6 +173,26 @@ func TestSourceCheckAndReadUsersUsesJiraREST(t *testing.T) {
 	if len(requests) < 3 {
 		t.Fatalf("request count = %d, want health, check, and read", len(requests))
 	}
+}
+
+func assertStringSet(t *testing.T, got []string, want []string) {
+	t.Helper()
+	got = append([]string(nil), got...)
+	want = append([]string(nil), want...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("strings = %v, want %v", got, want)
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSourceCheckProjectRolesUsesConfiguredFanoutProjectKey(t *testing.T) {
