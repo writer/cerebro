@@ -90,7 +90,7 @@ func TestAgentFindingTaskReturnsNextActions(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent/tasks/findings/finding-1/explain", bytes.NewReader([]byte(`{"reason":"post to channel"}`)))
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent/tasks/findings/finding-1/explain", bytes.NewReader([]byte(`{"reason":"post to channel","client_context":{"schema_version":"next"}}`)))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -110,6 +110,9 @@ func TestAgentFindingTaskReturnsNextActions(t *testing.T) {
 	}
 	if task.Kind != "finding_explain" || task.Status != "planned" || task.Resource.ID != "finding-1" {
 		t.Fatalf("task = %+v, want planned finding explain task", task)
+	}
+	if task.Reason != "post to channel" {
+		t.Fatalf("reason = %q, want request reason while ignoring future fields", task.Reason)
 	}
 	if len(task.NextActions) == 0 || task.Result["evidence_request"] == "" {
 		t.Fatalf("task missing next actions or evidence request: %+v", task)

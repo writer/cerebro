@@ -549,7 +549,6 @@ func readTaskRequest(w http.ResponseWriter, r *http.Request) (TaskRequest, error
 		return request, nil
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
 		if errors.Is(err, io.EOF) {
 			return request, nil
