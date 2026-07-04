@@ -727,6 +727,22 @@ config:
     type: integer
     default: 1
     description: Number of Fargate tasks launched per default orchestrator schedule tick
+  cerebro:orchestratorFargateBase:
+    type: integer
+    default: 0
+    description: Base FARGATE capacity provider task count for scheduled orchestrator runs; leave all orchestrator capacity provider values at 0 to use launch_type FARGATE
+  cerebro:orchestratorFargateWeight:
+    type: integer
+    default: 0
+    description: FARGATE capacity provider weight for scheduled orchestrator runs; leave all orchestrator capacity provider values at 0 to use launch_type FARGATE
+  cerebro:orchestratorFargateSpotBase:
+    type: integer
+    default: 0
+    description: Base FARGATE_SPOT capacity provider task count for scheduled orchestrator runs; leave all orchestrator capacity provider values at 0 to use launch_type FARGATE
+  cerebro:orchestratorFargateSpotWeight:
+    type: integer
+    default: 0
+    description: FARGATE_SPOT capacity provider weight for scheduled orchestrator runs; leave all orchestrator capacity provider values at 0 to use launch_type FARGATE
   cerebro:orchestratorSchedules:
     type: array
     items:

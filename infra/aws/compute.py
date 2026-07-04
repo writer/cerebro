@@ -47,6 +47,10 @@ def create_ecs_cluster(
     orchestrator_command: list[str] = None,
     orchestrator_task_count: int = 1,
     orchestrator_schedules: list[dict] = None,
+    orchestrator_fargate_base: int = 0,
+    orchestrator_fargate_weight: int = 0,
+    orchestrator_fargate_spot_base: int = 0,
+    orchestrator_fargate_spot_weight: int = 0,
     source_runtimes: list[dict] = None,
     source_runtime_service_bootstrap_ids: list[str] = None,
     otel_collector: dict = None,
@@ -248,10 +252,31 @@ def create_ecs_cluster(
             task_role_arn=worker_task_role.arn,
             scheduler_dlq_arn=orchestrator_scheduler_dlq.arn if orchestrator_scheduler_dlq else None,
         )
+        scheduler_capacity_provider_strategies = _orchestrator_capacity_provider_strategies(
+            aws.scheduler.ScheduleTargetEcsParametersCapacityProviderStrategyArgs,
+            orchestrator_fargate_base,
+            orchestrator_fargate_weight,
+            orchestrator_fargate_spot_base,
+            orchestrator_fargate_spot_weight,
+        )
+        eventbridge_capacity_provider_strategies = _orchestrator_capacity_provider_strategies(
+            aws.cloudwatch.EventTargetEcsTargetCapacityProviderStrategyArgs,
+            orchestrator_fargate_base,
+            orchestrator_fargate_weight,
+            orchestrator_fargate_spot_base,
+            orchestrator_fargate_spot_weight,
+        )
         for schedule in schedules:
             schedule_suffix = schedule["suffix"]
             schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
             if schedule["backend"] == "scheduler":
+                scheduler_ecs_parameters = _orchestrator_scheduler_ecs_parameters(
+                    task_definition_arn=orchestrator_task_definition.arn,
+                    task_count=schedule["task_count"],
+                    subnet_ids=subnet_ids,
+                    security_group_id=security_group_id,
+                    capacity_provider_strategies=scheduler_capacity_provider_strategies,
+                )
                 scheduler_schedule = aws.scheduler.Schedule(
                     f"{schedule_resource_prefix}-schedule",
                     name=schedule_resource_prefix,
@@ -268,16 +293,7 @@ def create_ecs_cluster(
                             schedule["command"],
                             schedule.get("bootstrap_payload") or "",
                         ),
-                        ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
-                            task_definition_arn=orchestrator_task_definition.arn,
-                            task_count=schedule["task_count"],
-                            launch_type="FARGATE",
-                            network_configuration=aws.scheduler.ScheduleTargetEcsParametersNetworkConfigurationArgs(
-                                subnets=subnet_ids,
-                                security_groups=[security_group_id],
-                                assign_public_ip=False,
-                            ),
-                        ),
+                        ecs_parameters=scheduler_ecs_parameters,
                         retry_policy=aws.scheduler.ScheduleTargetRetryPolicyArgs(
                             maximum_event_age_in_seconds=3600,
                             maximum_retry_attempts=2,
@@ -304,15 +320,12 @@ def create_ecs_cluster(
                     arn=cluster.arn,
                     role_arn=orchestrator_events_role.arn,
                     target_id=f"{schedule_suffix}-ecs"[:64],
-                    ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
+                    ecs_target=_orchestrator_eventbridge_ecs_target(
                         task_definition_arn=orchestrator_task_definition.arn,
                         task_count=schedule["task_count"],
-                        launch_type="FARGATE",
-                        network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
-                            subnets=subnet_ids,
-                            security_groups=[security_group_id],
-                            assign_public_ip=False,
-                        ),
+                        subnet_ids=subnet_ids,
+                        security_group_id=security_group_id,
+                        capacity_provider_strategies=eventbridge_capacity_provider_strategies,
                     ),
                     input=_orchestrator_target_input(
                         schedule["command"],
@@ -938,6 +951,79 @@ def _create_task_role(
         )
 
     return role
+
+
+def _orchestrator_capacity_provider_strategies(
+    args_type,
+    fargate_base: int,
+    fargate_weight: int,
+    fargate_spot_base: int,
+    fargate_spot_weight: int,
+) -> list:
+    strategies = []
+    if fargate_base > 0 or fargate_weight > 0:
+        strategies.append(
+            args_type(
+                capacity_provider="FARGATE",
+                base=fargate_base,
+                weight=fargate_weight,
+            )
+        )
+    if fargate_spot_base > 0 or fargate_spot_weight > 0:
+        strategies.append(
+            args_type(
+                capacity_provider="FARGATE_SPOT",
+                base=fargate_spot_base,
+                weight=fargate_spot_weight,
+            )
+        )
+    return strategies
+
+
+def _orchestrator_scheduler_ecs_parameters(
+    task_definition_arn: pulumi.Input[str],
+    task_count: int,
+    subnet_ids: list[pulumi.Input[str]],
+    security_group_id: pulumi.Input[str],
+    capacity_provider_strategies: list,
+):
+    kwargs = {
+        "task_definition_arn": task_definition_arn,
+        "task_count": task_count,
+        "network_configuration": aws.scheduler.ScheduleTargetEcsParametersNetworkConfigurationArgs(
+            subnets=subnet_ids,
+            security_groups=[security_group_id],
+            assign_public_ip=False,
+        ),
+    }
+    if capacity_provider_strategies:
+        kwargs["capacity_provider_strategies"] = capacity_provider_strategies
+    else:
+        kwargs["launch_type"] = "FARGATE"
+    return aws.scheduler.ScheduleTargetEcsParametersArgs(**kwargs)
+
+
+def _orchestrator_eventbridge_ecs_target(
+    task_definition_arn: pulumi.Input[str],
+    task_count: int,
+    subnet_ids: list[pulumi.Input[str]],
+    security_group_id: pulumi.Input[str],
+    capacity_provider_strategies: list,
+):
+    kwargs = {
+        "task_definition_arn": task_definition_arn,
+        "task_count": task_count,
+        "network_configuration": aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
+            subnets=subnet_ids,
+            security_groups=[security_group_id],
+            assign_public_ip=False,
+        ),
+    }
+    if capacity_provider_strategies:
+        kwargs["capacity_provider_strategies"] = capacity_provider_strategies
+    else:
+        kwargs["launch_type"] = "FARGATE"
+    return aws.cloudwatch.EventTargetEcsTargetArgs(**kwargs)
 
 
 def _create_orchestrator_events_role(

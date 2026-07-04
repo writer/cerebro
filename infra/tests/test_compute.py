@@ -551,6 +551,8 @@ class WorkerTaskRoleTest(unittest.TestCase):
             event_target_calls[0]["ecs_target"].task_definition_arn,
             "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
         )
+        self.assertEqual(event_target_calls[0]["ecs_target"].launch_type, "FARGATE")
+        self.assertFalse(hasattr(event_target_calls[0]["ecs_target"], "capacity_provider_strategies"))
         self.assertEqual(event_rule_calls[0]["state"], "ENABLED")
         self.assertNotIn("is_enabled", event_rule_calls[0])
         target_input = json.loads(event_target_calls[0]["input"])
@@ -664,9 +666,94 @@ class WorkerTaskRoleTest(unittest.TestCase):
             schedule_call["target"].ecs_parameters.task_definition_arn,
             "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
         )
+        self.assertEqual(schedule_call["target"].ecs_parameters.launch_type, "FARGATE")
+        self.assertFalse(hasattr(schedule_call["target"].ecs_parameters, "capacity_provider_strategies"))
         self.assertEqual(len(result["orchestrator_scheduler_schedules"]), 1)
         self.assertEqual(result["orchestrator_scheduler_dlq"].name, "cerebro-sec-dev-orchestrator-scheduler-dlq")
         self.assertEqual(result["orchestrator_rules"], [])
+
+    def test_orchestrator_schedules_can_use_capacity_provider_strategy(self) -> None:
+        scheduler_schedule_calls: list[dict] = []
+        event_target_calls: list[dict] = []
+
+        def fake_named_resource(*args, **kwargs):
+            name = kwargs.get("name") or args[0]
+            return SimpleNamespace(name=name, id=f"{name}-id", arn=f"arn:aws:test::{name}")
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        def fake_scheduler_schedule(*args, **kwargs):
+            scheduler_schedule_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs["name"], arn=f"arn:aws:scheduler:us-east-1:123456789012:schedule/{kwargs['group_name']}/{kwargs['name']}")
+
+        with ExitStack() as stack:
+            for patcher in [
+                patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role", policy="exec-policy")),
+                patch.object(compute, "_create_task_role", return_value=SimpleNamespace(name="task-role", arn="arn:aws:iam::123456789012:role/task-role")),
+                patch.object(compute, "_create_task_definition", return_value=SimpleNamespace(arn="arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1")),
+                patch.object(compute, "_create_orchestrator_events_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-orchestrator-events-role")),
+                patch.object(compute.aws.ecs, "Cluster", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ClusterCapacityProviders", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ClusterCapacityProvidersDefaultCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "Service", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ServiceCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceLoadBalancerArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
+                patch.object(compute.aws.cloudwatch, "LogGroup", side_effect=fake_named_resource),
+                patch.object(compute.aws.cloudwatch, "EventRule", side_effect=fake_named_resource),
+                patch.object(compute.aws.cloudwatch, "EventTarget", side_effect=lambda *args, **kwargs: event_target_calls.append(kwargs) or fake_named_resource(*args, **kwargs)),
+                patch.object(compute.aws.cloudwatch, "EventTargetEcsTargetArgs", side_effect=fake_args),
+                patch.object(compute.aws.cloudwatch, "EventTargetEcsTargetCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.cloudwatch, "EventTargetEcsTargetNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleGroup", side_effect=fake_named_resource),
+                patch.object(compute.aws.scheduler, "Schedule", side_effect=fake_scheduler_schedule),
+                patch.object(compute.aws.scheduler, "ScheduleFlexibleTimeWindowArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetRetryPolicyArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetDeadLetterConfigArgs", side_effect=fake_args),
+                patch.object(compute.aws.sqs, "Queue", side_effect=fake_named_resource),
+                patch.object(compute.aws.appautoscaling, "Target", side_effect=fake_named_resource),
+                patch.object(compute.pulumi, "ResourceOptions", side_effect=fake_args),
+            ]:
+                stack.enter_context(patcher)
+            compute.create_ecs_cluster(
+                name="cerebro-sec-dev",
+                vpc_id="vpc-1",
+                subnet_ids=["subnet-1"],
+                security_group_id="sg-1",
+                kms_key_id="key-1",
+                target_group_arn="tg-1",
+                container_image="image",
+                external_secrets_prefix="/cerebro/sec-dev",
+                orchestrator_enabled=True,
+                orchestrator_fargate_spot_weight=1,
+                orchestrator_schedules=[
+                    {
+                        "name": "gcp-scheduler",
+                        "backend": "scheduler",
+                        "command": ["orchestrator", "run", "runtime_id=writer-gcp-audit"],
+                    },
+                    {
+                        "name": "gcp-eventbridge",
+                        "backend": "eventbridge",
+                        "command": ["orchestrator", "run", "runtime_id=writer-gcp-inventory"],
+                    },
+                ],
+            )
+
+        scheduler_ecs_parameters = scheduler_schedule_calls[0]["target"].ecs_parameters
+        eventbridge_ecs_target = event_target_calls[0]["ecs_target"]
+        for ecs_args in [scheduler_ecs_parameters, eventbridge_ecs_target]:
+            self.assertFalse(hasattr(ecs_args, "launch_type"))
+            self.assertEqual(
+                [(entry.capacity_provider, entry.base, entry.weight) for entry in ecs_args.capacity_provider_strategies],
+                [("FARGATE_SPOT", 0, 1)],
+            )
 
     def test_task_definition_bootstraps_panopticon_source_runtimes(self) -> None:
         task_definition_calls: list[dict] = []

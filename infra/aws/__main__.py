@@ -243,6 +243,10 @@ orchestrator_memory = _config_int("orchestratorMemory", api_memory)
 orchestrator_command = config.get_object("orchestratorCommand") or ["orchestrator", "run"]
 orchestrator_task_count = _config_int("orchestratorTaskCount", 1)
 orchestrator_schedules = config.get_object("orchestratorSchedules") or []
+orchestrator_fargate_base = _config_int("orchestratorFargateBase", 0)
+orchestrator_fargate_weight = _config_int("orchestratorFargateWeight", 0)
+orchestrator_fargate_spot_base = _config_int("orchestratorFargateSpotBase", 0)
+orchestrator_fargate_spot_weight = _config_int("orchestratorFargateSpotWeight", 0)
 
 if api_max_instances > 1 and not _supports_cross_task_sync_lock(image_tag):
     raise ValueError(
@@ -1048,6 +1052,10 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_command=orchestrator_command,
     orchestrator_task_count=orchestrator_task_count,
     orchestrator_schedules=orchestrator_schedules,
+    orchestrator_fargate_base=orchestrator_fargate_base,
+    orchestrator_fargate_weight=orchestrator_fargate_weight,
+    orchestrator_fargate_spot_base=orchestrator_fargate_spot_base,
+    orchestrator_fargate_spot_weight=orchestrator_fargate_spot_weight,
     source_runtimes=source_runtimes,
     source_runtime_service_bootstrap_ids=source_runtime_service_bootstrap_ids,
     otel_collector=otel_collector_config,
