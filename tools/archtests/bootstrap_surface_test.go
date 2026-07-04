@@ -92,8 +92,13 @@ import (
 // assembly and runtime state stay behind the existing registry, catalog, and
 // store boundaries. Duo connector setup adds resource-family metadata and
 // config-query keys through schema/response mapping at the existing connector
-// catalog boundary.
-const bootstrapProductionGoLineBudget = 27088
+// catalog boundary. Agent-friendly HTTP context and task routes add route/auth
+// wiring, caller-context mapping, and existing runtime/report service adapters;
+// task planning and response shapes live in internal/sourcehttp/agenttasks, and
+// auth discovery stays at the HTTP boundary. Agent task review hardening keeps
+// tenant-before-mutation checks and auth-challenge classification in bootstrap
+// because those depend on bootstrap auth sentinels and HTTP route policy.
+const bootstrapProductionGoLineBudget = 27373
 
 type bootstrapFileLineCount struct {
 	path  string

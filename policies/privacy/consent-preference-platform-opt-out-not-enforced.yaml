@@ -1,0 +1,114 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: consent-preference-platform-opt-out-not-enforced
+    name: Sale or Sharing Opt-Out Not Enforced
+    description: Flags consent preference platform records where a sale or sharing opt-out is active but not enforced downstream.
+    tags:
+        - privacy
+        - consent-preference-platform
+        - consent-preferences
+        - opt-out
+        - sale-or-sharing
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: high
+    effect: forbid
+    resource: consent_preference_platform::consent_preference
+    match:
+        conditions:
+            - cmp_eq(path(resource, "preference_type"), "sale_or_share_opt_out")
+            - cmp_eq(path(resource, "opted_out"), true)
+            - cmp_ne(path(resource, "enforced"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enforce the opt-out in downstream systems or record an approved exception with scope and expiration.
+        steps:
+            - Confirm the opt-out subject, channel, and downstream system list.
+            - Apply the opt-out to sales, sharing, advertising, and analytics destinations in scope.
+            - Retain sync and enforcement evidence from the consent preference platform.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 7
+            - Article 21
+        - name: CCPA
+          controls:
+            - "1798.120"
+            - "1798.121"
+            - "1798.135"
+    input:
+        sourceKinds:
+            - consent_preference_platform.consent_preference
+        requiredFields:
+            - subject_id
+            - preference_type
+            - opted_out
+            - enforced
+            - downstream_systems
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_preference
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - consent_preference_platform
+        requiredFields:
+            - subject_id
+            - preference_type
+            - opted_out
+            - enforced
+            - downstream_systems
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - subject_id
+            - preference_type
+    audit:
+        evidenceType: privacy_preference
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: Sale and sharing opt-outs are enforced across in-scope downstream systems.
+        auditorGuidance: Review the preference record, downstream system list, latest sync status, exception state, and enforcement timestamp.
+        riskStatement: An unenforced opt-out can continue restricted sale, sharing, advertising, or profiling activity after the person opted out.
+        remediationIntent: Sync the opt-out to downstream systems, validate enforcement, and retain sync evidence.
+        acceptableEvidence:
+            - source: consent_preference_platform
+              fields:
+                - subject_id
+                - preference_type
+                - opted_out
+                - enforced
+                - downstream_systems
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The subject or system is outside sale, sharing, advertising, or analytics scope.
+            - Enforcement evidence exists in a downstream system and is linked to the preference record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: consent_preference_sync
+            steps:
+                - Sync the opt-out to downstream systems.
+                - Confirm enforcement status in the consent preference platform.
+                - Rerun consent preference evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

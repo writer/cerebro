@@ -136,6 +136,7 @@ type familyConfigData struct {
 	StaticQuery  map[string]string
 	ConfigQuery  map[string]string
 	IdentityKeys []string
+	PathParams   []string
 }
 
 type oauthClientCredentialsData struct {
@@ -581,6 +582,8 @@ func cloneProviderAPI(api *connectordefinitions.ProviderAPISpec) *connectordefin
 	}
 	cloned := *api
 	cloned.References = append([]string(nil), api.References...)
+	cloned.AuthEvidence = append([]string(nil), api.AuthEvidence...)
+	cloned.ScopeEvidence = append([]string(nil), api.ScopeEvidence...)
 	cloned.Families = append([]connectordefinitions.ProviderAPIFamilySpec(nil), api.Families...)
 	return &cloned
 }
@@ -711,6 +714,8 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 				return nil, err
 			}
 		}
+		config := familyConfig(resource)
+		config.PathParams = pathParamsForResource(resource)
 		families = append(families, familyData{
 			Name:                  name,
 			Schema:                schemaNameFromRef(schemaRef, name),
@@ -732,7 +737,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			LinkHeader:            linkHeaderForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			DisablePageSize:       disablePageSizeForResource(resource),
-			Config:                familyConfig(resource),
+			Config:                config,
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 			Projection:            resource.Projection,
@@ -757,6 +762,13 @@ func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
 		}
 	}
 	return uniqueStrings(keys)
+}
+
+func pathParamsForResource(resource connectordefinitions.ResourceFamily) []string {
+	if resource.Read == nil {
+		return nil
+	}
+	return uniqueStrings(resource.Read.PathParams)
 }
 
 func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
@@ -1048,11 +1060,20 @@ func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPI
 	if strings.TrimSpace(api.Status) != "" {
 		fmt.Fprintf(b, "  status: %s\n", yamlString(api.Status))
 	}
+	if strings.TrimSpace(api.Basis) != "" {
+		fmt.Fprintf(b, "  basis: %s\n", yamlString(api.Basis))
+	}
+	if strings.TrimSpace(api.VerifiedAt) != "" {
+		fmt.Fprintf(b, "  verified_at: %s\n", yamlString(api.VerifiedAt))
+	}
 	if strings.TrimSpace(api.Transport) != "" {
 		fmt.Fprintf(b, "  transport: %s\n", yamlString(api.Transport))
 	}
 	if strings.TrimSpace(api.Auth) != "" {
 		fmt.Fprintf(b, "  auth: %s\n", yamlString(api.Auth))
+	}
+	if strings.TrimSpace(api.AuthMechanics) != "" {
+		fmt.Fprintf(b, "  auth_mechanics: %s\n", yamlString(api.AuthMechanics))
 	}
 	if strings.TrimSpace(api.BaseURL) != "" {
 		fmt.Fprintf(b, "  base_url: %s\n", yamlString(api.BaseURL))
@@ -1060,9 +1081,31 @@ func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPI
 	if strings.TrimSpace(api.Endpoint) != "" {
 		fmt.Fprintf(b, "  endpoint: %s\n", yamlString(api.Endpoint))
 	}
+	if strings.TrimSpace(api.SpecURL) != "" {
+		fmt.Fprintf(b, "  spec_url: %s\n", yamlString(api.SpecURL))
+	}
+	if strings.TrimSpace(api.SpecKind) != "" {
+		fmt.Fprintf(b, "  spec_kind: %s\n", yamlString(api.SpecKind))
+	}
 	if len(api.References) > 0 {
 		fmt.Fprintf(b, "  references:\n")
 		for _, ref := range api.References {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.AuthEvidence) > 0 {
+		fmt.Fprintf(b, "  auth_evidence:\n")
+		for _, ref := range api.AuthEvidence {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.ScopeEvidence) > 0 {
+		fmt.Fprintf(b, "  scope_evidence:\n")
+		for _, ref := range api.ScopeEvidence {
 			if strings.TrimSpace(ref) != "" {
 				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
 			}
@@ -1104,6 +1147,9 @@ func renderDeploy(request normalizedRequest) string {
 	for _, key := range request.ConfigKeys {
 		secretKeys = append(secretKeys, envNameForConfigKey(request, key))
 	}
+	for _, key := range pathParamKeys(request.Families) {
+		secretKeys = append(secretKeys, envNameForConfigKey(request, key))
+	}
 	for _, key := range authConfigKeys {
 		secretKeys = append(secretKeys, deployAuthEnvName(request, key, tokenEnv))
 	}
@@ -1119,6 +1165,13 @@ func renderDeploy(request normalizedRequest) string {
 		}
 		writtenConfigKeys := map[string]struct{}{}
 		for _, key := range request.ConfigKeys {
+			writtenConfigKeys[key] = struct{}{}
+			fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
+		}
+		for _, key := range family.Config.PathParams {
+			if _, ok := writtenConfigKeys[key]; ok {
+				continue
+			}
 			writtenConfigKeys[key] = struct{}{}
 			fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
 		}
@@ -1144,6 +1197,14 @@ func deployAuthEnvName(request normalizedRequest, key string, tokenEnv string) s
 		return tokenEnv
 	}
 	return envNameForConfigKey(request, key)
+}
+
+func pathParamKeys(families []familyData) []string {
+	keys := []string{}
+	for _, family := range families {
+		keys = append(keys, family.Config.PathParams...)
+	}
+	return uniqueStrings(keys)
 }
 
 func coverageDimensionType(class string) string {
@@ -1308,6 +1369,9 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
+		if len(family.Config.PathParams) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tPathParams: []string{%s},\n", quotedStrings(family.Config.PathParams))
+		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1587,7 +1651,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\tname: %s,\n", family.ConstName)
-		fmt.Fprintf(&b, "\t\t\tpath: %s,\n", strconv.Quote(renderTestPath(family.Path)))
+		fmt.Fprintf(&b, "\t\t\tpath: %s,\n", strconv.Quote(renderTestPath(family.Path, family.Config.PathParams...)))
 		fmt.Fprintf(&b, "\t\t\tkind: %s,\n", strconv.Quote(family.EventKind))
 		fmt.Fprintf(&b, "\t\t\texpectedAttributes: map[string]string{%s},\n", renderedAttributeMap(sourceTestExpectedAttributes(request, family)))
 		if usesDuoHMACAuth(request) {
@@ -1657,6 +1721,9 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	for _, family := range request.Families {
 		for _, key := range extractTemplateKeys(family.Path) {
+			emitCfgValue(key, strconv.Quote(testConfigValue(key)))
+		}
+		for _, key := range family.Config.PathParams {
 			emitCfgValue(key, strconv.Quote(testConfigValue(key)))
 		}
 	}
@@ -1868,16 +1935,22 @@ func isDuoHMACAuthModel(authModel string) bool {
 	}
 }
 
-// renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}
-// placeholders with their testConfigValue so generated test assertions match the
-// concrete request paths the runtime produces for sources with path parameters.
-func renderTestPath(template string) string {
+// renderTestPath substitutes config-template and path-parameter placeholders
+// with their testConfigValue so generated test assertions match runtime paths.
+func renderTestPath(template string, pathParams ...string) string {
 	rendered := template
 	for _, key := range extractTemplateKeys(template) {
 		value := testConfigValue(key)
 		for _, prefix := range []string{"config", "credential", "connection"} {
 			rendered = strings.ReplaceAll(rendered, "${"+prefix+"."+key+"}", value)
 		}
+	}
+	for _, param := range pathParams {
+		param = strings.TrimSpace(param)
+		if param == "" {
+			continue
+		}
+		rendered = strings.ReplaceAll(rendered, "{"+param+"}", testConfigValue(param))
 	}
 	return rendered
 }

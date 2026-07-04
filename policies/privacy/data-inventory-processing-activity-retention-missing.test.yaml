@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: personal data activity without retention fails
+      resource:
+          processing_activity_id: pa-200
+          personal_data: true
+          purpose: account_support
+          owner_id: privacy-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: retention recorded passes
+      resource:
+          processing_activity_id: pa-201
+          personal_data: true
+          purpose: account_support
+          retention_period: "2 years"
+          disposal_rule: delete_after_retention
+          owner_id: privacy-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: required verification missing fails
+      resource:
+          request_id: dsr-200
+          request_type: access
+          status: in_progress
+          verification_required: true
+          verification_status: pending
+      wantFinding: true
+    - name: verified request passes
+      resource:
+          request_id: dsr-201
+          request_type: deletion
+          status: in_progress
+          verification_required: true
+          verification_status: verified
+      wantFinding: false

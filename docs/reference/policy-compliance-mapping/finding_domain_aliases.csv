@@ -4,6 +4,7 @@ finding,slack-admin-without-sso,collaboration
 finding,slack-app-bot-token-unreviewed,collaboration
 finding,slack-external-shared-channel-unreviewed,collaboration
 finding,slack-guest-user-no-expiry,collaboration
+finding,vendor-dpa-exists,vendor
 pack,anthropic,secrets
 pack,archetype,vulnerability
 pack,aurelius,vulnerability

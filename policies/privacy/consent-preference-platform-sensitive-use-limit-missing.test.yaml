@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: required sensitive-use limit missing fails
+      resource:
+          subject_id: person-200
+          sensitive_personal_information: true
+          requires_limit_use_control: true
+          limit_use_enabled: false
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: true
+    - name: sensitive-use limit enabled passes
+      resource:
+          subject_id: person-201
+          sensitive_personal_information: true
+          requires_limit_use_control: true
+          limit_use_enabled: true
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: false

@@ -1,0 +1,109 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: privacy-request-system-denial-rationale-missing
+    name: Privacy Request Denial Rationale Missing
+    description: Flags denied privacy request system rights requests that do not retain a denial reason.
+    tags:
+        - privacy
+        - privacy-request-system
+        - rights-requests
+        - denial-rationale
+        - data-subject-request
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: medium
+    effect: forbid
+    resource: privacy_request_system::rights_request
+    match:
+        conditions:
+            - cmp_eq(path(resource, "status"), "denied")
+            - (!exists_path(resource, "denial_reason")) || cmp_eq(path(resource, "denial_reason"), "")
+        conditionFormat: cel
+    remediation:
+        summary: Add the denial reason, reviewer, legal basis, and requester notice evidence to the denied request.
+        steps:
+            - Review why the request was denied.
+            - Record the denial reason and reviewer approval.
+            - Attach requester notice evidence to the request record.
+    riskCategories:
+        - GOVERNANCE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 12
+            - Article 15
+            - Article 16
+            - Article 17
+            - Article 18
+            - Article 20
+            - Article 21
+        - name: CCPA
+          controls:
+            - "1798.125"
+            - "1798.130"
+    input:
+        sourceKinds:
+            - privacy_request_system.rights_request
+        requiredFields:
+            - request_id
+            - request_type
+            - status
+            - denial_reason
+            - reviewer_id
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_request
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - privacy_request_system
+        requiredFields:
+            - request_id
+            - request_type
+            - status
+            - denial_reason
+            - reviewer_id
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - request_id
+    audit:
+        evidenceType: privacy_request
+        assessmentMethods:
+            - examine
+        freshnessSLA: 30d
+        auditorStatement: Denied privacy requests retain the denial reason, reviewer, and requester notice evidence.
+        auditorGuidance: Review the denied request, denial reason, reviewer action, notice evidence, and any appeal or escalation state.
+        riskStatement: Denials without rationale weaken proof that rights requests were handled consistently and lawfully.
+        remediationIntent: Add denial rationale, reviewer approval, and notice evidence to the request record.
+        acceptableEvidence:
+            - source: privacy_request_system
+              fields:
+                - request_id
+                - request_type
+                - status
+                - denial_reason
+                - reviewer_id
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The request was not denied, was withdrawn, or carries denial rationale in a linked legal review record.
+    actions:
+        owner:
+            from: resource.reviewer_id
+            fallback: privacy.owner
+        remediation:
+            type: privacy_request_denial_review
+            steps:
+                - Add denial rationale and reviewer evidence.
+                - Attach requester notice evidence.
+                - Rerun privacy request evidence collection.
+        effort: low
+        verification:
+            rerunPolicy: true
+    enabled: true
