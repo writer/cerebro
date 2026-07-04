@@ -228,7 +228,7 @@ var generatedHipaaRules = []policyRuleConfig{
 		AuditorGuidance:   "Review the incident record, affected jurisdiction, affected subject count, media-notice requirement, notice deadline, outlet evidence, and delay state.",
 		RiskStatement:     "Overdue media breach notice can leave the affected jurisdiction without required public breach information.",
 		RemediationIntent: "Send the media notice or attach approved delay evidence, then retain outlet and delivery evidence.",
-		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
+		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Delay evidence must include the legal basis, approver, start date, and expected notice date.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
 		ControlFamilies:   []string{"HIPAA 164.4 Breach Notification"},
 		ContractAttributes: map[string]string{
 			"policy_action_effort":                     "medium",
@@ -283,7 +283,7 @@ var generatedHipaaRules = []policyRuleConfig{
 		AuditorGuidance:   "Review the incident record, discovery date, affected subject count, Secretary notice requirement, notice deadline, submission receipt, and delay state.",
 		RiskStatement:     "Overdue Secretary notice can leave required regulator reporting incomplete for a HIPAA breach.",
 		RemediationIntent: "Submit the HHS Secretary notice or attach approved delay evidence, then retain submission and closure evidence.",
-		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "Secretary notice was not required yet for the breach track or the notice was delayed under an approved law-enforcement request.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
+		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Delay evidence must include the legal basis, approver, start date, and expected notice date.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "Secretary notice was not required yet for the breach track or the notice was delayed under an approved law-enforcement request.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
 		ControlFamilies:   []string{"HIPAA 164.4 Breach Notification"},
 		ContractAttributes: map[string]string{
 			"policy_action_effort":                     "medium",

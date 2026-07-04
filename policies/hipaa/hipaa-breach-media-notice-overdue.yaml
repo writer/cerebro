@@ -103,6 +103,8 @@ spec:
         exceptionPolicy:
             maxAge: 30d
             requiresApproval: true
+        exceptionGuidance:
+            - Delay evidence must include the legal basis, approver, start date, and expected notice date.
         falsePositives:
             - Media notice was not required for the affected jurisdiction or the notice was delayed under an approved law-enforcement request.
     actions:
