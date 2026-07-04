@@ -61,37 +61,22 @@ func TestRebuildDryRunMergesDopplerSecretProjectWithoutFragmentation(t *testing.
 	}
 }
 
-// TestRebuildDryRunMergesHashicorpVaultSecretOwnerWithUser is the clean
-// counterpart: the secret owned_by edge merges onto the real user node (which
-// carries its own outgoing edges), with no identity fragmentation.
-func TestRebuildDryRunMergesHashicorpVaultSecretOwnerWithUser(t *testing.T) {
+// TestRebuildDryRunLinksHashicorpVaultSecretToMount pins the relationship
+// Vault can prove from /sys/mounts: a secret engine belongs to its mounted
+// Vault engine, with no identity fragmentation.
+func TestRebuildDryRunLinksHashicorpVaultSecretToMount(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
-		testRuntimeEvent("vault-user-1", "hashicorp_vault.users", "writer-vault", map[string]string{
-			"user_id":     "user-1",
-			"resource_id": "user-1",
-			"email":       "user@example.test",
-		}),
 		testRuntimeEvent("vault-secret-1", "hashicorp_vault.secrets", "writer-vault", map[string]string{
-			"secret_id":     "vsecret-1",
-			"secret_name":   "api-key",
-			"owner_user_id": "user-1",
+			"secret_id":   "vsecret-1",
+			"secret_name": "kv/",
+			"vault_id":    "kv",
 		}),
 	}
 	result := replayDryRun(t, "writer-vault", "hashicorp_vault", events)
 
-	userURN := "urn:cerebro:writer:hashicorp_vault_user:user-1"
-	if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:vsecret-1", "owned_by", userURN) {
-		t.Fatalf("missing owned_by edge: %#v", result.PreviewLinks)
-	}
-	hasOutgoing := false
-	for _, link := range result.PreviewLinks {
-		if link != nil && link.FromURN == userURN {
-			hasOutgoing = true
-			break
-		}
-	}
-	if !hasOutgoing {
-		t.Fatalf("owner target did not merge with the real user node (no outgoing edges from %s): %#v", userURN, result.PreviewLinks)
+	vaultURN := "urn:cerebro:writer:hashicorp_vault_vault:kv"
+	if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:vsecret-1", "belongs_to", vaultURN) {
+		t.Fatalf("missing belongs_to edge: %#v", result.PreviewLinks)
 	}
 	if !containsAssertion(result.GraphAssertions, "cross_kind_identity_fragmentation", 0, 0, true) {
 		t.Fatalf("cross_kind_identity_fragmentation not clean: %#v", result.GraphAssertions)

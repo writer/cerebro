@@ -389,6 +389,51 @@ func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	}
 }
 
+func TestBuiltinCatalogHashicorpVaultFamiliesMirrorRuntimeConfig(t *testing.T) {
+	entry, ok, err := BuiltinEntry("hashicorp_vault")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(hashicorp_vault) ok = false, want true")
+	}
+
+	wantStaticFields := map[string]map[string]string{
+		"users": {
+			"resource_type": "vault_identity_entity",
+		},
+		"secrets": {
+			"resource_type": "vault_secret_engine",
+			"secret_status": "enabled",
+		},
+		"audit_events": {
+			"actor_id":      "vault",
+			"event_type":    "vault.audit_device.enabled",
+			"resource_type": "vault_audit_device",
+		},
+	}
+
+	for _, familyID := range []string{"users", "secrets", "audit_events"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
+			t.Fatalf("%s config = %#v, want tenant_id config attribute", familyID, family.Config)
+		}
+		if family.Projection == nil {
+			t.Fatalf("%s projection = nil, want static fields", familyID)
+		}
+		for key, want := range wantStaticFields[familyID] {
+			if got := family.Projection.StaticFields[key]; got != want {
+				t.Fatalf("%s static field %s = %q, want %q", familyID, key, got, want)
+			}
+		}
+	}
+
+	secrets := catalogFamily(t, entry.Definition.ResourceFamilies, "secrets")
+	if _, ok := secrets.Projection.Fields["secret_status"]; ok {
+		t.Fatal("secrets projection fields include secret_status, want final static field only")
+	}
+}
+
 func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	entry, ok, err := BuiltinEntry("auth0")
 	if err != nil {

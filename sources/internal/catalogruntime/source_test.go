@@ -1544,6 +1544,37 @@ func TestProjectionFieldsOverrideClassDefaults(t *testing.T) {
 	}
 }
 
+func TestProjectionStaticFieldsBecomeRuntimeFinalStaticAttributes(t *testing.T) {
+	family, err := jsonapiFamily("example", connectordefinitions.ResourceFamily{
+		ID:      "audit_events",
+		Path:    "/v1/audit",
+		IDField: "id",
+		Event: connectordefinitions.EventMappingSpec{
+			Kind:      "example.audit_events",
+			SchemaRef: "example/audit_events/v1",
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: "audit_event",
+			StaticFields: map[string]string{
+				"actor_id":   "system",
+				"event_type": "audit.configuration.enabled",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("jsonapiFamily() error = %v", err)
+	}
+	if got := family.Config.FinalStaticAttributes["actor_id"]; got != "system" {
+		t.Fatalf("actor_id = %q, want static projection value", got)
+	}
+	if got := family.Config.FinalStaticAttributes["event_type"]; got != "audit.configuration.enabled" {
+		t.Fatalf("event_type = %q, want static projection value", got)
+	}
+	if got := family.StaticAttributes["record_class"]; got != "audit_event" {
+		t.Fatalf("record_class = %q, want audit_event", got)
+	}
+}
+
 func TestSecretProjectionTemplateDefaults(t *testing.T) {
 	resource := connectordefinitions.ResourceFamily{
 		ID: "secrets",

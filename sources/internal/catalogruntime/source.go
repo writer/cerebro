@@ -147,6 +147,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	}
 	config := familyConfig(resource)
 	config.Method = method
+	config.FinalStaticAttributes = finalStaticAttributes(resource.Projection)
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -460,6 +461,21 @@ func staticAttributes(sourceID string, family string, class string) map[string]s
 		"record_class":  class,
 		"family":        family,
 	}
+}
+
+func finalStaticAttributes(projection *connectordefinitions.ProjectionSpec) map[string]string {
+	if projection != nil {
+		attrs := map[string]string{}
+		for key, value := range projection.StaticFields {
+			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+				attrs[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			}
+		}
+		if len(attrs) > 0 {
+			return attrs
+		}
+	}
+	return nil
 }
 
 func titleFromID(value string) string {

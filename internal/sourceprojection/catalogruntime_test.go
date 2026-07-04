@@ -688,6 +688,45 @@ func catalogRuntimeRegistry(projectors map[string]ProjectFunc) (*Registry, error
 	return NewRegistry(entries...)
 }
 
+func TestCatalogRuntimeSyntheticAttributesIncludeStaticFields(t *testing.T) {
+	attrs := catalogRuntimeSyntheticAttributes("hashicorp_vault", connectordefinitions.ResourceFamily{
+		ID: "secrets",
+		Event: connectordefinitions.EventMappingSpec{
+			RequiredAttributes: []string{"secret_status"},
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Fields: map[string]string{
+				"resource_type": "resource_type",
+				"secret_status": "status",
+			},
+			StaticFields: map[string]string{
+				"resource_type": "vault_secret_engine",
+				"secret_status": "enabled",
+				"vault_scope":   "system",
+			},
+			Relationships: []connectordefinitions.ProjectionRelationshipSpec{{
+				Relation:           "belongs_to",
+				RequiredAttributes: []string{"secret_status", "vault_scope"},
+				LinkAttributes:     []string{"resource_type"},
+				To: connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "hashicorp_vault.vault",
+					IDAttributes:   []string{"vault_scope"},
+					LabelAttribute: "resource_name",
+				},
+			}},
+		},
+	})
+	if got := attrs["resource_type"]; got != "vault_secret_engine" {
+		t.Fatalf("resource_type = %q, want static field value", got)
+	}
+	if got := attrs["secret_status"]; got != "enabled" {
+		t.Fatalf("secret_status = %q, want static field value", got)
+	}
+	if got := attrs["vault_scope"]; got != "system" {
+		t.Fatalf("vault_scope = %q, want static field value", got)
+	}
+}
+
 func catalogRuntimeSyntheticAttributes(sourceID string, resource connectordefinitions.ResourceFamily) map[string]string {
 	familyID := firstNonEmpty(strings.TrimSpace(resource.ID), "resource")
 	token := catalogRuntimeSyntheticToken(sourceID, familyID)
@@ -829,6 +868,9 @@ func catalogRuntimeSyntheticAttributes(sourceID string, resource connectordefini
 			}
 			catalogRuntimeFillEntitySpec(attrs, relationship.To, recordID, label, familyID, resourceURN, email)
 		}
+		for target, value := range resource.Projection.StaticFields {
+			catalogRuntimeSetSyntheticField(attrs, target, value)
+		}
 	}
 	return attrs
 }
@@ -948,7 +990,7 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 		}
 	})
 
-	t.Run("hashicorp_vault secrets owned_by user", func(t *testing.T) {
+	t.Run("hashicorp_vault secrets belongs_to vault", func(t *testing.T) {
 		projector := registry.projectors["hashicorp_vault.secrets"]
 		if projector == nil {
 			t.Fatal("missing registered projector for hashicorp_vault.secrets")
@@ -959,16 +1001,16 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 			SourceId: "hashicorp_vault",
 			Kind:     "hashicorp_vault.secrets",
 			Attributes: map[string]string{
-				"secret_id":     "secret-1",
-				"secret_name":   "kv/db",
-				"owner_user_id": "user-1",
+				"secret_id":   "secret-1",
+				"secret_name": "kv/db",
+				"vault_id":    "kv",
 			},
 		})
 		if err != nil {
 			t.Fatalf("hashicorp_vault.secrets projector error = %v", err)
 		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationOwnedBy, "urn:cerebro:tenant:hashicorp_vault_user:user-1") {
-			t.Fatalf("declared owned_by edge not emitted by registered projector: %#v", links)
+		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
 		}
 	})
 }
