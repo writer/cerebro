@@ -226,6 +226,37 @@ func TestProjectWizAsset(t *testing.T) {
 	}
 }
 
+func TestDiscoverRuntimeDepthRequiresMappedProviderFamilies(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeDepthFile(t, root, "sources/empty/catalog.yaml", `
+id: empty
+name: Empty
+provider_api:
+  status: verified
+  basis: declared
+  transport: rest
+  auth: bearer_token
+  base_url: https://api.example.test
+  references:
+    - https://api.example.test/docs
+coverage_contract:
+  dimensions: []
+`)
+	writeRuntimeDepthFile(t, root, "sources/empty/source.go", "package empty\n")
+
+	inventory, err := DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth() error = %v", err)
+	}
+	depth := inventory["empty"]
+	if !depth.ProviderAPI.HasContract {
+		t.Fatalf("provider API flags = %#v, want contract present", depth.ProviderAPI)
+	}
+	if depth.ProviderAPI.HasMapping {
+		t.Fatalf("provider API mapping = true for empty mapped families: %#v", depth.ProviderAPI)
+	}
+}
+
 func TestDiscoverRuntimeDepthReadsProviderAPIDisproof(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeDepthFile(t, root, "sources/digitalocean/catalog.yaml", `

@@ -222,7 +222,7 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.ProviderAPI.HasContract = hasProviderAPIContract(catalog.ProviderAPI)
 		depth.ProviderAPI.MappedFamilies = providerAPIFamilies(catalog.ProviderAPI)
 		depth.ProviderAPI.MissingFamilyMappings = missingValues(depth.RuntimeFamilies, depth.ProviderAPI.MappedFamilies)
-		depth.ProviderAPI.HasMapping = depth.ProviderAPI.HasContract && len(depth.ProviderAPI.MissingFamilyMappings) == 0
+		depth.ProviderAPI.HasMapping = depth.ProviderAPI.HasContract && len(depth.ProviderAPI.MissingFamilyMappings) == 0 && len(depth.ProviderAPI.MappedFamilies) > 0
 		proof := providerAPIProofScore(catalog.ProviderAPI, depth.ProviderAPI.MissingFamilyMappings)
 		depth.ProviderAPI.HasProof = proof.HasProof
 		depth.ProviderAPI.ProofScore = proof.Score
