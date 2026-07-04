@@ -112,6 +112,7 @@ type connectorCatalogDefinitionState struct {
 	Cataloged             bool                          `json:"cataloged"`
 	Callable              bool                          `json:"callable"`
 	IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth,omitempty"`
+	connectorcatalog.ProviderAPIView
 }
 type connectorCatalogRuntimeState struct {
 	Status                 string `json:"status"`
@@ -727,7 +728,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 	vaultStatus := connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
 	stores := connectorStoreViews(vaultStatus, transport, a.cfg.ConnectorSecretStores)
 	definitionCatalog := a.connectorDefinitionCatalog()
-	definitionsBySourceID := connectorDefinitionCatalogBySourceID(definitionCatalog)
+	definitionsBySourceID := connectorcatalog.EntriesBySourceID(definitionCatalog)
 	seen := map[string]struct{}{}
 	entries := make([]connectorCatalogEntry, 0, len(sources))
 	for _, source := range sources {
@@ -741,6 +742,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			connectorCatalogDefinitionState: connectorCatalogDefinitionState{
 				EmittedKinds:     append([]string{}, source.GetEmittedKinds()...),
 				DefinitionOrigin: connectorDefinitionOriginCompiled,
+				ProviderAPIView:  connectorcatalog.ProviderAPIViewForSource(source.GetId(), connectordefinitions.Definition{}),
 			},
 			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
 				Status: "available",
@@ -796,6 +798,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				ResourceFamilies:      connectorDefinitionResourceFamilies(definition),
 				ValidationGrade:       string(connectorvalidation.GradeGeneratedFromDocs),
 				Cataloged:             true,
+				ProviderAPIView:       connectorcatalog.ProviderAPIViewForSource(sourceID, definition),
 			},
 			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
 				Status: "available",
@@ -2054,18 +2057,6 @@ func (a *App) connectorDefinitionCatalog() []connectorcatalog.Entry {
 	return analysis.Entries
 }
 
-func connectorDefinitionCatalogBySourceID(entries []connectorcatalog.Entry) map[string]connectorcatalog.Entry {
-	out := make(map[string]connectorcatalog.Entry, len(entries))
-	for _, entry := range entries {
-		sourceID := strings.TrimSpace(entry.Definition.SourceID)
-		if sourceID == "" {
-			continue
-		}
-		out[sourceID] = entry
-	}
-	return out
-}
-
 func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry connectorcatalog.Entry) {
 	if entry == nil {
 		return
@@ -2083,6 +2074,7 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	entry.CatalogCategories = append([]string{}, catalogEntry.Definition.Categories...)
 	entry.VerificationEndpoint = catalogEntry.VerificationPath
 	entry.ResourceFamilies = connectorDefinitionResourceFamilies(catalogEntry.Definition)
+	entry.ProviderAPIView = connectorcatalog.ProviderAPIViewForSource(catalogEntry.Definition.SourceID, catalogEntry.Definition)
 	if entry.Description == "" {
 		entry.Description = catalogEntry.Definition.Description
 	}

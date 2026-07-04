@@ -156,6 +156,68 @@ coverage_contract:
 	}
 }
 
+func TestLoadSourceCatalogParsesProviderAPIProof(t *testing.T) {
+	catalog, err := LoadSourceCatalog([]byte(`
+id: catalog_provider_api_test
+name: Catalog Provider API Test
+emitted_kinds:
+  - catalog_provider_api_test.user
+runtime_families:
+  - users
+  - audit_events
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-03T00:00:00Z
+  transport: rest
+  auth: oauth_client_credentials
+  auth_mechanics: oauth2_client_credentials_bearer
+  base_url: https://example.test/api
+  spec_url: https://example.test/openapi.json
+  spec_kind: openapi
+  references:
+    - https://example.test/docs
+  auth_evidence:
+    - https://example.test/auth
+  scope_evidence:
+    - https://example.test/scopes
+  families:
+    - id: users
+      method: get
+      path: /users
+    - id: audit_events
+      method: GET
+      path: /logs
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	if catalog.ProviderAPI == nil {
+		t.Fatal("ProviderAPI = nil, want parsed provider API proof")
+	}
+	if catalog.ProviderAPI.Families[0].Method != "GET" {
+		t.Fatalf("ProviderAPI family method = %q, want GET", catalog.ProviderAPI.Families[0].Method)
+	}
+	if len(catalog.RuntimeFamilies) != 2 || catalog.RuntimeFamilies[0] != "audit_events" || catalog.RuntimeFamilies[1] != "users" {
+		t.Fatalf("RuntimeFamilies = %#v, want sorted audit_events/users", catalog.RuntimeFamilies)
+	}
+	api, runtimeFamilies, ok := CatalogProviderAPIForSource("catalog_provider_api_test")
+	if !ok {
+		t.Fatal("CatalogProviderAPIForSource() ok = false, want registered provider API proof")
+	}
+	if api.Status != "verified" || api.SpecURL != "https://example.test/openapi.json" {
+		t.Fatalf("registered provider API = %#v", api)
+	}
+	if len(runtimeFamilies) != 2 || runtimeFamilies[0] != "audit_events" || runtimeFamilies[1] != "users" {
+		t.Fatalf("registered runtime families = %#v, want sorted audit_events/users", runtimeFamilies)
+	}
+	api.References[0] = "mutated"
+	api, _, ok = CatalogProviderAPIForSource("catalog_provider_api_test")
+	if !ok || api.References[0] != "https://example.test/docs" {
+		t.Fatalf("registered provider API clone = %#v, ok=%v", api, ok)
+	}
+}
+
 func TestLoadSourceCatalogParsesFamilyFreshnessProbe(t *testing.T) {
 	catalog, err := LoadSourceCatalog([]byte(`
 id: github

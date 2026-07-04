@@ -31,6 +31,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	auth0source "github.com/writer/cerebro/sources/auth0"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1602,6 +1603,75 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		if family.ProjectionTemplate == "" || !family.HighValue {
 			t.Fatalf("jenkins family = %#v, want projection and high-value coverage", family)
 		}
+	}
+}
+
+func TestConnectorCatalogExposesProviderAPIProofFields(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	auth0Source, err := auth0source.New()
+	if err != nil {
+		t.Fatalf("auth0.New() error = %v", err)
+	}
+	registry, err := sourcecdk.NewRegistry(source, auth0Source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	type catalogConnector struct {
+		SourceID                  string   `json:"source_id"`
+		HasProviderAPIContract    bool     `json:"has_provider_api_contract"`
+		HasProviderAPIMapping     bool     `json:"has_provider_api_mapping"`
+		HasProviderAPIProof       bool     `json:"has_provider_api_proof"`
+		ProviderAPIStatus         string   `json:"provider_api_status"`
+		ProviderAPISpecURL        string   `json:"provider_api_spec_url"`
+		ProviderAPIReferences     []string `json:"provider_api_references"`
+		ProviderAPIAuthEvidence   []string `json:"provider_api_auth_evidence"`
+		ProviderAPIScopeEvidence  []string `json:"provider_api_scope_evidence"`
+		ProviderAPIMappedFamilies []string `json:"provider_api_mapped_families"`
+		ProviderAPIProofScore     int      `json:"provider_api_proof_score"`
+		ProviderAPIProofLevel     string   `json:"provider_api_proof_level"`
+	}
+	var payload struct {
+		Connectors []catalogConnector `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	bySourceID := map[string]catalogConnector{}
+	for _, connector := range payload.Connectors {
+		bySourceID[connector.SourceID] = connector
+	}
+	auth0 := bySourceID["auth0"]
+	if !auth0.HasProviderAPIContract || !auth0.HasProviderAPIMapping || !auth0.HasProviderAPIProof {
+		t.Fatalf("auth0 provider API flags = contract:%v mapping:%v proof:%v, want complete proof", auth0.HasProviderAPIContract, auth0.HasProviderAPIMapping, auth0.HasProviderAPIProof)
+	}
+	if auth0.ProviderAPIStatus != "verified" || auth0.ProviderAPIProofScore != 100 || auth0.ProviderAPIProofLevel != "verified" {
+		t.Fatalf("auth0 provider API proof = status %q score %d level %q, want verified 100", auth0.ProviderAPIStatus, auth0.ProviderAPIProofScore, auth0.ProviderAPIProofLevel)
+	}
+	if auth0.ProviderAPISpecURL == "" || len(auth0.ProviderAPIReferences) == 0 || len(auth0.ProviderAPIAuthEvidence) == 0 || len(auth0.ProviderAPIScopeEvidence) == 0 {
+		t.Fatalf("auth0 provider API evidence incomplete: spec=%q refs=%v auth=%v scopes=%v", auth0.ProviderAPISpecURL, auth0.ProviderAPIReferences, auth0.ProviderAPIAuthEvidence, auth0.ProviderAPIScopeEvidence)
+	}
+	if !containsString(auth0.ProviderAPIMappedFamilies, "users") || !containsString(auth0.ProviderAPIMappedFamilies, "audit_events") {
+		t.Fatalf("auth0 provider API mapped families = %v, want users and audit_events", auth0.ProviderAPIMappedFamilies)
 	}
 }
 
