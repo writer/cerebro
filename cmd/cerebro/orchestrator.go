@@ -479,7 +479,9 @@ func orchestratorDownstreamSkipReason(syncResult *cerebrov1.SyncSourceRuntimeRes
 		return ""
 	}
 	switch strings.TrimSpace(syncResult.GetShortCircuitReason()) {
-	case string(sourcecdk.PullShortCircuitReasonNotModified), string(sourcecdk.PullShortCircuitReasonCheckpointAdvanced):
+	case string(sourcecdk.PullShortCircuitReasonNotModified),
+		string(sourcecdk.PullShortCircuitReasonCheckpointAdvanced),
+		string(sourcecdk.PullShortCircuitReasonWatermarkReached):
 		return "source_unchanged"
 	default:
 		return ""
