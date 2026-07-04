@@ -11,3 +11,12 @@ runtimes:
       stale_after_seconds: "86400"
       per_page: "100"
       token: env:GOOGLE_DRIVE_TOKEN
+  - localId: shared-drives
+    config:
+      family: shared_drives
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /about?fields=user
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:GOOGLE_DRIVE_TOKEN

@@ -57,8 +57,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: CIS Controls v8
+          control_id: "1"
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Files use Drive file IDs for resource identity and synthesize graph URNs from the provider ID.
     - id: shared_drives
       type: entity_family
       title: "Shared Drives"
@@ -67,8 +72,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: CIS Controls v8
+          control_id: "1"
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Shared drives use Drive IDs for resource identity and expose shared-drive restrictions as payload evidence.
     - id: changes
       type: audit_event
       title: "Changes"
@@ -77,8 +87,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: CIS Controls v8
+          control_id: "8"
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Drive changes identify file or shared-drive changes from the provider page token stream; actor detail requires Drive Activity data.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -112,6 +127,6 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
     required_payload_fields:
       - fileId

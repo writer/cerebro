@@ -3,11 +3,13 @@ package google_drive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"gopkg.in/yaml.v3"
 )
@@ -74,49 +76,117 @@ func TestCatalogDeclaresVerifiedGoogleDriveProviderAPI(t *testing.T) {
 	}
 }
 
-func TestSourceCheckAndRead(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+func TestSourceCheckAndReadRuntimeFamilies(t *testing.T) {
+	tests := []struct {
+		family        string
+		path          string
+		responseKey   string
+		record        map[string]any
+		wantKind      string
+		wantURN       string
+		wantAttribute string
+		wantValue     string
+	}{
+		{
+			family:      familyFiles,
+			path:        "/files",
+			responseKey: "files",
+			record: map[string]any{
+				"kind":         "drive#file",
+				"id":           "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+				"name":         "Risk Register",
+				"mimeType":     "application/vnd.google-apps.spreadsheet",
+				"modifiedTime": "2026-06-29T18:12:44Z",
+				"createdTime":  "2026-06-20T09:10:00Z",
+			},
+			wantKind:      "google_drive.files",
+			wantURN:       "urn:cerebro:tenant:google_drive_files:1AbCdEfGhIjKlMnOpQrStUvWxYz",
+			wantAttribute: "resource_type",
+			wantValue:     "application/vnd.google-apps.spreadsheet",
+		},
+		{
+			family:      familySharedDrives,
+			path:        "/drives",
+			responseKey: "drives",
+			record: map[string]any{
+				"kind":        "drive#drive",
+				"id":          "0AExampleSharedDrive",
+				"name":        "Security Evidence",
+				"createdTime": "2026-06-20T10:05:00Z",
+				"restrictions": map[string]any{
+					"driveMembersOnly": true,
+					"domainUsersOnly":  true,
+				},
+			},
+			wantKind:      "google_drive.shared_drives",
+			wantURN:       "urn:cerebro:tenant:google_drive_shared_drives:0AExampleSharedDrive",
+			wantAttribute: "resource_type",
+			wantValue:     "shared_drive",
+		},
 	}
-	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.RequestURI() == "/about?fields=user" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/files" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
-	}))
-	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
-	if err := source.Check(context.Background(), cfg); err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
-	}
-	event := pull.Events[0]
-	if event.Kind != "google_drive.files" {
-		t.Fatalf("kind = %q", event.Kind)
-	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer test-token" {
+					t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+				}
+				if r.URL.RequestURI() == "/about?fields=user" {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				if r.URL.Path != tt.path {
+					t.Fatalf("path = %q, want %q", r.URL.Path, tt.path)
+				}
+				if got := r.URL.Query().Get("pageSize"); got == "" {
+					t.Fatalf("pageSize query is empty")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"kind":          "drive#list",
+					"nextPageToken": "page-2",
+					tt.responseKey:  []map[string]any{tt.record},
+				})
+			}))
+			defer server.Close()
+
+			cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": tt.family, "token": "test-token", "per_page": "25"})
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.wantKind {
+				t.Fatalf("kind = %q, want %q", event.Kind, tt.wantKind)
+			}
+			if strings.TrimSpace(event.Id) == "" {
+				t.Fatalf("event id is empty: %#v", event)
+			}
+			if got := event.Attributes["resource_urn"]; got != tt.wantURN {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.wantURN)
+			}
+			if got := event.Attributes[tt.wantAttribute]; got != tt.wantValue {
+				t.Fatalf("%s = %q, want %q", tt.wantAttribute, got, tt.wantValue)
+			}
+			if got := sourcecdk.CursorToken(pull.NextCursor); got != "page-2" {
+				t.Fatalf("NextCursor = %q, want page-2", got)
+			}
+		})
 	}
 }
 
-func TestSourceReadsSharedDrives(t *testing.T) {
+func TestSourceReadsChangesWithProviderPageToken(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -126,28 +196,72 @@ func TestSourceReadsSharedDrives(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.RequestURI() == "/about?fields=user" {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if r.URL.Path != "/changes" {
+			t.Fatalf("path = %q, want /changes", r.URL.Path)
 		}
-		if r.URL.Path != "/drives" {
-			t.Fatalf("path = %q", r.URL.Path)
+		if got := r.URL.Query().Get("pageToken"); got != "start-token" {
+			t.Fatalf("pageToken = %q, want start-token", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"drives": []map[string]string{{"id": "drive-1", "resource_urn": "urn:cerebro:tenant:runtime_shared_drive:drive-1", "resource_type": "shared_drive", "resource_id": "drive-1", "name": "Security", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"kind":              "drive#changeList",
+			"newStartPageToken": "new-start-token",
+			"changes": []map[string]any{{
+				"kind":       "drive#change",
+				"fileId":     "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+				"time":       "2026-06-29T18:12:44Z",
+				"type":       "file",
+				"changeType": "file",
+				"file": map[string]any{
+					"kind":     "drive#file",
+					"id":       "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+					"name":     "Risk Register",
+					"mimeType": "application/vnd.google-apps.spreadsheet",
+				},
+			}},
+		})
 	}))
 	defer server.Close()
 
-	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familySharedDrives, "token": "test-token"})
-	pull, err := source.Read(context.Background(), cfg, nil)
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyChanges, "token": "test-token", "per_page": "25"})
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "start-token"})
 	if err != nil {
-		t.Fatalf("Read(shared_drives) error = %v", err)
+		t.Fatalf("Read(changes) error = %v", err)
 	}
 	if len(pull.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
-	if got := pull.Events[0].Kind; got != "google_drive.shared_drives" {
-		t.Fatalf("kind = %q, want google_drive.shared_drives", got)
+	event := pull.Events[0]
+	if got := event.Kind; got != "google_drive.changes" {
+		t.Fatalf("kind = %q, want google_drive.changes", got)
+	}
+	if got := event.Attributes["event_type"]; got != "file" {
+		t.Fatalf("event_type = %q, want file", got)
+	}
+	if got := event.Attributes["resource_id"]; got != "1AbCdEfGhIjKlMnOpQrStUvWxYz" {
+		t.Fatalf("resource_id = %q, want file ID", got)
+	}
+}
+
+func TestSourceCheckReportsProviderUnavailable(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "provider unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyFiles, "token": "test-token"})
+	err = source.Check(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("Check() error = nil, want provider unavailable failure")
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Check() error = %v, want provider unavailable status", err)
 	}
 }
 
@@ -173,9 +287,9 @@ func TestNewFixtureReplaysGoogleDriveFamilies(t *testing.T) {
 		kind   string
 		want   string
 	}{
-		{family: familyChanges, kind: "google_drive.changes", want: "source-google_drive-changes-1"},
-		{family: familyFiles, kind: "google_drive.files", want: "source-google_drive-files-1"},
-		{family: familySharedDrives, kind: "google_drive.shared_drives", want: "source-google_drive-shared_drives-1"},
+		{family: familyChanges, kind: "google_drive.changes", want: "1AbCdEfGhIjKlMnOpQrStUvWxYz"},
+		{family: familyFiles, kind: "google_drive.files", want: "1AbCdEfGhIjKlMnOpQrStUvWxYz"},
+		{family: familySharedDrives, kind: "google_drive.shared_drives", want: "0AExampleSharedDrive"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
