@@ -27,6 +27,7 @@ type CoverageDimension struct {
 	Type                   string               `json:"type" yaml:"type"`
 	Title                  string               `json:"title" yaml:"title"`
 	Families               []string             `json:"families,omitempty" yaml:"families"`
+	RuntimeFamilies        []string             `json:"runtime_families,omitempty" yaml:"runtime_families"`
 	Support                string               `json:"support" yaml:"support"`
 	HighValue              bool                 `json:"high_value,omitempty" yaml:"high_value"`
 	KnownUnsupportedFields []string             `json:"known_unsupported_fields,omitempty" yaml:"known_unsupported_fields"`
@@ -87,6 +88,7 @@ func normalizeCoverageDimension(dimension CoverageDimension) (CoverageDimension,
 		Type:                   strings.TrimSpace(dimension.Type),
 		Title:                  strings.TrimSpace(dimension.Title),
 		Families:               uniqueTrimmedStrings(dimension.Families),
+		RuntimeFamilies:        uniqueTrimmedStrings(dimension.RuntimeFamilies),
 		Support:                strings.ToLower(strings.TrimSpace(dimension.Support)),
 		HighValue:              dimension.HighValue,
 		KnownUnsupportedFields: uniqueTrimmedStrings(dimension.KnownUnsupportedFields),
@@ -125,6 +127,11 @@ func normalizeCoverageDimension(dimension CoverageDimension) (CoverageDimension,
 			return CoverageDimension{}, fmt.Errorf("coverage_contract dimension %q family %q must use lowercase identifier syntax", normalized.ID, family)
 		}
 	}
+	for _, family := range normalized.RuntimeFamilies {
+		if !validIdentifierPart(family) {
+			return CoverageDimension{}, fmt.Errorf("coverage_contract dimension %q runtime_family %q must use lowercase identifier syntax", normalized.ID, family)
+		}
+	}
 	for _, evidenceType := range normalized.EvidenceTypes {
 		if !validIdentifierPart(evidenceType) {
 			return CoverageDimension{}, fmt.Errorf("coverage_contract dimension %q evidence type %q must use lowercase identifier syntax", normalized.ID, evidenceType)
@@ -156,6 +163,7 @@ func cloneCoverageContract(contract CoverageContract) CoverageContract {
 			Type:                   dimension.Type,
 			Title:                  dimension.Title,
 			Families:               append([]string(nil), dimension.Families...),
+			RuntimeFamilies:        append([]string(nil), dimension.RuntimeFamilies...),
 			Support:                dimension.Support,
 			HighValue:              dimension.HighValue,
 			KnownUnsupportedFields: append([]string(nil), dimension.KnownUnsupportedFields...),

@@ -861,7 +861,7 @@ runtimes:
 	}
 }
 
-func TestCheckStrictDeployRuntimeCoverageAllowsSourceSpecificFamilyAlias(t *testing.T) {
+func TestCheckStrictDeployRuntimeCoverageAllowsExplicitRuntimeFamily(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/addigy/deploy.yaml", `
 runtimes:
@@ -883,6 +883,9 @@ runtimes:
 				Families: []string{
 					"device",
 				},
+				RuntimeFamilies: []string{
+					"devices",
+				},
 			},
 		},
 		"custom": {
@@ -898,7 +901,7 @@ runtimes:
 
 	issues := checkStrictDeployRuntimeCoverage(root, dimensions)
 	if len(issues) != 1 || issues[0].path != "sources/custom/catalog.yaml" {
-		t.Fatalf("issues = %#v, want alias to cover only addigy deploy runtime family", issues)
+		t.Fatalf("issues = %#v, want explicit runtime family to cover only addigy deploy runtime family", issues)
 	}
 }
 

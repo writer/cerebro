@@ -409,6 +409,7 @@ coverage_contract:
       type: entity_family
       title: Users
       families: [user]
+      runtime_families: [users]
       support: supported
       high_value: true
 `))
@@ -427,8 +428,12 @@ coverage_contract:
 	if !ok {
 		t.Fatalf("registered source does not implement CoverageContractProvider")
 	}
-	if got := provider.CoverageContract(); got.SourceID != "coverage_source" || len(got.Dimensions) != 1 {
+	got := provider.CoverageContract()
+	if got.SourceID != "coverage_source" || len(got.Dimensions) != 1 {
 		t.Fatalf("CoverageContract() = %#v, want coverage_source contract", got)
+	}
+	if got.Dimensions[0].RuntimeFamilies[0] != "users" {
+		t.Fatalf("CoverageContract() runtime families = %#v, want users", got.Dimensions[0].RuntimeFamilies)
 	}
 	contracts := registry.CoverageContracts()
 	if len(contracts) != 1 || contracts[0].SourceID != "coverage_source" {
