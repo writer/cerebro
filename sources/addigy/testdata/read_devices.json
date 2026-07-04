@@ -1,0 +1,42 @@
+[
+  {
+    "attributes": {
+      "external_id": "device-1",
+      "family": "devices",
+      "id": "device-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "organization_id": "org-1",
+      "provider": "addigy",
+      "record_class": "asset",
+      "resource_id": "device-1",
+      "resource_name": "MacBook One",
+      "resource_type": "device",
+      "resource_urn": "urn:cerebro:tenant:addigy_devices:device-1",
+      "schema": "devices",
+      "serial_number": "C02TEST",
+      "source_event_id": "device-1",
+      "source_provider": "addigy",
+      "source_system": "addigy",
+      "tenant_id": "tenant"
+    },
+    "id": "source-addigy-devices-event-1",
+    "kind": "addigy.devices",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "agentid": "device-1",
+      "audit_date": "2026-06-01T00:00:00Z",
+      "facts": {
+        "device_name": {
+          "value": "MacBook One"
+        },
+        "serial_number": {
+          "value": "C02TEST"
+        }
+      },
+      "orgid": "org-1"
+    },
+    "schema_ref": "addigy/devices/v1",
+    "source_id": "addigy",
+    "tenant_id": "tenant"
+  }
+]

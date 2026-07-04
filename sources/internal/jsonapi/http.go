@@ -46,14 +46,19 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
 	}
+	requestBody := jsonBody(family.Config.JSONBody.Static, settings.request.jsonBody)
 	for key, values := range settings.request.query {
 		for _, value := range values {
 			query.Add(key, value)
 		}
 	}
 	if !family.DisablePageSize {
-		for _, param := range pageSizeParams(family) {
-			query.Set(param, strconv.Itoa(pageSize))
+		if param := strings.TrimSpace(family.Config.JSONBody.SizeParam); param != "" {
+			requestBody[param] = pageSize
+		} else {
+			for _, param := range pageSizeParams(family) {
+				query.Set(param, strconv.Itoa(pageSize))
+			}
 		}
 	}
 	pageCursor := strings.TrimSpace(cursor)
@@ -62,15 +67,19 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	useNextURL := isAbsoluteHTTPURL(pageCursor)
 	if pageCursor != "" && !useNextURL {
-		addCursorQuery(query, family, pageCursor)
+		if param := strings.TrimSpace(family.Config.JSONBody.CursorParam); param != "" {
+			requestBody[param] = jsonScalar(pageCursor)
+		} else {
+			addCursorQuery(query, family, pageCursor)
+		}
 	}
 	var body json.RawMessage
 	var headers http.Header
 	var err error
 	if useNextURL {
-		headers, err = s.doRequest(ctx, settings, pageCursor, nil, &body, nil)
+		headers, err = s.doRequest(ctx, settings, pageCursor, nil, nil, &body, nil)
 	} else {
-		headers, err = s.getJSONWithHeader(ctx, settings, query, &body)
+		headers, err = s.doRequest(ctx, settings, settings.path, query, emptyBodyNil(requestBody, family.Config.JSONBody.SendEmpty), &body, nil)
 	}
 	if err != nil {
 		return nil, "", err
@@ -288,6 +297,59 @@ func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Va
 	return query
 }
 
+func jsonBody(static map[string]string, configured map[string]any) map[string]any {
+	body := map[string]any{}
+	for key, value := range static {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			body[key] = value
+		}
+	}
+	for key, value := range configured {
+		if strings.TrimSpace(key) != "" {
+			body[key] = value
+		}
+	}
+	return body
+}
+
+func jsonBodyFromConfig(cfg sourcecdk.Config, configBody map[string]string) map[string]any {
+	body := map[string]any{}
+	for bodyKey, configKey := range configBody {
+		bodyKey = strings.TrimSpace(bodyKey)
+		configKey = strings.TrimSpace(configKey)
+		if bodyKey == "" || configKey == "" {
+			continue
+		}
+		split := strings.HasSuffix(bodyKey, "[]")
+		bodyKey = strings.TrimSuffix(bodyKey, "[]")
+		if value := sourcecdk.ConfigValue(cfg, configKey); value != "" {
+			if split {
+				body[bodyKey] = queryValues(value, true)
+			} else {
+				body[bodyKey] = value
+			}
+		}
+	}
+	return body
+}
+
+func emptyBodyNil(body map[string]any, sendEmpty bool) any {
+	if len(body) == 0 && !sendEmpty {
+		return nil
+	}
+	return body
+}
+
+func jsonScalar(value string) any {
+	value = strings.TrimSpace(value)
+	if parsed, err := strconv.Atoi(value); err == nil {
+		return parsed
+	}
+	return value
+}
+
 func queryValues(value string, split bool) []string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -315,10 +377,10 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 }
 
 func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query url.Values, target any) (http.Header, error) {
-	return s.doRequest(ctx, settings, settings.path, query, target, nil)
+	return s.doRequest(ctx, settings, settings.path, query, nil, target, nil)
 }
 
-func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
+func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, requestBody any, target any, expectStatuses []int) (http.Header, error) {
 	endpoint, err := requestEndpoint(s.options.SourceID, settings.baseURL, settings.path, path)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
@@ -330,11 +392,27 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if familyMethod := strings.TrimSpace(settings.familyMethod); familyMethod != "" {
 		method = familyMethod
 	}
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
+	var bodyReader *bytes.Reader
+	if requestBody != nil {
+		body, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("build %s request body: %w", s.options.SourceID, err)
+		}
+		bodyReader = bytes.NewReader(body)
+	}
+	var req *http.Request
+	if bodyReader == nil {
+		req, err = http.NewRequestWithContext(ctx, method, endpoint, nil)
+	} else {
+		req, err = http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
 	req.Header.Set("Accept", "application/json")
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	for key, value := range s.options.StaticHeaders {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
@@ -574,7 +652,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) (string, b
 			return responseCursorValue(family, value), true
 		}
 	}
-	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "result_info", "resultInfo"} {
+	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "metadata", "result_info", "resultInfo"} {
 		var nested map[string]any
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
@@ -821,9 +899,12 @@ func nextPageCursor(values map[string]any) string {
 	if !ok {
 		return ""
 	}
-	totalPages, ok := intValue(firstAny(values["total_pages"], values["totalPages"]))
-	if !ok || page < 1 || page >= totalPages {
+	totalPages, ok := intValue(firstAny(values["total_pages"], values["totalPages"], values["page_count"], values["pageCount"]))
+	if !ok || page < 1 || totalPages < 1 {
 		return ""
+	}
+	if page >= totalPages {
+		return responseCursorDone
 	}
 	return strconv.Itoa(page + 1)
 }

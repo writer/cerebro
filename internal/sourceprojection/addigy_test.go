@@ -7,8 +7,8 @@ import (
 )
 
 func TestAddigyAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "addigy", Kind: "addigy.applications", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := addigyApplicationsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "addigy", Kind: "addigy.devices", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "device", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := addigyDevicesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -21,8 +21,8 @@ func TestAddigyAssetProjection(t *testing.T) {
 }
 
 func TestAddigyPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "addigy", Kind: "addigy.roles", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := addigyRolesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "addigy", Kind: "addigy.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Default Policy", "policy_type": "device_policy", "policy_status": "configured", "evidence_id": "evidence-1"}}
+	entities, links, err := addigyPoliciesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

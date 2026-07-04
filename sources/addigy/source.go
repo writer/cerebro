@@ -3,8 +3,7 @@ package addigy
 import (
 	"context"
 	"embed"
-	"fmt"
-	"strings"
+	"net/http"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -16,23 +15,18 @@ var catalogFS embed.FS
 
 const (
 	sourceID               = "addigy"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
-	familyUsers            = "users"
-	familyGroups           = "groups"
-	familyRoles            = "roles"
-	familyApplications     = "applications"
-	familyAuditEvents      = "audit_events"
+	defaultFamily          = familyDevices
+	defaultBaseURLTemplate = "https://api.addigy.com/api/v2"
+
+	familyDevices     = "devices"
+	familyUsers       = "users"
+	familyGroups      = "groups"
+	familyPolicies    = "policies"
+	familyAuditEvents = "audit_events"
 )
 
-var templateKeys = []string{"base_url", "token"}
-
 type Source struct {
-	inner         *jsonapi.Source
-	allowLoopback bool
+	inner *jsonapi.Source
 }
 
 func New() (*Source, error) {
@@ -42,77 +36,17 @@ func New() (*Source, error) {
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
 		SourceID:        sourceID,
+		DefaultBaseURL:  defaultBaseURLTemplate,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
+		AuthModel:       "api_key",
+		TokenHeader:     "x-api-key",
 		Families: []jsonapi.Family{
-			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "addigy_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "addigy"},
-			},
-			{
-				Name:             familyGroups,
-				Path:             "/v1/groups",
-				URNKind:          "addigy_groups",
-				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "groups", "source_system": "addigy"},
-			},
-			{
-				Name:             familyRoles,
-				Path:             "/v1/roles",
-				URNKind:          "addigy_roles",
-				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "role", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "roles", "source_system": "addigy"},
-			},
-			{
-				Name:             familyApplications,
-				Path:             "/v1/applications",
-				URNKind:          "addigy_applications",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "application", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "applications", "source_system": "addigy"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "addigy_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "addigy"},
-			},
+			deviceFamily(),
+			organizationUsersFamily(),
+			endUserGroupsFamily(),
+			policiesFamily(),
+			auditEventsFamily(),
 		},
 	})
 	if err != nil {
@@ -129,65 +63,175 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 }
 
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
-		return err
-	}
-	return s.inner.Check(ctx, runtimeCfg)
+	return s.inner.Check(ctx, cfg)
 }
 
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return s.inner.Discover(ctx, runtimeCfg)
+	return s.inner.Discover(ctx, cfg)
 }
 
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	return s.inner.Read(ctx, runtimeCfg, cursor)
-}
-
-func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
-}
-
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
+	return s.inner.Read(ctx, cfg, cursor)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
+func deviceFamily() jsonapi.Family {
+	return pagedFamily(jsonapi.Family{
+		Name:           familyDevices,
+		Path:           "/devices",
+		URNKind:        "addigy_devices",
+		IDKeys:         []string{"agentid", "device_uuid", "facts.serial_number.value"},
+		TimestampKeys:  []string{"audit_date", "agent_audit_date", "updated_at", "created_at"},
+		ListKeys:       []string{"items"},
+		PageSizeParams: []string{"per_page"},
+		Attributes: map[string]string{
+			"id":            "agentid|device_uuid|facts.serial_number.value",
+			"resource_id":   "agentid|device_uuid|facts.serial_number.value|_record_id",
+			"resource_name": "facts.device_name.value|facts.host_name.value|facts.serial_number.value|agentid",
+			"serial_number": "facts.serial_number.value",
+		},
+		StaticAttributes: staticAttributes(familyDevices, "asset", "device"),
+		Config: jsonapi.FamilyConfig{
+			JSONBody: jsonapi.JSONBodyConfig{
+				Static: map[string]string{"sort_direction": "asc", "sort_field": "serial_number"},
+				Config: map[string]string{"desired_fact_identifiers[]": "desired_fact_identifiers"},
+			},
+		},
+	})
+}
+
+func organizationUsersFamily() jsonapi.Family {
+	return pagedFamily(jsonapi.Family{
+		Name:       familyUsers,
+		Path:       "/o/${config.organization_id}/users/query",
+		PathParams: []string{"organization_id"},
+		URNKind:    "addigy_users",
+		IDKeys:     []string{"email", "name"},
+		ListKeys:   []string{"items"},
+		Attributes: map[string]string{
+			"addigy_role":   "addigy_role",
+			"display_name":  "name",
+			"email":         "email",
+			"primary_email": "email",
+			"resource_id":   "email|name|_record_id",
+			"resource_name": "name|email",
+			"user_id":       "email|name|_record_id",
+		},
+		StaticAttributes: staticAttributes(familyUsers, "identity_user", "user"),
+		Config: jsonapi.FamilyConfig{JSONBody: jsonapi.JSONBodyConfig{
+			Static: map[string]string{"sort_direction": "asc", "sort_field": "email"},
+		}},
+	})
+}
+
+func endUserGroupsFamily() jsonapi.Family {
+	return pagedFamily(jsonapi.Family{
+		Name:       familyGroups,
+		Path:       "/o/${config.organization_id}/end-users/groups/query",
+		PathParams: []string{"organization_id"},
+		URNKind:    "addigy_groups",
+		IDKeys:     []string{"id", "external_id", "display_name", "displayName"},
+		ListKeys:   []string{"items"},
+		Attributes: map[string]string{
+			"external_id":   "external_id|id",
+			"group_id":      "id|external_id|display_name|displayName|_record_id",
+			"group_name":    "display_name|displayName|name|id",
+			"resource_id":   "id|external_id|display_name|displayName|_record_id",
+			"resource_name": "display_name|displayName|name|id",
+		},
+		StaticAttributes: staticAttributes(familyGroups, "identity_group", "group"),
+		Config: jsonapi.FamilyConfig{JSONBody: jsonapi.JSONBodyConfig{
+			Static: map[string]string{"sort_direction": "asc", "sort_field": "displayName"},
+		}},
+	})
+}
+
+func policiesFamily() jsonapi.Family {
+	return jsonapi.Family{
+		Name:             familyPolicies,
+		Path:             "/oa/policies/query",
+		URNKind:          "addigy_policies",
+		IDKeys:           []string{"policyId", "id", "name"},
+		TimestampKeys:    []string{"created_at", "updated_at", "meta.created", "meta.last_modified"},
+		StaticAttributes: staticAttributes(familyPolicies, "policy", "policy"),
+		Attributes: map[string]string{
+			"policy_id":     "policyId|id|name|_record_id",
+			"policy_name":   "name|policyId|id",
+			"policy_status": "status",
+			"policy_type":   "device_policy",
+			"resource_id":   "policyId|id|name|_record_id",
+			"resource_name": "name|policyId|id",
+		},
+		Config: jsonapi.FamilyConfig{
+			Method: http.MethodPost,
+			JSONBody: jsonapi.JSONBodyConfig{
+				SendEmpty: true,
+			},
+			DefaultPageSize: 100,
+		},
+		DisablePageSize: true,
 	}
-	return ""
+}
+
+func auditEventsFamily() jsonapi.Family {
+	return pagedFamily(jsonapi.Family{
+		Name:          familyAuditEvents,
+		Path:          "/system-events/search",
+		URNKind:       "addigy_audit_events",
+		IDKeys:        []string{"event_id", "id", "uuid"},
+		TimestampKeys: []string{"date", "audit_date", "agent_audit_date", "created_at", "updated_at"},
+		ListKeys:      []string{"items"},
+		Attributes: map[string]string{
+			"actor_id":        "action_sender.identifier|action_sender.name",
+			"actor_name":      "action_sender.name",
+			"event_type":      "action.name|source|level",
+			"id":              "event_id|id|uuid|_record_id",
+			"observed_at":     "date|audit_date|created_at|updated_at",
+			"resource_id":     "action.entity.identifier|action_receiver.identifier|_record_id",
+			"resource_name":   "action.entity.name|action_receiver.name|action.entity.identifier",
+			"resource_type":   "action.entity.type|action_receiver.type",
+			"result":          "result.status",
+			"source_event_id": "event_id|id|uuid|_record_id",
+		},
+		StaticAttributes: staticAttributes(familyAuditEvents, "audit_event", "addigy_resource"),
+		Config: jsonapi.FamilyConfig{
+			JSONBody: jsonapi.JSONBodyConfig{
+				Static: map[string]string{"sort_direction": "asc"},
+				Config: map[string]string{
+					"from_date_time": "audit_start_time",
+					"to_date_time":   "audit_end_time",
+				},
+			},
+		},
+	})
+}
+
+func pagedFamily(family jsonapi.Family) jsonapi.Family {
+	family.CursorParam = "page"
+	family.PageFirstCursor = "1"
+	family.Config.Method = http.MethodPost
+	family.Config.JSONBody.CursorParam = "page"
+	family.Config.JSONBody.SizeParam = "per_page"
+	if family.Config.DefaultPageSize == 0 {
+		family.Config.DefaultPageSize = 100
+	}
+	return family
+}
+
+func staticAttributes(schema string, recordClass string, resourceType string) map[string]string {
+	return map[string]string{
+		"record_class":  recordClass,
+		"resource_type": resourceType,
+		"schema":        schema,
+		"source_system": sourceID,
+	}
 }
 
 func (s *Source) allowLoopbackForTest() {
 	if s != nil && s.inner != nil {
 		s.inner.AllowLoopbackBaseURL = true
-		s.allowLoopback = true
 	}
 }

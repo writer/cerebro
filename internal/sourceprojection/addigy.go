@@ -15,11 +15,11 @@ func addigyGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "addigy"})
 }
 
-func addigyRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func addigyPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return addigyGenericPolicyProjections(event)
 }
 
-func addigyApplicationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func addigyDevicesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return addigyGenericAssetProjections(event)
 }
 

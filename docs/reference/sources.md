@@ -14,7 +14,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `activtrak` | Activtrak source | activtrak.accounts, activtrak.audit_events, activtrak.policies, activtrak.records, activtrak.users |
 | `acunetix` | Acunetix source | acunetix.assets, acunetix.audit_events, acunetix.findings, acunetix.policies, acunetix.vulnerabilities |
 | `ada_support` | Ada Support source | ada_support.accounts, ada_support.audit_events, ada_support.policies, ada_support.records, ada_support.users |
-| `addigy` | Addigy source | addigy.applications, addigy.audit_events, addigy.groups, addigy.roles, addigy.users |
+| `addigy` | Addigy source | addigy.audit_events, addigy.devices, addigy.groups, addigy.policies, addigy.users |
 | `adobe_workfront` | Adobe Workfront source | adobe_workfront.audit_events, adobe_workfront.documents, adobe_workfront.groups, adobe_workfront.users, adobe_workfront.workspaces |
 | `adp_workforce_now` | Adp Workforce Now source | adp_workforce_now.accounts, adp_workforce_now.audit_events, adp_workforce_now.policies, adp_workforce_now.records, adp_workforce_now.users |
 | `agiloft` | Agiloft source | agiloft.accounts, agiloft.audit_events, agiloft.policies, agiloft.records, agiloft.users |

@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -842,6 +843,82 @@ func TestReadUsesFamilyMethod(t *testing.T) {
 	}
 	if len(pull.Events) != 1 {
 		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}
+
+func TestReadUsesJSONBodyPagination(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Fatalf("request method = %q, want POST", r.Method)
+		}
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("query = %q, want empty", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if got := body["sort_direction"]; got != "asc" {
+			t.Fatalf("sort_direction = %#v, want asc", got)
+		}
+		if got := body["page"]; got != float64(requests) {
+			t.Fatalf("page = %#v, want %d", got, requests)
+		}
+		if got := body["per_page"]; got != float64(1) {
+			t.Fatalf("per_page = %#v, want 1", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{"id": "device-" + strconv.Itoa(requests)}},
+			"metadata": map[string]any{
+				"page":         requests,
+				"page_count":   2,
+				"per_page":     1,
+				"result_count": 1,
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "device",
+		Path:            "/devices/search",
+		CursorParam:     "page",
+		PageFirstCursor: "1",
+		URNKind:         "test_device",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"items"},
+		Config: FamilyConfig{
+			Method: http.MethodPost,
+			JSONBody: JSONBodyConfig{
+				Static:      map[string]string{"sort_direction": "asc"},
+				CursorParam: "page",
+				SizeParam:   "per_page",
+			},
+		},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
 	}
 }
 

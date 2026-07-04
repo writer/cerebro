@@ -48,6 +48,7 @@ type requestSettings struct {
 	headers          map[string]string
 	configAttributes map[string]string
 	query            url.Values
+	jsonBody         map[string]any
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -181,6 +182,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	resolved.request.configAttributes = attributesFromConfig(cfg, family.Config.ConfigAttributes)
 	resolved.request.query = queryFromConfig(cfg, family.Config.ConfigQuery)
+	resolved.request.jsonBody = jsonBodyFromConfig(cfg, family.Config.JSONBody.Config)
 	return resolved, nil
 }
 
