@@ -262,6 +262,7 @@ func collectCandidates(doc *openapi3.T, sourceID string, getOnly bool) []candida
 				ListKey:        listKey,
 				IDField:        idField,
 				NameField:      nameField,
+				Read:           readSpecForPathFields(pathConfigFields),
 				Event: connectordefinitions.EventMappingSpec{
 					Kind:                  eventKind,
 					SchemaRef:             sourceID + "/" + familyID + "/v1",
@@ -739,6 +740,22 @@ func renderPathTemplate(path string) (string, []connectordefinitions.Field) {
 		return "${config." + key + "}"
 	})
 	return rendered, fields
+}
+
+func readSpecForPathFields(fields []connectordefinitions.Field) *connectordefinitions.ResourceReadSpec {
+	if len(fields) == 0 {
+		return nil
+	}
+	params := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if key := strings.TrimSpace(field.Key); key != "" {
+			params = append(params, key)
+		}
+	}
+	if len(params) == 0 {
+		return nil
+	}
+	return &connectordefinitions.ResourceReadSpec{PathParams: params}
 }
 
 func projectionTemplate(familyID, path string, operation *openapi3.Operation, properties map[string]*openapi3.SchemaRef) string {

@@ -32,6 +32,9 @@ func TestGenerateBuildsSourcegenReadyDefinition(t *testing.T) {
 	if audit.Path != "/orgs/${config.org}/audit-log" {
 		t.Fatalf("audit path = %q", audit.Path)
 	}
+	if audit.Read == nil || !reflect.DeepEqual(audit.Read.PathParams, []string{"org"}) {
+		t.Fatalf("audit path params = %#v, want org", audit.Read)
+	}
 	if audit.Projection == nil || audit.Projection.Template != "audit_event" {
 		t.Fatalf("audit projection = %#v, want audit_event", audit.Projection)
 	}
