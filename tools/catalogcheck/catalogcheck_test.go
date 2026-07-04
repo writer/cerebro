@@ -84,6 +84,72 @@ emitted_kinds: []
 	}
 }
 
+func TestCheckPoliciesAcceptsDepthBackedRequirementRefs(t *testing.T) {
+	root := t.TempDir()
+	writePolicyDepthControlCatalog(t, root)
+	writePolicyDepthRequirementCatalog(t, root)
+	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
+	writeFile(t, root, "policies/identity/depth.yaml", policyDepthDSL("identity-access/okta/identity_user", true))
+	controlCatalog, controlIssues, err := loadComplianceControlCatalog(root)
+	if err != nil {
+		t.Fatalf("loadComplianceControlCatalog() error = %v", err)
+	}
+	if len(controlIssues) != 0 {
+		t.Fatalf("control issues = %#v, want none", controlIssues)
+	}
+	issues, err := checkPolicies(root, controlCatalog)
+	if err != nil {
+		t.Fatalf("checkPolicies() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none", issues)
+	}
+}
+
+func TestCheckPoliciesRejectsUnknownDepthRequirementRef(t *testing.T) {
+	root := t.TempDir()
+	writePolicyDepthControlCatalog(t, root)
+	writePolicyDepthRequirementCatalog(t, root)
+	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
+	writeFile(t, root, "policies/identity/depth.yaml", policyDepthDSL("identity-access/okta/group", true))
+	controlCatalog, controlIssues, err := loadComplianceControlCatalog(root)
+	if err != nil {
+		t.Fatalf("loadComplianceControlCatalog() error = %v", err)
+	}
+	if len(controlIssues) != 0 {
+		t.Fatalf("control issues = %#v, want none", controlIssues)
+	}
+	issues, err := checkPolicies(root, controlCatalog)
+	if err != nil {
+		t.Fatalf("checkPolicies() error = %v", err)
+	}
+	if !issueMessagesContain(issues, `spec.evidence.requirementRefs "identity-access/okta/group" does not match any resolved requirement for the policy controls`) {
+		t.Fatalf("issues = %#v, want unknown requirement ref issue", issues)
+	}
+}
+
+func TestCheckPoliciesRejectsShallowDepthBackedPolicy(t *testing.T) {
+	root := t.TempDir()
+	writePolicyDepthControlCatalog(t, root)
+	writePolicyDepthRequirementCatalog(t, root)
+	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
+	writeFile(t, root, "policies/identity/depth.yaml", policyDepthDSL("identity-access/okta/identity_user", false))
+	controlCatalog, controlIssues, err := loadComplianceControlCatalog(root)
+	if err != nil {
+		t.Fatalf("loadComplianceControlCatalog() error = %v", err)
+	}
+	if len(controlIssues) != 0 {
+		t.Fatalf("control issues = %#v, want none", controlIssues)
+	}
+	issues, err := checkPolicies(root, controlCatalog)
+	if err != nil {
+		t.Fatalf("checkPolicies() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "spec.verification.fixtures expect=pass is required when spec.evidence.requirementRefs is set") {
+		t.Fatalf("issues = %#v, want depth verification issue", issues)
+	}
+}
+
 func TestCheckConnectorDefinitionCatalogRejectsProofGateIssues(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
@@ -1219,6 +1285,131 @@ spec:
     - name: SOC 2
       controls: [CC6]
 `, id, resource)
+}
+
+func policyDepthDSL(requirementRef string, complete bool) string {
+	fixtures := `
+      - name: missing-mfa
+        expect: finding
+      - name: mfa-present
+        expect: pass`
+	if !complete {
+		fixtures = `
+      - name: missing-mfa
+        expect: finding`
+	}
+	return fmt.Sprintf(`
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: depth-backed
+  name: Depth Backed
+  description: Depth backed policy
+spec:
+  severity: high
+  effect: forbid
+  resource: okta::user
+  match:
+    conditionFormat: cel
+    conditions:
+      - cmp_eq(path(resource, "mfa_enrolled"), false)
+  frameworks:
+    - name: SOC 2
+      controls: [CC6.1]
+  input:
+    sourceKinds: [okta]
+    eventKinds: [okta.identity_user]
+    requiredFields: [user_id, mfa_enrolled]
+    freshnessSLA: 24h
+  evidence:
+    type: identity_configuration
+    requirementRefs: [%s]
+    assessmentMethods: [examine, test]
+    requiredForAudit: true
+    freshnessSLA: 24h
+    acceptableSources: [okta]
+    requiredFields: [user_id, mfa_enrolled]
+    fingerprintFields: [tenant_id, policy_id, resource_urn]
+  audit:
+    auditorStatement: Identity evidence shows MFA state for the user.
+    riskStatement: Users without MFA weaken access controls.
+    remediationIntent: Require MFA for the affected user.
+    claimStrength: source_backed
+    sufficiencyRule: source_period_state_exception
+    coverageClaim: supports_control
+    overclaimGuard: Do not claim broader framework coverage from this requirement alone.
+    adjacentControlRationale: Use adjacent controls as review context until they have their own evidence.
+    acceptableEvidence:
+      - source: okta
+        fields: [user_id, mfa_enrolled]
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+      - Document compensating monitoring.
+  verification:
+    fixtures:%s
+    mutationChecks: [missing_required_field]
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+    remediation:
+      steps:
+        - Require MFA for the affected user.
+    effort: low
+    verification:
+      rerunPolicy: true
+`, requirementRef, fixtures)
+}
+
+func writePolicyDepthControlCatalog(t *testing.T, root string) {
+	t.Helper()
+	writeFile(t, root, "internal/compliance/control_families.yaml", `
+version: "2026-07-04"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6.1
+            title: Logical access is restricted
+`)
+}
+
+func writePolicyDepthRequirementCatalog(t *testing.T, root string) {
+	t.Helper()
+	writeFile(t, root, "internal/compliance/control_evidence_requirements.yaml", `
+version: "2026-07-04"
+defaults:
+  freshness_window: 24h
+  assessment_methods: [examine]
+  auditor_grade_evidence: Evidence identifies the source object and current control state.
+  claim_strength: source_backed
+  sufficiency_rule: source_period_state_exception
+  coverage_claim: supports_control
+  overclaim_guard: Do not claim broader framework coverage from this requirement alone.
+  adjacent_control_rationale: Use adjacent controls as review context until they have their own evidence.
+profiles:
+  - profile_id: identity-access
+    name: Identity Access Evidence
+    applies_to:
+      frameworks: [SOC 2]
+    source_requirements:
+      - source_id: okta
+        entity_type: identity_user
+        required_fields: [user_id, mfa_enrolled]
+  - profile_id: baseline-control-review
+    name: Baseline Control Review
+    fallback: true
+    source_requirements:
+      - source_id: control_owner_review
+        entity_type: control_evidence_packet
+        required_fields: [control_ref, reviewer]
+`)
 }
 
 func issueMessagesContain(issues []issue, substring string) bool {

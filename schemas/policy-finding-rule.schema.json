@@ -281,6 +281,10 @@
               },
               "type": "array"
             },
+            "adjacentControlRationale": {
+              "description": "How adjacent controls should be interpreted for review.",
+              "type": "string"
+            },
             "assessmentMethods": {
               "description": "Audit assessment methods.",
               "items": {
@@ -300,6 +304,14 @@
             },
             "auditorStatement": {
               "description": "Plain-language control statement for auditors.",
+              "type": "string"
+            },
+            "claimStrength": {
+              "description": "Evidence claim strength for policy evidence packets.",
+              "type": "string"
+            },
+            "coverageClaim": {
+              "description": "Control coverage claim supported by this policy.",
               "type": "string"
             },
             "evidenceType": {
@@ -337,12 +349,20 @@
               "description": "Maximum acceptable age for auditor-facing evidence.",
               "type": "string"
             },
+            "overclaimGuard": {
+              "description": "Boundary that prevents broader unsupported control claims.",
+              "type": "string"
+            },
             "remediationIntent": {
               "description": "Expected remediation outcome.",
               "type": "string"
             },
             "riskStatement": {
               "description": "Risk addressed by the policy.",
+              "type": "string"
+            },
+            "sufficiencyRule": {
+              "description": "Rule describing when the evidence is sufficient.",
               "type": "string"
             }
           },
@@ -475,6 +495,14 @@
             },
             "requiredForAudit": {
               "type": "boolean"
+            },
+            "requirementRefs": {
+              "description": "Evidence requirement references using profile_id/source_id/entity_type.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
             },
             "type": {
               "description": "Normalized evidence type used for audit and routing.",

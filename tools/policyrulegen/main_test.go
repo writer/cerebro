@@ -86,6 +86,7 @@ func TestPolicyDSLContractMetadataOverridesGeneratedRuleFields(t *testing.T) {
 		},
 		Evidence: findingdsl.PolicyRuleEvidence{
 			Type:              "identity_configuration",
+			RequirementRefs:   []string{"identity-access/okta/identity_user"},
 			AssessmentMethods: []string{"test", "examine"},
 			RequiredForAudit:  true,
 			FreshnessSLA:      "24h",
@@ -93,10 +94,15 @@ func TestPolicyDSLContractMetadataOverridesGeneratedRuleFields(t *testing.T) {
 			AcceptableSources: []string{"okta"},
 		},
 		Audit: findingdsl.PolicyRuleAudit{
-			AuditorStatement:  "Privileged users must have MFA.",
-			RiskStatement:     "Privileged users without MFA weaken identity controls.",
-			RemediationIntent: "Require MFA.",
-			FalsePositives:    []string{"Approved exception."},
+			AuditorStatement:         "Privileged users must have MFA.",
+			RiskStatement:            "Privileged users without MFA weaken identity controls.",
+			RemediationIntent:        "Require MFA.",
+			ClaimStrength:            "source_backed",
+			SufficiencyRule:          "source_period_state_exception",
+			CoverageClaim:            "supports_control",
+			OverclaimGuard:           "Do not claim broader framework coverage from this requirement alone.",
+			AdjacentControlRationale: "Use adjacent controls as review context until they have their own evidence.",
+			FalsePositives:           []string{"Approved exception."},
 		},
 		Context: findingdsl.PolicyRuleContext{
 			Graph: findingdsl.PolicyRuleGraphContext{
@@ -151,8 +157,14 @@ func TestPolicyDSLContractMetadataOverridesGeneratedRuleFields(t *testing.T) {
 	attrs := policyContractAttributes(policy)
 	for key, want := range map[string]string{
 		"policy_input_freshness_sla":          "24h",
+		"policy_evidence_requirement_refs":    "identity-access/okta/identity_user",
 		"policy_evidence_required_for_audit":  "true",
 		"policy_evidence_acceptable_sources":  "okta",
+		"policy_claim_strength":               "source_backed",
+		"policy_sufficiency_rule":             "source_period_state_exception",
+		"policy_coverage_claim":               "supports_control",
+		"policy_overclaim_guard":              "Do not claim broader framework coverage from this requirement alone.",
+		"policy_adjacent_control_rationale":   "Use adjacent controls as review context until they have their own evidence.",
 		"policy_context_graph_anchors":        "resource_urn",
 		"policy_context_graph_enrich":         "owner",
 		"policy_verification_fixtures":        "admin-without-mfa:finding",

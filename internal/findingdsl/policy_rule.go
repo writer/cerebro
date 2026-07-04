@@ -120,6 +120,7 @@ type PolicyRuleSeverityAdjustment struct {
 
 type PolicyRuleEvidence struct {
 	Type              string   `json:"type,omitempty" yaml:"type,omitempty"`
+	RequirementRefs   []string `json:"requirementRefs,omitempty" yaml:"requirementRefs,omitempty"`
 	AssessmentMethods []string `json:"assessmentMethods,omitempty" yaml:"assessmentMethods,omitempty"`
 	RequiredForAudit  bool     `json:"requiredForAudit,omitempty" yaml:"requiredForAudit,omitempty"`
 	FreshnessSLA      string   `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
@@ -129,17 +130,22 @@ type PolicyRuleEvidence struct {
 }
 
 type PolicyRuleAudit struct {
-	EvidenceType       string                         `json:"evidenceType,omitempty" yaml:"evidenceType,omitempty"`
-	AssessmentMethods  []string                       `json:"assessmentMethods,omitempty" yaml:"assessmentMethods,omitempty"`
-	FreshnessSLA       string                         `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
-	AuditorStatement   string                         `json:"auditorStatement,omitempty" yaml:"auditorStatement,omitempty"`
-	AuditorGuidance    string                         `json:"auditorGuidance,omitempty" yaml:"auditorGuidance,omitempty"`
-	RiskStatement      string                         `json:"riskStatement,omitempty" yaml:"riskStatement,omitempty"`
-	RemediationIntent  string                         `json:"remediationIntent,omitempty" yaml:"remediationIntent,omitempty"`
-	AcceptableEvidence []PolicyRuleAcceptableEvidence `json:"acceptableEvidence,omitempty" yaml:"acceptableEvidence,omitempty"`
-	ExceptionPolicy    PolicyRuleExceptionPolicy      `json:"exceptionPolicy,omitempty" yaml:"exceptionPolicy,omitempty"`
-	ExceptionGuidance  []string                       `json:"exceptionGuidance,omitempty" yaml:"exceptionGuidance,omitempty"`
-	FalsePositives     []string                       `json:"falsePositives,omitempty" yaml:"falsePositives,omitempty"`
+	EvidenceType             string                         `json:"evidenceType,omitempty" yaml:"evidenceType,omitempty"`
+	AssessmentMethods        []string                       `json:"assessmentMethods,omitempty" yaml:"assessmentMethods,omitempty"`
+	FreshnessSLA             string                         `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
+	AuditorStatement         string                         `json:"auditorStatement,omitempty" yaml:"auditorStatement,omitempty"`
+	AuditorGuidance          string                         `json:"auditorGuidance,omitempty" yaml:"auditorGuidance,omitempty"`
+	RiskStatement            string                         `json:"riskStatement,omitempty" yaml:"riskStatement,omitempty"`
+	RemediationIntent        string                         `json:"remediationIntent,omitempty" yaml:"remediationIntent,omitempty"`
+	ClaimStrength            string                         `json:"claimStrength,omitempty" yaml:"claimStrength,omitempty"`
+	SufficiencyRule          string                         `json:"sufficiencyRule,omitempty" yaml:"sufficiencyRule,omitempty"`
+	CoverageClaim            string                         `json:"coverageClaim,omitempty" yaml:"coverageClaim,omitempty"`
+	OverclaimGuard           string                         `json:"overclaimGuard,omitempty" yaml:"overclaimGuard,omitempty"`
+	AdjacentControlRationale string                         `json:"adjacentControlRationale,omitempty" yaml:"adjacentControlRationale,omitempty"`
+	AcceptableEvidence       []PolicyRuleAcceptableEvidence `json:"acceptableEvidence,omitempty" yaml:"acceptableEvidence,omitempty"`
+	ExceptionPolicy          PolicyRuleExceptionPolicy      `json:"exceptionPolicy,omitempty" yaml:"exceptionPolicy,omitempty"`
+	ExceptionGuidance        []string                       `json:"exceptionGuidance,omitempty" yaml:"exceptionGuidance,omitempty"`
+	FalsePositives           []string                       `json:"falsePositives,omitempty" yaml:"falsePositives,omitempty"`
 }
 
 type PolicyRuleAcceptableEvidence struct {
@@ -415,6 +421,7 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 	issues = append(issues, validatePolicyRuleGraph(path, rule.Spec.Graph)...)
 	issues = append(issues, validateFrameworks(path, rule.Spec.Frameworks)...)
 	issues = append(issues, validatePolicyRuleContract(path, rule.Spec)...)
+	issues = append(issues, validatePolicyRuleDepthContract(path, rule.Spec)...)
 	return issues
 }
 
@@ -598,6 +605,8 @@ func validateSeverityAdjustments(path string, adjustments []PolicyRuleSeverityAd
 
 func validatePolicyRuleEvidence(path string, evidence PolicyRuleEvidence) []Issue {
 	var issues []Issue
+	issues = append(issues, validateStringArray(path, "spec.evidence.requirementRefs", evidence.RequirementRefs)...)
+	issues = append(issues, validateEvidenceRequirementRefs(path, evidence.RequirementRefs)...)
 	issues = append(issues, validateAssessmentMethods(path, "spec.evidence.assessmentMethods", evidence.AssessmentMethods)...)
 	issues = append(issues, validateDurationField(path, "spec.evidence.freshnessSLA", evidence.FreshnessSLA)...)
 	issues = append(issues, validateStringArray(path, "spec.evidence.acceptableSources", evidence.AcceptableSources)...)
@@ -613,11 +622,64 @@ func validatePolicyRuleAudit(path string, audit PolicyRuleAudit) []Issue {
 	issues = append(issues, validateDurationField(path, "spec.audit.exceptionPolicy.maxAge", audit.ExceptionPolicy.MaxAge)...)
 	issues = append(issues, validateStringArray(path, "spec.audit.exceptionGuidance", audit.ExceptionGuidance)...)
 	issues = append(issues, validateStringArray(path, "spec.audit.falsePositives", audit.FalsePositives)...)
+	issues = append(issues, validatePolicyRuleAuditClaimFields(path, audit)...)
 	for idx, evidence := range audit.AcceptableEvidence {
 		if strings.TrimSpace(evidence.Source) == "" {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.audit.acceptableEvidence[%d].source is required", idx)})
 		}
 		issues = append(issues, validateStringArray(path, fmt.Sprintf("spec.audit.acceptableEvidence[%d].fields", idx), evidence.Fields)...)
+	}
+	return issues
+}
+
+func validateEvidenceRequirementRefs(path string, refs []string) []Issue {
+	var issues []Issue
+	seen := map[string]struct{}{}
+	for idx, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		if _, ok := seen[ref]; ok {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.evidence.requirementRefs[%d] duplicates %q", idx, ref)})
+			continue
+		}
+		seen[ref] = struct{}{}
+		parts := strings.Split(ref, "/")
+		if len(parts) != 3 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" || strings.TrimSpace(parts[2]) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.evidence.requirementRefs[%d] must use profile_id/source_id/entity_type", idx)})
+		}
+	}
+	return issues
+}
+
+func validatePolicyRuleAuditClaimFields(path string, audit PolicyRuleAudit) []Issue {
+	fields := map[string]string{
+		"spec.audit.claimStrength":            audit.ClaimStrength,
+		"spec.audit.sufficiencyRule":          audit.SufficiencyRule,
+		"spec.audit.coverageClaim":            audit.CoverageClaim,
+		"spec.audit.overclaimGuard":           audit.OverclaimGuard,
+		"spec.audit.adjacentControlRationale": audit.AdjacentControlRationale,
+	}
+	present := 0
+	for _, value := range fields {
+		if strings.TrimSpace(value) != "" {
+			present++
+		}
+	}
+	if present == 0 || present == len(fields) {
+		return nil
+	}
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var issues []Issue
+	for _, key := range keys {
+		if strings.TrimSpace(fields[key]) == "" {
+			issues = append(issues, Issue{Path: path, Message: key + " is required when any audit claim field is set"})
+		}
 	}
 	return issues
 }
@@ -651,6 +713,72 @@ func validatePolicyRuleActions(path string, actions PolicyRuleActions) []Issue {
 		issues = append(issues, Issue{Path: path, Message: "spec.actions.effort must be low, medium, or high"})
 	}
 	return issues
+}
+
+func validatePolicyRuleDepthContract(path string, spec PolicyFindingRuleSpec) []Issue {
+	if len(trimStrings(spec.Evidence.RequirementRefs)) == 0 {
+		return nil
+	}
+	var issues []Issue
+	for _, required := range []struct {
+		field string
+		ok    bool
+	}{
+		{field: "spec.input.sourceKinds", ok: len(trimStrings(spec.Input.SourceKinds)) != 0 || strings.TrimSpace(spec.Graph.Query) != ""},
+		{field: "spec.input.eventKinds", ok: len(trimStrings(spec.Input.EventKinds)) != 0 || strings.TrimSpace(spec.Graph.Query) != ""},
+		{field: "spec.input.requiredFields", ok: len(trimStrings(spec.Input.RequiredFields)) != 0 || strings.TrimSpace(spec.Graph.Query) != ""},
+		{field: "spec.input.freshnessSLA", ok: strings.TrimSpace(spec.Input.FreshnessSLA) != ""},
+		{field: "spec.evidence.type", ok: strings.TrimSpace(spec.Evidence.Type) != ""},
+		{field: "spec.evidence.assessmentMethods", ok: len(trimStrings(spec.Evidence.AssessmentMethods)) != 0},
+		{field: "spec.evidence.acceptableSources", ok: len(trimStrings(spec.Evidence.AcceptableSources)) != 0},
+		{field: "spec.evidence.requiredFields", ok: len(trimStrings(spec.Evidence.RequiredFields)) != 0},
+		{field: "spec.evidence.fingerprintFields", ok: len(trimStrings(spec.Evidence.FingerprintFields)) != 0 || strings.TrimSpace(spec.Graph.Query) != ""},
+		{field: "spec.audit.auditorStatement", ok: strings.TrimSpace(spec.Audit.AuditorStatement) != ""},
+		{field: "spec.audit.riskStatement", ok: strings.TrimSpace(spec.Audit.RiskStatement) != ""},
+		{field: "spec.audit.remediationIntent", ok: strings.TrimSpace(spec.Audit.RemediationIntent) != ""},
+		{field: "spec.audit.claimStrength", ok: strings.TrimSpace(spec.Audit.ClaimStrength) != ""},
+		{field: "spec.audit.sufficiencyRule", ok: strings.TrimSpace(spec.Audit.SufficiencyRule) != ""},
+		{field: "spec.audit.coverageClaim", ok: strings.TrimSpace(spec.Audit.CoverageClaim) != ""},
+		{field: "spec.audit.overclaimGuard", ok: strings.TrimSpace(spec.Audit.OverclaimGuard) != ""},
+		{field: "spec.audit.adjacentControlRationale", ok: strings.TrimSpace(spec.Audit.AdjacentControlRationale) != ""},
+		{field: "spec.audit.acceptableEvidence", ok: len(spec.Audit.AcceptableEvidence) != 0},
+		{field: "spec.audit.exceptionPolicy.maxAge", ok: strings.TrimSpace(spec.Audit.ExceptionPolicy.MaxAge) != ""},
+		{field: "spec.audit.exceptionGuidance", ok: len(trimStrings(spec.Audit.ExceptionGuidance)) != 0},
+		{field: "spec.verification.fixtures expect=finding", ok: verificationHasFixtureExpectation(spec.Verification, "finding")},
+		{field: "spec.verification.fixtures expect=pass", ok: verificationHasFixtureExpectation(spec.Verification, "pass")},
+		{field: "spec.verification.mutationChecks", ok: len(trimStrings(spec.Verification.MutationChecks)) != 0},
+		{field: "spec.verification.remediationCheck.rerunAfter", ok: strings.TrimSpace(spec.Verification.RemediationCheck.RerunAfter) != ""},
+		{field: "spec.verification.remediationCheck.expectedStatus", ok: strings.TrimSpace(spec.Verification.RemediationCheck.ExpectedStatus) != ""},
+		{field: "spec.actions.owner.from", ok: strings.TrimSpace(spec.Actions.Owner.From) != ""},
+		{field: "spec.actions.remediation.steps", ok: len(trimStrings(spec.Actions.Remediation.Steps)) != 0},
+		{field: "spec.actions.effort", ok: strings.TrimSpace(spec.Actions.Effort) != ""},
+		{field: "spec.actions.verification.rerunPolicy", ok: spec.Actions.Verification.RerunPolicy},
+	} {
+		if !required.ok {
+			issues = append(issues, Issue{Path: path, Message: required.field + " is required when spec.evidence.requirementRefs is set"})
+		}
+	}
+	if spec.Evidence.RequiredForAudit == false {
+		issues = append(issues, Issue{Path: path, Message: "spec.evidence.requiredForAudit must be true when spec.evidence.requirementRefs is set"})
+	}
+	if strings.TrimSpace(spec.Graph.Query) != "" {
+		if len(trimStrings(spec.Context.Graph.Anchors)) == 0 {
+			issues = append(issues, Issue{Path: path, Message: "spec.context.graph.anchors is required for graph policies when spec.evidence.requirementRefs is set"})
+		}
+		if len(trimStrings(spec.Context.Graph.Enrich)) == 0 {
+			issues = append(issues, Issue{Path: path, Message: "spec.context.graph.enrich is required for graph policies when spec.evidence.requirementRefs is set"})
+		}
+	}
+	return issues
+}
+
+func verificationHasFixtureExpectation(verification PolicyRuleVerification, want string) bool {
+	for _, fixture := range verification.Fixtures {
+		if strings.EqualFold(strings.TrimSpace(fixture.Expect), want) {
+			return true
+		}
+	}
+	return false
 }
 
 func FromLegacyPolicy(rel string, legacy LegacyPolicy) PolicyFindingRule {
