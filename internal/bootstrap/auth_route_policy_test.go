@@ -86,6 +86,25 @@ func TestGraphActionHTTPRoutesRequireDedicatedScope(t *testing.T) {
 	}
 }
 
+func TestAgentTaskHTTPRoutesPlanWithReadScope(t *testing.T) {
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: agentContextPath},
+		{method: http.MethodPost, path: "/api/v1/agent/tasks/findings/finding-1/explain"},
+		{method: http.MethodPost, path: "/api/v1/agent/tasks/findings/finding-1/triage"},
+		{method: http.MethodPost, path: "/api/v1/agent/tasks/findings/finding-1/audit-packet"},
+		{method: http.MethodPost, path: "/api/v1/agent/tasks/source-runtimes/runtime-1/retry"},
+		{method: http.MethodPost, path: "/api/v1/agent/tasks/reports/report-1/run"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopeCosmoSecurityRead || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want read scope for planning", tt.method, tt.path, policy)
+		}
+	}
+}
+
 func TestAskQueryHTTPRoutesRequireWriteScope(t *testing.T) {
 	readPolicy := httpRoutePolicyFor(http.MethodGet, "/ask-queries")
 	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {

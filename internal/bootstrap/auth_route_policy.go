@@ -27,6 +27,7 @@ type httpAuthRoutePolicy struct {
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: agentplatform.A2AJSONRPCPath, Static: true, AdminOnly: true},
+	{Method: http.MethodGet, Exact: agentContextPath, Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/security-control-plane", Scope: scopeCosmoSecurityRead, Static: true},
@@ -37,6 +38,11 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/claims/verify", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/graph/reason", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/explain", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/triage", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/audit-packet", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/source-runtimes/", Suffix: "/retry", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/reports/", Suffix: "/run", Scope: scopeCosmoSecurityRead, Static: true},
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/metrics", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Scope: scopeReportsRun, Static: true},

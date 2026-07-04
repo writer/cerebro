@@ -32,7 +32,10 @@ func (app *App) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *h
 	cfg := app.cfg.Auth.MCPOAuth
 	resource := strings.TrimSpace(cfg.Resource)
 	if resource == "" {
-		resource = externalOrigin(r, app.cfg.Auth.RequestOrigin) + mcpEndpointPath
+		resource = strings.TrimRight(externalOrigin(r, app.cfg.Auth.RequestOrigin), "/")
+		if r != nil && r.URL != nil && r.URL.Path == oauthProtectedResourceMetadataMCPPath {
+			resource += mcpEndpointPath
+		}
 	}
 	issuer := strings.TrimSpace(cfg.Issuer)
 	if issuer == "" {
@@ -73,7 +76,24 @@ func (app *App) handleOAuthAuthorizationServerMetadata(w http.ResponseWriter, r 
 func supportedOAuthScopes() []string {
 	return []string{
 		scopeCosmoSecurityRead,
+		scopeAskQueriesWrite,
+		scopeConnectorDefinitionsWrite,
+		scopeConnectorCredentialsRead,
+		scopeConnectorCredentialsWrite,
+		scopeConnectorsWrite,
+		scopeDashboardsWrite,
+		scopeFindingCandidatePromote,
+		scopeFindingLifecycleWrite,
+		scopeGRCInventoryWrite,
+		scopeGRCPolicyLifecycleWrite,
 		scopeGraphActionsWrite,
+		scopeJobsWrite,
+		scopeReportsRun,
+		scopeRiskScoringWrite,
+		scopeRuntimeResponseWrite,
+		scopeSourceRuntimesWrite,
+		scopeUserPreferencesWrite,
+		scopeWorkflowReplay,
 	}
 }
 

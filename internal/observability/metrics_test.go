@@ -145,6 +145,7 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 		"http.request.header.user_agent.present":      true,
 		"http.request.auth_header.present":            true,
 		"user_agent.family":                           "curl",
+		"client.actor_type":                           "automation",
 		"cache.redis.hit.count":                       float64(1),
 		"http.response.status_code":                   float64(http.StatusOK),
 		"http.response.status_class":                  "2xx",
@@ -164,6 +165,30 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 	}
 	if strings.Contains(stderr, "curl/8.0") {
 		t.Fatalf("raw user-agent leaked into telemetry: %s", stderr)
+	}
+}
+
+func TestUserAgentActorTypeClassifiesHumanAndAgentClients(t *testing.T) {
+	tests := []struct {
+		name       string
+		userAgent  string
+		wantFamily string
+		wantActor  string
+	}{
+		{name: "browser", userAgent: "Mozilla/5.0 Chrome/126.0", wantFamily: "chrome", wantActor: "human"},
+		{name: "agent", userAgent: "Codex/1.0", wantFamily: "codex", wantActor: "agent"},
+		{name: "automation", userAgent: "python-requests/2.32", wantFamily: "python-requests", wantActor: "automation"},
+		{name: "empty", userAgent: "", wantFamily: "none", wantActor: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := userAgentFamily(tt.userAgent); got != tt.wantFamily {
+				t.Fatalf("family = %q, want %q", got, tt.wantFamily)
+			}
+			if got := userAgentActorType(tt.userAgent); got != tt.wantActor {
+				t.Fatalf("actor = %q, want %q", got, tt.wantActor)
+			}
+		})
 	}
 }
 
