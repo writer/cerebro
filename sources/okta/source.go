@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/oktaasset"
+	"github.com/writer/cerebro/sources/internal/oktafreshness"
 )
 
 //go:embed catalog.yaml
@@ -146,7 +147,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:         s.listUsers,
 			Enrich:       s.enrichUsersWithMFAFactors,
 			Probe:        s.probeLatestUser,
-			ProbeOptions: oktaUserFreshnessReadOptions(),
+			ProbeOptions: oktafreshness.UserReadOptions(),
 			Event:        userEvent,
 			URN: func(settings settings, user userRecord) (string, error) {
 				urn, err := userURN(settings.domain, user.ID)
