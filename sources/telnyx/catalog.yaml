@@ -27,6 +27,76 @@ runtime_families:
   - sim_card_group
   - sim_card_group_action
   - wireless_connectivity_log
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://api.telnyx.com/v2
+  spec_url: https://raw.githubusercontent.com/team-telnyx/openapi/master/openapi/spec3.json
+  spec_kind: openapi
+  references:
+    - https://developers.telnyx.com/api-reference/overview
+    - https://developers.telnyx.com/development/api-fundamentals
+    - https://github.com/team-telnyx/openapi
+    - https://raw.githubusercontent.com/team-telnyx/openapi/master/openapi/spec3.json
+  auth_evidence:
+    - https://developers.telnyx.com/development/api-fundamentals
+    - https://raw.githubusercontent.com/team-telnyx/openapi/master/openapi/spec3.json
+  scope_evidence:
+    - https://developers.telnyx.com/api-reference/overview
+    - https://raw.githubusercontent.com/team-telnyx/openapi/master/openapi/spec3.json
+  families:
+    - id: call_event
+      method: GET
+      path: /call_events
+      operation: ListCallEvents
+    - id: billing_group
+      method: GET
+      path: /billing_groups
+      operation: ListBillingGroups
+    - id: credential_connection
+      method: GET
+      path: /credential_connections
+      operation: ListCredentialConnections
+    - id: managed_account
+      method: GET
+      path: /managed_accounts
+      operation: ListManagedAccounts
+    - id: call_control_application
+      method: GET
+      path: /call_control_applications
+      operation: ListCallControlApplications
+    - id: notification_channel
+      method: GET
+      path: /notification_channels
+      operation: ListNotificationChannels
+    - id: detail_records_report
+      method: GET
+      path: /wireless/detail_records_reports
+      operation: GetWdrReports
+    - id: notification_event
+      method: GET
+      path: /notification_events
+      operation: FindNotificationsEvents
+    - id: notification_event_condition
+      method: GET
+      path: /notification_event_conditions
+      operation: FindNotificationsEventsConditions
+    - id: sim_card_group
+      method: GET
+      path: /sim_card_groups
+      operation: GetAllSimCardGroups
+    - id: sim_card_group_action
+      method: GET
+      path: /sim_card_group_actions
+      operation: GetSimCardGroupActions
+    - id: wireless_connectivity_log
+      method: GET
+      path: /sim_cards/{id}/wireless_connectivity_logs
+      operation: GetWirelessConnectivityLogs
 kind_lifecycle:
   - kind: telnyx.call_event
     status: active
