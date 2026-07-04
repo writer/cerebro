@@ -9,6 +9,35 @@ runtime_families:
   - audit_events
   - incidents
   - members
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: authorization_token_header
+  base_url: https://api.gitguardian.com/v1
+  spec_url: https://docs.gitguardian.com/api-docs/api-reference
+  spec_kind: openapi_embedded_html
+  references:
+    - https://api.gitguardian.com/docs
+    - https://docs.gitguardian.com/api-docs/api-reference
+    - https://docs.gitguardian.com/api-docs/authentication
+    - https://docs.gitguardian.com/api-docs/pagination
+  auth_evidence:
+    - https://docs.gitguardian.com/api-docs/authentication
+  scope_evidence:
+    - https://docs.gitguardian.com/api-docs/authentication
+  families:
+    - id: audit_events
+      method: GET
+      path: /audit_logs
+    - id: incidents
+      method: GET
+      path: /incidents/secrets
+    - id: members
+      method: GET
+      path: /members
 kind_lifecycle:
   - kind: gitguardian.incidents
     status: active
@@ -28,8 +57,14 @@ coverage_contract:
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: SOC 2
+          control_id: CC7.5
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps GitGuardian secret incident list records from `/v1/incidents/secrets`.
+        - Cerebro finding assignment, exception, SLA, and approval state remain owned by the finding workflow surfaces.
     - id: members
       type: entity_family
       title: "Members"
@@ -38,8 +73,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps workspace member records from `/v1/members` for owner, manager, member, and restricted access review.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -48,8 +88,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps workspace audit log records from `/v1/audit_logs` with actor, action, target, and timestamp fields.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
