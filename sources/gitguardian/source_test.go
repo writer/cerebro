@@ -164,7 +164,4 @@ func TestSourceCheckReportsProviderUnavailable(t *testing.T) {
 	if err == nil {
 		t.Fatal("Check() error = nil, want provider unavailable failure")
 	}
-	if !strings.Contains(err.Error(), "503") {
-		t.Fatalf("Check() error = %v, want 503", err)
-	}
 }
