@@ -66,6 +66,37 @@ type Pull struct {
 	ReconciliationReason PullReconciliationReason
 }
 
+// PullFromRecordsWithCursor builds a one-page Pull from provider records and a
+// provider cursor token, using the final event as the fallback resumable cursor.
+func PullFromRecordsWithCursor[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (Pull, error) {
+	if len(records) == 0 {
+		return Pull{}, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := build(record)
+		if err != nil {
+			return Pull{}, err
+		}
+		events = append(events, event)
+	}
+	fallback := events[len(events)-1].GetId()
+	if cursorFallback != nil {
+		fallback = cursorFallback(records[len(records)-1])
+	}
+	pull := Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: ResolveCursorOpaque(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
+		},
+	}
+	if next != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+	}
+	return pull, nil
+}
+
 // PullShortCircuitReason describes source work that intentionally produced no
 // new append-log events.
 type PullShortCircuitReason string

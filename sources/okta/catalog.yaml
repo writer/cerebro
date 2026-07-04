@@ -96,6 +96,16 @@ emitted_kinds:
   - okta.threat_insight
   - okta.trusted_origin
   - okta.user
+families:
+  - id: user
+    incremental: watermark
+    freshness_probe:
+      supported: true
+      canary_kind: okta_user_latest_record
+      confidence: heuristic
+      reconciliation_interval: 24h
+      max_skip_duration: 24h
+      max_consecutive_skips: 24
 runtime_families:
   - audit
   - admin_role

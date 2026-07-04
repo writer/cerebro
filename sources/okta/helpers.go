@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/oktaasset"
 	"github.com/writer/cerebro/sources/internal/oktaevent"
+	"github.com/writer/cerebro/sources/internal/oktafreshness"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
@@ -248,6 +249,8 @@ type oktaFamilyOptions[T any] struct {
 	Label          string
 	List           oktaListFunc[T]
 	Enrich         func(context.Context, settings, []T) ([]T, error)
+	Probe          func(context.Context, settings, *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error)
+	ProbeOptions   sourcecdk.FamilyFreshnessReadOptions
 	Event          func(settings, T) (*primitives.Event, error)
 	URN            func(settings, T) (string, error)
 	Discover       func(context.Context, settings) ([]sourcecdk.URN, error)
@@ -257,6 +260,8 @@ type oktaFamilyOptions[T any] struct {
 func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: options.Name, IncrementalWatermark: true,
+		Probe:        options.Probe,
+		ProbeOptions: options.ProbeOptions,
 		Check: func(ctx context.Context, settings settings) error {
 			return oktaCheck(ctx, settings, options.List, options.Label)
 		},
@@ -284,9 +289,29 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			build := func(record T) (*primitives.Event, error) {
 				return options.Event(settings, record)
 			}
-			return oktaPullFromRecordsWithCursor(records, next, build, options.CursorFallback)
+			return sourcecdk.PullFromRecordsWithCursor(records, next, build, options.CursorFallback)
 		},
 	}
+}
+
+func (s *Source) probeLatestUser(ctx context.Context, settings settings, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
+	scope := oktafreshness.NewScope(settings.domain, settings.filter, settings.q, settings.search)
+	change, err := oktafreshness.ProbeLatestUser(ctx, checkpoint, scope, func(ctx context.Context, sortBy string, sortOrder string, limit int) (oktafreshness.User, bool, error) {
+		probeSettings := settings
+		probeSettings.sortBy = sortBy
+		probeSettings.sortOrder = sortOrder
+		records, _, err := s.listUsers(ctx, probeSettings, "", limit)
+		if err != nil || len(records) == 0 {
+			return oktafreshness.User{}, false, err
+		}
+		record := records[0]
+		urn, _ := userURN(settings.domain, record.ID)
+		return oktafreshness.User{ID: record.ID, Status: record.Status, UpdatedAt: userOccurredAt(record), URN: urn}, true, nil
+	})
+	if err != nil {
+		return sourcecdk.ChangeProbe{}, wrapLookupError(oktaLabel("okta user freshness probe", settings), err)
+	}
+	return change, nil
 }
 
 func oktaAssetSettings(settings settings) oktaasset.Settings {
@@ -319,35 +344,6 @@ func oktaURNsFor[T any](settings settings, records []T, render func(settings, T)
 		urns = append(urns, urn)
 	}
 	return urns, nil
-}
-
-func oktaPullFromRecordsWithCursor[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (sourcecdk.Pull, error) {
-	if len(records) == 0 {
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(records))
-	for _, record := range records {
-		event, err := build(record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	fallback := events[len(events)-1].GetId()
-	if cursorFallback != nil {
-		fallback = cursorFallback(records[len(records)-1])
-	}
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: sourcecdk.ResolveCursorOpaque(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
-		},
-	}
-	if next != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-	}
-	return pull, nil
 }
 
 func listJSONRecords[T any](ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, label string, setRaw func(*T, json.RawMessage)) ([]T, string, error) {

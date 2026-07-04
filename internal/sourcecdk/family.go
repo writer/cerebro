@@ -18,6 +18,7 @@ type Family[S any] struct {
 	Discover             func(context.Context, S) ([]URN, error)
 	Probe                func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
 	ProbeOptions         FamilyFreshnessReadOptions
+	ReadWithChange       func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint, ChangeProbe) (Pull, error)
 	Read                 func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
 	ReadWithCheckpoint   func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
@@ -28,6 +29,8 @@ type ChangeProbe struct {
 	Unchanged          bool
 	Checkpoint         *cerebrov1.SourceCheckpoint
 	ShortCircuitReason PullShortCircuitReason
+	ChangedResourceIDs []string
+	ChangedURNs        []URN
 }
 
 // FamilyEngine dispatches source operations to table-driven families.
@@ -129,8 +132,12 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		return Pull{ShortCircuitReason: PullShortCircuitReasonScopeExcluded}, nil
 	}
 	readCheckpoint := checkpoint
-	if family.Probe != nil {
-		probe, err := family.Probe(ctx, settings, checkpoint)
+	activeCursor := strings.TrimSpace(CursorToken(cursor)) != ""
+	if family.Probe != nil && e.sourceID != "" {
+		readCheckpoint = FamilyFreshnessCheckpointFromCursor(e.sourceID, family.Name, cursor, readCheckpoint)
+	}
+	if family.Probe != nil && !activeCursor {
+		probe, err := family.Probe(ctx, settings, readCheckpoint)
 		if err != nil {
 			if normalizeFamilyFreshnessProbeErrorMode(family.ProbeOptions.ProbeErrorMode) == FamilyFreshnessProbeErrorFailOpen {
 				probe = ChangeProbe{}
@@ -150,6 +157,13 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		if probe.Checkpoint != nil {
 			readCheckpoint = probe.Checkpoint
 		}
+		if family.ReadWithChange != nil {
+			pull, err := family.ReadWithChange(ctx, settings, cursor, readCheckpoint, probe)
+			if err != nil {
+				return Pull{}, err
+			}
+			return applyResourceScopePolicy(pull, policy), nil
+		}
 	}
 	if family.ReadWithCheckpoint != nil {
 		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, readCheckpoint)
@@ -166,14 +180,31 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		return Pull{}, err
 	}
 	if family.IncrementalWatermark && e.sourceID != "" {
-		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, readCheckpoint)
+		readCheckpoint = IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, readCheckpoint)
 		next := ""
 		if pull.NextCursor != nil {
 			next = CursorToken(pull.NextCursor)
 		}
 		pull = IncrementalPullFromEvents(e.sourceID, family.Name, pull.Events, next, readCheckpoint)
+		if family.Probe != nil {
+			pull = attachFamilyFreshnessToPull(e.sourceID, family.Name, readCheckpoint, pull)
+		}
 	}
 	return applyResourceScopePolicy(pull, policy), nil
+}
+
+func attachFamilyFreshnessToPull(source string, family string, checkpoint *cerebrov1.SourceCheckpoint, pull Pull) Pull {
+	if checkpoint == nil {
+		return pull
+	}
+	pull.Checkpoint = FamilyFreshnessCheckpointFromCheckpoint(source, family, checkpoint, pull.Checkpoint)
+	if pull.NextCursor != nil {
+		nextCheckpoint := FamilyFreshnessCheckpointFromCheckpoint(source, family, checkpoint, &cerebrov1.SourceCheckpoint{CursorOpaque: pull.NextCursor.GetOpaque()})
+		if nextCheckpoint != nil {
+			pull.NextCursor.Opaque = nextCheckpoint.GetCursorOpaque()
+		}
+	}
+	return pull
 }
 
 func (e *FamilyEngine[S]) resolve(cfg Config) (Family[S], S, resourcescope.Policy, error) {
