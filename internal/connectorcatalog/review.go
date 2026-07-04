@@ -221,24 +221,36 @@ type RuntimeDepthFields struct {
 }
 
 type ProviderAPIReviewFields struct {
-	ProviderAPIStatus               string   `json:"provider_api_status,omitempty"`
-	ProviderAPIBasis                string   `json:"provider_api_basis,omitempty"`
-	ProviderAPIVerifiedAt           string   `json:"provider_api_verified_at,omitempty"`
-	ProviderAPITransport            string   `json:"provider_api_transport,omitempty"`
-	ProviderAPIAuth                 string   `json:"provider_api_auth,omitempty"`
-	ProviderAPIAuthMechanics        string   `json:"provider_api_auth_mechanics,omitempty"`
-	ProviderAPIBaseURL              string   `json:"provider_api_base_url,omitempty"`
-	ProviderAPIEndpoint             string   `json:"provider_api_endpoint,omitempty"`
-	ProviderAPISpecURL              string   `json:"provider_api_spec_url,omitempty"`
-	ProviderAPISpecKind             string   `json:"provider_api_spec_kind,omitempty"`
-	ProviderAPIReferences           []string `json:"provider_api_references,omitempty"`
-	ProviderAPIAuthEvidence         []string `json:"provider_api_auth_evidence,omitempty"`
-	ProviderAPIScopeEvidence        []string `json:"provider_api_scope_evidence,omitempty"`
-	ProviderAPIMappedFamilies       []string `json:"provider_api_mapped_families,omitempty"`
-	ProviderAPIMissingFamilies      []string `json:"provider_api_missing_families,omitempty"`
-	ProviderAPIProofScore           int      `json:"provider_api_proof_score,omitempty"`
-	ProviderAPIProofLevel           string   `json:"provider_api_proof_level,omitempty"`
-	ProviderAPIProofGaps            []string `json:"provider_api_proof_gaps,omitempty"`
+	ProviderAPIContractReviewFields
+	ProviderAPIProofReviewFields
+	ProviderAPIDisproofReviewFields
+}
+
+type ProviderAPIContractReviewFields struct {
+	ProviderAPIStatus          string   `json:"provider_api_status,omitempty"`
+	ProviderAPIBasis           string   `json:"provider_api_basis,omitempty"`
+	ProviderAPIVerifiedAt      string   `json:"provider_api_verified_at,omitempty"`
+	ProviderAPITransport       string   `json:"provider_api_transport,omitempty"`
+	ProviderAPIAuth            string   `json:"provider_api_auth,omitempty"`
+	ProviderAPIAuthMechanics   string   `json:"provider_api_auth_mechanics,omitempty"`
+	ProviderAPIBaseURL         string   `json:"provider_api_base_url,omitempty"`
+	ProviderAPIEndpoint        string   `json:"provider_api_endpoint,omitempty"`
+	ProviderAPISpecURL         string   `json:"provider_api_spec_url,omitempty"`
+	ProviderAPISpecKind        string   `json:"provider_api_spec_kind,omitempty"`
+	ProviderAPIReferences      []string `json:"provider_api_references,omitempty"`
+	ProviderAPIAuthEvidence    []string `json:"provider_api_auth_evidence,omitempty"`
+	ProviderAPIScopeEvidence   []string `json:"provider_api_scope_evidence,omitempty"`
+	ProviderAPIMappedFamilies  []string `json:"provider_api_mapped_families,omitempty"`
+	ProviderAPIMissingFamilies []string `json:"provider_api_missing_families,omitempty"`
+}
+
+type ProviderAPIProofReviewFields struct {
+	ProviderAPIProofScore int      `json:"provider_api_proof_score,omitempty"`
+	ProviderAPIProofLevel string   `json:"provider_api_proof_level,omitempty"`
+	ProviderAPIProofGaps  []string `json:"provider_api_proof_gaps,omitempty"`
+}
+
+type ProviderAPIDisproofReviewFields struct {
 	ProviderAPIDisproofStatus       string   `json:"provider_api_disproof_status,omitempty"`
 	ProviderAPIDisproofReason       string   `json:"provider_api_disproof_reason,omitempty"`
 	ProviderAPIDisproofCheckedAt    string   `json:"provider_api_disproof_checked_at,omitempty"`

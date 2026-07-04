@@ -51,14 +51,15 @@ type RuntimeDepth struct {
 }
 
 type RuntimeProviderAPIDepth struct {
+	RuntimeProviderAPIContractDepth
+	RuntimeProviderAPIProofDepth
+	RuntimeProviderAPIDisproofDepth
+}
+
+type RuntimeProviderAPIContractDepth struct {
 	HasContract           bool     `json:"has_contract,omitempty"`
 	HasMapping            bool     `json:"has_mapping,omitempty"`
 	HasRuntimeTransport   bool     `json:"has_runtime_transport,omitempty"`
-	HasProof              bool     `json:"has_proof,omitempty"`
-	HasDisproof           bool     `json:"has_disproof,omitempty"`
-	ProofScore            int      `json:"proof_score,omitempty"`
-	ProofLevel            string   `json:"proof_level,omitempty"`
-	ProofGaps             []string `json:"proof_gaps,omitempty"`
 	Status                string   `json:"status,omitempty"`
 	Basis                 string   `json:"basis,omitempty"`
 	VerifiedAt            string   `json:"verified_at,omitempty"`
@@ -74,13 +75,24 @@ type RuntimeProviderAPIDepth struct {
 	ScopeEvidence         []string `json:"scope_evidence,omitempty"`
 	MappedFamilies        []string `json:"mapped_families,omitempty"`
 	MissingFamilyMappings []string `json:"missing_family_mappings,omitempty"`
-	DisproofStatus        string   `json:"disproof_status,omitempty"`
-	DisproofReason        string   `json:"disproof_reason,omitempty"`
-	DisproofCheckedAt     string   `json:"disproof_checked_at,omitempty"`
-	DisproofReferences    []string `json:"disproof_references,omitempty"`
-	DisproofFamilies      []string `json:"disproof_families,omitempty"`
-	DisproofMissingPaths  []string `json:"disproof_missing_paths,omitempty"`
-	DisproofNotes         []string `json:"disproof_notes,omitempty"`
+}
+
+type RuntimeProviderAPIProofDepth struct {
+	HasProof   bool     `json:"has_proof,omitempty"`
+	ProofScore int      `json:"proof_score,omitempty"`
+	ProofLevel string   `json:"proof_level,omitempty"`
+	ProofGaps  []string `json:"proof_gaps,omitempty"`
+}
+
+type RuntimeProviderAPIDisproofDepth struct {
+	HasDisproof          bool     `json:"has_disproof,omitempty"`
+	DisproofStatus       string   `json:"disproof_status,omitempty"`
+	DisproofReason       string   `json:"disproof_reason,omitempty"`
+	DisproofCheckedAt    string   `json:"disproof_checked_at,omitempty"`
+	DisproofReferences   []string `json:"disproof_references,omitempty"`
+	DisproofFamilies     []string `json:"disproof_families,omitempty"`
+	DisproofMissingPaths []string `json:"disproof_missing_paths,omitempty"`
+	DisproofNotes        []string `json:"disproof_notes,omitempty"`
 }
 
 type runtimeCatalogFields struct {
