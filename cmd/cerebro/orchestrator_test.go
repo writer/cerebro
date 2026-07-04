@@ -893,6 +893,126 @@ func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *te
 	}
 }
 
+func TestRunOrchestratorIterationSkipsDownstreamWhenSourceAndGraphAreCurrent(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorUnchangedSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graphRule := &orchestratorGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "orchestrator-graph-rule"},
+		sourceID: "github",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
+	}
+	ruleRegistry, err := findings.NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+	checkpointStatus, err := graphService.RuntimeCheckpointStatus(context.Background(), graphingest.RuntimeRequest{RuntimeID: "runtime-1"})
+	if err != nil {
+		t.Fatalf("RuntimeCheckpointStatus() error = %v", err)
+	}
+	if err := graphStore.PutIngestCheckpoint(context.Background(), graphstore.IngestCheckpoint{
+		ID:        checkpointStatus.CheckpointID,
+		SourceID:  "github",
+		TenantID:  "writer",
+		Completed: true,
+	}); err != nil {
+		t.Fatalf("PutIngestCheckpoint() error = %v", err)
+	}
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphQueryStore(graphStore)
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findingService,
+		graphService,
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.ShortCircuitReason != "not_modified" {
+		t.Fatalf("short circuit reason = %q, want not_modified", runtimeResult.ShortCircuitReason)
+	}
+	if runtimeResult.DownstreamSkipReason != "source_unchanged" {
+		t.Fatalf("downstream skip reason = %q, want source_unchanged", runtimeResult.DownstreamSkipReason)
+	}
+	if runtimeResult.GraphIngest != "skipped" || runtimeResult.FindingRules != "skipped" || runtimeResult.GraphRules != "skipped" {
+		t.Fatalf("downstream statuses = %q/%q/%q, want skipped/skipped/skipped", runtimeResult.GraphIngest, runtimeResult.FindingRules, runtimeResult.GraphRules)
+	}
+	if graphRule.calls != 0 {
+		t.Fatalf("graph rule calls = %d, want 0 when graph checkpoint is already current", graphRule.calls)
+	}
+	if len(graphStore.runs) != 0 {
+		t.Fatalf("graph ingest runs = %d, want 0 when downstream work is skipped", len(graphStore.runs))
+	}
+}
+
+func TestRunOrchestratorIterationRunsGraphWhenSourceUnchangedButGraphCheckpointMissing(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorUnchangedSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphService,
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.DownstreamSkipReason != "" {
+		t.Fatalf("downstream skip reason = %q, want empty when graph checkpoint is missing", runtimeResult.DownstreamSkipReason)
+	}
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	if len(graphStore.runs) == 0 {
+		t.Fatal("graph ingest did not run when checkpoint was missing")
+	}
+}
+
 func TestRunOrchestratorIterationSkipsUnavailableFindingRules(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
 	if err != nil {
@@ -1261,6 +1381,24 @@ func (s orchestratorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cur
 		},
 		NextCursor: nextCursor,
 	}, nil
+}
+
+type orchestratorUnchangedSource struct{}
+
+func (orchestratorUnchangedSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}
+}
+
+func (orchestratorUnchangedSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (orchestratorUnchangedSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (orchestratorUnchangedSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{ShortCircuitReason: sourcecdk.PullShortCircuitReasonNotModified}, nil
 }
 
 func orchestratorSourceEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {

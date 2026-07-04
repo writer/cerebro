@@ -573,12 +573,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	emitSourceRuntimeContractProbe(ctx, runtime)
 	return &cerebrov1.SyncSourceRuntimeResponse{
-		Runtime:           redactRuntime(runtime),
-		Source:            source.Spec(),
-		PagesRead:         pagesRead,
-		EventsAppended:    eventsAppended,
-		EntitiesProjected: entitiesProjected,
-		LinksProjected:    linksProjected,
+		Runtime:              redactRuntime(runtime),
+		Source:               source.Spec(),
+		PagesRead:            pagesRead,
+		EventsAppended:       eventsAppended,
+		EntitiesProjected:    entitiesProjected,
+		LinksProjected:       linksProjected,
+		ShortCircuitReason:   shortCircuitReason,
+		ReconciliationReason: reconciliationReason,
 	}, nil
 }
 

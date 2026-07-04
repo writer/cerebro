@@ -193,6 +193,35 @@ func (s *checkpointProjectionGraphStore) PutIngestCheckpoint(_ context.Context, 
 	return nil
 }
 
+type graphingestRuntimeStore struct {
+	runtimes map[string]*cerebrov1.SourceRuntime
+	err      error
+}
+
+func (s *graphingestRuntimeStore) Ping(context.Context) error { return s.err }
+
+func (s *graphingestRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.runtimes == nil {
+		s.runtimes = map[string]*cerebrov1.SourceRuntime{}
+	}
+	s.runtimes[runtime.GetId()] = runtime
+	return nil
+}
+
+func (s *graphingestRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
+	}
+	return runtime, nil
+}
+
 type singlePageSource struct {
 	id     string
 	events []*cerebrov1.EventEnvelope
@@ -374,6 +403,65 @@ func TestRuntimeCheckpointIDDistinguishesOriginalRuntimeIDs(t *testing.T) {
 	}
 	if !strings.HasPrefix(first, "runtime:") || !strings.HasPrefix(second, "runtime:") {
 		t.Fatalf("runtimeCheckpointID() = %q, %q; want runtime prefix", first, second)
+	}
+}
+
+func TestRuntimeCheckpointStatusReportsFreshCompletedCheckpoint(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-github-audit",
+		SourceId: "github",
+		TenantId: "writer",
+		Config:   map[string]string{"org": "WriterInternal"},
+	}
+	graphStore := &checkpointProjectionGraphStore{}
+	service := &Service{
+		runtimeStore: &graphingestRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime},
+		},
+		graphStore: graphStore,
+	}
+
+	status, err := service.RuntimeCheckpointStatus(context.Background(), RuntimeRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("RuntimeCheckpointStatus() error = %v", err)
+	}
+	if status.Found || status.Completed || status.CheckpointCurrent {
+		t.Fatalf("missing checkpoint status = %#v, want not found and not current", status)
+	}
+	if status.CheckpointID == "" || !strings.HasPrefix(status.CheckpointID, "runtime:") {
+		t.Fatalf("CheckpointID = %q, want runtime checkpoint id", status.CheckpointID)
+	}
+
+	if err := graphStore.PutIngestCheckpoint(context.Background(), graphstore.IngestCheckpoint{
+		ID:        status.CheckpointID,
+		Completed: true,
+	}); err != nil {
+		t.Fatalf("PutIngestCheckpoint() error = %v", err)
+	}
+	status, err = service.RuntimeCheckpointStatus(context.Background(), RuntimeRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("RuntimeCheckpointStatus() error = %v", err)
+	}
+	if !status.Found || !status.Completed || !status.CheckpointCurrent {
+		t.Fatalf("completed checkpoint status = %#v, want found completed and current", status)
+	}
+
+	if err := graphStore.PutIngestCheckpoint(context.Background(), graphstore.IngestCheckpoint{
+		ID:           status.CheckpointID,
+		Completed:    true,
+		CursorOpaque: "page-2",
+	}); err != nil {
+		t.Fatalf("PutIngestCheckpoint() error = %v", err)
+	}
+	status, err = service.RuntimeCheckpointStatus(context.Background(), RuntimeRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("RuntimeCheckpointStatus() error = %v", err)
+	}
+	if !status.Found || !status.Completed || status.CheckpointCurrent {
+		t.Fatalf("cursor checkpoint status = %#v, want found completed but not current", status)
+	}
+	if status.CursorOpaque != "page-2" {
+		t.Fatalf("CursorOpaque = %q, want page-2", status.CursorOpaque)
 	}
 }
 

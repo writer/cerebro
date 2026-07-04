@@ -1702,6 +1702,9 @@ func TestSyncRuntimePassesCheckpointAndPersistsShortCircuitReason(t *testing.T) 
 	if resp.GetPagesRead() != 1 || resp.GetEventsAppended() != 0 {
 		t.Fatalf("Sync() pages/events = %d/%d, want 1/0", resp.GetPagesRead(), resp.GetEventsAppended())
 	}
+	if got := resp.GetShortCircuitReason(); got != "not_modified" {
+		t.Fatalf("response short circuit reason = %q, want not_modified", got)
+	}
 	if len(log.events) != 0 {
 		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
 	}
@@ -1738,6 +1741,9 @@ func TestSyncRuntimePersistsReconciliationReason(t *testing.T) {
 	}
 	if resp.GetEventsAppended() != 1 {
 		t.Fatalf("EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	if got := resp.GetReconciliationReason(); got != "max_consecutive_skips" {
+		t.Fatalf("response reconciliation reason = %q, want max_consecutive_skips", got)
 	}
 	stored := store.runtimes["writer-checkpoint-aware"]
 	if got := stored.GetConfig()[runtimeReconciliationReasonConfigKey]; got != "max_consecutive_skips" {
@@ -1788,8 +1794,12 @@ func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 	}}
 	service := New(registry, store, &appendLog{}, nil)
 
-	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"})
+	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
+	}
+	if got := resp.GetShortCircuitReason(); got != "checkpoint_advanced" {
+		t.Fatalf("response short circuit reason = %q, want checkpoint_advanced", got)
 	}
 	stored := store.runtimes["writer-checkpoint-aware"]
 	if got := stored.GetCheckpoint().GetWatermark().AsTime(); !got.Equal(newer) {
