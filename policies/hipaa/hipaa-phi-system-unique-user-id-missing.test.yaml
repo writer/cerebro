@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi system without unique user identification fails
+      resource:
+          system_id: ps-200
+          contains_ephi: true
+          unique_user_identification_enabled: false
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: true
+    - name: ephi system with unique user identification passes
+      resource:
+          system_id: ps-201
+          contains_ephi: true
+          unique_user_identification_enabled: true
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: false

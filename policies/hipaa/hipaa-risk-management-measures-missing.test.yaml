@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi risk record without risk management measures fails
+      resource:
+          risk_record_id: hr-200
+          ephi_scope: true
+          risk_level: high
+          risk_management_measures_implemented: false
+          owner_id: compliance-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: risk management measures recorded passes
+      resource:
+          risk_record_id: hr-201
+          ephi_scope: true
+          risk_level: medium
+          risk_management_measures_implemented: true
+          owner_id: compliance-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

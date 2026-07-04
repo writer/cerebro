@@ -1,0 +1,115 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-business-associate-contract-safeguard-terms-missing
+    name: HIPAA Business Associate Safeguard Terms Missing
+    description: Flags active business associate agreements for ePHI scope that do not show required safeguard, subcontractor, and incident reporting terms.
+    tags:
+        - hipaa
+        - organizational-requirements
+        - business-associate
+        - contract-evidence
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.314
+spec:
+    severity: high
+    effect: forbid
+    resource: business_associate_register::business_associate_agreement
+    match:
+        conditions:
+            - cmp_eq(path(resource, "handles_ephi"), true)
+            - cmp_eq(path(resource, "agreement_active"), true)
+            - (cmp_ne(path(resource, "security_safeguard_terms_present"), true)) || (cmp_ne(path(resource, "subcontractor_safeguard_terms_present"), true)) || (cmp_ne(path(resource, "security_incident_reporting_terms_present"), true))
+        conditionFormat: cel
+    remediation:
+        summary: Add required HIPAA safeguard terms to the business associate agreement evidence.
+        steps:
+            - Confirm the agreement is active and the vendor creates, receives, maintains, or transmits ePHI.
+            - Add or attach terms for applicable safeguards, subcontractor obligations, and security incident reporting.
+            - Retain owner approval and the agreement evidence in the business associate register.
+    riskCategories:
+        - THIRD_PARTY_RISK
+        - DATA_EXPOSURE
+        - GOVERNANCE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.314(a)(1)
+    input:
+        sourceKinds:
+            - business_associate_register.business_associate_agreement
+        requiredFields:
+            - agreement_id
+            - vendor_id
+            - handles_ephi
+            - agreement_active
+            - security_safeguard_terms_present
+            - subcontractor_safeguard_terms_present
+            - security_incident_reporting_terms_present
+            - owner_id
+            - reviewed_at
+        freshnessSLA: 90d
+    evidence:
+        type: control_review
+        assessmentMethods:
+            - examine
+            - interview
+        requiredForAudit: true
+        acceptableSources:
+            - business_associate_register
+        requiredFields:
+            - agreement_id
+            - vendor_id
+            - handles_ephi
+            - agreement_active
+            - security_safeguard_terms_present
+            - subcontractor_safeguard_terms_present
+            - security_incident_reporting_terms_present
+            - owner_id
+            - reviewed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - agreement_id
+    audit:
+        evidenceType: control_review
+        assessmentMethods:
+            - examine
+            - interview
+        freshnessSLA: 90d
+        auditorStatement: Active business associate agreements for ePHI scope include safeguard, subcontractor, and security incident reporting terms.
+        auditorGuidance: Review the agreement, ePHI scope, vendor, safeguard terms, subcontractor terms, incident reporting terms, owner, and review date.
+        riskStatement: Missing business associate safeguard terms can leave ePHI handling obligations unsupported in the contract record.
+        remediationIntent: Add required safeguard terms or attach signed agreement evidence and owner approval.
+        acceptableEvidence:
+            - source: business_associate_register
+              fields:
+                - agreement_id
+                - vendor_id
+                - handles_ephi
+                - agreement_active
+                - security_safeguard_terms_present
+                - subcontractor_safeguard_terms_present
+                - security_incident_reporting_terms_present
+                - owner_id
+                - reviewed_at
+        exceptionPolicy:
+            maxAge: 90d
+            requiresApproval: true
+        falsePositives:
+            - The vendor does not create, receive, maintain, or transmit ePHI, or the terms are present in a linked signed agreement.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: vendor.owner
+        remediation:
+            type: business_associate_agreement_update
+            steps:
+                - Attach or amend safeguard, subcontractor, and security incident reporting terms.
+                - Confirm active agreement and ePHI scope.
+                - Rerun business associate register evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

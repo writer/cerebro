@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: active ephi agreement without safeguard terms fails
+      resource:
+          agreement_id: baa-100
+          vendor_id: vendor-100
+          handles_ephi: true
+          agreement_active: true
+          security_safeguard_terms_present: true
+          subcontractor_safeguard_terms_present: false
+          security_incident_reporting_terms_present: true
+          owner_id: vendor-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: active ephi agreement with required terms passes
+      resource:
+          agreement_id: baa-101
+          vendor_id: vendor-101
+          handles_ephi: true
+          agreement_active: true
+          security_safeguard_terms_present: true
+          subcontractor_safeguard_terms_present: true
+          security_incident_reporting_terms_present: true
+          owner_id: vendor-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

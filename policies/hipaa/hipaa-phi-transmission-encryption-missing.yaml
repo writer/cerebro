@@ -1,0 +1,105 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-transmission-encryption-missing
+    name: HIPAA PHI Transmission Encryption Missing
+    description: Flags ePHI systems with electronic transmission scope that do not show transmission encryption evidence.
+    tags:
+        - hipaa
+        - technical-safeguards
+        - transmission-security
+        - encryption
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+spec:
+    severity: high
+    effect: forbid
+    resource: phi_system_inventory::phi_system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ephi"), true)
+            - cmp_eq(path(resource, "electronic_transmission_enabled"), true)
+            - cmp_ne(path(resource, "transmission_encryption_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable transmission encryption for ePHI sent over electronic networks.
+        steps:
+            - Confirm the ePHI transmission paths for the system.
+            - Enable encryption for electronic ePHI transmission where appropriate.
+            - Retain transmission security evidence in the PHI system inventory.
+    riskCategories:
+        - DATA_EXPOSURE
+        - GOVERNANCE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.312(e)(2)(ii)
+    input:
+        sourceKinds:
+            - phi_system_inventory.phi_system
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - electronic_transmission_enabled
+            - transmission_encryption_enabled
+            - owner_id
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: data_protection
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - phi_system_inventory
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - electronic_transmission_enabled
+            - transmission_encryption_enabled
+            - owner_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - system_id
+    audit:
+        evidenceType: data_protection
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: ePHI systems encrypt electronic ePHI transmission where transmission security applies.
+        auditorGuidance: Review the PHI system record, transmission paths, encryption state, owner, and last observed timestamp.
+        riskStatement: Missing transmission encryption evidence can leave ePHI exposed during electronic transmission.
+        remediationIntent: Enable transmission encryption and retain evidence for the ePHI transmission paths.
+        acceptableEvidence:
+            - source: phi_system_inventory
+              fields:
+                - system_id
+                - contains_ephi
+                - electronic_transmission_enabled
+                - transmission_encryption_enabled
+                - owner_id
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The system does not transmit ePHI electronically or an approved transmission-security exception is linked to the record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: security.owner
+        remediation:
+            type: phi_system_transmission_security_update
+            steps:
+                - Enable transmission encryption.
+                - Confirm ePHI transmission paths.
+                - Rerun PHI system inventory collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true
