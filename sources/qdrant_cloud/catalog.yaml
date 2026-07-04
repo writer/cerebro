@@ -19,6 +19,66 @@ runtime_families:
   - clusters
   - database_api_keys
   - roles
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: authorization_apikey_header
+  base_url: https://api.cloud.qdrant.io
+  spec_url: https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/account/v1/account.swagger.json
+  spec_kind: openapi
+  references:
+    - https://qdrant.tech/documentation/cloud-api/
+    - https://github.com/qdrant/qdrant-cloud-public-api
+    - https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/account/v1/account.swagger.json
+    - https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/v1/cluster.swagger.json
+    - https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/auth/v2/database_api_key.swagger.json
+    - https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/backup/v1/backup.swagger.json
+    - https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/iam/v1/iam.swagger.json
+  auth_evidence:
+    - https://qdrant.tech/documentation/cloud-api/
+    - https://github.com/qdrant/qdrant-cloud-public-api
+  scope_evidence:
+    - https://github.com/qdrant/qdrant-cloud-public-api/tree/main/proto/qdrant/cloud/account/v1
+    - https://github.com/qdrant/qdrant-cloud-public-api/tree/main/proto/qdrant/cloud/cluster/v1
+    - https://github.com/qdrant/qdrant-cloud-public-api/tree/main/proto/qdrant/cloud/cluster/auth/v2
+    - https://github.com/qdrant/qdrant-cloud-public-api/tree/main/proto/qdrant/cloud/cluster/backup/v1
+    - https://github.com/qdrant/qdrant-cloud-public-api/tree/main/proto/qdrant/cloud/iam/v1
+  families:
+    - id: accounts
+      method: GET
+      path: /api/account/v1/accounts
+      operation: AccountService/ListAccounts
+    - id: account_members
+      method: GET
+      path: /api/account/v1/accounts/{account_id}/members
+      operation: AccountService/ListAccountMembers
+    - id: clusters
+      method: GET
+      path: /api/cluster/v1/accounts/{account_id}/clusters
+      operation: ClusterService/ListClusters
+    - id: database_api_keys
+      method: GET
+      path: /api/cluster/auth/v2/accounts/{account_id}/database-api-keys
+      operation: DatabaseApiKeyService/ListDatabaseApiKeys
+    - id: backups
+      method: GET
+      path: /api/cluster/backup/v1/accounts/{account_id}/backups
+      operation: BackupService/ListBackups
+    - id: backup_restores
+      method: GET
+      path: /api/cluster/backup/v1/accounts/{account_id}/backup_restores
+      operation: BackupService/ListBackupRestores
+    - id: backup_schedules
+      method: GET
+      path: /api/cluster/backup/v1/accounts/{account_id}/backup_schedules
+      operation: BackupService/ListBackupSchedules
+    - id: roles
+      method: GET
+      path: /api/iam/v1/accounts/{account_id}/roles
+      operation: IAMService/ListRoles
 kind_lifecycle:
   - kind: qdrant_cloud.accounts
     status: active
@@ -49,7 +109,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads accounts from Qdrant Cloud AccountService/ListAccounts.
     - id: account_members
       type: entity_family
       title: "Account Members"
@@ -59,7 +119,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads account members from AccountService/ListAccountMembers.
     - id: clusters
       type: deployment_state
       title: "Clusters"
@@ -69,7 +129,7 @@ coverage_contract:
       evidence_types: [change_management]
       control_domains: [secure_delivery]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads clusters from ClusterService/ListClusters.
     - id: database_api_keys
       type: entity_family
       title: "Database Api Keys"
@@ -79,7 +139,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads database API keys from DatabaseApiKeyService/ListDatabaseApiKeys.
     - id: backups
       type: entity_family
       title: "Backups"
@@ -89,7 +149,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads backups from BackupService/ListBackups.
     - id: backup_restores
       type: deployment_state
       title: "Backup Restores"
@@ -99,7 +159,7 @@ coverage_contract:
       evidence_types: [change_management]
       control_domains: [secure_delivery]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads backup restore jobs from BackupService/ListBackupRestores.
     - id: backup_schedules
       type: lifecycle_state
       title: "Backup Schedules"
@@ -109,7 +169,7 @@ coverage_contract:
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads backup schedules from BackupService/ListBackupSchedules.
     - id: roles
       type: entity_family
       title: "Roles"
@@ -119,7 +179,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads account roles from IAMService/ListRoles.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

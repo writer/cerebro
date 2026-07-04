@@ -2,16 +2,88 @@ sourceId: qdrant_cloud
 secretKeys:
   - QDRANT_CLOUD_ACCOUNT_ID
   - QDRANT_CLOUD_CLUSTER_ID
-  - QDRANT_CLOUD_API_TOKEN
+  - QDRANT_CLOUD_MANAGEMENT_KEY
 runtimes:
   - localId: accounts
     config:
-      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
-      cluster_id: env:QDRANT_CLOUD_CLUSTER_ID
       family: accounts
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /api/account/v1/accounts
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      api_token: env:QDRANT_CLOUD_API_TOKEN
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: account-members
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      family: account_members
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: clusters
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      family: clusters
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: database-api-keys
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      cluster_id: env:QDRANT_CLOUD_CLUSTER_ID
+      family: database_api_keys
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: backups
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      cluster_id: env:QDRANT_CLOUD_CLUSTER_ID
+      family: backups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: backup-restores
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      cluster_id: env:QDRANT_CLOUD_CLUSTER_ID
+      family: backup_restores
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: backup-schedules
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      cluster_id: env:QDRANT_CLOUD_CLUSTER_ID
+      family: backup_schedules
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
+  - localId: roles
+    config:
+      account_id: env:QDRANT_CLOUD_ACCOUNT_ID
+      family: roles
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/account/v1/accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:QDRANT_CLOUD_MANAGEMENT_KEY
