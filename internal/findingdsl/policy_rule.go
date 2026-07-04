@@ -758,7 +758,7 @@ func validatePolicyRuleDepthContract(path string, spec PolicyFindingRuleSpec) []
 			issues = append(issues, Issue{Path: path, Message: required.field + " is required when spec.evidence.requirementRefs is set"})
 		}
 	}
-	if spec.Evidence.RequiredForAudit == false {
+	if !spec.Evidence.RequiredForAudit {
 		issues = append(issues, Issue{Path: path, Message: "spec.evidence.requiredForAudit must be true when spec.evidence.requirementRefs is set"})
 	}
 	if strings.TrimSpace(spec.Graph.Query) != "" {
