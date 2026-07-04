@@ -442,6 +442,46 @@ LIMIT $row_limit`,
 	}
 }
 
+func TestValidatePolicyRuleRequiresDepthEvidenceFieldsForGraphPolicy(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Match = PolicyRuleMatch{}
+	rule.Spec.Graph = PolicyRuleGraphFinding{
+		Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+		RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+		RowLimit:        100,
+	}
+	rule.Spec.Input.SourceKinds = nil
+	rule.Spec.Input.EventKinds = nil
+	rule.Spec.Input.RequiredFields = nil
+	rule.Spec.Evidence.AcceptableSources = nil
+	rule.Spec.Evidence.RequiredFields = nil
+	rule.Spec.Evidence.FingerprintFields = nil
+
+	issues := ValidatePolicyRule(rule)
+	for _, want := range []string{
+		"spec.evidence.acceptableSources is required when spec.evidence.requirementRefs is set",
+		"spec.evidence.requiredFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if !policyIssueContains(issues, want) {
+			t.Fatalf("issues = %#v, want %q", issues, want)
+		}
+	}
+	for _, notWant := range []string{
+		"spec.input.sourceKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.eventKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.requiredFields is required when spec.evidence.requirementRefs is set",
+		"spec.evidence.fingerprintFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if policyIssueContains(issues, notWant) {
+			t.Fatalf("issues = %#v, did not expect %q", issues, notWant)
+		}
+	}
+}
+
 func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
 	rule := PolicyFindingRule{
 		APIVersion: APIVersion,
