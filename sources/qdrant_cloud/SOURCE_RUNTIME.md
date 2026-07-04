@@ -1,11 +1,13 @@
 # Qdrant Cloud
 
-Generated Source Runtime SDK scaffold for `qdrant_cloud`.
+Source Runtime adapter for Qdrant Cloud account, cluster, backup, database API key, and IAM role inventory.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `api_key`
+- Auth mechanics: `Authorization: apikey <management key>`
+- Base URL: `https://api.cloud.qdrant.io`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -14,7 +16,7 @@ Generated Source Runtime SDK scaffold for `qdrant_cloud`.
 - Adapter package: `sources/qdrant_cloud`
 - Health endpoint: `/source-runtimes/health?source_id=qdrant_cloud`
 - Source health receipt: `sources/qdrant_cloud/source_health_receipt.json`
-- EvidenceCAS reference kind: `qdrant_cloud.evidence_cas_reference`
+- Emits account, identity, cluster, database API key, backup, backup schedule, and role configuration evidence.
 
 ## Families
 
@@ -29,5 +31,6 @@ Generated Source Runtime SDK scaffold for `qdrant_cloud`.
 
 ## Tests
 
-- `go test ./sources/qdrant_cloud ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/qdrant_cloud ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `make lint-sources catalog-check sourcegen-check check-structural check-structural-test check-arch`
+- `make connector-catalog-review connector-api-discovery`
