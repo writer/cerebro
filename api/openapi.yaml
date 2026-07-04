@@ -5624,10 +5624,9 @@ components:
       name: Idempotency-Key
       in: header
       required: false
-      description: Optional retry key for agent task requests. When also present as idempotency_key in the JSON body, both values must match.
+      description: Optional retry key for agent task requests, limited to 255 UTF-8 bytes. When also present as idempotency_key in the JSON body, both values must match.
       schema:
         type: string
-        maxLength: 255
   schemas:
     GRCEvidencePacketsResponse:
       type: object
@@ -7435,8 +7434,7 @@ components:
             type: string
         idempotency_key:
           type: string
-          maxLength: 255
-          description: Optional retry key. Equivalent to the Idempotency-Key header; if both are sent, they must match.
+          description: Optional retry key, limited to 255 UTF-8 bytes. Equivalent to the Idempotency-Key header; if both are sent, they must match.
     AgentTaskResponse:
       type: object
       required:
