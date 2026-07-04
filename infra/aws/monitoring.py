@@ -455,10 +455,15 @@ def create_monitoring(
     source_runtimes: list[dict] = None,
     source_runtime_heartbeat_period_seconds: int = 28800,
     source_runtime_observability: list[dict] = None,
+    orchestrator_runtime_id_metrics_enabled: bool = False,
+    orchestrator_runtime_id_alarms_enabled: bool = False,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
     """
+    if orchestrator_runtime_id_alarms_enabled and not orchestrator_runtime_id_metrics_enabled:
+        raise ValueError("orchestrator runtime-id alarms require orchestrator runtime-id metrics")
+
     # SNS topic for alerts
     alarm_topic = aws.sns.Topic(
         f"{name}-alarms",
@@ -821,7 +826,12 @@ def create_monitoring(
     telemetry_filters = {}
     telemetry_namespace = f"Cerebro/{name}"
     if log_group_name is not None:
-        telemetry_filters = _create_telemetry_metric_filters(name, log_group_name, source_runtime_observability)
+        telemetry_filters = _create_telemetry_metric_filters(
+            name,
+            log_group_name,
+            source_runtime_observability,
+            orchestrator_runtime_id_metrics_enabled=orchestrator_runtime_id_metrics_enabled,
+        )
         _custom_metric_alarm(
             resource_name=f"{name}-source-runtime-failures-alarm",
             alarm_name=f"{name}-source-runtime-sync-failures",
@@ -1141,44 +1151,45 @@ def create_monitoring(
             dimensions={"Service": name, "Stream": jetstream_stream_name},
         )
 
-    runtime_ids = sorted({
-        runtime_id
-        for schedule in orchestrator_schedules or []
-        for runtime_id in _runtime_ids_from_command(schedule.get("command") if isinstance(schedule, dict) else None)
-        if runtime_id
-    })
-    for runtime_id in runtime_ids:
-        _custom_metric_alarm(
-            resource_name=f"{name}-orchestrator-runtime-{_safe_resource_suffix(runtime_id)}-failures-alarm",
-            alarm_name=f"{name}-orchestrator-{runtime_id}-failures",
-            namespace=telemetry_namespace,
-            metric_name="OrchestratorRuntimeFailuresByRuntime",
-            threshold=0,
-            description=f"Orchestrator runtime failures detected for {runtime_id}",
-            alarm_actions=alarm_actions,
-            dimensions={"RuntimeId": runtime_id},
-        )
+    if orchestrator_runtime_id_alarms_enabled:
+        runtime_ids = sorted({
+            runtime_id
+            for schedule in orchestrator_schedules or []
+            for runtime_id in _runtime_ids_from_command(schedule.get("command") if isinstance(schedule, dict) else None)
+            if runtime_id
+        })
+        for runtime_id in runtime_ids:
+            _custom_metric_alarm(
+                resource_name=f"{name}-orchestrator-runtime-{_safe_resource_suffix(runtime_id)}-failures-alarm",
+                alarm_name=f"{name}-orchestrator-{runtime_id}-failures",
+                namespace=telemetry_namespace,
+                metric_name="OrchestratorRuntimeFailuresByRuntime",
+                threshold=0,
+                description=f"Orchestrator runtime failures detected for {runtime_id}",
+                alarm_actions=alarm_actions,
+                dimensions={"RuntimeId": runtime_id},
+            )
 
-    schedules_by_runtime = {
-        runtime_id: schedule
-        for schedule in orchestrator_schedules or []
-        if isinstance(schedule, dict)
-        for runtime_id in _runtime_ids_from_command(schedule.get("command"))
-        if runtime_id
-    }
-    for runtime_id in _scheduled_source_runtime_ids(source_runtimes or [], set(runtime_ids)):
-        _runtime_heartbeat_alarm(
-            resource_name=f"{name}-source-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
-            alarm_name=f"{name}-source-{runtime_id}-stale",
-            namespace=telemetry_namespace,
-            metric_name="OrchestratorRuntimeCompletedByRuntime",
-            runtime_id=runtime_id,
-            period=_runtime_heartbeat_period_seconds(
-                schedules_by_runtime.get(runtime_id),
-                source_runtime_heartbeat_period_seconds,
-            ),
-            alarm_actions=alarm_actions,
-        )
+        schedules_by_runtime = {
+            runtime_id: schedule
+            for schedule in orchestrator_schedules or []
+            if isinstance(schedule, dict)
+            for runtime_id in _runtime_ids_from_command(schedule.get("command"))
+            if runtime_id
+        }
+        for runtime_id in _scheduled_source_runtime_ids(source_runtimes or [], set(runtime_ids)):
+            _runtime_heartbeat_alarm(
+                resource_name=f"{name}-source-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
+                alarm_name=f"{name}-source-{runtime_id}-stale",
+                namespace=telemetry_namespace,
+                metric_name="OrchestratorRuntimeCompletedByRuntime",
+                runtime_id=runtime_id,
+                period=_runtime_heartbeat_period_seconds(
+                    schedules_by_runtime.get(runtime_id),
+                    source_runtime_heartbeat_period_seconds,
+                ),
+                alarm_actions=alarm_actions,
+            )
 
     for spec in _source_runtime_observability_alarm_specs(name, source_runtime_observability):
         aws.cloudwatch.MetricAlarm(
@@ -1540,7 +1551,12 @@ def _create_nats_log_metric_filters(name: str, log_group_name: pulumi.Input[str]
     return filters
 
 
-def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str], source_runtime_observability: list[dict] = None) -> dict:
+def _create_telemetry_metric_filters(
+    name: str,
+    log_group_name: pulumi.Output[str],
+    source_runtime_observability: list[dict] = None,
+    orchestrator_runtime_id_metrics_enabled: bool = False,
+) -> dict:
     namespace = f"Cerebro/{name}"
     filters = {
         "source_sync_events": aws.cloudwatch.LogMetricFilter(
@@ -1831,18 +1847,6 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
-        "orchestrator_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
-            f"{name}-orchestrator-completed-by-runtime-filter",
-            name=f"{name}-orchestrator-completed-by-runtime",
-            log_group_name=log_group_name,
-            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "completed" }',
-            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
-                name="OrchestratorRuntimeCompletedByRuntime",
-                namespace=namespace,
-                value="1",
-                dimensions={"RuntimeId": "$.runtime_id"},
-            ),
-        ),
         "orchestrator_failures": aws.cloudwatch.LogMetricFilter(
             f"{name}-orchestrator-failures-filter",
             name=f"{name}-orchestrator-failures",
@@ -1853,18 +1857,6 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 namespace=namespace,
                 value="1",
                 default_value=0,
-            ),
-        ),
-        "orchestrator_failures_by_runtime": aws.cloudwatch.LogMetricFilter(
-            f"{name}-orchestrator-failures-by-runtime-filter",
-            name=f"{name}-orchestrator-failures-by-runtime",
-            log_group_name=log_group_name,
-            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "failed" }',
-            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
-                name="OrchestratorRuntimeFailuresByRuntime",
-                namespace=namespace,
-                value="1",
-                dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
         "grc_dashboard_latency": aws.cloudwatch.LogMetricFilter(
@@ -2097,6 +2089,31 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
             ),
         ),
     }
+    if orchestrator_runtime_id_metrics_enabled:
+        filters["orchestrator_completed_by_runtime"] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-orchestrator-completed-by-runtime-filter",
+            name=f"{name}-orchestrator-completed-by-runtime",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "completed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="OrchestratorRuntimeCompletedByRuntime",
+                namespace=namespace,
+                value="1",
+                dimensions={"RuntimeId": "$.runtime_id"},
+            ),
+        )
+        filters["orchestrator_failures_by_runtime"] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-orchestrator-failures-by-runtime-filter",
+            name=f"{name}-orchestrator-failures-by-runtime",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="OrchestratorRuntimeFailuresByRuntime",
+                namespace=namespace,
+                value="1",
+                dimensions={"RuntimeId": "$.runtime_id"},
+            ),
+        )
     for spec in _source_runtime_observability_metric_specs(source_runtime_observability):
         metric_args = {
             "name": spec["metric_name"],

@@ -4,6 +4,7 @@ AWS ECS Fargate compute for the Cerebro rewrite runtime.
 
 import hashlib
 import json
+from typing import Any
 
 import pulumi
 import pulumi_aws as aws
@@ -44,6 +45,7 @@ def create_ecs_cluster(
     orchestrator_schedule_expression: str = "rate(1 hour)",
     orchestrator_cpu: int = 1024,
     orchestrator_memory: int = 2048,
+    orchestrator_task_profiles: dict[str, Any] = None,
     orchestrator_command: list[str] = None,
     orchestrator_task_count: int = 1,
     orchestrator_schedules: list[dict] = None,
@@ -188,6 +190,7 @@ def create_ecs_cluster(
     orchestrator_scheduler_dlq = None
     orchestrator_scheduler_schedules = []
     orchestrator_task_definitions = []
+    orchestrator_task_definitions_by_profile = {}
     orchestrator_events_role = None
     if orchestrator_enabled:
         worker_task_role = _create_task_role(
@@ -199,40 +202,52 @@ def create_ecs_cluster(
             enable_otel_collector=otel_collector_enabled,
         )
         schedules = prepared_orchestrator_schedules
-        orchestrator_runtime_environment = {
-            **runtime_environment,
-            "ECS_CLUSTER": f"{name}-cluster",
-            "ECS_TASK_FAMILY": f"{name}-orchestrator",
-        }
-        task_definition = _create_task_definition(
-            name=f"{name}-orchestrator",
-            container_image=container_image,
-            cpu=orchestrator_cpu,
-            memory=orchestrator_memory,
-            execution_role_arn=execution_role.arn,
-            task_role_arn=worker_task_role.arn,
-            log_group_name=log_group.name,
-            otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
-            environment=orchestrator_runtime_environment,
-            secret_keys=secret_keys or [],
-            external_secrets_prefix=external_secrets_prefix,
-            efs_file_system_id=efs_file_system_id,
-            efs_access_point_id=efs_access_point_id,
-            efs_container_path=efs_container_path,
-            container_command=[str(part) for part in (orchestrator_command or ["orchestrator", "run"])],
-            expose_http=False,
-            enable_health_check=False,
-            log_stream_prefix="orchestrator",
-            source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
-            enable_source_runtime_bootstrap=bool(source_runtimes or []),
-            otel_collector=otel_collector,
-            depends_on=[
-                *((bootstrap_environment_files.get("orchestrator") or {}).get("resources") or []),
-                *execution_role_dependencies,
-            ],
+        task_profiles = _orchestrator_task_profiles(
+            orchestrator_cpu,
+            orchestrator_memory,
+            orchestrator_task_profiles,
         )
-        orchestrator_task_definitions.append(task_definition)
-        orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
+        for profile_name, task_profile in task_profiles.items():
+            task_family = f"{name}-orchestrator" if profile_name == "default" else f"{name}-orchestrator-{profile_name}"
+            orchestrator_runtime_environment = {
+                **runtime_environment,
+                "ECS_CLUSTER": f"{name}-cluster",
+                "ECS_TASK_FAMILY": task_family,
+            }
+            task_definition = _create_task_definition(
+                name=task_family,
+                container_image=container_image,
+                cpu=task_profile["cpu"],
+                memory=task_profile["memory"],
+                execution_role_arn=execution_role.arn,
+                task_role_arn=worker_task_role.arn,
+                log_group_name=log_group.name,
+                otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
+                environment=orchestrator_runtime_environment,
+                secret_keys=secret_keys or [],
+                external_secrets_prefix=external_secrets_prefix,
+                efs_file_system_id=efs_file_system_id,
+                efs_access_point_id=efs_access_point_id,
+                efs_container_path=efs_container_path,
+                container_command=[str(part) for part in (orchestrator_command or ["orchestrator", "run"])],
+                expose_http=False,
+                enable_health_check=False,
+                log_stream_prefix="orchestrator",
+                source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
+                enable_source_runtime_bootstrap=bool(source_runtimes or []),
+                otel_collector=otel_collector,
+                depends_on=[
+                    *((bootstrap_environment_files.get("orchestrator") or {}).get("resources") or []),
+                    *execution_role_dependencies,
+                ],
+            )
+            orchestrator_task_definitions.append(task_definition)
+            orchestrator_task_definitions_by_profile[profile_name] = task_definition
+        orchestrator_task_definition = orchestrator_task_definitions_by_profile.get("default")
+        for schedule in schedules:
+            profile_name = schedule["task_profile"]
+            if profile_name not in orchestrator_task_definitions_by_profile:
+                raise ValueError(f"orchestrator schedule {schedule['suffix']} references unknown task profile {profile_name!r}")
         if any(schedule["backend"] == "scheduler" for schedule in schedules):
             orchestrator_scheduler_group = aws.scheduler.ScheduleGroup(
                 f"{name}-orchestrator-schedules",
@@ -269,9 +284,10 @@ def create_ecs_cluster(
         for schedule in schedules:
             schedule_suffix = schedule["suffix"]
             schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
+            schedule_task_definition = orchestrator_task_definitions_by_profile[schedule["task_profile"]]
             if schedule["backend"] == "scheduler":
                 scheduler_ecs_parameters = _orchestrator_scheduler_ecs_parameters(
-                    task_definition_arn=orchestrator_task_definition.arn,
+                    task_definition_arn=schedule_task_definition.arn,
                     task_count=schedule["task_count"],
                     subnet_ids=subnet_ids,
                     security_group_id=security_group_id,
@@ -321,7 +337,7 @@ def create_ecs_cluster(
                     role_arn=orchestrator_events_role.arn,
                     target_id=f"{schedule_suffix}-ecs"[:64],
                     ecs_target=_orchestrator_eventbridge_ecs_target(
-                        task_definition_arn=orchestrator_task_definition.arn,
+                        task_definition_arn=schedule_task_definition.arn,
                         task_count=schedule["task_count"],
                         subnet_ids=subnet_ids,
                         security_group_id=security_group_id,
@@ -463,6 +479,7 @@ def create_ecs_cluster(
         "task_definition": api_task_definition,
         "orchestrator_task_definition": orchestrator_task_definition,
         "orchestrator_task_definitions": orchestrator_task_definitions,
+        "orchestrator_task_definitions_by_profile": orchestrator_task_definitions_by_profile,
         "orchestrator_rule": orchestrator_rule,
         "orchestrator_rules": orchestrator_rules,
         "orchestrator_target": orchestrator_target,
@@ -1097,6 +1114,7 @@ def _orchestrator_schedules(
             "backend": "eventbridge",
             "flexible_window_minutes": 15,
             "state": "ENABLED",
+            "task_profile": "default",
         }]
     schedules = []
     seen = set()
@@ -1116,8 +1134,51 @@ def _orchestrator_schedules(
             "backend": _schedule_backend(schedule.get("backend") or schedule.get("scheduleBackend")),
             "flexible_window_minutes": max(1, int(schedule.get("flexibleWindowMinutes") or schedule.get("flexible_window_minutes") or 15)),
             "state": _schedule_state(schedule.get("state") or schedule.get("scheduleState")),
+            "task_profile": _orchestrator_task_profile_name(schedule.get("taskProfile") or schedule.get("task_profile") or "default"),
         })
     return schedules
+
+
+def _orchestrator_task_profiles(orchestrator_cpu: int, orchestrator_memory: int, configured_profiles: dict[str, Any] | None) -> dict[str, dict[str, int]]:
+    profiles = {
+        "default": {
+            "cpu": _positive_int(orchestrator_cpu, "orchestratorCpu"),
+            "memory": _positive_int(orchestrator_memory, "orchestratorMemory"),
+        }
+    }
+    if configured_profiles in (None, ""):
+        return profiles
+    if not isinstance(configured_profiles, dict):
+        raise ValueError("orchestrator task profiles must be an object")
+    for raw_name, raw_profile in configured_profiles.items():
+        profile_name = _orchestrator_task_profile_name(raw_name)
+        if not isinstance(raw_profile, dict):
+            raise ValueError(f"orchestrator task profile {profile_name!r} must be an object")
+        profiles[profile_name] = {
+            "cpu": _positive_int(raw_profile.get("cpu"), f"orchestratorTaskProfiles.{profile_name}.cpu"),
+            "memory": _positive_int(raw_profile.get("memory"), f"orchestratorTaskProfiles.{profile_name}.memory"),
+        }
+    return profiles
+
+
+def _orchestrator_task_profile_name(value: Any) -> str:
+    profile_name = str(value or "default").strip()
+    if not profile_name:
+        profile_name = "default"
+    suffix = _schedule_suffix(profile_name)
+    if suffix != profile_name:
+        raise ValueError("orchestrator task profile names must use lowercase letters, numbers, and hyphens")
+    return profile_name
+
+
+def _positive_int(value: Any, path: str) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{path} must be a positive integer") from exc
+    if parsed <= 0:
+        raise ValueError(f"{path} must be a positive integer")
+    return parsed
 
 
 def _schedule_backend(value) -> str:

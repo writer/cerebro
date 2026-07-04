@@ -129,7 +129,7 @@ PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT = 1
 PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 1
 ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT = 4
 ACTIVE_JETSTREAM_MIN_PUBLISH_RETRY_MAX_ELAPSED_SECONDS = 300
-ACTIVE_NATS_MIN_MEMORY_MIB = 32768
+ACTIVE_NATS_MIN_MEMORY_MIB = 16384
 SEC_DEV_AWS_ACCOUNT_ID = "944130631940"
 SEC_DEV_AWS_ROLE_ARN = "arn:aws:iam::944130631940:role/cerebro-org-scan-role"
 AWS_CLOUD_DEPTH_GLOBAL_FAMILIES = {
@@ -494,6 +494,15 @@ def _schedule_suffix(value: Any) -> str:
         elif chars and chars[-1] != "-":
             chars.append("-")
     return "".join(chars).strip("-")
+
+
+def _task_profile_name(value: Any) -> str:
+    return str(value or "default").strip() or "default"
+
+
+def _task_profile_name_is_valid(value: Any) -> bool:
+    name = _task_profile_name(value)
+    return bool(name) and _schedule_suffix(name) == name
 
 
 def _orchestrator_rule_name(environment: str, schedule_name: str) -> str:
@@ -1871,6 +1880,15 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferEnabled", "requires orchestratorStepFunctionsEnabled"))
     if config.get("orchestratorSqsBufferEnabled") is True and config.get("orchestratorEnabled") is not True:
         findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferEnabled", "requires orchestratorEnabled"))
+    if config.get("orchestratorRuntimeIdAlarmsEnabled") is True and config.get("orchestratorRuntimeIdMetricsEnabled") is not True:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:orchestratorRuntimeIdAlarmsEnabled",
+                "requires orchestratorRuntimeIdMetricsEnabled",
+            )
+        )
     if config.get("syntheticsCanaryStart") is True and config.get("syntheticsCanaryEnabled") is not True:
         findings.append(_finding("error", stack, "cerebro:syntheticsCanaryStart", "requires syntheticsCanaryEnabled"))
     cloudtrail_log_group = str(config.get("cloudTrailAuditLogGroupName") or "").strip()
@@ -2118,6 +2136,33 @@ def validate_stack(path: Path) -> list[Finding]:
                 _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
     schedule_names: set[str] = set()
+    task_profile_names = {"default"}
+    task_profiles = config.get("orchestratorTaskProfiles") or {}
+    if task_profiles and not isinstance(task_profiles, dict):
+        findings.append(_finding("error", stack, "cerebro:orchestratorTaskProfiles", "must be an object"))
+        task_profiles = {}
+    for raw_profile_name, task_profile in task_profiles.items():
+        profile_name = _task_profile_name(raw_profile_name)
+        profile_path = f"cerebro:orchestratorTaskProfiles.{profile_name}"
+        if not _task_profile_name_is_valid(raw_profile_name):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:orchestratorTaskProfiles",
+                    "profile names must use lowercase letters, numbers, and hyphens",
+                )
+            )
+            continue
+        task_profile_names.add(profile_name)
+        if not isinstance(task_profile, dict):
+            findings.append(_finding("error", stack, profile_path, "task profile must be an object"))
+            continue
+        for field in ("cpu", "memory"):
+            value = task_profile.get(field)
+            if not isinstance(value, int) or value < 1:
+                findings.append(_finding("error", stack, f"{profile_path}.{field}", f"{field} must be a positive integer"))
+
     environment_name = str(config.get("environment", stack)).strip() or stack
     schedule_limit = _orchestrator_schedule_limit(stack)
     eventbridge_schedule_count = sum(1 for schedule in schedules if isinstance(schedule, dict) and _schedule_backend(schedule) == "eventbridge")
@@ -2166,6 +2211,12 @@ def validate_stack(path: Path) -> list[Finding]:
         task_count = schedule.get("taskCount", 1)
         if not isinstance(task_count, int) or task_count < 1:
             findings.append(_finding("error", stack, f"{schedule_path}.taskCount", "taskCount must be a positive integer"))
+
+        task_profile_name = _task_profile_name(schedule.get("taskProfile") or schedule.get("task_profile"))
+        if not _task_profile_name_is_valid(task_profile_name):
+            findings.append(_finding("error", stack, f"{schedule_path}.taskProfile", "taskProfile must use lowercase letters, numbers, and hyphens"))
+        elif task_profile_name not in task_profile_names:
+            findings.append(_finding("error", stack, f"{schedule_path}.taskProfile", f"unknown task profile {task_profile_name!r}"))
 
         schedule_runtime_ids = _runtime_ids_from_command(schedule.get("command"))
         if not schedule_runtime_ids:

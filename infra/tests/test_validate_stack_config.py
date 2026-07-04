@@ -359,6 +359,27 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         self.assertTrue(any("unknown runtime id 'writer-missing-runtime'" in message for message in self._messages(content)))
 
+    def test_orchestrator_schedule_task_profile_must_be_declared(self) -> None:
+        content = BASE_STACK.replace(
+            "    - name: okta-audit\n",
+            "    - name: okta-audit\n      taskProfile: small\n",
+            1,
+        )
+
+        self.assertTrue(any("unknown task profile 'small'" in message for message in self._messages(content)))
+
+    def test_orchestrator_schedule_task_profile_accepts_declared_profile(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:orchestratorTaskProfiles:\n    small:\n      cpu: 2048\n      memory: 4096\n  cerebro:orchestratorSchedules:",
+        ).replace(
+            "    - name: okta-audit\n",
+            "    - name: okta-audit\n      taskProfile: small\n",
+            1,
+        )
+
+        self.assertFalse(any("task profile" in message.lower() for message in self._messages(content)))
+
     def test_service_bootstrap_ids_must_be_a_list(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:orchestratorSchedules:",
@@ -983,7 +1004,7 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         messages = self._messages(content)
         self.assertTrue(any("at least 2048 CPU units" in message for message in messages))
-        self.assertTrue(any("at least 32768 MiB" in message for message in messages))
+        self.assertTrue(any("at least 16384 MiB" in message for message in messages))
 
     def test_active_environments_require_jetstream_publish_restore_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:jetstreamPublishMaxInFlight: 4", "  cerebro:jetstreamPublishMaxInFlight: 2").replace(
@@ -1001,6 +1022,16 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_active_environments_require_nats_efs_throughput_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: bursting")
         self.assertTrue(any("elastic or provisioned EFS throughput" in message for message in self._messages(content)))
+
+    def test_runtime_id_alarms_require_runtime_id_metrics(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:jetstreamPublishMaxInFlight: 4",
+            "  cerebro:orchestratorRuntimeIdMetricsEnabled: false\n"
+            "  cerebro:orchestratorRuntimeIdAlarmsEnabled: true\n"
+            "  cerebro:jetstreamPublishMaxInFlight: 4",
+        )
+
+        self.assertTrue(any("requires orchestratorRuntimeIdMetricsEnabled" in message for message in self._messages(content)))
 
     def test_jetstream_discard_policy_must_be_valid(self) -> None:
         content = BASE_STACK.replace(

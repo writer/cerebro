@@ -140,7 +140,7 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
     max_name_length = _positive_int(config.get("nameMaxLength"), "schedule.nameMaxLength", 0)
     if max_name_length and len(name) > max_name_length:
         name = _short_name(name, max_name_length)
-    return {
+    schedule = {
         "name": name,
         "scheduleExpression": expression,
         "taskCount": _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
@@ -149,6 +149,10 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
         "state": _schedule_state(config.get("state") or config.get("scheduleState")),
         "command": _schedule_command(f"runtime_id={runtime_id}", config),
     }
+    task_profile = _task_profile(config)
+    if task_profile:
+        schedule["taskProfile"] = task_profile
+    return schedule
 
 
 def _schedule_candidate(runtime_id: str, config: dict[str, Any], index: int) -> _ScheduleCandidate:
@@ -201,6 +205,7 @@ def _schedule_group_key(config: dict[str, Any]) -> tuple[Any, ...]:
         _positive_int(config.get("pageLimit"), "schedule.pageLimit", 20),
         _positive_int(config.get("graphPageLimit"), "schedule.graphPageLimit", 100),
         _positive_int(config.get("eventLimit"), "schedule.eventLimit", 1000),
+        _task_profile(config),
     )
 
 
@@ -213,7 +218,7 @@ def _grouped_schedule(runtime_prefix: str, candidates: list[_ScheduleCandidate],
     max_name_length = _positive_int(config.get("nameMaxLength"), "schedule.nameMaxLength", 0)
     if max_name_length and len(name) > max_name_length:
         name = _short_name(name, max_name_length)
-    return {
+    schedule = {
         "name": name,
         "scheduleExpression": candidates[0].schedule["scheduleExpression"],
         "taskCount": _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
@@ -222,6 +227,10 @@ def _grouped_schedule(runtime_prefix: str, candidates: list[_ScheduleCandidate],
         "state": _schedule_state(config.get("state") or config.get("scheduleState")),
         "command": _schedule_command(f"runtime_ids={','.join(runtime_ids)}", config),
     }
+    task_profile = _task_profile(config)
+    if task_profile:
+        schedule["taskProfile"] = task_profile
+    return schedule
 
 
 def _schedule_command(runtime_filter: str, config: dict[str, Any]) -> list[str]:
@@ -233,6 +242,10 @@ def _schedule_command(runtime_filter: str, config: dict[str, Any]) -> list[str]:
         f"graph_page_limit={_positive_int(config.get('graphPageLimit'), 'schedule.graphPageLimit', 100)}",
         f"event_limit={_positive_int(config.get('eventLimit'), 'schedule.eventLimit', 1000)}",
     ]
+
+
+def _task_profile(config: dict[str, Any]) -> str:
+    return _string(config.get("taskProfile") or config.get("task_profile"))
 
 
 def _schedule_backend(value: Any) -> str:

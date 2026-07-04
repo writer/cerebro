@@ -146,6 +146,49 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
         self.assertEqual(bootstrap_override["environmentFiles"], [])
         self.assertEqual(bootstrap_override["environment"][0]["name"], "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON")
 
+    def test_orchestrator_task_profiles_normalize_default_and_named_profiles(self) -> None:
+        profiles = compute._orchestrator_task_profiles(
+            16384,
+            32768,
+            {
+                "small": {"cpu": 2048, "memory": 4096},
+            },
+        )
+
+        self.assertEqual(
+            profiles,
+            {
+                "default": {"cpu": 16384, "memory": 32768},
+                "small": {"cpu": 2048, "memory": 4096},
+            },
+        )
+
+    def test_orchestrator_task_profiles_reject_invalid_profile_names(self) -> None:
+        with self.assertRaisesRegex(ValueError, "lowercase letters"):
+            compute._orchestrator_task_profiles(
+                16384,
+                32768,
+                {
+                    "Small Profile": {"cpu": 2048, "memory": 4096},
+                },
+            )
+
+    def test_orchestrator_schedules_preserve_task_profile(self) -> None:
+        schedules = compute._orchestrator_schedules(
+            "rate(1 hour)",
+            ["orchestrator", "run"],
+            1,
+            [
+                {
+                    "name": "inventory",
+                    "taskProfile": "small",
+                    "command": ["orchestrator", "run", "runtime_ids=writer-a,writer-b"],
+                }
+            ],
+        )
+
+        self.assertEqual(schedules[0]["task_profile"], "small")
+
 
 class SourceRuntimeBootstrapRegistryTest(unittest.TestCase):
     def test_environment_files_are_retained_and_expose_prefix_arn(self) -> None:
@@ -638,17 +681,28 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 container_image="image",
                 external_secrets_prefix="/cerebro/sec-dev",
                 orchestrator_enabled=True,
+                orchestrator_task_profiles={
+                    "small": {"cpu": 2048, "memory": 4096},
+                },
                 orchestrator_schedules=[
                     {
                         "name": "gcp-writer-iam-audit",
                         "backend": "scheduler",
                         "state": "DISABLED",
                         "flexibleWindowMinutes": 10,
+                        "taskProfile": "small",
                         "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"],
                     }
                 ],
             )
 
+        self.assertEqual([call["name"] for call in task_definition_calls], [
+            "cerebro-sec-dev",
+            "cerebro-sec-dev-orchestrator",
+            "cerebro-sec-dev-orchestrator-small",
+        ])
+        self.assertEqual(task_definition_calls[2]["cpu"], 2048)
+        self.assertEqual(task_definition_calls[2]["memory"], 4096)
         self.assertEqual(event_target_calls, [])
         self.assertEqual(scheduler_group_calls[0]["name"], "cerebro-sec-dev-orchestrator")
         self.assertEqual(scheduler_dlq_calls[0]["name"], "cerebro-sec-dev-orchestrator-scheduler-dlq")
@@ -664,7 +718,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
         )
         self.assertEqual(
             schedule_call["target"].ecs_parameters.task_definition_arn,
-            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
+            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator-small:1",
         )
         self.assertEqual(schedule_call["target"].ecs_parameters.launch_type, "FARGATE")
         self.assertFalse(hasattr(schedule_call["target"].ecs_parameters, "capacity_provider_strategies"))

@@ -90,6 +90,18 @@ class MonitoringRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(by_metric["ApproximateAgeOfOldestMessage"]["threshold"], 900)
 
+    def test_runtime_id_alarms_require_runtime_id_metrics(self) -> None:
+        with self.assertRaisesRegex(ValueError, "runtime-id metrics"):
+            monitoring.create_monitoring(
+                name="cerebro-test",
+                alb_arn_suffix="alb",
+                target_group_arn_suffix="target",
+                ecs_cluster_name="cluster",
+                ecs_service_name="service",
+                orchestrator_runtime_id_metrics_enabled=False,
+                orchestrator_runtime_id_alarms_enabled=True,
+            )
+
     def test_service_quota_alarm_specs_stay_disabled_until_dimensions_are_verified(self) -> None:
         self.assertEqual(monitoring._service_quota_alarm_specs("cerebro-test", 80), [])
 
@@ -615,12 +627,49 @@ class MonitoringRuntimeTest(unittest.TestCase):
         }:
             self.assertIn(metric_name, by_metric)
 
+        self.assertIn("OrchestratorRuntimeFailures", by_metric)
+        self.assertNotIn("OrchestratorRuntimeCompletedByRuntime", by_metric)
+        self.assertNotIn("OrchestratorRuntimeFailuresByRuntime", by_metric)
         self.assertIn('$.name = "jetstream.canary.completed"', by_metric["JetStreamCanaryCompleted"]["pattern"])
         self.assertEqual(by_metric["JetStreamCanaryLatencyMs"]["metric_transformation"].value, "$.canary_duration_ms")
         self.assertEqual(by_metric["JetStreamReplayLatencyMs"]["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(
             by_metric["PlatformJobPhaseFailedByPhase"]["metric_transformation"].dimensions,
             {"Phase": "$.job_phase_key"},
+        )
+
+    def test_orchestrator_runtime_id_metric_filters_are_opt_in(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_telemetry_metric_filters(
+                "cerebro-test",
+                "logs",
+                orchestrator_runtime_id_metrics_enabled=True,
+            )
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        by_metric = {call["metric_transformation"].name: call for call in calls}
+        self.assertEqual(
+            by_metric["OrchestratorRuntimeCompletedByRuntime"]["metric_transformation"].dimensions,
+            {"RuntimeId": "$.runtime_id"},
+        )
+        self.assertEqual(
+            by_metric["OrchestratorRuntimeFailuresByRuntime"]["metric_transformation"].dimensions,
+            {"RuntimeId": "$.runtime_id"},
         )
 
     def test_otel_collector_metric_filters_preserve_error_alarm_inputs(self) -> None:

@@ -123,6 +123,26 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertEqual(expansion.orchestrator_schedules[0]["command"][3], "page_limit=5")
         self.assertEqual(expansion.orchestrator_schedules[1]["command"][3], "page_limit=20")
 
+    def test_schedule_task_profile_is_preserved_and_keeps_groups_separate(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "runtimePrefix": "writer-example",
+                "schedule": {"expression": "rate(1 hour)", "groupSize": 10, "taskProfile": "small"},
+                "families": [
+                    "user",
+                    {"name": "group", "schedule": {"taskProfile": "default"}},
+                    "application",
+                ],
+            }
+        ])
+
+        self.assertEqual([schedule["command"][2] for schedule in expansion.orchestrator_schedules], [
+            "runtime_ids=writer-example-user,writer-example-application",
+            "runtime_id=writer-example-group",
+        ])
+        self.assertEqual([schedule["taskProfile"] for schedule in expansion.orchestrator_schedules], ["small", "default"])
+
     def test_schedule_backend_must_be_known(self) -> None:
         with self.assertRaisesRegex(ValueError, "schedule.backend"):
             expand_source_runtime_rollouts([

@@ -69,8 +69,8 @@ config:
   cerebro:cacheDefaultTTL: 30s
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
-  cerebro:natsCpu: 16384
-  cerebro:natsMemory: 65536
+  cerebro:natsCpu: 4096
+  cerebro:natsMemory: 16384
   cerebro:natsImage: nats:2.14.2-alpine
   cerebro:natsBoxImage: natsio/nats-box:0.18.0
   cerebro:natsExtraClientSecurityGroupIds:
@@ -211,6 +211,7 @@ config:
       schedule:
         cadenceHours: 1
         nameSuffix: sync
+        taskProfile: small
       families:
         - vulnerability
     - sourceId: cosmo
@@ -227,6 +228,7 @@ config:
         pageLimit: 5
         graphPageLimit: 5
         eventLimit: 500
+        taskProfile: small
       families:
         - name: session
           schedule:
@@ -250,6 +252,7 @@ config:
         cadenceHours: 12
         groupSize: 10
         nameMaxLength: 29
+        taskProfile: small
       families:
         - name: channel
           localId: channels
@@ -390,6 +393,7 @@ config:
         cadenceHours: 12
         groupSize: 10
         nameMaxLength: 29
+        taskProfile: small
       families:
         - organizations_account
         - organizations_policy
@@ -405,6 +409,7 @@ config:
         cadenceHours: 12
         groupSize: 10
         nameMaxLength: 29
+        taskProfile: small
       families:
         - cloudfront_distribution
         - elbv2_load_balancer
@@ -438,6 +443,7 @@ config:
         cadenceHours: 12
         groupSize: 10
         nameMaxLength: 29
+        taskProfile: small
       families:
         - elbv2_load_balancer
         - guardduty_finding
@@ -468,6 +474,7 @@ config:
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
+        taskProfile: small
       families: &gcp_dev_wif_families
         - asset_metadata
         - audit
@@ -499,6 +506,7 @@ config:
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
+        taskProfile: small
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-networking
@@ -513,6 +521,7 @@ config:
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
+        taskProfile: small
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-devops
@@ -527,6 +536,7 @@ config:
         nameMaxLength: 35
         pageLimit: 5
         graphPageLimit: 5
+        taskProfile: small
       families: *gcp_dev_wif_families
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
@@ -683,12 +693,24 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
-  # Source-runtime drain tasks handle bursty graph writes and JetStream publish
-  # retry budgets; keep them sized above the API plane for stream recovery.
-  cerebro:orchestratorCpu: 16384
-  cerebro:orchestratorMemory: 32768
+  # Default source-runtime drain tasks keep 4 vCPU / 8 GiB headroom; grouped
+  # inventory schedules opt into the smaller profile below.
+  cerebro:orchestratorCpu: 4096
+  cerebro:orchestratorMemory: 8192
+  cerebro:orchestratorTaskProfiles:
+    default:
+      cpu: 4096
+      memory: 8192
+    small:
+      cpu: 2048
+      memory: 4096
+    large:
+      cpu: 16384
+      memory: 32768
   cerebro:orchestratorFargateSpotWeight: 1
   cerebro:orchestratorTaskStopEventsEnabled: true
+  cerebro:orchestratorRuntimeIdMetricsEnabled: false
+  cerebro:orchestratorRuntimeIdAlarmsEnabled: false
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
     - orchestrator

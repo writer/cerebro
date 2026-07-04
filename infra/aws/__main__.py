@@ -240,6 +240,7 @@ orchestrator_enabled = _config_bool("orchestratorEnabled", False)
 orchestrator_schedule_expression = config.get("orchestratorScheduleExpression") or "rate(1 hour)"
 orchestrator_cpu = _config_int("orchestratorCpu", api_cpu)
 orchestrator_memory = _config_int("orchestratorMemory", api_memory)
+orchestrator_task_profiles = config.get_object("orchestratorTaskProfiles") or {}
 orchestrator_command = config.get_object("orchestratorCommand") or ["orchestrator", "run"]
 orchestrator_task_count = _config_int("orchestratorTaskCount", 1)
 orchestrator_schedules = config.get_object("orchestratorSchedules") or []
@@ -360,6 +361,11 @@ orchestrator_step_functions_enabled = _config_bool("orchestratorStepFunctionsEna
 orchestrator_sqs_buffer_enabled = _config_bool("orchestratorSqsBufferEnabled", False)
 orchestrator_sqs_buffer_pipe_state = str(config.get("orchestratorSqsBufferPipeState") or "STOPPED").strip().upper()
 orchestrator_task_stop_events_enabled = _config_bool("orchestratorTaskStopEventsEnabled", False)
+orchestrator_runtime_id_metrics_enabled = _config_bool("orchestratorRuntimeIdMetricsEnabled", False)
+orchestrator_runtime_id_alarms_enabled = _config_bool(
+    "orchestratorRuntimeIdAlarmsEnabled",
+    orchestrator_runtime_id_metrics_enabled,
+)
 synthetics_canary_enabled = _config_bool("syntheticsCanaryEnabled", False)
 synthetics_canary_start = _config_bool("syntheticsCanaryStart", False)
 cloudtrail_audit_log_group_name = config.get("cloudTrailAuditLogGroupName") or ""
@@ -367,6 +373,9 @@ cost_anomaly_detection_enabled = _config_bool("costAnomalyDetectionEnabled", Fal
 monthly_cost_budget_limit_usd = _config_int("monthlyCostBudgetLimitUsd", 0)
 alarm_action_arns = config.get_object("alarmActionArns") or []
 alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
+
+if orchestrator_runtime_id_alarms_enabled and not orchestrator_runtime_id_metrics_enabled:
+    raise ValueError("cerebro:orchestratorRuntimeIdAlarmsEnabled requires cerebro:orchestratorRuntimeIdMetricsEnabled")
 
 neo4j_database = config.get("neo4jDatabase")
 neo4j_aura_enabled = _config_bool("neo4jAuraEnabled", False)
@@ -1050,6 +1059,7 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_schedule_expression=orchestrator_schedule_expression,
     orchestrator_cpu=orchestrator_cpu,
     orchestrator_memory=orchestrator_memory,
+    orchestrator_task_profiles=orchestrator_task_profiles,
     orchestrator_command=orchestrator_command,
     orchestrator_task_count=orchestrator_task_count,
     orchestrator_schedules=orchestrator_schedules,
@@ -1179,6 +1189,8 @@ monitoring_stack = monitoring.create_monitoring(
     cloudtrail_audit_log_group_name=cloudtrail_audit_log_group_name or None,
     source_runtimes=source_runtimes,
     source_runtime_observability=source_runtime_observability,
+    orchestrator_runtime_id_metrics_enabled=orchestrator_runtime_id_metrics_enabled,
+    orchestrator_runtime_id_alarms_enabled=orchestrator_runtime_id_alarms_enabled,
 )
 
 neo4j_aura_probe_stack = None
