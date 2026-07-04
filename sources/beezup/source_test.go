@@ -18,8 +18,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if got := r.Header.Get("Ocp-Apim-Subscription-Key"); got != "test-token" {
+			t.Fatalf("Ocp-Apim-Subscription-Key = %q", got)
 		}
 		if r.URL.Path != "/v2/user/marketplaces/channelcatalogs/" {
 			t.Fatalf("path = %q", r.URL.Path)

@@ -1,5 +1,6 @@
 {
   "adapter_health_path": "/v2/user/marketplaces/channelcatalogs/",
+  "auth_mechanics": "Ocp-Apim-Subscription-Key header",
   "auth_model": "api_key",
   "evidence_cas_reference_kind": "beezup.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
@@ -10,6 +11,23 @@
     "schema_drift"
   ],
   "health_endpoint": "/source-runtimes/health?source_id=beezup",
+  "provider_api_invalidated_families": [
+    "filter",
+    "rule"
+  ],
+  "provider_api_status": "partial",
+  "provider_api_verified_families": [
+    "alert",
+    "autoimport",
+    "beezupcolumn",
+    "catalogcolumn",
+    "category",
+    "channelcatalog",
+    "customcolumn",
+    "filteroperator",
+    "offer",
+    "random"
+  ],
   "receipt_kind": "source_health.receipt",
   "source_id": "beezup",
   "source_type": "json_api",

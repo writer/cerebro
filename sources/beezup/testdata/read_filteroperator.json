@@ -5,7 +5,7 @@
       "actor_id": "beezup-users-1",
       "actor_name": "actor-name-source-beezup-filteroperator-1",
       "api_method": "GET",
-      "api_path": "/v2/user/channelCatalogs/filterOperators",
+      "api_path": "/v2/user/channelCatalogs/exclusionFilterOperators",
       "event_type": "beezup.filteroperator.observed",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-beezup-filteroperator-1",
       "evidence_cas_digest": "sha256:test",
@@ -40,7 +40,7 @@
       "actor_id": "beezup-users-1",
       "actor_name": "actor-name-source-beezup-filteroperator-1",
       "api_method": "GET",
-      "api_path": "/v2/user/channelCatalogs/filterOperators",
+      "api_path": "/v2/user/channelCatalogs/exclusionFilterOperators",
       "event_id": "source-beezup-filteroperator-1",
       "event_type": "beezup.filteroperator.observed",
       "evidence_cas": {

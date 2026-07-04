@@ -17,7 +17,7 @@ entries:
       key: storeid
       label: Storeid
       required: true
-    description: Collects channelcatalog, offer, filter, alert, catalogcolumn, and category from BeezUP and projects them into the Cerebro graph as alerts, assets, audit events, and policies for inventory, access review, audit, risk, and operational context.
+    description: Collects channelcatalog, offer, alert, catalogcolumn, category, customcolumn, random, beezupcolumn, filteroperator, and autoimport from BeezUP and projects them into the Cerebro graph as alerts, audit events, and policies for inventory, audit, risk, and operational context.
     display_name: BeezUP
     id: builtin_catalog-beezup
     ingest:
@@ -97,44 +97,6 @@ entries:
           policy_type: offer
         template: policy
       record_selector: "$.offers[*]"
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - filter
-        high_value: true
-        id: filter
-        support: partial
-        title: Filter
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: beezup.filter
-        required_payload_fields:
-        - links
-        schema_ref: beezup/filter/v1
-        urn_kind: beezup_filter
-      event_kind: filter
-      id: filter
-      id_field: links
-      label: Filter
-      list_key: reportFilters
-      method: GET
-      name_field: links
-      pagination:
-        type: none
-      path: "/v2/user/analytics/${config.storeid}/reports/filters"
-      projection:
-        fields:
-          id: links
-          name: links
-          resource_id: links
-          resource_name: links
-          resource_type: filter
-        template: asset
-      record_selector: "$.reportFilters[*]"
     - coverage:
       - control_domains:
         - logging_monitoring
@@ -321,44 +283,6 @@ entries:
       record_selector: "$.products[*]"
     - coverage:
       - control_domains:
-        - security_operations
-        evidence_types:
-        - configuration_state
-        families:
-        - rule
-        high_value: true
-        id: policies
-        support: partial
-        title: Rule
-        type: lifecycle_state
-      default_enabled: true
-      event:
-        kind: beezup.rule
-        required_payload_fields:
-        - actionName
-        schema_ref: beezup/rule/v1
-        urn_kind: beezup_rule
-      event_kind: rule
-      id: rule
-      id_field: actionName
-      label: Rule
-      list_key: rules
-      method: GET
-      name_field: actionName
-      pagination:
-        type: none
-      path: "/v2/user/analytics/${config.storeid}/rules"
-      projection:
-        fields:
-          id: actionName
-          name: actionName
-          policy_id: actionName
-          policy_name: actionName
-          policy_type: rule
-        template: policy
-      record_selector: "$.rules[*]"
-    - coverage:
-      - control_domains:
         - logging_monitoring
         evidence_types:
         - logging_configuration
@@ -419,7 +343,7 @@ entries:
       name_field: name
       pagination:
         type: none
-      path: "/v2/user/channelCatalogs/filterOperators"
+      path: "/v2/user/channelCatalogs/exclusionFilterOperators"
       projection:
         fields:
           id: name
@@ -475,11 +399,6 @@ entries:
       label: Offer
     - default_enabled: true
       families:
-      - filter
-      id: filter
-      label: Filter
-    - default_enabled: true
-      families:
       - alert
       id: alert
       label: Alert
@@ -503,11 +422,6 @@ entries:
       - random
       id: random
       label: Random
-    - default_enabled: true
-      families:
-      - rule
-      id: rule
-      label: Rule
     - default_enabled: true
       families:
       - beezupcolumn
