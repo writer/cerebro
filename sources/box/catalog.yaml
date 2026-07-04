@@ -83,8 +83,53 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access, asset_inventory]
-      notes:
-        - Reads `GET /users` with `usemarker=true`, `marker`, `limit`, and `next_marker` to preserve managed user ID, login email, display name, account status, and user resource URNs.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: groups
       type: entity_family
       title: "Groups"
@@ -93,8 +138,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
-      notes:
-        - Reads `GET /groups` with offset pagination and preserves group ID, name, type, and group resource URNs for access review.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: group_memberships
       type: entity_family
       title: "Group memberships"
@@ -103,8 +177,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
-      notes:
-        - Reads `GET /groups/{group_id}/memberships` across configured `group_ids` and projects Box user-to-group membership edges with membership role.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: content_assets
       type: entity_family
       title: "Root folder content"
@@ -113,8 +216,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, data_governance]
-      notes:
-        - Reads `GET /folders/0/items` with marker pagination to seed Box content inventory from the enterprise root folder and preserve file or folder ID, type, name, owner, and resource URN.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC6.7
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.12
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+        - framework_name: "CIS Controls v8"
+          control_id: "3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.12
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.34
     - id: audit_events
       type: audit_event
       title: "Enterprise events"
@@ -123,8 +255,25 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
-      notes:
-        - Reads `GET /events` with `stream_type=admin_logs_streaming` and records event ID, actor, source item, event type, and stream position.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -132,8 +281,11 @@ coverage_contract:
       support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
-      notes:
-        - Uses Box `next_marker` for users and content, offset metadata for groups and group memberships, and `next_stream_position` for enterprise events.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
 event_contracts:
   - kind: box.users
     schema_ref: box/users/v1

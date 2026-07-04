@@ -44,8 +44,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
-      notes:
-        - Reads Jira Cloud users from /rest/api/3/users/search with startAt and maxResults pagination.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: groups
       type: entity_family
       title: "Groups"
@@ -54,8 +83,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
-      notes:
-        - Reads Jira groups from /rest/api/3/group/bulk and keys them by groupId instead of mutable names.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: group_members
       type: entity_family
       title: "Group members"
@@ -64,8 +122,37 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
-      notes:
-        - Fans out configured group IDs into /rest/api/3/group/member and emits one user-to-group membership event per member.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: projects
       type: entity_family
       title: "Projects"
@@ -74,8 +161,53 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, identity_access]
-      notes:
-        - Reads visible projects from /rest/api/3/project/search and preserves project id, key, type, lead, and lifecycle state.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: project_roles
       type: entity_family
       title: "Project role assignments"
@@ -84,8 +216,39 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access, authorization]
-      notes:
-        - Fans out configured project IDs or keys, reads /roledetails, enriches each role through /role/{id}, and projects actor assignments.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.3"
     - id: permission_schemes
       type: entity_family
       title: "Permission schemes"
@@ -94,8 +257,45 @@ coverage_contract:
       high_value: true
       evidence_types: [policy_configuration]
       control_domains: [authorization, change_management]
-      notes:
-        - Reads /rest/api/3/permissionscheme with permissions expanded and projects permission grants to groups, users, roles, and application roles.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: "CIS Controls v8"
+          control_id: "16"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "6.5"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: audit_events
       type: audit_event
       title: "Audit events"
@@ -104,16 +304,36 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
-      notes:
-        - Reads Jira audit records from /rest/api/3/auditing/record with offset and limit pagination.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       support: partial
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
-      notes:
-        - Cursor pagination is provider-backed for users, groups, members, projects, and audit records. Relationship fanout preserves provider cursors per configured scope.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
 event_contracts:
   - kind: jira.users
     schema_ref: jira/users/v1
