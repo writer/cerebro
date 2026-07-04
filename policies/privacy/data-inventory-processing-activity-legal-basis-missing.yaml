@@ -1,0 +1,112 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: data-inventory-processing-activity-legal-basis-missing
+    name: Processing Activity Legal Basis Missing
+    description: Flags data inventory processing activities for personal data that do not record a legal basis.
+    tags:
+        - privacy
+        - data-inventory
+        - processing-activities
+        - legal-basis
+        - ropa
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: high
+    effect: forbid
+    resource: data_inventory::processing_activity
+    match:
+        conditions:
+            - cmp_eq(path(resource, "personal_data"), true)
+            - (!exists_path(resource, "legal_basis")) || cmp_eq(path(resource, "legal_basis"), "")
+        conditionFormat: cel
+    remediation:
+        summary: Add the legal basis, processing purpose, owner, and review evidence to the processing activity.
+        steps:
+            - Confirm the processing purpose and personal data categories.
+            - Record the legal basis and review owner.
+            - Retain the updated processing activity evidence.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 5
+            - Article 6
+            - Article 30
+        - name: CCPA
+          controls:
+            - "1798.100"
+            - "1798.110"
+            - "1798.115"
+    input:
+        sourceKinds:
+            - data_inventory.processing_activity
+        requiredFields:
+            - processing_activity_id
+            - personal_data
+            - purpose
+            - legal_basis
+            - owner_id
+            - reviewed_at
+        freshnessSLA: 90d
+    evidence:
+        type: privacy_inventory
+        assessmentMethods:
+            - examine
+            - interview
+        requiredForAudit: true
+        acceptableSources:
+            - data_inventory
+        requiredFields:
+            - processing_activity_id
+            - personal_data
+            - purpose
+            - legal_basis
+            - owner_id
+            - reviewed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - processing_activity_id
+    audit:
+        evidenceType: privacy_inventory
+        assessmentMethods:
+            - examine
+            - interview
+        freshnessSLA: 90d
+        auditorStatement: Processing activities for personal data retain legal basis and purpose evidence.
+        auditorGuidance: Review the processing activity, data categories, purpose, legal basis, owner, and review timestamp.
+        riskStatement: Personal data processing without legal-basis evidence can block privacy accountability and request handling.
+        remediationIntent: Update the processing activity with legal basis, purpose, owner, review date, and supporting evidence.
+        acceptableEvidence:
+            - source: data_inventory
+              fields:
+                - processing_activity_id
+                - personal_data
+                - purpose
+                - legal_basis
+                - owner_id
+                - reviewed_at
+        exceptionPolicy:
+            maxAge: 90d
+            requiresApproval: true
+        falsePositives:
+            - The activity does not process personal data or the legal basis is held in a linked privacy assessment.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: processing_activity_update
+            steps:
+                - Add legal-basis evidence to the processing activity.
+                - Confirm purpose and owner fields.
+                - Rerun data inventory evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

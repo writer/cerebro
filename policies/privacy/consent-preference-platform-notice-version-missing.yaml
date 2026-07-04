@@ -1,0 +1,103 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: consent-preference-platform-notice-version-missing
+    name: Consent Notice Version Missing
+    description: Flags consent preference platform records that do not retain the privacy notice version shown at collection time.
+    tags:
+        - privacy
+        - consent-preference-platform
+        - consent-preferences
+        - notice-version
+        - consent-record
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: medium
+    effect: forbid
+    resource: consent_preference_platform::consent_preference
+    match:
+        conditions:
+            - in_list(path(resource, "preference_type"), ["consent", "notice_acknowledgement", "sale_or_share_opt_out"])
+            - (!exists_path(resource, "notice_version")) || cmp_eq(path(resource, "notice_version"), "")
+        conditionFormat: cel
+    remediation:
+        summary: Attach the privacy notice version, collection context, and timestamp to the consent preference record.
+        steps:
+            - Identify the notice shown when the preference was collected.
+            - Backfill the notice version or mark the record for recollection.
+            - Retain the updated preference evidence.
+    riskCategories:
+        - GOVERNANCE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 7
+            - Article 13
+            - Article 14
+        - name: CCPA
+          controls:
+            - "1798.100"
+            - "1798.130"
+    input:
+        sourceKinds:
+            - consent_preference_platform.consent_preference
+        requiredFields:
+            - subject_id
+            - preference_type
+            - notice_version
+            - collected_at
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_preference
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - consent_preference_platform
+        requiredFields:
+            - subject_id
+            - preference_type
+            - notice_version
+            - collected_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - subject_id
+            - preference_type
+    audit:
+        evidenceType: privacy_preference
+        assessmentMethods:
+            - examine
+        freshnessSLA: 30d
+        auditorStatement: Consent and preference records retain the privacy notice version presented at collection time.
+        auditorGuidance: Review the preference type, collection timestamp, notice version, and linked privacy notice evidence.
+        riskStatement: Preferences without notice-version evidence cannot prove what information was disclosed to the person.
+        remediationIntent: Attach the notice version or recollect the preference with current notice evidence.
+        acceptableEvidence:
+            - source: consent_preference_platform
+              fields:
+                - subject_id
+                - preference_type
+                - notice_version
+                - collected_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The preference was collected before notice-version capture was required and has an approved remediation plan.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: notice_evidence_backfill
+            steps:
+                - Add the notice version to the preference record.
+                - Link the notice artifact used at collection time.
+                - Rerun consent preference evidence collection.
+        effort: low
+        verification:
+            rerunPolicy: true
+    enabled: true

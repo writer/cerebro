@@ -1,0 +1,104 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: consent-preference-platform-sensitive-use-limit-missing
+    name: Sensitive Personal Information Limit Missing
+    description: Flags consent preference platform records where sensitive personal information requires a use limit but no limit control is enabled.
+    tags:
+        - privacy
+        - consent-preference-platform
+        - consent-preferences
+        - sensitive-personal-information
+        - use-limitation
+    references:
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: high
+    effect: forbid
+    resource: consent_preference_platform::consent_preference
+    match:
+        conditions:
+            - cmp_eq(path(resource, "sensitive_personal_information"), true)
+            - cmp_eq(path(resource, "requires_limit_use_control"), true)
+            - cmp_ne(path(resource, "limit_use_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable the sensitive personal information use limit or record the approved scope exception.
+        steps:
+            - Confirm the sensitive data category and purpose.
+            - Enable the use-limitation control for the subject, segment, or data flow.
+            - Retain evidence that the preference is synced to systems in scope.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: CCPA
+          controls:
+            - "1798.121"
+            - "1798.135"
+    input:
+        sourceKinds:
+            - consent_preference_platform.consent_preference
+        requiredFields:
+            - subject_id
+            - sensitive_personal_information
+            - requires_limit_use_control
+            - limit_use_enabled
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_preference
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - consent_preference_platform
+        requiredFields:
+            - subject_id
+            - sensitive_personal_information
+            - requires_limit_use_control
+            - limit_use_enabled
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - subject_id
+    audit:
+        evidenceType: privacy_preference
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: Sensitive personal information use limits are enabled where the privacy program requires them.
+        auditorGuidance: Review the sensitive data category, required limit flag, enabled state, downstream sync evidence, and exception state.
+        riskStatement: Missing use-limitation controls can permit sensitive personal information use outside the disclosed purpose.
+        remediationIntent: Enable the use-limitation control and retain preference-sync evidence.
+        acceptableEvidence:
+            - source: consent_preference_platform
+              fields:
+                - subject_id
+                - sensitive_personal_information
+                - requires_limit_use_control
+                - limit_use_enabled
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The data category is not sensitive personal information for the in-scope jurisdiction.
+            - A downstream control enforces the use limit and is linked to the preference record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: consent_preference_update
+            steps:
+                - Enable the sensitive-use limit control.
+                - Confirm downstream sync.
+                - Rerun consent preference evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

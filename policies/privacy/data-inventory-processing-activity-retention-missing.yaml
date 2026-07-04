@@ -1,0 +1,117 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: data-inventory-processing-activity-retention-missing
+    name: Processing Activity Retention Missing
+    description: Flags data inventory processing activities for personal data that do not record a retention period or disposal rule.
+    tags:
+        - privacy
+        - data-inventory
+        - processing-activities
+        - retention
+        - disposal
+        - ropa
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: medium
+    effect: forbid
+    resource: data_inventory::processing_activity
+    match:
+        conditions:
+            - cmp_eq(path(resource, "personal_data"), true)
+            - (!exists_path(resource, "retention_period")) || cmp_eq(path(resource, "retention_period"), "")
+        conditionFormat: cel
+    remediation:
+        summary: Add the retention period, disposal rule, owner, and review evidence to the processing activity.
+        steps:
+            - Confirm the personal data categories and processing purpose.
+            - Record retention period or disposal rule approved by the owner.
+            - Retain the updated processing activity evidence.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 5
+            - Article 30
+        - name: CCPA
+          controls:
+            - "1798.100"
+            - "1798.105"
+        - name: ISO 27701
+          controls:
+            - 7.2.8
+    input:
+        sourceKinds:
+            - data_inventory.processing_activity
+        requiredFields:
+            - processing_activity_id
+            - personal_data
+            - purpose
+            - retention_period
+            - disposal_rule
+            - owner_id
+            - reviewed_at
+        freshnessSLA: 90d
+    evidence:
+        type: privacy_inventory
+        assessmentMethods:
+            - examine
+            - interview
+        requiredForAudit: true
+        acceptableSources:
+            - data_inventory
+        requiredFields:
+            - processing_activity_id
+            - personal_data
+            - purpose
+            - retention_period
+            - disposal_rule
+            - owner_id
+            - reviewed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - processing_activity_id
+    audit:
+        evidenceType: privacy_inventory
+        assessmentMethods:
+            - examine
+            - interview
+        freshnessSLA: 90d
+        auditorStatement: Processing activities for personal data retain approved retention or disposal evidence.
+        auditorGuidance: Review the processing activity, data categories, purpose, retention rule, owner, and review timestamp.
+        riskStatement: Processing activities without retention evidence can keep personal data longer than the disclosed purpose requires.
+        remediationIntent: Update the processing activity with retention period, disposal rule, owner, review date, and supporting evidence.
+        acceptableEvidence:
+            - source: data_inventory
+              fields:
+                - processing_activity_id
+                - personal_data
+                - purpose
+                - retention_period
+                - disposal_rule
+                - owner_id
+                - reviewed_at
+        exceptionPolicy:
+            maxAge: 90d
+            requiresApproval: true
+        falsePositives:
+            - The activity is out of scope, or retention is inherited from a linked record schedule with owner approval.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: processing_activity_update
+            steps:
+                - Add the retention period or disposal rule.
+                - Confirm owner review.
+                - Rerun data inventory evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

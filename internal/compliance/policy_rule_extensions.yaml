@@ -178,6 +178,14 @@ domains:
     evidence_type: cardholder_data_control
     risk_statement: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.
     remediation_intent: Restore the required safeguard, validate CDE scope, and retain remediation evidence.
+  privacy:
+    evidence_type: privacy_request
+    assessment_methods:
+      - examine
+      - interview
+      - test
+    risk_statement: Privacy request, consent, notice, or processing-inventory evidence may be incomplete for the assessment period.
+    remediation_intent: Update the privacy workflow, consent record, notice evidence, or processing inventory and retain owner review evidence.
   runtime:
     evidence_type: runtime_threat_signal
     risk_statement: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.

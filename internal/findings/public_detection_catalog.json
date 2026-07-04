@@ -90967,6 +90967,241 @@
       ]
     },
     {
+      "id": "consent-preference-platform-notice-version-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Consent Notice Version Missing",
+      "description": "Flags failed resource-state evidence for consent preference platform consent preference: Consent Notice Version Missing. Flags consent preference platform records that do not retain the privacy notice version shown at collection time. Audit impact: Preferences without notice-version evidence cannot prove what information was disclosed to the person.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "MEDIUM",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "cel",
+        "consent-preference-platform",
+        "consent-preferences",
+        "consent-record",
+        "evidence:privacy_preference",
+        "notice-version",
+        "policy",
+        "privacy"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The preference was collected before notice-version capture was required and has an approved remediation plan.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the preference type, collection timestamp, notice version, and linked privacy notice evidence. Attach the privacy notice version, collection context, and timestamp to the consent preference record. Action plan: Add the notice version to the preference record; Link the notice artifact used at collection time; Rerun consent preference evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_preference",
+      "assessment_methods": [
+        "examine"
+      ],
+      "auditor_guidance": "Review the preference type, collection timestamp, notice version, and linked privacy notice evidence.",
+      "risk_statement": "Preferences without notice-version evidence cannot prove what information was disclosed to the person.",
+      "remediation_intent": "Attach the notice version or recollect the preference with current notice evidence.",
+      "required_attributes": [
+        "collected_at",
+        "notice_version",
+        "preference_type",
+        "subject_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "subject_id",
+        "preference_type"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 7"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 13"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 14"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.100"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.130"
+        }
+      ]
+    },
+    {
+      "id": "consent-preference-platform-opt-out-not-enforced",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Sale or Sharing Opt-Out Not Enforced",
+      "description": "Flags failed resource-state evidence for consent preference platform consent preference: Sale or Sharing Opt-Out Not Enforced. Flags consent preference platform records where a sale or sharing opt-out is active but not enforced downstream. Audit impact: An unenforced opt-out can continue restricted sale, sharing, advertising, or profiling activity after the person opted out.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "consent-preference-platform",
+        "consent-preferences",
+        "evidence:privacy_preference",
+        "opt-out",
+        "policy",
+        "privacy",
+        "sale-or-sharing"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Enforcement evidence exists in a downstream system and is linked to the preference record.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "The subject or system is outside sale, sharing, advertising, or analytics scope."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the preference record, downstream system list, latest sync status, exception state, and enforcement timestamp. Enforce the opt-out in downstream systems or record an approved exception with scope and expiration. Action plan: Sync the opt-out to downstream systems; Confirm enforcement status in the consent preference platform; Rerun consent preference evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_preference",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the preference record, downstream system list, latest sync status, exception state, and enforcement timestamp.",
+      "risk_statement": "An unenforced opt-out can continue restricted sale, sharing, advertising, or profiling activity after the person opted out.",
+      "remediation_intent": "Sync the opt-out to downstream systems, validate enforcement, and retain sync evidence.",
+      "required_attributes": [
+        "downstream_systems",
+        "enforced",
+        "observed_at",
+        "opted_out",
+        "preference_type",
+        "subject_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "subject_id",
+        "preference_type"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 7"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 21"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.120"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.121"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.135"
+        }
+      ]
+    },
+    {
+      "id": "consent-preference-platform-sensitive-use-limit-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Sensitive Personal Information Limit Missing",
+      "description": "Flags failed resource-state evidence for consent preference platform consent preference: Sensitive Personal Information Limit Missing. Flags consent preference platform records where sensitive personal information requires a use limit but no limit control is enabled. Audit impact: Missing use-limitation controls can permit sensitive personal information use outside the disclosed purpose.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "consent-preference-platform",
+        "consent-preferences",
+        "evidence:privacy_preference",
+        "policy",
+        "privacy",
+        "sensitive-personal-information",
+        "use-limitation"
+      ],
+      "references": [
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "A downstream control enforces the use limit and is linked to the preference record.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The data category is not sensitive personal information for the in-scope jurisdiction.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the sensitive data category, required limit flag, enabled state, downstream sync evidence, and exception state. Enable the sensitive personal information use limit or record the approved scope exception. Action plan: Enable the sensitive-use limit control; Confirm downstream sync; Rerun consent preference evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_preference",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the sensitive data category, required limit flag, enabled state, downstream sync evidence, and exception state.",
+      "risk_statement": "Missing use-limitation controls can permit sensitive personal information use outside the disclosed purpose.",
+      "remediation_intent": "Enable the use-limitation control and retain preference-sync evidence.",
+      "required_attributes": [
+        "limit_use_enabled",
+        "observed_at",
+        "requires_limit_use_control",
+        "sensitive_personal_information",
+        "subject_id"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "subject_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.121"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.135"
+        }
+      ]
+    },
+    {
       "id": "container-admission-policy-missing",
       "pack_id": "policy",
       "pack_name": "Policy",
@@ -100415,6 +100650,178 @@
         {
           "tactic": "Collection",
           "technique": "T1530"
+        }
+      ]
+    },
+    {
+      "id": "data-inventory-processing-activity-legal-basis-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Processing Activity Legal Basis Missing",
+      "description": "Flags failed resource-state evidence for data inventory processing activity: Processing Activity Legal Basis Missing. Flags data inventory processing activities for personal data that do not record a legal basis. Audit impact: Personal data processing without legal-basis evidence can block privacy accountability and request handling.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "cel",
+        "data-inventory",
+        "evidence:privacy_inventory",
+        "legal-basis",
+        "policy",
+        "privacy",
+        "processing-activities",
+        "ropa"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The activity does not process personal data or the legal basis is held in a linked privacy assessment.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the processing activity, data categories, purpose, legal basis, owner, and review timestamp. Add the legal basis, processing purpose, owner, and review evidence to the processing activity. Action plan: Add legal-basis evidence to the processing activity; Confirm purpose and owner fields; Rerun data inventory evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_inventory",
+      "assessment_methods": [
+        "examine",
+        "interview"
+      ],
+      "auditor_guidance": "Review the processing activity, data categories, purpose, legal basis, owner, and review timestamp.",
+      "risk_statement": "Personal data processing without legal-basis evidence can block privacy accountability and request handling.",
+      "remediation_intent": "Update the processing activity with legal basis, purpose, owner, review date, and supporting evidence.",
+      "required_attributes": [
+        "legal_basis",
+        "owner_id",
+        "personal_data",
+        "processing_activity_id",
+        "purpose",
+        "reviewed_at"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "processing_activity_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 5"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 6"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 30"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.100"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.110"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.115"
+        }
+      ]
+    },
+    {
+      "id": "data-inventory-processing-activity-retention-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Processing Activity Retention Missing",
+      "description": "Flags failed resource-state evidence for data inventory processing activity: Processing Activity Retention Missing. Flags data inventory processing activities for personal data that do not record a retention period or disposal rule. Audit impact: Processing activities without retention evidence can keep personal data longer than the disclosed purpose requires.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "MEDIUM",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:interview",
+        "cel",
+        "data-inventory",
+        "disposal",
+        "evidence:privacy_inventory",
+        "policy",
+        "privacy",
+        "processing-activities",
+        "retention",
+        "ropa"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The activity is out of scope, or retention is inherited from a linked record schedule with owner approval.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the processing activity, data categories, purpose, retention rule, owner, and review timestamp. Add the retention period, disposal rule, owner, and review evidence to the processing activity. Action plan: Add the retention period or disposal rule; Confirm owner review; Rerun data inventory evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_inventory",
+      "assessment_methods": [
+        "examine",
+        "interview"
+      ],
+      "auditor_guidance": "Review the processing activity, data categories, purpose, retention rule, owner, and review timestamp.",
+      "risk_statement": "Processing activities without retention evidence can keep personal data longer than the disclosed purpose requires.",
+      "remediation_intent": "Update the processing activity with retention period, disposal rule, owner, review date, and supporting evidence.",
+      "required_attributes": [
+        "disposal_rule",
+        "owner_id",
+        "personal_data",
+        "processing_activity_id",
+        "purpose",
+        "retention_period",
+        "reviewed_at"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "processing_activity_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 5"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 30"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.100"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.105"
+        },
+        {
+          "framework_name": "ISO 27701",
+          "control_id": "7.2.8"
         }
       ]
     },
@@ -297169,6 +297576,302 @@
               "control_id": "CC7.5"
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "privacy-request-system-denial-rationale-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Privacy Request Denial Rationale Missing",
+      "description": "Flags failed resource-state evidence for privacy request system rights request: Privacy Request Denial Rationale Missing. Flags denied privacy request system rights requests that do not retain a denial reason. Audit impact: Denials without rationale weaken proof that rights requests were handled consistently and lawfully.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "MEDIUM",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "cel",
+        "data-subject-request",
+        "denial-rationale",
+        "evidence:privacy_request",
+        "policy",
+        "privacy",
+        "privacy-request-system",
+        "rights-requests"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The request was not denied, was withdrawn, or carries denial rationale in a linked legal review record.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the denied request, denial reason, reviewer action, notice evidence, and any appeal or escalation state. Add the denial reason, reviewer, legal basis, and requester notice evidence to the denied request. Action plan: Add denial rationale and reviewer evidence; Attach requester notice evidence; Rerun privacy request evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_request",
+      "assessment_methods": [
+        "examine"
+      ],
+      "auditor_guidance": "Review the denied request, denial reason, reviewer action, notice evidence, and any appeal or escalation state.",
+      "risk_statement": "Denials without rationale weaken proof that rights requests were handled consistently and lawfully.",
+      "remediation_intent": "Add denial rationale, reviewer approval, and notice evidence to the request record.",
+      "required_attributes": [
+        "denial_reason",
+        "request_id",
+        "request_type",
+        "reviewer_id",
+        "status"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "request_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 12"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 15"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 16"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 17"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 18"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 20"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 21"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.125"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.130"
+        }
+      ]
+    },
+    {
+      "id": "privacy-request-system-rights-request-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Privacy Rights Request Overdue",
+      "description": "Flags failed resource-state evidence for privacy request system rights request: Privacy Rights Request Overdue. Flags privacy request system rights requests that are past their source-calculated response deadline. Audit impact: Late privacy request responses can breach data subject or consumer rights obligations.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "consumer-request",
+        "data-subject-request",
+        "evidence:privacy_request",
+        "policy",
+        "privacy",
+        "privacy-request-system",
+        "rights-requests",
+        "sla"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The request is out of scope, duplicate, withdrawn, or covered by a documented lawful extension.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the request record, jurisdiction, calculated due date, extension status, requester notice, and closure evidence. Complete the overdue rights request or record an approved extension with the requester notice. Action plan: Review the overdue request and verify the current response deadline; Complete the response workflow or record the approved extension; Rerun privacy request evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_request",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the request record, jurisdiction, calculated due date, extension status, requester notice, and closure evidence.",
+      "risk_statement": "Late privacy request responses can breach data subject or consumer rights obligations.",
+      "remediation_intent": "Complete the request or record the lawful extension, requester notice, owner, and closure evidence.",
+      "required_attributes": [
+        "due_at",
+        "jurisdiction",
+        "overdue",
+        "received_at",
+        "request_id",
+        "request_type",
+        "status"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "request_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 12"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 15"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 16"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 17"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 18"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 20"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 21"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.105"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.106"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.125"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.130"
+        }
+      ]
+    },
+    {
+      "id": "privacy-request-system-verification-missing",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Privacy Request Verification Missing",
+      "description": "Flags failed resource-state evidence for privacy request system rights request: Privacy Request Verification Missing. Flags privacy request system rights requests that require identity verification but do not have verified requester evidence. Audit impact: Unverified requests can disclose personal data to the wrong requester or apply account actions without authority.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "assessment:test",
+        "cel",
+        "data-subject-request",
+        "evidence:privacy_request",
+        "policy",
+        "privacy",
+        "privacy-request-system",
+        "requester-verification",
+        "rights-requests"
+      ],
+      "references": [
+        "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.\u0026part=4.\u0026lawCode=CIV\u0026title=1.81.5"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The request type does not require verification under the approved privacy procedure.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period.",
+        "Verification evidence is stored in a linked identity proofing system and the request record contains the reference."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review the request type, verification requirement, verification status, requester evidence, and any exception rationale. Verify the requester or pause the response workflow with a documented verification exception. Action plan: Request or attach requester verification evidence; Update verification_status in the privacy request system; Rerun privacy request evidence collection. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "privacy_request",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the request type, verification requirement, verification status, requester evidence, and any exception rationale.",
+      "risk_statement": "Unverified requests can disclose personal data to the wrong requester or apply account actions without authority.",
+      "remediation_intent": "Complete requester verification, attach evidence, or document the approved exception before fulfilling the request.",
+      "required_attributes": [
+        "request_id",
+        "request_type",
+        "status",
+        "verification_required",
+        "verification_status"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "request_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 12"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 15"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 16"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 17"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 20"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.106"
+        },
+        {
+          "framework_name": "CCPA",
+          "control_id": "1798.130"
         }
       ]
     },

@@ -115778,9 +115778,9 @@ profiles:
       description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.
       summary:
         selected_controls: 171
-        mapped_controls: 29
-        unmapped_controls: 142
-        mapped_rules: 44
+        mapped_controls: 46
+        unmapped_controls: 125
+        mapped_rules: 52
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 171
@@ -115794,9 +115794,12 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 4
           mapped_rules:
             - compliance-data-inventory-maintained
+            - consent-preference-platform-notice-version-missing
+            - data-inventory-processing-activity-legal-basis-missing
+            - data-inventory-processing-activity-retention-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115806,9 +115809,11 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 3
           mapped_rules:
             - ai-data-retention-reviewed
+            - data-inventory-processing-activity-retention-missing
+            - privacy-request-system-rights-request-overdue
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115817,8 +115822,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115827,8 +115835,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - data-inventory-processing-activity-legal-basis-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115837,8 +115847,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - data-inventory-processing-activity-legal-basis-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115847,8 +115859,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - consent-preference-platform-opt-out-not-enforced
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115857,8 +115871,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - consent-preference-platform-opt-out-not-enforced
+            - consent-preference-platform-sensitive-use-limit-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115867,8 +115884,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115878,9 +115898,13 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 5
           mapped_rules:
             - compliance-data-inventory-maintained
+            - consent-preference-platform-notice-version-missing
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115889,8 +115913,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - consent-preference-platform-opt-out-not-enforced
+            - consent-preference-platform-sensitive-use-limit-missing
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
@@ -115911,8 +115938,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115921,8 +115952,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - consent-preference-platform-notice-version-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115931,8 +115964,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - consent-preference-platform-notice-version-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115941,8 +115976,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115951,8 +115990,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115961,8 +116004,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115971,8 +116018,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115991,8 +116041,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
+            - privacy-request-system-verification-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -116001,8 +116055,12 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 3
+          mapped_rules:
+            - consent-preference-platform-opt-out-not-enforced
+            - privacy-request-system-denial-rationale-missing
+            - privacy-request-system-rights-request-overdue
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -116079,13 +116137,15 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 7
           mapped_rules:
             - ai-data-governance
             - compliance-data-inventory-maintained
             - compliance-gdpr-policy
             - compliance-inventory-data-tracking
             - compliance-ir-gdpr-addendum
+            - data-inventory-processing-activity-legal-basis-missing
+            - data-inventory-processing-activity-retention-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -116213,7 +116273,7 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 6
+          rule_count: 8
           mapped_rules:
             - ai-data-governance
             - ai-data-retention-reviewed
@@ -116221,6 +116281,8 @@ profiles:
             - compliance-gdpr-policy
             - compliance-inventory-data-tracking
             - compliance-ir-gdpr-addendum
+            - data-inventory-processing-activity-legal-basis-missing
+            - data-inventory-processing-activity-retention-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -116240,9 +116302,10 @@ profiles:
             status: placeholder
             score: 4
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 2
           mapped_rules:
             - ai-data-governance
+            - data-inventory-processing-activity-legal-basis-missing
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -116251,8 +116314,11 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 4
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - consent-preference-platform-notice-version-missing
+            - consent-preference-platform-opt-out-not-enforced
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
@@ -117989,6 +118055,60 @@ profiles:
               control_id: Article 34
             - framework_name: GDPR
               control_id: Article 5
+        - rule_id: consent-preference-platform-notice-version-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.100"
+            - framework_name: CCPA
+              control_id: "1798.130"
+            - framework_name: GDPR
+              control_id: Article 13
+            - framework_name: GDPR
+              control_id: Article 14
+            - framework_name: GDPR
+              control_id: Article 7
+        - rule_id: consent-preference-platform-opt-out-not-enforced
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.120"
+            - framework_name: CCPA
+              control_id: "1798.121"
+            - framework_name: CCPA
+              control_id: "1798.135"
+            - framework_name: GDPR
+              control_id: Article 21
+            - framework_name: GDPR
+              control_id: Article 7
+        - rule_id: consent-preference-platform-sensitive-use-limit-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.121"
+            - framework_name: CCPA
+              control_id: "1798.135"
+        - rule_id: data-inventory-processing-activity-legal-basis-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.100"
+            - framework_name: CCPA
+              control_id: "1798.110"
+            - framework_name: CCPA
+              control_id: "1798.115"
+            - framework_name: GDPR
+              control_id: Article 30
+            - framework_name: GDPR
+              control_id: Article 5
+            - framework_name: GDPR
+              control_id: Article 6
+        - rule_id: data-inventory-processing-activity-retention-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.100"
+            - framework_name: CCPA
+              control_id: "1798.105"
+            - framework_name: GDPR
+              control_id: Article 30
+            - framework_name: GDPR
+              control_id: Article 5
         - rule_id: gcp-vertex-dataset-cmek
           controls:
             - framework_name: ISO 42001
@@ -118009,45 +118129,73 @@ profiles:
               control_id: A.8.2
             - framework_name: ISO 42001
               control_id: A.9.2
+        - rule_id: privacy-request-system-denial-rationale-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.125"
+            - framework_name: CCPA
+              control_id: "1798.130"
+            - framework_name: GDPR
+              control_id: Article 12
+            - framework_name: GDPR
+              control_id: Article 15
+            - framework_name: GDPR
+              control_id: Article 16
+            - framework_name: GDPR
+              control_id: Article 17
+            - framework_name: GDPR
+              control_id: Article 18
+            - framework_name: GDPR
+              control_id: Article 20
+            - framework_name: GDPR
+              control_id: Article 21
+        - rule_id: privacy-request-system-rights-request-overdue
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.105"
+            - framework_name: CCPA
+              control_id: "1798.106"
+            - framework_name: CCPA
+              control_id: "1798.125"
+            - framework_name: CCPA
+              control_id: "1798.130"
+            - framework_name: GDPR
+              control_id: Article 12
+            - framework_name: GDPR
+              control_id: Article 15
+            - framework_name: GDPR
+              control_id: Article 16
+            - framework_name: GDPR
+              control_id: Article 17
+            - framework_name: GDPR
+              control_id: Article 18
+            - framework_name: GDPR
+              control_id: Article 20
+            - framework_name: GDPR
+              control_id: Article 21
+        - rule_id: privacy-request-system-verification-missing
+          controls:
+            - framework_name: CCPA
+              control_id: "1798.106"
+            - framework_name: CCPA
+              control_id: "1798.130"
+            - framework_name: GDPR
+              control_id: Article 12
+            - framework_name: GDPR
+              control_id: Article 15
+            - framework_name: GDPR
+              control_id: Article 16
+            - framework_name: GDPR
+              control_id: Article 17
+            - framework_name: GDPR
+              control_id: Article 20
         - rule_id: vendor-dpa-exists
           controls:
             - framework_name: GDPR
               control_id: Article 28
       unmapped_controls:
-        - framework_name: CCPA
-          control_id: "1798.106"
-        - framework_name: CCPA
-          control_id: "1798.110"
-        - framework_name: CCPA
-          control_id: "1798.115"
-        - framework_name: CCPA
-          control_id: "1798.120"
-        - framework_name: CCPA
-          control_id: "1798.121"
-        - framework_name: CCPA
-          control_id: "1798.125"
-        - framework_name: CCPA
-          control_id: "1798.135"
-        - framework_name: GDPR
-          control_id: Article 12
-        - framework_name: GDPR
-          control_id: Article 13
-        - framework_name: GDPR
-          control_id: Article 14
-        - framework_name: GDPR
-          control_id: Article 15
-        - framework_name: GDPR
-          control_id: Article 16
-        - framework_name: GDPR
-          control_id: Article 17
-        - framework_name: GDPR
-          control_id: Article 18
         - framework_name: GDPR
           control_id: Article 19
-        - framework_name: GDPR
-          control_id: Article 20
-        - framework_name: GDPR
-          control_id: Article 21
         - framework_name: GDPR
           control_id: Article 22
         - framework_name: GDPR
@@ -118072,8 +118220,6 @@ profiles:
           control_id: Article 48
         - framework_name: GDPR
           control_id: Article 51
-        - framework_name: GDPR
-          control_id: Article 7
         - framework_name: ISO 27701:2025
           control_id: A.1.2.2
         - framework_name: ISO 27701:2025
