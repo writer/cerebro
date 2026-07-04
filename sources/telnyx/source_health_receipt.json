@@ -1,8 +1,23 @@
 {
   "adapter_health_path": "/call_events",
   "auth_model": "bearer_token",
+  "auth_mechanics": "Authorization: Bearer",
   "evidence_cas_reference_kind": "telnyx.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
+  "families": [
+    "billing_group",
+    "call_control_application",
+    "call_event",
+    "credential_connection",
+    "detail_records_report",
+    "managed_account",
+    "notification_channel",
+    "notification_event",
+    "notification_event_condition",
+    "sim_card_group",
+    "sim_card_group_action",
+    "wireless_connectivity_log"
+  ],
   "failure_modes": [
     "api_error",
     "auth_error",
@@ -10,6 +25,7 @@
     "schema_drift"
   ],
   "health_endpoint": "/source-runtimes/health?source_id=telnyx",
+  "provider_api_status": "verified",
   "receipt_kind": "source_health.receipt",
   "source_id": "telnyx",
   "source_type": "json_api",

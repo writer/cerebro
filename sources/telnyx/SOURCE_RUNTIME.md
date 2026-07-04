@@ -1,11 +1,13 @@
 # Telnyx
 
-Generated Source Runtime SDK scaffold for `telnyx`.
+Source Runtime adapter for Telnyx communications, billing, managed account, notification, and wireless inventory.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Auth mechanics: `Authorization: Bearer <API key>`
+- Base URL: `https://api.telnyx.com/v2`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -14,7 +16,7 @@ Generated Source Runtime SDK scaffold for `telnyx`.
 - Adapter package: `sources/telnyx`
 - Health endpoint: `/source-runtimes/health?source_id=telnyx`
 - Source health receipt: `sources/telnyx/source_health_receipt.json`
-- EvidenceCAS reference kind: `telnyx.evidence_cas_reference`
+- Emits call events, billing groups, credential connections, managed accounts, call-control applications, notification configuration, wireless detail-record reports, SIM card groups, SIM card group actions, and wireless connectivity logs.
 
 ## Families
 
@@ -33,5 +35,6 @@ Generated Source Runtime SDK scaffold for `telnyx`.
 
 ## Tests
 
-- `go test ./sources/telnyx ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/telnyx ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `make lint-sources catalog-check sourcegen-check check-structural check-structural-test check-arch`
+- `make connector-catalog-review connector-api-discovery`
