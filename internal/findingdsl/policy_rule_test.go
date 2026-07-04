@@ -370,6 +370,118 @@ func TestValidatePolicyRuleAcceptsAssertionOperands(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRuleAcceptsDepthBackedPolicy(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestValidatePolicyRuleRejectsMalformedEvidenceRequirementRefs(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Evidence.RequirementRefs = []string{"identity-access/okta", "identity-access/okta/identity_user"}
+	issues := ValidatePolicyRule(rule)
+	if !policyIssueContains(issues, "spec.evidence.requirementRefs[0] must use profile_id/source_id/entity_type") {
+		t.Fatalf("issues = %#v, want malformed requirement ref issue", issues)
+	}
+}
+
+func TestValidatePolicyRuleRejectsPartialAuditClaimFields(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Audit.OverclaimGuard = ""
+	issues := ValidatePolicyRule(rule)
+	if !policyIssueContains(issues, "spec.audit.overclaimGuard is required when any audit claim field is set") {
+		t.Fatalf("issues = %#v, want partial claim field issue", issues)
+	}
+}
+
+func TestValidatePolicyRuleRequiresDepthMetadataWhenRequirementRefsSet(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Verification.MutationChecks = nil
+	rule.Spec.Actions.Verification.RerunPolicy = false
+	issues := ValidatePolicyRule(rule)
+	for _, want := range []string{
+		"spec.verification.mutationChecks is required when spec.evidence.requirementRefs is set",
+		"spec.actions.verification.rerunPolicy is required when spec.evidence.requirementRefs is set",
+	} {
+		if !policyIssueContains(issues, want) {
+			t.Fatalf("issues = %#v, want %q", issues, want)
+		}
+	}
+}
+
+func TestValidatePolicyRuleRequiresDepthFreshnessSLAForGraphPolicy(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Match = PolicyRuleMatch{}
+	rule.Spec.Graph = PolicyRuleGraphFinding{
+		Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+		RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+		RowLimit:        100,
+	}
+	rule.Spec.Input.SourceKinds = nil
+	rule.Spec.Input.EventKinds = nil
+	rule.Spec.Input.RequiredFields = nil
+	rule.Spec.Input.FreshnessSLA = ""
+
+	issues := ValidatePolicyRule(rule)
+	if !policyIssueContains(issues, "spec.input.freshnessSLA is required when spec.evidence.requirementRefs is set") {
+		t.Fatalf("issues = %#v, want freshness SLA issue", issues)
+	}
+	for _, notWant := range []string{
+		"spec.input.sourceKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.eventKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.requiredFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if policyIssueContains(issues, notWant) {
+			t.Fatalf("issues = %#v, did not expect %q", issues, notWant)
+		}
+	}
+}
+
+func TestValidatePolicyRuleRequiresDepthEvidenceFieldsForGraphPolicy(t *testing.T) {
+	rule := depthBackedPolicyRule()
+	rule.Spec.Match = PolicyRuleMatch{}
+	rule.Spec.Graph = PolicyRuleGraphFinding{
+		Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+		RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+		RowLimit:        100,
+	}
+	rule.Spec.Input.SourceKinds = nil
+	rule.Spec.Input.EventKinds = nil
+	rule.Spec.Input.RequiredFields = nil
+	rule.Spec.Evidence.AcceptableSources = nil
+	rule.Spec.Evidence.RequiredFields = nil
+	rule.Spec.Evidence.FingerprintFields = nil
+
+	issues := ValidatePolicyRule(rule)
+	for _, want := range []string{
+		"spec.evidence.acceptableSources is required when spec.evidence.requirementRefs is set",
+		"spec.evidence.requiredFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if !policyIssueContains(issues, want) {
+			t.Fatalf("issues = %#v, want %q", issues, want)
+		}
+	}
+	for _, notWant := range []string{
+		"spec.input.sourceKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.eventKinds is required when spec.evidence.requirementRefs is set",
+		"spec.input.requiredFields is required when spec.evidence.requirementRefs is set",
+		"spec.evidence.fingerprintFields is required when spec.evidence.requirementRefs is set",
+	} {
+		if policyIssueContains(issues, notWant) {
+			t.Fatalf("issues = %#v, did not expect %q", issues, notWant)
+		}
+	}
+}
+
 func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
 	rule := PolicyFindingRule{
 		APIVersion: APIVersion,
@@ -931,6 +1043,80 @@ func policyRuleWithAssertions(assertions ...PolicyRuleAssertion) PolicyFindingRu
 			},
 		},
 	}
+}
+
+func depthBackedPolicyRule() PolicyFindingRule {
+	return PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "depth-backed",
+			Name:        "Depth Backed",
+			Description: "Depth backed policy",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "high",
+			Effect:   "forbid",
+			Resource: "okta::user",
+			Match: PolicyRuleMatch{
+				ConditionFormat: "cel",
+				Conditions:      []string{`cmp_eq(path(resource, "mfa_enrolled"), false)`},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}},
+			Input: PolicyRuleInput{
+				SourceKinds:    []string{"okta"},
+				EventKinds:     []string{"okta.identity_user"},
+				RequiredFields: []string{"user_id", "mfa_enrolled"},
+				FreshnessSLA:   "24h",
+			},
+			Evidence: PolicyRuleEvidence{
+				Type:              "identity_configuration",
+				RequirementRefs:   []string{"identity-access/okta/identity_user"},
+				AssessmentMethods: []string{"examine", "test"},
+				RequiredForAudit:  true,
+				FreshnessSLA:      "24h",
+				AcceptableSources: []string{"okta"},
+				RequiredFields:    []string{"user_id", "mfa_enrolled"},
+				FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn"},
+			},
+			Audit: PolicyRuleAudit{
+				AuditorStatement:         "Identity evidence shows MFA state for the user.",
+				RiskStatement:            "Users without MFA weaken access controls.",
+				RemediationIntent:        "Require MFA for the affected user.",
+				ClaimStrength:            "source_backed",
+				SufficiencyRule:          "source_period_state_exception",
+				CoverageClaim:            "supports_control",
+				OverclaimGuard:           "Do not claim broader framework coverage from this requirement alone.",
+				AdjacentControlRationale: "Use adjacent controls as review context until they have their own evidence.",
+				AcceptableEvidence:       []PolicyRuleAcceptableEvidence{{Source: "okta", Fields: []string{"user_id", "mfa_enrolled"}}},
+				ExceptionPolicy:          PolicyRuleExceptionPolicy{MaxAge: "14d", RequiresApproval: true},
+				ExceptionGuidance:        []string{"Document compensating monitoring."},
+			},
+			Verification: PolicyRuleVerification{
+				Fixtures: []PolicyRuleVerificationFixture{
+					{Name: "missing-mfa", Expect: "finding"},
+					{Name: "mfa-present", Expect: "pass"},
+				},
+				MutationChecks:   []string{"missing_required_field"},
+				RemediationCheck: PolicyRuleRemediationCheck{RerunAfter: "source_sync", ExpectedStatus: "pass"},
+			},
+			Actions: PolicyRuleActions{
+				Owner:        PolicyRuleActionOwner{From: "graph.owner"},
+				Remediation:  PolicyRuleActionRemediation{Steps: []string{"Require MFA for the affected user."}},
+				Effort:       "low",
+				Verification: PolicyRuleActionVerification{RerunPolicy: true},
+			},
+		},
+	}
+}
+
+func policyIssueContains(issues []Issue, substring string) bool {
+	for _, issue := range issues {
+		if strings.Contains(issue.Message, substring) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeTestFile(t *testing.T, root string, rel string, content string) {

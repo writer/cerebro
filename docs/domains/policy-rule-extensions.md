@@ -33,6 +33,8 @@ The generator uses extensions to populate:
 
 Use domain-level extensions for broad control families such as cloud configuration, identity governance, runtime threat signals, third-party risk, and procedural compliance. Use policy-level extensions only when one check needs materially different audit language, evidence classification, or exception handling.
 
+Policies can opt into evidence-requirement depth with `spec.evidence.requirementRefs` using `profile_id/source_id/entity_type`. Once a policy declares requirement refs, the DSL requires source, evidence, audit claim, exception, verification, owner, remediation, and rerun metadata. `catalogcheck` then verifies each requirement ref against the policy's mapped controls and `internal/compliance/control_evidence_requirements.yaml`.
+
 After changing policies or extensions, run:
 
 ```bash

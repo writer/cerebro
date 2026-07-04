@@ -399,6 +399,11 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 	for _, rule := range rules {
 		issues = append(issues, validatePolicyRuleControls(rule, controlCatalog)...)
 	}
+	depthIssues, err := checkPolicyDepthContracts(root, rules, controlCatalog)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, depthIssues...)
 	issues = append(issues, checkPolicyAssetContracts(rules)...)
 	return issues, nil
 }

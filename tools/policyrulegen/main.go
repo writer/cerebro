@@ -972,6 +972,7 @@ func policyContractAttributes(policy policyFile) map[string]string {
 	addContractList(attributes, "policy_input_required_claims", policy.Input.RequiredClaims)
 	addContractList(attributes, "policy_input_required_fields", policy.Input.RequiredFields)
 	addContractValue(attributes, "policy_input_freshness_sla", policy.Input.FreshnessSLA)
+	addContractList(attributes, "policy_evidence_requirement_refs", policy.Evidence.RequirementRefs)
 	addContractList(attributes, "policy_evidence_required_fields", policy.Evidence.RequiredFields)
 	addContractList(attributes, "policy_evidence_acceptable_sources", policy.Evidence.AcceptableSources)
 	addContractValue(attributes, "policy_evidence_freshness_sla", policy.Evidence.FreshnessSLA)
@@ -979,6 +980,11 @@ func policyContractAttributes(policy policyFile) map[string]string {
 		attributes["policy_evidence_required_for_audit"] = "true"
 	}
 	addContractValue(attributes, "policy_audit_freshness_sla", policy.Audit.FreshnessSLA)
+	addContractValue(attributes, "policy_audit_claim_strength", policy.Audit.ClaimStrength)
+	addContractValue(attributes, "policy_audit_sufficiency_rule", policy.Audit.SufficiencyRule)
+	addContractValue(attributes, "policy_audit_coverage_claim", policy.Audit.CoverageClaim)
+	addContractValue(attributes, "policy_audit_overclaim_guard", policy.Audit.OverclaimGuard)
+	addContractValue(attributes, "policy_audit_adjacent_control_rationale", policy.Audit.AdjacentControlRationale)
 	addContractList(attributes, "policy_context_graph_anchors", policy.Context.Graph.Anchors)
 	addContractList(attributes, "policy_context_graph_enrich", policy.Context.Graph.Enrich)
 	addContractList(attributes, "policy_verification_mutation_checks", policy.Verification.MutationChecks)
