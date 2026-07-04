@@ -1,16 +1,14 @@
 id: beezup
 name: "BeezUP"
-description: "Collects channelcatalog, offer, filter, alert, catalogcolumn, and category from BeezUP and projects them into the Cerebro graph as alerts, assets, audit events, and policies for inventory, access review, audit, risk, and operational context."
+description: "Collects provider-backed channel catalog, offer, alert, catalog, and auto-import records from BeezUP and projects them into the Cerebro graph for inventory, audit, risk, and operational context."
 emitted_kinds:
   - beezup.channelcatalog
   - beezup.offer
-  - beezup.filter
   - beezup.alert
   - beezup.catalogcolumn
   - beezup.category
   - beezup.customcolumn
   - beezup.random
-  - beezup.rule
   - beezup.beezupcolumn
   - beezup.filteroperator
   - beezup.autoimport
@@ -22,17 +20,13 @@ runtime_families:
   - category
   - channelcatalog
   - customcolumn
-  - filter
   - filteroperator
   - offer
   - random
-  - rule
 kind_lifecycle:
   - kind: beezup.channelcatalog
     status: active
   - kind: beezup.offer
-    status: active
-  - kind: beezup.filter
     status: active
   - kind: beezup.alert
     status: active
@@ -43,8 +37,6 @@ kind_lifecycle:
   - kind: beezup.customcolumn
     status: active
   - kind: beezup.random
-    status: active
-  - kind: beezup.rule
     status: active
   - kind: beezup.beezupcolumn
     status: active
@@ -130,7 +122,7 @@ provider_api_disproof:
     - /v2/user/analytics/{storeId}/rules
   notes:
     - The provider-generated client exposes report filters and rules as link model targets, but not as generated API operation rows.
-    - Rewrite these families from a provider operation reference or remove them before promotion.
+    - These families are removed from the active runtime surface until a provider operation reference exists.
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: beezup
@@ -153,16 +145,6 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: filter
-      type: entity_family
-      title: "Filter"
-      families: [filter]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: alert
@@ -213,16 +195,6 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: rule
-      type: lifecycle_state
-      title: "Rule"
-      families: [rule]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: beezupcolumn
@@ -280,16 +252,6 @@ event_contracts:
       - policy_name
     required_payload_fields:
       - name
-  - kind: beezup.filter
-    schema_ref: beezup/filter/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - links
   - kind: beezup.alert
     schema_ref: beezup/alert/v1
     required_attributes:
@@ -335,15 +297,6 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - categoryId
-  - kind: beezup.rule
-    schema_ref: beezup/rule/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - actionName
   - kind: beezup.beezupcolumn
     schema_ref: beezup/beezupcolumn/v1
     required_attributes:

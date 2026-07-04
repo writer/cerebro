@@ -3,7 +3,7 @@
 - Promotes the provider-backed portion of the `beezup` Source Runtime contract.
 - Updates API-key authentication to use the documented `Ocp-Apim-Subscription-Key` header.
 - Rewrites `filteroperator` to the documented exclusion filter operator endpoint.
-- Invalidates generated `filter` and `rule` runtime paths until provider operation rows are available.
+- Removes generated `filter` and `rule` runtime paths from the active surface because provider operation rows are not available.
 
 ## Provider API result
 
