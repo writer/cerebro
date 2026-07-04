@@ -178,13 +178,16 @@ func providerAPIEmbeddedOpenAPIHTMLOK(lowerURL string) bool {
 	if strings.Contains(path, "swagger") || strings.Contains(path, "openapi") || strings.Contains(path, "api-reference") || strings.Contains(path, "api_reference") {
 		return true
 	}
-	for _, segment := range strings.Split(path, "/") {
-		switch segment {
-		case "api", "apis", "reference", "swagger", "openapi":
-			return true
-		}
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) == 0 {
+		return false
 	}
-	return false
+	switch segments[len(segments)-1] {
+	case "api", "apis", "reference", "swagger", "openapi":
+		return true
+	default:
+		return false
+	}
 }
 
 func providerAPIMarkdownReferenceOK(lowerURL string, lowerKind string) bool {

@@ -157,7 +157,7 @@ entries:
           id_field: id
           label: Collections
           method: GET
-          name_field: id
+          name_field: externalId|id
           pagination:
             cursor_json_path: $.continuationToken
             cursor_param: continuationToken
@@ -166,9 +166,9 @@ entries:
           projection:
             fields:
               id: id
-              name: id
+              name: externalId|id
               resource_id: id
-              resource_name: id
+              resource_name: externalId|id
               resource_type: collection
             template: asset
           record_selector: $.data[*]

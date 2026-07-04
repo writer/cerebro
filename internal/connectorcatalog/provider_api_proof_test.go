@@ -152,6 +152,9 @@ func TestProviderAPISpecPointerAcceptsEmbeddedOpenAPIHTML(t *testing.T) {
 	if providerAPISpecPointerOK("https://developer.provider.io/docs/security", "openapi_embedded_html", "rest") {
 		t.Fatal("providerAPISpecPointerOK(generic docs page, openapi_embedded_html) = true, want false")
 	}
+	if providerAPISpecPointerOK("https://developer.provider.io/api/pricing", "openapi_embedded_html", "rest") {
+		t.Fatal("providerAPISpecPointerOK(non-reference API page, openapi_embedded_html) = true, want false")
+	}
 }
 
 func TestProviderAPISpecPointerAcceptsExplicitProviderMarkdownReference(t *testing.T) {
