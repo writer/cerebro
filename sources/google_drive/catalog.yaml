@@ -129,4 +129,4 @@ event_contracts:
       - event_type
       - resource_id
     required_payload_fields:
-      - fileId
+      - fileId|driveId

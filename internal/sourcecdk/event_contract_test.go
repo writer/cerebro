@@ -74,6 +74,25 @@ func TestValidateEventEnvelopeWithContractsRequiresAttributesAndPayloadFields(t 
 	}
 }
 
+func TestValidateEventEnvelopeWithContractsAcceptsAlternativePayloadFields(t *testing.T) {
+	event := normalizedTestEvent()
+	event.Payload = []byte(`{"driveId":"drive-1","type":"drive"}`)
+	event.Attributes["resource_id"] = "drive-1"
+	contracts := []EventContract{{
+		Kind:                  "github.audit",
+		SchemaRef:             "github/audit/v1",
+		RequiredAttributes:    []string{"resource_id"},
+		RequiredPayloadFields: []string{"fileId|driveId"},
+	}}
+	if err := ValidateEventEnvelopeWithContracts(event, contracts); err != nil {
+		t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v", err)
+	}
+	event.Payload = []byte(`{"type":"drive"}`)
+	if err := ValidateEventEnvelopeWithContracts(event, contracts); !errors.Is(err, ErrInvalidEventEnvelope) {
+		t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+}
+
 func TestValidateEventEnvelopeWithContractsRejectsUnmatchedKind(t *testing.T) {
 	event := normalizedTestEvent()
 	event.Kind = "github.pull_request"

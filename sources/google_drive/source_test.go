@@ -218,6 +218,17 @@ func TestSourceReadsChangesWithProviderPageToken(t *testing.T) {
 					"name":     "Risk Register",
 					"mimeType": "application/vnd.google-apps.spreadsheet",
 				},
+			}, {
+				"kind":       "drive#change",
+				"driveId":    "0AExampleSharedDrive",
+				"time":       "2026-06-29T18:15:00Z",
+				"type":       "drive",
+				"changeType": "drive",
+				"drive": map[string]any{
+					"kind": "drive#drive",
+					"id":   "0AExampleSharedDrive",
+					"name": "Security Evidence",
+				},
 			}},
 		})
 	}))
@@ -228,8 +239,8 @@ func TestSourceReadsChangesWithProviderPageToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read(changes) error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(pull.Events))
 	}
 	event := pull.Events[0]
 	if got := event.Kind; got != "google_drive.changes" {
@@ -240,6 +251,25 @@ func TestSourceReadsChangesWithProviderPageToken(t *testing.T) {
 	}
 	if got := event.Attributes["resource_id"]; got != "1AbCdEfGhIjKlMnOpQrStUvWxYz" {
 		t.Fatalf("resource_id = %q, want file ID", got)
+	}
+	driveEvent := pull.Events[1]
+	if got := driveEvent.Attributes["event_type"]; got != "drive" {
+		t.Fatalf("drive event_type = %q, want drive", got)
+	}
+	if got := driveEvent.Attributes["external_id"]; got != "0AExampleSharedDrive" {
+		t.Fatalf("drive external_id = %q, want drive ID", got)
+	}
+	if got := driveEvent.Attributes["resource_id"]; got != "0AExampleSharedDrive" {
+		t.Fatalf("drive resource_id = %q, want drive ID", got)
+	}
+	if got := driveEvent.Attributes["source_event_id"]; got != "0AExampleSharedDrive" {
+		t.Fatalf("drive source_event_id = %q, want drive ID", got)
+	}
+	if got := driveEvent.Attributes["resource_name"]; got != "Security Evidence" {
+		t.Fatalf("drive resource_name = %q, want Security Evidence", got)
+	}
+	if got := sourcecdk.CursorToken(pull.NextCursor); got != "new-start-token" {
+		t.Fatalf("NextCursor = %q, want new-start-token", got)
 	}
 }
 
@@ -285,26 +315,36 @@ func TestNewFixtureReplaysGoogleDriveFamilies(t *testing.T) {
 	for _, tt := range []struct {
 		family string
 		kind   string
-		want   string
+		want   []string
 	}{
-		{family: familyChanges, kind: "google_drive.changes", want: "1AbCdEfGhIjKlMnOpQrStUvWxYz"},
-		{family: familyFiles, kind: "google_drive.files", want: "1AbCdEfGhIjKlMnOpQrStUvWxYz"},
-		{family: familySharedDrives, kind: "google_drive.shared_drives", want: "0AExampleSharedDrive"},
+		{family: familyChanges, kind: "google_drive.changes", want: []string{"1AbCdEfGhIjKlMnOpQrStUvWxYz", "0AExampleSharedDrive"}},
+		{family: familyFiles, kind: "google_drive.files", want: []string{"1AbCdEfGhIjKlMnOpQrStUvWxYz"}},
+		{family: familySharedDrives, kind: "google_drive.shared_drives", want: []string{"0AExampleSharedDrive"}},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
-			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
-			if err != nil {
-				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			var events []*cerebrov1.EventEnvelope
+			var cursor *cerebrov1.SourceCursor
+			for {
+				pull, err := source.Read(context.Background(), familyConfigs[tt.family], cursor)
+				if err != nil {
+					t.Fatalf("Read(%s) error = %v", tt.family, err)
+				}
+				events = append(events, pull.Events...)
+				if pull.NextCursor == nil {
+					break
+				}
+				cursor = pull.NextCursor
 			}
-			if len(pull.Events) != 1 {
-				t.Fatalf("events = %d, want 1", len(pull.Events))
+			if len(events) != len(tt.want) {
+				t.Fatalf("events = %d, want %d", len(events), len(tt.want))
 			}
-			event := pull.Events[0]
-			if got := event.Kind; got != tt.kind {
-				t.Fatalf("kind = %q, want %q", got, tt.kind)
-			}
-			if got := event.Attributes["source_event_id"]; got != tt.want {
-				t.Fatalf("source_event_id = %q, want %q", got, tt.want)
+			for idx, event := range events {
+				if got := event.Kind; got != tt.kind {
+					t.Fatalf("event %d kind = %q, want %q", idx, got, tt.kind)
+				}
+				if got := event.Attributes["source_event_id"]; got != tt.want[idx] {
+					t.Fatalf("event %d source_event_id = %q, want %q", idx, got, tt.want[idx])
+				}
 			}
 		})
 	}

@@ -39,5 +39,44 @@
     "schema_ref": "google_drive/changes/v1",
     "source_id": "google_drive",
     "tenant_id": "tenant"
+  },
+  {
+    "attributes": {
+      "event_type": "drive",
+      "external_id": "0AExampleSharedDrive",
+      "family": "changes",
+      "id": "0AExampleSharedDrive",
+      "observed_at": "2026-06-29T18:15:00Z",
+      "provider": "google_drive",
+      "record_class": "audit_event",
+      "resource_id": "0AExampleSharedDrive",
+      "resource_name": "Security Evidence",
+      "resource_type": "drive",
+      "resource_urn": "urn:cerebro:tenant:google_drive_changes:0AExampleSharedDrive",
+      "schema": "changes",
+      "source_event_id": "0AExampleSharedDrive",
+      "source_provider": "google_drive",
+      "source_system": "google_drive",
+      "tenant_id": "tenant"
+    },
+    "id": "google_drive-tenant-changes-0AExampleSharedDrive",
+    "kind": "google_drive.changes",
+    "occurred_at": "2026-06-29T18:15:00Z",
+    "payload": {
+      "changeType": "drive",
+      "drive": {
+        "id": "0AExampleSharedDrive",
+        "kind": "drive#drive",
+        "name": "Security Evidence"
+      },
+      "driveId": "0AExampleSharedDrive",
+      "kind": "drive#change",
+      "removed": false,
+      "time": "2026-06-29T18:15:00Z",
+      "type": "drive"
+    },
+    "schema_ref": "google_drive/changes/v1",
+    "source_id": "google_drive",
+    "tenant_id": "tenant"
   }
 ]

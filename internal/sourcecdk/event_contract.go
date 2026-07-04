@@ -216,6 +216,15 @@ func uniqueTrimmedStrings(values []string) []string {
 }
 
 func payloadHasField(payload any, path string) bool {
+	for _, alternative := range strings.Split(strings.TrimSpace(path), "|") {
+		if payloadHasFieldPath(payload, strings.TrimSpace(alternative)) {
+			return true
+		}
+	}
+	return false
+}
+
+func payloadHasFieldPath(payload any, path string) bool {
 	parts := strings.Split(strings.TrimSpace(path), ".")
 	if len(parts) == 0 {
 		return false
