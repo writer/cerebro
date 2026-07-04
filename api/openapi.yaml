@@ -121,6 +121,141 @@ paths:
                 $ref: '#/components/schemas/A2AJSONRPCResponse'
         '400':
           description: Malformed JSON-RPC request body.
+  /api/v1/agent/context:
+    get:
+      operationId: getAgentContext
+      summary: Get agent workflow context
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Agent-facing auth discovery, caller context, mutation contract, telemetry labels, and workflow next actions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentContextResponse'
+        '401':
+          description: Missing or invalid credential. Response body includes auth discovery and required scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+  /api/v1/agent/tasks/findings/{findingID}/explain:
+    post:
+      operationId: explainFindingForAgent
+      summary: Plan a finding explanation task
+      tags:
+        - Platform
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTaskRequest'
+      responses:
+        '200':
+          description: Authorized finding explanation plan with evidence and graph reasoning next actions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskResponse'
+  /api/v1/agent/tasks/findings/{findingID}/triage:
+    post:
+      operationId: triageFindingForAgent
+      summary: Plan a finding triage task
+      tags:
+        - Platform
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTaskRequest'
+      responses:
+        '200':
+          description: Authorized finding triage plan with lifecycle next actions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskResponse'
+  /api/v1/agent/tasks/findings/{findingID}/audit-packet:
+    post:
+      operationId: buildFindingAuditPacketForAgent
+      summary: Plan a finding audit packet task
+      tags:
+        - Platform
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTaskRequest'
+      responses:
+        '200':
+          description: Authorized audit packet plan with evidence packet and control packet next actions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskResponse'
+  /api/v1/agent/tasks/source-runtimes/{runtimeID}/retry:
+    post:
+      operationId: retrySourceRuntimeForAgent
+      summary: Plan or execute a source runtime retry task
+      description: Returns a dry-run plan by default. Mutating retry execution requires approved=true, dry_run=false, and the source runtime write scope.
+      tags:
+        - Platform
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTaskRequest'
+      responses:
+        '200':
+          description: Runtime retry plan or execution result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskResponse'
+        '403':
+          description: Approved execution is missing the source runtime write scope.
+  /api/v1/agent/tasks/reports/{reportID}/run:
+    post:
+      operationId: runReportForAgent
+      summary: Plan or execute a report run task
+      description: Returns a dry-run plan by default. Mutating report execution requires approved=true, dry_run=false, and the report run scope.
+      tags:
+        - Platform
+        - Reports
+      parameters:
+        - $ref: '#/components/parameters/reportID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTaskRequest'
+      responses:
+        '200':
+          description: Report run plan or execution result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskResponse'
+        '403':
+          description: Approved execution is missing the report run scope.
   /api/v1/agent-platform/contract:
     get:
       operationId: getAgentPlatformContract
@@ -7109,6 +7244,260 @@ components:
         data:
           type: object
           additionalProperties: true
+    AgentContextResponse:
+      type: object
+      required:
+        - version
+        - links
+        - auth
+        - caller
+        - mutation_contract
+        - telemetry
+        - workflows
+      properties:
+        version:
+          type: string
+        links:
+          type: object
+          additionalProperties:
+            type: string
+        auth:
+          $ref: '#/components/schemas/AgentAuthDiscovery'
+        caller:
+          $ref: '#/components/schemas/AgentCallerContext'
+        mutation_contract:
+          $ref: '#/components/schemas/AgentMutationContract'
+        telemetry:
+          $ref: '#/components/schemas/AgentTelemetryContext'
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentWorkflow'
+    AgentAuthDiscovery:
+      type: object
+      properties:
+        schemes:
+          type: array
+          items:
+            type: string
+        protected_resource_metadata:
+          type: string
+        authorization_server:
+          type: string
+        token_endpoint:
+          type: string
+        required_default_scope:
+          type: string
+        supported_scopes:
+          type: array
+          items:
+            type: string
+    AgentCallerContext:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        auth_mode:
+          type: string
+        actor_type:
+          type: string
+          enum: [human, agent, service, automation, unknown]
+        scopes:
+          type: array
+          items:
+            type: string
+        user_agent:
+          type: string
+    AgentMutationContract:
+      type: object
+      properties:
+        dry_run_field:
+          type: string
+        approval_field:
+          type: string
+        idempotency:
+          type: string
+        default_behavior:
+          type: string
+        execution_rules:
+          type: array
+          items:
+            type: string
+        supported_actions:
+          type: array
+          items:
+            type: string
+    AgentTelemetryContext:
+      type: object
+      properties:
+        actor_type_attribute:
+          type: string
+        user_agent_attribute:
+          type: string
+        request_headers:
+          type: array
+          items:
+            type: string
+    AgentWorkflow:
+      type: object
+      required:
+        - id
+        - resource
+        - state_check
+        - next_actions
+      properties:
+        id:
+          type: string
+        resource:
+          type: string
+        state_check:
+          $ref: '#/components/schemas/AgentNextAction'
+        next_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentNextAction'
+        slack_bot_intent:
+          type: string
+    AgentNextAction:
+      type: object
+      required:
+        - id
+        - label
+        - method
+        - path
+        - required_scope
+        - stage
+        - when
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        path:
+          type: string
+        required_scope:
+          type: string
+        stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, execute, close_loop]
+        dry_run_supported:
+          type: boolean
+        approval_required:
+          type: boolean
+        when:
+          type: string
+    AgentTaskRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        dry_run:
+          type: boolean
+          description: When true, return the plan and do not mutate state.
+        approved:
+          type: boolean
+          description: Required as true for approved execution on task routes that can mutate state.
+        reason:
+          type: string
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+        idempotency_key:
+          type: string
+    AgentTaskResponse:
+      type: object
+      required:
+        - id
+        - kind
+        - status
+        - resource
+        - dry_run
+        - approved
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+          enum: [planned, dry_run, succeeded]
+        resource:
+          $ref: '#/components/schemas/AgentResourceRef'
+        dry_run:
+          type: boolean
+        approved:
+          type: boolean
+        reason:
+          type: string
+        mutation:
+          $ref: '#/components/schemas/AgentMutationRef'
+        next_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentNextAction'
+        result:
+          type: object
+          additionalProperties: true
+    AgentResourceRef:
+      type: object
+      properties:
+        type:
+          type: string
+        id:
+          type: string
+        path:
+          type: string
+    AgentMutationRef:
+      type: object
+      properties:
+        method:
+          type: string
+        path:
+          type: string
+        required_scope:
+          type: string
+        approval_required:
+          type: boolean
+        dry_run_supported:
+          type: boolean
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+    AuthErrorResponse:
+      type: object
+      required:
+        - error
+        - status
+        - next_action
+        - auth
+      properties:
+        error:
+          type: string
+        status:
+          type: integer
+        method:
+          type: string
+        path:
+          type: string
+        retryable:
+          type: boolean
+        next_action:
+          type: string
+        required_scope:
+          type: string
+        required_role:
+          type: string
+        auth:
+          $ref: '#/components/schemas/AgentAuthDiscovery'
     A2AProtocolContract:
       type: object
       required:

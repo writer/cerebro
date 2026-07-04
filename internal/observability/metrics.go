@@ -258,6 +258,7 @@ func httpRequestWideAttributes(r *http.Request, method string, route string) tel
 		telemetry.Field{Key: "http.request.header.content_type", Value: requestHeader(r, "Content-Type")},
 		telemetry.Field{Key: "http.request.header.user_agent.present", Value: requestHeader(r, "User-Agent") != ""},
 		telemetry.Field{Key: "user_agent.family", Value: userAgentFamily(requestHeader(r, "User-Agent"))},
+		telemetry.Field{Key: "client.actor_type", Value: userAgentActorType(requestHeader(r, "User-Agent"))},
 		telemetry.Field{Key: "client.address_hash", Value: remoteAddressHash(r)},
 	))
 }
@@ -444,6 +445,14 @@ func userAgentFamily(value string) string {
 	switch {
 	case normalized == "":
 		return "none"
+	case strings.Contains(normalized, "codex"):
+		return "codex"
+	case strings.Contains(normalized, "openai"):
+		return "openai"
+	case strings.Contains(normalized, "mcp"):
+		return "mcp"
+	case strings.Contains(normalized, "slack"):
+		return "slack"
 	case strings.Contains(normalized, "bot"), strings.Contains(normalized, "crawler"), strings.Contains(normalized, "spider"):
 		return "bot"
 	case strings.Contains(normalized, "edge"), strings.Contains(normalized, "edg/"):
@@ -456,8 +465,52 @@ func userAgentFamily(value string) string {
 		return "firefox"
 	case strings.Contains(normalized, "curl"):
 		return "curl"
+	case strings.Contains(normalized, "python-requests"):
+		return "python-requests"
+	case strings.Contains(normalized, "go-http-client"):
+		return "go-http-client"
+	case strings.Contains(normalized, "node-fetch"):
+		return "node-fetch"
+	case strings.Contains(normalized, "axios"):
+		return "axios"
+	case strings.Contains(normalized, "postman"):
+		return "postman"
 	default:
 		return "other"
+	}
+}
+
+func userAgentActorType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case normalized == "":
+		return "unknown"
+	case strings.Contains(normalized, "codex"),
+		strings.Contains(normalized, "openai"),
+		strings.Contains(normalized, "mcp"),
+		strings.Contains(normalized, "langchain"),
+		strings.Contains(normalized, "autogen"),
+		strings.Contains(normalized, "crewai"),
+		strings.Contains(normalized, "claude"),
+		strings.Contains(normalized, "anthropic"),
+		strings.Contains(normalized, "bot"),
+		strings.Contains(normalized, "crawler"),
+		strings.Contains(normalized, "spider"):
+		return "agent"
+	case strings.Contains(normalized, "mozilla") &&
+		(strings.Contains(normalized, "chrome") || strings.Contains(normalized, "safari") || strings.Contains(normalized, "firefox") || strings.Contains(normalized, "edg/")):
+		return "human"
+	case strings.Contains(normalized, "curl"),
+		strings.Contains(normalized, "httpie"),
+		strings.Contains(normalized, "wget"),
+		strings.Contains(normalized, "python-requests"),
+		strings.Contains(normalized, "go-http-client"),
+		strings.Contains(normalized, "node-fetch"),
+		strings.Contains(normalized, "axios"),
+		strings.Contains(normalized, "postman"):
+		return "automation"
+	default:
+		return "unknown"
 	}
 }
 
@@ -565,6 +618,7 @@ var exactRouteLabels = map[string]struct{}{
 	"/platform/telemetry/ingest":                                          {},
 	"/source-runtimes":                                                    {},
 	"/api/v1/a2a":                                                         {},
+	"/api/v1/agent/context":                                               {},
 	"/api/v1/agent-platform/contract":                                     {},
 	"/api/v1/agent-platform/capabilities":                                 {},
 	"/api/v1/agent-platform/security-control-plane":                       {},
@@ -643,6 +697,16 @@ func dynamicRouteLabel(parts []string) (string, bool) {
 		return "/sources/{sourceID}/read", true
 	case match(parts, "source-runtimes", "health"):
 		return "/source-runtimes/health", true
+	case match(parts, "api", "v1", "agent", "tasks", "findings", "*", "explain"):
+		return "/api/v1/agent/tasks/findings/{findingID}/explain", true
+	case match(parts, "api", "v1", "agent", "tasks", "findings", "*", "triage"):
+		return "/api/v1/agent/tasks/findings/{findingID}/triage", true
+	case match(parts, "api", "v1", "agent", "tasks", "findings", "*", "audit-packet"):
+		return "/api/v1/agent/tasks/findings/{findingID}/audit-packet", true
+	case match(parts, "api", "v1", "agent", "tasks", "source-runtimes", "*", "retry"):
+		return "/api/v1/agent/tasks/source-runtimes/{runtimeID}/retry", true
+	case match(parts, "api", "v1", "agent", "tasks", "reports", "*", "run"):
+		return "/api/v1/agent/tasks/reports/{reportID}/run", true
 	case match(parts, "platform", "graph", "impact", "vulnerability", "*"):
 		return "/platform/graph/impact/vulnerability/{id}", true
 	case match(parts, "platform", "graph", "ingest-runs", "*"):

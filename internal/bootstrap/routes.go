@@ -71,6 +71,7 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 }
 func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/a2a", routeSurfacePlatformHTTP, app.handleA2AJSONRPC)
+	registerHTTPRoute(mux, "GET /api/v1/agent/context", routeSurfacePlatformHTTP, app.handleAgentContext)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/security-control-plane", routeSurfacePlatformHTTP, app.handleAgentPlatformSecurityControlPlane)
@@ -81,6 +82,11 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/evidence-packets", routeSurfacePlatformHTTP, app.handleAgentPlatformEvidencePacket)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/claims/verify", routeSurfacePlatformHTTP, app.handleAgentPlatformClaimVerification)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/graph/reason", routeSurfacePlatformHTTP, app.handleAgentPlatformGraphReason)
+	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/explain", routeSurfacePlatformHTTP, app.handleAgentFindingExplainTask)
+	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/triage", routeSurfacePlatformHTTP, app.handleAgentFindingTriageTask)
+	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/audit-packet", routeSurfacePlatformHTTP, app.handleAgentFindingAuditPacketTask)
+	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/source-runtimes/{runtimeID}/retry", routeSurfacePlatformHTTP, app.handleAgentSourceRuntimeRetryTask)
+	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/reports/{reportID}/run", routeSurfacePlatformHTTP, app.handleAgentReportRunTask)
 }
 func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /.well-known/oauth-protected-resource", routeSurfacePublicHTTP, app.handleOAuthProtectedResourceMetadata)

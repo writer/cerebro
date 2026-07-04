@@ -881,6 +881,10 @@ func writeAuthError(w http.ResponseWriter, status int, message string) {
 }
 
 func writeAuthErrorForRequest(w http.ResponseWriter, r *http.Request, cfg config.AuthConfig, status int, message string) {
+	policy := httpAuthRoutePolicy{}
+	if r != nil {
+		policy = httpRoutePolicyForRequest(r)
+	}
 	if cfg.MCPOAuth.Enabled && r != nil && r.URL != nil && r.URL.Path == mcpEndpointPath && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
 		challenge := `Bearer resource_metadata="` + mcpOAuthResourceMetadataURL(r, cfg) + `", scope="` + scopeCosmoSecurityRead + `"`
 		if status == http.StatusForbidden {
@@ -888,7 +892,81 @@ func writeAuthErrorForRequest(w http.ResponseWriter, r *http.Request, cfg config
 		}
 		w.Header().Set("WWW-Authenticate", challenge)
 	}
-	writeAuthError(w, status, message)
+	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && w.Header().Get("WWW-Authenticate") == "" {
+		w.Header().Set("WWW-Authenticate", authChallengeForRequest(r, cfg, policy, status))
+	}
+	writeAuthErrorDetails(w, r, cfg, status, message, policy)
+}
+
+func authChallengeForRequest(r *http.Request, cfg config.AuthConfig, policy httpAuthRoutePolicy, status int) string {
+	origin := "https://cerebro"
+	if r != nil {
+		origin = strings.TrimRight(externalOrigin(r, cfg.RequestOrigin), "/")
+		if origin == "" {
+			origin = "https://cerebro"
+		}
+	}
+	parts := []string{`Bearer resource_metadata="` + origin + oauthProtectedResourceMetadataPath + `"`}
+	if policy.Scope != "" {
+		parts = append(parts, `scope="`+policy.Scope+`"`)
+	}
+	if status == http.StatusForbidden {
+		parts = append(parts, `error="insufficient_scope"`)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func writeAuthErrorDetails(w http.ResponseWriter, r *http.Request, cfg config.AuthConfig, status int, message string, policy httpAuthRoutePolicy) {
+	origin := "https://cerebro"
+	method := ""
+	path := ""
+	if r != nil {
+		method = r.Method
+		if r.URL != nil {
+			path = r.URL.Path
+		}
+		origin = strings.TrimRight(externalOrigin(r, cfg.RequestOrigin), "/")
+		if origin == "" {
+			origin = "https://cerebro"
+		}
+	}
+	body := map[string]any{
+		"error":       message,
+		"status":      status,
+		"method":      method,
+		"path":        path,
+		"retryable":   status == http.StatusUnauthorized,
+		"next_action": authErrorNextAction(status, policy),
+		"auth": map[string]any{
+			"schemes":                     []string{"Authorization: Bearer <token>", "X-Cerebro-API-Key: <key>"},
+			"protected_resource_metadata": origin + oauthProtectedResourceMetadataPath,
+			"authorization_server":        origin + oauthAuthorizationServerMetadataPath,
+			"token_endpoint":              origin + oauthTokenPath,
+			"supported_scopes":            supportedOAuthScopes(),
+		},
+	}
+	if policy.Scope != "" {
+		body["required_scope"] = policy.Scope
+	}
+	if policy.AdminOnly {
+		body["required_role"] = "admin"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func authErrorNextAction(status int, policy httpAuthRoutePolicy) string {
+	if status == http.StatusUnauthorized {
+		return "Send a bearer token or X-Cerebro-API-Key, then retry the request."
+	}
+	if policy.AdminOnly {
+		return "Use an admin credential for this route."
+	}
+	if policy.Scope != "" {
+		return "Request a token that includes " + policy.Scope + "."
+	}
+	return "Use a credential allowed for this route."
 }
 
 type accessAuditResponseWriter struct {
