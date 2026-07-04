@@ -211,9 +211,9 @@ incident_response,12
 database,9
 okta,9
 org,9
-privacy,9
 network,8
 pci,8
+privacy,8
 backup,7
 certificate,7
 runtime,7
@@ -223,8 +223,8 @@ sentinelone,6
 collaboration,5
 hipaa,5
 dspm,4
+vendor,4
 hubspot,3
 stripe,3
-vendor,3
 integration,2
 zendesk,2
