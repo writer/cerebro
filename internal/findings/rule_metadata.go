@@ -102,6 +102,7 @@ type PublicDetection struct {
 	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
 	SourceCoverageRefs       []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
 	MITREAttack              []MITREAttackRef          `json:"mitre_attack,omitempty"`
+	MITREDefend              []MITREDefendRef          `json:"mitre_defend,omitempty"`
 }
 
 type PublicDetectionAuditDepth struct {
@@ -408,6 +409,7 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
 		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
 		MITREAttack:              cloneMITREAttackRefs(metadata.MITREAttack),
+		MITREDefend:              mitreDefendRefsFromAttackRefs(metadata.MITREAttack),
 	}
 }
 
@@ -451,7 +453,33 @@ func cloneMITREAttackRefs(refs []MITREAttackRef) []MITREAttackRef {
 		if tactic == "" && technique == "" {
 			continue
 		}
-		cloned = append(cloned, MITREAttackRef{Tactic: tactic, Technique: technique})
+		cloned = append(cloned, MITREAttackRef{
+			Tactic:          tactic,
+			Technique:       technique,
+			DefendTactic:    strings.TrimSpace(ref.DefendTactic),
+			DefendTechnique: strings.TrimSpace(ref.DefendTechnique),
+			DefendArtifact:  strings.TrimSpace(ref.DefendArtifact),
+		})
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneMITREDefendRefs(refs []MITREDefendRef) []MITREDefendRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	cloned := make([]MITREDefendRef, 0, len(refs))
+	for _, ref := range refs {
+		tactic := strings.TrimSpace(ref.Tactic)
+		technique := strings.TrimSpace(ref.Technique)
+		artifact := strings.TrimSpace(ref.Artifact)
+		if tactic == "" && technique == "" && artifact == "" {
+			continue
+		}
+		cloned = append(cloned, MITREDefendRef{Tactic: tactic, Technique: technique, Artifact: artifact})
 	}
 	if len(cloned) == 0 {
 		return nil

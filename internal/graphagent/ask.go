@@ -1281,7 +1281,7 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence},
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence, IntentMITREAttackCoverage},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
 			"Show controls with open findings and cite the affected resources.",
@@ -1290,6 +1290,7 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 			"Explain the evidence for a specific finding URN.",
 			"List privileged Okta users without strong MFA evidence.",
 			"List dormant Okta users that still have app or admin access.",
+			"Show MITRE ATT&CK coverage gaps by technique and evidence component.",
 			"Answer an Okta MFA questionnaire item from bounded graph evidence.",
 		},
 		TraceID: traceID,

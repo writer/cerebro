@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/mitre"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -121,6 +122,31 @@ func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.
 		rows = append(rows, ports.CypherRow{Values: map[string]any{"resource_urn": urn}})
 	}
 	return rows, nil
+}
+
+func assertWorkflowLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
+	t.Helper()
+	if recorder == nil || recorder.links == nil {
+		t.Fatalf("projected link %s|%s|%s missing: no links recorded", fromURN, relation, toURN)
+	}
+	if _, ok := recorder.links[fromURN+"|"+relation+"|"+toURN]; !ok {
+		t.Fatalf("projected link %s|%s|%s missing", fromURN, relation, toURN)
+	}
+}
+
+func projectedEntityByAttribute(recorder *projectionRecorder, entityType string, key string, value string) *ports.ProjectedEntity {
+	if recorder == nil {
+		return nil
+	}
+	for _, entity := range recorder.entities {
+		if entity == nil || entity.EntityType != entityType {
+			continue
+		}
+		if entity.Attributes[key] == value {
+			return entity
+		}
+	}
+	return nil
 }
 
 func (r *projectionRecorder) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
@@ -319,6 +345,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		},
 		Metadata: map[string]string{
 			"actor_urn":         "urn:cerebro:writer:okta_actor:user:00u1",
+			"coverage_status":   "gap",
+			"d3fend_artifact":   "Credential",
+			"d3fend_technique":  "Multi-factorAuthentication",
+			"evidence_surface":  "identity",
 			"resource_type":     "okta_resource",
 			"rule_mitre_attack": "Initial Access:T1190",
 			"rule_tags":         "okta,identity,defense-evasion,attack.t1562,mitre-ta0005",
@@ -381,6 +411,43 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; !ok {
 		t.Fatal("finding rule MITRE ATT&CK tactic context link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication"]; !ok {
+		t.Fatal("finding MITRE D3FEND technique context link missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|has_context|urn:cerebro:writer:mitre_defend_artifact:Credential"]; !ok {
+		t.Fatal("finding MITRE D3FEND artifact context link missing after recorded event")
+	}
+	t1190CoverageURN := mitre.AttackCoverageURN("writer", "urn:cerebro:writer:finding:finding-1", "urn:cerebro:writer:mitre_attack_technique:T1190")
+	t1190Coverage := graph.entities[t1190CoverageURN]
+	if t1190Coverage == nil || t1190Coverage.EntityType != mitre.AttackCoverageEntityType {
+		t.Fatalf("T1190 coverage entity = %#v, want MITRE ATT&CK coverage node", t1190Coverage)
+	}
+	if got := t1190Coverage.Attributes["coverage_state"]; got != "gap" {
+		t.Fatalf("T1190 coverage_state = %q, want gap", got)
+	}
+	if got := t1190Coverage.Attributes["evidence_surface"]; got != "identity" {
+		t.Fatalf("T1190 evidence_surface = %q, want identity", got)
+	}
+	assertWorkflowLink(t, graph, "urn:cerebro:writer:finding:finding-1", relationHasContext, t1190CoverageURN)
+	assertWorkflowLink(t, graph, t1190CoverageURN, relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
+	appLogComponent := projectedEntityByAttribute(graph, mitre.AttackDataComponentEntityType, "data_component_name", "Application Log Content")
+	if appLogComponent == nil {
+		t.Fatalf("MITRE ATT&CK data component Application Log Content missing: %#v", graph.entities)
+	}
+	appLogSource := projectedEntityByAttribute(graph, mitre.AttackDataSourceEntityType, "data_source_id", "DS0015")
+	if appLogSource == nil {
+		t.Fatalf("MITRE ATT&CK data source DS0015 missing: %#v", graph.entities)
+	}
+	assertWorkflowLink(t, graph, t1190CoverageURN, relationHasEvidence, appLogComponent.URN)
+	assertWorkflowLink(t, graph, appLogComponent.URN, relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
+	assertWorkflowLink(t, graph, appLogComponent.URN, relationBelongsTo, appLogSource.URN)
+	assertWorkflowLink(t, graph, "urn:cerebro:writer:mitre_defend_technique:InboundTrafficFiltering", relationSupports, "urn:cerebro:writer:mitre_attack_technique:T1190")
+	if _, ok := graph.links["urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication|supports|urn:cerebro:writer:mitre_attack_technique:T1190"]; ok {
+		t.Fatal("explicit D3FEND metadata should not create cross-product ATT&CK support links")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:mitre_defend_technique:Multi-factorAuthentication|has_context|urn:cerebro:writer:mitre_defend_artifact:Credential"]; ok {
+		t.Fatal("explicit D3FEND metadata should not create cross-product artifact links")
 	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   finding,
@@ -698,6 +765,10 @@ func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
 	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; !ok {
 		t.Fatal("initial MITRE ATT&CK tactic link missing")
 	}
+	initialCoverageURN := mitre.AttackCoverageURN("writer", anchorURN, "urn:cerebro:writer:mitre_attack_technique:T1190")
+	if _, ok := graph.links[anchorURN+"|has_context|"+initialCoverageURN]; !ok {
+		t.Fatal("initial MITRE ATT&CK coverage link missing")
+	}
 
 	finding.Metadata = map[string]string{
 		"rule_mitre_attack": "Discovery:T1087",
@@ -713,8 +784,8 @@ func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project(updated recorded) error = %v", err)
 	}
-	if result.LinksDeleted != 2 {
-		t.Fatalf("LinksDeleted = %d, want 2 stale MITRE context links", result.LinksDeleted)
+	if result.LinksDeleted != 3 {
+		t.Fatalf("LinksDeleted = %d, want 3 stale MITRE context links", result.LinksDeleted)
 	}
 	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1190"]; ok {
 		t.Fatal("stale MITRE ATT&CK technique link was not pruned")
@@ -722,11 +793,18 @@ func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
 	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001"]; ok {
 		t.Fatal("stale MITRE ATT&CK tactic link was not pruned")
 	}
+	if _, ok := graph.links[anchorURN+"|has_context|"+initialCoverageURN]; ok {
+		t.Fatal("stale MITRE ATT&CK coverage link was not pruned")
+	}
 	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1087"]; !ok {
 		t.Fatal("updated MITRE ATT&CK technique link missing")
 	}
 	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0007"]; !ok {
 		t.Fatal("updated MITRE ATT&CK tactic link missing")
+	}
+	updatedCoverageURN := mitre.AttackCoverageURN("writer", anchorURN, "urn:cerebro:writer:mitre_attack_technique:T1087")
+	if _, ok := graph.links[anchorURN+"|has_context|"+updatedCoverageURN]; !ok {
+		t.Fatal("updated MITRE ATT&CK coverage link missing")
 	}
 }
 

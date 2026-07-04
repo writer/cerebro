@@ -30,6 +30,9 @@ const (
 	relationEvaluates     = "evaluates"
 	relationHasFinding    = "has_finding"
 	relationHasContext    = "has_context"
+	relationBelongsTo     = "belongs_to"
+	relationSupports      = "supports"
+	relationHasEvidence   = "has_evidence"
 	relationAnnotatedWith = "annotated_with"
 	relationTrackedBy     = "tracked_by"
 	graphEntityLabelLimit = 160
@@ -72,6 +75,55 @@ var workflowMITREAttackTagKeys = []string{
 	"rule_references",
 	"rule_tags",
 	"tags",
+}
+
+var workflowMITREDefendTacticKeys = []string{
+	"d3fend_tactic",
+	"d3fend_tactics",
+	"defend_tactic",
+	"defend_tactics",
+	"mitre_defend_tactic",
+	"mitre_defend_tactics",
+	"rule_mitre_defend_tactic",
+	"rule_mitre_defend_tactics",
+}
+
+var workflowMITREDefendTechniqueKeys = []string{
+	"d3fend_technique",
+	"d3fend_technique_id",
+	"d3fend_techniques",
+	"d3fend_technique_ids",
+	"defend_technique",
+	"defend_technique_id",
+	"defend_techniques",
+	"defend_technique_ids",
+	"mitre_defend_technique",
+	"mitre_defend_technique_id",
+	"mitre_defend_techniques",
+	"mitre_defend_technique_ids",
+	"rule_mitre_defend_technique",
+	"rule_mitre_defend_technique_id",
+	"rule_mitre_defend_techniques",
+	"rule_mitre_defend_technique_ids",
+}
+
+var workflowMITREDefendArtifactKeys = []string{
+	"d3fend_artifact",
+	"d3fend_artifact_id",
+	"d3fend_artifacts",
+	"d3fend_artifact_ids",
+	"defend_artifact",
+	"defend_artifact_id",
+	"defend_artifacts",
+	"defend_artifact_ids",
+	"mitre_defend_artifact",
+	"mitre_defend_artifact_id",
+	"mitre_defend_artifacts",
+	"mitre_defend_artifact_ids",
+	"rule_mitre_defend_artifact",
+	"rule_mitre_defend_artifact_id",
+	"rule_mitre_defend_artifacts",
+	"rule_mitre_defend_artifact_ids",
 }
 
 // Service projects durable workflow events into graph entities and links.
@@ -545,8 +597,226 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	currentContextURNs := []string{}
+	appendContextURN := func(urn string) {
+		if urn = strings.TrimSpace(urn); urn != "" {
+			currentContextURNs = append(currentContextURNs, urn)
+		}
+	}
 	tactics := mitre.ExtractAttackTactics(append(findingMetadataValues(finding.Metadata, workflowMITREAttackTacticKeys...), findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
 	for _, tactic := range tactics {
+		tacticURN, err := s.ensureFindingMITREAttackTactic(ctx, finding, anchorURN, tactic, "attack_tactic", result)
+		if err != nil {
+			return err
+		}
+		appendContextURN(tacticURN)
+	}
+	techniques := mitre.ExtractAttackTechniques(findingMetadataValues(finding.Metadata, workflowMITREAttackTechniqueKeys...)...)
+	techniques = append(techniques, mitre.ExtractAttackTechniqueIDs(findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
+	for _, technique := range techniques {
+		techniqueURN, err := s.ensureFindingMITREAttackTechnique(ctx, finding, anchorURN, technique, "attack_technique", result)
+		if err != nil {
+			return err
+		}
+		appendContextURN(techniqueURN)
+		knowledgeURNs, err := s.ensureFindingMITREAttackTechniqueKnowledge(ctx, finding, anchorURN, technique, techniqueURN, result)
+		if err != nil {
+			return err
+		}
+		currentContextURNs = append(currentContextURNs, knowledgeURNs...)
+	}
+	for _, tactic := range mitre.ExtractDefendTactics(findingMetadataValues(finding.Metadata, workflowMITREDefendTacticKeys...)...) {
+		tacticURN, err := s.ensureFindingMITREDefendTactic(ctx, finding, anchorURN, tactic, result)
+		if err != nil {
+			return err
+		}
+		appendContextURN(tacticURN)
+	}
+	for _, technique := range mitre.ExtractDefendTechniques(findingMetadataValues(finding.Metadata, workflowMITREDefendTechniqueKeys...)...) {
+		techniqueURN, err := s.ensureFindingMITREDefendTechnique(ctx, finding, anchorURN, technique, result)
+		if err != nil {
+			return err
+		}
+		appendContextURN(techniqueURN)
+	}
+	for _, artifact := range mitre.ExtractDefendArtifacts(findingMetadataValues(finding.Metadata, workflowMITREDefendArtifactKeys...)...) {
+		artifactURN, err := s.ensureFindingMITREDefendArtifact(ctx, finding, anchorURN, artifact, result)
+		if err != nil {
+			return err
+		}
+		appendContextURN(artifactURN)
+	}
+	if err := s.pruneFindingMITREContextLinks(ctx, tenantID, sourceID, anchorURN, currentContextURNs, result); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) ensureFindingMITREAttackTactic(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, tactic mitre.AttackTactic, contextType string, result *ports.ProjectionResult) (string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	tacticURN := mitre.AttackTacticURN(tenantID, tactic)
+	if tacticURN == "" {
+		return "", nil
+	}
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        tacticURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: mitre.AttackTacticEntityType,
+		Label:      mitre.AttackTacticLabel(tactic),
+		Attributes: mitre.AttackTacticAttributes(tactic),
+	}, result); err != nil {
+		return "", err
+	}
+	if err := s.upsertLink(ctx, &ports.ProjectedLink{
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		FromURN:    anchorURN,
+		ToURN:      tacticURN,
+		Relation:   relationHasContext,
+		Attributes: findingMITRELinkAttributes(finding, contextType, tactic.SourceValue),
+	}, result); err != nil {
+		return "", err
+	}
+	return tacticURN, nil
+}
+
+func (s *Service) ensureFindingMITREAttackTechnique(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, technique mitre.AttackTechnique, contextType string, result *ports.ProjectionResult) (string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	techniqueURN := mitre.AttackTechniqueURN(tenantID, technique)
+	if techniqueURN == "" {
+		return "", nil
+	}
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        techniqueURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: mitre.AttackTechniqueEntityType,
+		Label:      mitre.AttackTechniqueLabel(technique),
+		Attributes: mitre.AttackTechniqueAttributes(technique),
+	}, result); err != nil {
+		return "", err
+	}
+	if err := s.upsertLink(ctx, &ports.ProjectedLink{
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		FromURN:    anchorURN,
+		ToURN:      techniqueURN,
+		Relation:   relationHasContext,
+		Attributes: findingMITRELinkAttributes(finding, contextType, technique.SourceValue),
+	}, result); err != nil {
+		return "", err
+	}
+	return techniqueURN, nil
+}
+
+func (s *Service) ensureFindingMITREDefendTactic(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, tactic mitre.DefendTactic, result *ports.ProjectionResult) (string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	tacticURN := mitre.DefendTacticURN(tenantID, tactic)
+	if tacticURN == "" {
+		return "", nil
+	}
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        tacticURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: mitre.DefendTacticEntityType,
+		Label:      mitre.DefendTacticLabel(tactic),
+		Attributes: mitre.DefendTacticAttributes(tactic),
+	}, result); err != nil {
+		return "", err
+	}
+	if err := s.upsertLink(ctx, &ports.ProjectedLink{
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		FromURN:    anchorURN,
+		ToURN:      tacticURN,
+		Relation:   relationHasContext,
+		Attributes: findingMITRELinkAttributes(finding, "defend_tactic", tactic.SourceValue),
+	}, result); err != nil {
+		return "", err
+	}
+	return tacticURN, nil
+}
+
+func (s *Service) ensureFindingMITREDefendTechnique(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, technique mitre.DefendTechnique, result *ports.ProjectionResult) (string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	techniqueURN := mitre.DefendTechniqueURN(tenantID, technique)
+	if techniqueURN == "" {
+		return "", nil
+	}
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        techniqueURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: mitre.DefendTechniqueEntityType,
+		Label:      mitre.DefendTechniqueLabel(technique),
+		Attributes: mitre.DefendTechniqueAttributes(technique),
+	}, result); err != nil {
+		return "", err
+	}
+	if err := s.upsertLink(ctx, &ports.ProjectedLink{
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		FromURN:    anchorURN,
+		ToURN:      techniqueURN,
+		Relation:   relationHasContext,
+		Attributes: findingMITRELinkAttributes(finding, "defend_technique", technique.SourceValue),
+	}, result); err != nil {
+		return "", err
+	}
+	return techniqueURN, nil
+}
+
+func (s *Service) ensureFindingMITREDefendArtifact(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, artifact mitre.DefendArtifact, result *ports.ProjectionResult) (string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	artifactURN := mitre.DefendArtifactURN(tenantID, artifact)
+	if artifactURN == "" {
+		return "", nil
+	}
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        artifactURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: mitre.DefendArtifactEntityType,
+		Label:      mitre.DefendArtifactLabel(artifact),
+		Attributes: mitre.DefendArtifactAttributes(artifact),
+	}, result); err != nil {
+		return "", err
+	}
+	if err := s.upsertLink(ctx, &ports.ProjectedLink{
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		FromURN:    anchorURN,
+		ToURN:      artifactURN,
+		Relation:   relationHasContext,
+		Attributes: findingMITRELinkAttributes(finding, "defend_artifact", artifact.SourceValue),
+	}, result); err != nil {
+		return "", err
+	}
+	return artifactURN, nil
+}
+
+func (s *Service) ensureFindingMITREAttackTechniqueKnowledge(ctx context.Context, finding workflowevents.FindingSnapshot, anchorURN string, technique mitre.AttackTechnique, techniqueURN string, result *ports.ProjectionResult) ([]string, error) {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	knowledge, ok := mitre.AttackTechniqueKnowledgeFor(technique)
+	if !ok || strings.TrimSpace(techniqueURN) == "" {
+		return nil, nil
+	}
+	knowledgeTechnique := mitre.AttackTechnique{ID: knowledge.ID, Name: knowledge.Name, SourceValue: technique.SourceValue}
+	if strings.TrimSpace(knowledgeTechnique.ID) == "" {
+		knowledgeTechnique.ID = technique.ID
+	}
+	if strings.TrimSpace(knowledgeTechnique.Name) == "" {
+		knowledgeTechnique.Name = technique.Name
+	}
+	currentContextURNs := []string{}
+	for _, tactic := range mitre.AttackTacticsForTechnique(knowledgeTechnique) {
 		tacticURN := mitre.AttackTacticURN(tenantID, tactic)
 		if tacticURN == "" {
 			continue
@@ -560,7 +830,7 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 			Label:      mitre.AttackTacticLabel(tactic),
 			Attributes: mitre.AttackTacticAttributes(tactic),
 		}, result); err != nil {
-			return err
+			return nil, err
 		}
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
@@ -568,44 +838,177 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 			FromURN:    anchorURN,
 			ToURN:      tacticURN,
 			Relation:   relationHasContext,
-			Attributes: findingMITRELinkAttributes(finding, "attack_tactic", tactic.SourceValue),
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "attack_technique_tactic", technique.SourceValue),
 		}, result); err != nil {
-			return err
+			return nil, err
 		}
-	}
-	techniques := mitre.ExtractAttackTechniques(findingMetadataValues(finding.Metadata, workflowMITREAttackTechniqueKeys...)...)
-	techniques = append(techniques, mitre.ExtractAttackTechniqueIDs(findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
-	for _, technique := range techniques {
-		techniqueURN := mitre.AttackTechniqueURN(tenantID, technique)
-		if techniqueURN == "" {
-			continue
-		}
-		currentContextURNs = append(currentContextURNs, techniqueURN)
-		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
-			URN:        techniqueURN,
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
 			SourceID:   sourceID,
-			EntityType: mitre.AttackTechniqueEntityType,
-			Label:      mitre.AttackTechniqueLabel(technique),
-			Attributes: mitre.AttackTechniqueAttributes(technique),
+			FromURN:    techniqueURN,
+			ToURN:      tacticURN,
+			Relation:   relationBelongsTo,
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "attack_technique_tactic", technique.SourceValue),
 		}, result); err != nil {
-			return err
+			return nil, err
+		}
+	}
+	coverageURN := mitre.AttackCoverageURN(tenantID, anchorURN, techniqueURN)
+	if coverageURN != "" {
+		currentContextURNs = append(currentContextURNs, coverageURN)
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        coverageURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.AttackCoverageEntityType,
+			Label:      mitre.AttackTechniqueLabel(knowledgeTechnique) + " coverage",
+			Attributes: mitre.AttackCoverageAttributes(knowledgeTechnique, findingMITRECoverageState(finding), anchorURN, technique.SourceValue, findingMITREKnowledgeLinkAttributes(finding, "attack_coverage", technique.SourceValue)),
+		}, result); err != nil {
+			return nil, err
 		}
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
 			SourceID:   sourceID,
 			FromURN:    anchorURN,
-			ToURN:      techniqueURN,
+			ToURN:      coverageURN,
 			Relation:   relationHasContext,
-			Attributes: findingMITRELinkAttributes(finding, "attack_technique", technique.SourceValue),
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "attack_coverage_anchor", technique.SourceValue),
 		}, result); err != nil {
-			return err
+			return nil, err
+		}
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    coverageURN,
+			ToURN:      techniqueURN,
+			Relation:   relationSupports,
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "attack_coverage_technique", technique.SourceValue),
+		}, result); err != nil {
+			return nil, err
 		}
 	}
-	if err := s.pruneFindingMITREContextLinks(ctx, tenantID, sourceID, anchorURN, currentContextURNs, result); err != nil {
-		return err
+	for _, component := range knowledge.DataComponents {
+		componentURN := mitre.AttackDataComponentURN(tenantID, component)
+		if componentURN == "" {
+			continue
+		}
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        componentURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.AttackDataComponentEntityType,
+			Label:      firstProjectionValue(component.Name, component.ID),
+			Attributes: mitre.AttackDataComponentAttributes(component),
+		}, result); err != nil {
+			return nil, err
+		}
+		if source, ok := mitre.AttackDataSourceForComponent(component); ok {
+			sourceURN := mitre.AttackDataSourceURN(tenantID, source)
+			if sourceURN != "" {
+				if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+					URN:        sourceURN,
+					TenantID:   tenantID,
+					SourceID:   sourceID,
+					EntityType: mitre.AttackDataSourceEntityType,
+					Label:      firstProjectionValue(source.Name, source.ID),
+					Attributes: mitre.AttackDataSourceAttributes(source),
+				}, result); err != nil {
+					return nil, err
+				}
+				if err := s.upsertLink(ctx, &ports.ProjectedLink{
+					TenantID:   tenantID,
+					SourceID:   sourceID,
+					FromURN:    componentURN,
+					ToURN:      sourceURN,
+					Relation:   relationBelongsTo,
+					Attributes: findingMITREKnowledgeLinkAttributes(finding, "attack_data_component_source", technique.SourceValue),
+				}, result); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    componentURN,
+			ToURN:      techniqueURN,
+			Relation:   relationSupports,
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "detects_attack_technique", technique.SourceValue),
+		}, result); err != nil {
+			return nil, err
+		}
+		if coverageURN != "" {
+			if err := s.upsertLink(ctx, &ports.ProjectedLink{
+				TenantID:   tenantID,
+				SourceID:   sourceID,
+				FromURN:    coverageURN,
+				ToURN:      componentURN,
+				Relation:   relationHasEvidence,
+				Attributes: findingMITREKnowledgeLinkAttributes(finding, "coverage_data_component", technique.SourceValue),
+			}, result); err != nil {
+				return nil, err
+			}
+		}
 	}
-	return nil
+	for _, defendTechnique := range knowledge.DefendTechniques {
+		defendTechniqueURN := mitre.DefendTechniqueURN(tenantID, defendTechnique)
+		if defendTechniqueURN == "" {
+			continue
+		}
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        defendTechniqueURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.DefendTechniqueEntityType,
+			Label:      mitre.DefendTechniqueLabel(defendTechnique),
+			Attributes: mitre.DefendTechniqueAttributes(defendTechnique),
+		}, result); err != nil {
+			return nil, err
+		}
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    defendTechniqueURN,
+			ToURN:      techniqueURN,
+			Relation:   relationSupports,
+			Attributes: findingMITREKnowledgeLinkAttributes(finding, "defends_against", technique.SourceValue),
+		}, result); err != nil {
+			return nil, err
+		}
+	}
+	for _, artifact := range knowledge.DefendArtifacts {
+		artifactURN := mitre.DefendArtifactURN(tenantID, artifact)
+		if artifactURN == "" {
+			continue
+		}
+		if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+			URN:        artifactURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: mitre.DefendArtifactEntityType,
+			Label:      mitre.DefendArtifactLabel(artifact),
+			Attributes: mitre.DefendArtifactAttributes(artifact),
+		}, result); err != nil {
+			return nil, err
+		}
+		for _, defendTechnique := range knowledge.DefendTechniques {
+			defendTechniqueURN := mitre.DefendTechniqueURN(tenantID, defendTechnique)
+			if defendTechniqueURN == "" {
+				continue
+			}
+			if err := s.upsertLink(ctx, &ports.ProjectedLink{
+				TenantID:   tenantID,
+				SourceID:   sourceID,
+				FromURN:    defendTechniqueURN,
+				ToURN:      artifactURN,
+				Relation:   relationHasContext,
+				Attributes: findingMITREKnowledgeLinkAttributes(finding, "defense_artifact", technique.SourceValue),
+			}, result); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return currentContextURNs, nil
 }
 
 type findingActiveLinkReader interface {
@@ -705,6 +1108,10 @@ LIMIT $row_limit`,
 				"entity_types": []string{
 					mitre.AttackTacticEntityType,
 					mitre.AttackTechniqueEntityType,
+					mitre.AttackCoverageEntityType,
+					mitre.DefendTacticEntityType,
+					mitre.DefendTechniqueEntityType,
+					mitre.DefendArtifactEntityType,
 				},
 				"last_seen": lastSeen,
 				"row_limit": int64(ports.MaxCypherQueryRows),
@@ -1063,6 +1470,33 @@ func findingMITRELinkAttributes(finding workflowevents.FindingSnapshot, contextT
 	return attributes
 }
 
+func findingMITREKnowledgeLinkAttributes(finding workflowevents.FindingSnapshot, relationship string, sourceValue string) map[string]string {
+	attributes := findingMITRELinkAttributes(finding, relationship, sourceValue)
+	attributes["relationship"] = strings.TrimSpace(relationship)
+	attributes["knowledge_pack_id"] = mitre.KnowledgePackID
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
+func findingMITRECoverageState(finding workflowevents.FindingSnapshot) mitre.CoverageState {
+	status := firstProjectionValue(
+		finding.Metadata["mitre_coverage_state"],
+		finding.Metadata["coverage_state"],
+		finding.Metadata["coverage_status"],
+		finding.Metadata["coverage"],
+		"observed",
+	)
+	state := mitre.NormalizeCoverageState(status)
+	if state == "mapped" {
+		state = "observed"
+	}
+	return mitre.CoverageState{
+		State:           state,
+		Status:          status,
+		EvidenceSurface: firstProjectionValue(finding.Metadata["evidence_surface"], finding.Metadata["source_family"], finding.SourceSystem),
+	}
+}
+
 func findingMetadataValues(metadata map[string]string, keys ...string) []string {
 	values := []string{}
 	for _, key := range keys {
@@ -1071,6 +1505,15 @@ func findingMetadataValues(metadata map[string]string, keys ...string) []string 
 		}
 	}
 	return values
+}
+
+func firstProjectionValue(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func findingSourceEventID(finding workflowevents.FindingSnapshot) string {
