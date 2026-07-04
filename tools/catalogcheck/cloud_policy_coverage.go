@@ -508,7 +508,7 @@ func checkStrictDeployRuntimeCoverage(root string, dimensions map[string]map[str
 			continue
 		}
 		coveredFamilies := coverageFamilies(sourceDimensions)
-		missing := sortedStringSetDifference(deployFamilies, coveredFamilies)
+		missing := missingDeployRuntimeFamilies(sourceID, deployFamilies, coveredFamilies)
 		if len(missing) > 0 {
 			issues = append(issues, issue{
 				path:    fmt.Sprintf("sources/%s/catalog.yaml", sourceID),
@@ -517,6 +517,12 @@ func checkStrictDeployRuntimeCoverage(root string, dimensions map[string]map[str
 		}
 	}
 	return issues
+}
+
+var strictDeployRuntimeCoverageFamilyAliases = map[string]map[string]string{
+	"addigy": {
+		"devices": "device",
+	},
 }
 
 func loadCoverageDimensions(root string) (map[string]map[string]sourcecdk.CoverageDimension, error) {
@@ -591,10 +597,6 @@ func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[str
 		default:
 			continue
 		}
-		dimensionID := strings.TrimSpace(dimension.ID)
-		if dimensionID != "" {
-			families[dimensionID] = struct{}{}
-		}
 		for _, family := range dimension.Families {
 			family = strings.TrimSpace(family)
 			if family != "" {
@@ -605,15 +607,28 @@ func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[str
 	return families
 }
 
-func sortedStringSetDifference(left map[string]struct{}, right map[string]struct{}) []string {
-	out := make([]string, 0)
-	for value := range left {
-		if _, ok := right[value]; !ok {
-			out = append(out, value)
+func missingDeployRuntimeFamilies(sourceID string, deployFamilies map[string]struct{}, coveredFamilies map[string]struct{}) []string {
+	var missing []string
+	for family := range deployFamilies {
+		if deployRuntimeFamilyCovered(sourceID, family, coveredFamilies) {
+			continue
 		}
+		missing = append(missing, family)
 	}
-	sort.Strings(out)
-	return out
+	sort.Strings(missing)
+	return missing
+}
+
+func deployRuntimeFamilyCovered(sourceID string, family string, coveredFamilies map[string]struct{}) bool {
+	if _, ok := coveredFamilies[family]; ok {
+		return true
+	}
+	alias := strings.TrimSpace(strictDeployRuntimeCoverageFamilyAliases[sourceID][family])
+	if alias == "" {
+		return false
+	}
+	_, ok := coveredFamilies[alias]
+	return ok
 }
 
 func splitPolicyResources(value string) []string {

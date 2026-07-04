@@ -84,6 +84,7 @@ coverage_contract:
           control_id: "1"
       notes:
         - Maps Addigy API v2 device search records to graph assets; live tenant sample certification is still pending.
+        - Uses the singular device coverage token for detection matching while preserving Addigy's devices runtime family and emitted kind.
     - id: users
       type: entity_family
       title: "Organization Users"

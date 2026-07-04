@@ -861,9 +861,15 @@ runtimes:
 	}
 }
 
-func TestCheckStrictDeployRuntimeCoverageAllowsDimensionIDToCoverRuntimeFamily(t *testing.T) {
+func TestCheckStrictDeployRuntimeCoverageAllowsSourceSpecificFamilyAlias(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/addigy/deploy.yaml", `
+runtimes:
+  - localId: devices
+    config:
+      family: devices
+`)
+	writeFile(t, root, "sources/custom/deploy.yaml", `
 runtimes:
   - localId: devices
     config:
@@ -879,11 +885,20 @@ runtimes:
 				},
 			},
 		},
+		"custom": {
+			"devices": {
+				ID:      "devices",
+				Support: sourcecdk.CoverageSupportPartial,
+				Families: []string{
+					"device",
+				},
+			},
+		},
 	}
 
 	issues := checkStrictDeployRuntimeCoverage(root, dimensions)
-	if len(issues) > 0 {
-		t.Fatalf("issues = %#v, want dimension id to cover deploy runtime family", issues)
+	if len(issues) != 1 || issues[0].path != "sources/custom/catalog.yaml" {
+		t.Fatalf("issues = %#v, want alias to cover only addigy deploy runtime family", issues)
 	}
 }
 
