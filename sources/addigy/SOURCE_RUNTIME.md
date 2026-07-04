@@ -1,11 +1,11 @@
 # Addigy
 
-Generated Source Runtime SDK scaffold for `addigy`.
+Promoted Source Runtime adapter for Addigy API v2.
 
 ## Runtime input
 
-- Source type: `json_api`
-- Auth model: `bearer_token`
+- Source type: `addigy_api_v2`
+- Auth model: `api_key`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +18,15 @@ Generated Source Runtime SDK scaffold for `addigy`.
 
 ## Families
 
-- `users`, emits `addigy.users`, reads `/v1/users`
-- `groups`, emits `addigy.groups`, reads `/v1/groups`
-- `roles`, emits `addigy.roles`, reads `/v1/roles`
-- `applications`, emits `addigy.applications`, reads `/v1/applications`
-- `audit_events`, emits `addigy.audit_events`, reads `/v1/audit_events`
+- `devices`, emits `addigy.devices`, reads `POST /devices`
+- `users`, emits `addigy.users`, reads `POST /o/{organization_id}/users/query`
+- `groups`, emits `addigy.groups`, reads `POST /o/{organization_id}/end-users/groups/query`
+- `policies`, emits `addigy.policies`, reads `POST /oa/policies/query`
+- `audit_events`, emits `addigy.audit_events`, reads `POST /system-events/search`
 
 ## Tests
 
-- `go test ./sources/addigy ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/internal/jsonapi ./sources/addigy ./internal/sourceprojection -count=1`
+- `make lint-sources catalog-check sourcegen-check`
+- `make check-structural check-structural-test check-arch`
+- `make connector-catalog-review connector-api-discovery`

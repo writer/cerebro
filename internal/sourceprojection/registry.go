@@ -937,10 +937,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"ada_support.users":        adaSupportUsersProjections,
 
 	// addigy generated projectors (sourcegen promotion)
-	"addigy.applications": addigyApplicationsProjections,
 	"addigy.audit_events": addigyAuditEventsProjections,
+	"addigy.devices":      addigyDevicesProjections,
 	"addigy.groups":       addigyGroupsProjections,
-	"addigy.roles":        addigyRolesProjections,
+	"addigy.policies":     addigyPoliciesProjections,
 	"addigy.users":        addigyUsersProjections,
 
 	// adobe_workfront generated projectors (sourcegen promotion)

@@ -1,0 +1,36 @@
+[
+  {
+    "attributes": {
+      "external_id": "policy-1",
+      "family": "policies",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "organization_id": "org-1",
+      "policy_id": "policy-1",
+      "policy_name": "Default Policy",
+      "policy_status": "configured",
+      "policy_type": "device_policy",
+      "provider": "addigy",
+      "record_class": "policy",
+      "resource_id": "policy-1",
+      "resource_name": "Default Policy",
+      "resource_type": "policy",
+      "schema": "policies",
+      "source_event_id": "policy-1",
+      "source_provider": "addigy",
+      "source_system": "addigy",
+      "tenant_id": "tenant"
+    },
+    "id": "source-addigy-policies-event-1",
+    "kind": "addigy.policies",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "creation_time": 1780272000,
+      "name": "Default Policy",
+      "orgid": "org-1",
+      "policyId": "policy-1"
+    },
+    "schema_ref": "addigy/policies/v1",
+    "source_id": "addigy",
+    "tenant_id": "tenant"
+  }
+]

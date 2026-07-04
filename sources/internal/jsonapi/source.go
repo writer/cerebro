@@ -52,6 +52,7 @@ type FamilyConfig struct {
 	BaseURL             string
 	StaticQuery         map[string]string
 	ConfigQuery         map[string]string
+	JSONBody            JSONBodyConfig
 	ConfigAttributes    map[string]string
 	StaticHeaders       map[string]string
 	RedactPayloadKeys   []string
@@ -67,9 +68,18 @@ type FamilyConfig struct {
 	OffsetKeys          []string
 	LimitKeys           []string
 	LastItemCursorKeys  []string
+	CursorContainers    []string
 	Method              string
 	AuthModel           string
 	DefaultPageSize     int
+}
+
+type JSONBodyConfig struct {
+	Static      map[string]string
+	Config      map[string]string
+	CursorParam string
+	SizeParam   string
+	SendEmpty   bool
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while
@@ -169,7 +179,7 @@ func (s *Source) CheckPath(ctx context.Context, cfg sourcecdk.Config, path strin
 	if err != nil {
 		return err
 	}
-	_, err = s.doRequest(ctx, settings, normalizedPath, query, nil, expectStatuses)
+	_, err = s.doRequest(ctx, settings, normalizedPath, query, nil, nil, expectStatuses)
 	return err
 }
 

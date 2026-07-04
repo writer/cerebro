@@ -3,22 +3,26 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: api_key
+            label: API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - identity_access_secrets
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Addigy API v2 base URL.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, groups, roles, applications, and audit events from Addigy and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context.
+          required: false
+        - help: Addigy organization id for organization users and end-user groups.
+          key: organization_id
+          label: Organization ID
+          required: false
+      description: Collects devices, organization users, end-user groups, policies, and system events from the Addigy API v2 and projects them into the Cerebro graph as assets, users, groups, policies, and audit events for Apple device management context.
       display_name: Addigy
       id: builtin-addigy
       ingest:
@@ -27,6 +31,48 @@ entries:
         - coverage:
             - control_domains:
                 - asset_inventory
+                - endpoint_security
+              evidence_types:
+                - source_snapshot
+              families:
+                - devices
+              high_value: true
+              id: devices
+              support: partial
+              title: Devices
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: addigy.devices
+            required_payload_fields:
+              - agentid
+            schema_ref: addigy/devices/v1
+            urn_kind: addigy_devices
+          id: devices
+          id_field: agentid
+          label: Devices
+          method: POST
+          name_field: facts.device_name.value|facts.host_name.value|facts.serial_number.value|agentid
+          pagination:
+            cursor_json_path: $.metadata.page
+            cursor_param: page
+            page_size: 100
+            page_size_param: per_page
+            type: page
+          path: /devices
+          projection:
+            fields:
+              id: agentid
+              name: facts.device_name.value|facts.host_name.value|facts.serial_number.value|agentid
+              resource_id: agentid
+              resource_name: facts.device_name.value|facts.host_name.value|facts.serial_number.value|agentid
+              resource_type: device
+              serial_number: facts.serial_number.value
+            template: asset
+          record_selector: $.items[*]
+        - coverage:
+            - control_domains:
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
@@ -34,38 +80,41 @@ entries:
               high_value: true
               id: users
               support: partial
-              title: Users
+              title: Organization users
               type: entity_family
           default_enabled: true
           event:
             kind: addigy.users
             required_payload_fields:
-              - id
+              - email
             schema_ref: addigy/users/v1
             urn_kind: addigy_users
           id: users
-          id_field: id
-          label: Users
-          method: GET
-          name_field: name
+          id_field: email
+          label: Organization users
+          method: POST
+          name_field: name|email
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.metadata.page
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: per_page
+            type: page
+          path: /o/{organization_id}/users/query
           projection:
             fields:
+              addigy_role: addigy_role
               display_name: name
               email: email
-              status: status
-              user_id: id
+              user_id: email
             template: identity_user
-          record_selector: $.data[*]
+          read:
+            path_params:
+              - organization_id
+          record_selector: $.items[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
@@ -73,7 +122,7 @@ entries:
               high_value: true
               id: groups
               support: partial
-              title: Groups
+              title: End-user groups
               type: entity_family
           default_enabled: true
           event:
@@ -84,101 +133,59 @@ entries:
             urn_kind: addigy_groups
           id: groups
           id_field: id
-          label: Groups
-          method: GET
-          name_field: name
+          label: End-user groups
+          method: POST
+          name_field: display_name|external_id|id
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.metadata.page
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            page_size_param: per_page
+            type: page
+          path: /o/{organization_id}/end-users/groups/query
           projection:
             fields:
               group_id: id
-              group_name: name
+              group_name: display_name|external_id|id
             template: identity_group
-          record_selector: $.data[*]
+          read:
+            path_params:
+              - organization_id
+          record_selector: $.items[*]
         - coverage:
             - control_domains:
-                - access_review
+                - endpoint_security
+                - security_operations
               evidence_types:
-                - source_snapshot
+                - configuration_state
               families:
-                - roles
+                - policies
               high_value: true
-              id: roles
+              id: policies
               support: partial
-              title: Roles
-              type: entity_family
+              title: Policies
+              type: lifecycle_state
           default_enabled: true
           event:
-            kind: addigy.roles
+            kind: addigy.policies
             required_payload_fields:
-              - id
-            schema_ref: addigy/roles/v1
-            urn_kind: addigy_roles
-          id: roles
-          id_field: id
-          label: Roles
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/roles
+              - policyId
+            schema_ref: addigy/policies/v1
+            urn_kind: addigy_policies
+          id: policies
+          id_field: policyId
+          label: Policies
+          method: POST
+          name_field: name|policyId
+          path: /oa/policies/query
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: role
+              policy_id: policyId
+              policy_name: name|policyId
+              policy_status: configured
+              policy_type: device_policy
             template: policy
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - applications
-              high_value: true
-              id: applications
-              support: partial
-              title: Applications
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: addigy.applications
-            required_payload_fields:
-              - id
-            schema_ref: addigy/applications/v1
-            urn_kind: addigy_applications
-          id: applications
-          id_field: id
-          label: Applications
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/applications
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: application
-            template: asset
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -189,44 +196,46 @@ entries:
               high_value: true
               id: audit_events
               support: partial
-              title: Audit events
+              title: System events
               type: audit_event
           default_enabled: true
           event:
             kind: addigy.audit_events
             required_payload_fields:
-              - id
+              - event_id
             schema_ref: addigy/audit_events/v1
             urn_kind: addigy_audit_events
           id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
+          id_field: event_id
+          label: System events
+          method: POST
+          name_field: action.name|source|event_id
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.metadata.page
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            page_size_param: per_page
+            type: page
+          path: /system-events/search
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_id: action_sender.identifier|action_sender.name
+              actor_name: action_sender.name
+              event_type: action.name|source|level
+              id: event_id
+              resource_id: action.entity.identifier|action_receiver.identifier|event_id
+              resource_name: action.entity.name|action_receiver.name
+              resource_type: action.entity.type|action_receiver.type
+              source_event_id: event_id
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.items[*]
       schema_version: cerebro.integration/v1
       source_id: addigy
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.addigy.com/api/v2
         verification:
           expect_status:
             - 200
-          method: GET
-          path: /v1/me
+          method: POST
+          path: /devices

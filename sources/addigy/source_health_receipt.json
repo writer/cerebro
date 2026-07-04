@@ -1,6 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
+  "adapter_health_path": "POST /devices",
+  "auth_model": "api_key",
   "evidence_cas_reference_kind": "addigy.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [
@@ -12,6 +12,6 @@
   "health_endpoint": "/source-runtimes/health?source_id=addigy",
   "receipt_kind": "source_health.receipt",
   "source_id": "addigy",
-  "source_type": "json_api",
+  "source_type": "addigy_api_v2",
   "stale_after_seconds": 86400
 }
