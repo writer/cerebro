@@ -122,6 +122,17 @@ type RunResult struct {
 	Ingest *IngestResult        `json:"ingest,omitempty"`
 }
 
+type RuntimeCheckpointStatus struct {
+	RuntimeID         string `json:"runtime_id"`
+	SourceID          string `json:"source_id,omitempty"`
+	TenantID          string `json:"tenant_id,omitempty"`
+	CheckpointID      string `json:"checkpoint_id,omitempty"`
+	Found             bool   `json:"found"`
+	Completed         bool   `json:"completed"`
+	CursorOpaque      string `json:"cursor_opaque,omitempty"`
+	CheckpointCurrent bool   `json:"checkpoint_current"`
+}
+
 type ListResult struct {
 	Runs        []graphstore.IngestRun `json:"runs"`
 	FailedCount uint32                 `json:"failed_count"`
@@ -150,6 +161,47 @@ func (s *Service) WithConfigPreparer(prepare ConfigPreparer) *Service {
 	}
 	s.prepareConfig = prepare
 	return s
+}
+
+func (s *Service) RuntimeCheckpointStatus(ctx context.Context, request RuntimeRequest) (*RuntimeCheckpointStatus, error) {
+	if s == nil || s.runtimeStore == nil || s.graphStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	checkpointStore, ok := s.graphStore.(CheckpointStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, fmt.Errorf("%w: runtime_id is required", ErrInvalidRequest)
+	}
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	runtimeConfig, err := s.preparedConfig(ctx, runtime)
+	if err != nil {
+		return nil, err
+	}
+	checkpointID := runtimeCheckpointID(request, runtime, runtimeConfig)
+	status := &RuntimeCheckpointStatus{
+		RuntimeID:    runtimeID,
+		SourceID:     strings.TrimSpace(runtime.GetSourceId()),
+		TenantID:     strings.TrimSpace(runtime.GetTenantId()),
+		CheckpointID: checkpointID,
+	}
+	checkpoint, found, err := checkpointStore.GetIngestCheckpoint(ctx, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+	status.Found = found
+	if !found {
+		return status, nil
+	}
+	status.Completed = checkpoint.Completed
+	status.CursorOpaque = strings.TrimSpace(checkpoint.CursorOpaque)
+	status.CheckpointCurrent = checkpoint.Completed && status.CursorOpaque == ""
+	return status, nil
 }
 
 func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (result *RunResult, err error) {

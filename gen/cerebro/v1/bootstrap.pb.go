@@ -2196,15 +2196,17 @@ func (x *SyncSourceRuntimeRequest) GetPageLimit() uint32 {
 
 // SyncSourceRuntimeResponse returns the updated runtime and sync totals.
 type SyncSourceRuntimeResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Runtime           *SourceRuntime         `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
-	Source            *SourceSpec            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
-	PagesRead         uint32                 `protobuf:"varint,3,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
-	EventsAppended    uint32                 `protobuf:"varint,4,opt,name=events_appended,json=eventsAppended,proto3" json:"events_appended,omitempty"`
-	EntitiesProjected uint32                 `protobuf:"varint,5,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
-	LinksProjected    uint32                 `protobuf:"varint,6,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Runtime              *SourceRuntime         `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Source               *SourceSpec            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	PagesRead            uint32                 `protobuf:"varint,3,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
+	EventsAppended       uint32                 `protobuf:"varint,4,opt,name=events_appended,json=eventsAppended,proto3" json:"events_appended,omitempty"`
+	EntitiesProjected    uint32                 `protobuf:"varint,5,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
+	LinksProjected       uint32                 `protobuf:"varint,6,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
+	ShortCircuitReason   string                 `protobuf:"bytes,7,opt,name=short_circuit_reason,json=shortCircuitReason,proto3" json:"short_circuit_reason,omitempty"`
+	ReconciliationReason string                 `protobuf:"bytes,8,opt,name=reconciliation_reason,json=reconciliationReason,proto3" json:"reconciliation_reason,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SyncSourceRuntimeResponse) Reset() {
@@ -2277,6 +2279,20 @@ func (x *SyncSourceRuntimeResponse) GetLinksProjected() uint32 {
 		return x.LinksProjected
 	}
 	return 0
+}
+
+func (x *SyncSourceRuntimeResponse) GetShortCircuitReason() string {
+	if x != nil {
+		return x.ShortCircuitReason
+	}
+	return ""
+}
+
+func (x *SyncSourceRuntimeResponse) GetReconciliationReason() string {
+	if x != nil {
+		return x.ReconciliationReason
+	}
+	return ""
 }
 
 // WriteClaimsRequest persists one batch of runtime-scoped claims.
@@ -7241,7 +7257,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x18SyncSourceRuntimeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
-	"page_limit\x18\x02 \x01(\rR\tpageLimit\"\xa0\x02\n" +
+	"page_limit\x18\x02 \x01(\rR\tpageLimit\"\x87\x03\n" +
 	"\x19SyncSourceRuntimeResponse\x123\n" +
 	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\x12.\n" +
 	"\x06source\x18\x02 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x12\x1d\n" +
@@ -7249,7 +7265,9 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"pages_read\x18\x03 \x01(\rR\tpagesRead\x12'\n" +
 	"\x0fevents_appended\x18\x04 \x01(\rR\x0eeventsAppended\x12-\n" +
 	"\x12entities_projected\x18\x05 \x01(\rR\x11entitiesProjected\x12'\n" +
-	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected\"\x89\x01\n" +
+	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected\x120\n" +
+	"\x14short_circuit_reason\x18\a \x01(\tR\x12shortCircuitReason\x123\n" +
+	"\x15reconciliation_reason\x18\b \x01(\tR\x14reconciliationReason\"\x89\x01\n" +
 	"\x12WriteClaimsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12)\n" +

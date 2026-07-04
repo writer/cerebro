@@ -75,6 +75,9 @@ type orchestratorRuntimeResult struct {
 	Sync                 string              `json:"sync"`
 	PagesRead            uint32              `json:"pages_read,omitempty"`
 	EventsAppended       uint32              `json:"events_appended,omitempty"`
+	ShortCircuitReason   string              `json:"short_circuit_reason,omitempty"`
+	ReconciliationReason string              `json:"reconciliation_reason,omitempty"`
+	DownstreamSkipReason string              `json:"downstream_skip_reason,omitempty"`
 	FindingRules         string              `json:"finding_rules"`
 	EventsEvaluated      uint32              `json:"events_evaluated,omitempty"`
 	FindingEvaluations   int                 `json:"finding_evaluations,omitempty"`
@@ -468,6 +471,31 @@ func orchestratorRuntimeStartCursorOpaque(runtime *cerebrov1.SourceRuntime) stri
 	return strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque())
 }
 
+func orchestratorDownstreamSkipReason(syncResult *cerebrov1.SyncSourceRuntimeResponse) string {
+	if syncResult == nil || syncResult.GetEventsAppended() != 0 {
+		return ""
+	}
+	if strings.TrimSpace(syncResult.GetRuntime().GetNextCursor().GetOpaque()) != "" {
+		return ""
+	}
+	switch strings.TrimSpace(syncResult.GetShortCircuitReason()) {
+	case string(sourcecdk.PullShortCircuitReasonNotModified), string(sourcecdk.PullShortCircuitReasonCheckpointAdvanced):
+		return "source_unchanged"
+	default:
+		return ""
+	}
+}
+
+func orchestratorGraphCheckpointCurrent(ctx context.Context, graphService *graphingest.Service, runtimeID string) (*graphingest.RuntimeCheckpointStatus, error) {
+	if graphService == nil {
+		return nil, graphingest.ErrRuntimeUnavailable
+	}
+	return graphService.RuntimeCheckpointStatus(ctx, graphingest.RuntimeRequest{
+		RuntimeID: strings.TrimSpace(runtimeID),
+		Trigger:   "orchestrator",
+	})
+}
+
 func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestratorIterationResult, runForever bool) []*orchestratorIterationResult {
 	if !runForever {
 		return append(runs, run)
@@ -626,93 +654,123 @@ func runOrchestratorIteration(
 			runtimeResult.Sync = "completed"
 			runtimeResult.PagesRead = syncResult.GetPagesRead()
 			runtimeResult.EventsAppended = syncResult.GetEventsAppended()
+			runtimeResult.ShortCircuitReason = strings.TrimSpace(syncResult.GetShortCircuitReason())
+			runtimeResult.ReconciliationReason = strings.TrimSpace(syncResult.GetReconciliationReason())
 			if syncResult.GetRuntime() != nil {
 				runtime = syncResult.GetRuntime()
 				runtimeResult.Health = sourcehealth.RecordFromRuntime(runtime, time.Now().UTC())
 			}
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "short_circuit_reason", runtimeResult.ShortCircuitReason)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reconciliation_reason", runtimeResult.ReconciliationReason)
 			emitOrchestratorJobPhaseEnded(runtimeCtx, "source_runtime.sync", "completed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
 				telemetryField("pages_read", runtimeResult.PagesRead),
 				telemetryField("events_appended", runtimeResult.EventsAppended),
+				telemetryField("short_circuit_reason", runtimeResult.ShortCircuitReason),
+				telemetryField("reconciliation_reason", runtimeResult.ReconciliationReason),
 			))
 		}
-		graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
-		resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
-		resetCompletedGraphCheckpoint := runtimeResult.EventsAppended > 0
-		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
-		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
-		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
-		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, options.GraphTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
-			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
-				RuntimeID:                runtime.GetId(),
-				PageLimit:                graphPageLimit,
-				ResetCheckpoint:          resetGraphCheckpoint,
-				ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
-				Trigger:                  "orchestrator",
-			})
-		})
-		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
-		if err != nil {
-			runtimeResult.GraphIngest = "failed"
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
-			runErr = err
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error_kind", telemetry.ErrorKind(err))
-		} else {
-			runtimeResult.GraphIngest = "completed"
-		}
-		runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
-		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
-			return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
-		})
-		if err != nil {
-			if errors.Is(err, findings.ErrRuleUnavailable) {
-				runtimeResult.FindingRules = "skipped"
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", "rule_unavailable")
-			} else {
-				runtimeResult.FindingRules = "failed"
-				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
-				runErr = err
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_error_kind", telemetry.ErrorKind(err))
-			}
-		} else {
-			runtimeResult.FindingRules = "completed"
-			runtimeResult.EventsEvaluated = findingResult.EventsEvaluated
-			runtimeResult.FindingEvaluations = len(findingResult.Evaluations)
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
-		}
-		runtimeResult.Health = withOrchestratorFindingHealth(runtimeResult.Health, runtimeResult.FindingRules)
-		// Run graph rules whenever the projection has caught up to the same cursor
-		// reached by source sync, even if a trailing PutIngestRun(completed) write
-		// failed. The graph is fresh enough for read-only rules at that point.
-		if graphIngestReadyForGraphRules(graphResult, syncResult.GetRuntime().GetNextCursor()) {
-			excludedGraphRuleIDs := orchestratorEvaluatedGraphRuleIDs(graphRulesEvaluatedByTenant[runtimeResult.TenantID])
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_deduped_count", len(excludedGraphRuleIDs))
-			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
-				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), ExcludeRuleIDs: excludedGraphRuleIDs})
-			})
-			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
-			// Mark every rule that was attempted (success or failure) so a slow
-			// or failing rule is retried at most once per tenant per cycle
-			// rather than re-running for every remaining runtime in the tenant.
-			markOrchestratorTenantGraphRulesEvaluated(graphRulesEvaluatedByTenant, runtimeResult.TenantID, graphRulesResult)
+
+		if downstreamSkipReason := orchestratorDownstreamSkipReason(syncResult); downstreamSkipReason != "" {
+			checkpointStatus, err := orchestratorGraphCheckpointCurrent(runtimeCtx, graphService, runtime.GetId())
 			if err != nil {
-				if errors.Is(err, findings.ErrGraphRuntimeUnavailable) || errors.Is(err, findings.ErrRuntimeUnavailable) {
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_checkpoint_status_error_kind", telemetry.ErrorKind(err))
+			} else {
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_checkpoint_id", checkpointStatus.CheckpointID)
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_checkpoint_current", checkpointStatus.CheckpointCurrent)
+				if checkpointStatus.CheckpointCurrent {
+					runtimeResult.DownstreamSkipReason = downstreamSkipReason
+					runtimeResult.GraphIngest = "skipped"
+					runtimeResult.FindingRules = "skipped"
 					runtimeResult.GraphRules = "skipped"
-					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "runtime_unavailable")
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "downstream_skip_reason", downstreamSkipReason)
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_skip_reason", downstreamSkipReason)
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", downstreamSkipReason)
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", downstreamSkipReason)
+					runtimeResult.Health = withOrchestratorFreshGraphHealth(runtimeResult.Health)
+				}
+			}
+		}
+
+		if runtimeResult.DownstreamSkipReason == "" {
+			graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
+			resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
+			resetCompletedGraphCheckpoint := runtimeResult.EventsAppended > 0
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
+			graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, options.GraphTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
+				return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
+					RuntimeID:                runtime.GetId(),
+					PageLimit:                graphPageLimit,
+					ResetCheckpoint:          resetGraphCheckpoint,
+					ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
+					Trigger:                  "orchestrator",
+				})
+			})
+			runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
+			if err != nil {
+				runtimeResult.GraphIngest = "failed"
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
+				runErr = err
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error_kind", telemetry.ErrorKind(err))
+			} else {
+				runtimeResult.GraphIngest = "completed"
+			}
+			runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
+			findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
+				return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
+			})
+			if err != nil {
+				if errors.Is(err, findings.ErrRuleUnavailable) {
+					runtimeResult.FindingRules = "skipped"
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", "rule_unavailable")
 				} else {
-					runtimeResult.GraphRules = "failed"
-					runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_rules", err)
+					runtimeResult.FindingRules = "failed"
+					runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
 					runErr = err
-					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_error_kind", telemetry.ErrorKind(err))
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_error_kind", telemetry.ErrorKind(err))
 				}
 			} else {
-				runtimeResult.GraphRules = "completed"
+				runtimeResult.FindingRules = "completed"
+				runtimeResult.EventsEvaluated = findingResult.EventsEvaluated
+				runtimeResult.FindingEvaluations = len(findingResult.Evaluations)
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 			}
-		} else {
-			runtimeResult.GraphRules = "skipped"
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
+			runtimeResult.Health = withOrchestratorFindingHealth(runtimeResult.Health, runtimeResult.FindingRules)
+			// Run graph rules whenever the projection has caught up to the same cursor
+			// reached by source sync, even if a trailing PutIngestRun(completed) write
+			// failed. The graph is fresh enough for read-only rules at that point.
+			if graphIngestReadyForGraphRules(graphResult, syncResult.GetRuntime().GetNextCursor()) {
+				excludedGraphRuleIDs := orchestratorEvaluatedGraphRuleIDs(graphRulesEvaluatedByTenant[runtimeResult.TenantID])
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_deduped_count", len(excludedGraphRuleIDs))
+				graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
+					return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), ExcludeRuleIDs: excludedGraphRuleIDs})
+				})
+				runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
+				// Mark every rule that was attempted (success or failure) so a slow
+				// or failing rule is retried at most once per tenant per cycle
+				// rather than re-running for every remaining runtime in the tenant.
+				markOrchestratorTenantGraphRulesEvaluated(graphRulesEvaluatedByTenant, runtimeResult.TenantID, graphRulesResult)
+				if err != nil {
+					if errors.Is(err, findings.ErrGraphRuntimeUnavailable) || errors.Is(err, findings.ErrRuntimeUnavailable) {
+						runtimeResult.GraphRules = "skipped"
+						runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "runtime_unavailable")
+					} else {
+						runtimeResult.GraphRules = "failed"
+						runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_rules", err)
+						runErr = err
+						runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_error_kind", telemetry.ErrorKind(err))
+					}
+				} else {
+					runtimeResult.GraphRules = "completed"
+				}
+			} else {
+				runtimeResult.GraphRules = "skipped"
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
+			}
 		}
 		cancelRuntime()
 		if err := stopLeaseRenewal(); err != nil {
@@ -1022,6 +1080,13 @@ func withOrchestratorGraphHealth(record sourcehealth.Record, graphResult *graphi
 	}
 	record.LatestGraphRun = &sourcehealth.GraphRun{Status: status}
 	record.GraphLagSeconds = orchestratorGraphRunLagSeconds(now, graphResult.Run.StartedAt, graphResult.Run.FinishedAt)
+	return record
+}
+
+func withOrchestratorFreshGraphHealth(record sourcehealth.Record) sourcehealth.Record {
+	lag := int64(0)
+	record.LatestGraphRun = &sourcehealth.GraphRun{Status: "fresh"}
+	record.GraphLagSeconds = &lag
 	return record
 }
 
