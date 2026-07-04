@@ -1,0 +1,122 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: privacy-request-system-rights-request-overdue
+    name: Privacy Rights Request Overdue
+    description: Flags privacy request system rights requests that are past their source-calculated response deadline.
+    tags:
+        - privacy
+        - privacy-request-system
+        - rights-requests
+        - data-subject-request
+        - consumer-request
+        - sla
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: high
+    effect: forbid
+    resource: privacy_request_system::rights_request
+    match:
+        conditions:
+            - cmp_eq(path(resource, "overdue"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Complete the overdue rights request or record an approved extension with the requester notice.
+        steps:
+            - Confirm the request type, jurisdiction, received date, due date, and current owner.
+            - Complete the response workflow or record the lawful extension reason.
+            - Retain response, extension, and closure evidence from the privacy request system.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 12
+            - Article 15
+            - Article 16
+            - Article 17
+            - Article 18
+            - Article 20
+            - Article 21
+        - name: CCPA
+          controls:
+            - "1798.105"
+            - "1798.106"
+            - "1798.125"
+            - "1798.130"
+    input:
+        sourceKinds:
+            - privacy_request_system.rights_request
+        requiredFields:
+            - request_id
+            - request_type
+            - jurisdiction
+            - status
+            - received_at
+            - due_at
+            - overdue
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_request
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - privacy_request_system
+        requiredFields:
+            - request_id
+            - request_type
+            - jurisdiction
+            - status
+            - received_at
+            - due_at
+            - overdue
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - request_id
+    audit:
+        evidenceType: privacy_request
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: Rights requests are completed by the source-calculated due date or carry an approved extension.
+        auditorGuidance: Review the request record, jurisdiction, calculated due date, extension status, requester notice, and closure evidence.
+        riskStatement: Late privacy request responses can breach data subject or consumer rights obligations.
+        remediationIntent: Complete the request or record the lawful extension, requester notice, owner, and closure evidence.
+        acceptableEvidence:
+            - source: privacy_request_system
+              fields:
+                - request_id
+                - request_type
+                - jurisdiction
+                - status
+                - received_at
+                - due_at
+                - overdue
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        exceptionGuidance:
+            - Extension evidence must include the lawful reason, notice date, owner, and new due date.
+        falsePositives:
+            - The request is out of scope, duplicate, withdrawn, or covered by a documented lawful extension.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: privacy_request_response
+            steps:
+                - Review the overdue request and verify the current response deadline.
+                - Complete the response workflow or record the approved extension.
+                - Rerun privacy request evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

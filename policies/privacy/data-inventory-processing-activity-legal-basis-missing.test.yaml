@@ -1,0 +1,20 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: personal data activity without legal basis fails
+      resource:
+          processing_activity_id: pa-100
+          personal_data: true
+          purpose: account_support
+          owner_id: privacy-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: legal basis recorded passes
+      resource:
+          processing_activity_id: pa-101
+          personal_data: true
+          purpose: account_support
+          legal_basis: contract
+          owner_id: privacy-owner
+          reviewed_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

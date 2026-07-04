@@ -1,0 +1,112 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: privacy-request-system-verification-missing
+    name: Privacy Request Verification Missing
+    description: Flags privacy request system rights requests that require identity verification but do not have verified requester evidence.
+    tags:
+        - privacy
+        - privacy-request-system
+        - rights-requests
+        - requester-verification
+        - data-subject-request
+    references:
+        - https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        - https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+spec:
+    severity: high
+    effect: forbid
+    resource: privacy_request_system::rights_request
+    match:
+        conditions:
+            - cmp_eq(path(resource, "verification_required"), true)
+            - cmp_ne(path(resource, "verification_status"), "verified")
+            - cmp_ne(path(resource, "status"), "closed")
+        conditionFormat: cel
+    remediation:
+        summary: Verify the requester or pause the response workflow with a documented verification exception.
+        steps:
+            - Confirm the request type and verification requirement.
+            - Complete the requester verification workflow or document why verification is not required.
+            - Preserve verification evidence with the request record.
+    riskCategories:
+        - GOVERNANCE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: GDPR
+          controls:
+            - Article 12
+            - Article 15
+            - Article 16
+            - Article 17
+            - Article 20
+        - name: CCPA
+          controls:
+            - "1798.106"
+            - "1798.130"
+    input:
+        sourceKinds:
+            - privacy_request_system.rights_request
+        requiredFields:
+            - request_id
+            - request_type
+            - status
+            - verification_required
+            - verification_status
+        freshnessSLA: 30d
+    evidence:
+        type: privacy_request
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - privacy_request_system
+        requiredFields:
+            - request_id
+            - request_type
+            - status
+            - verification_required
+            - verification_status
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - request_id
+    audit:
+        evidenceType: privacy_request
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: Privacy request responses that require verification include verified requester evidence before disclosure or action.
+        auditorGuidance: Review the request type, verification requirement, verification status, requester evidence, and any exception rationale.
+        riskStatement: Unverified requests can disclose personal data to the wrong requester or apply account actions without authority.
+        remediationIntent: Complete requester verification, attach evidence, or document the approved exception before fulfilling the request.
+        acceptableEvidence:
+            - source: privacy_request_system
+              fields:
+                - request_id
+                - request_type
+                - status
+                - verification_required
+                - verification_status
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The request type does not require verification under the approved privacy procedure.
+            - Verification evidence is stored in a linked identity proofing system and the request record contains the reference.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: privacy.owner
+        remediation:
+            type: privacy_request_verification
+            steps:
+                - Request or attach requester verification evidence.
+                - Update verification_status in the privacy request system.
+                - Rerun privacy request evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

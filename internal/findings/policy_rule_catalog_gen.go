@@ -29,6 +29,7 @@ var generatedPolicyRuleCatalog = func() []policyRuleConfig {
 	all = append(all, generatedOktaRules...)
 	all = append(all, generatedOrgRules...)
 	all = append(all, generatedPciRules...)
+	all = append(all, generatedPrivacyRules...)
 	all = append(all, generatedRuntimeRules...)
 	all = append(all, generatedSalesforceRules...)
 	all = append(all, generatedSecretsRules...)

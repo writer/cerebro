@@ -856,6 +856,9 @@ assessment:examine,assessment,catalog,compliance-p1-security-issues,P1 Security 
 assessment:examine,assessment,catalog,compliance-p2-security-issues,P2 Security Issues Resolved Timely,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,compliance-security-training,Security Awareness Training Completed,policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,container-admission-policy-missing,Container Admission Policy Missing,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,container-base-image-eol,Container Base Image Eol,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,policy,policy,event,high,active,candidate
@@ -886,6 +889,8 @@ assessment:examine,assessment,catalog,cve-2023-4863,Publicly exposed VM vulnerab
 assessment:examine,assessment,catalog,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,data-resource-org-access,Data resource with sensitive data allows organization-wide access,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,db-audit-logging,Database Audit Logging Enabled,policy,policy,event,medium,active,candidate
@@ -1921,6 +1926,9 @@ assessment:examine,assessment,catalog,pci-penetration-test-annual,Annual Penetra
 assessment:examine,assessment,catalog,pci-transmission-encrypted,Cardholder Data Encrypted in Transit,policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,pci-unique-user-ids,Unique User IDs for CDE Access,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,pci-vulnerability-scan-quarterly,Quarterly External Vulnerability Scans,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,policy,policy,event,critical,active,candidate
@@ -2105,6 +2113,8 @@ assessment:interview,assessment,catalog,compliance-p2-security-issues,P2 Securit
 assessment:interview,assessment,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,compliance-security-training,Security Awareness Training Completed,policy,policy,event,medium,active,candidate
 assessment:interview,assessment,catalog,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 assessment:interview,assessment,catalog,gcp-vertex-ai-dataset-public,GCP Vertex AI Dataset Public Access,policy,policy,event,critical,active,candidate
 assessment:interview,assessment,catalog,gcp-vertex-ai-public-endpoint,GCP Vertex AI Public Endpoint,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
@@ -2440,6 +2450,8 @@ assessment:test,assessment,catalog,cicd-slsa-build-level-below-3-critical-servic
 assessment:test,assessment,catalog,cicd-unpinned-third-party-action,Cicd Unpinned Third Party Action,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,cicd-untrusted-fork-write-token,Cicd Untrusted Fork Write Token,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,cisa-kev-vulnerability-present,CISA KEV Vulnerability Present,policy,policy,event,critical,active,candidate
+assessment:test,assessment,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,container-admission-policy-missing,Container Admission Policy Missing,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,container-base-image-eol,Container Base Image Eol,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,policy,policy,event,high,active,candidate
@@ -3011,6 +3023,8 @@ assessment:test,assessment,catalog,okta-password-policy-weak,Okta Password Polic
 assessment:test,assessment,catalog,okta-suspicious-login,Okta Suspicious Login Detected,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,okta-user-mfa-disabled,Okta User Without MFA Enrolled,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,openssl-vuln-internal,Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability),policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,policy,policy,event,critical,active,candidate
@@ -3929,6 +3943,9 @@ cel,generated,catalog,compliance-ir-plan-exists,Incident Response Plan Exists,po
 cel,generated,catalog,compliance-p1-security-issues,P1 Security Issues Resolved Timely,policy,policy,event,critical,active,candidate
 cel,generated,catalog,compliance-p2-security-issues,P2 Security Issues Resolved Timely,policy,policy,event,high,active,candidate
 cel,generated,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
+cel,generated,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+cel,generated,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+cel,generated,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 cel,generated,catalog,container-admission-policy-missing,Container Admission Policy Missing,policy,policy,event,medium,active,candidate
 cel,generated,catalog,container-base-image-eol,Container Base Image Eol,policy,policy,event,medium,active,candidate
 cel,generated,catalog,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,policy,policy,event,high,active,candidate
@@ -3953,6 +3970,8 @@ cel,generated,catalog,cve-2023-4863,Publicly exposed VM vulnerable to CVE-2023-4
 cel,generated,catalog,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),policy,policy,event,critical,active,candidate
 cel,generated,catalog,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),policy,policy,event,critical,active,candidate
 cel,generated,catalog,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,policy,policy,event,high,active,candidate
+cel,generated,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 cel,generated,catalog,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,policy,policy,event,high,active,candidate
 cel,generated,catalog,data-resource-org-access,Data resource with sensitive data allows organization-wide access,policy,policy,event,high,active,candidate
 cel,generated,catalog,db-dormant-principal,Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days,policy,policy,event,medium,active,candidate
@@ -4510,6 +4529,9 @@ cel,generated,catalog,org-customer-touchpoints-low,Customer Touchpoint Coverage 
 cel,generated,catalog,org-relationship-decay-customer,Customer Relationship Weakening,policy,policy,event,high,active,candidate
 cel,generated,catalog,org-silo-shared-dependency,Teams Sharing Dependencies With No Communication,policy,policy,event,medium,active,candidate
 cel,generated,catalog,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,policy,policy,event,high,active,candidate
+cel,generated,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+cel,generated,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+cel,generated,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 cel,generated,catalog,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,policy,policy,event,high,active,candidate
 cel,generated,catalog,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
 cel,generated,catalog,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,policy,policy,event,critical,active,candidate
@@ -5145,6 +5167,14 @@ configuration-change,routing,catalog,identity-okta-idp-lifecycle-changes-30d,Okt
 confused-deputy,routing,catalog,aws-iam-role-confused-deputy-prevention,IAM Role Confused Deputy Prevention,policy,policy,event,medium,active,candidate
 connected,routing,catalog,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,policy,policy,event,medium,active,candidate
 connected-app,routing,catalog,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,policy,policy,event,medium,active,candidate
+consent-preference-platform,routing,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+consent-preference-platform,routing,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+consent-preference-platform,routing,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+consent-preferences,routing,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+consent-preferences,routing,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+consent-preferences,routing,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+consent-record,routing,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+consumer-request,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 contacts,routing,catalog,aws-account-alternate-contact-security,AWS Account Alternate Contact Security,policy,policy,event,medium,active,candidate
 contacts,routing,catalog,aws-account-security-contact-configured,AWS Account Security Contact Configured,policy,policy,event,medium,active,candidate
 contacts,routing,catalog,gcp-project-essential-contacts-security,GCP Project Essential Contacts Security,policy,policy,event,medium,active,candidate
@@ -5199,6 +5229,14 @@ control-coverage,routing,catalog,security-tooling-map-control-coverage-gap,Secur
 control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 control-family:cerebro-ai-governance-ai-ai-governance-controls,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 control-family:cerebro-ai-governance-ai-ai-governance-controls,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 control-family:cerebro-financial-controls-fin-financial-controls,compliance,control_ref,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
@@ -6506,6 +6544,13 @@ control-family:gdpr-article-articles,compliance,control_ref,compliance-data-inve
 control-family:gdpr-article-articles,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,compliance-bcdr-plan-exists,Business Continuity Plan Exists,policy,policy,event,high,active,candidate
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,compliance-ir-plan-exists,Incident Response Plan Exists,policy,policy,event,high,active,candidate
@@ -7871,6 +7916,7 @@ control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,vul
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
 control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
+control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control-family:iso-27701-8-pii-processor-controls,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control-family:iso-42001-10-improvement,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
@@ -13306,8 +13352,28 @@ control-plane,routing,catalog,identity-auth-control-lifecycle-tampering,Identity
 control-plane,routing,catalog,sentinelone-protection-control-tampering,SentinelOne Protection Control Tampering,sentinelone,sentinelone,event,high,open,test
 control-test,routing,catalog,grc-control-test-needs-attention,GRC Control Test Needs Attention,grc,grc,event,medium,open,test
 control:ccpa:1798-100,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:ccpa:1798-100,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control:ccpa:1798-100,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-100,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 control:ccpa:1798-105,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
+control:ccpa:1798-105,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+control:ccpa:1798-105,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:ccpa:1798-106,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:ccpa:1798-106,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-110,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-115,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-120,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control:ccpa:1798-121,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control:ccpa:1798-121,compliance,control_ref,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-125,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:ccpa:1798-125,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 control:ccpa:1798-130,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:ccpa:1798-130,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control:ccpa:1798-130,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:ccpa:1798-130,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:ccpa:1798-130,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:ccpa:1798-135,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control:ccpa:1798-135,compliance,control_ref,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 control:ccpa:1798-150,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:cerebro-ai-governance:ai-3,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 control:cerebro-ai-governance:ai-4,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
@@ -14749,6 +14815,28 @@ control:eu-ai-act:art-14,compliance,control_ref,azure-openai-content-filter-enab
 control:eu-ai-act:art-14,compliance,control_ref,azure-openai-private-endpoint,Azure Openai Private Endpoint,policy,policy,event,medium,active,candidate
 control:eu-ai-act:art-14,compliance,control_ref,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
 control:eu-ai-act:art-14,compliance,control_ref,gcp-vertex-model-endpoint-private,GCP Vertex Model Endpoint Private,policy,policy,event,medium,active,candidate
+control:gdpr:article-12,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-12,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-12,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-13,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-14,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-15,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-15,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-15,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-16,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-16,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-16,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-17,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-17,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-17,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-18,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-18,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-20,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-20,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+control:gdpr:article-20,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-21,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control:gdpr:article-21,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-21,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 control:gdpr:article-24,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-24,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:gdpr:article-25,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
@@ -14758,6 +14846,8 @@ control:gdpr:article-30,compliance,control_ref,compliance-data-inventory-maintai
 control:gdpr:article-30,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-30,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:gdpr:article-30,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control:gdpr:article-30,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-30,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 control:gdpr:article-32,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-32,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:gdpr:article-32,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
@@ -14769,7 +14859,12 @@ control:gdpr:article-5,compliance,control_ref,compliance-data-inventory-maintain
 control:gdpr:article-5,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-5,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:gdpr:article-5,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control:gdpr:article-5,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-5,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 control:gdpr:article-6,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
+control:gdpr:article-6,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+control:gdpr:article-7,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+control:gdpr:article-7,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-1-ii-a,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-3-ii-c,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
 control:hipaa:164-308-a-5-ii-b,compliance,control_ref,endpoint-edr-installed,EDR Agent Installed on Endpoints,policy,policy,event,critical,active,candidate
@@ -16667,6 +16762,7 @@ control:iso-27001-2022:a-8-9,compliance,control_ref,vuln-sla-breach-crown-jewel,
 control:iso-27701:7-2-6,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control:iso-27701:7-2-8,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 control:iso-27701:7-2-8,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
+control:iso-27701:7-2-8,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 control:iso-27701:8-2-1,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control:iso-42001:10-1,compliance,control_ref,ai-incident-response,AI Incident Response Plan,policy,policy,event,high,active,candidate
 control:iso-42001:10-2,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
@@ -23800,6 +23896,8 @@ data-integrity,routing,catalog,identity-zoom-duplicate-membership-assignment,Zoo
 data-integrity,routing,catalog,identity-zoom-orphaned-membership-group,Zoom Memberships With Missing Groups,policy,policy,event,medium,active,candidate
 data-integrity,routing,catalog,identity-zoom-orphaned-membership-user,Zoom Group Memberships With Missing Users,policy,policy,event,medium,active,candidate
 data-inventory,routing,catalog,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+data-inventory,routing,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+data-inventory,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 data-lifecycle,routing,catalog,backup-retention,Backup Retention Policy Compliance,policy,policy,event,medium,active,candidate
 data-processing,routing,catalog,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 data-protection,routing,catalog,ai-sensitive-output-filtering,AI Sensitive Output Filtering,policy,policy,event,medium,active,candidate
@@ -23855,6 +23953,9 @@ data-quality,routing,catalog,identity-vanta-missing-email,Vanta Active Accounts 
 data-quality,routing,catalog,identity-workday-missing-email,Workday Active Accounts Missing Email,policy,policy,event,medium,active,candidate
 data-quality,routing,catalog,identity-zoom-missing-email,Zoom Active Accounts Missing Email,policy,policy,event,medium,active,candidate
 data-retention,routing,catalog,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
+data-subject-request,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+data-subject-request,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+data-subject-request,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 database,routing,catalog,aws-rds-backup-enabled,RDS Backup Enabled,policy,policy,event,medium,active,candidate
 database,routing,catalog,aws-rds-deletion-protection,RDS Deletion Protection,policy,policy,event,medium,active,candidate
 database,routing,catalog,aws-rds-iam-authentication,RDS IAM Authentication,policy,policy,event,low,active,candidate
@@ -23905,6 +24006,7 @@ defense-evasion,routing,catalog,sentinelone-risky-exclusion,SentinelOne Risky Ex
 defense-in-depth,routing,catalog,aws-elb-target-public-subnet,Load Balancer Targets in Public Subnet,policy,policy,event,medium,active,candidate
 delete,routing,catalog,github-secops-app-installation-all-repos-event-delete,GitHub App Installation All Repos Event Delete,policy,policy,event,medium,active,candidate
 deletion,routing,catalog,aws-kms-key-deletion-scheduled,AWS KMS Key Deletion Scheduled,policy,policy,event,medium,active,candidate
+denial-rationale,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
 departure-risk,risk,catalog,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,policy,policy,event,high,active,candidate
 dependabot,routing,catalog,github-code-security-controls-disabled,GitHub Code Security Controls Disabled,github,github,event,high,open,test
 dependabot,routing,catalog,github-dependabot-critical-alert,GitHub Critical Dependabot Alert,policy,policy,event,critical,active,candidate
@@ -24135,6 +24237,7 @@ dismissal,routing,catalog,github-secops-dependabot-rubygems-critical-dismissed,G
 dismissal,routing,catalog,github-secops-dependabot-rubygems-high-dismissed,GitHub Dependabot Rubygems High Alert Dismissed,policy,policy,event,high,active,candidate
 dismissal,routing,catalog,github-secops-dependabot-terraform-critical-dismissed,GitHub Dependabot Terraform Critical Alert Dismissed,policy,policy,event,critical,active,candidate
 dismissal,routing,catalog,github-secops-dependabot-terraform-high-dismissed,GitHub Dependabot Terraform High Alert Dismissed,policy,policy,event,high,active,candidate
+disposal,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 dkim,routing,catalog,email-domain-authentication-misconfigured,Email Domain Authentication Misconfigured,email_domain,email_domain_health,event,high,open,test
 dkim,routing,catalog,m365-email-security-baseline,M365 Email Security Baseline Configured,policy,policy,event,high,active,candidate
 dlp,routing,catalog,m365-dlp-policy-missing,M365 DLP Policy Configured,policy,policy,event,high,active,candidate
@@ -25744,6 +25847,14 @@ evidence:organizational_process,evidence,catalog,org-customer-touchpoints-low,Cu
 evidence:organizational_process,evidence,catalog,org-relationship-decay-customer,Customer Relationship Weakening,policy,policy,event,high,active,candidate
 evidence:organizational_process,evidence,catalog,org-silo-shared-dependency,Teams Sharing Dependencies With No Communication,policy,policy,event,medium,active,candidate
 evidence:organizational_process,evidence,catalog,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,policy,policy,event,high,active,candidate
+evidence:privacy_inventory,evidence,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+evidence:privacy_inventory,evidence,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+evidence:privacy_preference,evidence,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+evidence:privacy_preference,evidence,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+evidence:privacy_preference,evidence,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+evidence:privacy_request,evidence,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+evidence:privacy_request,evidence,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+evidence:privacy_request,evidence,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 evidence:regulated_data_control,evidence,catalog,hipaa-access-controls,HIPAA Unique User Identification,policy,policy,event,high,active,candidate
 evidence:regulated_data_control,evidence,catalog,hipaa-audit-controls,HIPAA Audit Controls,policy,policy,event,high,active,candidate
 evidence:regulated_data_control,evidence,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
@@ -26109,6 +26220,14 @@ foundation-model,routing,catalog,ai-foundation-model-safety-card-required,AI Fou
 framework:ccpa,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 framework:ccpa,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 framework:ccpa,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+framework:ccpa,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+framework:ccpa,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+framework:ccpa,compliance,control_ref,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+framework:ccpa,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+framework:ccpa,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+framework:ccpa,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+framework:ccpa,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+framework:ccpa,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 framework:cerebro-ai-governance,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 framework:cerebro-ai-governance,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 framework:cerebro-financial-controls,compliance,control_ref,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
@@ -26800,6 +26919,13 @@ framework:gdpr,compliance,control_ref,compliance-data-inventory-maintained,Data 
 framework:gdpr,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 framework:gdpr,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 framework:gdpr,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+framework:gdpr,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+framework:gdpr,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+framework:gdpr,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+framework:gdpr,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+framework:gdpr,compliance,control_ref,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+framework:gdpr,compliance,control_ref,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+framework:gdpr,compliance,control_ref,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 framework:gdpr,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
 framework:hipaa,compliance,control_ref,aws-s3-https-only,S3 Buckets Enforce HTTPS Only,policy,policy,event,medium,active,candidate
@@ -27880,6 +28006,7 @@ framework:iso-27001-2022,compliance,control_ref,vulnview-actionable-external-fin
 framework:iso-27001-2022,compliance,control_ref,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
 framework:iso-27701,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 framework:iso-27701,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
+framework:iso-27701,compliance,control_ref,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 framework:iso-27701,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 framework:iso-42001,compliance,control_ref,ai-agent-human-approval-destructive-actions,AI Agent Human Approval Destructive Actions,policy,policy,event,high,active,candidate
 framework:iso-42001,compliance,control_ref,ai-agent-secret-redaction,AI Agent Secret Redaction,policy,policy,event,medium,active,candidate
@@ -33627,6 +33754,7 @@ least-privilege,risk,catalog,m365-global-admin-count,Excessive Global Administra
 least-privilege,risk,catalog,secrets-least-privilege,Secrets Least Privilege Access,policy,policy,event,medium,active,candidate
 legacy-auth,routing,catalog,m365-legacy-auth-signins,M365 Legacy Authentication Sign-ins Detected,policy,policy,event,high,active,candidate
 legacy-auth,routing,catalog,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,policy,policy,event,medium,active,candidate
+legal-basis,routing,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
 limits,routing,catalog,container-resource-limits,Container Resource Limits Set,policy,policy,event,medium,active,candidate
 llm,routing,catalog,ai-prompt-injection-test-coverage,AI Prompt Injection Test Coverage,policy,policy,event,medium,active,candidate
 llm,routing,catalog,ai-sensitive-output-filtering,AI Sensitive Output Filtering,policy,policy,event,medium,active,candidate
@@ -33938,6 +34066,7 @@ node-pools,routing,catalog,gcp-gke-auto-upgrade,GKE Node Pool Auto-Upgrade Enabl
 node-pools,routing,catalog,gcp-gke-cos-containerd,GKE Nodes Use Container-Optimized OS,policy,policy,event,low,active,candidate
 not-ephemeral,routing,catalog,github-secops-runner-not-ephemeral,GitHub Self-hosted Runner Not Ephemeral,policy,policy,event,high,active,candidate
 notebook,routing,catalog,notebook-excessive-agency,Notebook with excessive agency,policy,policy,event,high,active,candidate
+notice-version,routing,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
 notifications,routing,catalog,aws-guardduty-notifications,GuardDuty Findings Have Notifications Configured,policy,policy,event,high,active,candidate
 notifications,routing,catalog,gcp-cloud-ids-notifications,GCP Cloud IDS Notifications Configured,policy,policy,event,high,active,candidate
 npm,routing,catalog,github-secops-dependabot-npm-critical-dismissed,GitHub Dependabot Npm Critical Alert Dismissed,policy,policy,event,critical,active,candidate
@@ -34137,6 +34266,7 @@ operational-evidence,routing,catalog,grc-failing-control-open-operational-findin
 operations,routing,catalog,k8s-pod-liveness-probe-required,Kubernetes Pod Requires Liveness Probes,policy,policy,event,medium,active,candidate
 operations,routing,catalog,k8s-pod-readiness-probe-required,Kubernetes Pod Requires Readiness Probes,policy,policy,event,medium,active,candidate
 operations,routing,catalog,uptime-breach-enterprise,Enterprise Uptime SLA Breach,policy,policy,event,critical,active,candidate
+opt-out,routing,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
 oracle-idcs,routing,catalog,identity-oracle-idcs-active-no-employee-record,Oracle IDCS Active Accounts Without Employee Record,policy,policy,event,medium,active,candidate
 oracle-idcs,routing,catalog,identity-oracle-idcs-duplicate-membership-assignment,Oracle IDCS Duplicate Membership Assignments,policy,policy,event,low,active,candidate
 oracle-idcs,routing,catalog,identity-oracle-idcs-duplicate-username,Oracle IDCS Duplicate Usernames,policy,policy,event,medium,active,candidate
@@ -34712,6 +34842,9 @@ policy,generated,catalog,compliance-p1-security-issues,P1 Security Issues Resolv
 policy,generated,catalog,compliance-p2-security-issues,P2 Security Issues Resolved Timely,policy,policy,event,high,active,candidate
 policy,generated,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 policy,generated,catalog,compliance-security-training,Security Awareness Training Completed,policy,policy,event,medium,active,candidate
+policy,generated,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+policy,generated,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+policy,generated,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 policy,generated,catalog,container-admission-policy-missing,Container Admission Policy Missing,policy,policy,event,medium,active,candidate
 policy,generated,catalog,container-base-image-eol,Container Base Image Eol,policy,policy,event,medium,active,candidate
 policy,generated,catalog,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,policy,policy,event,high,active,candidate
@@ -34742,6 +34875,8 @@ policy,generated,catalog,cve-2023-4863,Publicly exposed VM vulnerable to CVE-202
 policy,generated,catalog,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),policy,policy,event,critical,active,candidate
 policy,generated,catalog,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),policy,policy,event,critical,active,candidate
 policy,generated,catalog,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,policy,policy,event,high,active,candidate
+policy,generated,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 policy,generated,catalog,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,policy,policy,event,high,active,candidate
 policy,generated,catalog,data-resource-org-access,Data resource with sensitive data allows organization-wide access,policy,policy,event,high,active,candidate
 policy,generated,catalog,db-audit-logging,Database Audit Logging Enabled,policy,policy,event,medium,active,candidate
@@ -35778,6 +35913,9 @@ policy,generated,catalog,pci-penetration-test-annual,Annual Penetration Testing,
 policy,generated,catalog,pci-transmission-encrypted,Cardholder Data Encrypted in Transit,policy,policy,event,critical,active,candidate
 policy,generated,catalog,pci-unique-user-ids,Unique User IDs for CDE Access,policy,policy,event,high,active,candidate
 policy,generated,catalog,pci-vulnerability-scan-quarterly,Quarterly External Vulnerability Scans,policy,policy,event,high,active,candidate
+policy,generated,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+policy,generated,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+policy,generated,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 policy,generated,catalog,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,policy,policy,event,high,active,candidate
 policy,generated,catalog,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
 policy,generated,catalog,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,policy,policy,event,critical,active,candidate
@@ -35932,7 +36070,18 @@ privacy,routing,catalog,ai-data-retention-reviewed,AI Data Retention Reviewed,po
 privacy,routing,catalog,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 privacy,routing,catalog,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 privacy,routing,catalog,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
+privacy,routing,catalog,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
+privacy,routing,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+privacy,routing,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
+privacy,routing,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+privacy,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
+privacy,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+privacy,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+privacy,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 privacy,routing,catalog,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
+privacy-request-system,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+privacy-request-system,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+privacy-request-system,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 private,routing,catalog,github-secops-repo-private-all-dependabot-security-updates-disabled,GitHub Dependabot security updates Disabled For Private All,policy,policy,event,medium,active,candidate
 private,routing,catalog,github-secops-repo-private-all-push-protection-disabled,GitHub Secret scanning push protection Disabled For Private All,policy,policy,event,high,active,candidate
 private,routing,catalog,github-secops-repo-private-all-secret-scanning-disabled,GitHub Secret scanning Disabled For Private All,policy,policy,event,high,active,candidate
@@ -36049,6 +36198,8 @@ privileged-access,risk,catalog,openai-orphaned-privileged-api-key,OpenAI Orphane
 privileged-access,risk,catalog,salesforce-profile-modify-all-data,Salesforce Profile Modify All Data,policy,policy,event,high,active,candidate
 privileged-access,risk,catalog,slack-privileged-user-without-mfa,Slack Privileged User Without MFA,slack,slack,event,high,open,test
 proc-mount,routing,catalog,k8s-pod-proc-mount-unmasked,Kubernetes Pod Proc Mount Unmasked,policy,policy,event,medium,active,candidate
+processing-activities,routing,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+processing-activities,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 production,routing,catalog,db-multi-az,Production Database Multi-AZ Deployment,policy,policy,event,high,active,candidate
 profile,routing,catalog,salesforce-profile-modify-all-data,Salesforce Profile Modify All Data,policy,policy,event,high,active,candidate
 programmatic-access,routing,catalog,github-programmatic-credential-review-needed,GitHub Programmatic Credential Needs Review,github,github,graph,medium,open,test
@@ -36838,6 +36989,7 @@ repository,routing,catalog,github-secops-repo-public-primary-dependabot-security
 repository,routing,catalog,github-secops-repo-public-primary-push-protection-disabled,GitHub Secret scanning push protection Disabled For Public Primary,policy,policy,event,high,active,candidate
 repository,routing,catalog,github-secops-repo-public-primary-secret-scanning-disabled,GitHub Secret scanning Disabled For Public Primary,policy,policy,event,high,active,candidate
 repository_hooks,routing,catalog,github-secops-app-installation-all-repos-repository-hooks-write,GitHub App Installation All Repos Repository Hooks Write,policy,policy,event,high,active,candidate
+requester-verification,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 required-review-removed,routing,catalog,github-secops-audit-repo-required-review-removed,GitHub Audit Required Review Removed,policy,policy,event,high,active,candidate
 required-status-check-removed,routing,catalog,github-secops-audit-repo-required-status-check-removed,GitHub Audit Required Status Check Removed,policy,policy,event,high,active,candidate
 requirement-1,routing,catalog,pci-firewall-inbound-rules,PCI Firewall Inbound Rules Reviewed,policy,policy,event,high,active,candidate
@@ -36918,6 +37070,7 @@ response,routing,catalog,sentinelone-mitigation-failed,SentinelOne Mitigation Fa
 retention,routing,catalog,aws-cloudwatch-log-group-retention,CloudWatch Log Group Retention,policy,policy,event,low,active,candidate
 retention,routing,catalog,aws-logs-retention-365,CloudWatch Logs Retention 365 Days,policy,policy,event,medium,active,candidate
 retention,routing,catalog,backup-retention,Backup Retention Policy Compliance,policy,policy,event,medium,active,candidate
+retention,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 retention,routing,catalog,pci-audit-retention,Audit Log Retention 1 Year,policy,policy,event,high,active,candidate
 retired,routing,catalog,github-app-integration-installed,GitHub App Integration Installed,github,github,event,medium,open,retired
 retired,routing,catalog,github-org-auth-control-modified,GitHub Organization Authentication Control Modified,github,github,event,critical,open,retired
@@ -36940,6 +37093,9 @@ review,routing,catalog,pci-firewall-inbound-rules,PCI Firewall Inbound Rules Rev
 review,routing,catalog,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,policy,policy,event,medium,active,candidate
 review,routing,catalog,slack-external-shared-channel-unreviewed,Slack External Shared Channel Unreviewed,policy,policy,event,medium,active,candidate
 revops,routing,catalog,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
+rights-requests,routing,catalog,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,policy,policy,event,medium,active,candidate
+rights-requests,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
+rights-requests,routing,catalog,privacy-request-system-verification-missing,Privacy Request Verification Missing,policy,policy,event,high,active,candidate
 risk,risk,catalog,ai-risk-assessment,AI Model Risk Assessment Completed,policy,policy,event,high,active,candidate
 risk,risk,catalog,m365-risky-users,M365 Users with High Risk Level,policy,policy,event,high,active,candidate
 risk,risk,catalog,vuln-epss-high,High EPSS Score Vulnerabilities,policy,policy,event,high,active,candidate
@@ -36953,6 +37109,8 @@ root,routing,catalog,container-root-user,Container Running as Root,policy,policy
 root,routing,catalog,k8s-pod-no-run-as-root,K8s Pod No Run As Root,policy,policy,event,high,active,candidate
 root-account,routing,catalog,aws-iam-root-no-access-keys,Root Account Access Keys,policy,policy,event,critical,active,candidate
 ropa,routing,catalog,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+ropa,routing,catalog,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
+ropa,routing,catalog,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,policy,policy,event,medium,active,candidate
 rotation,routing,catalog,admin-keys-unrotated,Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
 rotation,routing,catalog,admin-keys-year-unrotated,Admin user/service account with active access keys unrotated in the past year,policy,policy,event,high,active,candidate
 rotation,routing,catalog,api-refresh-token-rotation-disabled,API Refresh Token Rotation Disabled,policy,policy,event,medium,active,candidate
@@ -37087,6 +37245,7 @@ sailpoint,routing,catalog,identity-sailpoint-orphaned-membership-group,Sailpoint
 sailpoint,routing,catalog,identity-sailpoint-orphaned-membership-user,Sailpoint Group Memberships With Missing Users,policy,policy,event,medium,active,candidate
 sailpoint,routing,catalog,identity-sailpoint-personal-email-domain,Sailpoint Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
 sailpoint,routing,catalog,identity-sailpoint-terminated-active-account,Sailpoint Terminated Accounts Still Active,policy,policy,event,high,active,candidate
+sale-or-sharing,routing,catalog,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
 salesforce,routing,catalog,identity-salesforce-active-no-employee-record,Salesforce Active Accounts Without Employee Record,policy,policy,event,medium,active,candidate
 salesforce,routing,catalog,identity-salesforce-duplicate-email,Salesforce Duplicate Account Emails,policy,policy,event,high,active,candidate
 salesforce,routing,catalog,identity-salesforce-duplicate-username,Salesforce Duplicate Usernames,policy,policy,event,medium,active,candidate
@@ -37745,6 +37904,7 @@ sensitive-data,routing,catalog,bucket-sensitive-no-lock,Bucket with sensitive da
 sensitive-data,routing,catalog,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,policy,policy,event,high,active,candidate
 sensitive-data,routing,catalog,data-resource-org-access,Data resource with sensitive data allows organization-wide access,policy,policy,event,high,active,candidate
 sensitive-data,routing,catalog,db-dormant-principal,Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days,policy,policy,event,medium,active,candidate
+sensitive-personal-information,routing,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 sensitive-service,routing,catalog,api-mtls-required-missing-sensitive-service,API mTLS Required Missing Sensitive Service,policy,policy,event,medium,active,candidate
 sensitivity-labels,routing,catalog,m365-sensitivity-labels-missing,M365 Sensitivity Labels Applied,policy,policy,event,high,active,candidate
 sentinelone,routing,catalog,endpoint-sentinelone-active,SentinelOne Agents Actively Reporting,policy,policy,event,high,active,candidate
@@ -37857,6 +38017,7 @@ sla,routing,catalog,github-vuln-low,GitHub Repo Low Vulnerabilities Addressed,po
 sla,routing,catalog,github-vuln-medium,GitHub Repo Medium Vulnerabilities Addressed,policy,policy,event,medium,active,candidate
 sla,routing,catalog,grc-overdue-vulnerability-live-on-assets,Overdue GRC Vulnerability Still Present On Assets,grc,grc,graph,high,open,test
 sla,routing,catalog,grc-vulnerability-sla-overdue,GRC Vulnerability SLA Overdue,grc,grc,event,dynamic,open,test
+sla,routing,catalog,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,policy,policy,event,high,active,candidate
 sla,routing,catalog,resolution-time-breach,Zendesk Resolution Time SLA Breach,policy,policy,event,high,active,candidate
 sla,routing,catalog,sentinelone-vuln-medium,SentinelOne Agent Medium Vulnerabilities Addressed,policy,policy,event,medium,active,candidate
 sla,routing,catalog,uptime-breach-enterprise,Enterprise Uptime SLA Breach,policy,policy,event,critical,active,candidate
@@ -38228,6 +38389,7 @@ unused-password,routing,catalog,user-data-access-unused-password,User account wi
 unused-password,routing,catalog,user-privileged-unused-password,User account with high privileges and an unused password,policy,policy,event,high,active,candidate
 upgrade,routing,catalog,k8s-resource-no-deprecated-api,Kubernetes Resources Avoid Deprecated APIs,policy,policy,event,medium,active,candidate
 uptime,routing,catalog,uptime-breach-enterprise,Enterprise Uptime SLA Breach,policy,policy,event,critical,active,candidate
+use-limitation,routing,catalog,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,policy,policy,event,high,active,candidate
 used_in_tests,routing,catalog,github-secops-secret-anthropic-admin-api-key-resolution-used-in-tests,GitHub Secret Scanning Anthropic Admin Api Key Resolution Used In Tests,policy,policy,event,medium,active,candidate
 used_in_tests,routing,catalog,github-secops-secret-aws-access-key-id-resolution-used-in-tests,GitHub Secret Scanning Aws Access Key Id Resolution Used In Tests,policy,policy,event,medium,active,candidate
 used_in_tests,routing,catalog,github-secops-secret-azure-storage-account-key-resolution-used-in-tests,GitHub Secret Scanning Azure Storage Account Key Resolution Used In Tests,policy,policy,event,medium,active,candidate

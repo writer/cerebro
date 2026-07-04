@@ -1,0 +1,18 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: denied request without rationale fails
+      resource:
+          request_id: dsr-300
+          request_type: objection
+          status: denied
+          reviewer_id: reviewer-1
+      wantFinding: true
+    - name: denied request with rationale passes
+      resource:
+          request_id: dsr-301
+          request_type: access
+          status: denied
+          denial_reason: duplicate_request
+          reviewer_id: reviewer-1
+      wantFinding: false
