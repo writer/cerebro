@@ -773,6 +773,7 @@ func runOrchestratorIteration(
 			} else {
 				runtimeResult.GraphRules = "skipped"
 				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
+				recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_rules", "graph_ingest_not_caught_up")
 			}
 		}
 		cancelRuntime()
