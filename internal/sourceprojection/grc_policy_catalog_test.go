@@ -121,7 +121,7 @@ func TestProjectGRCEvidenceRequirementLinksControlsPolicyRulesOwnerAndEvidence(t
 	assertProjectedLink(t, state, requirementURN, relationHasEvidence, evidenceURN)
 }
 
-func TestProjectGRCCoverageGapLinksControlsRulesRequirementsTargetsOwnerAndEvidence(t *testing.T) {
+func TestProjectGRCCoverageGapLinksControlsRulesRequirementsTargetsOwnerDocumentAndEvidence(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
 
@@ -142,7 +142,9 @@ func TestProjectGRCCoverageGapLinksControlsRulesRequirementsTargetsOwnerAndEvide
 			"evidence_requirement_id": "identity-access/okta/identity_user",
 			"target_id":               "okta-user-status",
 			"target_type":             "identity_user",
+			"required_source_id":      "okta",
 			"owner_id":                "owner-1",
+			"document_id":             "gap-evidence-doc",
 			"evidence_id":             "gap-evidence-1",
 			"finding_id":              "finding-should-not-exist",
 			"status":                  "open",
@@ -157,7 +159,9 @@ func TestProjectGRCCoverageGapLinksControlsRulesRequirementsTargetsOwnerAndEvide
 	ruleURN := "urn:cerebro:writer:policy_rule:cerebro:identity-access-okta-user"
 	requirementURN := "urn:cerebro:writer:evidence_requirement:cerebro:identity-access/okta/identity_user"
 	targetURN := "urn:cerebro:writer:grc_target:cerebro:okta-user-status"
+	integrationURN := "urn:cerebro:writer:source:cerebro:integration:okta"
 	ownerURN := "urn:cerebro:writer:user:cerebro:owner-1"
+	documentURN := "urn:cerebro:writer:document:cerebro:gap-evidence-doc"
 	evidenceURN := "urn:cerebro:writer:runtime_evidence:gap-evidence-1"
 	findingURN := "urn:cerebro:writer:finding:finding-should-not-exist"
 	if entity := state.entities[gapURN]; entity == nil || entity.EntityType != "coverage.gap" || entity.Attributes["gap_type"] != "missing_field" {
@@ -170,7 +174,9 @@ func TestProjectGRCCoverageGapLinksControlsRulesRequirementsTargetsOwnerAndEvide
 	assertProjectedLink(t, state, gapURN, relationAssociatedWith, ruleURN)
 	assertProjectedLink(t, state, gapURN, relationAssociatedWith, requirementURN)
 	assertProjectedLink(t, state, gapURN, relationTargeted, targetURN)
+	assertProjectedLink(t, state, gapURN, relationBelongsTo, integrationURN)
 	assertProjectedLink(t, state, gapURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, gapURN, relationHasEvidence, documentURN)
 	assertProjectedLink(t, state, gapURN, relationHasEvidence, evidenceURN)
 	if state.entities[findingURN] != nil {
 		t.Fatalf("coverage gap projected a finding entity: %#v", state.entities[findingURN])
