@@ -27,6 +27,11 @@ import (
 const (
 	oktaHTTPTimeout  = 30 * time.Second
 	maxOktaBodyBytes = 4 << 20
+
+	oktaUserFreshnessKind         = "okta_user_latest_record"
+	oktaUserFreshnessResourceNone = "empty"
+	oktaUserFreshnessMaxSkipCount = 24
+	oktaUserFreshnessMaxSkipAge   = 24 * time.Hour
 )
 
 var defaultMFAFactorRetryBackoffs = []time.Duration{
@@ -248,6 +253,8 @@ type oktaFamilyOptions[T any] struct {
 	Label          string
 	List           oktaListFunc[T]
 	Enrich         func(context.Context, settings, []T) ([]T, error)
+	Probe          func(context.Context, settings, *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error)
+	ProbeOptions   sourcecdk.FamilyFreshnessReadOptions
 	Event          func(settings, T) (*primitives.Event, error)
 	URN            func(settings, T) (string, error)
 	Discover       func(context.Context, settings) ([]sourcecdk.URN, error)
@@ -257,6 +264,8 @@ type oktaFamilyOptions[T any] struct {
 func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: options.Name, IncrementalWatermark: true,
+		Probe:        options.Probe,
+		ProbeOptions: options.ProbeOptions,
 		Check: func(ctx context.Context, settings settings) error {
 			return oktaCheck(ctx, settings, options.List, options.Label)
 		},
@@ -287,6 +296,75 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			return oktaPullFromRecordsWithCursor(records, next, build, options.CursorFallback)
 		},
 	}
+}
+
+func oktaUserFreshnessReadOptions() sourcecdk.FamilyFreshnessReadOptions {
+	return sourcecdk.FamilyFreshnessReadOptions{
+		Confidence:     sourcecdk.FamilyFreshnessConfidenceHeuristic,
+		MaxSkipCount:   oktaUserFreshnessMaxSkipCount,
+		MaxSkipAge:     oktaUserFreshnessMaxSkipAge,
+		ProbeErrorMode: sourcecdk.FamilyFreshnessProbeErrorFailOpen,
+	}
+}
+
+func (s *Source) probeLatestUser(ctx context.Context, settings settings, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
+	probeSettings := settings
+	probeSettings.sortBy = "lastUpdated"
+	probeSettings.sortOrder = "desc"
+	records, _, err := s.listUsers(ctx, probeSettings, "", 1)
+	if err != nil {
+		return sourcecdk.ChangeProbe{}, wrapLookupError(oktaLabel("okta user freshness probe", settings), err)
+	}
+	probe := oktaLatestUserProbe(settings, records, time.Now().UTC())
+	change := sourcecdk.FamilyFreshnessChangeProbe("okta", familyUser, checkpoint, probe)
+	if len(records) > 0 {
+		if id := strings.TrimSpace(records[0].ID); id != "" {
+			change.ChangedResourceIDs = []string{id}
+			if urn, err := userURN(settings.domain, id); err == nil {
+				change.ChangedURNs = []sourcecdk.URN{urn}
+			}
+		}
+	}
+	return change, nil
+}
+
+func oktaLatestUserProbe(settings settings, records []userRecord, observedAt time.Time) sourcecdk.FamilyFreshnessProbe {
+	resourceID := oktaUserFreshnessResourceNone
+	updatedAt := time.Time{}
+	hashParts := oktaFreshnessScopeParts(settings, oktaUserFreshnessKind, resourceID, "empty")
+	if len(records) > 0 {
+		record := records[0]
+		if id := strings.TrimSpace(record.ID); id != "" {
+			resourceID = id
+		}
+		updatedAt = userOccurredAt(record)
+		hashParts = oktaFreshnessScopeParts(
+			settings,
+			oktaUserFreshnessKind,
+			resourceID,
+			updatedAt.Format(time.RFC3339Nano),
+			strings.TrimSpace(record.Status),
+		)
+	}
+	return sourcecdk.FamilyFreshnessProbe{
+		Kind:       oktaUserFreshnessKind,
+		ResourceID: resourceID,
+		ObservedAt: observedAt,
+		UpdatedAt:  updatedAt,
+		Hash:       sourcecdk.FamilyFreshnessHash(hashParts...),
+		Confidence: sourcecdk.FamilyFreshnessConfidenceHeuristic,
+	}
+}
+
+func oktaFreshnessScopeParts(settings settings, parts ...string) []string {
+	scoped := []string{
+		strings.TrimSpace(settings.domain),
+		strings.TrimSpace(settings.filter),
+		strings.TrimSpace(settings.q),
+		strings.TrimSpace(settings.search),
+	}
+	scoped = append(scoped, parts...)
+	return scoped
 }
 
 func oktaAssetSettings(settings settings) oktaasset.Settings {

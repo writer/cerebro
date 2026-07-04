@@ -141,11 +141,13 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		}),
 		s.assetFamily(familyTrustedOrigin, "okta trusted origins", "/api/v1/trustedOrigins", "trusted_origin", oktaasset.KindTrustedOrigin, true),
 		oktaFamily(oktaFamilyOptions[userRecord]{
-			Name:   familyUser,
-			Label:  "okta users",
-			List:   s.listUsers,
-			Enrich: s.enrichUsersWithMFAFactors,
-			Event:  userEvent,
+			Name:         familyUser,
+			Label:        "okta users",
+			List:         s.listUsers,
+			Enrich:       s.enrichUsersWithMFAFactors,
+			Probe:        s.probeLatestUser,
+			ProbeOptions: oktaUserFreshnessReadOptions(),
+			Event:        userEvent,
 			URN: func(settings settings, user userRecord) (string, error) {
 				urn, err := userURN(settings.domain, user.ID)
 				if err != nil {

@@ -985,6 +985,122 @@ func TestOktaMFAEnrollmentFactorKinds_IncludesTokenHardware(t *testing.T) {
 	}
 }
 
+func TestReadLiveOktaUserShortCircuitsWithFreshnessProbe(t *testing.T) {
+	userRecords := []map[string]any{
+		{
+			"id":          "00u1",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"activated":   "2026-04-20T00:01:00Z",
+			"lastUpdated": "2026-04-23T01:00:00Z",
+			"profile": map[string]any{
+				"login": "alice@writer.com",
+				"email": "alice@writer.com",
+			},
+		},
+		{
+			"id":          "00u2",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:30:00Z",
+			"profile": map[string]any{
+				"login": "bob@writer.com",
+				"email": "bob@writer.com",
+			},
+		},
+	}
+	userListRequests := 0
+	factorRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "invalid token"}); err != nil {
+				t.Fatalf("encode auth error: %v", err)
+			}
+			return
+		}
+		switch r.URL.Path {
+		case "/api/v1/users":
+			userListRequests++
+			if r.URL.Query().Get("sortBy") == "lastUpdated" {
+				if got := r.URL.Query().Get("sortOrder"); got != "desc" {
+					t.Fatalf("freshness probe sortOrder = %q, want desc", got)
+				}
+				if got := r.URL.Query().Get("limit"); got != "1" {
+					t.Fatalf("freshness probe limit = %q, want 1", got)
+				}
+				if err := json.NewEncoder(w).Encode(userRecords[:1]); err != nil {
+					t.Fatalf("encode freshness user: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode(userRecords); err != nil {
+				t.Fatalf("encode users: %v", err)
+			}
+		case "/api/v1/users/00u1/factors", "/api/v1/users/00u2/factors":
+			factorRequests++
+			if _, err := w.Write(mustOktaTestdata(t, "factors_not_enrolled.json")); err != nil {
+				t.Fatalf("write factors: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "user",
+		"per_page": "2",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 2 {
+		t.Fatalf("len(first.Events) = %d, want 2", len(first.Events))
+	}
+	if factorRequests != 2 {
+		t.Fatalf("factor requests after first read = %d, want 2", factorRequests)
+	}
+	if info, ok := sourcecdk.FamilyFreshnessInfoFromCheckpoint(first.Checkpoint); !ok || info.Source != "okta" || info.Family != familyUser {
+		t.Fatalf("first checkpoint freshness info = %#v, %t; want okta user freshness", info, ok)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("len(second.Events) = %d, want 0", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("second short-circuit reason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if factorRequests != 2 {
+		t.Fatalf("factor requests after short-circuit = %d, want still 2", factorRequests)
+	}
+	if userListRequests != 3 {
+		t.Fatalf("user list requests = %d, want probe/read/probe", userListRequests)
+	}
+	info, ok := sourcecdk.FamilyFreshnessInfoFromCheckpoint(second.Checkpoint)
+	if !ok {
+		t.Fatalf("second checkpoint %q missing freshness info", second.Checkpoint.GetCursorOpaque())
+	}
+	if info.Reason != sourcecdk.FamilyFreshnessReasonShortCircuit || info.SkipCount != 1 {
+		t.Fatalf("second freshness info = %#v, want short_circuit skip_count=1", info)
+	}
+}
+
 func TestReadLiveOktaUserPreviewRetriesMFAFactorRateLimit(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(newOktaUserFactorAPIHandler(t, "00u-rate-limited", []oktaFactorTestResponse{
