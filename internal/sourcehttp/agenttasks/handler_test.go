@@ -22,3 +22,25 @@ func TestReadTaskRequestUsesInboundBodyLimit(t *testing.T) {
 		t.Fatalf("readTaskRequest() error = %v, want MaxBytesError", err)
 	}
 }
+
+func TestTaskParametersNormalizesTenantToAuthorizedValue(t *testing.T) {
+	request := TaskRequest{
+		TenantID: " authorized-tenant ",
+		Parameters: map[string]string{
+			"tenant_id": "other-tenant",
+			"format":    "packet",
+		},
+	}
+
+	parameters := taskParameters(request, strings.TrimSpace(request.TenantID))
+
+	if parameters["tenant_id"] != "authorized-tenant" {
+		t.Fatalf("tenant_id = %q, want authorized tenant", parameters["tenant_id"])
+	}
+	if parameters["format"] != "packet" {
+		t.Fatalf("format = %q, want existing parameter preserved", parameters["format"])
+	}
+	if request.Parameters["tenant_id"] != "other-tenant" {
+		t.Fatalf("request parameters were mutated: %+v", request.Parameters)
+	}
+}

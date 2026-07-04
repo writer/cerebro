@@ -575,7 +575,7 @@ func taskParameters(req TaskRequest, tenantID string) map[string]string {
 	for key, value := range req.Parameters {
 		parameters[key] = value
 	}
-	if strings.TrimSpace(parameters["tenant_id"]) == "" && strings.TrimSpace(tenantID) != "" {
+	if strings.TrimSpace(tenantID) != "" {
 		parameters["tenant_id"] = strings.TrimSpace(tenantID)
 	}
 	return parameters
