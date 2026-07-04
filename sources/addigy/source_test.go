@@ -12,7 +12,15 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-func TestSourceCheckAndReadDevices(t *testing.T) {
+func TestSourceCheckAndReadFamilies(t *testing.T) {
+	t.Run(familyDevices, testSourceCheckAndReadDevices)
+	t.Run(familyUsers, testSourceReadsOrganizationUsers)
+	t.Run(familyGroups, testSourceReadsEndUserGroups)
+	t.Run(familyPolicies, testSourceReadsPoliciesWithStaticPolicyAttributes)
+	t.Run(familyAuditEvents, testSourceReadsAuditEvents)
+}
+
+func testSourceCheckAndReadDevices(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -77,7 +85,7 @@ func TestSourceCheckAndReadDevices(t *testing.T) {
 	}
 }
 
-func TestSourceReadsOrganizationUsers(t *testing.T) {
+func testSourceReadsOrganizationUsers(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -115,7 +123,7 @@ func TestSourceReadsOrganizationUsers(t *testing.T) {
 	requireSourceEventID(t, event.Attributes, "admin@example.test")
 }
 
-func TestSourceReadsEndUserGroups(t *testing.T) {
+func testSourceReadsEndUserGroups(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -157,7 +165,7 @@ func TestSourceReadsEndUserGroups(t *testing.T) {
 	requireSourceEventID(t, event.Attributes, "group-1")
 }
 
-func TestSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
+func testSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -195,7 +203,7 @@ func TestSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
 	requireSourceEventID(t, event.Attributes, "policy-1")
 }
 
-func TestSourceReadsAuditEvents(t *testing.T) {
+func testSourceReadsAuditEvents(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -246,6 +254,24 @@ func TestSourceReadsAuditEvents(t *testing.T) {
 		t.Fatalf("attributes = %#v", event.Attributes)
 	}
 	requireSourceEventID(t, event.Attributes, "evt-1")
+}
+
+func TestSourceCheckReportsProviderUnavailable(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "provider unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "api_key": "test-key"})
+	err = source.Check(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("Check() error = nil, want provider unavailable failure")
+	}
 }
 
 func requireSourceEventID(t *testing.T, attrs map[string]string, want string) {

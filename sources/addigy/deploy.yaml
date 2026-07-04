@@ -2,6 +2,7 @@ sourceId: addigy
 secretKeys:
   - ADDIGY_BASE_URL
   - ADDIGY_API_KEY
+  - ADDIGY_ORGANIZATION_ID
 runtimes:
   - localId: devices
     config:
@@ -10,5 +11,44 @@ runtimes:
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:ADDIGY_API_KEY
+  - localId: users
+    config:
+      base_url: env:ADDIGY_BASE_URL
+      family: users
+      organization_id: env:ADDIGY_ORGANIZATION_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:ADDIGY_API_KEY
+  - localId: groups
+    config:
+      base_url: env:ADDIGY_BASE_URL
+      family: groups
+      organization_id: env:ADDIGY_ORGANIZATION_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:ADDIGY_API_KEY
+  - localId: policies
+    config:
+      base_url: env:ADDIGY_BASE_URL
+      family: policies
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:ADDIGY_API_KEY
+  - localId: audit-events
+    config:
+      base_url: env:ADDIGY_BASE_URL
+      family: audit_events
+      audit_start_time: "2026-01-01T00:00:00Z"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
       per_page: "100"
       api_key: env:ADDIGY_API_KEY

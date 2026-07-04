@@ -77,6 +77,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, endpoint_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
       notes:
         - Maps Addigy API v2 device search records to graph assets; live tenant sample certification is still pending.
     - id: users
@@ -87,6 +92,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
       notes:
         - Maps Addigy API v2 organization users to graph identity users; requires organization_id.
     - id: groups
@@ -97,6 +107,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
       notes:
         - Maps Addigy API v2 end-user groups to graph identity groups; requires organization_id.
     - id: policies
@@ -107,6 +122,11 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [endpoint_security, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
       notes:
         - Maps Addigy API v2 policy records to graph policies.
     - id: audit_events
@@ -117,6 +137,11 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
         - Maps Addigy API v2 system event search records to graph audit events.
     - id: incremental_sync
