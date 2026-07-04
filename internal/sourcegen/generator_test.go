@@ -1100,7 +1100,12 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				IDField:        "id",
 				StaticQuery:    map[string]string{"full": "true"},
 				ConfigQuery:    map[string]string{"author": "organization"},
-				Config:         &connectordefinitions.FamilyConfigSpec{IdentityKeys: []string{"id"}},
+				StaticHeaders:  map[string]string{"Accept": "application/json;version=2"},
+				Config: &connectordefinitions.FamilyConfigSpec{
+					BaseURL:          "https://huggingface.co/api/models",
+					ConfigAttributes: map[string]string{"owner": "organization"},
+					IdentityKeys:     []string{"id"},
+				},
 				Event: connectordefinitions.EventMappingSpec{
 					Kind:      "huggingface.repositories",
 					SchemaRef: "huggingface/repositories/v1",
@@ -1168,9 +1173,12 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
-		`StaticQuery:  map[string]string{"full": "true"}`,
-		`ConfigQuery:  map[string]string{"author": "organization"}`,
-		`IdentityKeys: []string{"id"}`,
+		`BaseURL:          "https://huggingface.co/api/models"`,
+		`StaticQuery:      map[string]string{"full": "true"}`,
+		`ConfigQuery:      map[string]string{"author": "organization"}`,
+		`ConfigAttributes: map[string]string{"owner": "organization"}`,
+		`StaticHeaders:    map[string]string{"Accept": "application/json;version=2"}`,
+		`IdentityKeys:     []string{"id"}`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)

@@ -133,8 +133,11 @@ type familyData struct {
 }
 
 type familyConfigData struct {
+	BaseURL               string
 	StaticQuery           map[string]string
 	ConfigQuery           map[string]string
+	ConfigAttributes      map[string]string
+	StaticHeaders         map[string]string
 	IdentityKeys          []string
 	DetailPath            string
 	AllowBareDetailRecord bool
@@ -776,8 +779,9 @@ func pathParamsForResource(resource connectordefinitions.ResourceFamily) []strin
 
 func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
 	config := familyConfigData{
-		StaticQuery: cloneStringMap(resource.StaticQuery),
-		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+		StaticQuery:   cloneStringMap(resource.StaticQuery),
+		ConfigQuery:   cloneStringMap(resource.ConfigQuery),
+		StaticHeaders: cloneStringMap(resource.StaticHeaders),
 	}
 	if resource.Read != nil {
 		config.DetailPath = strings.TrimSpace(resource.Read.DetailPath)
@@ -788,8 +792,10 @@ func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData
 	if resource.Config == nil {
 		return config
 	}
+	config.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
 	config.StaticQuery = mergeStringMaps(config.StaticQuery, resource.Config.StaticQuery)
 	config.ConfigQuery = mergeStringMaps(config.ConfigQuery, resource.Config.ConfigQuery)
+	config.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 	config.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	return config
 }
@@ -1426,7 +1432,7 @@ func renderSourceGo(request normalizedRequest) string {
 		if len(family.Config.MapRecords) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tMapRecords: map[string]string{%s},\n", renderedAttributeMap(family.Config.MapRecords))
 		}
-		if strings.TrimSpace(family.Method) != "" || strings.TrimSpace(family.AuthModel) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
+		if strings.TrimSpace(family.Method) != "" || strings.TrimSpace(family.AuthModel) != "" || strings.TrimSpace(family.Config.BaseURL) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.ConfigAttributes) != 0 || len(family.Config.StaticHeaders) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
 			if strings.TrimSpace(family.Method) != "" {
 				fmt.Fprintf(&b, "\t\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
@@ -1434,11 +1440,20 @@ func renderSourceGo(request normalizedRequest) string {
 			if strings.TrimSpace(family.AuthModel) != "" {
 				fmt.Fprintf(&b, "\t\t\t\t\tAuthModel: %s,\n", strconv.Quote(family.AuthModel))
 			}
+			if strings.TrimSpace(family.Config.BaseURL) != "" {
+				fmt.Fprintf(&b, "\t\t\t\t\tBaseURL: %s,\n", strconv.Quote(family.Config.BaseURL))
+			}
 			if len(family.Config.StaticQuery) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))
 			}
 			if len(family.Config.ConfigQuery) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.ConfigQuery))
+			}
+			if len(family.Config.ConfigAttributes) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tConfigAttributes: map[string]string{%s},\n", renderedAttributeMap(family.Config.ConfigAttributes))
+			}
+			if len(family.Config.StaticHeaders) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tStaticHeaders: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticHeaders))
 			}
 			if len(family.Config.IdentityKeys) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tIdentityKeys: []string{%s},\n", quotedStrings(family.Config.IdentityKeys))
