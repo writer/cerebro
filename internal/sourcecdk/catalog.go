@@ -20,16 +20,17 @@ var (
 )
 
 type catalogFile struct {
-	ID              string             `yaml:"id"`
-	Name            string             `yaml:"name"`
-	Description     string             `yaml:"description"`
-	EmittedKinds    []string           `yaml:"emitted_kinds"`
-	KindLifecycle   []KindLifecycle    `yaml:"kind_lifecycle"`
-	RuntimeFamilies []string           `yaml:"runtime_families"`
-	Families        []CatalogFamily    `yaml:"families"`
-	ProviderAPI     CatalogProviderAPI `yaml:"provider_api"`
-	EventContracts  []EventContract    `yaml:"event_contracts"`
-	Coverage        CoverageContract   `yaml:"coverage_contract"`
+	ID                  string                     `yaml:"id"`
+	Name                string                     `yaml:"name"`
+	Description         string                     `yaml:"description"`
+	EmittedKinds        []string                   `yaml:"emitted_kinds"`
+	KindLifecycle       []KindLifecycle            `yaml:"kind_lifecycle"`
+	RuntimeFamilies     []string                   `yaml:"runtime_families"`
+	Families            []CatalogFamily            `yaml:"families"`
+	ProviderAPI         CatalogProviderAPI         `yaml:"provider_api"`
+	ProviderAPIDisproof CatalogProviderAPIDisproof `yaml:"provider_api_disproof"`
+	EventContracts      []EventContract            `yaml:"event_contracts"`
+	Coverage            CoverageContract           `yaml:"coverage_contract"`
 }
 
 type SourceCatalog struct {
@@ -66,6 +67,19 @@ type CatalogProviderAPI struct {
 	AuthEvidence  []string                   `yaml:"auth_evidence"`
 	ScopeEvidence []string                   `yaml:"scope_evidence"`
 	Families      []CatalogProviderAPIFamily `yaml:"families"`
+	Disproof      CatalogProviderAPIDisproof `yaml:"-"`
+}
+
+// CatalogProviderAPIDisproof records a reviewed provider API invalidation from
+// a source catalog when a provider surface cannot cover the runtime families.
+type CatalogProviderAPIDisproof struct {
+	Status           string   `yaml:"status"`
+	Reason           string   `yaml:"reason"`
+	CheckedAt        string   `yaml:"checked_at"`
+	References       []string `yaml:"references"`
+	AffectedFamilies []string `yaml:"affected_families"`
+	MissingPaths     []string `yaml:"missing_paths"`
+	Notes            []string `yaml:"notes"`
 }
 
 // CatalogProviderAPIFamily maps one runtime family to a documented provider API
@@ -126,6 +140,13 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	}
 	runtimeFamilies := normalizeCatalogRuntimeFamilies(catalog.RuntimeFamilies, families)
 	providerAPI := normalizeCatalogProviderAPI(catalog.ProviderAPI)
+	providerAPIDisproof := normalizeCatalogProviderAPIDisproof(catalog.ProviderAPIDisproof)
+	if providerAPI == nil && providerAPIDisproof != nil {
+		providerAPI = &CatalogProviderAPI{}
+	}
+	if providerAPI != nil && providerAPIDisproof != nil {
+		providerAPI.Disproof = *providerAPIDisproof
+	}
 	eventContracts, err := ValidateEventContracts(catalog.EventContracts)
 	if err != nil {
 		return nil, err
@@ -389,7 +410,32 @@ func catalogProviderAPIEmpty(api CatalogProviderAPI) bool {
 		len(api.References) == 0 &&
 		len(api.AuthEvidence) == 0 &&
 		len(api.ScopeEvidence) == 0 &&
-		len(api.Families) == 0
+		len(api.Families) == 0 &&
+		catalogProviderAPIDisproofEmpty(api.Disproof)
+}
+
+func normalizeCatalogProviderAPIDisproof(disproof CatalogProviderAPIDisproof) *CatalogProviderAPIDisproof {
+	disproof.Status = strings.TrimSpace(disproof.Status)
+	disproof.Reason = strings.TrimSpace(disproof.Reason)
+	disproof.CheckedAt = strings.TrimSpace(disproof.CheckedAt)
+	disproof.References = normalizeCatalogStringList(disproof.References)
+	disproof.AffectedFamilies = normalizeCatalogStringList(disproof.AffectedFamilies)
+	disproof.MissingPaths = normalizeCatalogStringList(disproof.MissingPaths)
+	disproof.Notes = normalizeCatalogStringList(disproof.Notes)
+	if catalogProviderAPIDisproofEmpty(disproof) {
+		return nil
+	}
+	return &disproof
+}
+
+func catalogProviderAPIDisproofEmpty(disproof CatalogProviderAPIDisproof) bool {
+	return disproof.Status == "" &&
+		disproof.Reason == "" &&
+		disproof.CheckedAt == "" &&
+		len(disproof.References) == 0 &&
+		len(disproof.AffectedFamilies) == 0 &&
+		len(disproof.MissingPaths) == 0 &&
+		len(disproof.Notes) == 0
 }
 
 func normalizeCatalogStringList(values []string) []string {
@@ -417,6 +463,10 @@ func cloneCatalogProviderAPI(api CatalogProviderAPI) CatalogProviderAPI {
 	api.AuthEvidence = append([]string(nil), api.AuthEvidence...)
 	api.ScopeEvidence = append([]string(nil), api.ScopeEvidence...)
 	api.Families = append([]CatalogProviderAPIFamily(nil), api.Families...)
+	api.Disproof.References = append([]string(nil), api.Disproof.References...)
+	api.Disproof.AffectedFamilies = append([]string(nil), api.Disproof.AffectedFamilies...)
+	api.Disproof.MissingPaths = append([]string(nil), api.Disproof.MissingPaths...)
+	api.Disproof.Notes = append([]string(nil), api.Disproof.Notes...)
 	return api
 }
 

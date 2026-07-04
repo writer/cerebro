@@ -130,6 +130,7 @@ type runtimeProviderAPIFields struct {
 		Path      string `yaml:"path"`
 		Operation string `yaml:"operation"`
 	} `yaml:"families"`
+	Disproof runtimeProviderAPIDisproofFields `yaml:"-"`
 }
 
 type runtimeProviderAPIDisproofFields struct {
@@ -228,16 +229,7 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.ProviderAPI.ProofScore = proof.Score
 		depth.ProviderAPI.ProofLevel = proof.Level
 		depth.ProviderAPI.ProofGaps = proof.Gaps
-		if hasProviderAPIDisproof(catalog.ProviderAPIDisproof) {
-			depth.ProviderAPI.HasDisproof = true
-			depth.ProviderAPI.DisproofStatus = strings.TrimSpace(catalog.ProviderAPIDisproof.Status)
-			depth.ProviderAPI.DisproofReason = strings.TrimSpace(catalog.ProviderAPIDisproof.Reason)
-			depth.ProviderAPI.DisproofCheckedAt = strings.TrimSpace(catalog.ProviderAPIDisproof.CheckedAt)
-			depth.ProviderAPI.DisproofReferences = normalizedList(catalog.ProviderAPIDisproof.References)
-			depth.ProviderAPI.DisproofFamilies = normalizedList(catalog.ProviderAPIDisproof.AffectedFamilies)
-			depth.ProviderAPI.DisproofMissingPaths = normalizedList(catalog.ProviderAPIDisproof.MissingPaths)
-			depth.ProviderAPI.DisproofNotes = normalizedList(catalog.ProviderAPIDisproof.Notes)
-		}
+		depth.ProviderAPI.RuntimeProviderAPIDisproofDepth = providerAPIDisproofDepth(catalog.ProviderAPIDisproof)
 	}
 	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
 	sourceGoPath := filepath.ToSlash(filepath.Join(depth.PackagePath, "source.go"))
@@ -610,6 +602,22 @@ func hasProviderAPIDisproof(disproof runtimeProviderAPIDisproofFields) bool {
 		return false
 	}
 	return len(normalizedList(disproof.AffectedFamilies)) > 0 || len(normalizedList(disproof.MissingPaths)) > 0
+}
+
+func providerAPIDisproofDepth(disproof runtimeProviderAPIDisproofFields) RuntimeProviderAPIDisproofDepth {
+	if !hasProviderAPIDisproof(disproof) {
+		return RuntimeProviderAPIDisproofDepth{}
+	}
+	return RuntimeProviderAPIDisproofDepth{
+		HasDisproof:          true,
+		DisproofStatus:       strings.TrimSpace(disproof.Status),
+		DisproofReason:       strings.TrimSpace(disproof.Reason),
+		DisproofCheckedAt:    strings.TrimSpace(disproof.CheckedAt),
+		DisproofReferences:   normalizedList(disproof.References),
+		DisproofFamilies:     normalizedList(disproof.AffectedFamilies),
+		DisproofMissingPaths: normalizedList(disproof.MissingPaths),
+		DisproofNotes:        normalizedList(disproof.Notes),
+	}
 }
 
 func providerAPIFamilies(api runtimeProviderAPIFields) []string {

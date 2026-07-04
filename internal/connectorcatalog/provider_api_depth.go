@@ -30,6 +30,15 @@ func ProviderAPIDepthForSourceCatalog(api sourcecdk.CatalogProviderAPI, runtimeF
 		References:    normalizedList(api.References),
 		AuthEvidence:  normalizedList(api.AuthEvidence),
 		ScopeEvidence: normalizedList(api.ScopeEvidence),
+		Disproof: runtimeProviderAPIDisproofFields{
+			Status:           api.Disproof.Status,
+			Reason:           api.Disproof.Reason,
+			CheckedAt:        api.Disproof.CheckedAt,
+			References:       normalizedList(api.Disproof.References),
+			AffectedFamilies: normalizedList(api.Disproof.AffectedFamilies),
+			MissingPaths:     normalizedList(api.Disproof.MissingPaths),
+			Notes:            normalizedList(api.Disproof.Notes),
+		},
 		Families: make([]struct {
 			ID        string `yaml:"id"`
 			Method    string `yaml:"method"`
@@ -126,6 +135,7 @@ func providerAPIDepthForFields(fields runtimeProviderAPIFields, runtimeFamilies 
 			ProofLevel: proof.Level,
 			ProofGaps:  append([]string(nil), proof.Gaps...),
 		},
+		RuntimeProviderAPIDisproofDepth: providerAPIDisproofDepth(fields.Disproof),
 	}
 	sort.Strings(depth.ProofGaps)
 	sort.Strings(depth.References)
@@ -133,6 +143,10 @@ func providerAPIDepthForFields(fields runtimeProviderAPIFields, runtimeFamilies 
 	sort.Strings(depth.ScopeEvidence)
 	sort.Strings(depth.MappedFamilies)
 	sort.Strings(depth.MissingFamilyMappings)
+	sort.Strings(depth.DisproofReferences)
+	sort.Strings(depth.DisproofFamilies)
+	sort.Strings(depth.DisproofMissingPaths)
+	sort.Strings(depth.DisproofNotes)
 	return depth
 }
 
