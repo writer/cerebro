@@ -841,6 +841,9 @@ assessment:examine,assessment,derived,compliance-p1-security-issues,P1 Security 
 assessment:examine,assessment,derived,compliance-p2-security-issues,P2 Security Issues Resolved Timely,compliance,high,cel,policies/compliance/compliance-p2-security-issues.yaml
 assessment:examine,assessment,derived,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
 assessment:examine,assessment,derived,compliance-security-training,Security Awareness Training Completed,compliance,medium,query,policies/compliance/compliance-security-training.yaml
+assessment:examine,assessment,derived,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+assessment:examine,assessment,derived,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+assessment:examine,assessment,derived,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 assessment:examine,assessment,derived,container-admission-policy-missing,Container Admission Policy Missing,container,medium,cel,policies/container/container-admission-policy-missing.yaml
 assessment:examine,assessment,derived,container-base-image-eol,Container Base Image Eol,container,medium,cel,policies/container/container-base-image-eol.yaml
 assessment:examine,assessment,derived,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,cerebro,high,cel,policies/cerebro/container-cleartext-keys.yaml
@@ -871,6 +874,8 @@ assessment:examine,assessment,derived,cve-2023-4863,Publicly exposed VM vulnerab
 assessment:examine,assessment,derived,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),cerebro,critical,cel,policies/cerebro/cve-2024-21626.yaml
 assessment:examine,assessment,derived,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),cerebro,critical,cel,policies/cerebro/cve-2024-6387.yaml
 assessment:examine,assessment,derived,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,cerebro,high,cel,policies/cerebro/data-access-keys-unrotated.yaml
+assessment:examine,assessment,derived,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+assessment:examine,assessment,derived,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 assessment:examine,assessment,derived,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,cerebro,high,cel,policies/cerebro/data-resource-excessive-access.yaml
 assessment:examine,assessment,derived,data-resource-org-access,Data resource with sensitive data allows organization-wide access,cerebro,high,cel,policies/cerebro/data-resource-org-access.yaml
 assessment:examine,assessment,derived,db-audit-logging,Database Audit Logging Enabled,database,medium,query,policies/database/db-audit-logging.yaml
@@ -1906,6 +1911,9 @@ assessment:examine,assessment,derived,pci-penetration-test-annual,Annual Penetra
 assessment:examine,assessment,derived,pci-transmission-encrypted,Cardholder Data Encrypted in Transit,pci,critical,query,policies/pci/pci-transmission-encrypted.yaml
 assessment:examine,assessment,derived,pci-unique-user-ids,Unique User IDs for CDE Access,pci,high,query,policies/pci/pci-unique-user-ids.yaml
 assessment:examine,assessment,derived,pci-vulnerability-scan-quarterly,Quarterly External Vulnerability Scans,pci,high,query,policies/pci/pci-vulnerability-scan-quarterly.yaml
+assessment:examine,assessment,derived,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+assessment:examine,assessment,derived,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+assessment:examine,assessment,derived,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 assessment:examine,assessment,derived,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,cerebro,high,cel,policies/cerebro/privileged-inactive-keys.yaml
 assessment:examine,assessment,derived,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/privileged-keys-unrotated.yaml
 assessment:examine,assessment,derived,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,cerebro,critical,cel,policies/cerebro/public-resource-cleartext-admin-keys.yaml
@@ -2090,6 +2098,8 @@ assessment:interview,assessment,derived,compliance-p2-security-issues,P2 Securit
 assessment:interview,assessment,derived,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
 assessment:interview,assessment,derived,compliance-security-training,Security Awareness Training Completed,compliance,medium,query,policies/compliance/compliance-security-training.yaml
 assessment:interview,assessment,derived,contract-billing-mismatch,Contract and Billing Mismatch,compliance,high,cel,policies/compliance/contract-billing-mismatch.yaml
+assessment:interview,assessment,derived,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+assessment:interview,assessment,derived,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 assessment:interview,assessment,derived,gcp-vertex-ai-dataset-public,GCP Vertex AI Dataset Public Access,ai,critical,cel,policies/ai/gcp-vertex-dataset-public.yaml
 assessment:interview,assessment,derived,gcp-vertex-ai-public-endpoint,GCP Vertex AI Public Endpoint,ai,high,cel,policies/ai/gcp-vertex-endpoint-public.yaml
 assessment:interview,assessment,derived,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,ai,medium,cel,policies/ai/gcp-vertex-dataset-cmek.yaml
@@ -2425,6 +2435,8 @@ assessment:test,assessment,derived,cicd-slsa-build-level-below-3-critical-servic
 assessment:test,assessment,derived,cicd-unpinned-third-party-action,Cicd Unpinned Third Party Action,cicd,medium,cel,policies/cicd/cicd-unpinned-third-party-action.yaml
 assessment:test,assessment,derived,cicd-untrusted-fork-write-token,Cicd Untrusted Fork Write Token,cicd,high,cel,policies/cicd/cicd-untrusted-fork-write-token.yaml
 assessment:test,assessment,derived,cisa-kev-vulnerability-present,CISA KEV Vulnerability Present,runtime,critical,cel,policies/runtime/kev-vulnerability-detected.yaml
+assessment:test,assessment,derived,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+assessment:test,assessment,derived,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 assessment:test,assessment,derived,container-admission-policy-missing,Container Admission Policy Missing,container,medium,cel,policies/container/container-admission-policy-missing.yaml
 assessment:test,assessment,derived,container-base-image-eol,Container Base Image Eol,container,medium,cel,policies/container/container-base-image-eol.yaml
 assessment:test,assessment,derived,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,cerebro,high,cel,policies/cerebro/container-cleartext-keys.yaml
@@ -2996,6 +3008,8 @@ assessment:test,assessment,derived,okta-password-policy-weak,Okta Password Polic
 assessment:test,assessment,derived,okta-suspicious-login,Okta Suspicious Login Detected,okta,high,cel,policies/okta/okta-suspicious-login.yaml
 assessment:test,assessment,derived,okta-user-mfa-disabled,Okta User Without MFA Enrolled,okta,high,cel,policies/okta/okta-user-mfa-disabled.yaml
 assessment:test,assessment,derived,openssl-vuln-internal,Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability),cerebro,high,cel,policies/cerebro/openssl-vuln-internal.yaml
+assessment:test,assessment,derived,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+assessment:test,assessment,derived,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 assessment:test,assessment,derived,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,cerebro,high,cel,policies/cerebro/privileged-inactive-keys.yaml
 assessment:test,assessment,derived,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/privileged-keys-unrotated.yaml
 assessment:test,assessment,derived,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,cerebro,critical,cel,policies/cerebro/public-resource-cleartext-admin-keys.yaml
@@ -3847,6 +3861,9 @@ cel,generated,derived,compliance-ir-plan-exists,Incident Response Plan Exists,co
 cel,generated,derived,compliance-p1-security-issues,P1 Security Issues Resolved Timely,compliance,critical,cel,policies/compliance/compliance-p1-security-issues.yaml
 cel,generated,derived,compliance-p2-security-issues,P2 Security Issues Resolved Timely,compliance,high,cel,policies/compliance/compliance-p2-security-issues.yaml
 cel,generated,derived,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
+cel,generated,derived,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+cel,generated,derived,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+cel,generated,derived,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 cel,generated,derived,container-admission-policy-missing,Container Admission Policy Missing,container,medium,cel,policies/container/container-admission-policy-missing.yaml
 cel,generated,derived,container-base-image-eol,Container Base Image Eol,container,medium,cel,policies/container/container-base-image-eol.yaml
 cel,generated,derived,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,cerebro,high,cel,policies/cerebro/container-cleartext-keys.yaml
@@ -3871,6 +3888,8 @@ cel,generated,derived,cve-2023-4863,Publicly exposed VM vulnerable to CVE-2023-4
 cel,generated,derived,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),cerebro,critical,cel,policies/cerebro/cve-2024-21626.yaml
 cel,generated,derived,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),cerebro,critical,cel,policies/cerebro/cve-2024-6387.yaml
 cel,generated,derived,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,cerebro,high,cel,policies/cerebro/data-access-keys-unrotated.yaml
+cel,generated,derived,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+cel,generated,derived,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 cel,generated,derived,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,cerebro,high,cel,policies/cerebro/data-resource-excessive-access.yaml
 cel,generated,derived,data-resource-org-access,Data resource with sensitive data allows organization-wide access,cerebro,high,cel,policies/cerebro/data-resource-org-access.yaml
 cel,generated,derived,db-dormant-principal,Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days,cerebro,medium,cel,policies/cerebro/db-dormant-principal.yaml
@@ -4428,6 +4447,9 @@ cel,generated,derived,org-customer-touchpoints-low,Customer Touchpoint Coverage 
 cel,generated,derived,org-relationship-decay-customer,Customer Relationship Weakening,org,high,cel,policies/org/org-relationship-decay-customer.yaml
 cel,generated,derived,org-silo-shared-dependency,Teams Sharing Dependencies With No Communication,org,medium,cel,policies/org/org-silo-shared-dependency.yaml
 cel,generated,derived,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,org,high,cel,policies/org/org-tenure-risk.yaml
+cel,generated,derived,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+cel,generated,derived,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+cel,generated,derived,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 cel,generated,derived,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,cerebro,high,cel,policies/cerebro/privileged-inactive-keys.yaml
 cel,generated,derived,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/privileged-keys-unrotated.yaml
 cel,generated,derived,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,cerebro,critical,cel,policies/cerebro/public-resource-cleartext-admin-keys.yaml
@@ -5034,6 +5056,14 @@ configuration-change,routing,metadata,identity-okta-idp-lifecycle-changes-30d,Ok
 confused-deputy,routing,metadata,aws-iam-role-confused-deputy-prevention,IAM Role Confused Deputy Prevention,aws,medium,cel,policies/aws/aws-iam-role-confused-deputy.yaml
 connected,routing,metadata,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,salesforce,medium,cel,policies/salesforce/salesforce-connected-app-unreviewed.yaml
 connected-app,routing,metadata,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,salesforce,medium,cel,policies/salesforce/salesforce-connected-app-unreviewed.yaml
+consent-preference-platform,routing,metadata,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+consent-preference-platform,routing,metadata,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+consent-preference-platform,routing,metadata,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
+consent-preferences,routing,metadata,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+consent-preferences,routing,metadata,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+consent-preferences,routing,metadata,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
+consent-record,routing,metadata,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+consumer-request,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
 contacts,routing,metadata,aws-account-alternate-contact-security,AWS Account Alternate Contact Security,aws,medium,cel,policies/aws/aws-account-alternate-contact-security.yaml
 contacts,routing,metadata,aws-account-security-contact-configured,AWS Account Security Contact Configured,aws,medium,cel,policies/aws/aws-account-security-contact-configured.yaml
 contacts,routing,metadata,gcp-project-essential-contacts-security,GCP Project Essential Contacts Security,gcp,medium,cel,policies/gcp/gcp-project-essential-contacts-security.yaml
@@ -5322,6 +5352,8 @@ data-integrity,routing,metadata,identity-zoom-duplicate-membership-assignment,Zo
 data-integrity,routing,metadata,identity-zoom-orphaned-membership-group,Zoom Memberships With Missing Groups,identity,medium,query,policies/identity/identity-zoom-orphaned-membership-group.yaml
 data-integrity,routing,metadata,identity-zoom-orphaned-membership-user,Zoom Group Memberships With Missing Users,identity,medium,query,policies/identity/identity-zoom-orphaned-membership-user.yaml
 data-inventory,routing,metadata,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,policies/compliance/compliance-data-inventory.yaml
+data-inventory,routing,metadata,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+data-inventory,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 data-lifecycle,routing,metadata,backup-retention,Backup Retention Policy Compliance,backup,medium,query,policies/backup/backup-retention.yaml
 data-processing,routing,metadata,vendor-dpa-exists,Vendor Data Processing Agreement Exists,vendor,high,cel,policies/vendor/vendor-dpa-exists.yaml
 data-protection,routing,metadata,ai-sensitive-output-filtering,AI Sensitive Output Filtering,ai,medium,cel,policies/ai/ai-sensitive-output-filtering.yaml
@@ -5377,6 +5409,9 @@ data-quality,routing,metadata,identity-vanta-missing-email,Vanta Active Accounts
 data-quality,routing,metadata,identity-workday-missing-email,Workday Active Accounts Missing Email,identity,medium,query,policies/identity/identity-workday-missing-email.yaml
 data-quality,routing,metadata,identity-zoom-missing-email,Zoom Active Accounts Missing Email,identity,medium,query,policies/identity/identity-zoom-missing-email.yaml
 data-retention,routing,metadata,ai-data-retention-reviewed,AI Data Retention Reviewed,ai,medium,cel,policies/ai/ai-data-retention-reviewed.yaml
+data-subject-request,routing,metadata,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+data-subject-request,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+data-subject-request,routing,metadata,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 database,routing,metadata,aws-rds-backup-enabled,RDS Backup Enabled,aws,medium,cel,policies/aws/aws-rds-backup-enabled.yaml
 database,routing,metadata,aws-rds-deletion-protection,RDS Deletion Protection,aws,medium,cel,policies/aws/aws-rds-deletion-protection.yaml
 database,routing,metadata,aws-rds-iam-authentication,RDS IAM Authentication,aws,low,cel,policies/aws/aws-rds-iam-auth.yaml
@@ -5419,6 +5454,7 @@ defense-evasion,routing,metadata,identity-okta-policy-rule-lifecycle-tampering-3
 defense-in-depth,routing,metadata,aws-elb-target-public-subnet,Load Balancer Targets in Public Subnet,aws,medium,cel,policies/aws/aws-elb-target-public-subnet.yaml
 delete,routing,metadata,github-secops-app-installation-all-repos-event-delete,GitHub App Installation All Repos Event Delete,github,medium,cel,policies/github/github-secops-app-installation-all-repos-event-delete.yaml
 deletion,routing,metadata,aws-kms-key-deletion-scheduled,AWS KMS Key Deletion Scheduled,aws,medium,cel,policies/aws/aws-kms-key-deletion-scheduled.yaml
+denial-rationale,routing,metadata,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
 departure-risk,risk,metadata,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,org,high,cel,policies/org/org-tenure-risk.yaml
 dependabot,routing,metadata,github-dependabot-critical-alert,GitHub Critical Dependabot Alert,github,critical,cel,policies/github/github-dependabot-critical.yaml
 dependabot,routing,metadata,github-dependabot-high-alert,GitHub High Dependabot Alert,github,high,cel,policies/github/github-dependabot-high.yaml
@@ -5641,6 +5677,7 @@ dismissal,routing,metadata,github-secops-dependabot-rubygems-critical-dismissed,
 dismissal,routing,metadata,github-secops-dependabot-rubygems-high-dismissed,GitHub Dependabot Rubygems High Alert Dismissed,github,high,cel,policies/github/github-secops-dependabot-rubygems-high-dismissed.yaml
 dismissal,routing,metadata,github-secops-dependabot-terraform-critical-dismissed,GitHub Dependabot Terraform Critical Alert Dismissed,github,critical,cel,policies/github/github-secops-dependabot-terraform-critical-dismissed.yaml
 dismissal,routing,metadata,github-secops-dependabot-terraform-high-dismissed,GitHub Dependabot Terraform High Alert Dismissed,github,high,cel,policies/github/github-secops-dependabot-terraform-high-dismissed.yaml
+disposal,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 dkim,routing,metadata,m365-email-security-baseline,M365 Email Security Baseline Configured,m365,high,query,policies/m365/m365-email-security-baseline.yaml
 dlp,routing,metadata,m365-dlp-policy-missing,M365 DLP Policy Configured,m365,high,query,policies/m365/m365-dlp-policy-missing.yaml
 dmarc,routing,metadata,m365-email-security-baseline,M365 Email Security Baseline Configured,m365,high,query,policies/m365/m365-email-security-baseline.yaml
@@ -7225,6 +7262,14 @@ evidence:organizational_process,evidence,derived,org-customer-touchpoints-low,Cu
 evidence:organizational_process,evidence,derived,org-relationship-decay-customer,Customer Relationship Weakening,org,high,cel,policies/org/org-relationship-decay-customer.yaml
 evidence:organizational_process,evidence,derived,org-silo-shared-dependency,Teams Sharing Dependencies With No Communication,org,medium,cel,policies/org/org-silo-shared-dependency.yaml
 evidence:organizational_process,evidence,derived,org-tenure-risk,Long-Tenured Sole Expert Showing Disengagement,org,high,cel,policies/org/org-tenure-risk.yaml
+evidence:privacy_inventory,evidence,derived,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+evidence:privacy_inventory,evidence,derived,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
+evidence:privacy_preference,evidence,derived,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+evidence:privacy_preference,evidence,derived,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+evidence:privacy_preference,evidence,derived,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
+evidence:privacy_request,evidence,derived,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+evidence:privacy_request,evidence,derived,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+evidence:privacy_request,evidence,derived,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 evidence:regulated_data_control,evidence,derived,hipaa-access-controls,HIPAA Unique User Identification,hipaa,high,query,policies/hipaa/hipaa-access-controls.yaml
 evidence:regulated_data_control,evidence,derived,hipaa-audit-controls,HIPAA Audit Controls,hipaa,high,query,policies/hipaa/hipaa-audit-controls.yaml
 evidence:regulated_data_control,evidence,derived,hipaa-automatic-logoff,HIPAA Automatic Logoff,hipaa,medium,query,policies/hipaa/hipaa-automatic-logoff.yaml
@@ -10238,6 +10283,7 @@ least-privilege,risk,metadata,m365-global-admin-count,Excessive Global Administr
 least-privilege,risk,metadata,secrets-least-privilege,Secrets Least Privilege Access,secrets,medium,query,policies/secrets/secrets-least-privilege.yaml
 legacy-auth,routing,metadata,m365-legacy-auth-signins,M365 Legacy Authentication Sign-ins Detected,m365,high,query,policies/m365/m365-legacy-auth-signins.yaml
 legacy-auth,routing,metadata,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,m365,medium,cel,policies/m365/m365-tenant-legacy-auth-enabled.yaml
+legal-basis,routing,metadata,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
 limits,routing,metadata,container-resource-limits,Container Resource Limits Set,container,medium,query,policies/container/container-resource-limits.yaml
 llm,routing,metadata,ai-prompt-injection-test-coverage,AI Prompt Injection Test Coverage,ai,medium,cel,policies/ai/ai-prompt-injection-test-coverage.yaml
 llm,routing,metadata,ai-sensitive-output-filtering,AI Sensitive Output Filtering,ai,medium,cel,policies/ai/ai-sensitive-output-filtering.yaml
@@ -10537,6 +10583,7 @@ node-pools,routing,metadata,gcp-gke-auto-upgrade,GKE Node Pool Auto-Upgrade Enab
 node-pools,routing,metadata,gcp-gke-cos-containerd,GKE Nodes Use Container-Optimized OS,gcp,low,cel,policies/gcp/gcp-gke-cos-containerd.yaml
 not-ephemeral,routing,metadata,github-secops-runner-not-ephemeral,GitHub Self-hosted Runner Not Ephemeral,github,high,cel,policies/github/github-secops-runner-not-ephemeral.yaml
 notebook,routing,metadata,notebook-excessive-agency,Notebook with excessive agency,cerebro,high,cel,policies/cerebro/notebook-excessive-agency.yaml
+notice-version,routing,metadata,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
 notifications,routing,metadata,aws-guardduty-notifications,GuardDuty Findings Have Notifications Configured,aws,high,cel,policies/aws/aws-guardduty-notifications.yaml
 notifications,routing,metadata,gcp-cloud-ids-notifications,GCP Cloud IDS Notifications Configured,gcp,high,cel,policies/gcp/gcp-cloud-ids-notifications.yaml
 npm,routing,metadata,github-secops-dependabot-npm-critical-dismissed,GitHub Dependabot Npm Critical Alert Dismissed,github,critical,cel,policies/github/github-secops-dependabot-npm-critical-dismissed.yaml
@@ -10725,6 +10772,7 @@ operational,routing,metadata,aws-elb-certificate-expiry,Load Balancer Certificat
 operations,routing,metadata,k8s-pod-liveness-probe-required,Kubernetes Pod Requires Liveness Probes,kubernetes,medium,cel,policies/kubernetes/k8s-pod-liveness-probe-required.yaml
 operations,routing,metadata,k8s-pod-readiness-probe-required,Kubernetes Pod Requires Readiness Probes,kubernetes,medium,cel,policies/kubernetes/k8s-pod-readiness-probe-required.yaml
 operations,routing,metadata,uptime-breach-enterprise,Enterprise Uptime SLA Breach,compliance,critical,cel,policies/compliance/uptime-breach-enterprise.yaml
+opt-out,routing,metadata,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
 oracle-idcs,routing,metadata,identity-oracle-idcs-active-no-employee-record,Oracle IDCS Active Accounts Without Employee Record,identity,medium,query,policies/identity/identity-oracle-idcs-active-no-employee-record.yaml
 oracle-idcs,routing,metadata,identity-oracle-idcs-duplicate-membership-assignment,Oracle IDCS Duplicate Membership Assignments,identity,low,query,policies/identity/identity-oracle-idcs-duplicate-membership-assignment.yaml
 oracle-idcs,routing,metadata,identity-oracle-idcs-duplicate-username,Oracle IDCS Duplicate Usernames,identity,medium,query,policies/identity/identity-oracle-idcs-duplicate-username.yaml
@@ -11280,6 +11328,9 @@ policy,generated,derived,compliance-p1-security-issues,P1 Security Issues Resolv
 policy,generated,derived,compliance-p2-security-issues,P2 Security Issues Resolved Timely,compliance,high,cel,policies/compliance/compliance-p2-security-issues.yaml
 policy,generated,derived,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
 policy,generated,derived,compliance-security-training,Security Awareness Training Completed,compliance,medium,query,policies/compliance/compliance-security-training.yaml
+policy,generated,derived,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+policy,generated,derived,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+policy,generated,derived,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 policy,generated,derived,container-admission-policy-missing,Container Admission Policy Missing,container,medium,cel,policies/container/container-admission-policy-missing.yaml
 policy,generated,derived,container-base-image-eol,Container Base Image Eol,container,medium,cel,policies/container/container-base-image-eol.yaml
 policy,generated,derived,container-cleartext-cloud-keys,Container image with cleartext cloud keys granting high privileges,cerebro,high,cel,policies/cerebro/container-cleartext-keys.yaml
@@ -11310,6 +11361,8 @@ policy,generated,derived,cve-2023-4863,Publicly exposed VM vulnerable to CVE-202
 policy,generated,derived,cve-2024-21626,VM vulnerable to CVE-2024-21626 (runC container escape),cerebro,critical,cel,policies/cerebro/cve-2024-21626.yaml
 policy,generated,derived,cve-2024-6387,Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH),cerebro,critical,cel,policies/cerebro/cve-2024-6387.yaml
 policy,generated,derived,data-access-keys-unrotated,User/service account with access to sensitive data and active access keys unrotated in the past year,cerebro,high,cel,policies/cerebro/data-access-keys-unrotated.yaml
+policy,generated,derived,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+policy,generated,derived,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 policy,generated,derived,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,cerebro,high,cel,policies/cerebro/data-resource-excessive-access.yaml
 policy,generated,derived,data-resource-org-access,Data resource with sensitive data allows organization-wide access,cerebro,high,cel,policies/cerebro/data-resource-org-access.yaml
 policy,generated,derived,db-audit-logging,Database Audit Logging Enabled,database,medium,query,policies/database/db-audit-logging.yaml
@@ -12340,6 +12393,9 @@ policy,generated,derived,pci-penetration-test-annual,Annual Penetration Testing,
 policy,generated,derived,pci-transmission-encrypted,Cardholder Data Encrypted in Transit,pci,critical,query,policies/pci/pci-transmission-encrypted.yaml
 policy,generated,derived,pci-unique-user-ids,Unique User IDs for CDE Access,pci,high,query,policies/pci/pci-unique-user-ids.yaml
 policy,generated,derived,pci-vulnerability-scan-quarterly,Quarterly External Vulnerability Scans,pci,high,query,policies/pci/pci-vulnerability-scan-quarterly.yaml
+policy,generated,derived,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+policy,generated,derived,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+policy,generated,derived,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 policy,generated,derived,privileged-inactive-keys,User/service account with high privileges and active access key that are inactive for over 90 days,cerebro,high,cel,policies/cerebro/privileged-inactive-keys.yaml
 policy,generated,derived,privileged-keys-unrotated,User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/privileged-keys-unrotated.yaml
 policy,generated,derived,public-resource-cleartext-admin-keys,Publicly exposed resource with cleartext cloud keys granting admin privileges,cerebro,critical,cel,policies/cerebro/public-resource-cleartext-admin-keys.yaml
@@ -12493,7 +12549,18 @@ privacy,routing,metadata,ai-data-retention-reviewed,AI Data Retention Reviewed,a
 privacy,routing,metadata,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,policies/compliance/compliance-data-inventory.yaml
 privacy,routing,metadata,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,policies/compliance/compliance-gdpr-policy.yaml
 privacy,routing,metadata,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,policies/compliance/compliance-inventory-data-tracking.yaml
+privacy,routing,metadata,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,privacy,medium,cel,policies/privacy/consent-preference-platform-notice-version-missing.yaml
+privacy,routing,metadata,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
+privacy,routing,metadata,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
+privacy,routing,metadata,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+privacy,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
+privacy,routing,metadata,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+privacy,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+privacy,routing,metadata,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 privacy,routing,metadata,vendor-dpa-exists,Vendor Data Processing Agreement Exists,vendor,high,cel,policies/vendor/vendor-dpa-exists.yaml
+privacy-request-system,routing,metadata,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+privacy-request-system,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+privacy-request-system,routing,metadata,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 private,routing,metadata,github-secops-repo-private-all-dependabot-security-updates-disabled,GitHub Dependabot security updates Disabled For Private All,github,medium,cel,policies/github/github-secops-repo-private-all-dependabot-security-updates-disabled.yaml
 private,routing,metadata,github-secops-repo-private-all-push-protection-disabled,GitHub Secret scanning push protection Disabled For Private All,github,high,cel,policies/github/github-secops-repo-private-all-push-protection-disabled.yaml
 private,routing,metadata,github-secops-repo-private-all-secret-scanning-disabled,GitHub Secret scanning Disabled For Private All,github,high,cel,policies/github/github-secops-repo-private-all-secret-scanning-disabled.yaml
@@ -12595,6 +12662,8 @@ privileged-access,risk,metadata,m365-privileged-roles-pim,Privileged Roles Witho
 privileged-access,risk,metadata,okta-admin-dormant,Okta Dormant Admin Account,okta,medium,cel,policies/okta/okta-admin-dormant.yaml
 privileged-access,risk,metadata,salesforce-profile-modify-all-data,Salesforce Profile Modify All Data,salesforce,high,cel,policies/salesforce/salesforce-profile-modify-all-data.yaml
 proc-mount,routing,metadata,k8s-pod-proc-mount-unmasked,Kubernetes Pod Proc Mount Unmasked,kubernetes,medium,cel,policies/kubernetes/k8s-pod-proc-mount-unmasked.yaml
+processing-activities,routing,metadata,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+processing-activities,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 production,routing,metadata,db-multi-az,Production Database Multi-AZ Deployment,database,high,query,policies/database/db-multi-az.yaml
 profile,routing,metadata,salesforce-profile-modify-all-data,Salesforce Profile Modify All Data,salesforce,high,cel,policies/salesforce/salesforce-profile-modify-all-data.yaml
 programmatic-access,routing,metadata,github-secops-credential-active-integration-installation,GitHub Active Integration Installation Credential,github,medium,cel,policies/github/github-secops-credential-active-integration-installation.yaml
@@ -13376,6 +13445,7 @@ repository,routing,metadata,github-secops-repo-public-primary-dependabot-securit
 repository,routing,metadata,github-secops-repo-public-primary-push-protection-disabled,GitHub Secret scanning push protection Disabled For Public Primary,github,high,cel,policies/github/github-secops-repo-public-primary-push-protection-disabled.yaml
 repository,routing,metadata,github-secops-repo-public-primary-secret-scanning-disabled,GitHub Secret scanning Disabled For Public Primary,github,high,cel,policies/github/github-secops-repo-public-primary-secret-scanning-disabled.yaml
 repository_hooks,routing,metadata,github-secops-app-installation-all-repos-repository-hooks-write,GitHub App Installation All Repos Repository Hooks Write,github,high,cel,policies/github/github-secops-app-installation-all-repos-repository-hooks-write.yaml
+requester-verification,routing,metadata,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 required-review-removed,routing,metadata,github-secops-audit-repo-required-review-removed,GitHub Audit Required Review Removed,github,high,cel,policies/github/github-secops-audit-repo-required-review-removed.yaml
 required-status-check-removed,routing,metadata,github-secops-audit-repo-required-status-check-removed,GitHub Audit Required Status Check Removed,github,high,cel,policies/github/github-secops-audit-repo-required-status-check-removed.yaml
 requirement-1,routing,metadata,pci-firewall-inbound-rules,PCI Firewall Inbound Rules Reviewed,pci,high,query,policies/pci/pci-firewall-inbound-rules.yaml
@@ -13455,6 +13525,7 @@ resources,routing,metadata,k8s-pod-resource-limits,K8s Pod Resource Limits,kuber
 retention,routing,metadata,aws-cloudwatch-log-group-retention,CloudWatch Log Group Retention,aws,low,cel,policies/aws/aws-cloudwatch-log-group-retention.yaml
 retention,routing,metadata,aws-logs-retention-365,CloudWatch Logs Retention 365 Days,aws,medium,query,policies/aws/aws-logs-retention-365.yaml
 retention,routing,metadata,backup-retention,Backup Retention Policy Compliance,backup,medium,query,policies/backup/backup-retention.yaml
+retention,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 retention,routing,metadata,pci-audit-retention,Audit Log Retention 1 Year,pci,high,query,policies/pci/pci-audit-retention.yaml
 revenue,routing,metadata,hubspot-excessive-discount,Excessive Discount on Small Deal,hubspot,medium,cel,policies/hubspot/hubspot-excessive-discount.yaml
 revenue,routing,metadata,hubspot-stale-deal,Stale High-Value Deal,hubspot,high,cel,policies/hubspot/hubspot-stale-deal.yaml
@@ -13466,6 +13537,9 @@ review,routing,metadata,pci-firewall-inbound-rules,PCI Firewall Inbound Rules Re
 review,routing,metadata,salesforce-connected-app-unreviewed,Salesforce Connected App Unreviewed,salesforce,medium,cel,policies/salesforce/salesforce-connected-app-unreviewed.yaml
 review,routing,metadata,slack-external-shared-channel-unreviewed,Slack External Shared Channel Unreviewed,slack,medium,cel,policies/slack/slack-external-shared-channel-unreviewed.yaml
 revops,routing,metadata,contract-billing-mismatch,Contract and Billing Mismatch,compliance,high,cel,policies/compliance/contract-billing-mismatch.yaml
+rights-requests,routing,metadata,privacy-request-system-denial-rationale-missing,Privacy Request Denial Rationale Missing,privacy,medium,cel,policies/privacy/privacy-request-system-denial-rationale-missing.yaml
+rights-requests,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
+rights-requests,routing,metadata,privacy-request-system-verification-missing,Privacy Request Verification Missing,privacy,high,cel,policies/privacy/privacy-request-system-verification-missing.yaml
 risk,risk,metadata,ai-risk-assessment,AI Model Risk Assessment Completed,ai,high,cel,policies/ai/ai-risk-assessment.yaml
 risk,risk,metadata,m365-risky-users,M365 Users with High Risk Level,m365,high,query,policies/m365/m365-risky-users.yaml
 risk,risk,metadata,vuln-epss-high,High EPSS Score Vulnerabilities,vulnerability,high,query,policies/vulnerability/vuln-epss-high.yaml
@@ -13479,6 +13553,8 @@ root,routing,metadata,container-root-user,Container Running as Root,container,hi
 root,routing,metadata,k8s-pod-no-run-as-root,K8s Pod No Run As Root,kubernetes,high,cel,policies/kubernetes/k8s-pod-root.yaml
 root-account,routing,metadata,aws-iam-root-no-access-keys,Root Account Access Keys,aws,critical,cel,policies/aws/aws-iam-root-access-keys.yaml
 ropa,routing,metadata,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,policies/compliance/compliance-data-inventory.yaml
+ropa,routing,metadata,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,privacy,high,cel,policies/privacy/data-inventory-processing-activity-legal-basis-missing.yaml
+ropa,routing,metadata,data-inventory-processing-activity-retention-missing,Processing Activity Retention Missing,privacy,medium,cel,policies/privacy/data-inventory-processing-activity-retention-missing.yaml
 rotation,routing,metadata,admin-keys-unrotated,Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/admin-keys-unrotated.yaml
 rotation,routing,metadata,admin-keys-year-unrotated,Admin user/service account with active access keys unrotated in the past year,cerebro,high,cel,policies/cerebro/admin-keys-year-unrotated.yaml
 rotation,routing,metadata,api-refresh-token-rotation-disabled,API Refresh Token Rotation Disabled,api,medium,cel,policies/api/api-refresh-token-rotation-disabled.yaml
@@ -13611,6 +13687,7 @@ sailpoint,routing,metadata,identity-sailpoint-orphaned-membership-group,Sailpoin
 sailpoint,routing,metadata,identity-sailpoint-orphaned-membership-user,Sailpoint Group Memberships With Missing Users,identity,medium,query,policies/identity/identity-sailpoint-orphaned-membership-user.yaml
 sailpoint,routing,metadata,identity-sailpoint-personal-email-domain,Sailpoint Accounts Using Personal Email Domains,identity,medium,query,policies/identity/identity-sailpoint-personal-email-domain.yaml
 sailpoint,routing,metadata,identity-sailpoint-terminated-active-account,Sailpoint Terminated Accounts Still Active,identity,high,query,policies/identity/identity-sailpoint-terminated-active-account.yaml
+sale-or-sharing,routing,metadata,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,privacy,high,cel,policies/privacy/consent-preference-platform-opt-out-not-enforced.yaml
 salesforce,routing,metadata,identity-salesforce-active-no-employee-record,Salesforce Active Accounts Without Employee Record,identity,medium,query,policies/identity/identity-salesforce-active-no-employee-record.yaml
 salesforce,routing,metadata,identity-salesforce-duplicate-email,Salesforce Duplicate Account Emails,identity,high,query,policies/identity/identity-salesforce-duplicate-email.yaml
 salesforce,routing,metadata,identity-salesforce-duplicate-username,Salesforce Duplicate Usernames,identity,medium,query,policies/identity/identity-salesforce-duplicate-username.yaml
@@ -14262,6 +14339,7 @@ sensitive-data,routing,metadata,bucket-sensitive-no-lock,Bucket with sensitive d
 sensitive-data,routing,metadata,data-resource-excessive-access,Data resource with sensitive data has excessive access permissions,cerebro,high,cel,policies/cerebro/data-resource-excessive-access.yaml
 sensitive-data,routing,metadata,data-resource-org-access,Data resource with sensitive data allows organization-wide access,cerebro,high,cel,policies/cerebro/data-resource-org-access.yaml
 sensitive-data,routing,metadata,db-dormant-principal,Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days,cerebro,medium,cel,policies/cerebro/db-dormant-principal.yaml
+sensitive-personal-information,routing,metadata,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 sensitive-service,routing,metadata,api-mtls-required-missing-sensitive-service,API mTLS Required Missing Sensitive Service,api,medium,cel,policies/api/api-mtls-required-missing-sensitive-service.yaml
 sensitivity-labels,routing,metadata,m365-sensitivity-labels-missing,M365 Sensitivity Labels Applied,m365,high,query,policies/m365/m365-sensitivity-labels-missing.yaml
 sentinelone,routing,metadata,endpoint-sentinelone-active,SentinelOne Agents Actively Reporting,endpoint,high,query,policies/endpoint/endpoint-sentinelone-active.yaml
@@ -14360,6 +14438,7 @@ sla,routing,metadata,gcp-container-vuln-low,GCP Container Low Vulnerabilities Ad
 sla,routing,metadata,gcp-container-vuln-medium,GCP Container Medium Vulnerabilities Addressed,gcp,medium,cel,policies/gcp/gcp-container-vuln-medium.yaml
 sla,routing,metadata,github-vuln-low,GitHub Repo Low Vulnerabilities Addressed,github,low,cel,policies/github/github-vuln-low.yaml
 sla,routing,metadata,github-vuln-medium,GitHub Repo Medium Vulnerabilities Addressed,github,medium,cel,policies/github/github-vuln-medium.yaml
+sla,routing,metadata,privacy-request-system-rights-request-overdue,Privacy Rights Request Overdue,privacy,high,cel,policies/privacy/privacy-request-system-rights-request-overdue.yaml
 sla,routing,metadata,resolution-time-breach,Zendesk Resolution Time SLA Breach,zendesk,high,cel,policies/zendesk/resolution-time-breach.yaml
 sla,routing,metadata,sentinelone-vuln-medium,SentinelOne Agent Medium Vulnerabilities Addressed,sentinelone,medium,cel,policies/sentinelone/sentinelone-vuln-medium.yaml
 sla,routing,metadata,uptime-breach-enterprise,Enterprise Uptime SLA Breach,compliance,critical,cel,policies/compliance/uptime-breach-enterprise.yaml
@@ -14708,6 +14787,7 @@ unused-password,routing,metadata,user-data-access-unused-password,User account w
 unused-password,routing,metadata,user-privileged-unused-password,User account with high privileges and an unused password,cerebro,high,cel,policies/cerebro/user-privileged-unused-password.yaml
 upgrade,routing,metadata,k8s-resource-no-deprecated-api,Kubernetes Resources Avoid Deprecated APIs,kubernetes,medium,cel,policies/kubernetes/k8s-resource-no-deprecated-api.yaml
 uptime,routing,metadata,uptime-breach-enterprise,Enterprise Uptime SLA Breach,compliance,critical,cel,policies/compliance/uptime-breach-enterprise.yaml
+use-limitation,routing,metadata,consent-preference-platform-sensitive-use-limit-missing,Sensitive Personal Information Limit Missing,privacy,high,cel,policies/privacy/consent-preference-platform-sensitive-use-limit-missing.yaml
 used_in_tests,routing,metadata,github-secops-secret-anthropic-admin-api-key-resolution-used-in-tests,GitHub Secret Scanning Anthropic Admin Api Key Resolution Used In Tests,github,medium,cel,policies/github/github-secops-secret-anthropic-admin-api-key-resolution-used-in-tests.yaml
 used_in_tests,routing,metadata,github-secops-secret-aws-access-key-id-resolution-used-in-tests,GitHub Secret Scanning Aws Access Key Id Resolution Used In Tests,github,medium,cel,policies/github/github-secops-secret-aws-access-key-id-resolution-used-in-tests.yaml
 used_in_tests,routing,metadata,github-secops-secret-azure-storage-account-key-resolution-used-in-tests,GitHub Secret Scanning Azure Storage Account Key Resolution Used In Tests,github,medium,cel,policies/github/github-secops-secret-azure-storage-account-key-resolution-used-in-tests.yaml

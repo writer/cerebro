@@ -1,29 +1,29 @@
 metric,value
-policy finding rules,1509
-policy-control rows,10050
-tag rows,15067
-unique tags,1023
-domains,36
+policy finding rules,1517
+policy-control rows,10100
+tag rows,15147
+unique tags,1043
+domains,37
 frameworks,23
 
 all finding metric,value
-public detections,1595
+public detections,1603
 non-policy detections,86
-finding-control rows,10234
-finding-tag rows,38601
+finding-control rows,10284
+finding-tag rows,38763
 source-coverage rows,6175
-finding compliance review rows,1595
-unique finding review tags,1575
+finding compliance review rows,1603
+unique finding review tags,1612
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,312
+detections missing source coverage refs,320
 detections source-backed,469
 detections partial source-backed,814
-detections control-only,312
+detections control-only,320
 
 evidence mode,rules
-cel,992
+cel,1000
 query,507
 graph,10
 
@@ -46,6 +46,7 @@ endpoint,15
 container,14
 pci,11
 org,8
+privacy,8
 certificate,7
 salesforce,7
 database,6
@@ -76,26 +77,26 @@ CIS Kubernetes Benchmark,42
 ISO 42001,39
 EU AI Act,32
 HIPAA,26
+GDPR,14
+CCPA,11
 Cerebro Revenue Operations,10
 CIS GKE Benchmark v1.4,9
 Cerebro Organizational Resilience,8
 Cerebro Operational Resilience,7
-GDPR,7
 Cerebro Financial Controls,4
-CCPA,3
+ISO 27701,4
 CIS Benchmarks,3
 CIS GitHub Benchmark,3
-ISO 27701,3
 Cerebro AI Governance,2
 CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1555
+event,1563
 graph,40
 
 finding pack,detections
-policy,1509
+policy,1517
 github,15
 grc,15
 identity,15
@@ -128,7 +129,7 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1499
+policy,1507
 github,16
 okta,15
 grc,12
@@ -172,15 +173,15 @@ ISO 42001,139
 CIS Kubernetes Benchmark,133
 EU AI Act,62
 CIS AWS Foundations Benchmark v2.0,54
+GDPR,50
 HIPAA,27
-GDPR,21
+CCPA,24
 Cerebro Revenue Operations,13
 Cerebro Organizational Resilience,11
 CIS GKE Benchmark v1.4,9
 Cerebro Operational Resilience,7
-CCPA,4
+ISO 27701,5
 Cerebro Financial Controls,4
-ISO 27701,4
 CIS Benchmarks,3
 CIS GitHub Benchmark,3
 Cerebro AI Governance,3
@@ -210,6 +211,7 @@ incident_response,12
 database,9
 okta,9
 org,9
+privacy,9
 network,8
 pci,8
 backup,7
@@ -221,8 +223,8 @@ sentinelone,6
 collaboration,5
 hipaa,5
 dspm,4
-vendor,4
 hubspot,3
 stripe,3
+vendor,3
 integration,2
 zendesk,2

@@ -1,0 +1,16 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: consent record without notice version fails
+      resource:
+          subject_id: person-300
+          preference_type: consent
+          collected_at: "2026-06-01T00:00:00Z"
+      wantFinding: true
+    - name: consent record with notice version passes
+      resource:
+          subject_id: person-301
+          preference_type: consent
+          notice_version: "privacy-notice-2026-05"
+          collected_at: "2026-06-01T00:00:00Z"
+      wantFinding: false

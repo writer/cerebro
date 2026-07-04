@@ -1,0 +1,23 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: overdue rights request fails
+      resource:
+          request_id: dsr-100
+          request_type: access
+          jurisdiction: gdpr
+          status: in_progress
+          received_at: "2026-05-01T00:00:00Z"
+          due_at: "2026-05-31T00:00:00Z"
+          overdue: true
+      wantFinding: true
+    - name: current rights request passes
+      resource:
+          request_id: dsr-101
+          request_type: deletion
+          jurisdiction: ccpa
+          status: in_progress
+          received_at: "2026-06-20T00:00:00Z"
+          due_at: "2026-08-04T00:00:00Z"
+          overdue: false
+      wantFinding: false
