@@ -578,6 +578,212 @@ func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
 	t.Fatalf("plan missing ready source_cdk.scaffold step: %#v", plan.Checklist)
 }
 
+func TestPlanDefinitionAddsRuntimeDepthChecklist(t *testing.T) {
+	definition := connectordefinitions.Definition{
+		SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+		ID:            "tenant-a-example_idp",
+		TenantID:      "tenant-a",
+		SourceID:      "example_idp",
+		DisplayName:   "Example IDP",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []connectordefinitions.Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &connectordefinitions.VerificationSpec{Path: "/v1/me"},
+		},
+		ProviderAPI: &connectordefinitions.ProviderAPISpec{
+			Status:        "verified",
+			Basis:         "detected",
+			VerifiedAt:    "2026-07-04T00:00:00Z",
+			Transport:     "rest",
+			Auth:          "bearer_token",
+			AuthMechanics: "Authorization: Bearer token",
+			BaseURL:       "https://api.example.test",
+			SpecURL:       "https://docs.example.test/openapi.yaml",
+			SpecKind:      "openapi",
+			References:    []string{"https://docs.example.test/openapi.yaml"},
+			Families: []connectordefinitions.ProviderAPIFamilySpec{{
+				ID:     "users",
+				Method: "GET",
+				Path:   "/v1/users",
+			}},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/v1/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example_idp.user",
+				SchemaRef: "example_idp/user/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+			Coverage: []connectordefinitions.CoverageDimensionSpec{{
+				Type:    "entity_family",
+				Support: "supported",
+			}},
+		}},
+	}
+	plan, err := PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() error = %v", err)
+	}
+	if plan.Status != PlanStatusReady {
+		t.Fatalf("plan status = %q, want ready: %#v", plan.Status, plan.Warnings)
+	}
+	proof := requirePlanStep(t, plan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusReady || !strings.Contains(proof.Detail, "maps 1 of 1 resource families") {
+		t.Fatalf("provider proof step = %#v", proof)
+	}
+	fixtures := requirePlanStep(t, plan, "source_cdk.fixture_suite")
+	if !strings.Contains(fixtures.Detail, "read and discover fixture pairs for 1 resource families: users") {
+		t.Fatalf("fixture detail = %q", fixtures.Detail)
+	}
+	projectors := requirePlanStep(t, plan, "source_cdk.projector_tests")
+	if !strings.Contains(projectors.Detail, "example_idp.user") {
+		t.Fatalf("projector detail = %q", projectors.Detail)
+	}
+
+	definition.ProviderAPI.Families = nil
+	warningPlan, err := PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() warning path error = %v", err)
+	}
+	if warningPlan.Status != PlanStatusWarning {
+		t.Fatalf("warning plan status = %q, want warning", warningPlan.Status)
+	}
+	proof = requirePlanStep(t, warningPlan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusWarning || !strings.Contains(proof.Detail, "family:users") {
+		t.Fatalf("warning provider proof step = %#v", proof)
+	}
+
+	definition.ProviderAPI.Families = []connectordefinitions.ProviderAPIFamilySpec{{
+		ID:   "users",
+		Path: "/v1/users",
+	}}
+	pathOnlyPlan, err := PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() partial family path error = %v", err)
+	}
+	proof = requirePlanStep(t, pathOnlyPlan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusReady {
+		t.Fatalf("path-only provider proof step = %#v", proof)
+	}
+
+	definition.ProviderAPI.Families = []connectordefinitions.ProviderAPIFamilySpec{{
+		ID:     "users",
+		Method: "GET",
+	}}
+	warningPlan, err = PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() partial family method error = %v", err)
+	}
+	proof = requirePlanStep(t, warningPlan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusWarning || !strings.Contains(proof.Detail, "family:users.path") {
+		t.Fatalf("partial provider proof step = %#v", proof)
+	}
+}
+
+func TestPlanDefinitionAcceptsGraphQLProviderProof(t *testing.T) {
+	definition := connectordefinitions.Definition{
+		SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+		ID:            "tenant-a-example_graph",
+		TenantID:      "tenant-a",
+		SourceID:      "example_graph",
+		DisplayName:   "Example Graph",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []connectordefinitions.Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL:      "https://api.example.test/graphql",
+			Verification: &connectordefinitions.VerificationSpec{Path: "/graphql"},
+		},
+		ProviderAPI: &connectordefinitions.ProviderAPISpec{
+			Status:        "verified",
+			Basis:         "detected",
+			VerifiedAt:    "2026-07-04T00:00:00Z",
+			Transport:     "graphql",
+			Auth:          "bearer_token",
+			AuthMechanics: "Authorization: Bearer token",
+			BaseURL:       "https://api.example.test/graphql",
+			SpecKind:      "graphql_introspection",
+			References:    []string{"https://docs.example.test/graphql"},
+			Families: []connectordefinitions.ProviderAPIFamilySpec{{
+				ID:        "users",
+				Operation: "query Users { users { id email } }",
+			}},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/graphql",
+			RecordSelector: "$.data.users[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example_graph.user",
+				SchemaRef: "example_graph/user/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+			Coverage: []connectordefinitions.CoverageDimensionSpec{{
+				Type:    "entity_family",
+				Support: "supported",
+			}},
+		}},
+	}
+	plan, err := PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() error = %v", err)
+	}
+	if plan.Status != PlanStatusReady {
+		t.Fatalf("plan status = %q, want ready: %#v", plan.Status, plan.Warnings)
+	}
+	proof := requirePlanStep(t, plan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusReady || strings.Contains(proof.Detail, "machine_readable_spec") {
+		t.Fatalf("provider proof step = %#v", proof)
+	}
+
+	definition.ProviderAPI.Families[0].Operation = ""
+	warningPlan, err := PlanDefinition(DefinitionRequest{
+		Definition: definition,
+		OutputDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() warning path error = %v", err)
+	}
+	if warningPlan.Status != PlanStatusWarning {
+		t.Fatalf("warning plan status = %q, want warning", warningPlan.Status)
+	}
+	proof = requirePlanStep(t, warningPlan, "runtime_depth.provider_api_proof")
+	if proof.Status != PlanStatusWarning || !strings.Contains(proof.Detail, "family:users.operation") || strings.Contains(proof.Detail, "machine_readable_spec") {
+		t.Fatalf("warning provider proof step = %#v", proof)
+	}
+}
+
 func TestPlanDefinitionReportsGrammarBlockers(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
 		Definition: connectordefinitions.Definition{
@@ -608,6 +814,17 @@ func TestPlanDefinitionReportsGrammarBlockers(t *testing.T) {
 	if len(plan.Blockers) == 0 {
 		t.Fatalf("plan blockers empty: %#v", plan)
 	}
+}
+
+func requirePlanStep(t *testing.T, plan *PromotionPlan, id string) PromotionPlanStep {
+	t.Helper()
+	for _, step := range plan.Checklist {
+		if step.ID == id {
+			return step
+		}
+	}
+	t.Fatalf("plan missing step %q: %#v", id, plan.Checklist)
+	return PromotionPlanStep{}
 }
 
 func TestGenerateDefinitionCarriesProjectionRelationships(t *testing.T) {

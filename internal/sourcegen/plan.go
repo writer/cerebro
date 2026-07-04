@@ -2,6 +2,7 @@ package sourcegen
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -151,12 +152,22 @@ func PlanDefinition(request DefinitionRequest) (*PromotionPlan, error) {
 		})
 	}
 
+	if step := providerAPIProofStep(definition); step != nil {
+		addStep(*step)
+	}
 	addStep(PromotionPlanStep{
 		ID:       "source_cdk.fixture_suite",
 		Title:    "Fixture suite",
 		Category: "source_cdk",
 		Status:   PlanStatusReady,
-		Detail:   "Generated source tests exercise auth headers, health checks, provider reads, and projection registration.",
+		Detail:   fixtureSuiteDetail(definition),
+	})
+	addStep(PromotionPlanStep{
+		ID:       "source_cdk.projector_tests",
+		Title:    "Projector tests",
+		Category: "source_cdk",
+		Status:   PlanStatusReady,
+		Detail:   projectorTestsDetail(definition),
 	})
 	addStep(PromotionPlanStep{
 		ID:       "source_cdk.health_receipt",
@@ -241,4 +252,186 @@ func firstString(values []string) string {
 		}
 	}
 	return ""
+}
+
+func providerAPIProofStep(definition connectordefinitions.Definition) *PromotionPlanStep {
+	if definition.ProviderAPI == nil {
+		return nil
+	}
+	missing := providerAPIProofGaps(definition)
+	step := PromotionPlanStep{
+		ID:       "runtime_depth.provider_api_proof",
+		Title:    "Provider API proof",
+		Category: "runtime_depth",
+		Status:   PlanStatusReady,
+		Detail:   fmt.Sprintf("Provider API proof maps %d of %d resource families.", len(providerAPIMappedFamilies(definition.ProviderAPI)), len(resourceFamilyIDs(definition.ResourceFamilies))),
+	}
+	if len(missing) == 0 {
+		return &step
+	}
+	step.Status = PlanStatusWarning
+	step.Detail = "Provider API proof is incomplete: " + strings.Join(missing, ", ") + "."
+	step.Action = "Add missing provider API proof fields before reference runtime promotion."
+	return &step
+}
+
+func providerAPIProofGaps(definition connectordefinitions.Definition) []string {
+	api := definition.ProviderAPI
+	if api == nil {
+		return nil
+	}
+	missing := []string{}
+	if strings.TrimSpace(api.Status) != "verified" {
+		missing = append(missing, "status")
+	}
+	if strings.TrimSpace(api.Basis) == "" {
+		missing = append(missing, "basis")
+	}
+	if strings.TrimSpace(api.VerifiedAt) == "" {
+		missing = append(missing, "verified_at")
+	}
+	if strings.TrimSpace(api.Transport) == "" {
+		missing = append(missing, "transport")
+	}
+	if strings.TrimSpace(api.Auth) == "" {
+		missing = append(missing, "auth")
+	}
+	if strings.TrimSpace(api.AuthMechanics) == "" {
+		missing = append(missing, "auth_mechanics")
+	}
+	if strings.TrimSpace(api.BaseURL) == "" && strings.TrimSpace(api.Endpoint) == "" {
+		missing = append(missing, "locator")
+	}
+	if len(normalizedPlanStrings(api.References)) == 0 {
+		missing = append(missing, "references")
+	}
+	if strings.TrimSpace(api.SpecURL) == "" && strings.TrimSpace(api.Transport) != "graphql" {
+		missing = append(missing, "machine_readable_spec")
+	}
+	missing = append(missing, providerAPIFamilyProofGaps(resourceFamilyIDs(definition.ResourceFamilies), api)...)
+	return normalizedPlanStrings(missing)
+}
+
+func providerAPIMappedFamilies(api *connectordefinitions.ProviderAPISpec) []string {
+	if api == nil {
+		return nil
+	}
+	transport := strings.TrimSpace(api.Transport)
+	seen := map[string]struct{}{}
+	for _, family := range api.Families {
+		id := strings.TrimSpace(family.ID)
+		if id == "" {
+			continue
+		}
+		switch transport {
+		case "graphql":
+			if strings.TrimSpace(family.Operation) == "" {
+				continue
+			}
+		default:
+			if strings.TrimSpace(family.Path) == "" {
+				continue
+			}
+		}
+		seen[id] = struct{}{}
+	}
+	return sortedPlanKeys(seen)
+}
+
+func providerAPIFamilyProofGaps(resourceIDs []string, api *connectordefinitions.ProviderAPISpec) []string {
+	if api == nil {
+		return nil
+	}
+	transport := strings.TrimSpace(api.Transport)
+	gaps := []string{}
+	for _, resourceID := range resourceIDs {
+		hasFamily := false
+		hasPath := false
+		hasOperation := false
+		for _, family := range api.Families {
+			if strings.TrimSpace(family.ID) != resourceID {
+				continue
+			}
+			hasFamily = true
+			if strings.TrimSpace(family.Path) != "" {
+				hasPath = true
+			}
+			if strings.TrimSpace(family.Operation) != "" {
+				hasOperation = true
+			}
+		}
+		if !hasFamily {
+			gaps = append(gaps, "family:"+resourceID)
+			continue
+		}
+		if transport == "graphql" {
+			if !hasOperation {
+				gaps = append(gaps, "family:"+resourceID+".operation")
+			}
+			continue
+		}
+		if !hasPath {
+			gaps = append(gaps, "family:"+resourceID+".path")
+		}
+	}
+	return gaps
+}
+
+func resourceFamilyIDs(families []connectordefinitions.ResourceFamily) []string {
+	seen := map[string]struct{}{}
+	for _, family := range families {
+		if id := strings.TrimSpace(family.ID); id != "" {
+			seen[id] = struct{}{}
+		}
+	}
+	return sortedPlanKeys(seen)
+}
+
+func fixtureSuiteDetail(definition connectordefinitions.Definition) string {
+	families := resourceFamilyIDs(definition.ResourceFamilies)
+	if len(families) == 0 {
+		return "Generated fixture suite has no resource families."
+	}
+	return fmt.Sprintf("Generated fixture suite includes read and discover fixture pairs for %d resource families: %s.", len(families), strings.Join(families, ", "))
+}
+
+func projectorTestsDetail(definition connectordefinitions.Definition) string {
+	kinds := eventKinds(definition.ResourceFamilies, definition.SourceID)
+	if len(kinds) == 0 {
+		return "Generated projector tests have no event kinds."
+	}
+	return fmt.Sprintf("Generated projector tests cover %d event kinds: %s.", len(kinds), strings.Join(kinds, ", "))
+}
+
+func eventKinds(families []connectordefinitions.ResourceFamily, sourceID string) []string {
+	seen := map[string]struct{}{}
+	for _, family := range families {
+		kind := strings.TrimSpace(family.Event.Kind)
+		if kind == "" && strings.TrimSpace(sourceID) != "" && strings.TrimSpace(family.ID) != "" {
+			kind = strings.TrimSpace(sourceID) + "." + strings.TrimSpace(family.ID)
+		}
+		if kind != "" {
+			seen[kind] = struct{}{}
+		}
+	}
+	return sortedPlanKeys(seen)
+}
+
+func normalizedPlanStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			seen[value] = struct{}{}
+		}
+	}
+	return sortedPlanKeys(seen)
+}
+
+func sortedPlanKeys(values map[string]struct{}) []string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
