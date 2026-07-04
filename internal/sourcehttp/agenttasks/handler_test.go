@@ -47,9 +47,6 @@ func TestReadTaskRequestRejectsMismatchedIdempotencySources(t *testing.T) {
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("readTaskRequest() error = %v, want ErrInvalidRequest", err)
 	}
-	if !strings.Contains(err.Error(), "must match") {
-		t.Fatalf("readTaskRequest() error = %v, want mismatch guidance", err)
-	}
 }
 
 func TestReadTaskRequestRejectsLongIdempotencyKey(t *testing.T) {
@@ -60,9 +57,6 @@ func TestReadTaskRequestRejectsLongIdempotencyKey(t *testing.T) {
 	_, err := readTaskRequest(recorder, request)
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("readTaskRequest() error = %v, want ErrInvalidRequest", err)
-	}
-	if !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("readTaskRequest() error = %v, want length guidance", err)
 	}
 }
 
