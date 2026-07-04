@@ -223354,8 +223354,8 @@
         "incident_id",
         "notification_deadline",
         "regulator_notice_overdue",
+        "regulator_notice_required",
         "regulator_notice_state",
-        "secretary_notice_required",
         "unsecured_phi"
       ],
       "fingerprint_fields": [
