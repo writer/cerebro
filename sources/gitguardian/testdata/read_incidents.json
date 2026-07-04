@@ -9,7 +9,6 @@
       "record_class": "finding",
       "resource_id": "3759",
       "resource_name": "Stripe Token",
-      "resource_type": "secret_incident",
       "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:3759",
       "schema": "incidents",
       "severity": "high",

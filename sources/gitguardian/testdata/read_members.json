@@ -15,13 +15,12 @@
       "source_event_id": "3252",
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
-      "status": "active",
       "tenant_id": "tenant",
       "user_id": "3252"
     },
     "id": "gitguardian-members-3252",
     "kind": "gitguardian.members",
-    "occurred_at": "2026-06-25T09:00:00Z",
+    "occurred_at": "2026-06-24T09:00:00Z",
     "payload": {
       "access_level": "owner",
       "active": true,
