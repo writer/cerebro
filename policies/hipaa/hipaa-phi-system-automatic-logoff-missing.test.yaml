@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi system without automatic logoff fails
+      resource:
+          system_id: ps-300
+          contains_ephi: true
+          automatic_logoff_enabled: false
+          session_timeout_minutes: 30
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: true
+    - name: ephi system with automatic logoff passes
+      resource:
+          system_id: ps-301
+          contains_ephi: true
+          automatic_logoff_enabled: true
+          session_timeout_minutes: 15
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: false

@@ -10,6 +10,7 @@ access-control,routing,metadata,endpoint-jamf-screenlock,Jamf Mobile Devices Wit
 access-control,routing,metadata,endpoint-screenlock-configured,Endpoint Screen Lock Configured,endpoint,medium,cel,policies/endpoint/endpoint-screenlock.yaml
 access-control,routing,metadata,gcp-storage-uniform-bucket-access,GCP Storage Uniform Bucket Access,gcp,medium,cel,policies/gcp/gcp-storage-uniform-access.yaml
 access-control,routing,metadata,hipaa-access-controls,HIPAA Unique User Identification,hipaa,high,query,policies/hipaa/hipaa-access-controls.yaml
+access-control,routing,metadata,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
 access-control,routing,metadata,identity-atlassian-duplicate-email,Atlassian Duplicate Account Emails,identity,high,query,policies/identity/identity-atlassian-duplicate-email.yaml
 access-control,routing,metadata,identity-atlassian-terminated-active-account,Atlassian Terminated Accounts Still Active,identity,high,query,policies/identity/identity-atlassian-terminated-active-account.yaml
 access-control,routing,metadata,identity-auth0-duplicate-email,Auth0 Duplicate Account Emails,identity,high,query,policies/identity/identity-auth0-duplicate-email.yaml
@@ -365,6 +366,9 @@ admin-access,routing,metadata,azure-nsg-admin-port,NSG Allows Admin Ports from I
 admin-access,routing,metadata,gcp-firewall-admin-port,GCP Firewall Allows Admin Ports from Internet,gcp,high,cel,policies/gcp/gcp-firewall-admin-port.yaml
 admin-consent,routing,metadata,m365-admin-consent-workflow-disabled,M365 Admin Consent Workflow Disabled,m365,high,cel,policies/m365/m365-admin-consent-workflow-disabled.yaml
 administration,compliance,metadata,github-secops-app-installation-all-repos-administration-write,GitHub App Installation All Repos Administration Write,github,critical,cel,policies/github/github-secops-app-installation-all-repos-administration-write.yaml
+administrative-safeguards,compliance,metadata,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+administrative-safeguards,compliance,metadata,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+administrative-safeguards,compliance,metadata,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 admission,routing,metadata,container-admission-policy-missing,Container Admission Policy Missing,container,medium,cel,policies/container/container-admission-policy-missing.yaml
 admission,routing,metadata,k8s-admission-controller-policy-missing,Kubernetes Admission Controller Policy Missing,kubernetes,medium,cel,policies/kubernetes/k8s-admission-controller-policy-missing.yaml
 admission,routing,metadata,k8s-mutating-webhook-failure-policy-ignore,Kubernetes Mutating Webhook Failure Policy Ignore,kubernetes,medium,cel,policies/kubernetes/k8s-mutating-webhook-failure-policy-ignore.yaml
@@ -1346,7 +1350,17 @@ assessment:examine,assessment,derived,hipaa-baa-required,HIPAA Business Associat
 assessment:examine,assessment,derived,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 assessment:examine,assessment,derived,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 assessment:examine,assessment,derived,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+assessment:examine,assessment,derived,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 assessment:examine,assessment,derived,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+assessment:examine,assessment,derived,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+assessment:examine,assessment,derived,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+assessment:examine,assessment,derived,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+assessment:examine,assessment,derived,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+assessment:examine,assessment,derived,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+assessment:examine,assessment,derived,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+assessment:examine,assessment,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+assessment:examine,assessment,derived,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+assessment:examine,assessment,derived,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 assessment:examine,assessment,derived,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
 assessment:examine,assessment,derived,hubspot-excessive-discount,Excessive Discount on Small Deal,hubspot,medium,cel,policies/hubspot/hubspot-excessive-discount.yaml
 assessment:examine,assessment,derived,hubspot-no-next-step,Open Deal Without Next Step,hubspot,low,cel,policies/hubspot/hubspot-no-next-step.yaml
@@ -2114,7 +2128,11 @@ assessment:interview,assessment,derived,hipaa-baa-required,HIPAA Business Associ
 assessment:interview,assessment,derived,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 assessment:interview,assessment,derived,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 assessment:interview,assessment,derived,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+assessment:interview,assessment,derived,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 assessment:interview,assessment,derived,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+assessment:interview,assessment,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+assessment:interview,assessment,derived,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+assessment:interview,assessment,derived,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 assessment:interview,assessment,derived,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
 assessment:interview,assessment,derived,hubspot-excessive-discount,Excessive Discount on Small Deal,hubspot,medium,cel,policies/hubspot/hubspot-excessive-discount.yaml
 assessment:interview,assessment,derived,hubspot-no-next-step,Open Deal Without Next Step,hubspot,low,cel,policies/hubspot/hubspot-no-next-step.yaml
@@ -2911,6 +2929,13 @@ assessment:test,assessment,derived,group-excessive-high-priv,Group with excessiv
 assessment:test,assessment,derived,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 assessment:test,assessment,derived,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 assessment:test,assessment,derived,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+assessment:test,assessment,derived,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+assessment:test,assessment,derived,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+assessment:test,assessment,derived,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+assessment:test,assessment,derived,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+assessment:test,assessment,derived,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+assessment:test,assessment,derived,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+assessment:test,assessment,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
 assessment:test,assessment,derived,iam-inactive-privileged-account,Service account with high privileges is inactive for over 90 days,cerebro,medium,cel,policies/cerebro/iam-inactive-privileged.yaml
 assessment:test,assessment,derived,iam-unknown-account-trusted,Unknown AWS account with trusted access to IAM role,cerebro,high,cel,policies/cerebro/iam-unknown-trusted.yaml
 assessment:test,assessment,derived,identity-account-deprovision,Terminated User Accounts Deprovisioned,identity,critical,cel,policies/identity/identity-account-deprovision.yaml
@@ -3203,6 +3228,7 @@ authentication,routing,metadata,gcp-cloud-run-allow-unauthenticated,GCP Cloud Ru
 authentication,routing,metadata,gcp-gke-metadata-server,GKE Workload Identity (Metadata Server) Enabled,gcp,medium,cel,policies/gcp/gcp-gke-metadata-server.yaml
 authentication,routing,metadata,github-admin-without-2fa,GitHub Admin Without 2FA,github,critical,cel,policies/github/github-admin-without-2fa.yaml
 authentication,routing,metadata,github-org-2fa-disabled,GitHub Organization 2FA Not Required,github,high,cel,policies/github/github-org-2fa-disabled.yaml
+authentication,routing,metadata,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
 authentication,routing,metadata,identity-entra-mfa-missing-active,Entra Active Accounts Without MFA,identity,high,query,policies/identity/identity-entra-mfa-missing-active.yaml
 authentication,routing,metadata,identity-github-member-mfa,GitHub Members Without MFA,identity,high,query,policies/identity/identity-github-member-mfa.yaml
 authentication,routing,metadata,identity-github-mfa-missing-active,Github Active Accounts Without MFA,identity,high,query,policies/identity/identity-github-mfa-missing-active.yaml
@@ -3230,6 +3256,7 @@ authorization,routing,metadata,api-object-level-authorization-missing,API Object
 auto-repair,routing,metadata,gcp-gke-auto-repair,GKE Node Pool Auto-Repair Enabled,gcp,low,cel,policies/gcp/gcp-gke-auto-repair.yaml
 auto-upgrade,routing,metadata,gcp-gke-auto-upgrade,GKE Node Pool Auto-Upgrade Enabled,gcp,medium,cel,policies/gcp/gcp-gke-auto-upgrade.yaml
 automated-checks,routing,metadata,github-automated-checks,GitHub Code Changes Have Automated Checks,github,medium,query,policies/github/github-automated-checks.yaml
+automatic-logoff,routing,metadata,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
 automation-actor-agent,routing,metadata,github-secops-credential-automation-actor-agent,GitHub Automation Actor Agent Credential,github,medium,cel,policies/github/github-secops-credential-automation-actor-agent.yaml
 automation-actor-bot,routing,metadata,github-secops-credential-automation-actor-bot,GitHub Automation Actor Bot Credential,github,medium,cel,policies/github/github-secops-credential-automation-actor-bot.yaml
 availability,routing,metadata,aws-rds-multi-az-enabled,RDS Multi-AZ Enabled,aws,medium,cel,policies/aws/aws-rds-multi-az.yaml
@@ -3535,6 +3562,7 @@ break-glass,routing,metadata,identity-break-glass-account-review,Identity Break 
 build,routing,metadata,cicd-build-logs-public,Cicd Build Logs Public,cicd,high,cel,policies/cicd/cicd-build-logs-public.yaml
 build,routing,metadata,cicd-build-provenance-required,Cicd Build Provenance Required,cicd,medium,cel,policies/cicd/cicd-build-provenance-required.yaml
 build,routing,metadata,cicd-build-provenance-verified,Cicd Build Provenance Verified,cicd,medium,cel,policies/cicd/cicd-build-provenance-verified.yaml
+business-associate,compliance,metadata,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 business-continuity,routing,metadata,compliance-bcdr-plan-exists,Business Continuity Plan Exists,compliance,high,cel,policies/compliance/compliance-bcdr-plan.yaml
 bypass,routing,metadata,github-ruleset-bypass-unrestricted,Github Ruleset Bypass Unrestricted,github,medium,cel,policies/github/github-ruleset-bypass-unrestricted.yaml
 bypass,routing,metadata,github-secops-secret-anthropic-admin-api-key-push-protection-bypassed,GitHub Secret Scanning Anthropic Admin Api Key Push Protection Bypassed,github,critical,cel,policies/github/github-secops-secret-anthropic-admin-api-key-push-protection-bypassed.yaml
@@ -4347,6 +4375,16 @@ cel,generated,derived,group-excessive-high-priv,Group with excessive high privil
 cel,generated,derived,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 cel,generated,derived,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 cel,generated,derived,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+cel,generated,derived,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
+cel,generated,derived,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+cel,generated,derived,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+cel,generated,derived,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+cel,generated,derived,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+cel,generated,derived,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+cel,generated,derived,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+cel,generated,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+cel,generated,derived,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+cel,generated,derived,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 cel,generated,derived,hubspot-excessive-discount,Excessive Discount on Small Deal,hubspot,medium,cel,policies/hubspot/hubspot-excessive-discount.yaml
 cel,generated,derived,hubspot-no-next-step,Open Deal Without Next Step,hubspot,low,cel,policies/hubspot/hubspot-no-next-step.yaml
 cel,generated,derived,hubspot-stale-deal,Stale High-Value Deal,hubspot,high,cel,policies/hubspot/hubspot-stale-deal.yaml
@@ -5124,6 +5162,7 @@ content-filter,routing,metadata,azure-openai-content-filter-enabled,Azure Openai
 content-safety,routing,metadata,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,ai,medium,cel,policies/ai/aws-bedrock-no-guardrails.yaml
 contents,routing,metadata,github-secops-app-installation-all-repos-contents-read,GitHub App Installation All Repos Contents Read,github,medium,cel,policies/github/github-secops-app-installation-all-repos-contents-read.yaml
 contents,routing,metadata,github-secops-app-installation-all-repos-contents-write,GitHub App Installation All Repos Contents Write,github,high,cel,policies/github/github-secops-app-installation-all-repos-contents-write.yaml
+contract-evidence,routing,metadata,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 conversion,routing,metadata,stripe-trial-no-payment-method,Trial Ending Without Payment Method,stripe,medium,cel,policies/stripe/stripe-trial-no-payment-method.yaml
 cors,routing,metadata,api-cors-wildcard-credentials,API CORS Wildcard Credentials,api,medium,cel,policies/api/api-cors-wildcard-credentials.yaml
 cos,routing,metadata,gcp-gke-cos-containerd,GKE Nodes Use Container-Optimized OS,gcp,low,cel,policies/gcp/gcp-gke-cos-containerd.yaml
@@ -5854,6 +5893,7 @@ encryption,routing,metadata,gcp-kms-public,KMS Key Publicly Accessible,gcp,criti
 encryption,routing,metadata,gcp-sql-ssl-required,GCP Cloud SQL SSL Required,gcp,high,cel,policies/gcp/gcp-sql-ssl-required.yaml
 encryption,routing,metadata,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,ai,medium,cel,policies/ai/gcp-vertex-dataset-cmek.yaml
 encryption,routing,metadata,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+encryption,routing,metadata,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
 encryption,routing,metadata,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
 encryption,routing,metadata,k8s-etcd-encryption-disabled,Kubernetes Etcd Encryption Disabled,kubernetes,medium,cel,policies/kubernetes/k8s-etcd-encryption-disabled.yaml
 encryption,routing,metadata,pci-cardholder-data-encrypted,Cardholder Data Encrypted at Rest,pci,critical,query,policies/pci/pci-cardholder-data-encrypted.yaml
@@ -5923,6 +5963,16 @@ eol,routing,metadata,container-base-image-eol,Container Base Image Eol,container
 eol,routing,metadata,container-eol-writable,Container with end-of-life software on the writable layer,cerebro,medium,cel,policies/cerebro/container-eol-writable.yaml
 eol,routing,metadata,vm-public-eol,Publicly exposed VM with end-of-life software,cerebro,high,cel,policies/cerebro/vm-public-eol.yaml
 eol,routing,metadata,vm-public-eol-targeted,Publicly exposed VM with end-of-life targeted technology,cerebro,critical,cel,policies/cerebro/vm-public-eol-targeted.yaml
+ephi,routing,metadata,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
+ephi,routing,metadata,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+ephi,routing,metadata,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+ephi,routing,metadata,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+ephi,routing,metadata,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+ephi,routing,metadata,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+ephi,routing,metadata,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+ephi,routing,metadata,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+ephi,routing,metadata,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+ephi,routing,metadata,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 epss,routing,metadata,vuln-epss-high,High EPSS Score Vulnerabilities,vulnerability,high,query,policies/vulnerability/vuln-epss-high.yaml
 epss,routing,metadata,vuln-epss-high-public-facing,Vuln EPSS High Public Facing,vulnerability,critical,cel,policies/vulnerability/vuln-epss-high-public-facing.yaml
 etcd,routing,metadata,k8s-etcd-encryption-disabled,Kubernetes Etcd Encryption Disabled,kubernetes,medium,cel,policies/kubernetes/k8s-etcd-encryption-disabled.yaml
@@ -6453,6 +6503,10 @@ evidence:control_procedure,evidence,derived,compliance-security-training,Securit
 evidence:control_procedure,evidence,derived,contract-billing-mismatch,Contract and Billing Mismatch,compliance,high,cel,policies/compliance/contract-billing-mismatch.yaml
 evidence:control_procedure,evidence,derived,same-user-approve-execute,Same User Approved and Executed Financial Action,compliance,critical,cel,policies/compliance/same-user-approve-execute.yaml
 evidence:control_procedure,evidence,derived,uptime-breach-enterprise,Enterprise Uptime SLA Breach,compliance,critical,cel,policies/compliance/uptime-breach-enterprise.yaml
+evidence:control_review,evidence,derived,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
+evidence:control_review,evidence,derived,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+evidence:control_review,evidence,derived,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+evidence:control_review,evidence,derived,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 evidence:cryptographic_control,evidence,derived,cert-expired,Expired SSL/TLS Certificates,certificate,critical,query,policies/certificate/cert-expired.yaml
 evidence:cryptographic_control,evidence,derived,cert-expiry-30-days,SSL/TLS Certificates Expiring Within 30 Days,certificate,high,query,policies/certificate/cert-expiry-30-days.yaml
 evidence:cryptographic_control,evidence,derived,cert-self-signed,Self-Signed Certificates in Production,certificate,medium,query,policies/certificate/cert-self-signed.yaml
@@ -6460,6 +6514,7 @@ evidence:cryptographic_control,evidence,derived,cert-weak-key,Certificates Using
 evidence:cryptographic_control,evidence,derived,cert-weak-signature,Certificates Using Weak Signature Algorithms,certificate,high,query,policies/certificate/cert-weak-signature.yaml
 evidence:cryptographic_control,evidence,derived,tls-version-outdated,Services Using Outdated TLS Versions,certificate,high,query,policies/certificate/tls-version-outdated.yaml
 evidence:cryptographic_control,evidence,derived,tls-weak-ciphers,Services Supporting Weak TLS Cipher Suites,certificate,high,query,policies/certificate/tls-weak-ciphers.yaml
+evidence:data_protection,evidence,derived,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
 evidence:data_security_posture,evidence,derived,aws-rds-public-snapshot,AWS RDS Public Snapshot,dspm,critical,cel,policies/dspm/aws-rds-public-snapshot.yaml
 evidence:data_security_posture,evidence,derived,aws-redshift-no-encryption,AWS Redshift Not Encrypted,dspm,high,cel,policies/dspm/aws-redshift-encryption.yaml
 evidence:data_security_posture,evidence,derived,azure-cosmosdb-public-access,Azure Cosmos DB Public Access,dspm,high,cel,policies/dspm/azure-cosmos-public.yaml
@@ -6825,7 +6880,12 @@ evidence:github_self_hosted_runner,evidence,derived,github-secops-runner-org-sco
 evidence:github_self_hosted_runner,evidence,derived,github-secops-runner-registered,GitHub Self-hosted Runner Registered,github,medium,cel,policies/github/github-secops-runner-registered.yaml
 evidence:github_self_hosted_runner,evidence,derived,github-secops-runner-repo-scoped,GitHub Repo-scoped Self-hosted Runner,github,medium,cel,policies/github/github-secops-runner-repo-scoped.yaml
 evidence:github_self_hosted_runner,evidence,derived,github-secops-runner-untrusted-host,GitHub Self-hosted Runner On Untrusted Host,github,critical,cel,policies/github/github-secops-runner-untrusted-host.yaml
+evidence:governance_review,evidence,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+evidence:governance_review,evidence,derived,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
 evidence:graph_state,evidence,derived,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,graph,low,graph,policies/graph/graph-orphan-nonfinding-node.yaml
+evidence:identity_configuration,evidence,derived,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+evidence:identity_configuration,evidence,derived,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+evidence:identity_configuration,evidence,derived,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
 evidence:identity_configuration,evidence,derived,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,identity,high,query,policies/identity/identity-okta-privileged-no-mfa.yaml
 evidence:identity_configuration,evidence,derived,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
 evidence:identity_governance,evidence,derived,identity-account-deprovision,Terminated User Accounts Deprovisioned,identity,critical,cel,policies/identity/identity-account-deprovision.yaml
@@ -8747,6 +8807,7 @@ governance,routing,metadata,ai-data-governance,AI Training Data Governance,ai,hi
 governance,routing,metadata,ai-model-inventory,AI Model Inventory Maintained,ai,medium,cel,policies/ai/ai-model-inventory.yaml
 governance,routing,metadata,ai-system-owner-assigned,AI System Owner Assigned,ai,medium,cel,policies/ai/ai-system-owner-assigned.yaml
 governance,routing,metadata,compliance-inventory-owners,Inventory Items Have Active Owners,compliance,medium,cel,policies/compliance/compliance-inventory-owners.yaml
+governance,routing,metadata,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 governance,routing,metadata,identity-atlassian-personal-email-domain,Atlassian Accounts Using Personal Email Domains,identity,medium,query,policies/identity/identity-atlassian-personal-email-domain.yaml
 governance,routing,metadata,identity-atlassian-privileged-personal-email,Atlassian Privileged Accounts on Personal Email Domains,identity,high,query,policies/identity/identity-atlassian-privileged-personal-email.yaml
 governance,routing,metadata,identity-auth0-personal-email-domain,Auth0 Accounts Using Personal Email Domains,identity,medium,query,policies/identity/identity-auth0-personal-email-domain.yaml
@@ -9347,7 +9408,17 @@ hipaa,compliance,metadata,hipaa-baa-required,HIPAA Business Associate Agreements
 hipaa,compliance,metadata,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 hipaa,compliance,metadata,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 hipaa,compliance,metadata,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+hipaa,compliance,metadata,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 hipaa,compliance,metadata,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+hipaa,compliance,metadata,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+hipaa,compliance,metadata,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+hipaa,compliance,metadata,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+hipaa,compliance,metadata,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+hipaa,compliance,metadata,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+hipaa,compliance,metadata,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+hipaa,compliance,metadata,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+hipaa,compliance,metadata,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+hipaa,compliance,metadata,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 hipaa,compliance,metadata,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
 host,routing,metadata,container-host-network,Container Host Network Disabled,container,high,query,policies/container/container-host-network.yaml
 host-not-trusted,routing,metadata,github-secops-runner-host-not-trusted,GitHub Self-hosted Runner Host Not Trusted,github,high,cel,policies/github/github-secops-runner-host-not-trusted.yaml
@@ -9451,6 +9522,8 @@ identity,routing,metadata,group-excessive-admin,Group with excessive admin privi
 identity,routing,metadata,group-excessive-data-priv,Group with excessive data privileges,cerebro,high,cel,policies/cerebro/group-excessive-data-priv.yaml
 identity,routing,metadata,group-excessive-high-priv,Group with excessive high privileges,cerebro,high,cel,policies/cerebro/group-excessive-high-priv.yaml
 identity,routing,metadata,hipaa-access-controls,HIPAA Unique User Identification,hipaa,high,query,policies/hipaa/hipaa-access-controls.yaml
+identity,routing,metadata,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+identity,routing,metadata,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
 identity,routing,metadata,identity-account-deprovision,Terminated User Accounts Deprovisioned,identity,critical,cel,policies/identity/identity-account-deprovision.yaml
 identity,routing,metadata,identity-atlassian-active-no-employee-record,Atlassian Active Accounts Without Employee Record,identity,medium,query,policies/identity/identity-atlassian-active-no-employee-record.yaml
 identity,routing,metadata,identity-atlassian-duplicate-email,Atlassian Duplicate Account Emails,identity,high,query,policies/identity/identity-atlassian-duplicate-email.yaml
@@ -10007,6 +10080,7 @@ integration-installed,routing,metadata,github-secops-audit-org-integration-insta
 integration-permission-weakened,routing,metadata,github-secops-audit-org-integration-permission-weakened,GitHub Audit Integration Permission Weakened,github,high,cel,policies/github/github-secops-audit-org-integration-permission-weakened.yaml
 integrity,routing,metadata,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,aws,medium,cel,policies/aws/aws-cloudtrail-log-integrity.yaml
 integrity,routing,metadata,gcp-dns-dnssec,Cloud DNS DNSSEC Disabled,gcp,medium,cel,policies/gcp/gcp-dns-dnssec.yaml
+integrity,routing,metadata,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
 internal,routing,metadata,github-secops-repo-internal-all-dependabot-security-updates-disabled,GitHub Dependabot security updates Disabled For Internal All,github,medium,cel,policies/github/github-secops-repo-internal-all-dependabot-security-updates-disabled.yaml
 internal,routing,metadata,github-secops-repo-internal-all-push-protection-disabled,GitHub Secret scanning push protection Disabled For Internal All,github,high,cel,policies/github/github-secops-repo-internal-all-push-protection-disabled.yaml
 internal,routing,metadata,github-secops-repo-internal-all-secret-scanning-disabled,GitHub Secret scanning Disabled For Internal All,github,high,cel,policies/github/github-secops-repo-internal-all-secret-scanning-disabled.yaml
@@ -10867,6 +10941,7 @@ organization_packages,routing,metadata,github-secops-app-installation-all-repos-
 organization_secrets,risk,metadata,github-secops-app-installation-all-repos-organization-secrets-read,GitHub App Installation All Repos Organization Secrets Read,github,high,cel,policies/github/github-secops-app-installation-all-repos-organization-secrets-read.yaml
 organization_secrets,risk,metadata,github-secops-app-installation-all-repos-organization-secrets-write,GitHub App Installation All Repos Organization Secrets Write,github,critical,cel,policies/github/github-secops-app-installation-all-repos-organization-secrets-write.yaml
 organization_self_hosted_runners,routing,metadata,github-secops-app-installation-all-repos-organization-self-hosted-runners-write,GitHub App Installation All Repos Organization Self Hosted Runners Write,github,high,cel,policies/github/github-secops-app-installation-all-repos-organization-self-hosted-runners-write.yaml
+organizational-requirements,routing,metadata,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 organizations,routing,metadata,aws-organizations-policy-detached,AWS Organizations Policy Detached,aws,medium,cel,policies/aws/aws-organizations-policy-detached.yaml
 organizations,routing,metadata,aws-organizations-scp-root-guardrail,AWS Organizations SCP Root Guardrail,aws,medium,cel,policies/aws/aws-organizations-scp-root-guardrail.yaml
 origin-access,routing,metadata,aws-cloudfront-origin-access-control-required,AWS Cloudfront Origin Access Control Required,aws,medium,cel,policies/aws/aws-cloudfront-origin-access-control-required.yaml
@@ -10975,6 +11050,8 @@ phi,routing,metadata,hipaa-breach-individual-notice-overdue,HIPAA Individual Bre
 phi,routing,metadata,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 phi,routing,metadata,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
 phi,routing,metadata,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+phi-system,routing,metadata,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+phi-system,routing,metadata,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
 phishing,routing,metadata,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,identity,high,cel,policies/identity/identity-phishing-resistant-mfa-admins.yaml
 phishing,routing,metadata,m365-email-security-baseline,M365 Email Security Baseline Configured,m365,high,query,policies/m365/m365-email-security-baseline.yaml
 phishing-resistant,routing,metadata,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,identity,high,cel,policies/identity/identity-phishing-resistant-mfa-admins.yaml
@@ -11037,6 +11114,7 @@ pod-security,routing,metadata,k8s-pod-seccomp-runtime-default,Kubernetes Pod Use
 pod-security-standards,routing,metadata,k8s-namespace-missing-pss-label,Kubernetes Namespace Missing Pod Security Enforcement Label,kubernetes,low,cel,policies/kubernetes/k8s-namespace-missing-pss-label.yaml
 pods,routing,metadata,gke-pod-create,GKE user/service accounts with the privileges to create pods,cerebro,medium,cel,policies/cerebro/gke-pod-create.yaml
 pods,routing,metadata,k8s-pod-create,User/service accounts with the privileges to create pods,cerebro,medium,cel,policies/cerebro/k8s-pod-create.yaml
+policies-documentation,routing,metadata,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 policy,generated,derived,account-lateral-dormant,Account with a lateral movement finding to admin is inactive for over 90 days,cerebro,high,cel,policies/cerebro/account-lateral-dormant.yaml
 policy,generated,derived,admin-inactive-keys,Admin user/service account with active access keys that are inactive for over 90 days,cerebro,high,cel,policies/cerebro/admin-inactive-keys.yaml
 policy,generated,derived,admin-keys-unrotated,Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year,cerebro,high,cel,policies/cerebro/admin-keys-unrotated.yaml
@@ -11860,7 +11938,17 @@ policy,generated,derived,hipaa-baa-required,HIPAA Business Associate Agreements,
 policy,generated,derived,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-individual-notice-overdue.yaml
 policy,generated,derived,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-media-notice-overdue.yaml
 policy,generated,derived,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,hipaa,high,cel,policies/hipaa/hipaa-breach-secretary-notice-overdue.yaml
+policy,generated,derived,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,hipaa,high,cel,policies/hipaa/hipaa-business-associate-contract-safeguard-terms-missing.yaml
 policy,generated,derived,hipaa-phi-encryption,PHI Data Encrypted at Rest,hipaa,critical,query,policies/hipaa/hipaa-phi-encryption.yaml
+policy,generated,derived,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+policy,generated,derived,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+policy,generated,derived,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+policy,generated,derived,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+policy,generated,derived,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+policy,generated,derived,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
+policy,generated,derived,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
+policy,generated,derived,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
+policy,generated,derived,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,hipaa,high,cel,policies/hipaa/hipaa-security-policy-documentation-missing.yaml
 policy,generated,derived,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
 policy,generated,derived,hubspot-excessive-discount,Excessive Discount on Small Deal,hubspot,medium,cel,policies/hubspot/hubspot-excessive-discount.yaml
 policy,generated,derived,hubspot-no-next-step,Open Deal Without Next Step,hubspot,low,cel,policies/hubspot/hubspot-no-next-step.yaml
@@ -13577,9 +13665,12 @@ risk,risk,metadata,ai-risk-assessment,AI Model Risk Assessment Completed,ai,high
 risk,risk,metadata,m365-risky-users,M365 Users with High Risk Level,m365,high,query,policies/m365/m365-risky-users.yaml
 risk,risk,metadata,vuln-epss-high,High EPSS Score Vulnerabilities,vulnerability,high,query,policies/vulnerability/vuln-epss-high.yaml
 risk-assessment,risk,metadata,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
+risk-assessment,risk,metadata,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
 risk-assessment,risk,metadata,vendor-risk-assessed,Vendor Risk Level Assigned,vendor,medium,cel,policies/vendor/vendor-risk-assessed.yaml
 risk-management,risk,metadata,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,policies/compliance/compliance-risk-assessment.yaml
+risk-management,risk,metadata,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
 risk-review,risk,metadata,ai-third-party-model-risk-review,AI Third Party Model Risk Review,ai,medium,cel,policies/ai/ai-third-party-model-risk-review.yaml
+risk-treatment,risk,metadata,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,hipaa,high,cel,policies/hipaa/hipaa-risk-management-measures-missing.yaml
 risky-user,risk,metadata,identity-idp-risky-user-unresolved,Identity Idp Risky User Unresolved,identity,medium,cel,policies/identity/identity-idp-risky-user-unresolved.yaml
 root,routing,metadata,aws-iam-root-mfa-enabled,Root Account MFA Enabled,aws,critical,cel,policies/aws/aws-iam-root-mfa.yaml
 root,routing,metadata,container-root-user,Container Running as Root,container,high,query,policies/container/container-root-user.yaml
@@ -14343,6 +14434,7 @@ security-groups,routing,metadata,aws-ecs-ssh-denied,ECS Services Deny Public SSH
 security-hub,routing,metadata,aws-security-hub-enabled,AWS Security Hub Enabled,aws,medium,cel,policies/aws/aws-security-hub-enabled.yaml
 security-issues,routing,metadata,compliance-p1-security-issues,P1 Security Issues Resolved Timely,compliance,critical,cel,policies/compliance/compliance-p1-security-issues.yaml
 security-issues,routing,metadata,compliance-p2-security-issues,P2 Security Issues Resolved Timely,compliance,high,cel,policies/compliance/compliance-p2-security-issues.yaml
+security-management,routing,metadata,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,hipaa,high,cel,policies/hipaa/hipaa-security-management-process-missing.yaml
 security-review,routing,metadata,vendor-security-review-complete,Vendor Security Review Completed,vendor,high,cel,policies/vendor/vendor-security-review.yaml
 security-updates,routing,metadata,aws-rds-auto-minor-upgrade,RDS Auto Minor Version Upgrade Enabled,aws,low,cel,policies/aws/aws-rds-auto-minor-upgrade.yaml
 security_events,routing,metadata,github-secops-app-installation-all-repos-security-events-read,GitHub App Installation All Repos Security Events Read,github,high,cel,policies/github/github-secops-app-installation-all-repos-security-events-read.yaml
@@ -14446,6 +14538,7 @@ servicenow,routing,metadata,identity-servicenow-terminated-active-account,Servic
 session,routing,metadata,hipaa-automatic-logoff,HIPAA Automatic Logoff,hipaa,medium,query,policies/hipaa/hipaa-automatic-logoff.yaml
 session,routing,metadata,identity-session-lifetime-too-long-admin,Identity Session Lifetime Too Long Admin,identity,high,cel,policies/identity/identity-session-lifetime-too-long-admin.yaml
 session,routing,metadata,runtime-identity-provider-risky-session,Runtime Identity Provider Risky Session,runtime,medium,cel,policies/runtime/runtime-identity-provider-risky-session.yaml
+session-control,routing,metadata,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
 sha,routing,metadata,gcp-scc-security-health-analytics-enabled,GCP SCC Security Health Analytics Enabled,gcp,medium,cel,policies/gcp/gcp-scc-security-health-analytics-enabled.yaml
 sha1,routing,metadata,cert-weak-signature,Certificates Using Weak Signature Algorithms,certificate,high,query,policies/certificate/cert-weak-signature.yaml
 shadow,routing,metadata,api-shadow-endpoint-detected,API Shadow Endpoint Detected,api,medium,cel,policies/api/api-shadow-endpoint-detected.yaml
@@ -14716,6 +14809,12 @@ tailscale,routing,metadata,identity-tailscale-stale-login-90d,Tailscale Stale Ac
 tailscale,routing,metadata,identity-tailscale-terminated-active-account,Tailscale Terminated Accounts Still Active,identity,high,query,policies/identity/identity-tailscale-terminated-active-account.yaml
 tamper-detection,routing,metadata,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,aws,medium,cel,policies/aws/aws-cloudtrail-log-integrity.yaml
 targeted,routing,metadata,vm-public-eol-targeted,Publicly exposed VM with end-of-life targeted technology,cerebro,critical,cel,policies/cerebro/vm-public-eol-targeted.yaml
+technical-safeguards,routing,metadata,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-access-control-missing.yaml
+technical-safeguards,routing,metadata,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-automatic-logoff-missing.yaml
+technical-safeguards,routing,metadata,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-integrity-control-missing.yaml
+technical-safeguards,routing,metadata,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-person-authentication-missing.yaml
+technical-safeguards,routing,metadata,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
+technical-safeguards,routing,metadata,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
 telemetry,routing,metadata,telemetry-repo-secret-key,Repository Contains Hardcoded Secrets,telemetry,critical,cel,policies/telemetry/telemetry-repo-secret-key.yaml
 tenant,routing,metadata,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,m365,medium,cel,policies/m365/m365-tenant-legacy-auth-enabled.yaml
 terraform,routing,metadata,github-secops-dependabot-terraform-critical-dismissed,GitHub Dependabot Terraform Critical Alert Dismissed,github,critical,cel,policies/github/github-secops-dependabot-terraform-critical-dismissed.yaml
@@ -14792,6 +14891,7 @@ training-data,routing,metadata,aws-sagemaker-training-unencrypted,SageMaker Trai
 training-data,routing,metadata,gcp-vertex-ai-dataset-public,GCP Vertex AI Dataset Public Access,ai,critical,cel,policies/ai/gcp-vertex-dataset-public.yaml
 transit,routing,metadata,db-ssl-connections,Database SSL Connections Enforced,database,high,query,policies/database/db-ssl-connections.yaml
 transmission,routing,metadata,hipaa-transmission-security,HIPAA Transmission Security,hipaa,critical,query,policies/hipaa/hipaa-transmission-security.yaml
+transmission-security,routing,metadata,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-transmission-encryption-missing.yaml
 transparency,routing,metadata,ai-explainability,AI Model Explainability Documentation,ai,medium,cel,policies/ai/ai-explainability.yaml
 transport-security,routing,metadata,aws-cloudfront-http,CloudFront Distribution Allows HTTP,aws,medium,cel,policies/aws/aws-cloudfront-http.yaml
 transport-security,routing,metadata,aws-elb-https-only,Load Balancer Listener Without HTTPS,aws,medium,cel,policies/aws/aws-elb-https-only.yaml
@@ -14813,6 +14913,7 @@ twilio_api_key,routing,metadata,github-secops-secret-twilio-api-key-push-protect
 twilio_api_key,routing,metadata,github-secops-secret-twilio-api-key-resolution-false-positive,GitHub Secret Scanning Twilio Api Key Resolution False Positive,github,medium,cel,policies/github/github-secops-secret-twilio-api-key-resolution-false-positive.yaml
 twilio_api_key,routing,metadata,github-secops-secret-twilio-api-key-resolution-used-in-tests,GitHub Secret Scanning Twilio Api Key Resolution Used In Tests,github,medium,cel,policies/github/github-secops-secret-twilio-api-key-resolution-used-in-tests.yaml
 twilio_api_key,routing,metadata,github-secops-secret-twilio-api-key-resolution-wont-fix,GitHub Secret Scanning Twilio Api Key Resolution Wont Fix,github,medium,cel,policies/github/github-secops-secret-twilio-api-key-resolution-wont-fix.yaml
+unique-user-id,routing,metadata,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,hipaa,high,cel,policies/hipaa/hipaa-phi-system-unique-user-id-missing.yaml
 unknown-status,routing,metadata,github-secops-credential-unknown-status,GitHub Unknown Credential Status,github,medium,cel,policies/github/github-secops-credential-unknown-status.yaml
 unpinned,routing,metadata,cicd-unpinned-third-party-action,Cicd Unpinned Third Party Action,cicd,medium,cel,policies/cicd/cicd-unpinned-third-party-action.yaml
 untrusted,routing,metadata,cicd-untrusted-fork-write-token,Cicd Untrusted Fork Write Token,cicd,high,cel,policies/cicd/cicd-untrusted-fork-write-token.yaml

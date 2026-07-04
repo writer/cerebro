@@ -1,0 +1,106 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-risk-management-measures-missing
+    name: HIPAA Risk Management Measures Missing
+    description: Flags HIPAA risk records for ePHI scope that do not show risk management measures.
+    tags:
+        - hipaa
+        - administrative-safeguards
+        - risk-management
+        - risk-treatment
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.308
+spec:
+    severity: high
+    effect: forbid
+    resource: hipaa_risk_assessment::safeguard_risk_record
+    match:
+        conditions:
+            - cmp_eq(path(resource, "ephi_scope"), true)
+            - cmp_ne(path(resource, "risk_management_measures_implemented"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Add risk management measures for the ePHI risk record.
+        steps:
+            - Confirm the risk analysis, risk rating, and affected ePHI systems.
+            - Record the security measures that reduce risks and vulnerabilities.
+            - Link owner approval and review evidence to the risk record.
+    riskCategories:
+        - GOVERNANCE
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.308(a)(1)(ii)(B)
+    input:
+        sourceKinds:
+            - hipaa_risk_assessment.safeguard_risk_record
+        requiredFields:
+            - risk_record_id
+            - ephi_scope
+            - risk_level
+            - risk_management_measures_implemented
+            - owner_id
+            - reviewed_at
+        freshnessSLA: 90d
+    evidence:
+        type: governance_review
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - hipaa_risk_assessment
+        requiredFields:
+            - risk_record_id
+            - ephi_scope
+            - risk_level
+            - risk_management_measures_implemented
+            - owner_id
+            - reviewed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - risk_record_id
+    audit:
+        evidenceType: governance_review
+        assessmentMethods:
+            - examine
+            - interview
+            - test
+        freshnessSLA: 90d
+        auditorStatement: ePHI risk records show implemented risk management measures for HIPAA safeguard risks.
+        auditorGuidance: Review the risk analysis, risk level, mitigation evidence, owner approval, and review timestamp.
+        riskStatement: Missing risk management measures can leave ePHI risks accepted by default rather than reduced to an approved level.
+        remediationIntent: Record implemented security measures, owner approval, and current review evidence.
+        acceptableEvidence:
+            - source: hipaa_risk_assessment
+              fields:
+                - risk_record_id
+                - ephi_scope
+                - risk_level
+                - risk_management_measures_implemented
+                - owner_id
+                - reviewed_at
+        exceptionPolicy:
+            maxAge: 90d
+            requiresApproval: true
+        falsePositives:
+            - The record is outside ePHI scope or mitigation evidence is linked from a risk treatment plan.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: compliance.owner
+        remediation:
+            type: hipaa_safeguard_review
+            steps:
+                - Add risk management measures to the risk record.
+                - Link mitigation and approval evidence.
+                - Rerun HIPAA risk assessment evidence collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

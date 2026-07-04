@@ -1,0 +1,101 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-system-unique-user-id-missing
+    name: HIPAA PHI System Unique User ID Missing
+    description: Flags ePHI systems without unique user identification evidence.
+    tags:
+        - hipaa
+        - technical-safeguards
+        - unique-user-id
+        - identity
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+spec:
+    severity: high
+    effect: forbid
+    resource: phi_system_inventory::phi_system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ephi"), true)
+            - cmp_ne(path(resource, "unique_user_identification_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable unique user identification for the ePHI system.
+        steps:
+            - Confirm the ePHI system and user population.
+            - Replace shared access with unique user or service identities.
+            - Retain identity control evidence in the PHI system inventory.
+    riskCategories:
+        - IDENTITY_RISK
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.312(a)(2)(i)
+    input:
+        sourceKinds:
+            - phi_system_inventory.phi_system
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - unique_user_identification_enabled
+            - owner_id
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - phi_system_inventory
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - unique_user_identification_enabled
+            - owner_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - system_id
+    audit:
+        evidenceType: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: ePHI systems assign unique names or numbers for tracking user identity.
+        auditorGuidance: Review the PHI system record, identity model, shared-account exceptions, owner, and last observed timestamp.
+        riskStatement: Missing unique user identification can weaken accountability for ePHI access and activity review.
+        remediationIntent: Enable unique user identification and retain identity control evidence for the system.
+        acceptableEvidence:
+            - source: phi_system_inventory
+              fields:
+                - system_id
+                - contains_ephi
+                - unique_user_identification_enabled
+                - owner_id
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The system does not maintain ePHI or unique identity evidence is held in a linked identity provider record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: security.owner
+        remediation:
+            type: phi_system_identity_update
+            steps:
+                - Enable unique user identification.
+                - Remove or document shared account exceptions.
+                - Rerun PHI system inventory collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

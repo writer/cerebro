@@ -12,6 +12,7 @@ access-control,routing,catalog,endpoint-jamf-screenlock,Jamf Mobile Devices With
 access-control,routing,catalog,endpoint-screenlock-configured,Endpoint Screen Lock Configured,policy,policy,event,medium,active,candidate
 access-control,routing,catalog,gcp-storage-uniform-bucket-access,GCP Storage Uniform Bucket Access,policy,policy,event,medium,active,candidate
 access-control,routing,catalog,hipaa-access-controls,HIPAA Unique User Identification,policy,policy,event,high,active,candidate
+access-control,routing,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
 access-control,routing,catalog,identity-atlassian-duplicate-email,Atlassian Duplicate Account Emails,policy,policy,event,high,active,candidate
 access-control,routing,catalog,identity-atlassian-terminated-active-account,Atlassian Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 access-control,routing,catalog,identity-auth0-duplicate-email,Auth0 Duplicate Account Emails,policy,policy,event,high,active,candidate
@@ -371,6 +372,9 @@ admin-access,routing,catalog,azure-nsg-admin-port,NSG Allows Admin Ports from In
 admin-access,routing,catalog,gcp-firewall-admin-port,GCP Firewall Allows Admin Ports from Internet,policy,policy,event,high,active,candidate
 admin-consent,routing,catalog,m365-admin-consent-workflow-disabled,M365 Admin Consent Workflow Disabled,policy,policy,event,high,active,candidate
 administration,compliance,catalog,github-secops-app-installation-all-repos-administration-write,GitHub App Installation All Repos Administration Write,policy,policy,event,critical,active,candidate
+administrative-safeguards,compliance,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+administrative-safeguards,compliance,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+administrative-safeguards,compliance,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 admission,routing,catalog,container-admission-policy-missing,Container Admission Policy Missing,policy,policy,event,medium,active,candidate
 admission,routing,catalog,k8s-admission-controller-policy-missing,Kubernetes Admission Controller Policy Missing,policy,policy,event,medium,active,candidate
 admission,routing,catalog,k8s-mutating-webhook-failure-policy-ignore,Kubernetes Mutating Webhook Failure Policy Ignore,policy,policy,event,medium,active,candidate
@@ -1361,7 +1365,17 @@ assessment:examine,assessment,catalog,hipaa-baa-required,HIPAA Business Associat
 assessment:examine,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 assessment:examine,assessment,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,hubspot-no-next-step,Open Deal Without Next Step,policy,policy,event,low,active,candidate
@@ -2129,7 +2143,11 @@ assessment:interview,assessment,catalog,hipaa-baa-required,HIPAA Business Associ
 assessment:interview,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+assessment:interview,assessment,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+assessment:interview,assessment,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 assessment:interview,assessment,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 assessment:interview,assessment,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
 assessment:interview,assessment,catalog,hubspot-no-next-step,Open Deal Without Next Step,policy,policy,event,low,active,candidate
@@ -2926,6 +2944,13 @@ assessment:test,assessment,catalog,group-excessive-high-priv,Group with excessiv
 assessment:test,assessment,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,iam-inactive-privileged-account,Service account with high privileges is inactive for over 90 days,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,iam-unknown-account-trusted,Unknown AWS account with trusted access to IAM role,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
@@ -3274,6 +3299,7 @@ authentication,routing,catalog,gcp-gke-metadata-server,GKE Workload Identity (Me
 authentication,routing,catalog,github-admin-without-2fa,GitHub Admin Without 2FA,policy,policy,event,critical,active,candidate
 authentication,routing,catalog,github-org-2fa-disabled,GitHub Organization 2FA Not Required,policy,policy,event,high,active,candidate
 authentication,routing,catalog,github-org-auth-control-modified,GitHub Organization Authentication Control Modified,github,github,event,critical,open,retired
+authentication,routing,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
 authentication,routing,catalog,identity-entra-mfa-missing-active,Entra Active Accounts Without MFA,policy,policy,event,high,active,candidate
 authentication,routing,catalog,identity-github-member-mfa,GitHub Members Without MFA,policy,policy,event,high,active,candidate
 authentication,routing,catalog,identity-github-mfa-missing-active,Github Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -3304,6 +3330,7 @@ authorization,routing,catalog,cerebro-high-risk-api-access,Cerebro Active High-R
 auto-repair,routing,catalog,gcp-gke-auto-repair,GKE Node Pool Auto-Repair Enabled,policy,policy,event,low,active,candidate
 auto-upgrade,routing,catalog,gcp-gke-auto-upgrade,GKE Node Pool Auto-Upgrade Enabled,policy,policy,event,medium,active,candidate
 automated-checks,routing,catalog,github-automated-checks,GitHub Code Changes Have Automated Checks,policy,policy,event,medium,active,candidate
+automatic-logoff,routing,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
 automation-actor-agent,routing,catalog,github-secops-credential-automation-actor-agent,GitHub Automation Actor Agent Credential,policy,policy,event,medium,active,candidate
 automation-actor-bot,routing,catalog,github-secops-credential-automation-actor-bot,GitHub Automation Actor Bot Credential,policy,policy,event,medium,active,candidate
 availability,routing,catalog,aws-rds-multi-az-enabled,RDS Multi-AZ Enabled,policy,policy,event,medium,active,candidate
@@ -3616,6 +3643,7 @@ brute-force,routing,catalog,identity-okta-threat-insight-not-blocking,Okta Threa
 build,routing,catalog,cicd-build-logs-public,Cicd Build Logs Public,policy,policy,event,high,active,candidate
 build,routing,catalog,cicd-build-provenance-required,Cicd Build Provenance Required,policy,policy,event,medium,active,candidate
 build,routing,catalog,cicd-build-provenance-verified,Cicd Build Provenance Verified,policy,policy,event,medium,active,candidate
+business-associate,compliance,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 business-continuity,routing,catalog,compliance-bcdr-plan-exists,Business Continuity Plan Exists,policy,policy,event,high,active,candidate
 bypass,routing,catalog,github-ruleset-bypass-unrestricted,Github Ruleset Bypass Unrestricted,policy,policy,event,medium,active,candidate
 bypass,routing,catalog,github-secops-secret-anthropic-admin-api-key-push-protection-bypassed,GitHub Secret Scanning Anthropic Admin Api Key Push Protection Bypassed,policy,policy,event,critical,active,candidate
@@ -4429,6 +4457,16 @@ cel,generated,catalog,group-excessive-high-priv,Group with excessive high privil
 cel,generated,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 cel,generated,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 cel,generated,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+cel,generated,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 cel,generated,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
 cel,generated,catalog,hubspot-no-next-step,Open Deal Without Next Step,policy,policy,event,low,active,candidate
 cel,generated,catalog,hubspot-stale-deal,Stale High-Value Deal,policy,policy,event,high,active,candidate
@@ -5238,6 +5276,7 @@ content-filter,routing,catalog,azure-openai-content-filter-enabled,Azure Openai 
 content-safety,routing,catalog,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 contents,routing,catalog,github-secops-app-installation-all-repos-contents-read,GitHub App Installation All Repos Contents Read,policy,policy,event,medium,active,candidate
 contents,routing,catalog,github-secops-app-installation-all-repos-contents-write,GitHub App Installation All Repos Contents Write,policy,policy,event,high,active,candidate
+contract-evidence,routing,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 control,routing,catalog,grc-control-missing-evidence-coverage,GRC Control Missing Evidence Coverage,grc,grc,graph,medium,open,test
 control,routing,catalog,grc-failing-control-test-unhealthy-integration,GRC Failing Control Test On Unhealthy Integration,grc,grc,graph,high,open,test
 control-coverage,routing,catalog,security-tooling-map-control-coverage-gap,Security Tooling Control Coverage Gap,security_tooling_map,security_tooling_map,event,medium,open,test
@@ -6572,6 +6611,8 @@ control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,co
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,endpoint-edr-installed,EDR Agent Installed on Endpoints,policy,policy,event,critical,active,candidate
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,endpoint-kandji-edr-installed,Kandji Devices Missing EDR Agent,policy,policy,event,high,active,candidate
+control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
 control-family:hipaa-164-308-administrative-safeguards,compliance,control_ref,vendor-security-review-complete,Vendor Security Review Completed,policy,policy,event,high,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
@@ -6592,8 +6633,16 @@ control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-a
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 control-family:hipaa-164-312-technical-safeguards,compliance,control_ref,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
+control-family:hipaa-164-314-organizational-requirements,compliance,control_ref,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
+control-family:hipaa-164-316-policies-and-documentation,compliance,control_ref,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 control-family:hipaa-164-4-breach-notification,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
@@ -14883,7 +14932,9 @@ control:gdpr:article-6,compliance,control_ref,ai-data-governance,AI Training Dat
 control:gdpr:article-6,compliance,control_ref,data-inventory-processing-activity-legal-basis-missing,Processing Activity Legal Basis Missing,policy,policy,event,high,active,candidate
 control:gdpr:article-7,compliance,control_ref,consent-preference-platform-notice-version-missing,Consent Notice Version Missing,policy,policy,event,medium,active,candidate
 control:gdpr:article-7,compliance,control_ref,consent-preference-platform-opt-out-not-enforced,Sale or Sharing Opt-Out Not Enforced,policy,policy,event,high,active,candidate
+control:hipaa:164-308-a-1-i,compliance,control_ref,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-1-ii-a,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
+control:hipaa:164-308-a-1-ii-b,compliance,control_ref,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-3-ii-c,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
 control:hipaa:164-308-a-5-ii-b,compliance,control_ref,endpoint-edr-installed,EDR Agent Installed on Endpoints,policy,policy,event,critical,active,candidate
 control:hipaa:164-308-a-5-ii-b,compliance,control_ref,endpoint-kandji-edr-installed,Kandji Devices Missing EDR Agent,policy,policy,event,high,active,candidate
@@ -14903,13 +14954,21 @@ control:hipaa:164-312,compliance,control_ref,hipaa-automatic-logoff,HIPAA Automa
 control:hipaa:164-312,compliance,control_ref,hipaa-baa-required,HIPAA Business Associate Agreements,policy,policy,event,high,active,candidate
 control:hipaa:164-312,compliance,control_ref,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
 control:hipaa:164-312,compliance,control_ref,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
+control:hipaa:164-312-a-1,compliance,control_ref,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+control:hipaa:164-312-a-2-i,compliance,control_ref,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-312-a-2-ii,compliance,control_ref,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
+control:hipaa:164-312-a-2-iii,compliance,control_ref,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-disk-encryption,Endpoint Disk Encryption Enabled,policy,policy,event,critical,active,candidate
 control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-intune-disk-encryption,Intune Devices Without Disk Encryption,policy,policy,event,high,active,candidate
 control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-jamf-disk-encryption,Jamf Devices Without Disk Encryption,policy,policy,event,high,active,candidate
 control:hipaa:164-312-a-2-iv,compliance,control_ref,endpoint-kandji-disk-encryption,Kandji Devices Without Disk Encryption,policy,policy,event,high,active,candidate
 control:hipaa:164-312-b,compliance,control_ref,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
+control:hipaa:164-312-c-1,compliance,control_ref,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+control:hipaa:164-312-d,compliance,control_ref,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-312-e-1,compliance,control_ref,aws-s3-https-only,S3 Buckets Enforce HTTPS Only,policy,policy,event,medium,active,candidate
+control:hipaa:164-312-e-2-ii,compliance,control_ref,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+control:hipaa:164-314-a-1,compliance,control_ref,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
+control:hipaa:164-316-a,compliance,control_ref,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 control:hipaa:164-404-a,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 control:hipaa:164-406-a,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 control:hipaa:164-408-a,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
@@ -24429,6 +24488,7 @@ encryption,routing,catalog,gcp-kms-public,KMS Key Publicly Accessible,policy,pol
 encryption,routing,catalog,gcp-sql-ssl-required,GCP Cloud SQL SSL Required,policy,policy,event,high,active,candidate
 encryption,routing,catalog,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
 encryption,routing,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+encryption,routing,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
 encryption,routing,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 encryption,routing,catalog,k8s-etcd-encryption-disabled,Kubernetes Etcd Encryption Disabled,policy,policy,event,medium,active,candidate
 encryption,routing,catalog,pci-cardholder-data-encrypted,Cardholder Data Encrypted at Rest,policy,policy,event,critical,active,candidate
@@ -24509,6 +24569,16 @@ eol,routing,catalog,container-base-image-eol,Container Base Image Eol,policy,pol
 eol,routing,catalog,container-eol-writable,Container with end-of-life software on the writable layer,policy,policy,event,medium,active,candidate
 eol,routing,catalog,vm-public-eol,Publicly exposed VM with end-of-life software,policy,policy,event,high,active,candidate
 eol,routing,catalog,vm-public-eol-targeted,Publicly exposed VM with end-of-life targeted technology,policy,policy,event,critical,active,candidate
+ephi,routing,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+ephi,routing,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 epss,routing,catalog,vuln-epss-high,High EPSS Score Vulnerabilities,policy,policy,event,high,active,candidate
 epss,routing,catalog,vuln-epss-high-public-facing,Vuln EPSS High Public Facing,policy,policy,event,critical,active,candidate
 escalation,routing,catalog,pagerduty-service-without-escalation-policy,PagerDuty Service Without Escalation Policy,pagerduty,pagerduty,event,medium,open,test
@@ -25044,6 +25114,10 @@ evidence:control_procedure,evidence,catalog,compliance-security-training,Securit
 evidence:control_procedure,evidence,catalog,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
 evidence:control_procedure,evidence,catalog,same-user-approve-execute,Same User Approved and Executed Financial Action,policy,policy,event,critical,active,candidate
 evidence:control_procedure,evidence,catalog,uptime-breach-enterprise,Enterprise Uptime SLA Breach,policy,policy,event,critical,active,candidate
+evidence:control_review,evidence,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
+evidence:control_review,evidence,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+evidence:control_review,evidence,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+evidence:control_review,evidence,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 evidence:cryptographic_control,evidence,catalog,cert-expired,Expired SSL/TLS Certificates,policy,policy,event,critical,active,candidate
 evidence:cryptographic_control,evidence,catalog,cert-expiry-30-days,SSL/TLS Certificates Expiring Within 30 Days,policy,policy,event,high,active,candidate
 evidence:cryptographic_control,evidence,catalog,cert-self-signed,Self-Signed Certificates in Production,policy,policy,event,medium,active,candidate
@@ -25051,6 +25125,7 @@ evidence:cryptographic_control,evidence,catalog,cert-weak-key,Certificates Using
 evidence:cryptographic_control,evidence,catalog,cert-weak-signature,Certificates Using Weak Signature Algorithms,policy,policy,event,high,active,candidate
 evidence:cryptographic_control,evidence,catalog,tls-version-outdated,Services Using Outdated TLS Versions,policy,policy,event,high,active,candidate
 evidence:cryptographic_control,evidence,catalog,tls-weak-ciphers,Services Supporting Weak TLS Cipher Suites,policy,policy,event,high,active,candidate
+evidence:data_protection,evidence,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
 evidence:data_security_posture,evidence,catalog,aws-rds-public-snapshot,AWS RDS Public Snapshot,policy,policy,event,critical,active,candidate
 evidence:data_security_posture,evidence,catalog,aws-redshift-no-encryption,AWS Redshift Not Encrypted,policy,policy,event,high,active,candidate
 evidence:data_security_posture,evidence,catalog,azure-cosmosdb-public-access,Azure Cosmos DB Public Access,policy,policy,event,high,active,candidate
@@ -25416,7 +25491,12 @@ evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-org-sco
 evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-registered,GitHub Self-hosted Runner Registered,policy,policy,event,medium,active,candidate
 evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-repo-scoped,GitHub Repo-scoped Self-hosted Runner,policy,policy,event,medium,active,candidate
 evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-untrusted-host,GitHub Self-hosted Runner On Untrusted Host,policy,policy,event,critical,active,candidate
+evidence:governance_review,evidence,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+evidence:governance_review,evidence,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
 evidence:graph_state,evidence,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
+evidence:identity_configuration,evidence,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+evidence:identity_configuration,evidence,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+evidence:identity_configuration,evidence,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
 evidence:identity_configuration,evidence,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 evidence:identity_configuration,evidence,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
@@ -26976,7 +27056,17 @@ framework:hipaa,compliance,control_ref,hipaa-baa-required,HIPAA Business Associa
 framework:hipaa,compliance,control_ref,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+framework:hipaa,compliance,control_ref,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 framework:hipaa,compliance,control_ref,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 framework:hipaa,compliance,control_ref,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
 framework:hipaa,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
@@ -32149,6 +32239,7 @@ governance,routing,catalog,ai-data-governance,AI Training Data Governance,policy
 governance,routing,catalog,ai-model-inventory,AI Model Inventory Maintained,policy,policy,event,medium,active,candidate
 governance,routing,catalog,ai-system-owner-assigned,AI System Owner Assigned,policy,policy,event,medium,active,candidate
 governance,routing,catalog,compliance-inventory-owners,Inventory Items Have Active Owners,policy,policy,event,medium,active,candidate
+governance,routing,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 governance,routing,catalog,identity-atlassian-personal-email-domain,Atlassian Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
 governance,routing,catalog,identity-atlassian-privileged-personal-email,Atlassian Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 governance,routing,catalog,identity-auth0-personal-email-domain,Auth0 Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
@@ -32792,7 +32883,17 @@ hipaa,compliance,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,
 hipaa,compliance,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+hipaa,compliance,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+hipaa,compliance,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 hipaa,compliance,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 host,routing,catalog,container-host-network,Container Host Network Disabled,policy,policy,event,high,active,candidate
 host-not-trusted,routing,catalog,github-secops-runner-host-not-trusted,GitHub Self-hosted Runner Host Not Trusted,policy,policy,event,high,active,candidate
@@ -32902,6 +33003,8 @@ identity,routing,catalog,group-excessive-admin,Group with excessive admin privil
 identity,routing,catalog,group-excessive-data-priv,Group with excessive data privileges,policy,policy,event,high,active,candidate
 identity,routing,catalog,group-excessive-high-priv,Group with excessive high privileges,policy,policy,event,high,active,candidate
 identity,routing,catalog,hipaa-access-controls,HIPAA Unique User Identification,policy,policy,event,high,active,candidate
+identity,routing,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+identity,routing,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
 identity,routing,catalog,identity-admin-privilege-granted,Identity Admin Privilege Granted,identity,identity,event,high,open,test
 identity,routing,catalog,identity-api-token-or-oauth-app-created,Identity API Token Or OAuth App Created,identity,identity,event,high,open,test
@@ -33482,6 +33585,7 @@ integration-installed,routing,catalog,github-secops-audit-org-integration-instal
 integration-permission-weakened,routing,catalog,github-secops-audit-org-integration-permission-weakened,GitHub Audit Integration Permission Weakened,policy,policy,event,high,active,candidate
 integrity,routing,catalog,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
 integrity,routing,catalog,gcp-dns-dnssec,Cloud DNS DNSSEC Disabled,policy,policy,event,medium,active,candidate
+integrity,routing,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
 internal,routing,catalog,github-secops-repo-internal-all-dependabot-security-updates-disabled,GitHub Dependabot security updates Disabled For Internal All,policy,policy,event,medium,active,candidate
 internal,routing,catalog,github-secops-repo-internal-all-push-protection-disabled,GitHub Secret scanning push protection Disabled For Internal All,policy,policy,event,high,active,candidate
 internal,routing,catalog,github-secops-repo-internal-all-secret-scanning-disabled,GitHub Secret scanning Disabled For Internal All,policy,policy,event,high,active,candidate
@@ -34373,6 +34477,7 @@ organization_packages,routing,catalog,github-secops-app-installation-all-repos-o
 organization_secrets,risk,catalog,github-secops-app-installation-all-repos-organization-secrets-read,GitHub App Installation All Repos Organization Secrets Read,policy,policy,event,high,active,candidate
 organization_secrets,risk,catalog,github-secops-app-installation-all-repos-organization-secrets-write,GitHub App Installation All Repos Organization Secrets Write,policy,policy,event,critical,active,candidate
 organization_self_hosted_runners,routing,catalog,github-secops-app-installation-all-repos-organization-self-hosted-runners-write,GitHub App Installation All Repos Organization Self Hosted Runners Write,policy,policy,event,high,active,candidate
+organizational-requirements,routing,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 organizations,routing,catalog,aws-organizations-policy-detached,AWS Organizations Policy Detached,policy,policy,event,medium,active,candidate
 organizations,routing,catalog,aws-organizations-scp-root-guardrail,AWS Organizations SCP Root Guardrail,policy,policy,event,medium,active,candidate
 origin-access,routing,catalog,aws-cloudfront-origin-access-control-required,AWS Cloudfront Origin Access Control Required,policy,policy,event,medium,active,candidate
@@ -34495,6 +34600,8 @@ phi,routing,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Brea
 phi,routing,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 phi,routing,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
 phi,routing,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+phi-system,routing,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+phi-system,routing,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
 phishing,routing,catalog,email-domain-authentication-misconfigured,Email Domain Authentication Misconfigured,email_domain,email_domain_health,event,high,open,test
 phishing,routing,catalog,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 phishing,routing,catalog,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
@@ -34559,6 +34666,7 @@ pod-security,routing,catalog,k8s-pod-seccomp-runtime-default,Kubernetes Pod Uses
 pod-security-standards,routing,catalog,k8s-namespace-missing-pss-label,Kubernetes Namespace Missing Pod Security Enforcement Label,policy,policy,event,low,active,candidate
 pods,routing,catalog,gke-pod-create,GKE user/service accounts with the privileges to create pods,policy,policy,event,medium,active,candidate
 pods,routing,catalog,k8s-pod-create,User/service accounts with the privileges to create pods,policy,policy,event,medium,active,candidate
+policies-documentation,routing,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 policy,generated,catalog,account-lateral-dormant,Account with a lateral movement finding to admin is inactive for over 90 days,policy,policy,event,high,active,candidate
 policy,generated,catalog,admin-inactive-keys,Admin user/service account with active access keys that are inactive for over 90 days,policy,policy,event,high,active,candidate
 policy,generated,catalog,admin-keys-unrotated,Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year,policy,policy,event,high,active,candidate
@@ -35383,7 +35491,17 @@ policy,generated,catalog,hipaa-baa-required,HIPAA Business Associate Agreements,
 policy,generated,catalog,hipaa-breach-individual-notice-overdue,HIPAA Individual Breach Notice Overdue,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-breach-media-notice-overdue,HIPAA Media Breach Notice Overdue,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-breach-secretary-notice-overdue,HIPAA Secretary Breach Notice Overdue,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-business-associate-contract-safeguard-terms-missing,HIPAA Business Associate Safeguard Terms Missing,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-phi-encryption,PHI Data Encrypted at Rest,policy,policy,event,critical,active,candidate
+policy,generated,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
+policy,generated,catalog,hipaa-security-policy-documentation-missing,HIPAA Security Policy Documentation Missing,policy,policy,event,high,active,candidate
 policy,generated,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
 policy,generated,catalog,hubspot-excessive-discount,Excessive Discount on Small Deal,policy,policy,event,medium,active,candidate
 policy,generated,catalog,hubspot-no-next-step,Open Deal Without Next Step,policy,policy,event,low,active,candidate
@@ -37142,9 +37260,12 @@ risk,risk,catalog,ai-risk-assessment,AI Model Risk Assessment Completed,policy,p
 risk,risk,catalog,m365-risky-users,M365 Users with High Risk Level,policy,policy,event,high,active,candidate
 risk,risk,catalog,vuln-epss-high,High EPSS Score Vulnerabilities,policy,policy,event,high,active,candidate
 risk-assessment,risk,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
+risk-assessment,risk,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
 risk-assessment,risk,catalog,vendor-risk-assessed,Vendor Risk Level Assigned,policy,policy,event,medium,active,candidate
 risk-management,risk,catalog,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
+risk-management,risk,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
 risk-review,risk,catalog,ai-third-party-model-risk-review,AI Third Party Model Risk Review,policy,policy,event,medium,active,candidate
+risk-treatment,risk,catalog,hipaa-risk-management-measures-missing,HIPAA Risk Management Measures Missing,policy,policy,event,high,active,candidate
 risky-user,risk,catalog,identity-idp-risky-user-unresolved,Identity Idp Risky User Unresolved,policy,policy,event,medium,active,candidate
 root,routing,catalog,aws-iam-root-mfa-enabled,Root Account MFA Enabled,policy,policy,event,critical,active,candidate
 root,routing,catalog,container-root-user,Container Running as Root,policy,policy,event,high,active,candidate
@@ -37913,6 +38034,7 @@ security-groups,routing,catalog,aws-ecs-ssh-denied,ECS Services Deny Public SSH 
 security-hub,routing,catalog,aws-security-hub-enabled,AWS Security Hub Enabled,policy,policy,event,medium,active,candidate
 security-issues,routing,catalog,compliance-p1-security-issues,P1 Security Issues Resolved Timely,policy,policy,event,critical,active,candidate
 security-issues,routing,catalog,compliance-p2-security-issues,P2 Security Issues Resolved Timely,policy,policy,event,high,active,candidate
+security-management,routing,catalog,hipaa-security-management-process-missing,HIPAA Security Management Process Missing,policy,policy,event,high,active,candidate
 security-operations,routing,catalog,panopticon-curated-case,Panopticon Curated Case,panopticon,panopticon,event,dynamic,open,candidate
 security-review,routing,catalog,vendor-security-review-complete,Vendor Security Review Completed,policy,policy,event,high,active,candidate
 security-reviewer,routing,catalog,security-reviewer-reported-finding,Security Reviewer Reported Finding,security_reviewer,security_reviewer,event,dynamic,open,candidate
@@ -38031,6 +38153,7 @@ servicenow,routing,catalog,identity-servicenow-terminated-active-account,Service
 session,routing,catalog,hipaa-automatic-logoff,HIPAA Automatic Logoff,policy,policy,event,medium,active,candidate
 session,routing,catalog,identity-session-lifetime-too-long-admin,Identity Session Lifetime Too Long Admin,policy,policy,event,high,active,candidate
 session,routing,catalog,runtime-identity-provider-risky-session,Runtime Identity Provider Risky Session,policy,policy,event,medium,active,candidate
+session-control,routing,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
 sha,routing,catalog,gcp-scc-security-health-analytics-enabled,GCP SCC Security Health Analytics Enabled,policy,policy,event,medium,active,candidate
 sha1,routing,catalog,cert-weak-signature,Certificates Using Weak Signature Algorithms,policy,policy,event,high,active,candidate
 shadow,routing,catalog,api-shadow-endpoint-detected,API Shadow Endpoint Detected,policy,policy,event,medium,active,candidate
@@ -38318,6 +38441,12 @@ tailscale,routing,catalog,tailscale-tailnet-device-approval-disabled,Tailscale T
 tamper-detection,routing,catalog,aws-cloudtrail-log-integrity,CloudTrail Log File Integrity Validation,policy,policy,event,medium,active,candidate
 tampering,routing,catalog,sentinelone-protection-control-tampering,SentinelOne Protection Control Tampering,sentinelone,sentinelone,event,high,open,test
 targeted,routing,catalog,vm-public-eol-targeted,Publicly exposed VM with end-of-life targeted technology,policy,policy,event,critical,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-system-access-control-missing,HIPAA PHI System Access Control Missing,policy,policy,event,high,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-system-automatic-logoff-missing,HIPAA PHI System Automatic Logoff Missing,policy,policy,event,high,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-system-integrity-control-missing,HIPAA PHI System Integrity Control Missing,policy,policy,event,high,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-system-person-authentication-missing,HIPAA PHI System Person Authentication Missing,policy,policy,event,high,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
+technical-safeguards,routing,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
 telemetry,routing,catalog,telemetry-repo-secret-key,Repository Contains Hardcoded Secrets,policy,policy,event,critical,active,candidate
 tenant,routing,catalog,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,policy,policy,event,medium,active,candidate
 tenant-isolation,compliance,catalog,cerebro-high-risk-api-access,Cerebro Active High-Risk API Access Posture,cerebro,cerebro,event,high,open,test
@@ -38399,6 +38528,7 @@ training-data,routing,catalog,aws-sagemaker-training-unencrypted,SageMaker Train
 training-data,routing,catalog,gcp-vertex-ai-dataset-public,GCP Vertex AI Dataset Public Access,policy,policy,event,critical,active,candidate
 transit,routing,catalog,db-ssl-connections,Database SSL Connections Enforced,policy,policy,event,high,active,candidate
 transmission,routing,catalog,hipaa-transmission-security,HIPAA Transmission Security,policy,policy,event,critical,active,candidate
+transmission-security,routing,catalog,hipaa-phi-transmission-encryption-missing,HIPAA PHI Transmission Encryption Missing,policy,policy,event,high,active,candidate
 transparency,routing,catalog,ai-explainability,AI Model Explainability Documentation,policy,policy,event,medium,active,candidate
 transport-security,routing,catalog,aws-cloudfront-http,CloudFront Distribution Allows HTTP,policy,policy,event,medium,active,candidate
 transport-security,routing,catalog,aws-elb-https-only,Load Balancer Listener Without HTTPS,policy,policy,event,medium,active,candidate
@@ -38423,6 +38553,7 @@ twilio_api_key,routing,catalog,github-secops-secret-twilio-api-key-push-protecti
 twilio_api_key,routing,catalog,github-secops-secret-twilio-api-key-resolution-false-positive,GitHub Secret Scanning Twilio Api Key Resolution False Positive,policy,policy,event,medium,active,candidate
 twilio_api_key,routing,catalog,github-secops-secret-twilio-api-key-resolution-used-in-tests,GitHub Secret Scanning Twilio Api Key Resolution Used In Tests,policy,policy,event,medium,active,candidate
 twilio_api_key,routing,catalog,github-secops-secret-twilio-api-key-resolution-wont-fix,GitHub Secret Scanning Twilio Api Key Resolution Wont Fix,policy,policy,event,medium,active,candidate
+unique-user-id,routing,catalog,hipaa-phi-system-unique-user-id-missing,HIPAA PHI System Unique User ID Missing,policy,policy,event,high,active,candidate
 unknown-status,routing,catalog,github-secops-credential-unknown-status,GitHub Unknown Credential Status,policy,policy,event,medium,active,candidate
 unmanaged,routing,catalog,anthropic-unmanaged-active-api-key,Anthropic Unmanaged Active API Key,anthropic,anthropic,event,high,open,test
 unpinned,routing,catalog,cicd-unpinned-third-party-action,Cicd Unpinned Third Party Action,policy,policy,event,medium,active,candidate

@@ -1,0 +1,101 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-system-access-control-missing
+    name: HIPAA PHI System Access Control Missing
+    description: Flags ePHI systems without access control policy evidence.
+    tags:
+        - hipaa
+        - technical-safeguards
+        - access-control
+        - phi-system
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+spec:
+    severity: high
+    effect: forbid
+    resource: phi_system_inventory::phi_system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ephi"), true)
+            - cmp_ne(path(resource, "access_control_policy_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable or document access controls for the ePHI system.
+        steps:
+            - Confirm the system maintains ePHI and identify the access boundary.
+            - Enable access controls for approved users and software programs.
+            - Retain owner approval and control evidence in the PHI system inventory.
+    riskCategories:
+        - IDENTITY_RISK
+        - DATA_EXPOSURE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.312(a)(1)
+    input:
+        sourceKinds:
+            - phi_system_inventory.phi_system
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - access_control_policy_enabled
+            - owner_id
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - phi_system_inventory
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - access_control_policy_enabled
+            - owner_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - system_id
+    audit:
+        evidenceType: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: ePHI systems have access controls that restrict access to approved persons or software programs.
+        auditorGuidance: Review the PHI system record, access control state, owner, access boundary, and last observed timestamp.
+        riskStatement: Missing access control evidence can allow ePHI access outside the approved user or software boundary.
+        remediationIntent: Enable access controls or attach evidence showing the system restricts ePHI access to approved identities and programs.
+        acceptableEvidence:
+            - source: phi_system_inventory
+              fields:
+                - system_id
+                - contains_ephi
+                - access_control_policy_enabled
+                - owner_id
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The system does not maintain ePHI or access control evidence is held in a linked identity provider record.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: security.owner
+        remediation:
+            type: phi_system_access_control_update
+            steps:
+                - Enable or document system access controls.
+                - Confirm the owner and ePHI boundary.
+                - Rerun PHI system inventory collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

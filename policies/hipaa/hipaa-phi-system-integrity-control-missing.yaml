@@ -1,0 +1,101 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-system-integrity-control-missing
+    name: HIPAA PHI System Integrity Control Missing
+    description: Flags ePHI systems without integrity control evidence.
+    tags:
+        - hipaa
+        - technical-safeguards
+        - integrity
+        - phi-system
+        - ephi
+    references:
+        - https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+spec:
+    severity: high
+    effect: forbid
+    resource: phi_system_inventory::phi_system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ephi"), true)
+            - cmp_ne(path(resource, "integrity_controls_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable integrity controls for the ePHI system.
+        steps:
+            - Confirm the ePHI records and update paths for the system.
+            - Enable controls that protect ePHI from improper alteration or destruction.
+            - Retain integrity-control evidence in the PHI system inventory.
+    riskCategories:
+        - DATA_EXPOSURE
+        - GOVERNANCE
+    frameworks:
+        - name: HIPAA
+          controls:
+            - 164.312(c)(1)
+    input:
+        sourceKinds:
+            - phi_system_inventory.phi_system
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - integrity_controls_enabled
+            - owner_id
+            - observed_at
+        freshnessSLA: 30d
+    evidence:
+        type: control_review
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        acceptableSources:
+            - phi_system_inventory
+        requiredFields:
+            - system_id
+            - contains_ephi
+            - integrity_controls_enabled
+            - owner_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - system_id
+    audit:
+        evidenceType: control_review
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 30d
+        auditorStatement: ePHI systems have controls that protect ePHI from improper alteration or destruction.
+        auditorGuidance: Review the PHI system record, integrity-control state, change paths, owner, and last observed timestamp.
+        riskStatement: Missing integrity controls can leave ePHI changes or destruction without required protection evidence.
+        remediationIntent: Enable integrity controls and retain evidence for the ePHI system.
+        acceptableEvidence:
+            - source: phi_system_inventory
+              fields:
+                - system_id
+                - contains_ephi
+                - integrity_controls_enabled
+                - owner_id
+                - observed_at
+        exceptionPolicy:
+            maxAge: 30d
+            requiresApproval: true
+        falsePositives:
+            - The system does not maintain ePHI or integrity control evidence is linked from a change-management system.
+    actions:
+        owner:
+            from: resource.owner_id
+            fallback: security.owner
+        remediation:
+            type: phi_system_integrity_control_update
+            steps:
+                - Enable integrity controls.
+                - Confirm change and destruction protections.
+                - Rerun PHI system inventory collection.
+        effort: medium
+        verification:
+            rerunPolicy: true
+    enabled: true

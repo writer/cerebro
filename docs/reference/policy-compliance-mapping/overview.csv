@@ -1,29 +1,29 @@
 metric,value
-policy finding rules,1520
-policy-control rows,10103
-tag rows,15181
-unique tags,1049
+policy finding rules,1530
+policy-control rows,10113
+tag rows,15282
+unique tags,1066
 domains,37
 frameworks,23
 
 all finding metric,value
-public detections,1606
+public detections,1616
 non-policy detections,86
-finding-control rows,10287
-finding-tag rows,38806
+finding-control rows,10297
+finding-tag rows,38937
 source-coverage rows,6175
-finding compliance review rows,1606
-unique finding review tags,1622
+finding compliance review rows,1616
+unique finding review tags,1651
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,323
+detections missing source coverage refs,333
 detections source-backed,469
 detections partial source-backed,814
-detections control-only,323
+detections control-only,333
 
 evidence mode,rules
-cel,1003
+cel,1013
 query,507
 graph,10
 
@@ -38,6 +38,7 @@ azure,55
 ai,52
 m365,26
 api,21
+hipaa,19
 cicd,18
 runtime,18
 vulnerability,17
@@ -45,7 +46,6 @@ compliance,15
 endpoint,15
 container,14
 pci,11
-hipaa,9
 org,8
 privacy,8
 certificate,7
@@ -74,9 +74,9 @@ CIS Controls v8,513
 PCI DSS v4.0.1,428
 CIS AWS Foundations Benchmark v2.0,50
 CIS Kubernetes Benchmark,42
+HIPAA,39
 ISO 42001,39
 EU AI Act,32
-HIPAA,29
 GDPR,14
 CCPA,11
 Cerebro Revenue Operations,10
@@ -92,11 +92,11 @@ CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1566
+event,1576
 graph,40
 
 finding pack,detections
-policy,1520
+policy,1530
 github,15
 grc,15
 identity,15
@@ -129,7 +129,7 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1510
+policy,1520
 github,16
 okta,15
 grc,12
@@ -174,7 +174,7 @@ CIS Kubernetes Benchmark,133
 EU AI Act,62
 CIS AWS Foundations Benchmark v2.0,54
 GDPR,50
-HIPAA,30
+HIPAA,40
 CCPA,24
 Cerebro Revenue Operations,13
 Cerebro Organizational Resilience,11
@@ -203,6 +203,7 @@ endpoint,27
 api,22
 cicd,19
 compliance,19
+hipaa,18
 grc,17
 m365,15
 secrets,15
@@ -211,7 +212,6 @@ incident_response,12
 database,9
 okta,9
 org,9
-hipaa,8
 network,8
 pci,8
 privacy,8

@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: ephi system without person authentication fails
+      resource:
+          system_id: ps-500
+          contains_ephi: true
+          person_or_entity_authentication_enabled: false
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: true
+    - name: ephi system with person authentication passes
+      resource:
+          system_id: ps-501
+          contains_ephi: true
+          person_or_entity_authentication_enabled: true
+          owner_id: security-owner
+          observed_at: "2026-07-01T00:00:00Z"
+      wantFinding: false
