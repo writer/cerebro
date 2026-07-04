@@ -1,11 +1,12 @@
 # Zuora
 
-Generated Source Runtime SDK scaffold for `zuora`.
+Source Runtime adapter for Zuora billing, notification, product, and revenue configuration.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Base URL: `https://rest.zuora.com`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -15,6 +16,13 @@ Generated Source Runtime SDK scaffold for `zuora`.
 - Health endpoint: `/source-runtimes/health?source_id=zuora`
 - Source health receipt: `sources/zuora/source_health_receipt.json`
 - EvidenceCAS reference kind: `zuora.evidence_cas_reference`
+
+## Provider API status
+
+- Status: invalidated for promotion.
+- Reason: generated runtime paths not present in the provider Swagger.
+- Affected families: `account`, `revenue_event`, `revenue_schedule`.
+- The remaining nine runtime family paths are present in the provider Swagger and should be promoted after the generated families are rewritten or removed.
 
 ## Families
 
@@ -33,5 +41,6 @@ Generated Source Runtime SDK scaffold for `zuora`.
 
 ## Tests
 
-- `go test ./sources/zuora ./internal/sourceprojection -count=1`
+- `go test ./sources/zuora ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
 - `make catalog-check`
+- `make connector-catalog-review connector-api-discovery`

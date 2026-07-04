@@ -52,6 +52,26 @@ kind_lifecycle:
     status: active
   - kind: zuora.account
     status: active
+provider_api_disproof:
+  status: invalidated
+  reason: generated_runtime_paths_not_in_provider_spec
+  checked_at: 2026-07-04T00:00:00Z
+  references:
+    - https://developer.zuora.com/v1-api-reference/api
+    - https://developer.zuora.com/yaml/swagger.yaml
+    - https://docs.zuora.com/en/zuora-platform/integration/apis/rest-api
+  affected_families:
+    - account
+    - revenue_event
+    - revenue_schedule
+  missing_paths:
+    - /v1/payment-methods/credit-cards/accounts/{account-key}
+    - /v1/revenue-events/revenue-schedules/{rs-number}
+    - /v1/revenue-items/revenue-events/{event-number}
+  notes:
+    - The provider Swagger verifies nine current runtime family paths, but not these three generated keyed paths.
+    - The account family should be rewritten against documented account or payment-method endpoints before promotion.
+    - The revenue event and revenue schedule families need provider-backed paths or removal before promotion.
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: zuora
