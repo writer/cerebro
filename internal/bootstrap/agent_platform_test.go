@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp/agenttasks"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -66,7 +67,7 @@ func TestHandleAgentContext(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	var context agentContextResponse
+	var context agenttasks.ContextResponse
 	if err := json.NewDecoder(resp.Body).Decode(&context); err != nil {
 		t.Fatalf("decode context: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestAgentFindingTaskReturnsNextActions(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	var task agentTaskResponse
+	var task agenttasks.TaskResponse
 	if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
 		t.Fatalf("decode task: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestAgentSourceRuntimeRetryTaskPlansWithReadScopeAndExecutesWithWriteScope(
 	if planResp.StatusCode != http.StatusOK {
 		t.Fatalf("plan status = %d, want 200", planResp.StatusCode)
 	}
-	var plan agentTaskResponse
+	var plan agenttasks.TaskResponse
 	if err := json.NewDecoder(planResp.Body).Decode(&plan); err != nil {
 		t.Fatalf("decode plan: %v", err)
 	}

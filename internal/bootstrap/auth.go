@@ -871,15 +871,6 @@ func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]str
 	*tenants = append(*tenants, tenantID)
 }
 
-func writeAuthError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && w.Header().Get("WWW-Authenticate") == "" {
-		w.Header().Set("WWW-Authenticate", "Bearer")
-	}
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
-}
-
 func writeAuthErrorForRequest(w http.ResponseWriter, r *http.Request, cfg config.AuthConfig, status int, message string) {
 	policy := httpAuthRoutePolicy{}
 	if r != nil {
