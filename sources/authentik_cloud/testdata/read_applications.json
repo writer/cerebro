@@ -2,7 +2,7 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/v1/applications",
+      "api_path": "/api/v3/core/applications/",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-authentik_cloud-applications-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-authentik_cloud-applications-1",
@@ -15,7 +15,7 @@
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "authentik_cloud",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
+      "record_selector": "$.results[*]",
       "resource_id": "source-authentik_cloud-applications-1",
       "resource_name": "Authentik Cloud Applications Fixture",
       "resource_type": "application",
@@ -31,7 +31,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "api_method": "GET",
-      "api_path": "/v1/applications",
+      "api_path": "/api/v3/core/applications/",
       "application": "application",
       "event_id": "source-authentik_cloud-applications-1",
       "evidence_cas": {
@@ -47,8 +47,9 @@
       "id": "source-authentik_cloud-applications-1",
       "name": "Authentik Cloud Applications Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
+      "pk": "source-authentik_cloud-applications-1",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
+      "record_selector": "$.results[*]",
       "resource_id": "source-authentik_cloud-applications-1",
       "resource_type": "applications",
       "resource_urn": "urn:cerebro:tenant:authentik_cloud_applications:source-authentik_cloud-applications-1",

@@ -88,6 +88,39 @@ func TestProviderAPIProofScoreRejectsPlaceholderSurface(t *testing.T) {
 	}
 }
 
+func TestProviderAPIProofScoreAcceptsRuntimeURLConfigLocator(t *testing.T) {
+	api := runtimeProviderAPIFields{
+		Status:        "verified",
+		Basis:         "declared",
+		VerifiedAt:    "2026-07-04T00:00:00Z",
+		Transport:     "rest",
+		Auth:          "bearer_token",
+		AuthMechanics: "authorization_bearer_token",
+		BaseURL:       "${config.base_url}/api/v3",
+		SpecURL:       "https://developer.provider.io/openapi.yaml",
+		SpecKind:      "openapi",
+		References:    []string{"https://developer.provider.io/openapi.yaml"},
+		Families: []struct {
+			ID        string `yaml:"id"`
+			Method    string `yaml:"method"`
+			Path      string `yaml:"path"`
+			Operation string `yaml:"operation"`
+		}{{
+			ID:     "users",
+			Method: "GET",
+			Path:   "/v1/users",
+		}},
+	}
+
+	proof := providerAPIProofScore(api, nil)
+	if !proof.HasProof || proof.Score != providerAPIProofThreshold {
+		t.Fatalf("proof = %#v, want verified runtime URL locator", proof)
+	}
+	if providerAPIURLLooksGrounded("${config.tenant}/api/v3") {
+		t.Fatal("providerAPIURLLooksGrounded(${config.tenant}/api/v3) = true, want false")
+	}
+}
+
 func TestProviderAPISpecPointerAcceptsExplicitPostmanCollection(t *testing.T) {
 	specURL := "https://raw.githubusercontent.com/duosecurity/duo_postman_collection/main/duo-admin-api/Duo%20Admin%20API%20v4.1.0.postman_collection.json"
 	if !providerAPISpecPointerOK(specURL, "postman_collection", "rest") {

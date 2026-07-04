@@ -9,6 +9,7 @@ import (
 const providerAPIProofThreshold = 100
 
 var templateValuePattern = regexp.MustCompile(`(\$\{[^}]+\}|<[^>]+>|\{[^}]+\})`)
+var runtimeURLLocatorPattern = regexp.MustCompile(`^\$\{(?:config|connection|credential)\.[A-Za-z0-9_]*(?:url|base_url|api_base_url)\}(?:/[^\\\s]*)?$`)
 
 type providerAPIProof struct {
 	Score    int
@@ -196,6 +197,9 @@ func providerAPIURLLooksGrounded(raw string) bool {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || strings.HasPrefix(raw, "//") {
 		return false
+	}
+	if runtimeURLLocatorPattern.MatchString(strings.ToLower(raw)) {
+		return true
 	}
 	parsed, ok := parseProviderAPIURL(raw)
 	if !ok {
