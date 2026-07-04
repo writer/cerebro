@@ -50,8 +50,9 @@ func New() (*Source, error) {
 				DisablePageSize: true,
 				MapRecords:      map[string]string{"data.key_info": "entity"},
 				Config: jsonapi.FamilyConfig{
-					StaticQuery:      map[string]string{"list": "true"},
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					StaticQuery:           map[string]string{"list": "true"},
+					ConfigAttributes:      map[string]string{"tenant_id": "tenant_id"},
+					FinalStaticAttributes: map[string]string{"resource_type": "vault_identity_entity"},
 				},
 				TimestampKeys: []string{"entity.last_update_time", "entity.creation_time"},
 				Attributes: map[string]string{
@@ -68,7 +69,7 @@ func New() (*Source, error) {
 					"status":          "entity.metadata.status",
 					"user_id":         "id",
 				},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "resource_type": "vault_identity_entity", "schema": "users", "source_system": "hashicorp_vault"},
+				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "hashicorp_vault"},
 			},
 			{
 				Name:            familySecrets,
@@ -77,7 +78,10 @@ func New() (*Source, error) {
 				IDKeys:          []string{"id", "name", "mount.accessor"},
 				DisablePageSize: true,
 				MapRecords:      map[string]string{"data": "mount"},
-				Config:          jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
+				Config: jsonapi.FamilyConfig{
+					ConfigAttributes:      map[string]string{"tenant_id": "tenant_id"},
+					FinalStaticAttributes: map[string]string{"resource_type": "vault_secret_engine", "secret_status": "enabled"},
+				},
 				Attributes: map[string]string{
 					"resource_id":     "id",
 					"resource_name":   "name",
@@ -89,7 +93,7 @@ func New() (*Source, error) {
 					"source_event_id": "id",
 					"vault_id":        "mount.accessor|id",
 				},
-				StaticAttributes: map[string]string{"record_class": "secret", "resource_type": "vault_secret_engine", "schema": "secrets", "secret_status": "enabled", "source_system": "hashicorp_vault"},
+				StaticAttributes: map[string]string{"record_class": "secret", "schema": "secrets", "source_system": "hashicorp_vault"},
 			},
 			{
 				Name:            familyAuditEvents,
@@ -98,14 +102,21 @@ func New() (*Source, error) {
 				IDKeys:          []string{"id", "name", "audit_device.type"},
 				DisablePageSize: true,
 				MapRecords:      map[string]string{"data": "audit_device"},
-				Config:          jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
+				Config: jsonapi.FamilyConfig{
+					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					FinalStaticAttributes: map[string]string{
+						"actor_id":      "vault",
+						"event_type":    "vault.audit_device.enabled",
+						"resource_type": "vault_audit_device",
+					},
+				},
 				Attributes: map[string]string{
 					"resource_id":     "id",
 					"resource_name":   "name",
 					"resource_type":   "resource_type",
 					"source_event_id": "id",
 				},
-				StaticAttributes: map[string]string{"actor_id": "vault", "event_type": "vault.audit_device.enabled", "record_class": "audit_event", "resource_type": "vault_audit_device", "schema": "audit_events", "source_system": "hashicorp_vault"},
+				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "hashicorp_vault"},
 			},
 		},
 	})

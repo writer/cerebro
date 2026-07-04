@@ -345,6 +345,96 @@ func TestSecretEngineAttributeMapping(t *testing.T) {
 	}
 }
 
+func TestVaultFinalStaticAttributesOverrideProviderClassifiers(t *testing.T) {
+	tests := []struct {
+		family   string
+		path     string
+		wantList bool
+		payload  map[string]any
+		want     map[string]string
+	}{
+		{
+			family:   familyUsers,
+			path:     "/v1/identity/entity/id",
+			wantList: true,
+			payload: map[string]any{
+				"data": map[string]any{
+					"key_info": map[string]any{
+						"user-1": map[string]any{
+							"name":          "Alice",
+							"resource_type": "provider_identity_type",
+							"metadata":      map[string]string{"email": "alice@example.com"},
+						},
+					},
+					"keys": []string{"user-1"},
+				},
+			},
+			want: map[string]string{"resource_type": "vault_identity_entity"},
+		},
+		{
+			family: familySecrets,
+			path:   "/v1/sys/mounts",
+			payload: map[string]any{
+				"data": map[string]any{
+					"secret/": map[string]any{
+						"accessor":      "kv_123",
+						"type":          "kv",
+						"resource_type": "provider_secret_type",
+						"secret_status": "disabled",
+					},
+				},
+			},
+			want: map[string]string{
+				"resource_type": "vault_secret_engine",
+				"secret_status": "enabled",
+			},
+		},
+		{
+			family: familyAuditEvents,
+			path:   "/v1/sys/audit",
+			payload: map[string]any{
+				"data": map[string]any{
+					"file/": map[string]any{
+						"type":          "file",
+						"actor_id":      "provider_actor",
+						"event_type":    "provider.event",
+						"resource_type": "provider_audit_type",
+					},
+				},
+			},
+			want: map[string]string{
+				"actor_id":      "vault",
+				"event_type":    "vault.audit_device.enabled",
+				"resource_type": "vault_audit_device",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			server := httptest.NewServer(vaultFamilyHandler(t, tt.path, tt.wantList, tt.payload))
+			defer server.Close()
+			cfg := sourcecdk.NewConfig(newFixtureConfig(tt.family, map[string]string{"base_url": server.URL}))
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			for key, want := range tt.want {
+				if got := pull.Events[0].Attributes[key]; got != want {
+					t.Fatalf("attribute %s = %q, want %q", key, got, want)
+				}
+			}
+		})
+	}
+}
+
 func vaultFamilyHandler(t *testing.T, wantPath string, wantList bool, payload map[string]any) http.HandlerFunc {
 	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
