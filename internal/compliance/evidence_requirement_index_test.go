@@ -65,11 +65,12 @@ func TestAssessControlEvidenceRequirementsReportsOperatingStates(t *testing.T) {
 				ControlRefs: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
 			},
 			{
-				ID:         "github-evidence",
-				SourceID:   "github",
-				EntityType: "repository_access",
-				Fields:     []string{"repository_id"},
-				ObservedAt: now.Add(-time.Hour),
+				ID:          "github-evidence",
+				SourceID:    "github",
+				EntityType:  "repository_access",
+				Fields:      []string{"repository_id"},
+				ObservedAt:  now.Add(-time.Hour),
+				ControlRefs: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
 			},
 			{
 				ID:          "risk-evidence",
@@ -77,6 +78,7 @@ func TestAssessControlEvidenceRequirementsReportsOperatingStates(t *testing.T) {
 				EntityType:  "risk_record",
 				FieldValues: map[string]string{"risk_id": "risk-1"},
 				ObservedAt:  now.Add(-48 * time.Hour),
+				ControlRefs: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
 			},
 		},
 	})
@@ -114,11 +116,12 @@ func TestAssessControlEvidenceRequirementsMarksManualReview(t *testing.T) {
 		Control: ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 		Now:     now,
 		Evidence: []ControlEvidenceRequirementSignal{{
-			ID:         "owner-review",
-			SourceID:   "control_owner_review",
-			EntityType: "control_evidence_packet",
-			Fields:     []string{"reviewer"},
-			ObservedAt: now.Add(-time.Hour),
+			ID:          "owner-review",
+			SourceID:    "control_owner_review",
+			EntityType:  "control_evidence_packet",
+			Fields:      []string{"reviewer"},
+			ObservedAt:  now.Add(-time.Hour),
+			ControlRefs: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
 		}},
 	})
 	if len(assessments) != 1 {
@@ -126,6 +129,66 @@ func TestAssessControlEvidenceRequirementsMarksManualReview(t *testing.T) {
 	}
 	if assessments[0].Status != ControlEvidenceRequirementManualReview || !assessments[0].ManualReviewRequired {
 		t.Fatalf("assessment = %#v, want manual review", assessments[0])
+	}
+}
+
+func TestAssessControlEvidenceRequirementsTreatsTimestamplessFreshnessEvidenceAsStale(t *testing.T) {
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	requirement := testResolvedEvidenceRequirement("CC6.1", "identity-access", "okta", "identity_user", []string{"user_id"})
+	index := BuildControlEvidenceRequirementIndex(ControlEvidenceRequirementResolution{
+		Version:      "2026-07-04",
+		Requirements: []ResolvedControlEvidenceRequirement{requirement},
+	})
+	assessments := AssessControlEvidenceRequirements(ControlEvidenceRequirementAssessmentInput{
+		Index:   index,
+		Control: ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		Now:     now,
+		Evidence: []ControlEvidenceRequirementSignal{{
+			ID:          "timestampless",
+			SourceID:    "okta",
+			EntityType:  "identity_user",
+			Fields:      []string{"user_id"},
+			ControlRefs: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+		}},
+	})
+	if len(assessments) != 1 {
+		t.Fatalf("assessments = %d, want 1", len(assessments))
+	}
+	if assessments[0].Status != ControlEvidenceRequirementStale {
+		t.Fatalf("status = %q, want stale", assessments[0].Status)
+	}
+	if got := assessments[0].StaleEvidenceIDs; len(got) != 1 || got[0] != "timestampless" {
+		t.Fatalf("stale evidence = %#v, want timestampless", got)
+	}
+}
+
+func TestAssessControlEvidenceRequirementsRequiresScopedControlRefs(t *testing.T) {
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	requirement := testResolvedEvidenceRequirement("CC6.1", "identity-access", "okta", "identity_user", []string{"user_id"})
+	index := BuildControlEvidenceRequirementIndex(ControlEvidenceRequirementResolution{
+		Version:      "2026-07-04",
+		Requirements: []ResolvedControlEvidenceRequirement{requirement},
+	})
+	assessments := AssessControlEvidenceRequirements(ControlEvidenceRequirementAssessmentInput{
+		Index:   index,
+		Control: ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		Now:     now,
+		Evidence: []ControlEvidenceRequirementSignal{{
+			ID:         "unscoped",
+			SourceID:   "okta",
+			EntityType: "identity_user",
+			Fields:     []string{"user_id"},
+			ObservedAt: now.Add(-time.Hour),
+		}},
+	})
+	if len(assessments) != 1 {
+		t.Fatalf("assessments = %d, want 1", len(assessments))
+	}
+	if assessments[0].Status != ControlEvidenceRequirementMissing {
+		t.Fatalf("status = %q, want missing", assessments[0].Status)
+	}
+	if got := assessments[0].EvidenceIDs; len(got) != 0 {
+		t.Fatalf("evidence ids = %#v, want none", got)
 	}
 }
 

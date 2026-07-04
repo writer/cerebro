@@ -267,7 +267,7 @@ func controlEvidenceRequirementMatches(requirement ResolvedControlEvidenceRequir
 		if wantEntityType != "" && !strings.EqualFold(strings.TrimSpace(signal.EntityType), wantEntityType) {
 			continue
 		}
-		if len(signal.ControlRefs) != 0 && !controlEvidenceRequirementSignalReferencesControl(signal.ControlRefs, wantControlKey) {
+		if !controlEvidenceRequirementSignalReferencesControl(signal.ControlRefs, wantControlKey) {
 			continue
 		}
 		matches = append(matches, signal)
@@ -317,11 +317,17 @@ func controlEvidenceRequirementMissingFields(required []string, signal ControlEv
 }
 
 func controlEvidenceRequirementSignalStale(freshnessWindow string, signal ControlEvidenceRequirementSignal, now time.Time) bool {
-	if !signal.ExpiresAt.IsZero() && !signal.ExpiresAt.After(now) {
-		return true
+	if !signal.ExpiresAt.IsZero() {
+		return !signal.ExpiresAt.After(now)
 	}
 	window, ok := parseFreshnessWindow(freshnessWindow)
-	return ok && !signal.ObservedAt.IsZero() && signal.ObservedAt.Add(window).Before(now)
+	if !ok {
+		return false
+	}
+	if signal.ObservedAt.IsZero() {
+		return true
+	}
+	return signal.ObservedAt.Add(window).Before(now)
 }
 
 func controlEvidenceRequirementManualReviewRequired(requirement ControlEvidenceSourceRequirement, signals []ControlEvidenceRequirementSignal) bool {
