@@ -31,7 +31,7 @@
         "0AExampleSharedDrive"
       ],
       "trashed": false,
-      "webViewLink": "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit"
+      "webViewLink": "https://drive.example.test/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit"
     },
     "schema_ref": "google_drive/files/v1",
     "source_id": "google_drive",
