@@ -652,7 +652,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) (string, b
 			return responseCursorValue(family, value), true
 		}
 	}
-	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "metadata", "result_info", "resultInfo"} {
+	for _, key := range responseCursorContainers(family) {
 		var nested map[string]any
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
@@ -667,6 +667,16 @@ func responseCursor(family Family, object map[string]json.RawMessage) (string, b
 		}
 	}
 	return "", false
+}
+
+func responseCursorContainers(family Family) []string {
+	containers := make([]string, 0, len(family.Config.CursorContainers)+6)
+	for _, key := range family.Config.CursorContainers {
+		if key = strings.TrimSpace(key); key != "" {
+			containers = append(containers, key)
+		}
+	}
+	return append(containers, "pagination", "page", "pageInfo", "meta", "result_info", "resultInfo")
 }
 
 func pageResponseCursor(family Family, object map[string]json.RawMessage) string {
@@ -899,11 +909,19 @@ func nextPageCursor(values map[string]any) string {
 	if !ok {
 		return ""
 	}
-	totalPages, ok := intValue(firstAny(values["total_pages"], values["totalPages"], values["page_count"], values["pageCount"]))
+	totalPages, ok := intValue(firstAny(values["total_pages"], values["totalPages"]))
+	pageCount := false
+	if !ok {
+		totalPages, ok = intValue(firstAny(values["page_count"], values["pageCount"]))
+		pageCount = ok
+	}
 	if !ok || page < 1 || totalPages < 1 {
 		return ""
 	}
 	if page >= totalPages {
+		if !pageCount {
+			return ""
+		}
 		return responseCursorDone
 	}
 	return strconv.Itoa(page + 1)

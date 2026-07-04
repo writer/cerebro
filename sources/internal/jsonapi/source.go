@@ -68,6 +68,7 @@ type FamilyConfig struct {
 	OffsetKeys          []string
 	LimitKeys           []string
 	LastItemCursorKeys  []string
+	CursorContainers    []string
 	Method              string
 	AuthModel           string
 	DefaultPageSize     int

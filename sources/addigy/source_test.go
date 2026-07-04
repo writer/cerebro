@@ -113,6 +113,43 @@ func TestSourceReadsOrganizationUsers(t *testing.T) {
 	}
 }
 
+func TestSourceReadsPoliciesWithStaticPolicyAttributes(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oa/policies/query" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %q, want POST", r.Method)
+		}
+		if body := decodeBody(t, r); len(body) != 0 {
+			t.Fatalf("body = %#v, want empty JSON object", body)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"policyId": "policy-1", "name": "Default Policy", "orgid": "org-1"}})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "api_key": "test-key", "family": familyPolicies})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "addigy.policies" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.Attributes["policy_status"] != "configured" || event.Attributes["policy_type"] != "device_policy" {
+		t.Fatalf("policy attributes = %#v", event.Attributes)
+	}
+}
+
 func TestSourceReadsAuditEvents(t *testing.T) {
 	source, err := New()
 	if err != nil {

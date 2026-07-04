@@ -156,12 +156,10 @@ func policiesFamily() jsonapi.Family {
 		URNKind:          "addigy_policies",
 		IDKeys:           []string{"policyId", "id", "name"},
 		TimestampKeys:    []string{"created_at", "updated_at", "meta.created", "meta.last_modified"},
-		StaticAttributes: staticAttributes(familyPolicies, "policy", "policy"),
+		StaticAttributes: policyStaticAttributes(),
 		Attributes: map[string]string{
 			"policy_id":     "policyId|id|name|_record_id",
 			"policy_name":   "name|policyId|id",
-			"policy_status": "status",
-			"policy_type":   "device_policy",
 			"resource_id":   "policyId|id|name|_record_id",
 			"resource_name": "name|policyId|id",
 		},
@@ -213,6 +211,7 @@ func pagedFamily(family jsonapi.Family) jsonapi.Family {
 	family.CursorParam = "page"
 	family.PageFirstCursor = "1"
 	family.Config.Method = http.MethodPost
+	family.Config.CursorContainers = append(family.Config.CursorContainers, "metadata")
 	family.Config.JSONBody.CursorParam = "page"
 	family.Config.JSONBody.SizeParam = "per_page"
 	if family.Config.DefaultPageSize == 0 {
@@ -228,6 +227,13 @@ func staticAttributes(schema string, recordClass string, resourceType string) ma
 		"schema":        schema,
 		"source_system": sourceID,
 	}
+}
+
+func policyStaticAttributes() map[string]string {
+	attrs := staticAttributes(familyPolicies, "policy", "policy")
+	attrs["policy_status"] = "configured"
+	attrs["policy_type"] = "device_policy"
+	return attrs
 }
 
 func (s *Source) allowLoopbackForTest() {
