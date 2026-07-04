@@ -157,7 +157,7 @@ entries:
           id_field: id
           label: Collections
           method: GET
-          name_field: externalId
+          name_field: id
           pagination:
             cursor_json_path: $.continuationToken
             cursor_param: continuationToken
@@ -166,9 +166,9 @@ entries:
           projection:
             fields:
               id: id
-              name: externalId
+              name: id
               resource_id: id
-              resource_name: externalId
+              resource_name: id
               resource_type: collection
             template: asset
           record_selector: $.data[*]
@@ -193,10 +193,10 @@ entries:
             schema_ref: bitwarden/audit_events/v1
             urn_kind: bitwarden_audit_events
           id: audit_events
-          id_field: date
+          id_field: date+type+actingUserId
           label: Audit events
           method: GET
-          name_field: type
+          name_field: date+type
           pagination:
             cursor_json_path: $.continuationToken
             cursor_param: continuationToken
@@ -206,9 +206,10 @@ entries:
             fields:
               actor_id: actingUserId
               event_type: type
-              id: date
-              resource_id: itemId
+              id: date+type+actingUserId|date+type
+              resource_id: itemId|collectionId|groupId|policyId|memberId|secretId|projectId|serviceAccountId
               resource_type: object
+              source_event_id: date+type+actingUserId|date+type
             template: audit_event
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1

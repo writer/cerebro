@@ -114,6 +114,48 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 }
 
+func TestAuditEventsUseStablePayloadIDs(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	const eventDate = "2026-06-01T00:00:00Z"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/public/events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"data": []map[string]any{
+				{"object": "event", "date": eventDate, "type": 1000, "actingUserId": "member-1", "itemId": "item-1"},
+				{"object": "event", "date": eventDate, "type": 1000, "actingUserId": "member-1", "itemId": "item-2"},
+			},
+		})
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyAuditEvents, "token": "test-token"})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want both same-timestamp audit events", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs collided: %q", pull.Events[0].Id)
+	}
+	firstSourceEventID := pull.Events[0].Attributes["source_event_id"]
+	secondSourceEventID := pull.Events[1].Attributes["source_event_id"]
+	if firstSourceEventID == "" || secondSourceEventID == "" || firstSourceEventID == secondSourceEventID || firstSourceEventID == eventDate || secondSourceEventID == eventDate {
+		t.Fatalf("source_event_id values = %q/%q, want distinct payload-derived IDs", firstSourceEventID, secondSourceEventID)
+	}
+}
+
 func assertStringSet(t *testing.T, got []string, want []string) {
 	t.Helper()
 	got = append([]string(nil), got...)
