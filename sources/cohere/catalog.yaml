@@ -11,6 +11,37 @@ runtime_families:
   - datasets
   - fine_tuned_models
   - model_catalog
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_token
+  base_url: https://api.cohere.com
+  spec_url: https://docs.cohere.com/reference
+  spec_kind: openapi_embedded_html
+  references:
+    - https://docs.cohere.com/reference
+    - https://docs.cohere.com/reference/list-models
+    - https://docs.cohere.com/reference/list-connectors
+    - https://docs.cohere.com/reference/list-datasets
+    - https://docs.cohere.com/reference/listfinetunedmodels
+  auth_evidence:
+    - https://docs.cohere.com/reference/list-models
+  families:
+    - id: connectors
+      method: GET
+      path: /v1/connectors
+    - id: datasets
+      method: GET
+      path: /v1/datasets
+    - id: fine_tuned_models
+      method: GET
+      path: /v1/finetuning/finetuned-models
+    - id: model_catalog
+      method: GET
+      path: /v1/models
 kind_lifecycle:
   - kind: cohere.model_catalog
     status: active
