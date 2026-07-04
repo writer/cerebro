@@ -151,6 +151,9 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 		return strings.Contains(lowerURL, "googleapis.com/$discovery/rest") ||
 			strings.Contains(lowerURL, "googleapis.com/discovery/v1/apis/")
 	}
+	if providerAPIMarkdownReferenceOK(lowerURL, lowerKind) {
+		return true
+	}
 	hasMachineURL := strings.Contains(lowerURL, "openapi") ||
 		strings.Contains(lowerURL, "swagger") ||
 		strings.HasSuffix(providerAPIURLPath(lowerURL), ".json") ||
@@ -161,6 +164,21 @@ func providerAPISpecPointerOK(specURL string, specKind string, transport string)
 		return true
 	}
 	return strings.Contains(lowerKind, "graphql") && strings.Contains(lowerURL, "graphql")
+}
+
+func providerAPIMarkdownReferenceOK(lowerURL string, lowerKind string) bool {
+	switch lowerKind {
+	case "api_reference_markdown", "markdown_reference", "provider_reference_markdown":
+	default:
+		return false
+	}
+	path := providerAPIURLPath(lowerURL)
+	if !strings.HasSuffix(path, ".md") {
+		return false
+	}
+	return strings.Contains(lowerURL, "/docs/") ||
+		strings.Contains(lowerURL, "/developer") ||
+		strings.Contains(lowerURL, "/reference")
 }
 
 func providerAPIAuthMechanicsOK(api runtimeProviderAPIFields) bool {

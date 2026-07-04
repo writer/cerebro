@@ -108,6 +108,19 @@ func TestProviderAPISpecPointerAcceptsGoogleDiscovery(t *testing.T) {
 	}
 }
 
+func TestProviderAPISpecPointerAcceptsExplicitProviderMarkdownReference(t *testing.T) {
+	specURL := "https://platform.provider.io/docs/en/api/admin.md"
+	if !providerAPISpecPointerOK(specURL, "api_reference_markdown", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, api_reference_markdown) = false, want true", specURL)
+	}
+	if providerAPISpecPointerOK(specURL, "", "rest") {
+		t.Fatalf("providerAPISpecPointerOK(%q, empty kind) = true, want false", specURL)
+	}
+	if providerAPISpecPointerOK("https://platform.provider.io/docs/en/api/admin", "api_reference_markdown", "rest") {
+		t.Fatal("providerAPISpecPointerOK(markdown reference without .md) = true, want false")
+	}
+}
+
 func TestProviderAPIURLIsOAuthEndpointRequiresAuthPathSegment(t *testing.T) {
 	for _, value := range []string{
 		"https://api.provider.io/oauth/token",

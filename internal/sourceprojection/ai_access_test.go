@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1017,6 +1018,265 @@ func TestProjectAnthropicInventoryEntitiesDeterministic(t *testing.T) {
 	})
 }
 
+func TestProjectAnthropicRemainingRuntimeFamilies(t *testing.T) {
+	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name       string
+		event      *cerebrov1.EventEnvelope
+		entityType string
+		attrKey    string
+		attrValue  string
+	}{
+		{
+			name: "organization",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-organization",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.organization",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":          "organization",
+					"organization_id": "org_123",
+					"name":            "Writer",
+				},
+			},
+			entityType: "anthropic.org",
+			attrKey:    "organization_id",
+			attrValue:  "org_123",
+		},
+		{
+			name: "external_key",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-external-key",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.external_key",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"external_key_id": "extkey_123",
+					"family":          "external_key",
+					"name":            "production key",
+					"provider":        "aws",
+					"status":          "active",
+				},
+			},
+			entityType: "anthropic.credential",
+			attrKey:    "external_key_id",
+			attrValue:  "extkey_123",
+		},
+		{
+			name: "service_account",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-service-account",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.service_account",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":             "service_account",
+					"name":               "Deploy worker",
+					"role":               "developer",
+					"service_account_id": "svac_123",
+					"status":             "active",
+				},
+			},
+			entityType: "anthropic.service_account",
+			attrKey:    "service_account_id",
+			attrValue:  "svac_123",
+		},
+		{
+			name: "federation_issuer",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-federation-issuer",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.federation_issuer",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":               "federation_issuer",
+					"federation_issuer_id": "fdis_123",
+					"issuer":               "https://issuer.example.com",
+					"name":                 "Production IdP",
+					"organization_id":      "org_123",
+					"status":               "active",
+				},
+			},
+			entityType: "anthropic.federation_issuer",
+			attrKey:    "federation_issuer_id",
+			attrValue:  "fdis_123",
+		},
+		{
+			name: "usage_report_message",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-usage-report-message",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.usage_report_message",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":     "usage_report_message",
+					"id":         "usage_msg_123",
+					"model":      "claude-sonnet-4-20250514",
+					"start_time": "2026-06-18T12:00:00Z",
+				},
+			},
+			entityType: "anthropic.usage_report_message",
+			attrKey:    "metric_id",
+			attrValue:  "usage_msg_123",
+		},
+		{
+			name: "usage_report_claude_code",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-usage-report-claude-code",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.usage_report_claude_code",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":     "usage_report_claude_code",
+					"id":         "usage_code_123",
+					"start_time": "2026-06-18T12:00:00Z",
+					"user_id":    "user_123",
+				},
+			},
+			entityType: "anthropic.usage_report_claude_code",
+			attrKey:    "metric_id",
+			attrValue:  "usage_code_123",
+		},
+		{
+			name: "analytics_cost",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-analytics-cost",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.analytics_cost",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"cost_usd":   "8.75",
+					"family":     "analytics_cost",
+					"id":         "analytics_cost_123",
+					"model":      "claude-sonnet-4-20250514",
+					"start_time": "2026-06-18T12:00:00Z",
+				},
+			},
+			entityType: "anthropic.analytics_cost",
+			attrKey:    "metric_type",
+			attrValue:  "cost",
+		},
+		{
+			name: "rate_limit",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-rate-limit",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.rate_limit",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":        "rate_limit",
+					"group_type":    "model",
+					"model":         "claude-sonnet-4-20250514",
+					"name":          "Messages",
+					"rate_limit_id": "rl_123",
+				},
+			},
+			entityType: "anthropic.rate_limit",
+			attrKey:    "control_type",
+			attrValue:  "rate_limit",
+		},
+		{
+			name: "spend_limit",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-spend-limit",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.spend_limit",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"amount":         "2500",
+					"family":         "spend_limit",
+					"period":         "monthly",
+					"spend_limit_id": "spend_123",
+					"user_id":        "user_123",
+				},
+			},
+			entityType: "anthropic.spend_limit",
+			attrKey:    "control_type",
+			attrValue:  "spend_limit",
+		},
+		{
+			name: "spend_limit_increase_request",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-spend-limit-increase-request",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.spend_limit_increase_request",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"amount":     "5000",
+					"family":     "spend_limit_increase_request",
+					"period":     "monthly",
+					"request_id": "req_123",
+					"status":     "pending",
+					"user_id":    "user_123",
+				},
+			},
+			entityType: "anthropic.spend_limit_increase_request",
+			attrKey:    "control_type",
+			attrValue:  "spend_limit_increase_request",
+		},
+		{
+			name: "compliance_organization",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-compliance-organization",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.compliance_organization",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"family":            "compliance_organization",
+					"name":              "Writer",
+					"organization_uuid": "org-uuid-1",
+				},
+			},
+			entityType: "anthropic.org",
+			attrKey:    "organization_uuid",
+			attrValue:  "org-uuid-1",
+		},
+		{
+			name: "compliance_organization_user",
+			event: &cerebrov1.EventEnvelope{
+				Id:         "anthropic-compliance-organization-user",
+				TenantId:   "writer",
+				SourceId:   "anthropic",
+				Kind:       "anthropic.compliance_organization_user",
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: map[string]string{
+					"email":             "carol@example.com",
+					"family":            "compliance_organization_user",
+					"name":              "Carol Example",
+					"organization_uuid": "org-uuid-1",
+					"role":              "admin",
+					"user_id":           "user_789",
+				},
+			},
+			entityType: "anthropic.user",
+			attrKey:    "user_id",
+			attrValue:  "user_789",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := projectAnthropicInventoryEvent(t, tc.event)
+			if entity := findProjectedEntityByAttribute(state, tc.entityType, tc.attrKey, tc.attrValue); entity == nil {
+				t.Fatalf("projected %s entity with %s=%q missing in %#v", tc.entityType, tc.attrKey, tc.attrValue, state.entities)
+			}
+		})
+	}
+}
+
 func projectAnthropicInventoryEvent(t *testing.T, event *cerebrov1.EventEnvelope) *projectionRecorder {
 	t.Helper()
 	state := &projectionRecorder{}
@@ -1028,6 +1288,21 @@ func projectAnthropicInventoryEvent(t *testing.T, event *cerebrov1.EventEnvelope
 		t.Fatalf("Project(%q) replay error = %v", event.GetId(), err)
 	}
 	return state
+}
+
+func findProjectedEntityByAttribute(state *projectionRecorder, entityType string, attrKey string, attrValue string) *ports.ProjectedEntity {
+	if state == nil {
+		return nil
+	}
+	for _, entity := range state.entities {
+		if entity == nil || entity.EntityType != entityType {
+			continue
+		}
+		if entity.Attributes[attrKey] == attrValue {
+			return entity
+		}
+	}
+	return nil
 }
 
 func TestRegistryRoutesAnthropicDeclaredKinds(t *testing.T) {
