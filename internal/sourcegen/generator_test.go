@@ -1162,6 +1162,63 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionCarriesReadFlags(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-example_status",
+			TenantID:    "tenant",
+			SourceID:    "example_status",
+			DisplayName: "Example Status",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "tenant_status",
+				Path:           "/v1/status",
+				RecordSelector: "$",
+				IDField:        "id",
+				Read: &connectordefinitions.ResourceReadSpec{
+					Singleton:       true,
+					DisablePageSize: true,
+				},
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_status.tenant_status",
+					SchemaRef: "example_status/tenant_status/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/example_status/source.go")
+	for _, want := range []string{
+		`DisablePageSize:  true`,
+		`Singleton:        true`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+}
+
 func TestGenerateDefinitionSupportsCustomTokenHeader(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{

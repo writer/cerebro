@@ -726,7 +726,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			SchemaRef:             schemaRef,
 			IDKeys:                idKeysForResource(resource),
 			ListKeys:              listKeysForResource(resource),
-			Singleton:             resource.Singleton,
+			Singleton:             singletonForResource(resource),
 			CursorParam:           cursorParamForResource(resource),
 			NextCursorKeys:        nextCursorKeysForResource(resource),
 			LinkHeader:            linkHeaderForResource(resource),
@@ -849,7 +849,17 @@ func pageSizeParamsForResource(resource connectordefinitions.ResourceFamily) []s
 }
 
 func disablePageSizeForResource(resource connectordefinitions.ResourceFamily) bool {
+	if resource.Read != nil && resource.Read.DisablePageSize {
+		return true
+	}
 	return resource.Pagination != nil && resource.Pagination.DisablePageSize
+}
+
+func singletonForResource(resource connectordefinitions.ResourceFamily) bool {
+	if resource.Singleton {
+		return true
+	}
+	return resource.Read != nil && resource.Read.Singleton
 }
 
 func uniqueStrings(values []string) []string {
