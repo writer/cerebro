@@ -374,7 +374,7 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			}
 			if sourceReview.HasProviderAPIProof {
 				review.Summary.RuntimeDepth.SourcesWithProviderAPIProof++
-			} else if sourceReview.HasProviderAPIContract {
+			} else if sourceReview.HasProviderAPIContract && !sourceReview.HasProviderAPIDisproof {
 				review.Summary.RuntimeDepth.NeedsProviderAPIProof++
 				review.ProviderAPIProofQueue = append(review.ProviderAPIProofQueue, providerAPIProofCandidate(sourceReview))
 			}

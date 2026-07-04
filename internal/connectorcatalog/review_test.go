@@ -518,6 +518,17 @@ func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
 			ProviderAPI: RuntimeProviderAPIDepth{
+				RuntimeProviderAPIContractDepth: RuntimeProviderAPIContractDepth{
+					HasContract: true,
+					Status:      "verified",
+					Transport:   "rest",
+					BaseURL:     "https://api.digitalocean.com/v2",
+				},
+				RuntimeProviderAPIProofDepth: RuntimeProviderAPIProofDepth{
+					ProofScore: 25,
+					ProofLevel: "needs_proof",
+					ProofGaps:  []string{"provider_api:family_mapping"},
+				},
 				RuntimeProviderAPIDisproofDepth: RuntimeProviderAPIDisproofDepth{
 					HasDisproof:          true,
 					DisproofStatus:       "invalidated",
@@ -539,6 +550,9 @@ func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
 	}
 	if report.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof != 1 {
 		t.Fatalf("sources with provider API disproof = %d, want 1", report.Summary.RuntimeDepth.SourcesWithProviderAPIDisproof)
+	}
+	if report.Summary.RuntimeDepth.NeedsProviderAPIProof != 0 || len(report.ProviderAPIProofQueue) != 0 {
+		t.Fatalf("provider API proof queue = %#v, want disproof to suppress proof queue", report.ProviderAPIProofQueue)
 	}
 	if _, ok := apiDiscoveryFor(report, "digitalocean"); ok {
 		t.Fatalf("api discovery queue = %#v, did not expect invalidated source", report.APIDiscoveryQueue)
