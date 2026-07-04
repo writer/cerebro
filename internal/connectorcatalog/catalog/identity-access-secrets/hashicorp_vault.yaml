@@ -43,6 +43,8 @@ entries:
           config:
             static_query:
               list: "true"
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             fields:
               display_name: entity.name|name
