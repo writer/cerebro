@@ -14,13 +14,12 @@ import (
 
 func TestSourceCheckAndReadFamilies(t *testing.T) {
 	tests := []struct {
-		family        string
-		path          string
-		kind          string
-		records       []map[string]any
-		wantAttribute string
-		wantValue     string
-		wantCursor    string
+		family     string
+		path       string
+		kind       string
+		records    []map[string]any
+		wantAttrs  map[string]string
+		wantCursor string
 	}{
 		{
 			family: familyIncidents,
@@ -35,9 +34,11 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"status":        "TRIGGERED",
 				"validity":      "valid",
 			}},
-			wantAttribute: "title",
-			wantValue:     "Stripe Token",
-			wantCursor:    "cursor-2",
+			wantAttrs: map[string]string{
+				"resource_urn": "urn:cerebro:tenant:gitguardian_incidents:3759",
+				"title":        "Stripe Token",
+			},
+			wantCursor: "cursor-2",
 		},
 		{
 			family: familyMembers,
@@ -52,8 +53,10 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"created_at":   "2026-06-24T09:00:00Z",
 				"last_login":   "2026-06-25T09:00:00Z",
 			}},
-			wantAttribute: "user_id",
-			wantValue:     "3252",
+			wantAttrs: map[string]string{
+				"resource_urn": "urn:cerebro:tenant:gitguardian_members:3252",
+				"user_id":      "3252",
+			},
 		},
 		{
 			family: familyAuditEvents,
@@ -69,8 +72,12 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"action_type":  "READ",
 				"target_ids":   []string{"1243"},
 			}},
-			wantAttribute: "actor_id",
-			wantValue:     "1243",
+			wantAttrs: map[string]string{
+				"actor_id":        "1243",
+				"resource_id":     "91234",
+				"resource_urn":    "urn:cerebro:tenant:gitguardian_audit_events:91234",
+				"source_event_id": "91234",
+			},
 		},
 	}
 
@@ -132,8 +139,10 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if strings.TrimSpace(event.Id) == "" {
 				t.Fatalf("event id is empty: %#v", event)
 			}
-			if got := event.Attributes[tt.wantAttribute]; got != tt.wantValue {
-				t.Fatalf("attribute %s = %q, want %q", tt.wantAttribute, got, tt.wantValue)
+			for attr, want := range tt.wantAttrs {
+				if got := event.Attributes[attr]; got != want {
+					t.Fatalf("attribute %s = %q, want %q", attr, got, want)
+				}
 			}
 			if tt.wantCursor != "" {
 				if got := sourcecdk.CursorToken(pull.NextCursor); got != tt.wantCursor {

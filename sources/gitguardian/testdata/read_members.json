@@ -11,6 +11,7 @@
       "record_class": "identity_user",
       "resource_id": "3252",
       "resource_name": "John Smith",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_members:3252",
       "schema": "members",
       "source_event_id": "3252",
       "source_provider": "gitguardian",
