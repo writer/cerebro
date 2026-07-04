@@ -17,6 +17,65 @@ runtime_families:
   - project_roles
   - projects
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: basic_authorization_header_email_api_token
+  base_url: https://${config.site_url}
+  spec_url: https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+  spec_kind: openapi
+  references:
+    - https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
+    - https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-users/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-groups/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-project-roles/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-permission-schemes/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-audit-records/
+  auth_evidence:
+    - https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
+  scope_evidence:
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-users/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-groups/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-project-roles/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-permission-schemes/
+    - https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-audit-records/
+  families:
+    - id: audit_events
+      method: GET
+      path: /rest/api/3/auditing/record
+      operation: getAuditRecords
+    - id: group_members
+      method: GET
+      path: /rest/api/3/group/member
+      operation: getUsersFromGroup
+    - id: groups
+      method: GET
+      path: /rest/api/3/group/bulk
+      operation: bulkGetGroups
+    - id: permission_schemes
+      method: GET
+      path: /rest/api/3/permissionscheme
+      operation: getAllPermissionSchemes
+    - id: project_roles
+      method: GET
+      path: /rest/api/3/project/{projectIdOrKey}/roledetails
+      operation: getProjectRoleDetails
+    - id: projects
+      method: GET
+      path: /rest/api/3/project/search
+      operation: searchProjects
+    - id: users
+      method: GET
+      path: /rest/api/3/users/search
+      operation: getAllUsers
 kind_lifecycle:
   - kind: jira.users
     status: active
