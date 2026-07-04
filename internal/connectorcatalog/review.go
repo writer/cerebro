@@ -915,7 +915,7 @@ func providerAPIInvalidationNextAction(source SourceReview) string {
 	if strings.TrimSpace(source.SourceID) == "" {
 		packagePath = "the source package"
 	}
-	families := listOrNone(source.ProviderAPIDisproofFamilies)
+	families := listOrNoFamilies(source.ProviderAPIDisproofFamilies)
 	return "Rewrite or remove the invalidated runtime families in " + packagePath + ": " + families + ". Keep only families backed by provider-owned API paths and rename any misclassified family before promotion."
 }
 

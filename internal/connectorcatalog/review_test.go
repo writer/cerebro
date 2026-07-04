@@ -575,6 +575,21 @@ func TestReviewAnalysisSeparatesProviderAPIInvalidation(t *testing.T) {
 	}
 }
 
+func TestProviderAPIInvalidationNextActionUsesRuntimeFamilyFallback(t *testing.T) {
+	action := providerAPIInvalidationNextAction(SourceReview{
+		SourceID: "digitalocean",
+		RuntimeDepthFields: RuntimeDepthFields{
+			RuntimePackagePath: "sources/digitalocean",
+		},
+	})
+	if !strings.Contains(action, "no runtime families") {
+		t.Fatalf("next action = %q, want no runtime families fallback", action)
+	}
+	if strings.Contains(action, "no graph templates") {
+		t.Fatalf("next action = %q, did not expect projection-template fallback", action)
+	}
+}
+
 func scoredRuntimeDepth(depth RuntimeDepth) RuntimeDepth {
 	depth.Score, depth.Missing = runtimeDepthScore(depth)
 	return depth
