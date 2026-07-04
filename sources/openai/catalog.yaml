@@ -81,6 +81,143 @@ runtime_families:
   - usage_web_search_call
   - user
   - user_role
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-04T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: admin_api_key_bearer_authorization_header
+  base_url: https://api.openai.com/v1
+  spec_url: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+  spec_kind: openapi
+  references:
+    - https://developers.openai.com/api/docs/guides/admin-apis
+    - https://developers.openai.com/api/reference/overview/
+    - https://platform.openai.com/docs/api-reference
+    - https://github.com/openai/openai-openapi/blob/master/openapi.yaml
+    - https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+  auth_evidence:
+    - https://developers.openai.com/api/docs/guides/admin-apis
+    - https://developers.openai.com/api/reference/overview/
+  families:
+    - id: admin_api_key
+      method: GET
+      path: /organization/admin_api_keys
+    - id: api_key
+      method: GET
+      path: /organization/projects/default/api_keys
+    - id: audit_log
+      method: GET
+      path: /organization/audit_logs
+    - id: certificate
+      method: GET
+      path: /organization/certificates
+    - id: cost
+      method: GET
+      path: /organization/costs
+    - id: data_retention
+      method: GET
+      path: /organization/data_retention
+    - id: group
+      method: GET
+      path: /organization/groups
+    - id: group_role
+      method: GET
+      path: /organization/groups/{group_id}/roles
+    - id: group_user
+      method: GET
+      path: /organization/groups/{group_id}/users
+    - id: invite
+      method: GET
+      path: /organization/invites
+    - id: project
+      method: GET
+      path: /organization/projects
+    - id: project_api_key
+      method: GET
+      path: /organization/projects/{project_id}/api_keys
+    - id: project_certificate
+      method: GET
+      path: /organization/projects/{project_id}/certificates
+    - id: project_data_retention
+      method: GET
+      path: /organization/projects/{project_id}/data_retention
+    - id: project_group
+      method: GET
+      path: /organization/projects/{project_id}/groups
+    - id: project_group_role
+      method: GET
+      path: /organization/projects/{project_id}/groups/{group_id}/roles
+    - id: project_hosted_tool_permission
+      method: GET
+      path: /organization/projects/{project_id}/hosted_tool_permissions
+    - id: project_model_permission
+      method: GET
+      path: /organization/projects/{project_id}/model_permissions
+    - id: project_rate_limit
+      method: GET
+      path: /organization/projects/{project_id}/rate_limits
+    - id: project_role
+      method: GET
+      path: /projects/{project_id}/roles
+    - id: project_service_account
+      method: GET
+      path: /organization/projects/{project_id}/service_accounts
+    - id: project_spend_alert
+      method: GET
+      path: /organization/projects/{project_id}/spend_alerts
+    - id: project_user
+      method: GET
+      path: /organization/projects/{project_id}/users
+    - id: project_user_role
+      method: GET
+      path: /projects/{project_id}/users/{user_id}/roles
+    - id: role
+      method: GET
+      path: /organization/roles
+    - id: service_account
+      method: GET
+      path: /organization/projects/default/service_accounts
+    - id: spend_alert
+      method: GET
+      path: /organization/spend_alerts
+    - id: usage_audio_speech
+      method: GET
+      path: /organization/usage/audio_speeches
+    - id: usage_audio_transcription
+      method: GET
+      path: /organization/usage/audio_transcriptions
+    - id: usage_code_interpreter_session
+      method: GET
+      path: /organization/usage/code_interpreter_sessions
+    - id: usage_completion
+      method: GET
+      path: /organization/usage/completions
+    - id: usage_embedding
+      method: GET
+      path: /organization/usage/embeddings
+    - id: usage_file_search_call
+      method: GET
+      path: /organization/usage/file_search_calls
+    - id: usage_image
+      method: GET
+      path: /organization/usage/images
+    - id: usage_moderation
+      method: GET
+      path: /organization/usage/moderations
+    - id: usage_vector_store
+      method: GET
+      path: /organization/usage/vector_stores
+    - id: usage_web_search_call
+      method: GET
+      path: /organization/usage/web_search_calls
+    - id: user
+      method: GET
+      path: /organization/users
+    - id: user_role
+      method: GET
+      path: /organization/users/{user_id}/roles
 coverage_contract:
   owner_domain: ai
   authority_domain: openai

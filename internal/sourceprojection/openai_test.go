@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,4 +162,151 @@ func TestRegistryRoutesOpenAIDeclaredKinds(t *testing.T) {
 			t.Fatalf("declared OpenAI kind %q is not routed in the projection registry", kind)
 		}
 	}
+}
+
+func TestProjectOpenAIDeclaredKindsProduceGraphEntities(t *testing.T) {
+	occurred := time.Date(2026, time.June, 18, 13, 30, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		family string
+		kind   string
+	}{
+		{name: "user", family: "user", kind: "openai.user"},
+		{name: "project", family: "project", kind: "openai.project"},
+		{name: "service_account", family: "service_account", kind: "openai.service_account"},
+		{name: "api_key", family: "api_key", kind: "openai.api_key"},
+		{name: "admin_api_key", family: "admin_api_key", kind: "openai.admin_api_key"},
+		{name: "audit_log", family: "audit_log", kind: "openai.audit_log"},
+		{name: "invite", family: "invite", kind: "openai.invite"},
+		{name: "role", family: "role", kind: "openai.role"},
+		{name: "user_role", family: "user_role", kind: "openai.user_role"},
+		{name: "group", family: "group", kind: "openai.group"},
+		{name: "group_user", family: "group_user", kind: "openai.group_user"},
+		{name: "group_role", family: "group_role", kind: "openai.group_role"},
+		{name: "data_retention", family: "data_retention", kind: "openai.data_retention"},
+		{name: "spend_alert", family: "spend_alert", kind: "openai.spend_alert"},
+		{name: "certificate", family: "certificate", kind: "openai.certificate"},
+		{name: "usage_audio_speech", family: "usage_audio_speech", kind: "openai.usage_audio_speech"},
+		{name: "usage_audio_transcription", family: "usage_audio_transcription", kind: "openai.usage_audio_transcription"},
+		{name: "usage_code_interpreter_session", family: "usage_code_interpreter_session", kind: "openai.usage_code_interpreter_session"},
+		{name: "usage_completion", family: "usage_completion", kind: "openai.usage_completion"},
+		{name: "usage_embedding", family: "usage_embedding", kind: "openai.usage_embedding"},
+		{name: "usage_image", family: "usage_image", kind: "openai.usage_image"},
+		{name: "usage_moderation", family: "usage_moderation", kind: "openai.usage_moderation"},
+		{name: "usage_vector_store", family: "usage_vector_store", kind: "openai.usage_vector_store"},
+		{name: "usage_file_search_call", family: "usage_file_search_call", kind: "openai.usage_file_search_call"},
+		{name: "usage_web_search_call", family: "usage_web_search_call", kind: "openai.usage_web_search_call"},
+		{name: "cost", family: "cost", kind: "openai.cost"},
+		{name: "project_user", family: "project_user", kind: "openai.project_user"},
+		{name: "project_user_role", family: "project_user_role", kind: "openai.project_user_role"},
+		{name: "project_service_account", family: "project_service_account", kind: "openai.project_service_account"},
+		{name: "project_api_key", family: "project_api_key", kind: "openai.project_api_key"},
+		{name: "project_rate_limit", family: "project_rate_limit", kind: "openai.project_rate_limit"},
+		{name: "project_model_permission", family: "project_model_permission", kind: "openai.project_model_permission"},
+		{name: "project_hosted_tool_permission", family: "project_hosted_tool_permission", kind: "openai.project_hosted_tool_permission"},
+		{name: "project_group", family: "project_group", kind: "openai.project_group"},
+		{name: "project_group_role", family: "project_group_role", kind: "openai.project_group_role"},
+		{name: "project_role", family: "project_role", kind: "openai.project_role"},
+		{name: "project_data_retention", family: "project_data_retention", kind: "openai.project_data_retention"},
+		{name: "project_spend_alert", family: "project_spend_alert", kind: "openai.project_spend_alert"},
+		{name: "project_certificate", family: "project_certificate", kind: "openai.project_certificate"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			attrs := openAIProjectionCoverageAttributes(tc.family)
+			event := &cerebrov1.EventEnvelope{
+				Id:         "openai-" + tc.name,
+				TenantId:   "writer",
+				SourceId:   "openai",
+				Kind:       tc.kind,
+				OccurredAt: timestamppb.New(occurred),
+				Attributes: attrs,
+			}
+
+			result, err := service.Project(context.Background(), event)
+			if err != nil {
+				t.Fatalf("Project(%q) error = %v", tc.kind, err)
+			}
+			if result.EntitiesProjected == 0 {
+				t.Fatalf("Project(%q) projected no entities", tc.kind)
+			}
+			if !hasOpenAIProviderEntity(state) {
+				t.Fatalf("Project(%q) did not produce an OpenAI graph entity; projected types: %v", tc.kind, projectedEntityTypes(state))
+			}
+		})
+	}
+}
+
+func openAIProjectionCoverageAttributes(family string) map[string]string {
+	return map[string]string{
+		"actor_email":               "admin@example.com",
+		"actor_user_id":             "user_admin",
+		"api_key_id":                "credential_coverage",
+		"amount_currency":           "usd",
+		"amount_value":              "12.34",
+		"certificate_id":            "certificate_coverage",
+		"code_interpreter_enabled":  "true",
+		"email":                     "alice@example.com",
+		"end_time":                  "2026-06-18T13:00:00Z",
+		"event_type":                "role.assignment.created",
+		"family":                    family,
+		"file_search_enabled":       "true",
+		"group_id":                  "group_coverage",
+		"id":                        family + "_coverage",
+		"image_generation_enabled":  "true",
+		"input_tokens":              "100",
+		"invite_id":                 "invite_coverage",
+		"line_item":                 "usage",
+		"max_requests_per_1_minute": "500",
+		"mcp_enabled":               "true",
+		"member_user_id":            "user_coverage",
+		"model":                     "gpt-4o",
+		"model_ids":                 "gpt-4o",
+		"name":                      "Coverage Fixture",
+		"num_model_requests":        "2",
+		"object":                    "chat",
+		"organization_id":           "org_coverage",
+		"output_tokens":             "25",
+		"owner_type":                "user",
+		"owner_user_id":             "user_coverage",
+		"principal_id":              "group_coverage",
+		"principal_type":            "group",
+		"project_id":                "project_coverage",
+		"rate_limit_id":             "rate_limit_coverage",
+		"resource_id":               "project_coverage",
+		"resource_type":             "project",
+		"retention_type":            "30d",
+		"role":                      "owner",
+		"role_id":                   "owner",
+		"roles":                     "owner,member",
+		"service_account_id":        "service_account_coverage",
+		"spend_alert_id":            "spend_alert_coverage",
+		"start_time":                "2026-06-18T12:00:00Z",
+		"status":                    "active",
+		"user_id":                   "user_coverage",
+		"web_search_enabled":        "true",
+	}
+}
+
+func hasOpenAIProviderEntity(state *projectionRecorder) bool {
+	for _, entity := range state.entities {
+		if entity != nil && entity.SourceID == "openai" && strings.HasPrefix(entity.EntityType, "openai.") {
+			return true
+		}
+	}
+	return false
+}
+
+func projectedEntityTypes(state *projectionRecorder) []string {
+	types := make([]string, 0, len(state.entities))
+	for _, entity := range state.entities {
+		if entity == nil {
+			continue
+		}
+		types = append(types, entity.EntityType)
+	}
+	return types
 }
