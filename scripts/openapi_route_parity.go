@@ -162,7 +162,7 @@ func appendPlaceholders(routes []route) error {
 	next := append([]byte{}, payload[:insertAt]...)
 	next = append(next, []byte(addition.String())...)
 	next = append(next, payload[insertAt:]...)
-	return os.WriteFile(openAPIPath, next, 0o644) // #nosec G703 -- writes only the repository OpenAPI file selected by this build-time tool.
+	return os.WriteFile(openAPIPath, next, 0o644) // #nosec G306,G703 -- writes only the repository OpenAPI file selected by this build-time tool.
 }
 
 func fail(err error) {

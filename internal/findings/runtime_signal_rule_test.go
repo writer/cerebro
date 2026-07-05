@@ -55,6 +55,30 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 		t.Fatalf("reemit fingerprint = %q, want original %q", records[0].Fingerprint, originalFingerprint)
 	}
 
+	mutatedAttrs := map[string]string{}
+	for key, value := range event.GetAttributes() {
+		mutatedAttrs[key] = value
+	}
+	mutatedAttrs["evidence_type"] = "secret_access"
+	mutatedAttrs["verdict"] = "malicious"
+	reemitWithUpdatedDisposition := &cerebrov1.EventEnvelope{
+		Id:         "runtime-evidence-1-updated",
+		TenantId:   "writer",
+		SourceId:   "runtime",
+		Kind:       "runtime.evidence",
+		Attributes: mutatedAttrs,
+	}
+	records, err = rule.Evaluate(context.Background(), runtime, reemitWithUpdatedDisposition)
+	if err != nil {
+		t.Fatalf("Evaluate(reemit updated disposition) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(reemit updated disposition records) = %d, want 1", len(records))
+	}
+	if records[0].Fingerprint != originalFingerprint {
+		t.Fatalf("updated disposition fingerprint = %q, want original %q", records[0].Fingerprint, originalFingerprint)
+	}
+
 	benign := &cerebrov1.EventEnvelope{Id: "runtime-evidence-benign", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "process_exec", "verdict": "benign"}}
 	records, err = rule.Evaluate(context.Background(), runtime, benign)
 	if err != nil {
@@ -73,13 +97,22 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 		t.Fatalf("len(inactive records) = %d, want 0", len(records))
 	}
 
-	activeRisky := &cerebrov1.EventEnvelope{Id: "runtime-evidence-active", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "credential_use", "verdict": "active"}}
+	activeRisky := &cerebrov1.EventEnvelope{Id: "runtime-evidence-active", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_id": "evidence-active", "evidence_type": "credential_use", "verdict": "active"}}
 	records, err = rule.Evaluate(context.Background(), runtime, activeRisky)
 	if err != nil {
 		t.Fatalf("Evaluate(active) error = %v", err)
 	}
 	if len(records) != 1 {
 		t.Fatalf("len(active records) = %d, want 1", len(records))
+	}
+
+	missingEvidenceID := &cerebrov1.EventEnvelope{Id: "runtime-evidence-missing-evidence-id", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.92", "evidence_type": "credential_use", "verdict": "confirmed"}}
+	records, err = rule.Evaluate(context.Background(), runtime, missingEvidenceID)
+	if err != nil {
+		t.Fatalf("Evaluate(missing evidence_id) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(missing evidence_id records) = %d, want 0", len(records))
 	}
 
 	missingEvidenceType := &cerebrov1.EventEnvelope{Id: "runtime-evidence-missing-evidence-type", TenantId: "example", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.92", "verdict": "malicious"}}

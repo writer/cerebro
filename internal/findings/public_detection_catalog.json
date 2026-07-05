@@ -339728,13 +339728,13 @@
       "risk_statement": "Runtime threat evidence may indicate active compromise, malware, or policy bypass.",
       "remediation_intent": "Triage the runtime signal, contain affected assets, remediate the root cause, and retain incident evidence.",
       "required_attributes": [
+        "evidence_id",
         "evidence_type"
       ],
       "fingerprint_fields": [
         "tenant_id",
         "evidence_id",
-        "primary_resource_urn",
-        "action"
+        "primary_resource_urn"
       ],
       "control_refs": [
         {

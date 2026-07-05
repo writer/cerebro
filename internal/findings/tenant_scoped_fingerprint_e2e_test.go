@@ -20,6 +20,7 @@ import (
 )
 
 const (
+	tenantScopedGitHubAuditRuleID     = "github-repository-collaborator-added"
 	tenantScopedDependabotRuleID      = "github-dependabot-open-alert"
 	tenantScopedSentinelOneRuleID     = "sentinelone-protection-control-tampering"
 	tenantScopedIdentityUserRuleID    = "identity-privileged-account-without-mfa"
@@ -39,6 +40,21 @@ type tenantScopedFingerprintCase struct {
 	sourceID string
 	family   string
 	event    *cerebrov1.EventEnvelope
+}
+
+func TestGitHubAuditFingerprint_TenantScoped(t *testing.T) {
+	if tenantScopedRuleRetired(t, tenantScopedGitHubAuditRuleID) {
+		t.Skip("github repository collaborator audit rule is retired")
+	}
+	store := tenantScopedPostgresStore(t)
+	tc := githubAuditTenantScopedCase()
+	first, second := runTenantScopedFingerprintPair(t, store, tc)
+	if first.Fingerprint == second.Fingerprint {
+		t.Fatalf("GitHub audit fingerprints are equal across tenants: %q", first.Fingerprint)
+	}
+	if got, want := first.Fingerprint, tenantScopedHash(tc.ruleID, first.TenantID, "writer/cerebro", "octocat"); got != want {
+		t.Fatalf("tenant A fingerprint = %q, want %q", got, want)
+	}
 }
 
 func TestSentinelOneProtectionControlTamperingFingerprint_TenantScoped(t *testing.T) {
@@ -282,6 +298,9 @@ func TestCrossTenantFingerprintCollisionRegression(t *testing.T) {
 		githubDependabotTenantScopedCase(),
 		sentinelOneTenantScopedCase(),
 	}
+	if !tenantScopedRuleRetired(t, tenantScopedGitHubAuditRuleID) {
+		cases = append([]tenantScopedFingerprintCase{githubAuditTenantScopedCase()}, cases...)
+	}
 	cases = append(cases, identityTenantScopedCases()...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -403,6 +422,15 @@ func mustBuiltinRule(t *testing.T, ruleID string) findings.Rule {
 	return rule
 }
 
+func tenantScopedRuleRetired(t *testing.T, ruleID string) bool {
+	t.Helper()
+	metadataRule, ok := mustBuiltinRule(t, ruleID).(findings.MetadataRule)
+	if !ok {
+		return false
+	}
+	return metadataRule.RuleMetadata().Lifecycle.Kind == findings.LifecycleRetired
+}
+
 func tenantScopedTestTenant(name string) string {
 	return "example-" + tenantScopedSlug(name) + fmt.Sprintf("-%d", time.Now().UnixNano())
 }
@@ -437,6 +465,21 @@ func withRuntimeID(event *cerebrov1.EventEnvelope, runtimeID string) *cerebrov1.
 	cloned.Attributes = cloneTenantScopedAttrs(cloned.Attributes)
 	cloned.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
 	return cloned
+}
+
+func githubAuditTenantScopedCase() tenantScopedFingerprintCase {
+	return tenantScopedFingerprintCase{
+		name:     "github-audit",
+		ruleID:   tenantScopedGitHubAuditRuleID,
+		sourceID: "github",
+		family:   "audit",
+		event: tenantScopedEvent("tenant-scope-github-audit", "writer", "github", "github.audit", map[string]string{
+			"action": "repo.add_member",
+			"actor":  "admin",
+			"repo":   "writer/cerebro",
+			"user":   "octocat",
+		}, tenantScopedBaseTime),
+	}
 }
 
 func githubDependabotTenantScopedCase() tenantScopedFingerprintCase {
