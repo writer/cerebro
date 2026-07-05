@@ -43,6 +43,9 @@ type tenantScopedFingerprintCase struct {
 }
 
 func TestGitHubAuditFingerprint_TenantScoped(t *testing.T) {
+	if tenantScopedRuleRetired(t, tenantScopedGitHubAuditRuleID) {
+		t.Skip("github repository collaborator audit rule is retired")
+	}
 	store := tenantScopedPostgresStore(t)
 	tc := githubAuditTenantScopedCase()
 	first, second := runTenantScopedFingerprintPair(t, store, tc)
@@ -292,9 +295,11 @@ func TestIdentityAdminPrivilegeAnchor_ProviderScoped(t *testing.T) {
 func TestCrossTenantFingerprintCollisionRegression(t *testing.T) {
 	store := tenantScopedPostgresStore(t)
 	cases := []tenantScopedFingerprintCase{
-		githubAuditTenantScopedCase(),
 		githubDependabotTenantScopedCase(),
 		sentinelOneTenantScopedCase(),
+	}
+	if !tenantScopedRuleRetired(t, tenantScopedGitHubAuditRuleID) {
+		cases = append([]tenantScopedFingerprintCase{githubAuditTenantScopedCase()}, cases...)
 	}
 	cases = append(cases, identityTenantScopedCases()...)
 	for _, tc := range cases {
@@ -415,6 +420,15 @@ func mustBuiltinRule(t *testing.T, ruleID string) findings.Rule {
 		t.Fatalf("builtin rule %q not found", ruleID)
 	}
 	return rule
+}
+
+func tenantScopedRuleRetired(t *testing.T, ruleID string) bool {
+	t.Helper()
+	metadataRule, ok := mustBuiltinRule(t, ruleID).(findings.MetadataRule)
+	if !ok {
+		return false
+	}
+	return metadataRule.RuleMetadata().Lifecycle.Kind == findings.LifecycleRetired
 }
 
 func tenantScopedTestTenant(name string) string {

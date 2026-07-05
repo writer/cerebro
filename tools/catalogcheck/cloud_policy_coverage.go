@@ -530,7 +530,7 @@ func loadCoverageDimensions(root string) (map[string]map[string]sourcecdk.Covera
 			return nil
 		}
 		rel := slashRel(root, path)
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) // #nosec G122,G304 -- repository source catalog path checked by this build-time catalog validator.
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}

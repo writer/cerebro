@@ -34,8 +34,8 @@ func runtimeActiveThreatEvidenceDefinition() RuleDefinition {
 		References:         []string{"https://attack.mitre.org/techniques/T1059/", "https://attack.mitre.org/tactics/TA0002/"},
 		FalsePositives:     []string{"Approved red-team activity, vulnerability scanner behavior, or expected administrative automation with matching change evidence."},
 		Runbook:            "Review the workload, process, credential access, linked finding, and runtime evidence before containment.",
-		RequiredAttributes: []string{"evidence_type"},
-		FingerprintFields:  []string{"event_id"},
+		RequiredAttributes: []string{"evidence_type", "evidence_id"},
+		FingerprintFields:  []string{"tenant_id", "evidence_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.24"},
@@ -61,9 +61,11 @@ func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.Sou
 	if event.GetOccurredAt() != nil {
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
+	evidenceID := strings.TrimSpace(attributes["evidence_id"])
 	findingAttributes := map[string]string{
 		"action":               firstNonEmpty(attributes["evidence_type"], attributes["verdict"]),
 		"confidence":           strings.TrimSpace(attributes["confidence"]),
+		"evidence_id":          evidenceID,
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"evidence_type":        strings.TrimSpace(attributes["evidence_type"]),
@@ -85,7 +87,7 @@ func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.Sou
 		findingAttributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(findingAttributes)
-	fingerprint := hashFindingFingerprint(runtimeActiveThreatEvidenceRuleID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: findingAttributes}))
+	fingerprint := hashFindingFingerprint(runtimeActiveThreatEvidenceRuleID, event.GetTenantId(), evidenceID)
 	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: runtimeActiveThreatEvidenceRuleID, Title: "Runtime Active Threat Evidence", Severity: "HIGH", Status: findingStatusOpen, Summary: "Runtime evidence indicates active threat activity", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: firstNonEmpty(findingAttributes["resource_id"], findingAttributes["evidence_id"]), CheckID: runtimeActiveThreatEvidenceRuleID, CheckName: "Runtime Active Threat Evidence", ControlRefs: cloneFindingControlRefs(definition.ControlRefs), Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
 }
 

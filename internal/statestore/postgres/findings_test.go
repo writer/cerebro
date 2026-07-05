@@ -1606,7 +1606,8 @@ SELECT count(*)
  WHERE datname = current_database()
    AND pid <> pg_backend_pid()
    AND wait_event_type = 'Lock'
-   AND query LIKE '%INSERT INTO findings%'`).Scan(&waiting)
+   AND query LIKE '%FROM findings%'
+   AND query LIKE '%FOR UPDATE%'`).Scan(&waiting)
 		if err == nil && waiting > 0 {
 			return
 		}

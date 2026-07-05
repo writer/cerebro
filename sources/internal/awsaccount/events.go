@@ -139,7 +139,7 @@ func attributeKey(value string) string {
 			if index > 0 && !previousUnderscore {
 				builder.WriteByte('_')
 			}
-			builder.WriteByte(byte(char + ('a' - 'A')))
+			builder.WriteRune(char + ('a' - 'A'))
 			previousUnderscore = false
 		case char >= 'a' && char <= 'z', char >= '0' && char <= '9':
 			builder.WriteRune(char)

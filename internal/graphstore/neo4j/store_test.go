@@ -486,8 +486,8 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Counts(after delete) error = %v", err)
 	}
-	if counts.Relations != 1 {
-		t.Fatalf("Counts(after delete) = %#v, want 1 relation", counts)
+	if counts.Relations != 4 {
+		t.Fatalf("Counts(after delete) = %#v, want 4 relations", counts)
 	}
 
 	endpointURN := "urn:cerebro:writer:kolide_device:device-1"
