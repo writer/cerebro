@@ -79,6 +79,29 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 		t.Fatalf("updated disposition fingerprint = %q, want original %q", records[0].Fingerprint, originalFingerprint)
 	}
 
+	noResourceAttrs := map[string]string{}
+	for key, value := range event.GetAttributes() {
+		noResourceAttrs[key] = value
+	}
+	delete(noResourceAttrs, "resource_urn")
+	reemitWithoutResourceContext := &cerebrov1.EventEnvelope{
+		Id:         "runtime-evidence-1-no-resource-context",
+		TenantId:   "writer",
+		SourceId:   "runtime",
+		Kind:       "runtime.evidence",
+		Attributes: noResourceAttrs,
+	}
+	records, err = rule.Evaluate(context.Background(), runtime, reemitWithoutResourceContext)
+	if err != nil {
+		t.Fatalf("Evaluate(reemit without resource context) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(reemit without resource context records) = %d, want 1", len(records))
+	}
+	if records[0].Fingerprint != originalFingerprint {
+		t.Fatalf("missing resource context fingerprint = %q, want original %q", records[0].Fingerprint, originalFingerprint)
+	}
+
 	benign := &cerebrov1.EventEnvelope{Id: "runtime-evidence-benign", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "process_exec", "verdict": "benign"}}
 	records, err = rule.Evaluate(context.Background(), runtime, benign)
 	if err != nil {

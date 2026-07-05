@@ -339733,8 +339733,7 @@
       ],
       "fingerprint_fields": [
         "tenant_id",
-        "evidence_id",
-        "primary_resource_urn"
+        "evidence_id"
       ],
       "control_refs": [
         {

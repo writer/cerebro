@@ -35,7 +35,7 @@ func runtimeActiveThreatEvidenceDefinition() RuleDefinition {
 		FalsePositives:     []string{"Approved red-team activity, vulnerability scanner behavior, or expected administrative automation with matching change evidence."},
 		Runbook:            "Review the workload, process, credential access, linked finding, and runtime evidence before containment.",
 		RequiredAttributes: []string{"evidence_type", "evidence_id"},
-		FingerprintFields:  []string{"tenant_id", "evidence_id", "primary_resource_urn"},
+		FingerprintFields:  []string{"tenant_id", "evidence_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.24"},
@@ -87,7 +87,7 @@ func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.Sou
 		findingAttributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(findingAttributes)
-	fingerprint := hashFindingFingerprint(runtimeActiveThreatEvidenceRuleID, event.GetTenantId(), evidenceID, projectedContext.PrimaryResourceURN)
+	fingerprint := hashFindingFingerprint(runtimeActiveThreatEvidenceRuleID, event.GetTenantId(), evidenceID)
 	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: runtimeActiveThreatEvidenceRuleID, Title: "Runtime Active Threat Evidence", Severity: "HIGH", Status: findingStatusOpen, Summary: "Runtime evidence indicates active threat activity", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: firstNonEmpty(findingAttributes["resource_id"], findingAttributes["evidence_id"]), CheckID: runtimeActiveThreatEvidenceRuleID, CheckName: "Runtime Active Threat Evidence", ControlRefs: cloneFindingControlRefs(definition.ControlRefs), Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
 }
 
