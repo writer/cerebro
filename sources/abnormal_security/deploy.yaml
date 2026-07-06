@@ -3,12 +3,12 @@ secretKeys:
   - ABNORMAL_SECURITY_BASE_URL
   - ABNORMAL_SECURITY_TOKEN
 runtimes:
-  - localId: assets
+  - localId: resources
     config:
       base_url: env:ABNORMAL_SECURITY_BASE_URL
-      family: assets
+      family: resources
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /users
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

@@ -16,15 +16,15 @@ var catalogFS embed.FS
 
 const (
 	sourceID               = "abnormal_security"
-	defaultFamily          = familyAssets
-	defaultHealthPath      = "/v1/me"
+	defaultFamily          = familyResources
+	defaultHealthPath      = "/users"
 	defaultBaseURLTemplate = "${config.base_url}"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
-	familyAssets           = "assets"
-	familyFindings         = "findings"
-	familyVulnerabilities  = "vulnerabilities"
-	familyPolicies         = "policies"
+	familyResources        = "resources"
+	familyThreats          = "threats"
+	familyCases            = "cases"
+	familyPostureCatalog   = "posture_catalog"
 	familyAuditEvents      = "audit_events"
 )
 
@@ -49,68 +49,68 @@ func New() (*Source, error) {
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{
-				Name:             familyAssets,
-				Path:             "/v1/assets",
-				URNKind:          "abnormal_security_assets",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "asset", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "assets", "source_system": "abnormal_security"},
+				Name:             familyResources,
+				Path:             "/resources",
+				URNKind:          "abnormal_security_resources",
+				IDKeys:           []string{"resourceId", "id", "name", "urn", "resource_urn"},
+				CursorParam:      "pageNumber",
+				NextCursorKeys:   []string{"nextPageNumber"},
+				PageSizeParams:   []string{"pageSize"},
+				ListKeys:         []string{"resources"},
+				TimestampKeys:    []string{"updated_at", "created_at", "last_seen_at", "observed_at"},
+				Attributes:       map[string]string{"description": "description", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "resourceId|id", "name": "name", "observed_at": "updated_at|created_at|last_seen_at|observed_at", "resource_id": "resourceId|id", "resource_name": "name", "resource_type": "resource", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|resourceId|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "schema": "resources", "source_system": "abnormal_security"},
 			},
 			{
-				Name:             familyFindings,
-				Path:             "/v1/findings",
-				URNKind:          "abnormal_security_findings",
-				IDKeys:           []string{"id", "name", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "findings", "source_system": "abnormal_security"},
+				Name:             familyThreats,
+				Path:             "/threats",
+				URNKind:          "abnormal_security_threats",
+				IDKeys:           []string{"threatId", "id", "finding_id", "resource_urn"},
+				CursorParam:      "pageNumber",
+				NextCursorKeys:   []string{"nextPageNumber"},
+				PageSizeParams:   []string{"pageSize"},
+				ListKeys:         []string{"threats"},
+				TimestampKeys:    []string{"receivedTime", "updated_at", "last_seen_at", "created_at"},
+				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "threatId|id", "observed_at": "receivedTime|updated_at|last_seen_at|created_at", "resource_id": "resource_id|recipientAddress|recipient.address", "resource_name": "recipientAddress|recipient.address|name|display_name|hostname|metadata.resource_name", "resource_type": "email_threat", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|severity_level|attackType", "source_event_id": "event_id|threatId|id|metadata.event_id", "status": "status|remediationStatus", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|subject|attackType"},
+				StaticAttributes: map[string]string{"record_class": "finding", "schema": "threats", "source_system": "abnormal_security"},
 			},
 			{
-				Name:             familyVulnerabilities,
-				Path:             "/v1/vulnerabilities",
-				URNKind:          "abnormal_security_vulnerabilities",
-				IDKeys:           []string{"id", "name", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "vulnerabilities", "source_system": "abnormal_security"},
+				Name:             familyCases,
+				Path:             "/cases",
+				URNKind:          "abnormal_security_cases",
+				IDKeys:           []string{"caseId", "id", "finding_id", "resource_urn"},
+				CursorParam:      "pageNumber",
+				NextCursorKeys:   []string{"nextPageNumber"},
+				PageSizeParams:   []string{"pageSize"},
+				ListKeys:         []string{"cases"},
+				TimestampKeys:    []string{"last_modified", "first_observed", "created", "updated_at"},
+				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "caseId|id", "observed_at": "last_modified|first_observed|created|updated_at", "resource_id": "affectedEmployee|affected_employee|resource_id", "resource_name": "affectedEmployee|affected_employee|name|display_name|metadata.resource_name", "resource_type": "abnormal_case", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity_level|severity", "source_event_id": "event_id|caseId|id|metadata.event_id", "status": "case_status|status|remediation_status", "tenant_id": "tenant|tenant_id|metadata.tenant_id", "title": "description|severity"},
+				StaticAttributes: map[string]string{"record_class": "finding", "schema": "cases", "source_system": "abnormal_security"},
 			},
 			{
-				Name:             familyPolicies,
-				Path:             "/v1/policies",
-				URNKind:          "abnormal_security_policies",
+				Name:             familyPostureCatalog,
+				Path:             "/spm-v2/posture-catalog",
+				URNKind:          "abnormal_security_posture_catalog",
 				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				CursorParam:      "pageNumber",
+				NextCursorKeys:   []string{"metadata.next_page|nextPageNumber"},
+				PageSizeParams:   []string{"pageSize"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "policy", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "policies", "source_system": "abnormal_security"},
+				TimestampKeys:    []string{"updated_at", "created_at", "observed_at", "last_seen_at"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "updated_at|created_at|observed_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|insight|remediation_steps|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "risk_level|severity|risk|priority", "policy_status": "status", "policy_type": "posture_catalog", "resource_id": "id|resource_id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "posture", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "policy", "schema": "posture_catalog", "source_system": "abnormal_security"},
 			},
 			{
 				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
+				Path:             "/auditlogs",
 				URNKind:          "abnormal_security_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				IDKeys:           []string{"id", "event_id", "timestamp", "uuid", "request_id"},
+				CursorParam:      "pageNumber",
+				NextCursorKeys:   []string{"nextPageNumber"},
+				PageSizeParams:   []string{"pageSize"},
+				ListKeys:         []string{"auditLogs"},
+				TimestampKeys:    []string{"timestamp", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:       map[string]string{"actor_email": "user.email|actor_email", "actor_id": "user.email|actor_id", "actor_name": "user.name|actor_name|actor.name", "event_type": "action|event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id|event_id|timestamp", "observed_at": "timestamp|observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "actionDetails.message_id|resource_id", "resource_name": "actionDetails.request_url|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "category|resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|timestamp|metadata.event_id", "tenant_id": "tenantName|tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "abnormal_security"},
 			},
 		},

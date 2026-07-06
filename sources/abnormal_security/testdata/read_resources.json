@@ -1,0 +1,28 @@
+[
+  {
+    "id": "abnormal-security-resource-1",
+    "source_id": "abnormal_security",
+    "tenant_id": "tenant",
+    "kind": "abnormal_security.resources",
+    "schema_ref": "abnormal_security/resources/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "resource-1",
+      "resource_id": "resource-1",
+      "resource_name": "Mailbox Resource",
+      "resource_type": "resource",
+      "resource_urn": "urn:cerebro:tenant:abnormal_security_resources:resource-1",
+      "record_class": "asset",
+      "schema": "resources",
+      "source_system": "abnormal_security",
+      "observed_at": "2026-06-01T00:00:00Z"
+    },
+    "payload": {
+      "resourceId": "resource-1",
+      "name": "Mailbox Resource",
+      "description": "Protected mailbox resource",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]

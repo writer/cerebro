@@ -900,11 +900,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"discord.role":       discordRoleProjections,
 
 	// abnormal_security generated projectors (sourcegen promotion)
-	"abnormal_security.assets":          abnormalSecurityAssetsProjections,
+	"abnormal_security.resources":       abnormalSecurityResourcesProjections,
 	"abnormal_security.audit_events":    abnormalSecurityAuditEventsProjections,
-	"abnormal_security.findings":        abnormalSecurityFindingsProjections,
-	"abnormal_security.policies":        abnormalSecurityPoliciesProjections,
-	"abnormal_security.vulnerabilities": abnormalSecurityVulnerabilitiesProjections,
+	"abnormal_security.cases":           abnormalSecurityCasesProjections,
+	"abnormal_security.posture_catalog": abnormalSecurityPostureCatalogProjections,
+	"abnormal_security.threats":         abnormalSecurityThreatsProjections,
 
 	// abuseipdb generated projectors (sourcegen promotion)
 	"abuseipdb.audit_events": abuseipdbAuditEventsProjections,

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "abnormal-security-threat-1",
+    "source_id": "abnormal_security",
+    "tenant_id": "tenant",
+    "kind": "abnormal_security.threats",
+    "schema_ref": "abnormal_security/threats/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "threat-1",
+      "finding_id": "threat-1",
+      "resource_type": "email_threat",
+      "severity": "high",
+      "status": "active",
+      "title": "Credential phishing campaign",
+      "record_class": "finding",
+      "schema": "threats",
+      "source_system": "abnormal_security",
+      "observed_at": "2026-06-01T00:00:00Z"
+    },
+    "payload": {
+      "threatId": "threat-1",
+      "severity": "high",
+      "status": "active",
+      "title": "Credential phishing campaign",
+      "receivedTime": "2026-06-01T00:00:00Z"
+    }
+  }
+]

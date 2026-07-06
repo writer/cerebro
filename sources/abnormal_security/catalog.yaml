@@ -1,73 +1,107 @@
 id: abnormal_security
 name: "Abnormal Security"
-description: "Collects assets, findings, vulnerabilities, policies, and audit events from Abnormal Security and projects them into the Cerebro graph as assets, findings, vulnerabilities, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+description: "Collects resources, threats, cases, posture catalog entries, and audit events from the Abnormal Security Client API and projects them into the Cerebro graph for asset exposure, threat, case, posture, and audit context."
 emitted_kinds:
-  - abnormal_security.assets
-  - abnormal_security.findings
-  - abnormal_security.vulnerabilities
-  - abnormal_security.policies
+  - abnormal_security.resources
+  - abnormal_security.threats
+  - abnormal_security.cases
+  - abnormal_security.posture_catalog
   - abnormal_security.audit_events
 runtime_families:
-  - assets
+  - resources
   - audit_events
-  - findings
-  - policies
-  - vulnerabilities
+  - cases
+  - posture_catalog
+  - threats
 kind_lifecycle:
-  - kind: abnormal_security.assets
+  - kind: abnormal_security.resources
     status: active
-  - kind: abnormal_security.findings
+  - kind: abnormal_security.threats
     status: active
-  - kind: abnormal_security.vulnerabilities
+  - kind: abnormal_security.cases
     status: active
-  - kind: abnormal_security.policies
+  - kind: abnormal_security.posture_catalog
     status: active
   - kind: abnormal_security.audit_events
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://api.abnormalplatform.com/v1
+  spec_url: https://api.swaggerhub.com/apis/abnormal-security/abx/1.4.3/swagger.json
+  spec_kind: openapi
+  references:
+    - https://app.swaggerhub.com/apis-docs/abnormal-security/abx/1.4.3
+    - https://www.elastic.co/docs/reference/integrations/abnormal_security
+  families:
+    - id: resources
+      method: GET
+      path: /resources
+      operation: v1_resources_retrieve
+    - id: threats
+      method: GET
+      path: /threats
+      operation: v1_threats_retrieve
+    - id: cases
+      method: GET
+      path: /cases
+      operation: v1_cases_retrieve
+    - id: posture_catalog
+      method: GET
+      path: /spm-v2/posture-catalog
+      operation: v1_spm_v2_posture_catalog_retrieve
+    - id: audit_events
+      method: GET
+      path: /auditlogs
+      operation: v1_auditlogs_retrieve
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: abnormal_security
   dimensions:
-    - id: assets
+    - id: resources
       type: entity_family
-      title: "Assets"
-      families: [assets]
+      title: "Resources"
+      families: [resources]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: findings
+        - Reads documented Abnormal Client API resources from GET /resources.
+    - id: threats
       type: remediation_state
-      title: "Findings"
-      families: [findings]
+      title: "Threats"
+      families: [threats]
       support: partial
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: vulnerabilities
+        - Reads documented Abnormal Threat Log entries from GET /threats.
+    - id: cases
       type: remediation_state
-      title: "Vulnerabilities"
-      families: [vulnerabilities]
+      title: "Cases"
+      families: [cases]
       support: partial
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Reads documented Abnormal cases from GET /cases.
+    - id: posture_catalog
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "Posture Catalog"
+      families: [posture_catalog]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads documented SaaS posture catalog entries from GET /spm-v2/posture-catalog.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +111,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads documented Abnormal portal audit logs from GET /auditlogs.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,8 +119,8 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: abnormal_security.assets
-    schema_ref: abnormal_security/assets/v1
+  - kind: abnormal_security.resources
+    schema_ref: abnormal_security/resources/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -94,31 +128,29 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: abnormal_security.findings
-    schema_ref: abnormal_security/findings/v1
+      - resourceId
+  - kind: abnormal_security.threats
+    schema_ref: abnormal_security/threats/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - finding_id
-      - resource_urn
       - severity
       - status
     required_payload_fields:
-      - id
-  - kind: abnormal_security.vulnerabilities
-    schema_ref: abnormal_security/vulnerabilities/v1
+      - threatId
+  - kind: abnormal_security.cases
+    schema_ref: abnormal_security/cases/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - finding_id
-      - resource_urn
       - severity
       - status
     required_payload_fields:
-      - id
-  - kind: abnormal_security.policies
-    schema_ref: abnormal_security/policies/v1
+      - caseId
+  - kind: abnormal_security.posture_catalog
+    schema_ref: abnormal_security/posture_catalog/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -134,4 +166,4 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - timestamp
