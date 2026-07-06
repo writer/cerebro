@@ -45,13 +45,13 @@ func TestAkeylessIdentityGroupProjection(t *testing.T) {
 	}
 }
 
-func TestAkeylessAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "akeyless", Kind: "akeyless.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := akeylessAuditEventsProjections(event)
+func TestAkeylessAnalyticsProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "akeyless", Kind: "akeyless.analytics", Attributes: map[string]string{"resource_id": "analytics-1", "resource_type": "akeyless_analytics", "resource_name": "Analytics Report", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := akeylessAnalyticsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+		t.Fatalf("entities/links = %d/%d, want analytics asset projection", len(entities), len(links))
 	}
 }

@@ -863,7 +863,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.items":        akeylessItemsProjections,
 	"akeyless.auth_methods": akeylessAuthMethodsProjections,
 	"akeyless.roles":        akeylessRolesProjections,
-	"akeyless.audit_events": akeylessAuditEventsProjections,
+	"akeyless.analytics":    akeylessAnalyticsProjections,
 	// conjur generated projectors (sourcegen promotion)
 	"conjur.authenticator": conjurAuthenticatorProjections,
 	"conjur.resource":      conjurResourceProjections,
