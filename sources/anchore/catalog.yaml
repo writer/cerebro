@@ -9,6 +9,33 @@ runtime_families:
   - assets
   - findings
   - vulnerabilities
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: http_basic_authorization_header_or_api_key_as_basic_password
+  base_url: https://${config.enterprise_url}/v2
+  spec_url: https://docs.anchore.com/current/docs/api/specs/anchore_api_swagger.yaml
+  spec_kind: openapi
+  references:
+    - https://docs.anchore.com/current/docs/api/
+    - https://docs.anchore.com/current/docs/api/reference/
+    - https://docs.anchore.com/current/docs/api/specs/anchore_api_swagger.yaml
+  families:
+    - id: assets
+      method: GET
+      path: /apps/{app_id}/versions/{version_id}/assets
+      operation: list_assets
+    - id: findings
+      method: GET
+      path: /apps/{app_id}/versions/{version_id}/policy/findings/all
+      operation: list_all_findings
+    - id: vulnerabilities
+      method: GET
+      path: /apps/{app_id}/versions/{version_id}/vulnerabilities
+      operation: list_vulnerabilities
 kind_lifecycle:
   - kind: anchore.assets
     status: active
@@ -29,7 +56,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Anchore Enterprise application version assets from the documented GET /apps/{app_id}/versions/{version_id}/assets endpoint.
     - id: findings
       type: remediation_state
       title: "Findings"
@@ -39,7 +66,7 @@ coverage_contract:
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Anchore Enterprise application version policy findings from the documented GET /apps/{app_id}/versions/{version_id}/policy/findings/all endpoint.
     - id: vulnerabilities
       type: remediation_state
       title: "Vulnerabilities"
@@ -49,7 +76,7 @@ coverage_contract:
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Anchore Enterprise application version vulnerabilities from the documented GET /apps/{app_id}/versions/{version_id}/vulnerabilities endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

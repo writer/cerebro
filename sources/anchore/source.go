@@ -17,16 +17,16 @@ var catalogFS embed.FS
 const (
 	sourceID               = "anchore"
 	defaultFamily          = familyAssets
-	defaultHealthPath      = "/v2/system"
-	defaultBaseURLTemplate = "https://${config.enterprise_url}"
+	defaultHealthPath      = "/system"
+	defaultBaseURLTemplate = "https://${config.enterprise_url}/v2"
 	tokenHeader            = ""
-	tokenScheme            = "Basic"
+	tokenScheme            = ""
 	familyAssets           = "assets"
 	familyFindings         = "findings"
 	familyVulnerabilities  = "vulnerabilities"
 )
 
-var templateKeys = []string{"password", "username", "enterprise_url"}
+var templateKeys = []string{"app_id", "base_url", "enterprise_url", "password", "username", "version_id"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -48,41 +48,41 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyAssets,
-				Path:             "/v1/assets",
+				Path:             "/apps/${config.app_id}/versions/${config.version_id}/assets",
 				URNKind:          "anchore_assets",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
+				IDKeys:           []string{"system_metadata.id", "id", "name", "reference"},
 				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				NextCursorKeys:   []string{"pagination.next_cursor"},
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				ListKeys:         []string{"items"},
+				TimestampKeys:    []string{"system_metadata.updated_at", "system_metadata.created_at"},
+				Attributes:       map[string]string{"app_id": "app_id", "asset_type": "type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "system_metadata.updated_at|system_metadata.created_at", "reference": "reference", "resource_id": "system_metadata.id|id|name|reference", "resource_name": "name|reference|system_metadata.id", "resource_type": "type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "system_metadata.id|id|name|reference", "tenant_id": "tenant_id|metadata.tenant_id", "version_id": "version_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "assets", "source_system": "anchore"},
 			},
 			{
 				Name:             familyFindings,
-				Path:             "/v1/findings",
+				Path:             "/apps/${config.app_id}/versions/${config.version_id}/policy/findings/all",
 				URNKind:          "anchore_findings",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
+				IDKeys:           []string{"result.trigger_id", "rule.id", "id"},
 				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				NextCursorKeys:   []string{"pagination.next_cursor"},
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
+				ListKeys:         []string{"items"},
+				TimestampKeys:    []string{"observed_at", "updated_at", "created_at"},
+				Attributes:       map[string]string{"action": "result.action", "assets_affected": "assets_affected", "description": "result.message|rule.recommendation|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "result.trigger_id|rule.id|id", "observed_at": "observed_at|updated_at|created_at", "resource_id": "app_id", "resource_name": "version_id|app_id", "resource_type": "anchore_app_version", "resource_urn": "resource_urn|urn|metadata.resource_urn", "rule_gate": "rule.gate", "rule_id": "rule.id", "severity": "severity|risk|priority", "source_event_id": "result.trigger_id|rule.id|id", "status": "result.action|status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "result.message|rule.id|title|name|summary"},
 				StaticAttributes: map[string]string{"record_class": "finding", "schema": "findings", "source_system": "anchore"},
 			},
 			{
 				Name:             familyVulnerabilities,
-				Path:             "/v1/vulnerabilities",
+				Path:             "/apps/${config.app_id}/versions/${config.version_id}/vulnerabilities",
 				URNKind:          "anchore_vulnerabilities",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
+				IDKeys:           []string{"vulnerability_id", "id", "purl"},
 				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				NextCursorKeys:   []string{"pagination.next_cursor"},
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
+				ListKeys:         []string{"items"},
+				TimestampKeys:    []string{"observed_at", "updated_at", "created_at"},
+				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "fix_state": "fix_state", "finding_id": "vulnerability_id|id", "observed_at": "observed_at|updated_at|created_at", "package_name": "package_name", "package_type": "package_type", "package_version": "package_version", "purl": "purl", "resource_id": "app_id", "resource_name": "package_name|vulnerability_id", "resource_type": "anchore_app_version", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "vulnerability_id|id|purl", "status": "fix_state|vex_status|status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "vulnerability_id|title|name|summary", "vex_status": "vex_status"},
 				StaticAttributes: map[string]string{"record_class": "finding", "schema": "vulnerabilities", "source_system": "anchore"},
 			},
 		},

@@ -1,6 +1,7 @@
 {
-  "adapter_health_path": "/v2/system",
+  "adapter_health_path": "/system",
   "auth_model": "basic",
+  "auth_mechanics": "http_basic_authorization_header_or_api_key_as_basic_password",
   "evidence_cas_reference_kind": "anchore.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [
