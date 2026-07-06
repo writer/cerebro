@@ -1,0 +1,31 @@
+[
+  {
+    "id": "activecampaign-campaigns-11",
+    "tenant_id": "tenant",
+    "source_id": "activecampaign",
+    "kind": "activecampaign.campaigns",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "11",
+      "resource_urn": "urn:cerebro:tenant:runtime_activecampaign_campaign:11",
+      "resource_type": "activecampaign_campaign",
+      "resource_id": "11",
+      "resource_name": "FirstCampaign",
+      "status": "5",
+      "record_class": "asset",
+      "schema": "campaigns",
+      "source_system": "activecampaign"
+    },
+    "payload": {
+      "id": "11",
+      "name": "FirstCampaign",
+      "type": "single",
+      "status": "5",
+      "cdate": "2023-03-23T14:58:10-05:00",
+      "mdate": "2023-03-23T15:03:10-05:00",
+      "schema_ref": "activecampaign/campaigns/v1"
+    },
+    "schema_ref": "activecampaign/campaigns/v1"
+  }
+]

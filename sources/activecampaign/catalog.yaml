@@ -1,29 +1,69 @@
 id: activecampaign
-name: "Activecampaign"
-description: "Collects users, accounts, records, policies, and audit events from Activecampaign and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+name: "ActiveCampaign"
+description: "Collects ActiveCampaign users, accounts, contacts, campaigns, and automations from the documented v3 REST API and projects them into the Cerebro graph for account, owner, and business-data evidence context."
 emitted_kinds:
   - activecampaign.users
   - activecampaign.accounts
-  - activecampaign.records
-  - activecampaign.policies
-  - activecampaign.audit_events
+  - activecampaign.contacts
+  - activecampaign.campaigns
+  - activecampaign.automations
 runtime_families:
   - accounts
-  - audit_events
-  - policies
-  - records
+  - automations
+  - campaigns
+  - contacts
   - users
 kind_lifecycle:
   - kind: activecampaign.users
     status: active
   - kind: activecampaign.accounts
     status: active
-  - kind: activecampaign.records
+  - kind: activecampaign.contacts
     status: active
-  - kind: activecampaign.policies
+  - kind: activecampaign.campaigns
     status: active
-  - kind: activecampaign.audit_events
+  - kind: activecampaign.automations
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: api_token_header
+  base_url: ${config.base_url}
+  spec_url: https://developers.activecampaign.com/reference/list-all-users.md
+  spec_kind: api_reference_markdown
+  references:
+    - https://developers.activecampaign.com/reference/overview
+    - https://developers.activecampaign.com/reference/authentication
+    - https://developers.activecampaign.com/reference/get-user-loggedin
+    - https://developers.activecampaign.com/reference/list-all-users
+    - https://developers.activecampaign.com/reference/list-all-accounts
+    - https://developers.activecampaign.com/reference/list-all-contacts
+    - https://developers.activecampaign.com/reference/list-all-campaigns
+    - https://developers.activecampaign.com/reference/list-all-automations
+  families:
+    - id: accounts
+      method: GET
+      path: /api/3/accounts
+      operation: list_all_accounts
+    - id: automations
+      method: GET
+      path: /api/3/automations
+      operation: list_all_automations
+    - id: campaigns
+      method: GET
+      path: /api/3/campaigns
+      operation: list_all_campaigns
+    - id: contacts
+      method: GET
+      path: /api/3/contacts
+      operation: list_search_filter_contacts
+    - id: users
+      method: GET
+      path: /api/3/users
+      operation: list_all_users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: activecampaign
@@ -37,7 +77,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Lists account users through the documented ActiveCampaign v3 `GET /users` endpoint.
     - id: accounts
       type: entity_family
       title: "Accounts"
@@ -47,37 +87,37 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Lists CRM accounts through the documented ActiveCampaign v3 `GET /accounts` endpoint.
+    - id: contacts
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Contacts"
+      families: [contacts]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+        - Lists contacts through the documented ActiveCampaign v3 `GET /contacts` endpoint.
+    - id: campaigns
+      type: entity_family
+      title: "Campaigns"
+      families: [campaigns]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [data_governance]
+      notes:
+        - Lists campaigns through the documented ActiveCampaign v3 `GET /campaigns` endpoint.
+    - id: automations
+      type: entity_family
+      title: "Automations"
+      families: [automations]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Lists automations through the documented ActiveCampaign v3 `GET /automations` endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -103,8 +143,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: activecampaign.records
-    schema_ref: activecampaign/records/v1
+  - kind: activecampaign.contacts
+    schema_ref: activecampaign/contacts/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -113,21 +153,23 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: activecampaign.policies
-    schema_ref: activecampaign/policies/v1
+  - kind: activecampaign.campaigns
+    schema_ref: activecampaign/campaigns/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - policy_id
-      - policy_name
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
-  - kind: activecampaign.audit_events
-    schema_ref: activecampaign/audit_events/v1
+  - kind: activecampaign.automations
+    schema_ref: activecampaign/automations/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id

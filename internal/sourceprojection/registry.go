@@ -912,9 +912,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 
 	// activecampaign generated projectors (sourcegen promotion)
 	"activecampaign.accounts":     activecampaignAccountsProjections,
-	"activecampaign.audit_events": activecampaignAuditEventsProjections,
-	"activecampaign.policies":     activecampaignPoliciesProjections,
-	"activecampaign.records":      activecampaignRecordsProjections,
+	"activecampaign.automations":  activecampaignAutomationsProjections,
+	"activecampaign.campaigns":    activecampaignCampaignsProjections,
+	"activecampaign.contacts":     activecampaignContactsProjections,
 	"activecampaign.users":        activecampaignUsersProjections,
 
 	// activtrak generated projectors (sourcegen promotion)
