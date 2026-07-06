@@ -1,181 +1,116 @@
 id: apacta
 name: "Apacta"
-description: "Collects activity, mass messages user, role, city, event, and changelog from Apacta and projects them into the Cerebro graph as assets, audit events, groups, and users for inventory, access review, audit, risk, and operational context."
+description: "Collects documented Apacta Partner API activities, cities, contact people, project users, and users into the Cerebro graph for inventory, access review, and operational context."
 emitted_kinds:
   - apacta.activity
-  - apacta.mass_messages_user
-  - apacta.role
   - apacta.city
-  - apacta.event
-  - apacta.changelog
-  - apacta.time_entry_rule_group
-  - apacta.user
-  - apacta.user_custom_field_attribute
   - apacta.contact_person
   - apacta.projects_user
-  - apacta.user_custom_field_value
+  - apacta.user
 runtime_families:
   - activity
-  - changelog
   - city
   - contact_person
-  - event
-  - mass_messages_user
   - projects_user
-  - role
-  - time_entry_rule_group
   - user
-  - user_custom_field_attribute
-  - user_custom_field_value
 kind_lifecycle:
   - kind: apacta.activity
     status: active
-  - kind: apacta.mass_messages_user
-    status: active
-  - kind: apacta.role
-    status: active
   - kind: apacta.city
-    status: active
-  - kind: apacta.event
-    status: active
-  - kind: apacta.changelog
-    status: active
-  - kind: apacta.time_entry_rule_group
-    status: active
-  - kind: apacta.user
-    status: active
-  - kind: apacta.user_custom_field_attribute
     status: active
   - kind: apacta.contact_person
     status: active
   - kind: apacta.projects_user
     status: active
-  - kind: apacta.user_custom_field_value
+  - kind: apacta.user
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://app.apacta.com/api/v1
+  spec_url: https://apidoc.apacta.com/partner.yaml
+  spec_kind: openapi
+  references:
+    - https://apidoc.apacta.com/
+  families:
+    - id: activity
+      method: GET
+      path: /activities
+      operation: getActivities
+    - id: city
+      method: GET
+      path: /cities
+      operation: getCities
+    - id: contact_person
+      method: GET
+      path: /contacts/{contact_id}/contact_persons
+      operation: getContactPersonsList
+    - id: projects_user
+      method: GET
+      path: /projects/{project_id}/users
+      operation: listProjectsUsers
+    - id: user
+      method: GET
+      path: /users
+      operation: listUsers
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: apacta
   dimensions:
     - id: activity
-      type: audit_event
-      title: "Activity"
+      type: entity_family
+      title: "Activities"
       families: [activity]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: mass_messages_user
-      type: entity_family
-      title: "Mass Messages User"
-      families: [mass_messages_user]
-      support: partial
-      high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: role
-      type: entity_family
-      title: "Role"
-      families: [role]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Documented Apacta Partner API activity catalog via GET /activities.
     - id: city
       type: entity_family
-      title: "City"
+      title: "Cities"
       families: [city]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: event
-      type: audit_event
-      title: "Event"
-      families: [event]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: changelog
-      type: audit_event
-      title: "Changelog"
-      families: [changelog]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: time_entry_rule_group
-      type: entity_family
-      title: "Time Entry Rule Group"
-      families: [time_entry_rule_group]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: user
-      type: entity_family
-      title: "User"
-      families: [user]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: user_custom_field_attribute
-      type: entity_family
-      title: "User Custom Field Attribute"
-      families: [user_custom_field_attribute]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Documented Apacta Partner API city reference data via GET /cities.
     - id: contact_person
       type: entity_family
-      title: "Contact Person"
+      title: "Contact People"
       families: [contact_person]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Documented Apacta Partner API contact people for a configured contact via GET /contacts/{contact_id}/contact_persons.
     - id: projects_user
       type: entity_family
-      title: "Projects User"
+      title: "Project Users"
       families: [projects_user]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, access_review]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: user_custom_field_value
+        - Documented Apacta Partner API project-user assignments for a configured project via GET /projects/{project_id}/users.
+    - id: user
       type: entity_family
-      title: "User Custom Field Value"
-      families: [user_custom_field_value]
+      title: "Users"
+      families: [user]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, access_review]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Documented Apacta Partner API user directory via GET /users.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -188,24 +123,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
-  - kind: apacta.mass_messages_user
-    schema_ref: apacta/mass_messages_user/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: apacta.role
-    schema_ref: apacta/role/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
+      - resource_id
     required_payload_fields:
       - id
   - kind: apacta.city
@@ -216,48 +134,6 @@ event_contracts:
       - resource_urn
       - resource_type
       - resource_id
-    required_payload_fields:
-      - id
-  - kind: apacta.event
-    schema_ref: apacta/event/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
-  - kind: apacta.changelog
-    schema_ref: apacta/changelog/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
-  - kind: apacta.time_entry_rule_group
-    schema_ref: apacta/time_entry_rule_group/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
-    required_payload_fields:
-      - id
-  - kind: apacta.user
-    schema_ref: apacta/user/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: apacta.user_custom_field_attribute
-    schema_ref: apacta/user_custom_field_attribute/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
     required_payload_fields:
       - id
   - kind: apacta.contact_person
@@ -276,8 +152,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: apacta.user_custom_field_value
-    schema_ref: apacta/user_custom_field_value/v1
+  - kind: apacta.user
+    schema_ref: apacta/user/v1
     required_attributes:
       - tenant_id
       - source_event_id

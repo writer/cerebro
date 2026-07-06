@@ -3,33 +3,25 @@ entries:
   definition:
     auth:
       credential_fields:
-      - key: api_key
-        label: API key
+      - key: api_token
+        label: Bearer token
         reference_only: true
         required: true
         secret: true
-      model: api_key
+      model: bearer_token
       requires_references: true
     categories:
     - saas
     config_fields:
-    - help: Path parameter inferred from the OpenAPI operation.
-      key: offer_id
-      label: Offer Id
-      required: true
-    - help: Path parameter inferred from the OpenAPI operation.
+    - help: Contact ID used for the documented contact people endpoint.
       key: contact_id
       label: Contact Id
       required: true
-    - help: Path parameter inferred from the OpenAPI operation.
+    - help: Project ID used for the documented project users endpoint.
       key: project_id
       label: Project Id
       required: true
-    - help: Path parameter inferred from the OpenAPI operation.
-      key: user_id
-      label: User Id
-      required: true
-    description: Collects activity, mass messages user, role, city, event, and changelog from Apacta and projects them into the Cerebro graph as assets, audit events, groups, and users for inventory, access review, audit, risk, and operational context.
+    description: Collects documented Apacta Partner API activities, cities, contact people, project users, and users into the Cerebro graph for inventory, access review, and operational context.
     display_name: Apacta
     id: builtin_catalog-apacta
     ingest:
@@ -37,16 +29,16 @@ entries:
     resource_families:
     - coverage:
       - control_domains:
-        - logging_monitoring
+        - asset_inventory
         evidence_types:
-        - logging_configuration
+        - source_snapshot
         families:
         - activity
         high_value: true
-        id: audit_events
+        id: activity
         support: partial
-        title: Activity
-        type: audit_event
+        title: Activities
+        type: entity_family
       default_enabled: true
       event:
         kind: apacta.activity
@@ -57,7 +49,7 @@ entries:
       event_kind: activity
       id: activity
       id_field: id
-      label: Activity
+      label: Activities
       list_key: data
       method: GET
       name_field: name
@@ -69,85 +61,7 @@ entries:
           id: id
           name: name
           provider_id: id
-        template: audit_event
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - mass_messages_user
-        high_value: true
-        id: mass_messages_user
-        support: partial
-        title: Mass Messages User
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: apacta.mass_messages_user
-        required_payload_fields:
-        - id
-        schema_ref: apacta/mass_messages_user/v1
-        urn_kind: apacta_mass_messages_user
-      event_kind: mass_messages_user
-      id: mass_messages_user
-      id_field: id
-      label: Mass Messages User
-      list_key: data
-      method: GET
-      name_field: created
-      pagination:
-        type: none
-      path: "/mass_messages_users"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: created
-          provider_id: id
-        template: identity_user
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - role
-        high_value: true
-        id: role
-        support: partial
-        title: Role
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: apacta.role
-        required_payload_fields:
-        - id
-        schema_ref: apacta/role/v1
-        urn_kind: apacta_role
-      event_kind: role
-      id: role
-      id_field: id
-      label: Role
-      list_key: data
-      method: GET
-      name_field: name
-      pagination:
-        type: none
-      path: "/roles"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: name
-          provider_id: id
-        template: identity_group
+        template: asset
       record_selector: "$.data[*]"
     - coverage:
       - control_domains:
@@ -156,10 +70,12 @@ entries:
         - source_snapshot
         families:
         - city
+        high_value: true
         id: city
         support: partial
-        title: City
+        title: Cities
         type: entity_family
+      default_enabled: true
       event:
         kind: apacta.city
         required_payload_fields:
@@ -169,16 +85,13 @@ entries:
       event_kind: city
       id: city
       id_field: id
-      label: City
+      label: Cities
       list_key: data
       method: GET
       name_field: name
       pagination:
         type: none
       path: "/cities"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
       projection:
         fields:
           id: id
@@ -190,200 +103,6 @@ entries:
       record_selector: "$.data[*]"
     - coverage:
       - control_domains:
-        - logging_monitoring
-        evidence_types:
-        - logging_configuration
-        families:
-        - event
-        high_value: true
-        id: audit_events
-        support: partial
-        title: Event
-        type: audit_event
-      default_enabled: true
-      event:
-        kind: apacta.event
-        required_payload_fields:
-        - id
-        schema_ref: apacta/event/v1
-        urn_kind: apacta_event
-      event_kind: event
-      id: event
-      id_field: id
-      label: Event
-      list_key: data
-      method: GET
-      name_field: name
-      pagination:
-        type: none
-      path: "/events"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: name
-          provider_id: id
-        template: audit_event
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
-        - logging_monitoring
-        evidence_types:
-        - logging_configuration
-        families:
-        - changelog
-        high_value: true
-        id: audit_events
-        support: partial
-        title: Changelog
-        type: audit_event
-      default_enabled: true
-      event:
-        kind: apacta.changelog
-        required_payload_fields:
-        - id
-        schema_ref: apacta/changelog/v1
-        urn_kind: apacta_changelog
-      event_kind: changelog
-      id: changelog
-      id_field: id
-      label: Changelog
-      list_key: data
-      method: GET
-      name_field: title
-      pagination:
-        type: none
-      path: "/offers/${config.offer_id}/changelog"
-      projection:
-        fields:
-          id: id
-          name: title
-          provider_id: id
-        template: audit_event
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - time_entry_rule_group
-        high_value: true
-        id: time_entry_rule_group
-        support: partial
-        title: Time Entry Rule Group
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: apacta.time_entry_rule_group
-        required_payload_fields:
-        - id
-        schema_ref: apacta/time_entry_rule_group/v1
-        urn_kind: apacta_time_entry_rule_group
-      event_kind: time_entry_rule_group
-      id: time_entry_rule_group
-      id_field: id
-      label: Time Entry Rule Group
-      list_key: data
-      method: GET
-      name_field: name
-      pagination:
-        type: none
-      path: "/time_entry_rule_groups"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: name
-          provider_id: id
-        template: identity_group
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - user
-        high_value: true
-        id: user
-        support: partial
-        title: User
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: apacta.user
-        required_payload_fields:
-        - id
-        schema_ref: apacta/user/v1
-        urn_kind: apacta_user
-      event_kind: user
-      id: user
-      id_field: id
-      label: User
-      list_key: data
-      method: GET
-      name_field: email
-      pagination:
-        type: none
-      path: "/users"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: email
-          provider_id: id
-        template: identity_user
-      record_selector: "$.data[*]"
-      sensitive_payload_paths:
-      - password
-    - coverage:
-      - control_domains:
-        - asset_inventory
-        evidence_types:
-        - source_snapshot
-        families:
-        - user_custom_field_attribute
-        high_value: true
-        id: user_custom_field_attribute
-        support: partial
-        title: User Custom Field Attribute
-        type: entity_family
-      default_enabled: true
-      event:
-        kind: apacta.user_custom_field_attribute
-        required_payload_fields:
-        - id
-        schema_ref: apacta/user_custom_field_attribute/v1
-        urn_kind: apacta_user_custom_field_attribute
-      event_kind: user_custom_field_attribute
-      id: user_custom_field_attribute
-      id_field: id
-      label: User Custom Field Attribute
-      list_key: data
-      method: GET
-      name_field: name
-      pagination:
-        type: none
-      path: "/user_custom_field_attributes"
-      permissions_needed:
-      - X-Auth-Token
-      - api_key
-      projection:
-        fields:
-          id: id
-          name: name
-          provider_id: id
-        template: identity_user
-      record_selector: "$.data[*]"
-    - coverage:
-      - control_domains:
         - asset_inventory
         evidence_types:
         - source_snapshot
@@ -392,7 +111,7 @@ entries:
         high_value: true
         id: contact_person
         support: partial
-        title: Contact Person
+        title: Contact People
         type: entity_family
       default_enabled: true
       event:
@@ -404,7 +123,7 @@ entries:
       event_kind: contact_person
       id: contact_person
       id_field: id
-      label: Contact Person
+      label: Contact People
       list_key: data
       method: GET
       name_field: name
@@ -412,8 +131,7 @@ entries:
         type: none
       path: "/contacts/${config.contact_id}/contact_persons"
       permissions_needed:
-      - X-Auth-Token
-      - api_key
+      - Bearer token
       projection:
         fields:
           id: id
@@ -424,6 +142,7 @@ entries:
     - coverage:
       - control_domains:
         - asset_inventory
+        - access_review
         evidence_types:
         - source_snapshot
         families:
@@ -431,7 +150,7 @@ entries:
         high_value: true
         id: projects_user
         support: partial
-        title: Projects User
+        title: Project Users
         type: entity_family
       default_enabled: true
       event:
@@ -443,16 +162,15 @@ entries:
       event_kind: projects_user
       id: projects_user
       id_field: id
-      label: Projects User
+      label: Project Users
       list_key: data
       method: GET
       name_field: email
       pagination:
         type: none
-      path: "/projects/${config.project_id}/users/"
+      path: "/projects/${config.project_id}/users"
       permissions_needed:
-      - X-Auth-Token
-      - api_key
+      - Bearer token
       projection:
         fields:
           id: id
@@ -465,103 +183,71 @@ entries:
     - coverage:
       - control_domains:
         - asset_inventory
+        - access_review
         evidence_types:
         - source_snapshot
         families:
-        - user_custom_field_value
+        - user
         high_value: true
-        id: user_custom_field_value
+        id: user
         support: partial
-        title: User Custom Field Value
+        title: Users
         type: entity_family
       default_enabled: true
       event:
-        kind: apacta.user_custom_field_value
+        kind: apacta.user
         required_payload_fields:
         - id
-        schema_ref: apacta/user_custom_field_value/v1
-        urn_kind: apacta_user_custom_field_value
-      event_kind: user_custom_field_value
-      id: user_custom_field_value
+        schema_ref: apacta/user/v1
+        urn_kind: apacta_user
+      event_kind: user
+      id: user
       id_field: id
-      label: User Custom Field Value
+      label: Users
       list_key: data
       method: GET
-      name_field: created
+      name_field: email
       pagination:
         type: none
-      path: "/users/${config.user_id}/user_custom_field_value"
+      path: "/users"
       permissions_needed:
-      - X-Auth-Token
-      - api_key
+      - Bearer token
       projection:
         fields:
           id: id
-          name: created
+          name: email
           provider_id: id
         template: identity_user
       record_selector: "$.data[*]"
+      sensitive_payload_paths:
+      - password
     schema_version: cerebro.integration/v1
     scope_options:
     - default_enabled: true
       families:
       - activity
       id: activity
-      label: Activity
+      label: Activities
     - default_enabled: true
       families:
-      - mass_messages_user
-      id: mass_messages_user
-      label: Mass Messages User
-    - default_enabled: true
-      families:
-      - role
-      id: role
-      label: Role
-    - families:
       - city
       id: city
-      label: City
-    - default_enabled: true
-      families:
-      - event
-      id: event
-      label: Event
-    - default_enabled: true
-      families:
-      - changelog
-      id: changelog
-      label: Changelog
-    - default_enabled: true
-      families:
-      - time_entry_rule_group
-      id: time_entry_rule_group
-      label: Time Entry Rule Group
-    - default_enabled: true
-      families:
-      - user
-      id: user
-      label: User
-    - default_enabled: true
-      families:
-      - user_custom_field_attribute
-      id: user_custom_field_attribute
-      label: User Custom Field Attribute
+      label: Cities
     - default_enabled: true
       families:
       - contact_person
       id: contact_person
-      label: Contact Person
+      label: Contact People
     - default_enabled: true
       families:
       - projects_user
       id: projects_user
-      label: Projects User
+      label: Project Users
     - default_enabled: true
       families:
-      - user_custom_field_value
-      id: user_custom_field_value
-      label: User Custom Field Value
+      - user
+      id: user
+      label: Users
     source_id: apacta
     tenant_id: builtin_catalog
     transport:

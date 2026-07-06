@@ -1,6 +1,7 @@
 {
   "adapter_health_path": "/activities",
-  "auth_model": "api_key",
+  "auth_mechanics": "authorization_bearer_header",
+  "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "apacta.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

@@ -15,27 +15,20 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID                       = "apacta"
-	defaultFamily                  = familyActivity
-	defaultHealthPath              = "/activities"
-	defaultBaseURLTemplate         = "https://app.apacta.com/api/v1"
-	tokenHeader                    = ""
-	tokenScheme                    = "Token"
-	familyActivity                 = "activity"
-	familyMassMessagesUser         = "mass_messages_user"
-	familyRole                     = "role"
-	familyCity                     = "city"
-	familyEvent                    = "event"
-	familyChangelog                = "changelog"
-	familyTimeEntryRuleGroup       = "time_entry_rule_group"
-	familyUser                     = "user"
-	familyUserCustomFieldAttribute = "user_custom_field_attribute"
-	familyContactPerson            = "contact_person"
-	familyProjectsUser             = "projects_user"
-	familyUserCustomFieldValue     = "user_custom_field_value"
+	sourceID               = "apacta"
+	defaultFamily          = familyActivity
+	defaultHealthPath      = "/activities"
+	defaultBaseURLTemplate = "https://app.apacta.com/api/v1"
+	tokenHeader            = "Authorization"
+	tokenScheme            = "Bearer"
+	familyActivity         = "activity"
+	familyCity             = "city"
+	familyUser             = "user"
+	familyContactPerson    = "contact_person"
+	familyProjectsUser     = "projects_user"
 )
 
-var templateKeys = []string{"contact_id", "offer_id", "project_id", "user_id", "api_key"}
+var templateKeys = []string{"contact_id", "project_id", "api_key"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -51,7 +44,7 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "api_key",
+		AuthModel:       "bearer_token",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
@@ -59,31 +52,11 @@ func New() (*Source, error) {
 				Name:             familyActivity,
 				Path:             "/activities",
 				URNKind:          "apacta_activity",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
+				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "activity", "source_system": "apacta"},
-			},
-			{
-				Name:             familyMassMessagesUser,
-				Path:             "/mass_messages_users",
-				URNKind:          "apacta_mass_messages_user",
-				IDKeys:           []string{"id", "created", "user_id", "email", "primary_email", "login"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "created", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "mass_messages_user", "source_system": "apacta"},
-			},
-			{
-				Name:             familyRole,
-				Path:             "/roles",
-				URNKind:          "apacta_role",
-				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "role", "source_system": "apacta"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at|modified|created", "provider_id": "id", "resource_id": "id", "resource_name": "name", "resource_type": "activity", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "schema": "activity", "source_system": "apacta"},
 			},
 			{
 				Name:             familyCity,
@@ -96,36 +69,6 @@ func New() (*Source, error) {
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "city", "source_system": "apacta"},
 			},
 			{
-				Name:             familyEvent,
-				Path:             "/events",
-				URNKind:          "apacta_event",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "event", "source_system": "apacta"},
-			},
-			{
-				Name:             familyChangelog,
-				Path:             "/offers/${config.offer_id}/changelog",
-				URNKind:          "apacta_changelog",
-				IDKeys:           []string{"id", "title", "event_id", "uuid", "request_id"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "title", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "changelog", "source_system": "apacta"},
-			},
-			{
-				Name:             familyTimeEntryRuleGroup,
-				Path:             "/time_entry_rule_groups",
-				URNKind:          "apacta_time_entry_rule_group",
-				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "time_entry_rule_group", "source_system": "apacta"},
-			},
-			{
 				Name:             familyUser,
 				Path:             "/users",
 				URNKind:          "apacta_user",
@@ -134,16 +77,6 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "email", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "user", "source_system": "apacta"},
-			},
-			{
-				Name:             familyUserCustomFieldAttribute,
-				Path:             "/user_custom_field_attributes",
-				URNKind:          "apacta_user_custom_field_attribute",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "user_custom_field_attribute", "source_system": "apacta"},
 			},
 			{
 				Name:             familyContactPerson,
@@ -157,23 +90,13 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyProjectsUser,
-				Path:             "/projects/${config.project_id}/users/",
+				Path:             "/projects/${config.project_id}/users",
 				URNKind:          "apacta_projects_user",
 				IDKeys:           []string{"id", "email", "user_id", "primary_email", "login"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "email", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "projects_user", "source_system": "apacta"},
-			},
-			{
-				Name:             familyUserCustomFieldValue,
-				Path:             "/users/${config.user_id}/user_custom_field_value",
-				URNKind:          "apacta_user_custom_field_value",
-				IDKeys:           []string{"id", "created", "user_id", "email", "primary_email", "login"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "created", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "user_custom_field_value", "source_system": "apacta"},
 			},
 		},
 	})

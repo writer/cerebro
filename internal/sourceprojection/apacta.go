@@ -8,38 +8,14 @@ import (
 )
 
 func apactaActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaMassMessagesUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "apacta"})
+	return apactaGenericAssetProjections(event)
 }
 
 func apactaCityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return apactaGenericAssetProjections(event)
 }
 
-func apactaEventProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaChangelogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaTimeEntryRuleGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
 func apactaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaUserCustomFieldAttributeProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityUserProjections(event, identityProjectionProfile{Provider: "apacta"})
 }
 
@@ -48,10 +24,6 @@ func apactaContactPersonProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 }
 
 func apactaProjectsUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "apacta"})
-}
-
-func apactaUserCustomFieldValueProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityUserProjections(event, identityProjectionProfile{Provider: "apacta"})
 }
 

@@ -1,11 +1,13 @@
 # Apacta
 
-Generated Source Runtime SDK scaffold for `apacta`.
+Provider-verified Source Runtime SDK mapping for `apacta` using the documented Apacta Partner API.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `api_key`
+- Auth model: `bearer_token`
+- Auth mechanics: `Authorization: Bearer <token>` header
+- Base URL: `https://app.apacta.com/api/v1`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,20 +20,17 @@ Generated Source Runtime SDK scaffold for `apacta`.
 
 ## Families
 
-- `activity`, emits `apacta.activity`, reads `/activities`
-- `mass_messages_user`, emits `apacta.mass_messages_user`, reads `/mass_messages_users`
-- `role`, emits `apacta.role`, reads `/roles`
-- `city`, emits `apacta.city`, reads `/cities`
-- `event`, emits `apacta.event`, reads `/events`
-- `changelog`, emits `apacta.changelog`, reads `/offers/${config.offer_id}/changelog`
-- `time_entry_rule_group`, emits `apacta.time_entry_rule_group`, reads `/time_entry_rule_groups`
-- `user`, emits `apacta.user`, reads `/users`
-- `user_custom_field_attribute`, emits `apacta.user_custom_field_attribute`, reads `/user_custom_field_attributes`
-- `contact_person`, emits `apacta.contact_person`, reads `/contacts/${config.contact_id}/contact_persons`
-- `projects_user`, emits `apacta.projects_user`, reads `/projects/${config.project_id}/users/`
-- `user_custom_field_value`, emits `apacta.user_custom_field_value`, reads `/users/${config.user_id}/user_custom_field_value`
+- `activity`, emits `apacta.activity`, reads `GET /activities`
+- `city`, emits `apacta.city`, reads `GET /cities`
+- `contact_person`, emits `apacta.contact_person`, reads `GET /contacts/{contact_id}/contact_persons`
+- `projects_user`, emits `apacta.projects_user`, reads `GET /projects/{project_id}/users`
+- `user`, emits `apacta.user`, reads `GET /users`
+
+The generated families without stable Partner API endpoints were removed rather than mapped to unsupported paths.
 
 ## Tests
 
-- `go test ./sources/apacta ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/apacta ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/apacta/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

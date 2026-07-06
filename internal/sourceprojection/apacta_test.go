@@ -21,8 +21,8 @@ func TestApactaAssetProjection(t *testing.T) {
 }
 
 func TestApactaIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.mass_messages_user", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := apactaMassMessagesUserProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.user", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
+	entities, _, err := apactaUserProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -31,24 +31,38 @@ func TestApactaIdentityUserProjection(t *testing.T) {
 	}
 }
 
-func TestApactaIdentityGroupProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.role", Attributes: map[string]string{"group_id": "group-1", "group_email": "group@example.test", "group_name": "Group One"}}
-	entities, _, err := apactaRoleProjections(event)
+func TestApactaContactPersonProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.contact_person", Attributes: map[string]string{"user_id": "contact-person-1", "email": "contact@example.test", "display_name": "Contact Person"}}
+	entities, _, err := apactaContactPersonProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected identity group")
+		t.Fatal("expected projected contact person identity")
 	}
 }
 
-func TestApactaAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.activity", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
+func TestApactaProjectsUserProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.projects_user", Attributes: map[string]string{"user_id": "project-user-1", "email": "project.user@example.test", "display_name": "Project User"}}
+	entities, _, err := apactaProjectsUserProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected project user identity")
+	}
+}
+
+func TestApactaActivityProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apacta", Kind: "apacta.activity", Attributes: map[string]string{"resource_id": "activity-1", "resource_type": "activity", "resource_name": "Installation"}}
 	entities, links, err := apactaActivityProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected activity asset")
+	}
+	if len(links) != 0 {
+		t.Fatalf("links = %d, want none without evidence", len(links))
 	}
 }

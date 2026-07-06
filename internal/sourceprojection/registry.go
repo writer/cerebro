@@ -1083,18 +1083,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apache.user":       apacheUserProjections,
 
 	// apacta generated projectors (sourcegen promotion)
-	"apacta.activity":                    apactaActivityProjections,
-	"apacta.changelog":                   apactaChangelogProjections,
-	"apacta.city":                        apactaCityProjections,
-	"apacta.contact_person":              apactaContactPersonProjections,
-	"apacta.event":                       apactaEventProjections,
-	"apacta.mass_messages_user":          apactaMassMessagesUserProjections,
-	"apacta.projects_user":               apactaProjectsUserProjections,
-	"apacta.role":                        apactaRoleProjections,
-	"apacta.time_entry_rule_group":       apactaTimeEntryRuleGroupProjections,
-	"apacta.user":                        apactaUserProjections,
-	"apacta.user_custom_field_attribute": apactaUserCustomFieldAttributeProjections,
-	"apacta.user_custom_field_value":     apactaUserCustomFieldValueProjections,
+	"apacta.activity":       apactaActivityProjections,
+	"apacta.city":           apactaCityProjections,
+	"apacta.contact_person": apactaContactPersonProjections,
+	"apacta.projects_user":  apactaProjectsUserProjections,
+	"apacta.user":           apactaUserProjections,
 
 	// api2cart generated projectors (sourcegen promotion)
 	"api2cart.attribute_attributeset_list_json": api2cartAttributeAttributesetListJsonProjections,
