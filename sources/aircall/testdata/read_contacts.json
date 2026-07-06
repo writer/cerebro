@@ -25,7 +25,7 @@
     },
     "payload": {
       "id": 710,
-      "direct_link": "https://api.aircall.io/v1/contacts/710",
+      "direct_link": "https://example.com/aircall/contacts/710",
       "first_name": "Vicente",
       "last_name": "Abad",
       "company_name": "TeleWorm",

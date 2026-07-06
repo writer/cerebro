@@ -38,9 +38,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 			"meta": map[string]any{"count": 1, "total": 1, "current_page": 1, "per_page": 50, "next_page_link": nil, "previous_page_link": nil},
 			"users": []map[string]any{{
 				"id":                  456,
-				"direct_link":         "https://api.aircall.io/v1/users/456",
+				"direct_link":         "https://example.com/aircall/users/456",
 				"name":                "John Doe",
-				"email":               "john.doe@aircall.test",
+				"email":               "john.doe@example.com",
 				"available":           true,
 				"availability_status": "available",
 				"created_at":          "2019-12-29T10:03:18.000Z",
@@ -70,7 +70,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
 	}
-	if got := event.Attributes["email"]; got != "john.doe@aircall.test" {
+	if got := event.Attributes["email"]; got != "john.doe@example.com" {
 		t.Fatalf("email attribute = %q", got)
 	}
 }
@@ -83,13 +83,13 @@ func TestReadDocumentedFamilies(t *testing.T) {
 	source.allowLoopbackForTest()
 	responses := map[string]map[string]any{
 		"/users": {
-			"users": []map[string]any{{"id": 456, "name": "John Doe", "email": "john.doe@aircall.test", "availability_status": "available", "created_at": "2019-12-29T10:03:18.000Z"}},
+			"users": []map[string]any{{"id": 456, "name": "John Doe", "email": "john.doe@example.com", "availability_status": "available", "created_at": "2019-12-29T10:03:18.000Z"}},
 		},
 		"/teams": {
 			"teams": []map[string]any{{"id": 678, "name": "Global Sales", "created_at": "2020-03-10T08:31:43.000Z"}},
 		},
 		"/calls": {
-			"calls": []map[string]any{{"id": 812, "sid": "CA1234567890", "direction": "outbound", "status": "done", "started_at": 1584998199, "user": map[string]any{"id": 456, "name": "John Doe", "email": "john.doe@aircall.test"}}},
+			"calls": []map[string]any{{"id": 812, "sid": "CA1234567890", "direction": "outbound", "status": "done", "started_at": 1584998199, "user": map[string]any{"id": 456, "name": "John Doe", "email": "john.doe@example.com"}}},
 		},
 		"/contacts": {
 			"contacts": []map[string]any{{"id": 710, "first_name": "Vicente", "last_name": "Abad", "company_name": "TeleWorm", "created_at": 1400691054, "updated_at": 1444336506}},

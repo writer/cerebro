@@ -25,13 +25,13 @@
     "payload": {
       "id": 678,
       "name": "Global Sales",
-      "direct_link": "https://api.aircall.io/v1/teams/678",
+      "direct_link": "https://example.com/aircall/teams/678",
       "created_at": "2020-03-10T08:31:43.000Z",
       "users": [
         {
           "id": 456,
           "name": "John Doe",
-          "email": "john.doe@aircall.test"
+          "email": "john.doe@example.com"
         }
       ],
       "tenant_id": "tenant",

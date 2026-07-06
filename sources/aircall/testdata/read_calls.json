@@ -17,7 +17,7 @@
       "resource_urn": "urn:cerebro:tenant:aircall_calls:812",
       "observed_at": "2026-07-06T00:00:00Z",
       "actor_id": "456",
-      "actor_email": "john.doe@aircall.test",
+      "actor_email": "john.doe@example.com",
       "actor_name": "John Doe",
       "event_type": "outbound",
       "resource_id": "812",
@@ -30,7 +30,7 @@
     "payload": {
       "id": 812,
       "sid": "CA1234567890",
-      "direct_link": "https://api.aircall.io/v1/calls/812",
+      "direct_link": "https://example.com/aircall/calls/812",
       "direction": "outbound",
       "status": "done",
       "started_at": 1584998199,
@@ -41,7 +41,7 @@
       "user": {
         "id": 456,
         "name": "John Doe",
-        "email": "john.doe@aircall.test"
+        "email": "john.doe@example.com"
       },
       "tenant_id": "tenant",
       "source_id": "aircall",
