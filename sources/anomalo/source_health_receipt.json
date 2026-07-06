@@ -1,6 +1,7 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/ping",
   "auth_model": "bearer_token",
+  "auth_mechanics": "authorization_bearer_token_header",
   "evidence_cas_reference_kind": "anomalo.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

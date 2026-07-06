@@ -1,0 +1,48 @@
+[
+  {
+    "id": "source-anomalo-checks-event-1",
+    "kind": "anomalo.checks",
+    "schema_ref": "anomalo/checks/v1",
+    "source_id": "anomalo",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "314",
+      "family": "checks",
+      "provider": "anomalo",
+      "source_provider": "anomalo",
+      "source_system": "anomalo",
+      "record_class": "policy",
+      "schema": "checks",
+      "api_method": "GET",
+      "api_path": "/get_checks_for_table",
+      "policy_id": "9001",
+      "policy_name": "row-count-check",
+      "policy_status": "open",
+      "policy_type": "RowCount",
+      "resource_id": "314",
+      "resource_type": "table_check"
+    },
+    "payload": {
+      "check_id": 501,
+      "check_static_id": 9001,
+      "ref": "row-count-check",
+      "check_type": "RowCount",
+      "triage_status": "open",
+      "config": {
+        "_metadata": {
+          "check_message": "Row count check",
+          "description": "Validates table row count",
+          "priority_level": "normal"
+        },
+        "params": {}
+      },
+      "table_id": 314,
+      "tenant_id": "tenant",
+      "source_id": "anomalo",
+      "schema_ref": "anomalo/checks/v1",
+      "record_class": "policy"
+    }
+  }
+]

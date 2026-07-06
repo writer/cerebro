@@ -1070,11 +1070,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"anomali_threatstream.vulnerabilities": anomaliThreatstreamVulnerabilitiesProjections,
 
 	// anomalo generated projectors (sourcegen promotion)
-	"anomalo.accounts":     anomaloAccountsProjections,
-	"anomalo.audit_events": anomaloAuditEventsProjections,
-	"anomalo.policies":     anomaloPoliciesProjections,
-	"anomalo.records":      anomaloRecordsProjections,
-	"anomalo.users":        anomaloUsersProjections,
+	"anomalo.checks":                anomaloChecksProjections,
+	"anomalo.notification_channels": anomaloNotificationChannelsProjections,
+	"anomalo.organizations":         anomaloOrganizationsProjections,
+	"anomalo.tables":                anomaloTablesProjections,
+	"anomalo.warehouses":            anomaloWarehousesProjections,
 
 	// apache generated projectors (sourcegen promotion)
 	"apache.eventlog":   apacheEventlogProjections,

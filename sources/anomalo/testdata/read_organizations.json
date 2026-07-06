@@ -1,0 +1,34 @@
+[
+  {
+    "id": "source-anomalo-organizations-event-1",
+    "kind": "anomalo.organizations",
+    "schema_ref": "anomalo/organizations/v1",
+    "source_id": "anomalo",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "3",
+      "family": "organizations",
+      "provider": "anomalo",
+      "source_provider": "anomalo",
+      "source_system": "anomalo",
+      "record_class": "asset",
+      "schema": "organizations",
+      "api_method": "GET",
+      "api_path": "/organizations",
+      "resource_id": "3",
+      "resource_name": "Primary Organization",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:anomalo_organizations:3"
+    },
+    "payload": {
+      "id": 3,
+      "name": "Primary Organization",
+      "tenant_id": "tenant",
+      "source_id": "anomalo",
+      "schema_ref": "anomalo/organizations/v1",
+      "record_class": "asset"
+    }
+  }
+]

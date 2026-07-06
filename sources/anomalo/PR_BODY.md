@@ -1,7 +1,7 @@
 ## Summary
 
-- Records an evidenced provider API disproof for the generated `anomalo` source.
-- Leaves the generated runtime scaffold unchanged because the public evidence does not ground the generated `/v1` family paths.
+- Promotes the `anomalo` source to provider-verified API proof.
+- Reshapes the generated placeholder families to Anomalo's documented public API resources: warehouses, tables, checks, notification channels, and organizations.
 
 ## Generated runtime contract
 
@@ -12,9 +12,10 @@
 
 ## Provider API proof outcome
 
-- Outcome: disproven for promotion, `provider_api_disproof.status=invalidated`
-- Reason: no provider-owned machine-readable specification or API reference was found for the generated runtime paths.
-- Evidence reviewed: Anomalo API profile, Anomalo API-key setup guidance via Atlan, Anomalo's PyPI client package, and the public Go client endpoint list.
+- Outcome: promoted, `provider_api.status=verified`
+- Provider API proof score: 100
+- Runtime depth level: `reference_runtime`
+- Evidence reviewed: Anomalo's PyPI client package, public Go client documentation, and Terraform provider resource documentation.
 
 ## Tests
 
@@ -22,3 +23,5 @@
 - `golangci-lint run -j 4 --timeout 5m ./sources/anomalo/...`
 - `make catalog-check sourcegen-check`
 - `make connector-catalog-review`
+- `go test ./internal/sourcecdk ./tools/catalogcheck ./tools/archtests -count=1`
+- `make check-structural check-structural-test check-arch`
