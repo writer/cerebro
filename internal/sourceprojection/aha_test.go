@@ -18,8 +18,8 @@ func TestAhaIdentityUserProjection(t *testing.T) {
 }
 
 func TestAhaAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.projects", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := ahaProjectsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.products", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := ahaProductsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -31,9 +31,9 @@ func TestAhaAssetProjection(t *testing.T) {
 	}
 }
 
-func TestAhaRepositoriesProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.repositories", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := ahaRepositoriesProjections(event)
+func TestAhaFeaturesProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.features", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := ahaFeaturesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -45,14 +45,14 @@ func TestAhaRepositoriesProjection(t *testing.T) {
 	}
 }
 
-func TestAhaDeploymentProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.deployments", Attributes: map[string]string{"deployment_id": "dep-1", "deployment_name": "Production", "deployment_environment": "production", "deployment_status": "ready", "evidence_id": "evidence-1"}}
-	entities, links, err := ahaDeploymentsProjections(event)
+func TestAhaReleasesProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "aha", Kind: "aha.releases", Attributes: map[string]string{"resource_id": "release-1", "resource_type": "release", "resource_name": "Q3 Launch", "evidence_id": "evidence-1"}}
+	entities, links, err := ahaReleasesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected deployment")
+		t.Fatal("expected projected release")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")

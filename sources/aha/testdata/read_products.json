@@ -1,0 +1,35 @@
+[
+  {
+    "id": "aha-products-product-1",
+    "kind": "aha.products",
+    "source_id": "aha",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "aha/products/v1",
+    "attributes": {
+      "tenant_id": "tenant",
+      "provider": "aha",
+      "source_provider": "aha",
+      "source_system": "aha",
+      "family": "products",
+      "schema": "products",
+      "record_class": "asset",
+      "resource_id": "product-1",
+      "resource_name": "Roadmaps",
+      "resource_type": "product",
+      "resource_urn": "urn:cerebro:tenant:aha_products:product-1",
+      "external_id": "product-1",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "product_id": "product-1",
+      "product_key": "APP",
+      "source_event_id": "product-1"
+    },
+    "payload": {
+      "id": "product-1",
+      "name": "Roadmaps",
+      "reference_prefix": "APP",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-02T00:00:00Z"
+    }
+  }
+]

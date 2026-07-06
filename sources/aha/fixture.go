@@ -25,7 +25,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{"audit_events", "deployments", "projects", "repositories", "users"} {
+	for _, family := range []string{"audit_events", "features", "products", "releases", "users"} {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err

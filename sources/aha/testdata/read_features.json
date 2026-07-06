@@ -1,0 +1,43 @@
+[
+  {
+    "id": "aha-features-feature-1",
+    "kind": "aha.features",
+    "source_id": "aha",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "aha/features/v1",
+    "attributes": {
+      "tenant_id": "tenant",
+      "provider": "aha",
+      "source_provider": "aha",
+      "source_system": "aha",
+      "family": "features",
+      "schema": "features",
+      "record_class": "asset",
+      "resource_id": "feature-1",
+      "resource_name": "Export roadmap",
+      "resource_type": "feature",
+      "resource_urn": "urn:cerebro:tenant:aha_features:feature-1",
+      "external_id": "feature-1",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "feature_id": "feature-1",
+      "reference_num": "APP-1",
+      "product_id": "product-1",
+      "release_id": "release-1",
+      "source_event_id": "feature-1"
+    },
+    "payload": {
+      "id": "feature-1",
+      "name": "Export roadmap",
+      "reference_num": "APP-1",
+      "product": {
+        "id": "product-1"
+      },
+      "release": {
+        "id": "release-1"
+      },
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-02T00:00:00Z"
+    }
+  }
+]

@@ -963,11 +963,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"agiloft.records":      agiloftRecordsProjections,
 	"agiloft.users":        agiloftUsersProjections,
 
-	// aha generated projectors (sourcegen promotion)
+	// aha provider-verified projectors (sourcegen promotion)
 	"aha.audit_events": ahaAuditEventsProjections,
-	"aha.deployments":  ahaDeploymentsProjections,
-	"aha.projects":     ahaProjectsProjections,
-	"aha.repositories": ahaRepositoriesProjections,
+	"aha.features":     ahaFeaturesProjections,
+	"aha.products":     ahaProductsProjections,
+	"aha.releases":     ahaReleasesProjections,
 	"aha.users":        ahaUsersProjections,
 
 	// airbase generated projectors (sourcegen promotion)
