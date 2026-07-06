@@ -1,15 +1,17 @@
 sourceId: alchemer
 secretKeys:
   - ALCHEMER_BASE_URL
-  - ALCHEMER_TOKEN
+  - ALCHEMER_API_TOKEN
+  - ALCHEMER_API_TOKEN_SECRET
 runtimes:
-  - localId: users
+  - localId: account-users
     config:
       base_url: env:ALCHEMER_BASE_URL
-      family: users
+      family: account_users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /v5/account?api_token=${config.api_token}&api_token_secret=${config.api_token_secret}
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:ALCHEMER_TOKEN
+      api_token: env:ALCHEMER_API_TOKEN
+      api_token_secret: env:ALCHEMER_API_TOKEN_SECRET

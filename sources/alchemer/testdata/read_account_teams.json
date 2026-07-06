@@ -1,0 +1,35 @@
+[
+  {
+    "id": "team-1-event",
+    "kind": "alchemer.account_teams",
+    "schema_ref": "alchemer/account_teams/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "team-1",
+      "resource_urn": "urn:cerebro:tenant:alchemer_account_teams:team-1",
+      "resource_type": "account_team",
+      "resource_id": "team-1",
+      "resource_name": "Security Team",
+      "record_class": "asset",
+      "schema": "account_teams",
+      "schema_ref": "alchemer/account_teams/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/alchemer/account_teams/team-1"
+    },
+    "payload": {
+      "id": "team-1",
+      "team_name": "Security Team",
+      "status": "Active",
+      "tenant_id": "tenant",
+      "event_id": "team-1",
+      "schema_ref": "alchemer/account_teams/v1"
+    }
+  }
+]

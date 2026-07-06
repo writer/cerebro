@@ -1031,12 +1031,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"alation.terms":        alationTermsProjections,
 	"alation.users":        alationUsersProjections,
 
-	// alchemer generated projectors (sourcegen promotion)
-	"alchemer.accounts":     alchemerAccountsProjections,
-	"alchemer.audit_events": alchemerAuditEventsProjections,
-	"alchemer.policies":     alchemerPoliciesProjections,
-	"alchemer.records":      alchemerRecordsProjections,
-	"alchemer.users":        alchemerUsersProjections,
+	// alchemer provider-verified projectors (sourcegen promotion)
+	"alchemer.account":          alchemerAccountProjections,
+	"alchemer.account_teams":    alchemerAccountTeamsProjections,
+	"alchemer.account_users":    alchemerAccountUsersProjections,
+	"alchemer.contact_lists":    alchemerContactListsProjections,
+	"alchemer.sso_integrations": alchemerSSOIntegrationsProjections,
+	"alchemer.surveys":          alchemerSurveysProjections,
 
 	// alteryx generated projectors (sourcegen promotion)
 	"alteryx.accounts":     alteryxAccountsProjections,

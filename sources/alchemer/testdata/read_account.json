@@ -1,0 +1,34 @@
+[
+  {
+    "id": "acct-1-event",
+    "kind": "alchemer.account",
+    "schema_ref": "alchemer/account/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "acct-1",
+      "resource_urn": "urn:cerebro:tenant:alchemer_account:acct-1",
+      "resource_type": "account",
+      "resource_id": "acct-1",
+      "resource_name": "Writer Account",
+      "record_class": "asset",
+      "schema": "account",
+      "schema_ref": "alchemer/account/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/alchemer/account/acct-1"
+    },
+    "payload": {
+      "id": "acct-1",
+      "organization": "Writer",
+      "tenant_id": "tenant",
+      "event_id": "acct-1",
+      "schema_ref": "alchemer/account/v1"
+    }
+  }
+]

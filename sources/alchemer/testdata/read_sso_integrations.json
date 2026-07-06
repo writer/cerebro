@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sso-1-event",
+    "kind": "alchemer.sso_integrations",
+    "schema_ref": "alchemer/sso_integrations/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "sso-1",
+      "resource_urn": "urn:cerebro:tenant:alchemer_sso_integrations:sso-1",
+      "resource_type": "sso_integration",
+      "resource_id": "sso-1",
+      "resource_name": "Corporate SSO",
+      "record_class": "policy",
+      "schema": "sso_integrations",
+      "schema_ref": "alchemer/sso_integrations/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/alchemer/sso_integrations/sso-1",
+      "policy_id": "sso-1",
+      "policy_name": "Corporate SSO"
+    },
+    "payload": {
+      "id": "sso-1",
+      "name": "Corporate SSO",
+      "status": "Active",
+      "entity_id": "https://idp.example.test",
+      "tenant_id": "tenant",
+      "event_id": "sso-1",
+      "schema_ref": "alchemer/sso_integrations/v1"
+    }
+  }
+]

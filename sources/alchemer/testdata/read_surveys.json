@@ -1,0 +1,35 @@
+[
+  {
+    "id": "survey-1-event",
+    "kind": "alchemer.surveys",
+    "schema_ref": "alchemer/surveys/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "survey-1",
+      "resource_urn": "urn:cerebro:tenant:alchemer_surveys:survey-1",
+      "resource_type": "survey",
+      "resource_id": "survey-1",
+      "resource_name": "Security Survey",
+      "record_class": "asset",
+      "schema": "surveys",
+      "schema_ref": "alchemer/surveys/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/alchemer/surveys/survey-1"
+    },
+    "payload": {
+      "id": "survey-1",
+      "title": "Security Survey",
+      "status": "Launched",
+      "tenant_id": "tenant",
+      "event_id": "survey-1",
+      "schema_ref": "alchemer/surveys/v1"
+    }
+  }
+]

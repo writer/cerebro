@@ -1,16 +1,21 @@
 ## Summary
 
-- Adds the `alchemer` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Promotes the `alchemer` Source Runtime SDK to provider-verified API proof.
+- Reshapes generated families to documented Alchemer REST API v5 resources for accounts, users, teams, surveys, contact lists, and SSO integrations.
+- Updates runtime paths, auth mechanics, connector metadata, fixtures, health receipt, and projection wiring.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `api_token` and `api_token_secret` query parameters
 - Health endpoint: `/source-runtimes/health?source_id=alchemer`
-- Freshness: `24h0m0s`
+- Runtime depth: reference runtime
+- Provider API proof: verified
 
 ## Tests
 
-- `go test ./sources/alchemer ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/alchemer ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/alchemer/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`
