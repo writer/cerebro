@@ -5,23 +5,17 @@
   "totalResults": 1,
   "Resources": [
     {
-      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
-      "id": "datamonster@amplitude.com",
-      "userName": "datamonster@amplitude.com",
-      "name": {
-        "givenName": "Data",
-        "familyName": "Monster"
-      },
-      "active": true,
-      "emails": [
+      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+      "id": "632",
+      "displayName": "Datamonster Party",
+      "members": [
         {
           "value": "datamonster@amplitude.com",
-          "primary": true
+          "display": "Data Monster"
         }
       ],
-      "groups": [],
       "meta": {
-        "resourceType": "User",
+        "resourceType": "Group",
         "created": "2022-02-03T20:40:22.000Z",
         "lastModified": "2022-02-03T21:25:25.000Z"
       }

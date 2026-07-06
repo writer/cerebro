@@ -1,11 +1,12 @@
 # Amplitude
 
-Generated Source Runtime SDK scaffold for `amplitude`.
+Provider-verified Source Runtime SDK for `amplitude`.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Auth mechanics: SCIM token in the `Authorization: Bearer <token>` header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,12 @@ Generated Source Runtime SDK scaffold for `amplitude`.
 
 ## Families
 
-- `users`, emits `amplitude.users`, reads `/v1/users`
-- `accounts`, emits `amplitude.accounts`, reads `/v1/accounts`
-- `records`, emits `amplitude.records`, reads `/v1/records`
-- `policies`, emits `amplitude.policies`, reads `/v1/policies`
-- `audit_events`, emits `amplitude.audit_events`, reads `/v1/audit_events`
+- `users`, emits `amplitude.users`, reads `GET /scim/1/Users`
+- `groups`, emits `amplitude.groups`, reads `GET /scim/1/Groups`
 
 ## Tests
 
-- `go test ./sources/amplitude ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/amplitude ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/amplitude/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

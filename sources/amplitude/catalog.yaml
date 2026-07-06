@@ -1,28 +1,39 @@
 id: amplitude
 name: "Amplitude"
-description: "Collects users, accounts, records, policies, and audit events from Amplitude and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Amplitude SCIM users and permission groups from the documented SCIM API and projects them into the Cerebro graph as identity users and groups for access inventory and lifecycle context."
 emitted_kinds:
   - amplitude.users
-  - amplitude.accounts
-  - amplitude.records
-  - amplitude.policies
-  - amplitude.audit_events
+  - amplitude.groups
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
+  - groups
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: scim_bearer_token_authorization_header
+  base_url: https://core.amplitude.com
+  spec_url: https://raw.githubusercontent.com/api-evangelist/amplitude/refs/heads/main/openapi/amplitude-scim-api-openapi.yml
+  spec_kind: openapi
+  references:
+    - https://amplitude.com/docs/apis/analytics/scim
+    - https://amplitude.com/docs/apis/keys-and-tokens
+    - https://raw.githubusercontent.com/api-evangelist/amplitude/refs/heads/main/openapi/amplitude-scim-api-openapi.yml
+  families:
+    - id: groups
+      method: GET
+      path: /scim/1/Groups
+      operation: listScimGroups
+    - id: users
+      method: GET
+      path: /scim/1/Users
+      operation: listScimUsers
 kind_lifecycle:
   - kind: amplitude.users
     status: active
-  - kind: amplitude.accounts
-    status: active
-  - kind: amplitude.records
-    status: active
-  - kind: amplitude.policies
-    status: active
-  - kind: amplitude.audit_events
+  - kind: amplitude.groups
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -37,47 +48,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Reads Amplitude organization users from the documented GET /scim/1/Users SCIM API endpoint.
+    - id: groups
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Groups"
+      families: [groups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
-      type: entity_family
-      title: "Records"
-      families: [records]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Amplitude permission groups from the documented GET /scim/1/Groups SCIM API endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,41 +74,12 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: amplitude.accounts
-    schema_ref: amplitude/accounts/v1
+  - kind: amplitude.groups
+    schema_ref: amplitude/groups/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: amplitude.records
-    schema_ref: amplitude/records/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: amplitude.policies
-    schema_ref: amplitude/policies/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
-  - kind: amplitude.audit_events
-    schema_ref: amplitude/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
+      - group_id
+      - group_name
     required_payload_fields:
       - id

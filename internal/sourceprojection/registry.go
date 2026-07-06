@@ -1047,11 +1047,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"alteryx.workflows":    alteryxWorkflowsProjections,
 
 	// amplitude generated projectors (sourcegen promotion)
-	"amplitude.accounts":     amplitudeAccountsProjections,
-	"amplitude.audit_events": amplitudeAuditEventsProjections,
-	"amplitude.policies":     amplitudePoliciesProjections,
-	"amplitude.records":      amplitudeRecordsProjections,
-	"amplitude.users":        amplitudeUsersProjections,
+	"amplitude.groups": amplitudeGroupsProjections,
+	"amplitude.users":  amplitudeUsersProjections,
 
 	// anchore generated projectors (sourcegen promotion)
 	"anchore.assets":          anchoreAssetsProjections,

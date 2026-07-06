@@ -1,14 +1,13 @@
 sourceId: amplitude
 secretKeys:
-  - AMPLITUDE_BASE_URL
   - AMPLITUDE_TOKEN
 runtimes:
   - localId: users
     config:
-      base_url: env:AMPLITUDE_BASE_URL
+      base_url: https://core.amplitude.com
       family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /scim/1/Users
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
