@@ -1007,7 +1007,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 
 	// airtable generated projectors (sourcegen promotion)
 	"airtable.audit_events": airtableAuditEventsProjections,
-	"airtable.projects":     airtableProjectsProjections,
+	"airtable.bases":        airtableBasesProjections,
 	"airtable.users":        airtableUsersProjections,
 
 	// akeneo generated projectors (sourcegen promotion)

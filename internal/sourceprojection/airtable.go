@@ -11,7 +11,7 @@ func airtableUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	return identityUserProjections(event, identityProjectionProfile{Provider: "airtable"})
 }
 
-func airtableProjectsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func airtableBasesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return airtableGenericAssetProjections(event)
 }
 

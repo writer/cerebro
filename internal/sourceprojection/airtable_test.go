@@ -7,8 +7,8 @@ import (
 )
 
 func TestAirtableAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airtable", Kind: "airtable.projects", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := airtableProjectsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airtable", Kind: "airtable.bases", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "base", "resource_name": "base-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := airtableBasesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

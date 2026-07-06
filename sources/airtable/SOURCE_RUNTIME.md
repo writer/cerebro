@@ -1,6 +1,6 @@
 # Airtable
 
-Generated Source Runtime SDK scaffold for `airtable`.
+Provider-verified Source Runtime SDK for `airtable`.
 
 ## Runtime input
 
@@ -18,11 +18,13 @@ Generated Source Runtime SDK scaffold for `airtable`.
 
 ## Families
 
-- `users`, emits `airtable.users`, reads `/v1/users`
-- `projects`, emits `airtable.projects`, reads `/v1/projects`
-- `audit_events`, emits `airtable.audit_events`, reads `/v1/audit/events`
+- `bases`, emits `airtable.bases`, reads `GET /v0/meta/bases`
+- `users`, emits `airtable.users`, reads `GET /v0/meta/enterpriseAccounts/{enterpriseAccountId}/users`
+- `audit_events`, emits `airtable.audit_events`, reads `GET /v0/meta/enterpriseAccounts/{enterpriseAccountId}/auditLogEvents`
 
 ## Tests
 
-- `go test ./sources/airtable ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/airtable ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/airtable/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

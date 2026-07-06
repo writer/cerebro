@@ -1,21 +1,49 @@
 id: airtable
 name: "Airtable"
-description: "Collects users, projects, and audit events from Airtable and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context."
+description: "Collects enterprise users, bases, and audit log events from Airtable and maps them into the Cerebro graph as users, assets, and audit events for workspace, base, and collaboration context."
 emitted_kinds:
   - airtable.users
-  - airtable.projects
+  - airtable.bases
   - airtable.audit_events
 runtime_families:
   - audit_events
-  - projects
+  - bases
   - users
 kind_lifecycle:
   - kind: airtable.users
     status: active
-  - kind: airtable.projects
+  - kind: airtable.bases
     status: active
   - kind: airtable.audit_events
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header_personal_access_token
+  base_url: https://api.airtable.com
+  spec_url: https://airtable.com/developers/web/api
+  spec_kind: openapi_embedded_html
+  references:
+    - https://airtable.com/developers/web/api/authentication
+    - https://airtable.com/developers/web/api/list-bases
+    - https://airtable.com/developers/web/api/get-users-by-id-or-email
+    - https://airtable.com/developers/web/api/audit-log-events
+  families:
+    - id: audit_events
+      method: GET
+      path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/auditLogEvents
+      operation: list_audit_log_events
+    - id: bases
+      method: GET
+      path: /v0/meta/bases
+      operation: list_bases
+    - id: users
+      method: GET
+      path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/users
+      operation: get_users_by_id_or_email
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: airtable
@@ -29,17 +57,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: projects
+        - Maps Airtable enterprise user records returned by the documented users-by-id-or-email endpoint.
+    - id: bases
       type: entity_family
-      title: "Projects"
-      families: [projects]
+      title: "Bases"
+      families: [bases]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Airtable base metadata returned by the documented List bases endpoint.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -49,7 +77,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Airtable enterprise audit log event records from the documented Audit Log Events API.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -65,8 +93,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: airtable.projects
-    schema_ref: airtable/projects/v1
+  - kind: airtable.bases
+    schema_ref: airtable/bases/v1
     required_attributes:
       - tenant_id
       - source_event_id
