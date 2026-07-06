@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"net/url"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -142,7 +143,11 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	runtimeCfg, err := sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	return normalizeWebAPIBaseURL(runtimeCfg)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
@@ -169,6 +174,24 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeWebAPIBaseURL(cfg sourcecdk.Config) (sourcecdk.Config, error) {
+	baseURL := sourcecdk.ConfigValue(cfg, "base_url")
+	if baseURL == "" {
+		return cfg, nil
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return sourcecdk.Config{}, fmt.Errorf("%w: %s base_url is invalid: %w", sourcecdk.ErrInvalidConfig, sourceID, err)
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if !strings.EqualFold(strings.Trim(parsed.Path, "/"), "webapi") && !strings.HasSuffix(strings.ToLower(parsed.Path), "/webapi") {
+		parsed.Path = parsed.Path + "/webapi"
+	}
+	values := cfg.Values()
+	values["base_url"] = parsed.String()
+	return sourcecdk.NewConfig(values), nil
 }
 
 func (s *Source) allowLoopbackForTest() {
