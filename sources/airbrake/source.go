@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -15,20 +14,18 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID               = "airbrake"
-	defaultFamily          = familyAlerts
-	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
-	familyAlerts           = "alerts"
-	familyIncidents        = "incidents"
-	familyMonitors         = "monitors"
-	familyDashboards       = "dashboards"
-	familyAuditEvents      = "audit_events"
+	sourceID                = "airbrake"
+	defaultFamily           = familyProjects
+	defaultHealthPath       = "/api/v4/projects"
+	defaultBaseURLTemplate  = "https://api.airbrake.io"
+	familyProjects          = "projects"
+	familyGroups            = "groups"
+	familyDeploys           = "deploys"
+	familySourceMaps        = "source_maps"
+	familyProjectActivities = "project_activities"
 )
 
-var templateKeys = []string{"base_url", "token"}
+var templateKeys = []string{"token", "project_id", "group_id"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -44,74 +41,60 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
+		AuthModel:       "none",
 		Families: []jsonapi.Family{
+			airbrakeAssetFamily(familyProjects, "/api/v4/projects", "airbrake_projects", "airbrake_project", []string{"id", "name"}, []string{"deployAt", "updatedAt", "createdAt"}, []string{"projects"}, map[string]string{"id": "id", "name": "name", "resource_id": "id", "resource_name": "name", "resource_type": "airbrake_project", "source_event_id": "id"}),
 			{
-				Name:             familyAlerts,
-				Path:             "/v1/alerts",
-				URNKind:          "airbrake_alerts",
-				IDKeys:           []string{"id", "name", "alert_id", "sid", "incident_id", "uuid"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"alert_description": "description|summary|message|body", "alert_fired_at": "fired_at|triggered_at|created_at|occurred_at|timestamp", "alert_id": "id", "alert_name": "name", "alert_resolved_at": "resolved_at|closed_at|acknowledged_at", "alert_severity": "severity", "alert_source": "source|alert_source|monitor|check", "alert_status": "status", "alert_type": "alert_type|type|category|kind", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "alert", "schema": "alerts", "source_system": "airbrake"},
+				Name:           familyGroups,
+				Path:           "/api/v4/groups",
+				URNKind:        "airbrake_groups",
+				IDKeys:         []string{"id", "groupId"},
+				CursorParam:    "start",
+				NextCursorKeys: []string{"end"},
+				PageSizeParams: []string{"limit"},
+				ListKeys:       []string{"groups"},
+				TimestampKeys:  []string{"lastNoticeAt", "createdAt", "updatedAt"},
+				Attributes: map[string]string{
+					"description":     "errors.0.message|errors[0].message",
+					"finding_id":      "id",
+					"observed_at":     "lastNoticeAt|createdAt",
+					"resource_id":     "projectId",
+					"resource_name":   "context.environment|projectId",
+					"resource_type":   "airbrake_project",
+					"resource_urn":    "resource_urn",
+					"severity":        "context.severity|severity",
+					"source_event_id": "id",
+					"status":          "resolved",
+					"tenant_id":       "tenant_id|metadata.tenant_id",
+					"title":           "errors.0.type|errors[0].type|id",
+				},
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "airbrake_project", "schema": "groups", "severity": "error", "source_system": "airbrake"},
+				Config:           airbrakeQueryConfig(),
 			},
+			airbrakeAssetFamily(familyDeploys, "/api/v4/projects/${config.project_id}/deploys", "airbrake_deploys", "airbrake_deploy", []string{"id", "deployId", "revision", "version"}, []string{"createdAt", "deployAt"}, []string{"deploys"}, map[string]string{"id": "id|deployId|revision", "name": "version|revision", "resource_id": "id|deployId|revision", "resource_name": "version|revision", "resource_type": "airbrake_deploy", "source_event_id": "id|deployId|revision", "repository": "repository", "revision": "revision", "version": "version", "actor_email": "email", "actor_name": "username"}),
+			airbrakeAssetFamily(familySourceMaps, "/api/v4/projects/${config.project_id}/sourcemaps", "airbrake_source_maps", "airbrake_source_map", []string{"id", "name"}, []string{"usedAt", "createdAt", "updatedAt"}, []string{"sourcemaps"}, map[string]string{"id": "id", "name": "name", "resource_id": "id", "resource_name": "name", "resource_type": "airbrake_source_map", "source_event_id": "id", "pattern": "pattern", "used_at": "usedAt"}),
 			{
-				Name:             familyIncidents,
-				Path:             "/v1/incidents",
-				URNKind:          "airbrake_incidents",
-				IDKeys:           []string{"id", "name", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "incidents", "source_system": "airbrake"},
-			},
-			{
-				Name:             familyMonitors,
-				Path:             "/v1/monitors",
-				URNKind:          "airbrake_monitors",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "monitor", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "monitors", "source_system": "airbrake"},
-			},
-			{
-				Name:             familyDashboards,
-				Path:             "/v1/dashboards",
-				URNKind:          "airbrake_dashboards",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "dashboard", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "dashboards", "source_system": "airbrake"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "airbrake_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "airbrake"},
+				Name:           familyProjectActivities,
+				Path:           "/api/v4/projects/${config.project_id}/activities",
+				URNKind:        "airbrake_project_activities",
+				IDKeys:         []string{"id", "trackableId", "createdAt"},
+				PageSizeParams: []string{"limit"},
+				ListKeys:       []string{"activities"},
+				TimestampKeys:  []string{"createdAt", "updatedAt"},
+				Attributes: map[string]string{
+					"actor_id":        "userId",
+					"actor_name":      "userName",
+					"event_type":      "activity",
+					"id":              "id|trackableId",
+					"observed_at":     "createdAt",
+					"resource_id":     "trackableId",
+					"resource_name":   "trackableType|trackableId",
+					"resource_type":   "trackableType",
+					"source_event_id": "id|trackableId|createdAt",
+					"tenant_id":       "tenant_id|metadata.tenant_id",
+				},
+				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "project_activities", "source_system": "airbrake"},
+				Config:           airbrakeQueryConfig(),
 			},
 		},
 	})
@@ -119,6 +102,25 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func airbrakeAssetFamily(name, path, urnKind, resourceType string, idKeys []string, timestampKeys []string, listKeys []string, attrs map[string]string) jsonapi.Family {
+	return jsonapi.Family{
+		Name:             name,
+		Path:             path,
+		URNKind:          urnKind,
+		IDKeys:           idKeys,
+		PageSizeParams:   []string{"limit"},
+		ListKeys:         listKeys,
+		TimestampKeys:    timestampKeys,
+		Attributes:       attrs,
+		StaticAttributes: map[string]string{"record_class": "asset", "resource_type": resourceType, "schema": name, "source_system": "airbrake"},
+		Config:           airbrakeQueryConfig(),
+	}
+}
+
+func airbrakeQueryConfig() jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{ConfigQuery: map[string]string{"key": "token"}}
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {
@@ -131,9 +133,6 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
-		return err
-	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
 	}
 	return s.inner.Check(ctx, runtimeCfg)
@@ -159,11 +158,6 @@ func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcec
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
-}
-
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	specBytes, err := catalogFS.ReadFile("catalog.yaml")
 	if err != nil {
@@ -174,15 +168,6 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func (s *Source) allowLoopbackForTest() {

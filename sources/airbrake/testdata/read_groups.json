@@ -1,0 +1,40 @@
+[
+  {
+    "tenant_id": "tenant",
+    "source_id": "airbrake",
+    "id": "source-airbrake-groups-event-1",
+    "kind": "airbrake.groups",
+    "schema_ref": "airbrake/groups/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "source-airbrake-groups-1",
+      "finding_id": "source-airbrake-groups-1",
+      "resource_urn": "urn:cerebro:tenant:airbrake_projects:source-airbrake-projects-1",
+      "resource_type": "airbrake_project",
+      "resource_id": "1",
+      "severity": "error",
+      "status": "open",
+      "title": "RuntimeError",
+      "schema": "groups",
+      "record_class": "finding",
+      "provider": "airbrake",
+      "source_system": "airbrake"
+    },
+    "payload": {
+      "id": "source-airbrake-groups-1",
+      "projectId": 1,
+      "resolved": false,
+      "errors": [
+        {
+          "type": "RuntimeError",
+          "message": "boom"
+        }
+      ],
+      "lastNoticeAt": "2026-06-01T00:00:00Z",
+      "source_id": "airbrake",
+      "tenant_id": "tenant",
+      "schema_ref": "airbrake/groups/v1"
+    }
+  }
+]

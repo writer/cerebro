@@ -1,16 +1,20 @@
 ## Summary
 
-- Adds the `airbrake` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Promotes the `airbrake` Source Runtime SDK to provider-verified API proof.
+- Reshapes generated placeholder families to documented Airbrake API resources: projects, groups, deploys, source maps, and project activities.
+- Syncs runtime paths, connector catalog metadata, fixtures, projections, and source-health metadata.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `key` query parameter
 - Health endpoint: `/source-runtimes/health?source_id=airbrake`
-- Freshness: `24h0m0s`
+- Provider API proof: 100, verified
 
 ## Tests
 
-- `go test ./sources/airbrake ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/airbrake ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/airbrake/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

@@ -1,0 +1,30 @@
+[
+  {
+    "tenant_id": "tenant",
+    "source_id": "airbrake",
+    "id": "source-airbrake-projects-event-1",
+    "kind": "airbrake.projects",
+    "schema_ref": "airbrake/projects/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "source-airbrake-projects-1",
+      "resource_urn": "urn:cerebro:tenant:airbrake_projects:source-airbrake-projects-1",
+      "resource_type": "airbrake_project",
+      "resource_id": "source-airbrake-projects-1",
+      "resource_name": "Checkout",
+      "schema": "projects",
+      "record_class": "asset",
+      "provider": "airbrake",
+      "source_system": "airbrake"
+    },
+    "payload": {
+      "id": "source-airbrake-projects-1",
+      "name": "Checkout",
+      "deployAt": "2026-06-01T00:00:00Z",
+      "source_id": "airbrake",
+      "tenant_id": "tenant",
+      "schema_ref": "airbrake/projects/v1"
+    }
+  }
+]

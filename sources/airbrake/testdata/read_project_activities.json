@@ -1,0 +1,37 @@
+[
+  {
+    "tenant_id": "tenant",
+    "source_id": "airbrake",
+    "id": "source-airbrake-project_activities-event-1",
+    "kind": "airbrake.project_activities",
+    "schema_ref": "airbrake/project_activities/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "source-airbrake-project-activities-1",
+      "event_type": "group.resolved",
+      "actor_id": "42",
+      "actor_name": "Airbrake User",
+      "resource_id": "100",
+      "resource_type": "Group",
+      "resource_name": "Group",
+      "schema": "project_activities",
+      "record_class": "audit_event",
+      "provider": "airbrake",
+      "source_system": "airbrake"
+    },
+    "payload": {
+      "id": "source-airbrake-project-activities-1",
+      "projectId": 1,
+      "userId": 42,
+      "userName": "Airbrake User",
+      "activity": "group.resolved",
+      "trackableId": 100,
+      "trackableType": "Group",
+      "createdAt": "2026-06-01T00:00:00Z",
+      "source_id": "airbrake",
+      "tenant_id": "tenant",
+      "schema_ref": "airbrake/project_activities/v1"
+    }
+  }
+]

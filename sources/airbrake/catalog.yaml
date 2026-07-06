@@ -1,83 +1,118 @@
 id: airbrake
 name: "Airbrake"
-description: "Collects alerts, incidents, monitors, dashboards, and audit events from Airbrake and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context."
+description: "Collects projects, error groups, deploys, source maps, and project activities from Airbrake and projects them into the Cerebro graph as assets, findings, change records, and audit evidence for error monitoring and incident response context."
 emitted_kinds:
-  - airbrake.alerts
-  - airbrake.incidents
-  - airbrake.monitors
-  - airbrake.dashboards
-  - airbrake.audit_events
+  - airbrake.projects
+  - airbrake.groups
+  - airbrake.deploys
+  - airbrake.source_maps
+  - airbrake.project_activities
 runtime_families:
-  - alerts
-  - audit_events
-  - dashboards
-  - incidents
-  - monitors
+  - deploys
+  - groups
+  - project_activities
+  - projects
+  - source_maps
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: key_query_parameter_user_or_project_key
+  base_url: https://api.airbrake.io
+  spec_url: https://raw.githubusercontent.com/api-evangelist/airbrake/refs/heads/main/openapi/airbrake-openapi.yml
+  spec_kind: openapi
+  references:
+    - https://docs.airbrake.io/docs/devops-tools/api/
+    - https://docs.airbrake.io/docs/faq/how-to-export-errors/
+    - https://raw.githubusercontent.com/api-evangelist/airbrake/refs/heads/main/openapi/airbrake-openapi.yml
+  families:
+    - id: deploys
+      method: GET
+      path: /api/v4/projects/{project_id}/deploys
+      operation: listDeploys
+    - id: groups
+      method: GET
+      path: /api/v4/groups
+      operation: listAllGroups
+    - id: project_activities
+      method: GET
+      path: /api/v4/projects/{project_id}/activities
+      operation: listActivities
+    - id: projects
+      method: GET
+      path: /api/v4/projects
+      operation: listProjects
+    - id: source_maps
+      method: GET
+      path: /api/v4/projects/{project_id}/sourcemaps
+      operation: listSourceMaps
 kind_lifecycle:
-  - kind: airbrake.alerts
+  - kind: airbrake.projects
     status: active
-  - kind: airbrake.incidents
+  - kind: airbrake.groups
     status: active
-  - kind: airbrake.monitors
+  - kind: airbrake.deploys
     status: active
-  - kind: airbrake.dashboards
+  - kind: airbrake.source_maps
     status: active
-  - kind: airbrake.audit_events
+  - kind: airbrake.project_activities
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: airbrake
   dimensions:
-    - id: alerts
-      type: alert_state
-      title: "Alerts"
-      families: [alerts]
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
       support: partial
       high_value: true
-      evidence_types: [security_monitoring]
-      control_domains: [logging_monitoring, security_operations]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: incidents
+        - Reads Airbrake projects from the documented GET /api/v4/projects endpoint.
+    - id: groups
       type: remediation_state
-      title: "Incidents"
-      families: [incidents]
+      title: "Error Groups"
+      families: [groups]
       support: partial
       high_value: true
       evidence_types: [remediation_state]
-      control_domains: [remediation]
+      control_domains: [remediation, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: monitors
+        - Reads Airbrake error groups across projects from the documented GET /api/v4/groups endpoint.
+    - id: deploys
       type: entity_family
-      title: "Monitors"
-      families: [monitors]
+      title: "Deploys"
+      families: [deploys]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Reads project deploy records from the documented GET /api/v4/projects/{project_id}/deploys endpoint.
+    - id: source_maps
+      type: entity_family
+      title: "Source Maps"
+      families: [source_maps]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: dashboards
-      type: entity_family
-      title: "Dashboards"
-      families: [dashboards]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
+        - Reads uploaded source maps from the documented GET /api/v4/projects/{project_id}/sourcemaps endpoint.
+    - id: project_activities
       type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+      title: "Project Activities"
+      families: [project_activities]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads project activity audit records from the documented GET /api/v4/projects/{project_id}/activities endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,28 +120,28 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: airbrake.alerts
-    schema_ref: airbrake/alerts/v1
+  - kind: airbrake.projects
+    schema_ref: airbrake/projects/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - alert_id
-      - alert_severity
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
-  - kind: airbrake.incidents
-    schema_ref: airbrake/incidents/v1
+  - kind: airbrake.groups
+    schema_ref: airbrake/groups/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - finding_id
-      - resource_urn
       - severity
       - status
     required_payload_fields:
       - id
-  - kind: airbrake.monitors
-    schema_ref: airbrake/monitors/v1
+  - kind: airbrake.deploys
+    schema_ref: airbrake/deploys/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -115,8 +150,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: airbrake.dashboards
-    schema_ref: airbrake/dashboards/v1
+  - kind: airbrake.source_maps
+    schema_ref: airbrake/source_maps/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -125,8 +160,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: airbrake.audit_events
-    schema_ref: airbrake/audit_events/v1
+  - kind: airbrake.project_activities
+    schema_ref: airbrake/project_activities/v1
     required_attributes:
       - tenant_id
       - source_event_id
