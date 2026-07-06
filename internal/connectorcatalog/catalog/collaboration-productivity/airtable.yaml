@@ -10,7 +10,7 @@ entries:
       categories:
         - saas
         - collaboration
-      description: Collects users, projects, and audit events from Airtable and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context.
+      description: Collects enterprise users, bases, and audit log events from Airtable and maps them into the Cerebro graph as users, assets, and audit events for workspace, base, and collaboration context.
       display_name: Airtable
       id: builtin-airtable
       resource_families:
@@ -36,56 +36,48 @@ entries:
           id_field: id
           label: Users
           method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+          path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/users
           projection:
             fields:
               email: email|primary_email|profile.email
               status: status|state|lifecycle_state
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.users[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - projects
+                - bases
               high_value: true
-              id: projects
+              id: bases
               support: partial
-              title: Projects
+              title: Bases
               type: entity_family
           event:
-            kind: airtable.projects
+            kind: airtable.bases
             required_payload_fields:
               - id
-            schema_ref: airtable/projects/v1
-            urn_kind: airtable_projects
-          id: projects
+            schema_ref: airtable/bases/v1
+            urn_kind: airtable_bases
+          id: bases
           id_field: id
-          label: Projects
+          label: Bases
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.offset
+            cursor_param: offset
             type: cursor
-          path: /v1/projects
+          path: /v0/meta/bases
           projection:
             fields:
               resource_id: id
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.bases[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -109,20 +101,20 @@ entries:
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.pagination.previous
+            cursor_param: previous
             page_size: 100
-            page_size_param: limit
+            page_size_param: pageSize
             type: cursor
-          path: /v1/audit/events
+          path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/auditLogEvents
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
+              actor_email: actor.user.email
+              actor_id: actor.user.id
+              event_type: action
               id: id
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.events[*]
       schema_version: cerebro.integration/v1
       source_id: airtable
       tenant_id: builtin_catalog
@@ -132,4 +124,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v0/meta/bases
+          path: /v0/meta/whoami

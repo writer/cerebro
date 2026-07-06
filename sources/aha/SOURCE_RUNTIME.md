@@ -1,11 +1,13 @@
 # Aha
 
-Generated Source Runtime SDK scaffold for `aha`.
+Provider-verified Source Runtime SDK for `aha`.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Auth mechanics: `Authorization: Bearer <API key or OAuth2 token>`
+- Base URL: `${config.base_url}/api/v1` where `base_url` is the account-specific Aha! domain such as `https://company.aha.io`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +20,15 @@ Generated Source Runtime SDK scaffold for `aha`.
 
 ## Families
 
-- `users`, emits `aha.users`, reads `/v1/users`
-- `projects`, emits `aha.projects`, reads `/v1/projects`
-- `repositories`, emits `aha.repositories`, reads `/v1/repositories`
-- `deployments`, emits `aha.deployments`, reads `/v1/deployments`
-- `audit_events`, emits `aha.audit_events`, reads `/v1/audit_events`
+- `users`, emits `aha.users`, reads `GET /users`
+- `products`, emits `aha.products`, reads `GET /products`
+- `features`, emits `aha.features`, reads `GET /features`
+- `releases`, emits `aha.releases`, reads `GET /products/{product_id}/releases`
+- `audit_events`, emits `aha.audit_events`, reads `GET /audits`
 
 ## Tests
 
-- `go test ./sources/aha ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/aha ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/aha/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

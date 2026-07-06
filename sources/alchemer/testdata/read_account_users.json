@@ -1,0 +1,37 @@
+[
+  {
+    "id": "user-1-event",
+    "kind": "alchemer.account_users",
+    "schema_ref": "alchemer/account_users/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "user-1",
+      "resource_urn": "urn:cerebro:tenant:alchemer_account_users:user-1",
+      "resource_type": "account_user",
+      "resource_id": "user-1",
+      "resource_name": "Ada Lovelace",
+      "record_class": "identity_user",
+      "schema": "account_users",
+      "schema_ref": "alchemer/account_users/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/alchemer/account_users/user-1",
+      "user_id": "user-1"
+    },
+    "payload": {
+      "id": "user-1",
+      "username": "Ada Lovelace",
+      "email": "ada@example.test",
+      "status": "Active",
+      "tenant_id": "tenant",
+      "event_id": "user-1",
+      "schema_ref": "alchemer/account_users/v1"
+    }
+  }
+]

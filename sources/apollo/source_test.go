@@ -11,44 +11,116 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
+func TestSourceCheckAndReadFamilies(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/v1/users" {
-			t.Fatalf("path = %q", r.URL.Path)
+		if r.Header.Get("x-api-key") != "test-key" {
+			t.Fatalf("x-api-key = %q", r.Header.Get("x-api-key"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		switch r.URL.Path {
+		case "/users/api_profile":
+			if r.Method != http.MethodGet {
+				t.Fatalf("health method = %q", r.Method)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-current", "email": "owner@example.test"})
+		case "/users/search":
+			assertApolloQueryPageRequest(t, r, http.MethodGet)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
+				"users":      []map[string]any{{"id": "user-1", "email": "user@example.test", "name": "Apollo User", "created_at": "2026-06-01T00:00:00Z", "deleted": false}},
+			})
+		case "/accounts/search":
+			assertApolloJSONBodyPageRequest(t, r, http.MethodPost)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
+				"accounts":   []map[string]any{{"id": "account-1", "name": "Apollo Account", "domain": "example.test", "organization_id": "org-1", "created_at": "2026-06-01T00:00:00Z"}},
+			})
+		case "/contacts/search":
+			assertApolloJSONBodyPageRequest(t, r, http.MethodPost)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
+				"contacts":   []map[string]any{{"id": "contact-1", "person_id": "person-1", "email": "contact@example.test", "name": "Apollo Contact", "title": "Buyer", "created_at": "2026-06-01T00:00:00Z"}},
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
-	if err := source.Check(context.Background(), cfg); err != nil {
+
+	baseCfg := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "api_key": "test-key"}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(baseCfg)); err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
+
+	for _, tc := range []struct {
+		family string
+		kind   string
+	}{
+		{family: familyUsers, kind: "apollo.users"},
+		{family: familyAccounts, kind: "apollo.accounts"},
+		{family: familyContacts, kind: "apollo.contacts"},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			cfgValues := map[string]string{}
+			for key, value := range baseCfg {
+				cfgValues[key] = value
+			}
+			cfgValues["family"] = tc.family
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(cfgValues), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tc.kind {
+				t.Fatalf("kind = %q, want %q", event.Kind, tc.kind)
+			}
+			if strings.TrimSpace(event.Id) == "" {
+				t.Fatalf("event id is empty: %#v", event)
+			}
+		})
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+}
+
+func assertApolloQueryPageRequest(t *testing.T, r *http.Request, method string) {
+	t.Helper()
+	if r.Method != method {
+		t.Fatalf("method for %s = %q, want %q", r.URL.Path, r.Method, method)
 	}
-	event := pull.Events[0]
-	if event.Kind != "apollo.users" {
-		t.Fatalf("kind = %q", event.Kind)
+	if got := r.URL.Query().Get("page"); got != "1" {
+		t.Fatalf("page for %s = %q, want 1", r.URL.Path, got)
 	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+	if got := r.URL.Query().Get("per_page"); got != "1" && got != "100" {
+		t.Fatalf("per_page for %s = %q, want 1 or 100", r.URL.Path, got)
+	}
+}
+
+func assertApolloJSONBodyPageRequest(t *testing.T, r *http.Request, method string) {
+	t.Helper()
+	if r.Method != method {
+		t.Fatalf("method for %s = %q, want %q", r.URL.Path, r.Method, method)
+	}
+	if got := r.URL.Query().Get("page"); got != "" {
+		t.Fatalf("page query for %s = %q, want empty", r.URL.Path, got)
+	}
+	if got := r.URL.Query().Get("per_page"); got != "" {
+		t.Fatalf("per_page query for %s = %q, want empty", r.URL.Path, got)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("decode JSON request body for %s: %v", r.URL.Path, err)
+	}
+	if got := body["page"]; got != float64(1) {
+		t.Fatalf("page body for %s = %#v, want 1", r.URL.Path, got)
+	}
+	if got := body["per_page"]; got != float64(1) && got != float64(100) {
+		t.Fatalf("per_page body for %s = %#v, want 1 or 100", r.URL.Path, got)
 	}
 }

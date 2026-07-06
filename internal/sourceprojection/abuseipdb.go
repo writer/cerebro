@@ -15,10 +15,6 @@ func abuseipdbIpAddressesProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	return abuseipdbGenericAssetProjections(event)
 }
 
-func abuseipdbAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "abuseipdb"})
-}
-
 func abuseipdbGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

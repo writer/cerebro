@@ -7,19 +7,19 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func abnormalSecurityAssetsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func abnormalSecurityResourcesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return abnormalSecurityGenericAssetProjections(event)
 }
 
-func abnormalSecurityFindingsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func abnormalSecurityThreatsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return abnormalSecurityGenericFindingProjections(event)
 }
 
-func abnormalSecurityVulnerabilitiesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func abnormalSecurityCasesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return abnormalSecurityGenericFindingProjections(event)
 }
 
-func abnormalSecurityPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func abnormalSecurityPostureCatalogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return abnormalSecurityGenericPolicyProjections(event)
 }
 

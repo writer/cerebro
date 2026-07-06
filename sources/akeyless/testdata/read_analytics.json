@@ -1,0 +1,29 @@
+[
+  {
+    "attributes": {
+      "family": "analytics",
+      "record_class": "analytics_report",
+      "resource_id": "1783296000",
+      "resource_type": "akeyless_analytics",
+      "schema": "analytics",
+      "source_event_id": "1783296000",
+      "source_system": "akeyless",
+      "tenant_id": "tenant"
+    },
+    "id": "source-akeyless-analytics-event-1",
+    "kind": "akeyless.analytics",
+    "payload": {
+      "date_updated": 1783296000,
+      "usage_reports": {
+        "secrets": {
+          "total_clients": 7,
+          "total_secrets": 42
+        }
+      }
+    },
+    "schema_ref": "akeyless/analytics/v1",
+    "source_id": "akeyless",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z"
+  }
+]

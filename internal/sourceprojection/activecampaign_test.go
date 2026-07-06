@@ -20,17 +20,31 @@ func TestActivecampaignAssetProjection(t *testing.T) {
 	}
 }
 
-func TestActivecampaignPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "activecampaign", Kind: "activecampaign.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := activecampaignPoliciesProjections(event)
+func TestActivecampaignCampaignProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "activecampaign", Kind: "activecampaign.campaigns", Attributes: map[string]string{"resource_id": "campaign-1", "resource_type": "activecampaign_campaign", "resource_name": "Welcome Campaign", "evidence_id": "evidence-1"}}
+	entities, links, err := activecampaignCampaignsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected policy")
+		t.Fatal("expected projected campaign")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestActivecampaignContactProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "activecampaign", Kind: "activecampaign.contacts", Attributes: map[string]string{"resource_id": "contact-1", "resource_type": "activecampaign_contact", "resource_name": "contact@example.test"}}
+	entities, links, err := activecampaignContactsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected contact")
+	}
+	if len(links) != 0 {
+		t.Fatalf("links = %d, want no evidence link without evidence_id", len(links))
 	}
 }
 
@@ -45,13 +59,16 @@ func TestActivecampaignIdentityUserProjection(t *testing.T) {
 	}
 }
 
-func TestActivecampaignAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "activecampaign", Kind: "activecampaign.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := activecampaignAuditEventsProjections(event)
+func TestActivecampaignAutomationProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "activecampaign", Kind: "activecampaign.automations", Attributes: map[string]string{"resource_id": "automation-1", "resource_type": "activecampaign_automation", "resource_name": "Subscription Automation"}}
+	entities, links, err := activecampaignAutomationsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected automation")
+	}
+	if len(links) != 0 {
+		t.Fatalf("links = %d, want no evidence link without evidence_id", len(links))
 	}
 }

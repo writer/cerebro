@@ -1,11 +1,12 @@
 # Adobe Workfront
 
-Generated Source Runtime SDK scaffold for `adobe_workfront`.
+Provider-verified Source Runtime SDK for `adobe_workfront`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `apiKey` header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,15 @@ Generated Source Runtime SDK scaffold for `adobe_workfront`.
 
 ## Families
 
-- `users`, emits `adobe_workfront.users`, reads `/v1/users`
-- `groups`, emits `adobe_workfront.groups`, reads `/v1/groups`
-- `workspaces`, emits `adobe_workfront.workspaces`, reads `/v1/workspaces`
-- `documents`, emits `adobe_workfront.documents`, reads `/v1/documents`
-- `audit_events`, emits `adobe_workfront.audit_events`, reads `/v1/audit_events`
+- `users`, emits `adobe_workfront.users`, reads `GET /user/search`
+- `groups`, emits `adobe_workfront.groups`, reads `GET /group/search`
+- `projects`, emits `adobe_workfront.projects`, reads `GET /proj/search`
+- `documents`, emits `adobe_workfront.documents`, reads `GET /docu/search`
+- `audit_events`, emits `adobe_workfront.audit_events`, reads `GET /jrnle/search` for JournalEntry change evidence
 
 ## Tests
 
-- `go test ./sources/adobe_workfront ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/adobe_workfront ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/adobe_workfront/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

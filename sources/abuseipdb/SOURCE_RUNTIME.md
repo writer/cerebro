@@ -1,11 +1,12 @@
 # AbuseIPDB
 
-Generated Source Runtime SDK scaffold for `abuseipdb`.
+Provider-verified Source Runtime SDK for `abuseipdb`.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `api_key`
+- Auth mechanics: `Key: <api_key>` header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,11 +19,12 @@ Generated Source Runtime SDK scaffold for `abuseipdb`.
 
 ## Families
 
-- `reports`, emits `abuseipdb.reports`, reads `/reports`
-- `ip_addresses`, emits `abuseipdb.ip_addresses`, reads `/ip-addresses`
-- `audit_events`, emits `abuseipdb.audit_events`, reads `/audit-events`
+- `ip_addresses`, emits `abuseipdb.ip_addresses`, reads `GET /blacklist` for documented AbuseIPDB blacklist IP reputation entries.
+- `reports`, emits `abuseipdb.reports`, reads `GET /reports` for report history for a configured `ip_address`.
 
 ## Tests
 
-- `go test ./sources/abuseipdb ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/abuseipdb ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/abuseipdb/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

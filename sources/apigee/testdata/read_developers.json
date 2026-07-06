@@ -1,0 +1,48 @@
+[
+  {
+    "attributes": {
+      "id": "dev@example.com",
+      "user_id": "dev@example.com",
+      "email": "dev@example.com",
+      "display_name": "dev@example.com",
+      "status": "active",
+      "resource_id": "dev@example.com",
+      "resource_name": "dev@example.com",
+      "resource_type": "apigee_developer",
+      "tenant_id": "tenant",
+      "source_event_id": "dev@example.com",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "developers",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "developers"
+    },
+    "id": "source-apigee-developers-event-1",
+    "kind": "apigee.developers",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "dev@example.com",
+      "user_id": "dev@example.com",
+      "email": "dev@example.com",
+      "display_name": "dev@example.com",
+      "status": "active",
+      "resource_id": "dev@example.com",
+      "resource_name": "dev@example.com",
+      "resource_type": "apigee_developer",
+      "tenant_id": "tenant",
+      "source_event_id": "dev@example.com",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "developers",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "developers",
+      "source_id": "apigee",
+      "schema_ref": "apigee/developers/v1"
+    },
+    "schema_ref": "apigee/developers/v1",
+    "source_id": "apigee",
+    "tenant_id": "tenant"
+  }
+]

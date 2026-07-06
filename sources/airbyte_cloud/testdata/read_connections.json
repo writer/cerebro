@@ -1,0 +1,27 @@
+[
+  {
+    "attributes": {
+      "resource_id": "connection-1",
+      "resource_name": "Warehouse sync",
+      "resource_type": "airbyte_connection",
+      "resource_urn": "urn:cerebro:tenant:runtime_airbyte_connection:connection-1",
+      "source_event_id": "connection-1",
+      "tenant_id": "tenant"
+    },
+    "id": "airbyte-cloud-connections-event-1",
+    "kind": "airbyte_cloud.connections",
+    "schema_ref": "airbyte_cloud/connections/v1",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "connectionId": "connection-1",
+      "name": "Warehouse sync",
+      "sourceId": "source-1",
+      "destinationId": "destination-1",
+      "workspaceId": "workspace-1",
+      "status": "active",
+      "dataResidency": "auto"
+    },
+    "source_id": "airbyte_cloud"
+  }
+]

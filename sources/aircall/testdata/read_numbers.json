@@ -1,0 +1,44 @@
+[
+  {
+    "id": "aircall-numbers-1234",
+    "kind": "aircall.numbers",
+    "schema_ref": "aircall/numbers/v1",
+    "source_id": "aircall",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "1234",
+      "provider": "aircall",
+      "source_provider": "aircall",
+      "source_system": "aircall",
+      "schema": "numbers",
+      "record_class": "asset",
+      "resource_urn": "urn:cerebro:tenant:aircall_numbers:1234",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "resource_id": "1234",
+      "resource_name": "French Office",
+      "resource_type": "aircall_number",
+      "name": "French Office",
+      "digits": "+33176111111",
+      "country": "FR",
+      "availability_status": "custom"
+    },
+    "payload": {
+      "id": 1234,
+      "direct_link": "https://example.com/aircall/numbers/1234",
+      "name": "French Office",
+      "digits": "+33176111111",
+      "created_at": "2020-01-02T11:41:01.000Z",
+      "country": "FR",
+      "time_zone": "Europe/Paris",
+      "open": true,
+      "availability_status": "custom",
+      "is_ivr": true,
+      "live_recording_activated": true,
+      "tenant_id": "tenant",
+      "source_id": "aircall",
+      "schema_ref": "aircall/numbers/v1"
+    }
+  }
+]

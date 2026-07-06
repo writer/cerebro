@@ -1,0 +1,36 @@
+[
+  {
+    "id": "source-anomalo-notification_channels-event-1",
+    "kind": "anomalo.notification_channels",
+    "schema_ref": "anomalo/notification_channels/v1",
+    "source_id": "anomalo",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "7",
+      "family": "notification_channels",
+      "provider": "anomalo",
+      "source_provider": "anomalo",
+      "source_system": "anomalo",
+      "record_class": "asset",
+      "schema": "notification_channels",
+      "api_method": "GET",
+      "api_path": "/list_notification_channels",
+      "resource_id": "7",
+      "resource_name": "data-alerts",
+      "resource_type": "notification_channel",
+      "resource_urn": "urn:cerebro:tenant:anomalo_notification_channels:7"
+    },
+    "payload": {
+      "id": 7,
+      "channel_type": "slack",
+      "description": "#data-alerts",
+      "ref": "data-alerts",
+      "tenant_id": "tenant",
+      "source_id": "anomalo",
+      "schema_ref": "anomalo/notification_channels/v1",
+      "record_class": "asset"
+    }
+  }
+]

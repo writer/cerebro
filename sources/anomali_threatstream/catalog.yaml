@@ -135,3 +135,30 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+provider_api_disproof:
+  status: invalidated
+  reason: no_public_provider_api_spec_for_generated_runtime_families
+  checked_at: 2026-07-06T00:00:00Z
+  references:
+    - https://www.anomali.com/marketplace/sdks
+    - https://api.threatstream.com/
+    - https://github.com/threatstream/threatstream-api
+    - https://github.com/threatstream/threatstream-api/blob/master/threatstream-api.py
+    - https://www.elastic.co/docs/reference/integrations/ti_anomali
+    - https://xsoar.pan.dev/docs/reference/integrations/anomali-threat-stream-v2
+  affected_families:
+    - assets
+    - audit_events
+    - findings
+    - policies
+    - vulnerabilities
+  missing_paths:
+    - /v1/assets
+    - /v1/audit_events
+    - /v1/findings
+    - /v1/policies
+    - /v1/vulnerabilities
+  notes:
+    - Provider-owned public pages confirm Anomali publishes ThreatStream APIs and SDKs, and api.threatstream.com is the public API host, but they do not publish an endpoint-level REST reference or machine-readable OpenAPI spec for the generated families.
+    - The public ThreatStream SDK repository uses https://api.threatstream.com/api/v2 with the intelligence resource, and third-party integrations corroborate the REST API V2 intelligence endpoint rather than /v1 assets, findings, vulnerabilities, policies, or audit events resources.
+    - Rewrite this source from a provider-published endpoint reference or machine-readable API spec before promotion.

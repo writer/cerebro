@@ -1,26 +1,64 @@
 id: alteryx
 name: "Alteryx"
-description: "Collects users, accounts, records, policies, and audit events from Alteryx and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Alteryx Server users, user groups, workflows, collections, and audit events and projects them into the Cerebro graph as identities, assets, and audit events for owner, evidence, and compliance context."
 emitted_kinds:
   - alteryx.users
-  - alteryx.accounts
-  - alteryx.records
-  - alteryx.policies
+  - alteryx.usergroups
+  - alteryx.workflows
+  - alteryx.collections
   - alteryx.audit_events
 runtime_families:
-  - accounts
   - audit_events
-  - policies
-  - records
+  - collections
+  - usergroups
   - users
+  - workflows
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: oauth2_bearer_access_token_authorization_header
+  base_url: ${config.base_url}/webapi
+  spec_url: ${config.base_url}/webapi/swagger
+  spec_kind: openapi_embedded_html
+  references:
+    - https://help.alteryx.com/current/en/developer-help/apis/server-api-overview.html
+    - https://help.alteryx.com/current/en/server/api-overview/alteryx-server-api-v3/server-api-configuration-and-authorization.html
+    - https://help.alteryx.com/current/en/server/api-overview/alteryx-server-api-v3/server-api-v3-objects/user-endpoints.html
+    - https://help.alteryx.com/current/en/server/api-overview/alteryx-server-api-v3/server-api-v3-objects/user-group-endpoints.html
+    - https://help.alteryx.com/current/en/server/api-overview/alteryx-server-api-v3/server-api-v3-objects/workflow-endpoints.html
+    - https://help.alteryx.com/current/en/server/api-overview/alteryx-server-api-v3/server-api-v3-objects/collection-endpoints.html
+  families:
+    - id: audit_events
+      method: GET
+      path: /admin/v1/auditlog
+      operation: get_audit_events
+    - id: collections
+      method: GET
+      path: /v3/collections
+      operation: retrieve_records_of_all_collections
+    - id: usergroups
+      method: GET
+      path: /v3/usergroups
+      operation: retrieve_all_user_groups
+    - id: users
+      method: GET
+      path: /v3/users
+      operation: retrieve_all_user_records
+    - id: workflows
+      method: GET
+      path: /v3/workflows
+      operation: retrieve_all_workflows
 kind_lifecycle:
   - kind: alteryx.users
     status: active
-  - kind: alteryx.accounts
+  - kind: alteryx.usergroups
     status: active
-  - kind: alteryx.records
+  - kind: alteryx.workflows
     status: active
-  - kind: alteryx.policies
+  - kind: alteryx.collections
     status: active
   - kind: alteryx.audit_events
     status: active
@@ -37,37 +75,37 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Alteryx Server V3 exposes user records with role, active state, API access, and DCM permission fields.
+    - id: usergroups
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "User groups"
+      families: [usergroups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Alteryx Server V3 exposes custom user group records and roles for access-review context.
+    - id: workflows
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Workflows"
+      families: [workflows]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+        - Alteryx Server V3 exposes workflow records with owners and execution metadata.
+    - id: collections
+      type: entity_family
+      title: "Collections"
+      families: [collections]
       support: partial
       high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Alteryx Server V3 exposes collection records and membership/permission relationships.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +115,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Alteryx Server Admin V1 exposes audit event records for tracked entity changes.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,8 +131,17 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: alteryx.accounts
-    schema_ref: alteryx/accounts/v1
+  - kind: alteryx.usergroups
+    schema_ref: alteryx/usergroups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - group_name
+    required_payload_fields:
+      - id
+  - kind: alteryx.workflows
+    schema_ref: alteryx/workflows/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,23 +150,14 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: alteryx.records
-    schema_ref: alteryx/records/v1
+  - kind: alteryx.collections
+    schema_ref: alteryx/collections/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - resource_urn
       - resource_type
       - resource_id
-    required_payload_fields:
-      - id
-  - kind: alteryx.policies
-    schema_ref: alteryx/policies/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
     required_payload_fields:
       - id
   - kind: alteryx.audit_events

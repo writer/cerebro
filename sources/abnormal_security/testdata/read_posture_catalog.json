@@ -1,0 +1,30 @@
+[
+  {
+    "id": "abnormal-security-posture-1",
+    "source_id": "abnormal_security",
+    "tenant_id": "tenant",
+    "kind": "abnormal_security.posture_catalog",
+    "schema_ref": "abnormal_security/posture_catalog/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "posture-1",
+      "policy_id": "posture-1",
+      "policy_name": "Mailbox forwarding posture",
+      "policy_description": "Posture catalog item",
+      "policy_severity": "medium",
+      "policy_type": "posture_catalog",
+      "record_class": "policy",
+      "schema": "posture_catalog",
+      "source_system": "abnormal_security",
+      "observed_at": "2026-06-01T00:00:00Z"
+    },
+    "payload": {
+      "id": "posture-1",
+      "name": "Mailbox forwarding posture",
+      "risk_level": "medium",
+      "description": "Posture catalog item",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]

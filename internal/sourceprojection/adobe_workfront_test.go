@@ -7,8 +7,22 @@ import (
 )
 
 func TestAdobeWorkfrontAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "adobe_workfront", Kind: "adobe_workfront.workspaces", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := adobeWorkfrontWorkspacesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "adobe_workfront", Kind: "adobe_workfront.projects", Attributes: map[string]string{"resource_id": "project-1", "resource_type": "project", "resource_name": "Project One", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := adobeWorkfrontProjectsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected entities")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestAdobeWorkfrontDocumentProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "adobe_workfront", Kind: "adobe_workfront.documents", Attributes: map[string]string{"resource_id": "document-1", "resource_type": "document", "resource_name": "Document One", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := adobeWorkfrontDocumentsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

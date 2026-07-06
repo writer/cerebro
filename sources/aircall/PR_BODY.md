@@ -1,16 +1,21 @@
 ## Summary
 
-- Adds the `aircall` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Promotes the `aircall` Source Runtime SDK to provider-verified API proof.
+- Reshapes generated placeholder families to documented Aircall Public API resources: users, teams, calls, contacts, and numbers.
+- Updates the runtime adapter, connector definition, health receipt, fixtures, and projection registration to use real Aircall endpoints.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `basic`
+- Auth mechanics: HTTP Basic API ID/API token header
+- Base URL: `https://api.aircall.io/v1`
 - Health endpoint: `/source-runtimes/health?source_id=aircall`
-- Freshness: `24h0m0s`
+- Provider API proof score: 100 (`verified`)
 
 ## Tests
 
-- `go test ./sources/aircall ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/aircall ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/aircall/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

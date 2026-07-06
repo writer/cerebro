@@ -14,11 +14,11 @@ entries:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Tenant API base URL including /api/public/v1.
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, accounts, records, policies, and audit events from Anomalo and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+      description: Collects warehouses, tables, checks, notification channels, and organizations from Anomalo and projects them into the Cerebro graph as data observability assets and policies for owner, evidence, and compliance context.
       display_name: Anomalo
       id: builtin-anomalo
       ingest:
@@ -27,202 +27,177 @@ entries:
         - coverage:
             - control_domains:
                 - asset_inventory
+                - data_governance
               evidence_types:
                 - source_snapshot
               families:
-                - users
+                - warehouses
               high_value: true
-              id: users
+              id: warehouses
               support: partial
-              title: Users
+              title: Warehouses
               type: entity_family
           default_enabled: true
           event:
-            kind: anomalo.users
+            kind: anomalo.warehouses
             required_payload_fields:
               - id
-            schema_ref: anomalo/users/v1
-            urn_kind: anomalo_users
-          id: users
+            schema_ref: anomalo/warehouses/v1
+            urn_kind: anomalo_warehouses
+          id: warehouses
           id_field: id
-          label: Users
+          label: Warehouses
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+          path: /list_warehouses
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
-              user_id: id
-            template: identity_user
-          record_selector: $.data[*]
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: warehouse_type
+            template: asset
+          record_selector: $.warehouses[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - data_governance
+              evidence_types:
+                - source_snapshot
+              families:
+                - tables
+              high_value: true
+              id: tables
+              support: partial
+              title: Tables
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: anomalo.tables
+            required_payload_fields:
+              - id
+            schema_ref: anomalo/tables/v1
+            urn_kind: anomalo_tables
+          id: tables
+          id_field: id
+          label: Tables
+          method: GET
+          name_field: name
+          path: /get_table_information
+          projection:
+            fields:
+              id: id
+              name: full_name
+              resource_id: id
+              resource_name: full_name
+              resource_type: table
+            template: asset
+          record_selector: $
+        - coverage:
+            - control_domains:
+                - security_operations
+                - data_governance
+              evidence_types:
+                - configuration_state
+              families:
+                - checks
+              high_value: true
+              id: checks
+              support: partial
+              title: Checks
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: anomalo.checks
+            required_payload_fields:
+              - check_static_id
+              - check_type
+            schema_ref: anomalo/checks/v1
+            urn_kind: anomalo_checks
+          id: checks
+          id_field: check_static_id
+          label: Checks
+          method: GET
+          name_field: ref
+          path: /get_checks_for_table
+          projection:
+            fields:
+              policy_id: check_static_id
+              policy_name: ref
+              policy_status: triage_status
+              policy_type: check_type
+            template: policy
+          record_selector: $.checks[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - notification_channels
+              high_value: true
+              id: notification_channels
+              support: partial
+              title: Notification channels
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: anomalo.notification_channels
+            required_payload_fields:
+              - id
+            schema_ref: anomalo/notification_channels/v1
+            urn_kind: anomalo_notification_channels
+          id: notification_channels
+          id_field: id
+          label: Notification channels
+          method: GET
+          name_field: description
+          path: /list_notification_channels
+          projection:
+            fields:
+              id: id
+              name: description
+              resource_id: id
+              resource_name: description
+              resource_type: notification_channel
+            template: asset
+          record_selector: $.notification_channels[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - accounts
+                - organizations
               high_value: true
-              id: accounts
+              id: organizations
               support: partial
-              title: Accounts
+              title: Organizations
               type: entity_family
           default_enabled: true
           event:
-            kind: anomalo.accounts
+            kind: anomalo.organizations
             required_payload_fields:
               - id
-            schema_ref: anomalo/accounts/v1
-            urn_kind: anomalo_accounts
-          id: accounts
+            schema_ref: anomalo/organizations/v1
+            urn_kind: anomalo_organizations
+          id: organizations
           id_field: id
-          label: Accounts
+          label: Organizations
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+          path: /organizations
           projection:
             fields:
               id: id
               name: name
-              resource_id: id
-              resource_name: name
-              resource_type: account
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - records
-              high_value: true
-              id: records
-              support: partial
-              title: Records
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: anomalo.records
-            required_payload_fields:
-              - id
-            schema_ref: anomalo/records/v1
-            urn_kind: anomalo_records
-          id: records
-          id_field: id
-          label: Records
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/records
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: record
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - configuration_management
-              evidence_types:
-                - source_snapshot
-              families:
-                - policies
-              high_value: true
-              id: policies
-              support: partial
-              title: Policies
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: anomalo.policies
-            required_payload_fields:
-              - id
-            schema_ref: anomalo/policies/v1
-            urn_kind: anomalo_policies
-          id: policies
-          id_field: id
-          label: Policies
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
-          projection:
-            fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: anomalo.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: anomalo/audit_events/v1
-            urn_kind: anomalo_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
               resource_id: resource_id
+              resource_name: name
               resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+            template: asset
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: anomalo
       tenant_id: builtin_catalog
@@ -232,4 +207,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /ping

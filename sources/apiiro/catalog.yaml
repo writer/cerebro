@@ -135,3 +135,32 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+provider_api_disproof:
+  status: invalidated
+  reason: no_public_provider_api_reference_for_generated_runtime_families
+  checked_at: 2026-07-06T00:00:00Z
+  references:
+    - https://docs.apiiro.com/
+    - https://docs.apiiro.com/admin-apiiro/access-tokens
+    - https://docs.cortex.io/ingesting-data-into-cortex/integrations/apiiro
+    - https://github.com/apiiro/mcp-server
+    - https://github.com/apiiro/mcp-server/blob/main/server.json
+    - https://apiiro.com/product/integrations/
+    - https://apiiro.com/product/api-security-testing/
+  affected_families:
+    - assets
+    - audit_events
+    - findings
+    - policies
+    - vulnerabilities
+  missing_paths:
+    - /v1/assets
+    - /v1/audit_events
+    - /v1/findings
+    - /v1/policies
+    - /v1/vulnerabilities
+  notes:
+    - "Apiiro's provider documentation host resolves to a sign-in page, so the public FetchUrl-visible provider docs do not expose a machine-readable specification or endpoint-level REST reference for these generated families."
+    - "Cortex's Apiiro integration guidance corroborates API-key access and read permissions for risks, applications, and repositories, but it does not document method/path mappings for the generated /v1 assets, findings, vulnerabilities, policies, or audit-events resources."
+    - "Apiiro's public MCP server documents a streamable HTTP MCP endpoint at https://mcp.apiiro.com/mcp for agent tools, not REST resource endpoints matching this json_api runtime."
+    - "Apiiro's public product pages describe integrations, risk, vulnerability, and API-security capabilities, but they do not publish endpoint paths that can truthfully ground this generated runtime. Promotion needs a provider-owned public API reference or machine-readable spec before reshaping."

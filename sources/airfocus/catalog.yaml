@@ -1,28 +1,64 @@
 id: airfocus
 name: "Airfocus"
-description: "Collects users, projects, repositories, deployments, and audit events from Airfocus and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+description: "Collects users, workspaces, workspace groups, item link types, and API keys from Airfocus and projects them into the Cerebro graph as identities and product-management assets."
 emitted_kinds:
   - airfocus.users
-  - airfocus.projects
-  - airfocus.repositories
-  - airfocus.deployments
-  - airfocus.audit_events
+  - airfocus.workspaces
+  - airfocus.workspace_groups
+  - airfocus.link_types
+  - airfocus.api_keys
 runtime_families:
-  - audit_events
-  - deployments
-  - projects
-  - repositories
+  - api_keys
+  - link_types
   - users
+  - workspace_groups
+  - workspaces
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header_personal_access_token
+  base_url: ${config.base_url}
+  spec_url: https://developer.airfocus.com/openapi.json
+  spec_kind: openapi
+  references:
+    - https://developer.airfocus.com/
+    - https://developer.airfocus.com/endpoints
+    - https://developer.airfocus.com/authentication
+    - https://help.airfocus.com/en/articles/9009544-api
+  families:
+    - id: api_keys
+      method: GET
+      path: /api/profile/api-keys
+      operation: listApiKeys
+    - id: link_types
+      method: POST
+      path: /api/link-types/search
+      operation: searchItemLinkTypes
+    - id: users
+      method: GET
+      path: /api/team/users
+      operation: listUsers
+    - id: workspace_groups
+      method: POST
+      path: /api/workspaces/groups/search
+      operation: searchWorkspaceGroups
+    - id: workspaces
+      method: POST
+      path: /api/workspaces/search
+      operation: searchWorkspaces
 kind_lifecycle:
   - kind: airfocus.users
     status: active
-  - kind: airfocus.projects
+  - kind: airfocus.workspaces
     status: active
-  - kind: airfocus.repositories
+  - kind: airfocus.workspace_groups
     status: active
-  - kind: airfocus.deployments
+  - kind: airfocus.link_types
     status: active
-  - kind: airfocus.audit_events
+  - kind: airfocus.api_keys
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -37,47 +73,47 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: projects
+        - Reads team users from the documented GET /api/team/users endpoint.
+    - id: workspaces
       type: entity_family
-      title: "Projects"
-      families: [projects]
+      title: "Workspaces"
+      families: [workspaces]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: repositories
+        - Reads product workspaces from the documented POST /api/workspaces/search endpoint.
+    - id: workspace_groups
       type: entity_family
-      title: "Repositories"
-      families: [repositories]
+      title: "Workspace Groups"
+      families: [workspace_groups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: deployments
-      type: deployment_state
-      title: "Deployments"
-      families: [deployments]
+        - Reads workspace groups from the documented POST /api/workspaces/groups/search endpoint.
+    - id: link_types
+      type: entity_family
+      title: "Item Link Types"
+      families: [link_types]
       support: partial
       high_value: true
-      evidence_types: [change_management]
-      control_domains: [secure_delivery]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads custom item link types from the documented POST /api/link-types/search endpoint.
+    - id: api_keys
+      type: entity_family
+      title: "API Keys"
+      families: [api_keys]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads personal access token metadata from the documented GET /api/profile/api-keys endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,8 +129,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: airfocus.projects
-    schema_ref: airfocus/projects/v1
+  - kind: airfocus.workspaces
+    schema_ref: airfocus/workspaces/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +139,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: airfocus.repositories
-    schema_ref: airfocus/repositories/v1
+  - kind: airfocus.workspace_groups
+    schema_ref: airfocus/workspace_groups/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -113,21 +149,23 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: airfocus.deployments
-    schema_ref: airfocus/deployments/v1
+  - kind: airfocus.link_types
+    schema_ref: airfocus/link_types/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - deployment_id
-      - deployment_name
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
-  - kind: airfocus.audit_events
-    schema_ref: airfocus/audit_events/v1
+  - kind: airfocus.api_keys
+    schema_ref: airfocus/api_keys/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id

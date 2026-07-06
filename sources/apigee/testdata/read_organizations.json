@@ -1,0 +1,46 @@
+[
+  {
+    "attributes": {
+      "id": "acme",
+      "organization": "acme",
+      "project_id": "gcp-project",
+      "resource_id": "acme",
+      "resource_name": "acme",
+      "resource_type": "apigee_organization",
+      "tenant_id": "tenant",
+      "source_event_id": "acme",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "organizations",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "organizations",
+      "resource_urn": "urn:cerebro:tenant:apigee_organizations:acme"
+    },
+    "id": "source-apigee-organizations-event-1",
+    "kind": "apigee.organizations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "acme",
+      "organization": "acme",
+      "project_id": "gcp-project",
+      "resource_id": "acme",
+      "resource_name": "acme",
+      "resource_type": "apigee_organization",
+      "tenant_id": "tenant",
+      "source_event_id": "acme",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "organizations",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "organizations",
+      "resource_urn": "urn:cerebro:tenant:apigee_organizations:acme",
+      "source_id": "apigee",
+      "schema_ref": "apigee/organizations/v1"
+    },
+    "schema_ref": "apigee/organizations/v1",
+    "source_id": "apigee",
+    "tenant_id": "tenant"
+  }
+]

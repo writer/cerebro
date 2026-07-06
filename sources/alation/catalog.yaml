@@ -1,29 +1,68 @@
 id: alation
 name: "Alation"
-description: "Collects users, accounts, records, policies, and audit events from Alation and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects users, groups, data sources, policies, and terms from Alation and projects them into the Cerebro graph as identities, assets, policies, and data-governance context."
 emitted_kinds:
   - alation.users
-  - alation.accounts
-  - alation.records
+  - alation.groups
+  - alation.data_sources
   - alation.policies
-  - alation.audit_events
+  - alation.terms
 runtime_families:
-  - accounts
-  - audit_events
+  - data_sources
+  - groups
   - policies
-  - records
+  - terms
   - users
 kind_lifecycle:
   - kind: alation.users
     status: active
-  - kind: alation.accounts
+  - kind: alation.groups
     status: active
-  - kind: alation.records
+  - kind: alation.data_sources
     status: active
   - kind: alation.policies
     status: active
-  - kind: alation.audit_events
+  - kind: alation.terms
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_header
+  base_url: ${config.base_url}
+  spec_url: ${config.base_url}/openapi/user/
+  spec_kind: openapi
+  references:
+    - https://developer.alation.com/dev/docs/open-api-index
+    - https://developer.alation.com/dev/docs/authentication-into-alation-apis
+    - https://developer.alation.com/dev/reference/getusers-1
+    - https://developer.alation.com/dev/reference/getgroups
+    - https://developer.alation.com/dev/reference/getdatasources-1
+    - https://developer.alation.com/dev/reference/listpolicies
+    - https://developer.alation.com/dev/reference/getterms
+  families:
+    - id: users
+      method: GET
+      path: /integration/v2/user/
+      operation: get_users
+    - id: groups
+      method: GET
+      path: /integration/v1/group/
+      operation: get_groups
+    - id: data_sources
+      method: GET
+      path: /integration/v1/datasource/
+      operation: get_datasources
+    - id: policies
+      method: GET
+      path: /integration/v1/business_policies/
+      operation: list_policies
+    - id: terms
+      method: GET
+      path: /integration/v2/term/
+      operation: get_terms
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: alation
@@ -37,27 +76,27 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Reads user metadata from Alation's documented User API for identity inventory context.
+    - id: groups
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Groups"
+      families: [groups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Reads group metadata from Alation's documented Group API for access governance context.
+    - id: data_sources
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Data Sources"
+      families: [data_sources]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads native data source inventory from Alation's documented Data Sources API.
     - id: policies
       type: lifecycle_state
       title: "Policies"
@@ -65,19 +104,19 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      control_domains: [security_operations, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads business policy definitions from Alation's documented Policy API.
+    - id: terms
+      type: entity_family
+      title: "Terms"
+      families: [terms]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads glossary terms from Alation's documented Terms API for governance coverage.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,18 +132,17 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: alation.accounts
-    schema_ref: alation/accounts/v1
+  - kind: alation.groups
+    schema_ref: alation/groups/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
+      - group_id
+      - group_name
     required_payload_fields:
       - id
-  - kind: alation.records
-    schema_ref: alation/records/v1
+  - kind: alation.data_sources
+    schema_ref: alation/data_sources/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -122,12 +160,13 @@ event_contracts:
       - policy_name
     required_payload_fields:
       - id
-  - kind: alation.audit_events
-    schema_ref: alation/audit_events/v1
+  - kind: alation.terms
+    schema_ref: alation/terms/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id

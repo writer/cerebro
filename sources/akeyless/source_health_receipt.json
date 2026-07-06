@@ -1,5 +1,6 @@
 {
-  "adapter_health_path": "/v2/item",
+  "adapter_health_path": "/list-items",
+  "auth_mechanics": "akeyless_token_json_body",
   "auth_model": "api_key",
   "evidence_cas_reference_kind": "akeyless.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

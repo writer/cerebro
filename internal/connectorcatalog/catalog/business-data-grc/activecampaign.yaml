@@ -4,22 +4,22 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: API token
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: ActiveCampaign account API origin, for example https://youraccountname.api-us1.com.
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, accounts, records, policies, and audit events from Activecampaign and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
-      display_name: Activecampaign
+      description: Collects ActiveCampaign users, accounts, contacts, campaigns, and automations from the documented v3 REST API and projects them into the Cerebro graph for account, owner, and business-data evidence context.
+      display_name: ActiveCampaign
       id: builtin-activecampaign
       ingest:
         mode: pull
@@ -47,22 +47,21 @@ entries:
           id_field: id
           label: Users
           method: GET
-          name_field: name
+          name_field: username
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: offset
+          path: /api/3/users
           projection:
             fields:
-              display_name: name
+              display_name: username
               email: email
               status: status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.users[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -88,12 +87,11 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+            type: offset
+          path: /api/3/accounts
           projection:
             fields:
               id: id
@@ -102,127 +100,123 @@ entries:
               resource_name: name
               resource_type: account
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.accounts[*]
         - coverage:
             - control_domains:
                 - data_governance
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - contacts
               high_value: true
-              id: records
+              id: contacts
               support: partial
-              title: Records
+              title: Contacts
               type: entity_family
           default_enabled: true
           event:
-            kind: activecampaign.records
+            kind: activecampaign.contacts
             required_payload_fields:
               - id
-            schema_ref: activecampaign/records/v1
-            urn_kind: activecampaign_records
-          id: records
+            schema_ref: activecampaign/contacts/v1
+            urn_kind: activecampaign_contacts
+          id: contacts
           id_field: id
-          label: Records
+          label: Contacts
+          method: GET
+          name_field: email
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /api/3/contacts
+          projection:
+            fields:
+              id: id
+              name: email
+              resource_id: id
+              resource_name: email
+              resource_type: activecampaign_contact
+            template: asset
+          record_selector: $.contacts[*]
+        - coverage:
+            - control_domains:
+                - data_governance
+              evidence_types:
+                - source_snapshot
+              families:
+                - campaigns
+              high_value: true
+              id: campaigns
+              support: partial
+              title: Campaigns
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: activecampaign.campaigns
+            required_payload_fields:
+              - id
+            schema_ref: activecampaign/campaigns/v1
+            urn_kind: activecampaign_campaigns
+          id: campaigns
+          id_field: id
+          label: Campaigns
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/records
+            type: offset
+          path: /api/3/campaigns
           projection:
             fields:
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: record
+              resource_type: activecampaign_campaign
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.campaigns[*]
         - coverage:
             - control_domains:
-                - configuration_management
+                - security_operations
               evidence_types:
-                - source_snapshot
+                - configuration_state
               families:
-                - policies
+                - automations
               high_value: true
-              id: policies
+              id: automations
               support: partial
-              title: Policies
+              title: Automations
               type: entity_family
           default_enabled: true
           event:
-            kind: activecampaign.policies
+            kind: activecampaign.automations
             required_payload_fields:
               - id
-            schema_ref: activecampaign/policies/v1
-            urn_kind: activecampaign_policies
-          id: policies
+            schema_ref: activecampaign/automations/v1
+            urn_kind: activecampaign_automations
+          id: automations
           id_field: id
-          label: Policies
+          label: Automations
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/policies
+            type: offset
+          path: /api/3/automations
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: activecampaign.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: activecampaign/audit_events/v1
-            urn_kind: activecampaign_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              resource_id: id
+              resource_name: name
+              resource_type: activecampaign_automation
+            template: asset
+          record_selector: $.automations[*]
       schema_version: cerebro.integration/v1
       source_id: activecampaign
       tenant_id: builtin_catalog
@@ -232,4 +226,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /api/3/users/me

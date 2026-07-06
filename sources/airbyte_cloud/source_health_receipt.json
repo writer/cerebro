@@ -1,5 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/health",
+  "auth_mechanics": "bearer_authorization_header",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "airbyte_cloud.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

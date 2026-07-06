@@ -1,11 +1,12 @@
 # Acunetix
 
-Generated Source Runtime SDK scaffold for `acunetix`.
+Provider-verified Source Runtime SDK package for `acunetix`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `X-Auth` API key header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,15 @@ Generated Source Runtime SDK scaffold for `acunetix`.
 
 ## Families
 
-- `assets`, emits `acunetix.assets`, reads `/v1/assets`
-- `findings`, emits `acunetix.findings`, reads `/v1/findings`
-- `vulnerabilities`, emits `acunetix.vulnerabilities`, reads `/v1/vulnerabilities`
-- `policies`, emits `acunetix.policies`, reads `/v1/policies`
-- `audit_events`, emits `acunetix.audit_events`, reads `/v1/audit_events`
+- `targets`, emits `acunetix.targets`, reads `GET /targets`
+- `scans`, emits `acunetix.scans`, reads `GET /scans`
+- `vulnerabilities`, emits `acunetix.vulnerabilities`, reads `GET /vulnerabilities`
+- `scanning_profiles`, emits `acunetix.scanning_profiles`, reads `GET /scanning_profiles`
+- `reports`, emits `acunetix.reports`, reads `GET /reports`
 
 ## Tests
 
-- `go test ./sources/acunetix ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/acunetix ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/acunetix/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

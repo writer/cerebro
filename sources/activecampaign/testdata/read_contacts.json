@@ -1,0 +1,31 @@
+[
+  {
+    "id": "activecampaign-contacts-68",
+    "tenant_id": "tenant",
+    "source_id": "activecampaign",
+    "kind": "activecampaign.contacts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "68",
+      "resource_urn": "urn:cerebro:tenant:runtime_activecampaign_contact:68",
+      "resource_type": "activecampaign_contact",
+      "resource_id": "68",
+      "resource_name": "janedoe@example.test",
+      "email": "janedoe@example.test",
+      "record_class": "asset",
+      "schema": "contacts",
+      "source_system": "activecampaign"
+    },
+    "payload": {
+      "id": "68",
+      "email": "janedoe@example.test",
+      "firstName": "Jane",
+      "lastName": "Doe",
+      "cdate": "2017-01-25T23:58:14-06:00",
+      "udate": "2017-01-25T23:58:14-06:00",
+      "schema_ref": "activecampaign/contacts/v1"
+    },
+    "schema_ref": "activecampaign/contacts/v1"
+  }
+]

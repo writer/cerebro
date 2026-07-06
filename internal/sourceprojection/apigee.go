@@ -7,15 +7,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func apigeeUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "apigee"})
-}
-
-func apigeeProjectsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func apigeeOrganizationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return apigeeGenericAssetProjections(event)
 }
 
-func apigeeRepositoriesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func apigeeAPIProxiesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return apigeeGenericAssetProjections(event)
 }
 
@@ -23,8 +19,12 @@ func apigeeDeploymentsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return apigeeGenericDeploymentProjections(event)
 }
 
-func apigeeAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "apigee"})
+func apigeeDevelopersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, identityProjectionProfile{Provider: "apigee"})
+}
+
+func apigeeAppsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return apigeeGenericAssetProjections(event)
 }
 
 func apigeeGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

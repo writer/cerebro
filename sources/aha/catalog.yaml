@@ -1,26 +1,61 @@
 id: aha
 name: "Aha"
-description: "Collects users, projects, repositories, deployments, and audit events from Aha and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+description: "Collects users, products, features, releases, and audit events from Aha! and projects them into the Cerebro graph as users, assets, release records, and audit evidence for product development context."
 emitted_kinds:
   - aha.users
-  - aha.projects
-  - aha.repositories
-  - aha.deployments
+  - aha.products
+  - aha.features
+  - aha.releases
   - aha.audit_events
 runtime_families:
   - audit_events
-  - deployments
-  - projects
-  - repositories
+  - features
+  - products
+  - releases
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header_api_key_or_oauth2_token
+  base_url: ${config.base_url}/api/v1
+  spec_url: https://www.aha.io/openapi.json
+  spec_kind: openapi
+  references:
+    - https://www.aha.io/api
+    - https://www.aha.io/redoc-static.html
+    - https://www.aha.io/openapi.json
+  families:
+    - id: audit_events
+      method: GET
+      path: /audits
+      operation: retrieve_record_history
+    - id: features
+      method: GET
+      path: /features
+      operation: list_features
+    - id: products
+      method: GET
+      path: /products
+      operation: list_products
+    - id: releases
+      method: GET
+      path: /products/{product_id}/releases
+      operation: list_releases_in_product
+    - id: users
+      method: GET
+      path: /users
+      operation: list_users
 kind_lifecycle:
   - kind: aha.users
     status: active
-  - kind: aha.projects
+  - kind: aha.products
     status: active
-  - kind: aha.repositories
+  - kind: aha.features
     status: active
-  - kind: aha.deployments
+  - kind: aha.releases
     status: active
   - kind: aha.audit_events
     status: active
@@ -37,37 +72,37 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: projects
+        - Reads Aha! account users from the documented GET /users endpoint.
+    - id: products
       type: entity_family
-      title: "Projects"
-      families: [projects]
+      title: "Products"
+      families: [products]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: repositories
+        - Reads Aha! products and Aha! Develop teams from the documented GET /products endpoint.
+    - id: features
       type: entity_family
-      title: "Repositories"
-      families: [repositories]
+      title: "Features"
+      families: [features]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: deployments
-      type: deployment_state
-      title: "Deployments"
-      families: [deployments]
+        - Reads Aha! features from the documented GET /features endpoint.
+    - id: releases
+      type: entity_family
+      title: "Releases"
+      families: [releases]
       support: partial
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads releases scoped to a configured Aha! product from the documented GET /products/{product_id}/releases endpoint.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +112,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads recent Aha! audit records from the documented GET /audits endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,8 +128,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: aha.projects
-    schema_ref: aha/projects/v1
+  - kind: aha.products
+    schema_ref: aha/products/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +138,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: aha.repositories
-    schema_ref: aha/repositories/v1
+  - kind: aha.features
+    schema_ref: aha/features/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -113,13 +148,14 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: aha.deployments
-    schema_ref: aha/deployments/v1
+  - kind: aha.releases
+    schema_ref: aha/releases/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - deployment_id
-      - deployment_name
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
   - kind: aha.audit_events

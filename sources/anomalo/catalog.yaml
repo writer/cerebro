@@ -1,83 +1,83 @@
 id: anomalo
 name: "Anomalo"
-description: "Collects users, accounts, records, policies, and audit events from Anomalo and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects warehouses, tables, checks, notification channels, and organizations from Anomalo and projects them into the Cerebro graph as data observability assets and policies for owner, evidence, and compliance context."
 emitted_kinds:
-  - anomalo.users
-  - anomalo.accounts
-  - anomalo.records
-  - anomalo.policies
-  - anomalo.audit_events
+  - anomalo.warehouses
+  - anomalo.tables
+  - anomalo.checks
+  - anomalo.notification_channels
+  - anomalo.organizations
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
-  - users
+  - warehouses
+  - tables
+  - checks
+  - notification_channels
+  - organizations
 kind_lifecycle:
-  - kind: anomalo.users
+  - kind: anomalo.warehouses
     status: active
-  - kind: anomalo.accounts
+  - kind: anomalo.tables
     status: active
-  - kind: anomalo.records
+  - kind: anomalo.checks
     status: active
-  - kind: anomalo.policies
+  - kind: anomalo.notification_channels
     status: active
-  - kind: anomalo.audit_events
+  - kind: anomalo.organizations
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: anomalo
   dimensions:
-    - id: users
+    - id: warehouses
       type: entity_family
-      title: "Users"
-      families: [users]
+      title: "Warehouses"
+      families: [warehouses]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Captures Anomalo warehouse inventory from the documented public API client list_warehouses endpoint.
+    - id: tables
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Tables"
+      families: [tables]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
-      type: entity_family
-      title: "Records"
-      families: [records]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Captures Anomalo table configuration from the documented get_table_information endpoint for configured table inputs.
+    - id: checks
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "Checks"
+      families: [checks]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      control_domains: [security_operations, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Captures Anomalo data quality checks from the documented get_checks_for_table endpoint.
+    - id: notification_channels
+      type: entity_family
+      title: "Notification Channels"
+      families: [notification_channels]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [configuration_state]
+      control_domains: [logging_monitoring, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures alert destinations from the documented list_notification_channels endpoint.
+    - id: organizations
+      type: entity_family
+      title: "Organizations"
+      families: [organizations]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Captures organizations available to the API key from the documented organizations endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,17 +85,9 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: anomalo.users
-    schema_ref: anomalo/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: anomalo.accounts
-    schema_ref: anomalo/accounts/v1
-    required_attributes:
+  - kind: anomalo.warehouses
+    schema_ref: anomalo/warehouses/v1
+    required_attributes: &asset_required_attributes
       - tenant_id
       - source_event_id
       - resource_urn
@@ -103,31 +95,67 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: anomalo.records
-    schema_ref: anomalo/records/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
+  - kind: anomalo.tables
+    schema_ref: anomalo/tables/v1
+    required_attributes: *asset_required_attributes
     required_payload_fields:
       - id
-  - kind: anomalo.policies
-    schema_ref: anomalo/policies/v1
+  - kind: anomalo.checks
+    schema_ref: anomalo/checks/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - policy_id
       - policy_name
     required_payload_fields:
-      - id
-  - kind: anomalo.audit_events
-    schema_ref: anomalo/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
+      - check_static_id
+      - check_type
+  - kind: anomalo.notification_channels
+    schema_ref: anomalo/notification_channels/v1
+    required_attributes: *asset_required_attributes
     required_payload_fields:
       - id
+  - kind: anomalo.organizations
+    schema_ref: anomalo/organizations/v1
+    required_attributes: *asset_required_attributes
+    required_payload_fields:
+      - id
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_token_header
+  base_url: ${config.base_url}
+  spec_url: https://raw.githubusercontent.com/square/terraform-provider-anomalo/master/docs/resources/table.md
+  spec_kind: provider_reference_markdown
+  references:
+    - https://pypi.org/project/anomalo/
+    - https://pkg.go.dev/github.com/square/anomalo-go/anomalo
+    - https://github.com/square/anomalo-go/blob/master/anomalo/client.go
+    - https://registry.terraform.io/providers/square/anomalo/latest/docs
+    - https://github.com/square/terraform-provider-anomalo/blob/master/docs/resources/table.md
+    - https://github.com/square/terraform-provider-anomalo/blob/master/docs/resources/check.md
+    - https://github.com/square/terraform-provider-anomalo/blob/master/docs/data-sources/notification_channel.md
+  families:
+    - id: warehouses
+      method: GET
+      path: /list_warehouses
+      operation: list_warehouses
+    - id: tables
+      method: GET
+      path: /get_table_information
+      operation: get_table_information
+    - id: checks
+      method: GET
+      path: /get_checks_for_table
+      operation: get_checks_for_table
+    - id: notification_channels
+      method: GET
+      path: /list_notification_channels
+      operation: list_notification_channels
+    - id: organizations
+      method: GET
+      path: /organizations
+      operation: get_all_organizations

@@ -16,19 +16,19 @@ var catalogFS embed.FS
 
 const (
 	sourceID               = "airbyte_cloud"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
+	defaultFamily          = familyOrganizations
+	defaultHealthPath      = "/health"
+	defaultBaseURLTemplate = "https://api.airbyte.com/v1"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
 	familyUsers            = "users"
-	familyAccounts         = "accounts"
-	familyRecords          = "records"
-	familyPolicies         = "policies"
-	familyAuditEvents      = "audit_events"
+	familyOrganizations    = "organizations"
+	familySources          = "sources"
+	familyPermissions      = "permissions"
+	familyConnections      = "connections"
 )
 
-var templateKeys = []string{"base_url", "token"}
+var templateKeys = []string{"base_url", "token", "organization_id", "workspace_ids", "user_id"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -50,75 +50,75 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/users",
+				Path:             "/users",
 				URNKind:          "airbyte_cloud_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				IDKeys:           []string{"id", "email", "name"},
+				DisablePageSize:  true,
 				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Attributes:       map[string]string{"display_name": "name", "email": "email", "login": "email", "primary_email": "email", "resource_id": "id", "resource_name": "name|email", "resource_type": "airbyte_user", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "airbyte_cloud"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: map[string]string{"organizationId": "organization_id"}, ConfigAttributes: map[string]string{"organization_id": "organization_id"}},
 			},
+			airbyteAssetFamily(familyOrganizations, "/organizations", "airbyte_cloud_organizations", []string{"organizationId", "organizationName", "email"}, "airbyte_organization", map[string]string{"id": "organizationId", "name": "organizationName", "resource_id": "organizationId", "resource_name": "organizationName", "resource_type": "airbyte_organization", "source_event_id": "organizationId", "email": "email"}),
+			airbyteAssetFamily(familySources, "/sources", "airbyte_cloud_sources", []string{"sourceId", "name"}, "airbyte_source", map[string]string{"id": "sourceId", "name": "name", "resource_id": "sourceId", "resource_name": "name", "resource_type": "airbyte_source", "source_event_id": "sourceId", "workspace_id": "workspaceId", "source_type": "sourceType", "definition_id": "definitionId"}),
 			{
-				Name:             familyAccounts,
-				Path:             "/v1/accounts",
-				URNKind:          "airbyte_cloud_accounts",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "account", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "accounts", "source_system": "airbyte_cloud"},
+				Name:            familyPermissions,
+				Path:            "/permissions",
+				URNKind:         "airbyte_cloud_permissions",
+				IDKeys:          []string{"permissionId", "userId", "scopeId", "permissionType"},
+				DisablePageSize: true,
+				PageSizeParams:  []string{"limit"},
+				ListKeys:        []string{"data"},
+				Attributes: map[string]string{
+					"policy_id":       "permissionId",
+					"policy_name":     "permissionType",
+					"policy_status":   "active",
+					"policy_type":     "airbyte_permission",
+					"resource_id":     "scopeId",
+					"resource_type":   "scope",
+					"source_event_id": "permissionId",
+					"tenant_id":       "tenant_id|metadata.tenant_id",
+					"user_id":         "userId",
+				},
+				StaticAttributes: map[string]string{"record_class": "policy", "schema": "permissions", "source_system": "airbyte_cloud"},
+				Config:           airbyteListConfig(),
 			},
-			{
-				Name:             familyRecords,
-				Path:             "/v1/records",
-				URNKind:          "airbyte_cloud_records",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "record", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "records", "source_system": "airbyte_cloud"},
-			},
-			{
-				Name:             familyPolicies,
-				Path:             "/v1/policies",
-				URNKind:          "airbyte_cloud_policies",
-				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "policy", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "policies", "source_system": "airbyte_cloud"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "airbyte_cloud_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "airbyte_cloud"},
-			},
+			airbyteAssetFamily(familyConnections, "/connections", "airbyte_cloud_connections", []string{"connectionId", "name"}, "airbyte_connection", map[string]string{"id": "connectionId", "name": "name", "resource_id": "connectionId", "resource_name": "name", "resource_type": "airbyte_connection", "source_event_id": "connectionId", "source_id": "sourceId", "destination_id": "destinationId", "workspace_id": "workspaceId", "status": "status", "data_residency": "dataResidency"}),
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func airbyteAssetFamily(name, path, urnKind string, idKeys []string, resourceType string, attrs map[string]string) jsonapi.Family {
+	family := jsonapi.Family{
+		Name:             name,
+		Path:             path,
+		URNKind:          urnKind,
+		IDKeys:           idKeys,
+		PageSizeParams:   []string{"limit"},
+		ListKeys:         []string{"data"},
+		Attributes:       attrs,
+		StaticAttributes: map[string]string{"record_class": "asset", "resource_type": resourceType, "schema": name, "source_system": "airbyte_cloud"},
+		Config:           airbyteListConfig(),
+	}
+	if name == familySources || name == familyConnections {
+		family.CursorParam = "offset"
+		family.PageFirstCursor = "0"
+		return family
+	}
+	family.DisablePageSize = true
+	return family
+}
+
+func airbyteListConfig() jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{
+		ConfigQuery:     map[string]string{"workspaceIds": "workspace_ids"},
+		DefaultPageSize: 100,
+	}
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {

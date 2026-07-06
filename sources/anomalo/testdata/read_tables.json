@@ -1,0 +1,43 @@
+[
+  {
+    "id": "source-anomalo-tables-event-1",
+    "kind": "anomalo.tables",
+    "schema_ref": "anomalo/tables/v1",
+    "source_id": "anomalo",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "314",
+      "family": "tables",
+      "provider": "anomalo",
+      "source_provider": "anomalo",
+      "source_system": "anomalo",
+      "record_class": "asset",
+      "schema": "tables",
+      "api_method": "GET",
+      "api_path": "/get_table_information",
+      "resource_id": "314",
+      "resource_name": "warehouse.schema.table",
+      "resource_type": "table",
+      "resource_urn": "urn:cerebro:tenant:anomalo_tables:314"
+    },
+    "payload": {
+      "id": 314,
+      "full_name": "warehouse.schema.table",
+      "monitored": true,
+      "warehouse": {
+        "id": 42,
+        "name": "Warehouse One"
+      },
+      "config": {
+        "check_cadence_type": "daily",
+        "notification_channel_id": 7
+      },
+      "tenant_id": "tenant",
+      "source_id": "anomalo",
+      "schema_ref": "anomalo/tables/v1",
+      "record_class": "asset"
+    }
+  }
+]

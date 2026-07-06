@@ -1,5 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/me",
+  "auth_mechanics": "authorization_bearer_header_api_key_or_oauth2_token",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "aha.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

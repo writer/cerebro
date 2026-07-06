@@ -15,16 +15,16 @@ func activecampaignAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports
 	return activecampaignGenericAssetProjections(event)
 }
 
-func activecampaignRecordsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func activecampaignContactsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return activecampaignGenericAssetProjections(event)
 }
 
-func activecampaignPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return activecampaignGenericPolicyProjections(event)
+func activecampaignCampaignsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return activecampaignGenericAssetProjections(event)
 }
 
-func activecampaignAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "activecampaign"})
+func activecampaignAutomationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return activecampaignGenericAssetProjections(event)
 }
 
 func activecampaignGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -43,25 +43,6 @@ func activecampaignGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*p
 		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
 		addEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime.evidence", Label: evidenceID, Attributes: map[string]string{"evidence_id": evidenceID, "evidence_cas_uri": strings.TrimSpace(attributes["evidence_cas_uri"]), "evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"])}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
-	}
-	return identityProjectionResult(entities, links)
-}
-
-func activecampaignGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attributes := event.GetAttributes()
-	policyID := firstNonEmpty(attributes["policy_id"], event.GetId())
-	policyURN := projectionURN(tenantID, "policy", policyID)
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	addEntity(entities, &ports.ProjectedEntity{URN: policyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "policy", Label: firstNonEmpty(attributes["policy_name"], policyID), Attributes: map[string]string{"policy_id": policyID, "policy_type": strings.TrimSpace(attributes["policy_type"]), "policy_status": strings.TrimSpace(attributes["policy_status"]), "policy_severity": strings.TrimSpace(attributes["policy_severity"]), "source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})
-	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
-		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
-		addEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime_evidence", Label: evidenceID, Attributes: map[string]string{"evidence_id": evidenceID, "evidence_cas_uri": strings.TrimSpace(attributes["evidence_cas_uri"]), "evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"])}})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)
 }

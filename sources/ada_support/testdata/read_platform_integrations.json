@@ -1,0 +1,44 @@
+[
+  {
+    "id": "source-ada_support-platform_integrations-event-1",
+    "kind": "ada_support.platform_integrations",
+    "source_id": "ada_support",
+    "tenant_id": "tenant",
+    "schema_ref": "ada_support/platform_integrations/v1",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v2/platform-integrations/",
+      "family": "platform_integrations",
+      "provider": "ada_support",
+      "record_selector": "$.data[*]",
+      "resource_urn": "urn:cerebro:tenant:ada_support_platform_integrations:integration-1",
+      "schema": "platform_integrations",
+      "source_provider": "ada_support",
+      "source_system": "ada_support",
+      "tenant_id": "tenant",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "resource_id": "integration-1",
+      "resource_name": "Knowledge Hub",
+      "resource_type": "platform_integration",
+      "source_event_id": "integration-1",
+      "status": "development"
+    },
+    "payload": {
+      "id": "integration-1",
+      "name": "Knowledge Hub",
+      "status": "development",
+      "description": "Knowledge sync",
+      "created": "2026-06-01T00:00:00Z",
+      "updated": "2026-06-02T00:00:00Z",
+      "api_method": "GET",
+      "api_path": "/v2/platform-integrations/",
+      "schema_ref": "ada_support/platform_integrations/v1",
+      "source_id": "ada_support",
+      "tenant_id": "tenant",
+      "resource_id": "integration-1",
+      "resource_urn": "urn:cerebro:tenant:ada_support_platform_integrations:integration-1",
+      "event_id": "integration-1"
+    }
+  }
+]

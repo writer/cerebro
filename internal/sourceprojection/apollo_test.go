@@ -6,31 +6,14 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestApolloAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apollo", Kind: "apollo.accounts", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := apolloAccountsProjections(event)
+func TestApolloAccountProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apollo", Kind: "apollo.accounts", Attributes: map[string]string{"resource_id": "account-1", "resource_type": "apollo_account", "resource_name": "Apollo Account", "domain": "example.test", "organization_id": "org-1"}}
+	entities, _, err := apolloAccountsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestApolloPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apollo", Kind: "apollo.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := apolloPoliciesProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected policy")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+		t.Fatal("expected projected account entity")
 	}
 }
 
@@ -45,13 +28,13 @@ func TestApolloIdentityUserProjection(t *testing.T) {
 	}
 }
 
-func TestApolloAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apollo", Kind: "apollo.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := apolloAuditEventsProjections(event)
+func TestApolloContactProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apollo", Kind: "apollo.contacts", Attributes: map[string]string{"user_id": "contact-1", "email": "contact@example.test", "display_name": "Contact One"}}
+	entities, _, err := apolloContactsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected contact identity")
 	}
 }

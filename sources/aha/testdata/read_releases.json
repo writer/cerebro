@@ -1,0 +1,41 @@
+[
+  {
+    "id": "aha-releases-release-1",
+    "kind": "aha.releases",
+    "source_id": "aha",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "aha/releases/v1",
+    "attributes": {
+      "tenant_id": "tenant",
+      "provider": "aha",
+      "source_provider": "aha",
+      "source_system": "aha",
+      "family": "releases",
+      "schema": "releases",
+      "record_class": "asset",
+      "resource_id": "release-1",
+      "resource_name": "Q3 Launch",
+      "resource_type": "release",
+      "resource_urn": "urn:cerebro:tenant:aha_releases:release-1",
+      "external_id": "release-1",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "release_id": "release-1",
+      "reference_num": "APP-R-1",
+      "release_date": "2026-09-30",
+      "product_id": "product-1",
+      "source_event_id": "release-1"
+    },
+    "payload": {
+      "id": "release-1",
+      "name": "Q3 Launch",
+      "reference_num": "APP-R-1",
+      "product": {
+        "id": "product-1"
+      },
+      "release_date": "2026-09-30",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-02T00:00:00Z"
+    }
+  }
+]

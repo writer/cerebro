@@ -1,0 +1,32 @@
+[
+  {
+    "tenant_id": "tenant",
+    "source_id": "airbrake",
+    "id": "source-airbrake-source_maps-event-1",
+    "kind": "airbrake.source_maps",
+    "schema_ref": "airbrake/source_maps/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "source-airbrake-source-maps-1",
+      "resource_urn": "urn:cerebro:tenant:airbrake_source_maps:source-airbrake-source_maps-1",
+      "resource_type": "airbrake_source_map",
+      "resource_id": "source-airbrake-source-maps-1",
+      "resource_name": "app.min.js.map",
+      "schema": "source_maps",
+      "record_class": "asset",
+      "provider": "airbrake",
+      "source_system": "airbrake"
+    },
+    "payload": {
+      "id": "source-airbrake-source-maps-1",
+      "projectId": 1,
+      "name": "app.min.js.map",
+      "pattern": "%/app.min.js",
+      "usedAt": "2026-06-01T00:00:00Z",
+      "source_id": "airbrake",
+      "tenant_id": "tenant",
+      "schema_ref": "airbrake/source_maps/v1"
+    }
+  }
+]

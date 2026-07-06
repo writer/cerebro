@@ -1,85 +1,30 @@
-[
-  {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/users",
-      "created_at": "2026-06-01T00:00:00Z",
-      "department": "department-source-amplitude-users-1",
-      "display_name": "Amplitude Users Fixture",
-      "domain": "domain-source-amplitude-users-1",
-      "email": "email@amplitude.example.test",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-amplitude-users-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-amplitude-users-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/amplitude/users/source-amplitude-users-1",
-      "external_id": "source-amplitude-users-1",
-      "family": "users",
-      "job_title": "job-title-source-amplitude-users-1",
-      "last_login_at": "2026-06-01T00:00:00Z",
-      "login": "login@amplitude.example.test",
-      "manager": "manager-source-amplitude-users-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "primary_email": "primary@amplitude.example.test",
-      "provider": "amplitude",
-      "record_class": "identity_user",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-amplitude-users-1",
-      "resource_name": "Amplitude Users Fixture",
-      "resource_type": "users",
-      "resource_urn": "urn:cerebro:tenant:amplitude_users:source-amplitude-users-1",
-      "schema": "users",
-      "source_event_id": "source-amplitude-users-1",
-      "source_provider": "amplitude",
-      "source_system": "amplitude",
-      "status": "open",
-      "tenant_id": "tenant",
-      "user_id": "source-amplitude-users-1"
-    },
-    "id": "source-amplitude-users-event-1",
-    "kind": "amplitude.users",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/users",
-      "created_at": "2026-06-01T00:00:00Z",
-      "department": "department-source-amplitude-users-1",
-      "display_name": "Amplitude Users Fixture",
-      "domain": "domain-source-amplitude-users-1",
-      "email": "email@amplitude.example.test",
-      "event_id": "source-amplitude-users-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-amplitude-users-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-amplitude-users-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/amplitude/users/source-amplitude-users-1"
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+  "startIndex": 1,
+  "itemsPerPage": 100,
+  "totalResults": 1,
+  "Resources": [
+    {
+      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+      "id": "datamonster@example.com",
+      "userName": "datamonster@example.com",
+      "name": {
+        "givenName": "Data",
+        "familyName": "Monster"
       },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/amplitude/users/source-amplitude-users-1",
-      "family": "users",
-      "id": "source-amplitude-users-1",
-      "job_title": "job-title-source-amplitude-users-1",
-      "last_login_at": "2026-06-01T00:00:00Z",
-      "login": "login@amplitude.example.test",
-      "manager": "manager-source-amplitude-users-1",
-      "name": "Amplitude Users Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "primary_email": "primary@amplitude.example.test",
-      "record_class": "identity_user",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-amplitude-users-1",
-      "resource_type": "users",
-      "resource_urn": "urn:cerebro:tenant:amplitude_users:source-amplitude-users-1",
-      "schema_ref": "amplitude/users/v1",
-      "source_id": "amplitude",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "source-amplitude-users-1"
-    },
-    "schema_ref": "amplitude/users/v1",
-    "source_id": "amplitude",
-    "tenant_id": "tenant"
-  }
-]
+      "active": true,
+      "emails": [
+        {
+          "value": "datamonster@example.com",
+          "primary": true
+        }
+      ],
+      "groups": [],
+      "meta": {
+        "resourceType": "User",
+        "created": "2022-02-03T20:40:22.000Z",
+        "lastModified": "2022-02-03T21:25:25.000Z"
+      }
+    }
+  ]
+}

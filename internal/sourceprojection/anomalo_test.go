@@ -7,8 +7,8 @@ import (
 )
 
 func TestAnomaloAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.accounts", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := anomaloAccountsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.warehouses", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "warehouse", "resource_name": "warehouse-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := anomaloWarehousesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -21,8 +21,8 @@ func TestAnomaloAssetProjection(t *testing.T) {
 }
 
 func TestAnomaloPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := anomaloPoliciesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.checks", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Row count check", "policy_type": "RowCount", "policy_status": "enabled", "evidence_id": "evidence-1"}}
+	entities, links, err := anomaloChecksProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -34,24 +34,38 @@ func TestAnomaloPolicyProjection(t *testing.T) {
 	}
 }
 
-func TestAnomaloIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := anomaloUsersProjections(event)
+func TestAnomaloTableProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.tables", Attributes: map[string]string{"resource_id": "table-1", "resource_type": "table", "resource_name": "warehouse.schema.table"}}
+	entities, _, err := anomaloTablesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected identity user")
+		t.Fatal("expected projected table")
 	}
 }
 
-func TestAnomaloAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := anomaloAuditEventsProjections(event)
+func TestAnomaloNotificationChannelProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.notification_channels", Attributes: map[string]string{"resource_id": "channel-1", "resource_type": "notification_channel", "resource_name": "Data alerts"}}
+	entities, _, err := anomaloNotificationChannelsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected notification channel")
+	}
+}
+
+func TestAnomaloOrganizationProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "anomalo", Kind: "anomalo.organizations", Attributes: map[string]string{"resource_id": "org-1", "resource_type": "organization", "resource_name": "Primary Organization"}}
+	entities, links, err := anomaloOrganizationsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatalf("entities = %d, want organization projection", len(entities))
+	}
+	if len(links) != 0 {
+		t.Fatalf("links = %d, want no evidence links", len(links))
 	}
 }

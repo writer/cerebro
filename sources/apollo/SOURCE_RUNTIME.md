@@ -1,11 +1,12 @@
 # Apollo
 
-Generated Source Runtime SDK scaffold for `apollo`.
+Provider-verified Source Runtime SDK for `apollo`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: Apollo API key in the `x-api-key` header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,13 @@ Generated Source Runtime SDK scaffold for `apollo`.
 
 ## Families
 
-- `users`, emits `apollo.users`, reads `/v1/users`
-- `accounts`, emits `apollo.accounts`, reads `/v1/accounts`
-- `records`, emits `apollo.records`, reads `/v1/records`
-- `policies`, emits `apollo.policies`, reads `/v1/policies`
-- `audit_events`, emits `apollo.audit_events`, reads `/v1/audit_events`
+- `users`, emits `apollo.users`, reads `GET /users/search`
+- `accounts`, emits `apollo.accounts`, reads `POST /accounts/search`
+- `contacts`, emits `apollo.contacts`, reads `POST /contacts/search`
 
 ## Tests
 
-- `go test ./sources/apollo ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/apollo ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/apollo/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

@@ -19,8 +19,8 @@ func akeylessRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "akeyless"})
 }
 
-func akeylessAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "akeyless"})
+func akeylessAnalyticsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return akeylessAssetProjections(event)
 }
 
 func akeylessAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

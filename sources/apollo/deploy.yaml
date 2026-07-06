@@ -1,15 +1,13 @@
 sourceId: apollo
 secretKeys:
-  - APOLLO_BASE_URL
-  - APOLLO_TOKEN
+  - APOLLO_API_KEY
 runtimes:
   - localId: users
     config:
-      base_url: env:APOLLO_BASE_URL
+      api_key: env:APOLLO_API_KEY
       family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /users/api_profile
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:APOLLO_TOKEN

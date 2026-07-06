@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aircall-teams-678",
+    "kind": "aircall.teams",
+    "schema_ref": "aircall/teams/v1",
+    "source_id": "aircall",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "678",
+      "provider": "aircall",
+      "source_provider": "aircall",
+      "source_system": "aircall",
+      "schema": "teams",
+      "record_class": "identity_group",
+      "resource_urn": "urn:cerebro:tenant:aircall_teams:678",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "group_id": "678",
+      "group_name": "Global Sales",
+      "resource_id": "678",
+      "resource_name": "Global Sales",
+      "resource_type": "aircall_team"
+    },
+    "payload": {
+      "id": 678,
+      "name": "Global Sales",
+      "direct_link": "https://example.com/aircall/teams/678",
+      "created_at": "2020-03-10T08:31:43.000Z",
+      "users": [
+        {
+          "id": 456,
+          "name": "John Doe",
+          "email": "john.doe@example.com"
+        }
+      ],
+      "tenant_id": "tenant",
+      "source_id": "aircall",
+      "schema_ref": "aircall/teams/v1"
+    }
+  }
+]

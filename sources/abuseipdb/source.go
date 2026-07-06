@@ -16,14 +16,13 @@ var catalogFS embed.FS
 
 const (
 	sourceID               = "abuseipdb"
-	defaultFamily          = familyReports
+	defaultFamily          = familyIpAddresses
 	defaultHealthPath      = "/blacklist"
 	defaultBaseURLTemplate = "https://api.abuseipdb.com/api/v2"
-	tokenHeader            = ""
-	tokenScheme            = "Token"
+	tokenHeader            = "Key"
+	tokenScheme            = ""
 	familyReports          = "reports"
 	familyIpAddresses      = "ip_addresses"
-	familyAuditEvents      = "audit_events"
 )
 
 var templateKeys = []string{"api_key"}
@@ -50,40 +49,42 @@ func New() (*Source, error) {
 				Name:             familyReports,
 				Path:             "/reports",
 				URNKind:          "abuseipdb_reports",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "reports", "source_system": "abuseipdb"},
+				IDKeys:           []string{"_record_id", "reportedAt"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"data.nextPageUrl"},
+				PageSizeParams:   []string{"perPage"},
+				PageFirstCursor:  "1",
+				ListKeys:         []string{"data.results"},
+				TimestampKeys:    []string{"reportedAt"},
+				Attributes:       map[string]string{"description": "comment", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "_record_id|reportedAt", "observed_at": "reportedAt", "resource_id": "ipAddress|metadata.ip_address", "resource_name": "ipAddress|metadata.ip_address", "resource_type": "abuseipdb_report", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|abuseConfidenceScore|risk|priority", "source_event_id": "_record_id|event_id|reportedAt|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "comment"},
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "abuseipdb_report", "schema": "reports", "severity": "reported", "source_system": "abuseipdb", "status": "observed"},
+				Config: jsonapi.FamilyConfig{
+					ConfigQuery:      map[string]string{"ipAddress": "ip_address", "maxAgeInDays": "max_age_in_days"},
+					ConfigAttributes: map[string]string{"resource_id": "ip_address"},
+					IDTemplate:       "${reportedAt}:${reporterId}",
+					DefaultPageSize:  25,
+					ResourceURNKind:  "abuseipdb_ip_address",
+				},
 			},
 			{
 				Name:             familyIpAddresses,
-				Path:             "/ip-addresses",
+				Path:             "/blacklist",
 				URNKind:          "abuseipdb_ip_addresses",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
+				IDKeys:           []string{"ipAddress", "id", "urn", "resource_urn", "name"},
 				CursorParam:      "cursor",
 				NextCursorKeys:   []string{"next_cursor"},
 				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "ip_addresses", "source_system": "abuseipdb"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/audit-events",
-				URNKind:          "abuseipdb_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "abuseipdb"},
+				TimestampKeys:    []string{"lastReportedAt", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "lastReportedAt|observed_at|updated_at|last_seen_at", "resource_id": "ipAddress|id", "resource_name": "ipAddress|name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|ipAddress|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "ip_address", "schema": "ip_addresses", "source_system": "abuseipdb"},
+				Config: jsonapi.FamilyConfig{
+					StaticQuery:     map[string]string{"confidenceMinimum": "90"},
+					ConfigQuery:     map[string]string{"confidenceMinimum": "confidence_minimum", "ipVersion": "ip_version"},
+					DefaultPageSize: 100,
+					IdentityKeys:    []string{"abuseConfidenceScore", "countryCode"},
+					ResourceURNKind: "abuseipdb_ip_address",
+				},
 			},
 		},
 	})

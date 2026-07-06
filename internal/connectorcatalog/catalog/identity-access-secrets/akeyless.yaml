@@ -3,14 +3,14 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: api_key
+          - key: api_token
             reference_only: true
             secret: true
         model: api_key
       categories:
         - identity
         - secrets
-      description: Collects auth methods, roles, and audit events from Akeyless and projects them into the Cerebro graph as secrets, assets, groups, and audit events for identity, access, device, and secret context.
+      description: Collects items, auth methods, roles, and analytics from Akeyless and projects them into the Cerebro graph as secrets, assets, groups, and runtime analytics for identity, access, and secret context.
       display_name: Akeyless
       id: builtin-akeyless
       resource_families:
@@ -29,27 +29,26 @@ entries:
           event:
             kind: akeyless.items
             required_payload_fields:
-              - id
+              - item_id
             schema_ref: akeyless/items/v1
             urn_kind: akeyless_items
           id: items
-          id_field: id
+          id_field: item_id
           label: Items
-          method: GET
+          method: POST
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.next_page
+            cursor_param: pagination-token
             page_size: 100
-            page_size_param: limit
             type: cursor
-          path: /v2/items
+          path: /list-items
           projection:
             fields:
-              secret_id: id
+              secret_id: item_id
               secret_status: secret_status|status|state
               secret_type: secret_type|type|kind
             template: secret
-          record_selector: $.data[*]
+          record_selector: $.items[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -65,27 +64,26 @@ entries:
           event:
             kind: akeyless.auth_methods
             required_payload_fields:
-              - id
+              - auth_method_id
             schema_ref: akeyless/auth_methods/v1
             urn_kind: akeyless_auth_methods
           id: auth_methods
-          id_field: id
+          id_field: auth_method_id
           label: Auth methods
-          method: GET
+          method: POST
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.next_page
+            cursor_param: pagination-token
             page_size: 100
-            page_size_param: limit
             type: cursor
-          path: /v2/auth-methods
+          path: /list-auth-methods
           projection:
             fields:
-              resource_id: id
-              resource_type: resource_type|type|kind
+              resource_id: auth_method_id|auth_method_access_id
+              resource_type: auth_method_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.auth_methods[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -101,64 +99,55 @@ entries:
           event:
             kind: akeyless.roles
             required_payload_fields:
-              - id
+              - role_id
             schema_ref: akeyless/roles/v1
             urn_kind: akeyless_roles
           id: roles
-          id_field: id
+          id_field: role_id
           label: Roles
-          method: GET
+          method: POST
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.next_page
+            cursor_param: pagination-token
             page_size: 100
-            page_size_param: limit
             type: cursor
-          path: /v2/roles
+          path: /list-roles
           projection:
             fields:
-              description: description|summary
+              description: comment|description|summary
               group_email: group_email|email
-              group_id: id
+              group_id: role_id|id
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $.roles[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
               evidence_types:
-                - logging_configuration
+                - source_snapshot
               families:
-                - audit_events
+                - analytics
               high_value: true
-              id: audit_events
+              id: analytics
               support: partial
-              title: Audit events
-              type: audit_event
+              title: Analytics
+              type: entity_family
           event:
-            kind: akeyless.audit_events
+            kind: akeyless.analytics
             required_payload_fields:
-              - id
-            schema_ref: akeyless/audit_events/v1
-            urn_kind: akeyless_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v2/audit
+              - date_updated
+            schema_ref: akeyless/analytics/v1
+            urn_kind: akeyless_analytics
+          id: analytics
+          id_field: date_updated
+          label: Analytics
+          method: POST
+          path: /get-analytics-data
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
-            template: audit_event
-          record_selector: $.data[*]
+              resource_id: date_updated|id
+              resource_type: resource_type|type
+            template: asset
+          record_selector: $
       schema_version: cerebro.integration/v1
       source_id: akeyless
       tenant_id: builtin_catalog
@@ -167,5 +156,5 @@ entries:
         verification:
           expect_status:
             - 200
-          method: GET
-          path: /v2/item
+          method: POST
+          path: /list-items

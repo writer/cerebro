@@ -1,0 +1,36 @@
+[
+  {
+    "id": "source-anomalo-warehouses-event-1",
+    "kind": "anomalo.warehouses",
+    "schema_ref": "anomalo/warehouses/v1",
+    "source_id": "anomalo",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "42",
+      "family": "warehouses",
+      "provider": "anomalo",
+      "source_provider": "anomalo",
+      "source_system": "anomalo",
+      "record_class": "asset",
+      "schema": "warehouses",
+      "api_method": "GET",
+      "api_path": "/list_warehouses",
+      "resource_id": "42",
+      "resource_name": "Warehouse One",
+      "resource_type": "snowflake",
+      "resource_urn": "urn:cerebro:tenant:anomalo_warehouses:42"
+    },
+    "payload": {
+      "id": 42,
+      "name": "Warehouse One",
+      "warehouse_type": "snowflake",
+      "is_active": true,
+      "tenant_id": "tenant",
+      "source_id": "anomalo",
+      "schema_ref": "anomalo/warehouses/v1",
+      "record_class": "asset"
+    }
+  }
+]

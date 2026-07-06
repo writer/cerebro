@@ -1,83 +1,143 @@
 id: alchemer
 name: "Alchemer"
-description: "Collects users, accounts, records, policies, and audit events from Alchemer and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects account, user, team, survey, contact list, and SSO configuration data from Alchemer and projects it into the Cerebro graph as identity, asset, and policy context."
 emitted_kinds:
-  - alchemer.users
-  - alchemer.accounts
-  - alchemer.records
-  - alchemer.policies
-  - alchemer.audit_events
+  - alchemer.account
+  - alchemer.account_users
+  - alchemer.account_teams
+  - alchemer.surveys
+  - alchemer.contact_lists
+  - alchemer.sso_integrations
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
-  - users
+  - account
+  - account_teams
+  - account_users
+  - contact_lists
+  - sso_integrations
+  - surveys
 kind_lifecycle:
-  - kind: alchemer.users
+  - kind: alchemer.account
     status: active
-  - kind: alchemer.accounts
+  - kind: alchemer.account_users
     status: active
-  - kind: alchemer.records
+  - kind: alchemer.account_teams
     status: active
-  - kind: alchemer.policies
+  - kind: alchemer.surveys
     status: active
-  - kind: alchemer.audit_events
+  - kind: alchemer.contact_lists
     status: active
+  - kind: alchemer.sso_integrations
+    status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: api_token_and_secret_query_params
+  base_url: ${config.base_url}
+  spec_url: https://apihelp.alchemer.com/help/api-reference
+  spec_kind: openapi_embedded_html
+  references:
+    - https://apihelp.alchemer.com/help/api-reference
+    - https://apihelp.alchemer.com/help/authentication
+    - https://apihelp.alchemer.com/help/api-base-domains
+    - https://apihelp.alchemer.com/help/account-object-v5
+    - https://apihelp.alchemer.com/help/accountuser-object-v5
+    - https://apihelp.alchemer.com/help/accountteams-object-v5
+    - https://apihelp.alchemer.com/help/survey-object-v5
+    - https://apihelp.alchemer.com/help/contactlist-object-v5
+    - https://apihelp.alchemer.com/help/sso-integration-list
+    - https://apihelp.alchemer.com/help/sso-object-v5
+  families:
+    - id: account
+      method: GET
+      path: /v5/account
+      operation: get_account
+    - id: account_users
+      method: GET
+      path: /v5/accountuser
+      operation: list_users
+    - id: account_teams
+      method: GET
+      path: /v5/accountteams
+      operation: list_teams
+    - id: surveys
+      method: GET
+      path: /v5/survey
+      operation: list_surveys
+    - id: contact_lists
+      method: GET
+      path: /v5/contactlist
+      operation: list_contact_lists
+    - id: sso_integrations
+      method: GET
+      path: /v5/sso
+      operation: list_sso_integrations
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: alchemer
   dimensions:
-    - id: users
+    - id: account
       type: entity_family
-      title: "Users"
-      families: [users]
+      title: "Account"
+      families: [account]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Reads account metadata from Alchemer's documented Account API.
+    - id: account_users
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Account users"
+      families: [account_users]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Reads Alchemer account users from the documented AccountUser API for identity inventory context.
+    - id: account_teams
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Account teams"
+      families: [account_teams]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Reads Alchemer account teams from the documented AccountTeams API for access-governance context.
+    - id: surveys
+      type: entity_family
+      title: "Surveys"
+      families: [surveys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, data_governance]
+      notes:
+        - Reads survey inventory from Alchemer's documented Survey API.
+    - id: contact_lists
+      type: entity_family
+      title: "Contact lists"
+      families: [contact_lists]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, data_governance]
+      notes:
+        - Reads contact-list inventory from Alchemer's documented ContactList API.
+    - id: sso_integrations
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "SSO integrations"
+      families: [sso_integrations]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      control_domains: [identity_access, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads SSO integration configuration from Alchemer's documented SSO API.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,16 +145,26 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: alchemer.users
-    schema_ref: alchemer/users/v1
+  - kind: alchemer.account
+    schema_ref: alchemer/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: alchemer.account_users
+    schema_ref: alchemer/account_users/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - user_id
     required_payload_fields:
       - id
-  - kind: alchemer.accounts
-    schema_ref: alchemer/accounts/v1
+  - kind: alchemer.account_teams
+    schema_ref: alchemer/account_teams/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +173,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: alchemer.records
-    schema_ref: alchemer/records/v1
+  - kind: alchemer.surveys
+    schema_ref: alchemer/surveys/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -113,21 +183,22 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: alchemer.policies
-    schema_ref: alchemer/policies/v1
+  - kind: alchemer.contact_lists
+    schema_ref: alchemer/contact_lists/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: alchemer.sso_integrations
+    schema_ref: alchemer/sso_integrations/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - policy_id
       - policy_name
-    required_payload_fields:
-      - id
-  - kind: alchemer.audit_events
-    schema_ref: alchemer/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
     required_payload_fields:
       - id

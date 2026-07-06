@@ -1,11 +1,13 @@
 # Alchemer
 
-Generated Source Runtime SDK scaffold for `alchemer`.
+Provider-verified Source Runtime SDK for `alchemer`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `api_token` and `api_token_secret` query parameters
+- Default API base URL: regional Alchemer API domain, for example `https://api.alchemer.com`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +20,16 @@ Generated Source Runtime SDK scaffold for `alchemer`.
 
 ## Families
 
-- `users`, emits `alchemer.users`, reads `/v1/users`
-- `accounts`, emits `alchemer.accounts`, reads `/v1/accounts`
-- `records`, emits `alchemer.records`, reads `/v1/records`
-- `policies`, emits `alchemer.policies`, reads `/v1/policies`
-- `audit_events`, emits `alchemer.audit_events`, reads `/v1/audit_events`
+- `account`, emits `alchemer.account`, reads `GET /v5/account`
+- `account_users`, emits `alchemer.account_users`, reads `GET /v5/accountuser`
+- `account_teams`, emits `alchemer.account_teams`, reads `GET /v5/accountteams`
+- `surveys`, emits `alchemer.surveys`, reads `GET /v5/survey`
+- `contact_lists`, emits `alchemer.contact_lists`, reads `GET /v5/contactlist`
+- `sso_integrations`, emits `alchemer.sso_integrations`, reads `GET /v5/sso`
 
 ## Tests
 
-- `go test ./sources/alchemer ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/alchemer ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/alchemer/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

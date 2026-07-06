@@ -135,3 +135,29 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+provider_api_disproof:
+  status: invalidated
+  reason: no_public_provider_api_spec_for_generated_runtime_families
+  checked_at: 2026-07-06T00:00:00Z
+  references:
+    - https://apitracker.io/a/anecdotes-ai/specifications
+    - https://www.anecdotes.ai/api
+    - https://www.anecdotes.ai/data-studio
+    - https://www.anecdotes.ai/mcp
+    - https://www.stitchflow.com/user-management/anecdotes/api
+  affected_families:
+    - assets
+    - audit_events
+    - findings
+    - policies
+    - vulnerabilities
+  missing_paths:
+    - /v1/assets
+    - /v1/audit_events
+    - /v1/findings
+    - /v1/policies
+    - /v1/vulnerabilities
+  notes:
+    - API Tracker lists no public Anecdotes API specifications, and the provider-owned Data Engine, Data Studio, and MCP pages are product descriptions rather than endpoint references.
+    - Public provider pages mention programmatic evidence ingestion, custom pipelines, and MCP access, but do not document REST endpoints for the generated runtime families or authentication mechanics.
+    - Rewrite this source from a provider-published developer reference or machine-readable API spec before promotion.

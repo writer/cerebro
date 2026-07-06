@@ -1,73 +1,112 @@
 id: ada_support
 name: "Ada Support"
-description: "Collects users, accounts, records, policies, and audit events from Ada Support and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Ada end users, platform integrations, conversations, knowledge articles, and audit log events from Ada Support and projects them into the Cerebro graph for identity, asset, policy, evidence, and compliance context."
 emitted_kinds:
-  - ada_support.users
-  - ada_support.accounts
-  - ada_support.records
-  - ada_support.policies
+  - ada_support.end_users
+  - ada_support.platform_integrations
+  - ada_support.conversations
+  - ada_support.knowledge_articles
   - ada_support.audit_events
 runtime_families:
-  - accounts
   - audit_events
-  - policies
-  - records
-  - users
+  - conversations
+  - end_users
+  - knowledge_articles
+  - platform_integrations
 kind_lifecycle:
-  - kind: ada_support.users
+  - kind: ada_support.end_users
     status: active
-  - kind: ada_support.accounts
+  - kind: ada_support.platform_integrations
     status: active
-  - kind: ada_support.records
+  - kind: ada_support.conversations
     status: active
-  - kind: ada_support.policies
+  - kind: ada_support.knowledge_articles
     status: active
   - kind: ada_support.audit_events
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: bearer_token_authorization_header
+  base_url: ${config.base_url}
+  spec_url: https://docs.ada.cx/openapi/knowledge.json
+  spec_kind: openapi
+  references:
+    - https://docs.ada.cx/reference/introduction/overview
+    - https://docs.ada.cx/reference/introduction/authentication
+    - https://docs.ada.cx/openapi/knowledge.json
+    - https://docs.ada.cx/openapi/data-export.json
+    - https://docs.ada.cx/reference/audit-log/list-audit-log-events.md
+  scope_evidence: []
+  auth_evidence: []
+  families:
+    - id: end_users
+      method: GET
+      path: /v2/end-users/
+      operation: get-end-users
+    - id: platform_integrations
+      method: GET
+      path: /v2/platform-integrations/
+      operation: get-platform-integrations
+    - id: conversations
+      method: GET
+      path: /v2/export/conversations
+      operation: get-conversations
+    - id: knowledge_articles
+      method: GET
+      path: /v2/knowledge/articles/
+      operation: list
+    - id: audit_events
+      method: GET
+      path: /v2/analytics/audit-log/events/
+      operation: list-audit-log-events
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: ada_support
   dimensions:
-    - id: users
+    - id: end_users
       type: entity_family
-      title: "Users"
-      families: [users]
+      title: "End Users"
+      families: [end_users]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Maps Ada's documented End Users API profiles into identity-user context.
+    - id: platform_integrations
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Platform Integrations"
+      families: [platform_integrations]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Maps Ada's documented platform integrations list into runtime asset context.
+    - id: conversations
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Conversations"
+      families: [conversations]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Maps Ada's documented Data Export conversations endpoint into conversation records.
+    - id: knowledge_articles
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "Knowledge Articles"
+      families: [knowledge_articles]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Ada's documented Knowledge Articles API into policy and knowledge-state context.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +116,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Ada's documented Audit Log API events into audit-event context.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,16 +124,16 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: ada_support.users
-    schema_ref: ada_support/users/v1
+  - kind: ada_support.end_users
+    schema_ref: ada_support/end_users/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
-  - kind: ada_support.accounts
-    schema_ref: ada_support/accounts/v1
+      - end_user_id
+  - kind: ada_support.platform_integrations
+    schema_ref: ada_support/platform_integrations/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +142,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: ada_support.records
-    schema_ref: ada_support/records/v1
+  - kind: ada_support.conversations
+    schema_ref: ada_support/conversations/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -112,9 +151,9 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: ada_support.policies
-    schema_ref: ada_support/policies/v1
+      - _id
+  - kind: ada_support.knowledge_articles
+    schema_ref: ada_support/knowledge_articles/v1
     required_attributes:
       - tenant_id
       - source_event_id

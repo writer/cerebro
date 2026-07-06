@@ -1,13 +1,17 @@
 sourceId: apache
 secretKeys:
-  - APACHE_TOKEN
+  - APACHE_BASE_URL
+  - APACHE_USERNAME
+  - APACHE_PASSWORD
 runtimes:
   - localId: eventlog
     config:
+      base_url: env:APACHE_BASE_URL
       family: eventlog
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /eventLogs
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:APACHE_TOKEN
+      username: env:APACHE_USERNAME
+      password: env:APACHE_PASSWORD

@@ -2,81 +2,85 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/v1/users",
-      "created_at": "2026-06-01T00:00:00Z",
-      "department": "department-source-adp_workforce_now-users-1",
-      "display_name": "Adp Workforce Now Users Fixture",
-      "domain": "domain-source-adp_workforce_now-users-1",
-      "email": "email@adp-workforce-now.example.test",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-adp_workforce_now-users-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-adp_workforce_now-users-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/adp_workforce_now/users/source-adp_workforce_now-users-1",
-      "external_id": "source-adp_workforce_now-users-1",
+      "api_path": "/hr/v2/workers",
+      "created_at": "2022-01-15",
+      "department": "People Operations",
+      "display_name": "Jordan Worker",
+      "domain": "jordan.worker@example.test",
+      "email": "jordan.worker@example.test",
+      "external_id": "G3GMA28TB2SVJ2TF",
       "family": "users",
-      "job_title": "job-title-source-adp_workforce_now-users-1",
-      "last_login_at": "2026-06-01T00:00:00Z",
-      "login": "login@adp-workforce-now.example.test",
-      "manager": "manager-source-adp_workforce_now-users-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "primary_email": "primary@adp-workforce-now.example.test",
+      "job_title": "HR Analyst",
+      "login": "jordan.worker@example.test",
+      "manager": "G4MANAGER1234567",
+      "observed_at": "2022-01-15",
+      "primary_email": "jordan.worker@example.test",
       "provider": "adp_workforce_now",
       "record_class": "identity_user",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-adp_workforce_now-users-1",
-      "resource_name": "Adp Workforce Now Users Fixture",
-      "resource_type": "users",
-      "resource_urn": "urn:cerebro:tenant:adp_workforce_now_users:source-adp_workforce_now-users-1",
+      "record_selector": "$.workers[*]",
+      "resource_id": "G3GMA28TB2SVJ2TF",
+      "resource_name": "Jordan Worker",
+      "resource_type": "worker",
+      "resource_urn": "urn:cerebro:tenant:adp_workforce_now_users:G3GMA28TB2SVJ2TF",
       "schema": "users",
-      "source_event_id": "source-adp_workforce_now-users-1",
+      "source_event_id": "G3GMA28TB2SVJ2TF",
       "source_provider": "adp_workforce_now",
       "source_system": "adp_workforce_now",
-      "status": "open",
+      "status": "Active",
       "tenant_id": "tenant",
-      "user_id": "source-adp_workforce_now-users-1"
+      "user_id": "G3GMA28TB2SVJ2TF"
     },
-    "id": "source-adp_workforce_now-users-event-1",
+    "id": "adp-workforce-now-users-event-1",
     "kind": "adp_workforce_now.users",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2022-01-15T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/users",
-      "created_at": "2026-06-01T00:00:00Z",
-      "department": "department-source-adp_workforce_now-users-1",
-      "display_name": "Adp Workforce Now Users Fixture",
-      "domain": "domain-source-adp_workforce_now-users-1",
-      "email": "email@adp-workforce-now.example.test",
-      "event_id": "source-adp_workforce_now-users-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-adp_workforce_now-users-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-adp_workforce_now-users-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/adp_workforce_now/users/source-adp_workforce_now-users-1"
+      "associateOID": "G3GMA28TB2SVJ2TF",
+      "businessCommunication": {
+        "emails": [
+          {
+            "emailUri": "jordan.worker@example.test"
+          }
+        ]
       },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/adp_workforce_now/users/source-adp_workforce_now-users-1",
-      "family": "users",
-      "id": "source-adp_workforce_now-users-1",
-      "job_title": "job-title-source-adp_workforce_now-users-1",
-      "last_login_at": "2026-06-01T00:00:00Z",
-      "login": "login@adp-workforce-now.example.test",
-      "manager": "manager-source-adp_workforce_now-users-1",
-      "name": "Adp Workforce Now Users Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "primary_email": "primary@adp-workforce-now.example.test",
-      "record_class": "identity_user",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-adp_workforce_now-users-1",
-      "resource_type": "users",
-      "resource_urn": "urn:cerebro:tenant:adp_workforce_now_users:source-adp_workforce_now-users-1",
+      "person": {
+        "legalName": {
+          "formattedName": "Jordan Worker",
+          "givenName": "Jordan",
+          "familyName1": "Worker"
+        }
+      },
       "schema_ref": "adp_workforce_now/users/v1",
       "source_id": "adp_workforce_now",
-      "status": "open",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "source-adp_workforce_now-users-1"
+      "workAssignments": [
+        {
+          "jobTitle": "HR Analyst",
+          "homeOrganizationalUnits": [
+            {
+              "nameCode": {
+                "shortName": "People Operations"
+              }
+            }
+          ],
+          "reportsTo": [
+            {
+              "associateOID": "G4MANAGER1234567"
+            }
+          ]
+        }
+      ],
+      "workerDates": {
+        "originalHireDate": "2022-01-15"
+      },
+      "workerID": {
+        "idValue": "100011"
+      },
+      "workerStatus": {
+        "statusCode": {
+          "codeValue": "Active",
+          "shortName": "Active"
+        }
+      }
     },
     "schema_ref": "adp_workforce_now/users/v1",
     "source_id": "adp_workforce_now",

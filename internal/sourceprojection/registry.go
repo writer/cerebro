@@ -863,7 +863,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.items":        akeylessItemsProjections,
 	"akeyless.auth_methods": akeylessAuthMethodsProjections,
 	"akeyless.roles":        akeylessRolesProjections,
-	"akeyless.audit_events": akeylessAuditEventsProjections,
+	"akeyless.analytics":    akeylessAnalyticsProjections,
 	// conjur generated projectors (sourcegen promotion)
 	"conjur.authenticator": conjurAuthenticatorProjections,
 	"conjur.resource":      conjurResourceProjections,
@@ -900,44 +900,43 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"discord.role":       discordRoleProjections,
 
 	// abnormal_security generated projectors (sourcegen promotion)
-	"abnormal_security.assets":          abnormalSecurityAssetsProjections,
+	"abnormal_security.resources":       abnormalSecurityResourcesProjections,
 	"abnormal_security.audit_events":    abnormalSecurityAuditEventsProjections,
-	"abnormal_security.findings":        abnormalSecurityFindingsProjections,
-	"abnormal_security.policies":        abnormalSecurityPoliciesProjections,
-	"abnormal_security.vulnerabilities": abnormalSecurityVulnerabilitiesProjections,
+	"abnormal_security.cases":           abnormalSecurityCasesProjections,
+	"abnormal_security.posture_catalog": abnormalSecurityPostureCatalogProjections,
+	"abnormal_security.threats":         abnormalSecurityThreatsProjections,
 
 	// abuseipdb generated projectors (sourcegen promotion)
-	"abuseipdb.audit_events": abuseipdbAuditEventsProjections,
 	"abuseipdb.ip_addresses": abuseipdbIpAddressesProjections,
 	"abuseipdb.reports":      abuseipdbReportsProjections,
 
 	// activecampaign generated projectors (sourcegen promotion)
-	"activecampaign.accounts":     activecampaignAccountsProjections,
-	"activecampaign.audit_events": activecampaignAuditEventsProjections,
-	"activecampaign.policies":     activecampaignPoliciesProjections,
-	"activecampaign.records":      activecampaignRecordsProjections,
-	"activecampaign.users":        activecampaignUsersProjections,
+	"activecampaign.accounts":    activecampaignAccountsProjections,
+	"activecampaign.automations": activecampaignAutomationsProjections,
+	"activecampaign.campaigns":   activecampaignCampaignsProjections,
+	"activecampaign.contacts":    activecampaignContactsProjections,
+	"activecampaign.users":       activecampaignUsersProjections,
 
 	// activtrak generated projectors (sourcegen promotion)
-	"activtrak.accounts":     activtrakAccountsProjections,
-	"activtrak.audit_events": activtrakAuditEventsProjections,
-	"activtrak.policies":     activtrakPoliciesProjections,
-	"activtrak.records":      activtrakRecordsProjections,
+	"activtrak.activity_log": activtrakActivityLogProjections,
+	"activtrak.clients":      activtrakClientsProjections,
+	"activtrak.consumers":    activtrakConsumersProjections,
+	"activtrak.groups":       activtrakGroupsProjections,
 	"activtrak.users":        activtrakUsersProjections,
 
 	// acunetix generated projectors (sourcegen promotion)
-	"acunetix.assets":          acunetixAssetsProjections,
-	"acunetix.audit_events":    acunetixAuditEventsProjections,
-	"acunetix.findings":        acunetixFindingsProjections,
-	"acunetix.policies":        acunetixPoliciesProjections,
-	"acunetix.vulnerabilities": acunetixVulnerabilitiesProjections,
+	"acunetix.reports":           acunetixReportsProjections,
+	"acunetix.scanning_profiles": acunetixScanningProfilesProjections,
+	"acunetix.scans":             acunetixScansProjections,
+	"acunetix.targets":           acunetixTargetsProjections,
+	"acunetix.vulnerabilities":   acunetixVulnerabilitiesProjections,
 
 	// ada_support generated projectors (sourcegen promotion)
-	"ada_support.accounts":     adaSupportAccountsProjections,
-	"ada_support.audit_events": adaSupportAuditEventsProjections,
-	"ada_support.policies":     adaSupportPoliciesProjections,
-	"ada_support.records":      adaSupportRecordsProjections,
-	"ada_support.users":        adaSupportUsersProjections,
+	"ada_support.audit_events":          adaSupportAuditEventsProjections,
+	"ada_support.conversations":         adaSupportConversationsProjections,
+	"ada_support.end_users":             adaSupportEndUsersProjections,
+	"ada_support.knowledge_articles":    adaSupportKnowledgeArticlesProjections,
+	"ada_support.platform_integrations": adaSupportPlatformIntegrationsProjections,
 
 	// addigy generated projectors (sourcegen promotion)
 	"addigy.audit_events": addigyAuditEventsProjections,
@@ -950,15 +949,12 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"adobe_workfront.audit_events": adobeWorkfrontAuditEventsProjections,
 	"adobe_workfront.documents":    adobeWorkfrontDocumentsProjections,
 	"adobe_workfront.groups":       adobeWorkfrontGroupsProjections,
+	"adobe_workfront.projects":     adobeWorkfrontProjectsProjections,
 	"adobe_workfront.users":        adobeWorkfrontUsersProjections,
-	"adobe_workfront.workspaces":   adobeWorkfrontWorkspacesProjections,
 
 	// adp_workforce_now generated projectors (sourcegen promotion)
-	"adp_workforce_now.accounts":     adpWorkforceNowAccountsProjections,
-	"adp_workforce_now.audit_events": adpWorkforceNowAuditEventsProjections,
-	"adp_workforce_now.policies":     adpWorkforceNowPoliciesProjections,
-	"adp_workforce_now.records":      adpWorkforceNowRecordsProjections,
-	"adp_workforce_now.users":        adpWorkforceNowUsersProjections,
+	"adp_workforce_now.event_notifications": adpWorkforceNowEventNotificationsProjections,
+	"adp_workforce_now.users":               adpWorkforceNowUsersProjections,
 
 	// agiloft generated projectors (sourcegen promotion)
 	"agiloft.accounts":     agiloftAccountsProjections,
@@ -967,11 +963,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"agiloft.records":      agiloftRecordsProjections,
 	"agiloft.users":        agiloftUsersProjections,
 
-	// aha generated projectors (sourcegen promotion)
+	// aha provider-verified projectors (sourcegen promotion)
 	"aha.audit_events": ahaAuditEventsProjections,
-	"aha.deployments":  ahaDeploymentsProjections,
-	"aha.projects":     ahaProjectsProjections,
-	"aha.repositories": ahaRepositoriesProjections,
+	"aha.features":     ahaFeaturesProjections,
+	"aha.products":     ahaProductsProjections,
+	"aha.releases":     ahaReleasesProjections,
 	"aha.users":        ahaUsersProjections,
 
 	// airbase generated projectors (sourcegen promotion)
@@ -981,37 +977,37 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"airbase.records":      airbaseRecordsProjections,
 	"airbase.users":        airbaseUsersProjections,
 
-	// airbrake generated projectors (sourcegen promotion)
-	"airbrake.alerts":       airbrakeAlertsProjections,
-	"airbrake.audit_events": airbrakeAuditEventsProjections,
-	"airbrake.dashboards":   airbrakeDashboardsProjections,
-	"airbrake.incidents":    airbrakeIncidentsProjections,
-	"airbrake.monitors":     airbrakeMonitorsProjections,
+	// airbrake provider-verified projectors (sourcegen promotion)
+	"airbrake.deploys":            airbrakeDeploysProjections,
+	"airbrake.groups":             airbrakeGroupsProjections,
+	"airbrake.project_activities": airbrakeProjectActivitiesProjections,
+	"airbrake.projects":           airbrakeProjectsProjections,
+	"airbrake.source_maps":        airbrakeSourceMapsProjections,
 
 	// airbyte_cloud generated projectors (sourcegen promotion)
-	"airbyte_cloud.accounts":     airbyteCloudAccountsProjections,
-	"airbyte_cloud.audit_events": airbyteCloudAuditEventsProjections,
-	"airbyte_cloud.policies":     airbyteCloudPoliciesProjections,
-	"airbyte_cloud.records":      airbyteCloudRecordsProjections,
-	"airbyte_cloud.users":        airbyteCloudUsersProjections,
+	"airbyte_cloud.connections":   airbyteCloudConnectionsProjections,
+	"airbyte_cloud.organizations": airbyteCloudOrganizationsProjections,
+	"airbyte_cloud.permissions":   airbyteCloudPermissionsProjections,
+	"airbyte_cloud.sources":       airbyteCloudSourcesProjections,
+	"airbyte_cloud.users":         airbyteCloudUsersProjections,
 
 	// aircall generated projectors (sourcegen promotion)
-	"aircall.audit_events": aircallAuditEventsProjections,
-	"aircall.documents":    aircallDocumentsProjections,
-	"aircall.groups":       aircallGroupsProjections,
-	"aircall.users":        aircallUsersProjections,
-	"aircall.workspaces":   aircallWorkspacesProjections,
+	"aircall.calls":    aircallCallsProjections,
+	"aircall.contacts": aircallContactsProjections,
+	"aircall.numbers":  aircallNumbersProjections,
+	"aircall.teams":    aircallTeamsProjections,
+	"aircall.users":    aircallUsersProjections,
 
 	// airfocus generated projectors (sourcegen promotion)
-	"airfocus.audit_events": airfocusAuditEventsProjections,
-	"airfocus.deployments":  airfocusDeploymentsProjections,
-	"airfocus.projects":     airfocusProjectsProjections,
-	"airfocus.repositories": airfocusRepositoriesProjections,
-	"airfocus.users":        airfocusUsersProjections,
+	"airfocus.api_keys":         airfocusAPIKeysProjections,
+	"airfocus.link_types":       airfocusLinkTypesProjections,
+	"airfocus.users":            airfocusUsersProjections,
+	"airfocus.workspace_groups": airfocusWorkspaceGroupsProjections,
+	"airfocus.workspaces":       airfocusWorkspacesProjections,
 
 	// airtable generated projectors (sourcegen promotion)
 	"airtable.audit_events": airtableAuditEventsProjections,
-	"airtable.projects":     airtableProjectsProjections,
+	"airtable.bases":        airtableBasesProjections,
 	"airtable.users":        airtableUsersProjections,
 
 	// akeneo generated projectors (sourcegen promotion)
@@ -1029,32 +1025,30 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeneo.v1_attribute":                 akeneoV1AttributeProjections,
 
 	// alation generated projectors (sourcegen promotion)
-	"alation.accounts":     alationAccountsProjections,
-	"alation.audit_events": alationAuditEventsProjections,
+	"alation.data_sources": alationDataSourcesProjections,
+	"alation.groups":       alationGroupsProjections,
 	"alation.policies":     alationPoliciesProjections,
-	"alation.records":      alationRecordsProjections,
+	"alation.terms":        alationTermsProjections,
 	"alation.users":        alationUsersProjections,
 
-	// alchemer generated projectors (sourcegen promotion)
-	"alchemer.accounts":     alchemerAccountsProjections,
-	"alchemer.audit_events": alchemerAuditEventsProjections,
-	"alchemer.policies":     alchemerPoliciesProjections,
-	"alchemer.records":      alchemerRecordsProjections,
-	"alchemer.users":        alchemerUsersProjections,
+	// alchemer provider-verified projectors (sourcegen promotion)
+	"alchemer.account":          alchemerAccountProjections,
+	"alchemer.account_teams":    alchemerAccountTeamsProjections,
+	"alchemer.account_users":    alchemerAccountUsersProjections,
+	"alchemer.contact_lists":    alchemerContactListsProjections,
+	"alchemer.sso_integrations": alchemerSSOIntegrationsProjections,
+	"alchemer.surveys":          alchemerSurveysProjections,
 
 	// alteryx generated projectors (sourcegen promotion)
-	"alteryx.accounts":     alteryxAccountsProjections,
 	"alteryx.audit_events": alteryxAuditEventsProjections,
-	"alteryx.policies":     alteryxPoliciesProjections,
-	"alteryx.records":      alteryxRecordsProjections,
+	"alteryx.collections":  alteryxCollectionsProjections,
+	"alteryx.usergroups":   alteryxUserGroupsProjections,
 	"alteryx.users":        alteryxUsersProjections,
+	"alteryx.workflows":    alteryxWorkflowsProjections,
 
 	// amplitude generated projectors (sourcegen promotion)
-	"amplitude.accounts":     amplitudeAccountsProjections,
-	"amplitude.audit_events": amplitudeAuditEventsProjections,
-	"amplitude.policies":     amplitudePoliciesProjections,
-	"amplitude.records":      amplitudeRecordsProjections,
-	"amplitude.users":        amplitudeUsersProjections,
+	"amplitude.groups": amplitudeGroupsProjections,
+	"amplitude.users":  amplitudeUsersProjections,
 
 	// anchore generated projectors (sourcegen promotion)
 	"anchore.assets":          anchoreAssetsProjections,
@@ -1076,11 +1070,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"anomali_threatstream.vulnerabilities": anomaliThreatstreamVulnerabilitiesProjections,
 
 	// anomalo generated projectors (sourcegen promotion)
-	"anomalo.accounts":     anomaloAccountsProjections,
-	"anomalo.audit_events": anomaloAuditEventsProjections,
-	"anomalo.policies":     anomaloPoliciesProjections,
-	"anomalo.records":      anomaloRecordsProjections,
-	"anomalo.users":        anomaloUsersProjections,
+	"anomalo.checks":                anomaloChecksProjections,
+	"anomalo.notification_channels": anomaloNotificationChannelsProjections,
+	"anomalo.organizations":         anomaloOrganizationsProjections,
+	"anomalo.tables":                anomaloTablesProjections,
+	"anomalo.warehouses":            anomaloWarehousesProjections,
 
 	// apache generated projectors (sourcegen promotion)
 	"apache.eventlog":   apacheEventlogProjections,
@@ -1089,18 +1083,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apache.user":       apacheUserProjections,
 
 	// apacta generated projectors (sourcegen promotion)
-	"apacta.activity":                    apactaActivityProjections,
-	"apacta.changelog":                   apactaChangelogProjections,
-	"apacta.city":                        apactaCityProjections,
-	"apacta.contact_person":              apactaContactPersonProjections,
-	"apacta.event":                       apactaEventProjections,
-	"apacta.mass_messages_user":          apactaMassMessagesUserProjections,
-	"apacta.projects_user":               apactaProjectsUserProjections,
-	"apacta.role":                        apactaRoleProjections,
-	"apacta.time_entry_rule_group":       apactaTimeEntryRuleGroupProjections,
-	"apacta.user":                        apactaUserProjections,
-	"apacta.user_custom_field_attribute": apactaUserCustomFieldAttributeProjections,
-	"apacta.user_custom_field_value":     apactaUserCustomFieldValueProjections,
+	"apacta.activity":       apactaActivityProjections,
+	"apacta.city":           apactaCityProjections,
+	"apacta.contact_person": apactaContactPersonProjections,
+	"apacta.projects_user":  apactaProjectsUserProjections,
+	"apacta.user":           apactaUserProjections,
 
 	// api2cart generated projectors (sourcegen promotion)
 	"api2cart.attribute_attributeset_list_json": api2cartAttributeAttributesetListJsonProjections,
@@ -1113,11 +1100,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apideck.ledger_account": apideckLedgerAccountProjections,
 
 	// apigee generated projectors (sourcegen promotion)
-	"apigee.audit_events": apigeeAuditEventsProjections,
-	"apigee.deployments":  apigeeDeploymentsProjections,
-	"apigee.projects":     apigeeProjectsProjections,
-	"apigee.repositories": apigeeRepositoriesProjections,
-	"apigee.users":        apigeeUsersProjections,
+	"apigee.api_proxies":   apigeeAPIProxiesProjections,
+	"apigee.apps":          apigeeAppsProjections,
+	"apigee.deployments":   apigeeDeploymentsProjections,
+	"apigee.developers":    apigeeDevelopersProjections,
+	"apigee.organizations": apigeeOrganizationsProjections,
 
 	// apiiro generated projectors (sourcegen promotion)
 	"apiiro.assets":          apiiroAssetsProjections,
@@ -1126,12 +1113,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apiiro.policies":        apiiroPoliciesProjections,
 	"apiiro.vulnerabilities": apiiroVulnerabilitiesProjections,
 
-	// apollo generated projectors (sourcegen promotion)
-	"apollo.accounts":     apolloAccountsProjections,
-	"apollo.audit_events": apolloAuditEventsProjections,
-	"apollo.policies":     apolloPoliciesProjections,
-	"apollo.records":      apolloRecordsProjections,
-	"apollo.users":        apolloUsersProjections,
+	// apollo provider-verified projectors (sourcegen promotion)
+	"apollo.accounts": apolloAccountsProjections,
+	"apollo.contacts": apolloContactsProjections,
+	"apollo.users":    apolloUsersProjections,
 
 	// appcircle generated projectors (sourcegen promotion)
 	"appcircle.audit_events": appcircleAuditEventsProjections,

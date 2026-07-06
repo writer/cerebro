@@ -1,0 +1,30 @@
+[
+  {
+    "id": "alation-terms-501",
+    "kind": "alation.terms",
+    "schema_ref": "alation/terms/v1",
+    "source_id": "alation",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "501",
+      "resource_id": "501",
+      "resource_name": "Customer",
+      "resource_type": "term",
+      "resource_urn": "urn:cerebro:tenant:alation_terms:501",
+      "term_id": "501",
+      "glossary_id": "1",
+      "record_class": "asset",
+      "schema": "terms",
+      "source_system": "alation"
+    },
+    "payload": {
+      "id": 501,
+      "title": "Customer",
+      "description": "Business glossary term",
+      "glossary_id": 1,
+      "ts_created": "2026-06-01 00:00:00"
+    }
+  }
+]

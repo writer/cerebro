@@ -3,6 +3,8 @@ package akeyless
 import (
 	"context"
 	"embed"
+	"fmt"
+	"net/http"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -16,16 +18,14 @@ var catalogFS embed.FS
 const (
 	sourceID               = "akeyless"
 	defaultFamily          = familyItems
-	defaultHealthPath      = "/v2/item"
 	defaultBaseURLTemplate = "https://api.akeyless.io"
-	tokenScheme            = "Token"
 	familyItems            = "items"
 	familyAuthMethods      = "auth_methods"
 	familyRoles            = "roles"
-	familyAuditEvents      = "audit_events"
+	familyAnalytics        = "analytics"
 )
 
-var templateKeys = []string{"api_key"}
+var templateKeys = []string{"api_token"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -41,56 +41,60 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "api_key",
-		TokenScheme:     tokenScheme,
+		AuthModel:       "none",
 		Families: []jsonapi.Family{
 			{
 				Name:             familyItems,
-				Path:             "/v2/items",
-				URNKind:          "runtime_items",
-				IDKeys:           []string{"id", "secret_id", "name", "key", "sid"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "created_at|created|date_created", "secret_id": "secret_id|id|key|sid|name", "secret_last_rotated_at": "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at", "secret_name": "secret_name|name|display_name|label|title", "secret_rotation_enabled": "secret_rotation_enabled|rotation_enabled|auto_rotate", "secret_status": "secret_status|status|state", "secret_type": "secret_type|type|kind", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Path:             "/list-items",
+				URNKind:          "akeyless_items",
+				IDKeys:           []string{"item_id", "uid", "name", "item_name"},
+				CursorParam:      "pagination-token",
+				NextCursorKeys:   []string{"next_page"},
+				ListKeys:         []string{"items"},
+				TimestampKeys:    []string{"modification_date", "creation_date", "access_date", "observed_at", "updated_at"},
+				DisablePageSize:  true,
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at|modification_date|creation_date", "resource_id": "item_id|uid|id|name", "resource_name": "item_name|name|display_name|hostname", "resource_type": "item_type|type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "creation_date|created_at|created|date_created", "secret_id": "item_id|uid|id|name", "secret_last_rotated_at": "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at", "secret_name": "item_name|name|display_name|label|title", "secret_rotation_enabled": "auto_rotate|rotation_enabled|secret_rotation_enabled", "secret_status": "item_state|secret_status|status|state", "secret_type": "item_type|type|kind", "source_event_id": "item_id|uid|id|name", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "secret", "schema": "items", "source_system": "akeyless"},
+				Config:           akeylessBodyConfig(),
 			},
 			{
 				Name:             familyAuthMethods,
-				Path:             "/v2/auth-methods",
-				URNKind:          "runtime_auth_methods",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Path:             "/list-auth-methods",
+				URNKind:          "akeyless_auth_methods",
+				IDKeys:           []string{"auth_method_id", "auth_method_access_id", "auth_method_name"},
+				CursorParam:      "pagination-token",
+				NextCursorKeys:   []string{"next_page"},
+				ListKeys:         []string{"auth_methods"},
+				TimestampKeys:    []string{"modification_date", "creation_date", "access_date", "observed_at", "updated_at"},
+				DisablePageSize:  true,
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at|modification_date|creation_date", "resource_id": "auth_method_id|auth_method_access_id|id", "resource_name": "auth_method_name|name|display_name", "resource_type": "auth_method_type|type|access_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "auth_method_id|auth_method_access_id|id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "auth_methods", "source_system": "akeyless"},
+				Config:           akeylessBodyConfig(),
 			},
 			{
 				Name:             familyRoles,
-				Path:             "/v2/roles",
-				URNKind:          "runtime_roles",
-				IDKeys:           []string{"id", "group_id", "group_email", "email"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Path:             "/list-roles",
+				URNKind:          "akeyless_roles",
+				IDKeys:           []string{"role_id", "role_name", "id"},
+				CursorParam:      "pagination-token",
+				NextCursorKeys:   []string{"next_page"},
+				ListKeys:         []string{"roles"},
+				TimestampKeys:    []string{"modification_date", "creation_date", "access_date", "observed_at", "updated_at"},
+				DisablePageSize:  true,
+				Attributes:       map[string]string{"description": "comment|description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "role_id|id", "group_name": "role_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at|modification_date|creation_date", "resource_id": "role_id|id", "resource_name": "role_name|name|display_name", "resource_type": "resource_type|type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "role_id|id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "roles", "source_system": "akeyless"},
+				Config:           akeylessBodyConfig(),
 			},
 			{
-				Name:             familyAuditEvents,
-				Path:             "/v2/audit",
-				URNKind:          "runtime_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "akeyless"},
+				Name:             familyAnalytics,
+				Path:             "/get-analytics-data",
+				URNKind:          "akeyless_analytics",
+				IDKeys:           []string{"date_updated", "id"},
+				TimestampKeys:    []string{"observed_at", "updated_at"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|date_updated", "resource_id": "date_updated|id", "resource_name": "name|report_name", "resource_type": "resource_type|type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "date_updated|id", "tenant_id": "tenant_id|metadata.tenant_id", "total_clients": "usage_reports.*.total_clients|total_clients", "total_secrets": "usage_reports.*.total_secrets|total_secrets"},
+				StaticAttributes: map[string]string{"record_class": "analytics_report", "resource_type": "akeyless_analytics", "schema": "analytics", "source_system": "akeyless"},
+				Singleton:        true,
+				Config:           akeylessBodyConfig(),
 			},
 		},
 	})
@@ -110,9 +114,6 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
-		return err
-	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
 	}
 	return s.inner.Check(ctx, runtimeCfg)
@@ -136,25 +137,25 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	_ = ctx
+	if strings.TrimSpace(sourcecdk.ConfigValue(cfg, "api_token")) == "" {
+		return sourcecdk.Config{}, fmt.Errorf("%w: %s api_token is required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
+func akeylessBodyConfig() jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{
+		Method: http.MethodPost,
+		JSONBody: jsonapi.JSONBodyConfig{
+			Config:      map[string]string{"token": "api_token"},
+			CursorParam: "pagination-token",
+			SendEmpty:   true,
+		},
+	}
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func (s *Source) allowLoopbackForTest() {

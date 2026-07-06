@@ -1,0 +1,63 @@
+[
+  {
+    "id": "123-event",
+    "kind": "alchemer.sso_integrations",
+    "schema_ref": "alchemer/sso_integrations/v1",
+    "source_id": "alchemer",
+    "tenant_id": "tenant",
+    "occurred_at": "2017-06-22T17:23:43Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "123",
+      "resource_urn": "urn:cerebro:tenant:alchemer_sso_integrations:123",
+      "resource_type": "sso_integration",
+      "resource_id": "123",
+      "resource_name": "Survey Respondent Authentication",
+      "record_class": "policy",
+      "schema": "sso_integrations",
+      "schema_ref": "alchemer/sso_integrations/v1",
+      "source_system": "alchemer",
+      "provider": "alchemer",
+      "source_provider": "alchemer",
+      "observed_at": "2017-06-22 17:23:43",
+      "policy_id": "123",
+      "policy_name": "Survey Respondent Authentication",
+      "policy_status": "Active",
+      "policy_type": "sso_integration"
+    },
+    "payload": {
+      "id": "123",
+      "name": "123",
+      "sso_integration": {
+        "id": "123",
+        "entity_id": "https://idp.example.com/adfs/services/trust",
+        "login": "https://idp.example.com/adfs/ls/",
+        "logout": "https://idp.example.com/adfs/ls/",
+        "cert_fingerprint": "abcd1234efgh5678ijkl9101112",
+        "customerid": "xxxxx",
+        "created": "2017-02-06 15:51:04",
+        "dModified": "2017-06-22 17:23:43",
+        "status": "Active",
+        "cert_domain": null,
+        "user_last_modified": "0",
+        "creatusers": "false",
+        "userteam": "0",
+        "userlicense": "0",
+        "userrole": "2",
+        "iUserIDCreated": "xxxxx",
+        "usersolo": "true",
+        "email_notification": null,
+        "disable_users": "0",
+        "weeks_to_disable": null,
+        "type": "Survey",
+        "attributes": ["Dept", "Street", "DisplayName"],
+        "name": "Survey Respondent Authentication",
+        "force_sso_login": "0",
+        "user_deleted": null,
+        "deleted": null,
+        "sp_metadata": "app.alchemer.com/login/getsamlxml/idp/123",
+        "sp_login": "app.alchemer.com/ssologin.php?idp=123"
+      }
+    }
+  }
+]

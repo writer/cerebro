@@ -1,0 +1,31 @@
+[
+  {
+    "id": "source-alteryx-workflows-event-1",
+    "tenant_id": "tenant",
+    "source_id": "alteryx",
+    "kind": "alteryx.workflows",
+    "schema_ref": "alteryx/workflows/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "provider": "alteryx",
+      "source_system": "alteryx",
+      "schema": "workflows",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "workflow-1",
+      "resource_type": "workflow",
+      "resource_name": "Daily Evidence",
+      "resource_urn": "urn:cerebro:tenant:alteryx_workflows:workflow-1",
+      "source_event_id": "workflow-1"
+    },
+    "payload": {
+      "id": "workflow-1",
+      "name": "Daily Evidence",
+      "ownerId": "user-1",
+      "executionMode": "Safe",
+      "tenant_id": "tenant",
+      "schema_ref": "alteryx/workflows/v1",
+      "source_id": "alteryx"
+    }
+  }
+]

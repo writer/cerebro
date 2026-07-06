@@ -1,11 +1,12 @@
 # Ada Support
 
-Generated Source Runtime SDK scaffold for `ada_support`.
+Provider-verified Source Runtime SDK mapping for `ada_support`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `bearer_token` (`Authorization: Bearer <token>`)
+- Base URL: Ada tenant API base URL such as `https://example.ada.support/api`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,15 @@ Generated Source Runtime SDK scaffold for `ada_support`.
 
 ## Families
 
-- `users`, emits `ada_support.users`, reads `/v1/users`
-- `accounts`, emits `ada_support.accounts`, reads `/v1/accounts`
-- `records`, emits `ada_support.records`, reads `/v1/records`
-- `policies`, emits `ada_support.policies`, reads `/v1/policies`
-- `audit_events`, emits `ada_support.audit_events`, reads `/v1/audit_events`
+- `end_users`, emits `ada_support.end_users`, reads `GET /v2/end-users/`
+- `platform_integrations`, emits `ada_support.platform_integrations`, reads `GET /v2/platform-integrations/`
+- `conversations`, emits `ada_support.conversations`, reads `GET /v2/export/conversations`
+- `knowledge_articles`, emits `ada_support.knowledge_articles`, reads `GET /v2/knowledge/articles/`
+- `audit_events`, emits `ada_support.audit_events`, reads `GET /v2/analytics/audit-log/events/`
 
 ## Tests
 
-- `go test ./sources/ada_support ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/ada_support ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/ada_support/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

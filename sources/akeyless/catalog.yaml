@@ -5,12 +5,55 @@ emitted_kinds:
   - akeyless.items
   - akeyless.auth_methods
   - akeyless.roles
-  - akeyless.audit_events
+  - akeyless.analytics
 runtime_families:
-  - audit_events
+  - analytics
   - auth_methods
   - items
   - roles
+kind_lifecycle:
+  - kind: akeyless.items
+    status: active
+  - kind: akeyless.auth_methods
+    status: active
+  - kind: akeyless.roles
+    status: active
+  - kind: akeyless.analytics
+    status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: akeyless_token_json_body
+  base_url: https://api.akeyless.io
+  spec_url: https://docs.akeyless.io/reference/listitems.md
+  spec_kind: api_reference_markdown
+  references:
+    - https://docs.akeyless.io/reference/listitems.md
+    - https://docs.akeyless.io/reference/listauthmethods.md
+    - https://docs.akeyless.io/reference/listroles.md
+    - https://docs.akeyless.io/reference/getanalyticsdata.md
+    - https://docs.akeyless.io/docs/go.md
+    - https://docs.akeyless.io/docs/auth-with-api-key.md
+  families:
+    - id: analytics
+      method: POST
+      path: /get-analytics-data
+      operation: getAnalyticsData
+    - id: auth_methods
+      method: POST
+      path: /list-auth-methods
+      operation: listAuthMethods
+    - id: items
+      method: POST
+      path: /list-items
+      operation: listItems
+    - id: roles
+      method: POST
+      path: /list-roles
+      operation: listRoles
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: akeyless
@@ -24,7 +67,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Akeyless item inventory from the provider-documented POST /list-items endpoint.
     - id: auth_methods
       type: entity_family
       title: "Auth Methods"
@@ -34,7 +77,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Akeyless authentication methods from the provider-documented POST /list-auth-methods endpoint.
     - id: roles
       type: entity_family
       title: "Roles"
@@ -44,17 +87,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads Akeyless access roles from the provider-documented POST /list-roles endpoint.
+    - id: analytics
+      type: entity_family
+      title: "Analytics"
+      families: [analytics]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
+      evidence_types: [source_snapshot]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Akeyless analytics and usage reports from the provider-documented POST /get-analytics-data endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -68,7 +111,7 @@ event_contracts:
       - secret_id
       - secret_name
     required_payload_fields:
-      - id
+      - item_id
   - kind: akeyless.auth_methods
     schema_ref: akeyless/auth_methods/v1
     required_attributes:
@@ -78,7 +121,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - auth_method_id
   - kind: akeyless.roles
     schema_ref: akeyless/roles/v1
     required_attributes:
@@ -86,13 +129,13 @@ event_contracts:
       - source_event_id
       - group_id
     required_payload_fields:
-      - id
-  - kind: akeyless.audit_events
-    schema_ref: akeyless/audit_events/v1
+      - role_id
+  - kind: akeyless.analytics
+    schema_ref: akeyless/analytics/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_id
+      - resource_type
     required_payload_fields:
-      - id
+      - date_updated

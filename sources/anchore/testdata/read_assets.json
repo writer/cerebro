@@ -2,7 +2,7 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/v1/assets",
+      "api_path": "/apps/{app_id}/versions/{version_id}/assets",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-anchore-assets-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-anchore-assets-1",
@@ -15,8 +15,8 @@
       "record_class": "asset",
       "record_selector": "$.data[*]",
       "resource_id": "source-anchore-assets-1",
-      "resource_name": "Anchore Assets Fixture",
-      "resource_type": "assets",
+      "resource_name": "docker.io/library/nginx:latest",
+      "resource_type": "container",
       "resource_urn": "urn:cerebro:tenant:anchore_assets:source-anchore-assets-1",
       "schema": "assets",
       "source_event_id": "source-anchore-assets-1",
@@ -29,7 +29,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "api_method": "GET",
-      "api_path": "/v1/assets",
+      "api_path": "/apps/{app_id}/versions/{version_id}/assets",
       "event_id": "source-anchore-assets-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-anchore-assets-1",
@@ -42,12 +42,12 @@
       "evidence_cas_uri": "cas://cases/anchore/assets/source-anchore-assets-1",
       "family": "assets",
       "id": "source-anchore-assets-1",
-      "name": "Anchore Assets Fixture",
+      "name": "docker.io/library/nginx:latest",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",
       "record_selector": "$.data[*]",
       "resource_id": "source-anchore-assets-1",
-      "resource_type": "assets",
+      "resource_type": "container",
       "resource_urn": "urn:cerebro:tenant:anchore_assets:source-anchore-assets-1",
       "schema_ref": "anchore/assets/v1",
       "source_id": "anchore",

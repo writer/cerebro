@@ -20,6 +20,40 @@ kind_lifecycle:
     status: active
   - kind: apache.permission
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: basic_authorization_header_username_password
+  base_url: ${config.base_url}
+  spec_url: https://airflow.apache.org/docs/apache-airflow/2.10.5/_specs/v1.yaml
+  spec_kind: openapi
+  references:
+    - https://airflow.apache.org/docs/apache-airflow/2.10.5/stable-rest-api-ref.html
+    - https://airflow.apache.org/docs/apache-airflow-providers-fab/stable/auth-manager/api-authentication.html
+    - https://airflow.apache.org/docs/apache-airflow/2.10.5/_specs/v1.yaml
+  scope_evidence: []
+  auth_evidence:
+    - https://airflow.apache.org/docs/apache-airflow-providers-fab/stable/auth-manager/api-authentication.html
+  families:
+    - id: eventlog
+      method: GET
+      path: /eventLogs
+      operation: get_event_logs
+    - id: permission
+      method: GET
+      path: /permissions
+      operation: get_permissions
+    - id: role
+      method: GET
+      path: /roles
+      operation: get_roles
+    - id: user
+      method: GET
+      path: /users
+      operation: get_users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: apache
@@ -33,7 +67,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Apache Airflow stable REST API event log entries from GET /eventLogs.
     - id: role
       type: entity_family
       title: "Role"
@@ -43,7 +77,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Apache Airflow role snapshots from GET /roles.
     - id: user
       type: entity_family
       title: "User"
@@ -53,7 +87,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Apache Airflow user snapshots from GET /users.
     - id: permission
       type: entity_family
       title: "Permission"
@@ -63,7 +97,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Apache Airflow permission action snapshots from GET /permissions.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -78,8 +112,12 @@ event_contracts:
       - source_event_id
       - event_type
       - actor_id
+      - observed_at
     required_payload_fields:
-      - dag_id
+      - event_log_id
+      - when
+      - event
+      - owner
   - kind: apache.role
     schema_ref: apache/role/v1
     required_attributes:
@@ -88,13 +126,16 @@ event_contracts:
       - group_id
     required_payload_fields:
       - name
+      - actions
   - kind: apache.user
     schema_ref: apache/user/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - user_id
+      - email
     required_payload_fields:
+      - username
       - email
   - kind: apache.permission
     schema_ref: apache/permission/v1

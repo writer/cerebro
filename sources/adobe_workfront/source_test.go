@@ -18,21 +18,25 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if r.Header.Get("apiKey") != "test-token" {
+			t.Fatalf("apiKey = %q", r.Header.Get("apiKey"))
 		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
+		if r.URL.Path == "/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"versions": []string{"v14.0"}}})
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/user/search" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("$$LIMIT"); got == "" {
+			t.Fatalf("$$LIMIT is empty")
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"ID": "user-1", "name": "Ada Lovelace", "emailAddr": "ada@example.test", "username": "ada@example.test", "entryDate": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "per_page": "100", "token": "test-token"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)

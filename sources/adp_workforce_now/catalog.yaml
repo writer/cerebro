@@ -1,28 +1,16 @@
 id: adp_workforce_now
 name: "ADP Workforce Now"
-description: "Collects users, accounts, records, policies, and audit events from ADP Workforce Now and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects worker profiles and event notification messages from ADP Workforce Now and projects them into the Cerebro graph as identity users and audit-style change events for HR and workforce ownership context."
 emitted_kinds:
+  - adp_workforce_now.event_notifications
   - adp_workforce_now.users
-  - adp_workforce_now.accounts
-  - adp_workforce_now.records
-  - adp_workforce_now.policies
-  - adp_workforce_now.audit_events
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
+  - event_notifications
   - users
 kind_lifecycle:
+  - kind: adp_workforce_now.event_notifications
+    status: active
   - kind: adp_workforce_now.users
-    status: active
-  - kind: adp_workforce_now.accounts
-    status: active
-  - kind: adp_workforce_now.records
-    status: active
-  - kind: adp_workforce_now.policies
-    status: active
-  - kind: adp_workforce_now.audit_events
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -37,47 +25,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
-      type: entity_family
-      title: "Accounts"
-      families: [accounts]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
-      type: entity_family
-      title: "Records"
-      families: [records]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
+        - Reads ADP Workforce Now Worker objects through the documented /hr/v2/workers endpoint.
+    - id: event_notifications
       type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+      title: "Event Notifications"
+      families: [event_notifications]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads ADP event notification messages through the documented /core/v1/event-notification-messages endpoint as change-event evidence.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,6 +43,15 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
+  - kind: adp_workforce_now.event_notifications
+    schema_ref: adp_workforce_now/event_notifications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+    required_payload_fields:
+      - eventID
+      - eventNameCode
   - kind: adp_workforce_now.users
     schema_ref: adp_workforce_now/users/v1
     required_attributes:
@@ -92,42 +59,31 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
-  - kind: adp_workforce_now.accounts
-    schema_ref: adp_workforce_now/accounts/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: adp_workforce_now.records
-    schema_ref: adp_workforce_now/records/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: adp_workforce_now.policies
-    schema_ref: adp_workforce_now/policies/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
-  - kind: adp_workforce_now.audit_events
-    schema_ref: adp_workforce_now/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+      - associateOID
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: oauth2_access_token_bearer_authorization_header_with_mtls_client_certificate
+  base_url: https://api.adp.com
+  spec_url: https://api-library-marketplace.adp.com/hcm-offrg-wfn/hr/workers/v2/workers-swagger_v2-merged.json
+  spec_kind: openapi
+  references:
+    - https://developers.adp.com/apis/api-explorer/hcm-offrg-wfn/hcm-offrg-wfn-hr-workers-v2-workers
+    - https://developers.adp.com/articles/general/introduction-to-adp-restful-apis
+    - https://developers.adp.com/articles/general/adp-event-apis-and-event-notification-guide
+    - https://developers.adp.com/getting-started/key-concepts/access-tokens
+    - https://developers.adp.com/articles/general/make-your-first-api-call-using-postman-1
+  scope_evidence: []
+  auth_evidence: []
+  families:
+    - id: event_notifications
+      method: GET
+      path: /core/v1/event-notification-messages
+      operation: get_event_notification_messages
+    - id: users
+      method: GET
+      path: /hr/v2/workers
+      operation: 2aa32939-9059-4187-8785-0eb593ece43b

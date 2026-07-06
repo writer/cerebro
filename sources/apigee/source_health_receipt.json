@@ -1,5 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/v1/organizations/${config.organization}",
+  "auth_mechanics": "oauth2_bearer_token",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "apigee.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

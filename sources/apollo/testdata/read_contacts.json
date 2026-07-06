@@ -1,0 +1,41 @@
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "display_name": "Apollo Contact",
+      "email": "contact@example.test",
+      "job_title": "Buyer",
+      "login": "contact@example.test",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "organization_id": "org-1",
+      "primary_email": "contact@example.test",
+      "record_class": "identity_user",
+      "resource_id": "contact-1",
+      "resource_name": "Apollo Contact",
+      "resource_type": "apollo_contact",
+      "resource_urn": "urn:cerebro:tenant:apollo_contacts:contact-1",
+      "schema": "contacts",
+      "source_event_id": "contact-1",
+      "source_system": "apollo",
+      "tenant_id": "tenant",
+      "user_id": "contact-1"
+    },
+    "id": "apollo-contacts-contact-1",
+    "kind": "apollo.contacts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "contact-1",
+      "person_id": "person-1",
+      "email": "contact@example.test",
+      "name": "Apollo Contact",
+      "title": "Buyer",
+      "account_id": "account-1",
+      "organization_id": "org-1",
+      "created_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "apollo/contacts/v1",
+    "source_id": "apollo",
+    "tenant_id": "tenant"
+  }
+]

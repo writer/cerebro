@@ -4,21 +4,21 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: User or project API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - observability_soar_threat_intel
       config_fields:
-        - help: Tenant or regional API base URL.
-          key: base_url
-          label: API base URL
-          required: true
-      description: Collects alerts, incidents, monitors, dashboards, and audit events from Airbrake and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context.
+        - help: Airbrake project id for project-scoped families such as deploys, source maps, and activities.
+          key: project_id
+          label: Project ID
+          required: false
+      description: Collects projects, error groups, deploys, source maps, and project activities from Airbrake and projects them into the Cerebro graph as assets, findings, change records, and audit evidence for error monitoring and incident response context.
       display_name: Airbrake
       id: builtin-airbrake
       ingest:
@@ -26,212 +26,206 @@ entries:
       resource_families:
         - coverage:
             - control_domains:
-                - logging_monitoring
+                - asset_inventory
               evidence_types:
-                - security_monitoring
+                - source_snapshot
               families:
-                - alerts
+                - projects
               high_value: true
-              id: alerts
+              id: projects
               support: partial
-              title: Alerts
-              type: alert_state
+              title: Projects
+              type: entity_family
           default_enabled: true
           event:
-            kind: airbrake.alerts
+            kind: airbrake.projects
             required_payload_fields:
               - id
-            schema_ref: airbrake/alerts/v1
-            urn_kind: airbrake_alerts
-          id: alerts
+            schema_ref: airbrake/projects/v1
+            urn_kind: airbrake_projects
+          id: projects
           id_field: id
-          label: Alerts
+          label: Projects
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/alerts
+          path: /api/v4/projects
           projection:
             fields:
-              alert_id: id
-              alert_name: name
-              alert_severity: severity
-              alert_status: status
-            template: alert
-          record_selector: $.data[*]
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: airbrake_project
+            template: asset
+          record_selector: $.projects[*]
         - coverage:
             - control_domains:
-                - incident_response
+                - remediation
+                - security_operations
               evidence_types:
-                - finding_snapshot
+                - remediation_state
               families:
-                - incidents
+                - groups
               high_value: true
-              id: incidents
+              id: groups
               support: partial
-              title: Incidents
+              title: Error groups
               type: finding
           default_enabled: true
           event:
-            kind: airbrake.incidents
+            kind: airbrake.groups
             required_payload_fields:
               - id
-            schema_ref: airbrake/incidents/v1
-            urn_kind: airbrake_incidents
-          id: incidents
+            schema_ref: airbrake/groups/v1
+            urn_kind: airbrake_groups
+          id: groups
           id_field: id
-          label: Incidents
+          label: Error groups
           method: GET
-          name_field: name
+          name_field: id
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.end
+            cursor_param: start
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/incidents
+          path: /api/v4/groups
           projection:
             fields:
               finding_id: id
-              resource_id: resource_id
-              resource_type: resource_type
-              severity: severity
-              status: status
-              title: title
+              resource_id: projectId
+              resource_type: airbrake_project
+              severity: context.severity
+              status: resolved
+              title: errors.0.type
             template: finding
-          record_selector: $.data[*]
+          record_selector: $.groups[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - deploys
+              high_value: true
+              id: deploys
+              support: partial
+              title: Deploys
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: airbrake.deploys
+            required_payload_fields:
+              - id
+            schema_ref: airbrake/deploys/v1
+            urn_kind: airbrake_deploys
+          id: deploys
+          id_field: id
+          label: Deploys
+          method: GET
+          name_field: version
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/v4/projects/{project_id}/deploys
+          projection:
+            fields:
+              id: id
+              name: version
+              resource_id: id
+              resource_name: version
+              resource_type: airbrake_deploy
+            template: asset
+          record_selector: $.deploys[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - monitors
+                - source_maps
               high_value: true
-              id: monitors
+              id: source_maps
               support: partial
-              title: Monitors
+              title: Source maps
               type: entity_family
           default_enabled: true
           event:
-            kind: airbrake.monitors
+            kind: airbrake.source_maps
             required_payload_fields:
               - id
-            schema_ref: airbrake/monitors/v1
-            urn_kind: airbrake_monitors
-          id: monitors
+            schema_ref: airbrake/source_maps/v1
+            urn_kind: airbrake_source_maps
+          id: source_maps
           id_field: id
-          label: Monitors
+          label: Source maps
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/monitors
+          path: /api/v4/projects/{project_id}/sourcemaps
           projection:
             fields:
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: monitor
+              resource_type: airbrake_source_map
             template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - dashboards
-              high_value: true
-              id: dashboards
-              support: partial
-              title: Dashboards
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: airbrake.dashboards
-            required_payload_fields:
-              - id
-            schema_ref: airbrake/dashboards/v1
-            urn_kind: airbrake_dashboards
-          id: dashboards
-          id_field: id
-          label: Dashboards
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/dashboards
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: dashboard
-            template: asset
-          record_selector: $.data[*]
+          record_selector: $.sourcemaps[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
               evidence_types:
                 - logging_configuration
               families:
-                - audit_events
+                - project_activities
               high_value: true
-              id: audit_events
+              id: project_activities
               support: partial
-              title: Audit events
+              title: Project activities
               type: audit_event
           default_enabled: true
           event:
-            kind: airbrake.audit_events
+            kind: airbrake.project_activities
             required_payload_fields:
               - id
-            schema_ref: airbrake/audit_events/v1
-            urn_kind: airbrake_audit_events
-          id: audit_events
+            schema_ref: airbrake/project_activities/v1
+            urn_kind: airbrake_project_activities
+          id: project_activities
           id_field: id
-          label: Audit events
+          label: Project activities
           method: GET
-          name_field: name
+          name_field: activity
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/audit_events
+          path: /api/v4/projects/{project_id}/activities
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
+              actor_id: userId
+              actor_name: userName
+              event_type: activity
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              resource_id: trackableId
+              resource_type: trackableType
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.activities[*]
       schema_version: cerebro.integration/v1
       source_id: airbrake
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.airbrake.io
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /api/v4/projects

@@ -1,0 +1,36 @@
+[
+  {
+    "id": "abnormal-security-case-1234",
+    "source_id": "abnormal_security",
+    "tenant_id": "tenant",
+    "kind": "abnormal_security.cases",
+    "schema_ref": "abnormal_security/cases/v1",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "1234",
+      "finding_id": "1234",
+      "resource_id": "employee@example.com",
+      "resource_name": "employee@example.com",
+      "resource_type": "abnormal_case",
+      "severity": "LOW",
+      "status": "Acknowledged",
+      "title": "Account takeover case",
+      "record_class": "finding",
+      "schema": "cases",
+      "source_system": "abnormal_security",
+      "observed_at": "2026-06-02T00:00:00Z"
+    },
+    "payload": {
+      "caseId": 1234,
+      "description": "Account takeover case",
+      "severity_level": "LOW",
+      "confidence": "HIGH",
+      "affectedEmployee": "employee@example.com",
+      "case_status": "Acknowledged",
+      "created": "2026-06-01T00:00:00Z",
+      "first_observed": "2026-06-01T00:00:00Z",
+      "last_modified": "2026-06-02T00:00:00Z"
+    }
+  }
+]

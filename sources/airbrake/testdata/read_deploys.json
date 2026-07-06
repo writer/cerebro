@@ -1,0 +1,32 @@
+[
+  {
+    "tenant_id": "tenant",
+    "source_id": "airbrake",
+    "id": "source-airbrake-deploys-event-1",
+    "kind": "airbrake.deploys",
+    "schema_ref": "airbrake/deploys/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "source-airbrake-deploys-1",
+      "resource_urn": "urn:cerebro:tenant:airbrake_deploys:source-airbrake-deploys-1",
+      "resource_type": "airbrake_deploy",
+      "resource_id": "source-airbrake-deploys-1",
+      "resource_name": "v1.2.3",
+      "schema": "deploys",
+      "record_class": "asset",
+      "provider": "airbrake",
+      "source_system": "airbrake"
+    },
+    "payload": {
+      "id": "source-airbrake-deploys-1",
+      "environment": "production",
+      "version": "v1.2.3",
+      "revision": "abcdef",
+      "username": "deploybot",
+      "source_id": "airbrake",
+      "tenant_id": "tenant",
+      "schema_ref": "airbrake/deploys/v1"
+    }
+  }
+]

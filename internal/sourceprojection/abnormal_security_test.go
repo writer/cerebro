@@ -7,8 +7,8 @@ import (
 )
 
 func TestAbnormalSecurityAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.assets", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := abnormalSecurityAssetsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.resources", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := abnormalSecurityResourcesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -21,8 +21,8 @@ func TestAbnormalSecurityAssetProjection(t *testing.T) {
 }
 
 func TestAbnormalSecurityFindingProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.findings", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
-	entities, links, err := abnormalSecurityFindingsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.threats", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
+	entities, links, err := abnormalSecurityThreatsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -38,8 +38,8 @@ func TestAbnormalSecurityFindingProjection(t *testing.T) {
 }
 
 func TestAbnormalSecurityPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := abnormalSecurityPoliciesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.posture_catalog", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "posture_catalog", "policy_status": "enabled", "evidence_id": "evidence-1"}}
+	entities, links, err := abnormalSecurityPostureCatalogProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -48,6 +48,20 @@ func TestAbnormalSecurityPolicyProjection(t *testing.T) {
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestAbnormalSecurityCaseProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abnormal_security", Kind: "abnormal_security.cases", Attributes: map[string]string{"finding_id": "case-1", "title": "Case One", "severity": "medium", "status": "open", "resource_urn": "urn:cerebro:tenant:identity:employee@example.com", "evidence_id": "evidence-1"}}
+	entities, links, err := abnormalSecurityCasesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected case")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected case links")
 	}
 }
 

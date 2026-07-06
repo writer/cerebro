@@ -17,15 +17,15 @@ var catalogFS embed.FS
 const (
 	sourceID               = "activecampaign"
 	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
+	defaultHealthPath      = "/api/3/users/me"
 	defaultBaseURLTemplate = "${config.base_url}"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
+	tokenHeader            = "Api-Token"
+	tokenScheme            = ""
 	familyUsers            = "users"
 	familyAccounts         = "accounts"
-	familyRecords          = "records"
-	familyPolicies         = "policies"
-	familyAuditEvents      = "audit_events"
+	familyContacts         = "contacts"
+	familyCampaigns        = "campaigns"
+	familyAutomations      = "automations"
 )
 
 var templateKeys = []string{"base_url", "token"}
@@ -44,74 +44,104 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
+		AuthModel:       "api_key",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/users",
+				Path:             "/api/3/users",
 				URNKind:          "activecampaign_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				IDKeys:           []string{"id", "username", "email"},
+				CursorParam:      "offset",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				PageFirstCursor:  "0",
+				ListKeys:         []string{"users"},
+				TimestampKeys:    []string{"updatedTimestamp", "mdate", "udate", "cdate", "createdTimestamp"},
+				Attributes:       map[string]string{"display_name": "name|username", "email": "email", "first_name": "firstName", "last_name": "lastName", "login": "username|email", "phone": "phone", "primary_email": "email", "resource_id": "id", "resource_name": "name|username", "resource_type": "activecampaign_user", "source_event_id": "id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "activecampaign"},
+				Config: jsonapi.FamilyConfig{
+					DefaultPageSize: 100,
+					TotalKeys:       []string{"meta.total"},
+					LimitKeys:       []string{"meta.page_input.limit"},
+					OffsetKeys:      []string{"meta.page_input.offset"},
+				},
 			},
 			{
 				Name:             familyAccounts,
-				Path:             "/v1/accounts",
+				Path:             "/api/3/accounts",
 				URNKind:          "activecampaign_accounts",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				IDKeys:           []string{"id", "name"},
+				CursorParam:      "offset",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "account", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "accounts", "source_system": "activecampaign"},
+				PageFirstCursor:  "0",
+				ListKeys:         []string{"accounts"},
+				TimestampKeys:    []string{"updatedTimestamp", "createdTimestamp"},
+				Attributes:       map[string]string{"contact_count": "contactCount", "deal_count": "dealCount", "id": "id", "name": "name", "observed_at": "updatedTimestamp|createdTimestamp", "resource_id": "id", "resource_name": "name", "resource_type": "activecampaign_account", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "activecampaign_account", "schema": "accounts", "source_system": "activecampaign"},
+				Config: jsonapi.FamilyConfig{
+					DefaultPageSize: 100,
+					TotalKeys:       []string{"meta.total"},
+					LimitKeys:       []string{"meta.page_input.limit"},
+					OffsetKeys:      []string{"meta.page_input.offset"},
+				},
 			},
 			{
-				Name:             familyRecords,
-				Path:             "/v1/records",
-				URNKind:          "activecampaign_records",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				Name:             familyContacts,
+				Path:             "/api/3/contacts",
+				URNKind:          "activecampaign_contacts",
+				IDKeys:           []string{"id", "email", "hash"},
+				CursorParam:      "offset",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "record", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "records", "source_system": "activecampaign"},
+				PageFirstCursor:  "0",
+				ListKeys:         []string{"contacts"},
+				TimestampKeys:    []string{"udate", "cdate", "adate", "edate"},
+				Attributes:       map[string]string{"email": "email", "first_name": "firstName", "id": "id", "last_name": "lastName", "name": "name|email", "observed_at": "udate|cdate", "phone": "phone", "resource_id": "id", "resource_name": "email|firstName", "resource_type": "activecampaign_contact", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "activecampaign_contact", "schema": "contacts", "source_system": "activecampaign"},
+				Config: jsonapi.FamilyConfig{
+					DefaultPageSize: 100,
+					TotalKeys:       []string{"meta.total"},
+					LimitKeys:       []string{"meta.page_input.limit"},
+					OffsetKeys:      []string{"meta.page_input.offset"},
+				},
 			},
 			{
-				Name:             familyPolicies,
-				Path:             "/v1/policies",
-				URNKind:          "activecampaign_policies",
-				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				Name:             familyCampaigns,
+				Path:             "/api/3/campaigns",
+				URNKind:          "activecampaign_campaigns",
+				IDKeys:           []string{"id", "name"},
+				CursorParam:      "offset",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "policy", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "policies", "source_system": "activecampaign"},
+				PageFirstCursor:  "0",
+				ListKeys:         []string{"campaigns"},
+				TimestampKeys:    []string{"updated_timestamp", "created_timestamp", "mdate", "cdate", "sdate", "ldate"},
+				Attributes:       map[string]string{"id": "id", "name": "name", "observed_at": "updated_timestamp|mdate|created_timestamp|cdate", "resource_id": "id", "resource_name": "name", "resource_type": "activecampaign_campaign", "source_event_id": "id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "type": "type", "user_id": "userid|user"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "activecampaign_campaign", "schema": "campaigns", "source_system": "activecampaign"},
+				Config: jsonapi.FamilyConfig{
+					DefaultPageSize: 100,
+					TotalKeys:       []string{"meta.total"},
+					LimitKeys:       []string{"meta.page_input.limit"},
+					OffsetKeys:      []string{"meta.page_input.offset"},
+				},
 			},
 			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "activecampaign_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				Name:             familyAutomations,
+				Path:             "/api/3/automations",
+				URNKind:          "activecampaign_automations",
+				IDKeys:           []string{"id", "name"},
+				CursorParam:      "offset",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "activecampaign"},
+				PageFirstCursor:  "0",
+				ListKeys:         []string{"automations"},
+				TimestampKeys:    []string{"mdate", "cdate"},
+				Attributes:       map[string]string{"id": "id", "name": "name", "observed_at": "mdate|cdate", "resource_id": "id", "resource_name": "name", "resource_type": "activecampaign_automation", "source_event_id": "id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "userid"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "activecampaign_automation", "schema": "automations", "source_system": "activecampaign"},
+				Config: jsonapi.FamilyConfig{
+					DefaultPageSize: 100,
+					TotalKeys:       []string{"meta.total"},
+					LimitKeys:       []string{"meta.page_input.limit"},
+					OffsetKeys:      []string{"meta.page_input.offset"},
+				},
 			},
 		},
 	})

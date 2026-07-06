@@ -4,11 +4,11 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
@@ -18,7 +18,7 @@ entries:
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, groups, workspaces, documents, and audit events from Adobe Workfront and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context.
+      description: Collects users, groups, projects, documents, and audit events from Adobe Workfront and projects them into the Cerebro graph as users, groups, assets, and audit events for project, document, message, and collaboration context.
       display_name: Adobe Workfront
       id: builtin-adobe_workfront
       ingest:
@@ -40,27 +40,27 @@ entries:
           event:
             kind: adobe_workfront.users
             required_payload_fields:
-              - id
+              - ID
             schema_ref: adobe_workfront/users/v1
             urn_kind: adobe_workfront_users
           id: users
-          id_field: id
+          id_field: ID
           label: Users
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: ""
+            cursor_param: $$FIRST
             page_size: 100
-            page_size_param: limit
+            page_size_param: $$LIMIT
             type: cursor
-          path: /v1/users
+          path: /user/search
           projection:
             fields:
               display_name: name
-              email: email
-              status: status
-              user_id: id
+              email: emailAddr
+              status: isActive
+              user_id: ID
             template: identity_user
           record_selector: $.data[*]
         - coverage:
@@ -79,24 +79,24 @@ entries:
           event:
             kind: adobe_workfront.groups
             required_payload_fields:
-              - id
+              - ID
             schema_ref: adobe_workfront/groups/v1
             urn_kind: adobe_workfront_groups
           id: groups
-          id_field: id
+          id_field: ID
           label: Groups
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: ""
+            cursor_param: $$FIRST
             page_size: 100
-            page_size_param: limit
+            page_size_param: $$LIMIT
             type: cursor
-          path: /v1/groups
+          path: /group/search
           projection:
             fields:
-              group_id: id
+              group_id: ID
               group_name: name
             template: identity_group
           record_selector: $.data[*]
@@ -106,38 +106,38 @@ entries:
               evidence_types:
                 - source_snapshot
               families:
-                - workspaces
+                - projects
               high_value: true
-              id: workspaces
+              id: projects
               support: partial
-              title: Workspaces
+              title: Projects
               type: entity_family
           default_enabled: true
           event:
-            kind: adobe_workfront.workspaces
+            kind: adobe_workfront.projects
             required_payload_fields:
-              - id
-            schema_ref: adobe_workfront/workspaces/v1
-            urn_kind: adobe_workfront_workspaces
-          id: workspaces
-          id_field: id
-          label: Workspaces
+              - ID
+            schema_ref: adobe_workfront/projects/v1
+            urn_kind: adobe_workfront_projects
+          id: projects
+          id_field: ID
+          label: Projects
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: ""
+            cursor_param: $$FIRST
             page_size: 100
-            page_size_param: limit
+            page_size_param: $$LIMIT
             type: cursor
-          path: /v1/workspaces
+          path: /proj/search
           projection:
             fields:
-              id: id
+              id: ID
               name: name
-              resource_id: id
+              resource_id: ID
               resource_name: name
-              resource_type: workspace
+              resource_type: project
             template: asset
           record_selector: $.data[*]
         - coverage:
@@ -156,26 +156,26 @@ entries:
           event:
             kind: adobe_workfront.documents
             required_payload_fields:
-              - id
+              - ID
             schema_ref: adobe_workfront/documents/v1
             urn_kind: adobe_workfront_documents
           id: documents
-          id_field: id
+          id_field: ID
           label: Documents
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: ""
+            cursor_param: $$FIRST
             page_size: 100
-            page_size_param: limit
+            page_size_param: $$LIMIT
             type: cursor
-          path: /v1/documents
+          path: /docu/search
           projection:
             fields:
-              id: id
+              id: ID
               name: name
-              resource_id: id
+              resource_id: ID
               resource_name: name
               resource_type: document
             template: asset
@@ -196,29 +196,28 @@ entries:
           event:
             kind: adobe_workfront.audit_events
             required_payload_fields:
-              - id
+              - ID
             schema_ref: adobe_workfront/audit_events/v1
             urn_kind: adobe_workfront_audit_events
           id: audit_events
-          id_field: id
+          id_field: ID
           label: Audit events
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: ""
+            cursor_param: $$FIRST
             page_size: 100
-            page_size_param: limit
+            page_size_param: $$LIMIT
             type: cursor
-          path: /v1/audit_events
+          path: /jrnle/search
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_id: userID
+              event_type: fieldName
+              id: ID
+              resource_id: objID
+              resource_type: objObjCode
             template: audit_event
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1
@@ -230,4 +229,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /info

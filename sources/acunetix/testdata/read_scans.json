@@ -1,0 +1,37 @@
+[
+  {
+    "attributes": {
+      "description": "Full Scan",
+      "finding_id": "scan-1",
+      "record_class": "finding",
+      "resource_id": "target-1",
+      "resource_name": "https://app.example.test",
+      "resource_type": "target",
+      "resource_urn": "urn:cerebro:tenant:acunetix_targets:target-1",
+      "scan_id": "scan-1",
+      "schema": "scans",
+      "source_event_id": "scan-1",
+      "source_system": "acunetix",
+      "status": "completed",
+      "tenant_id": "tenant",
+      "title": "Full Scan"
+    },
+    "id": "acunetix-scans-scan-1",
+    "kind": "acunetix.scans",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "current_session": {
+        "status": "completed"
+      },
+      "profile_name": "Full Scan",
+      "scan_id": "scan-1",
+      "target": {
+        "address": "https://app.example.test"
+      },
+      "target_id": "target-1"
+    },
+    "schema_ref": "acunetix/scans/v1",
+    "source_id": "acunetix",
+    "tenant_id": "tenant"
+  }
+]

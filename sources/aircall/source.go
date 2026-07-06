@@ -17,18 +17,18 @@ var catalogFS embed.FS
 const (
 	sourceID               = "aircall"
 	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
+	defaultHealthPath      = "/ping"
+	defaultBaseURLTemplate = "https://api.aircall.io/v1"
 	tokenHeader            = ""
-	tokenScheme            = "Bearer"
+	tokenScheme            = "Basic"
 	familyUsers            = "users"
-	familyGroups           = "groups"
-	familyWorkspaces       = "workspaces"
-	familyDocuments        = "documents"
-	familyAuditEvents      = "audit_events"
+	familyTeams            = "teams"
+	familyCalls            = "calls"
+	familyContacts         = "contacts"
+	familyNumbers          = "numbers"
 )
 
-var templateKeys = []string{"base_url", "token"}
+var templateKeys = []string{"base_url"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -44,74 +44,74 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
+		AuthModel:       "basic",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/users",
+				Path:             "/users",
 				URNKind:          "aircall_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				IDKeys:           []string{"id", "email", "name"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"meta.next_page_link"},
+				PageSizeParams:   []string{"per_page"},
+				ListKeys:         []string{"users"},
+				TimestampKeys:    []string{"updated_at", "created_at"},
+				Attributes:       map[string]string{"created_at": "created_at", "display_name": "name", "email": "email", "extension": "extension", "last_login_at": "last_login_at", "login": "email", "observed_at": "updated_at|created_at", "primary_email": "email", "resource_id": "id", "resource_name": "name", "resource_type": "aircall_user", "source_event_id": "id", "status": "availability_status|status", "tenant_id": "tenant_id|metadata.tenant_id", "time_zone": "time_zone", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "aircall"},
 			},
 			{
-				Name:             familyGroups,
-				Path:             "/v1/groups",
-				URNKind:          "aircall_groups",
-				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "groups", "source_system": "aircall"},
+				Name:             familyTeams,
+				Path:             "/teams",
+				URNKind:          "aircall_teams",
+				IDKeys:           []string{"id", "name"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"meta.next_page_link"},
+				PageSizeParams:   []string{"per_page"},
+				ListKeys:         []string{"teams"},
+				TimestampKeys:    []string{"updated_at", "created_at"},
+				Attributes:       map[string]string{"created_at": "created_at", "description": "description", "group_id": "id", "group_name": "name", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "name", "resource_type": "aircall_team", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "teams", "source_system": "aircall"},
 			},
 			{
-				Name:             familyWorkspaces,
-				Path:             "/v1/workspaces",
-				URNKind:          "aircall_workspaces",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "workspace", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "workspaces", "source_system": "aircall"},
+				Name:             familyCalls,
+				Path:             "/calls",
+				URNKind:          "aircall_calls",
+				IDKeys:           []string{"id", "sid"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"meta.next_page_link"},
+				PageSizeParams:   []string{"per_page"},
+				ListKeys:         []string{"calls"},
+				TimestampKeys:    []string{"ended_at", "answered_at", "started_at", "updated_at", "created_at"},
+				Attributes:       map[string]string{"actor_email": "user.email", "actor_id": "user.id", "actor_name": "user.name", "call_direction": "direction", "call_status": "status", "event_type": "direction", "observed_at": "ended_at|answered_at|started_at", "raw_digits": "raw_digits", "resource_id": "id", "resource_name": "sid|raw_digits", "resource_type": "aircall_call", "sid": "sid", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "calls", "source_system": "aircall"},
 			},
 			{
-				Name:             familyDocuments,
-				Path:             "/v1/documents",
-				URNKind:          "aircall_documents",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "document", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "documents", "source_system": "aircall"},
+				Name:             familyContacts,
+				Path:             "/contacts",
+				URNKind:          "aircall_contacts",
+				IDKeys:           []string{"id", "email", "first_name", "last_name", "company_name"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"meta.next_page_link"},
+				PageSizeParams:   []string{"per_page"},
+				ListKeys:         []string{"contacts"},
+				TimestampKeys:    []string{"updated_at", "created_at"},
+				Attributes:       map[string]string{"company_name": "company_name", "created_at": "created_at", "first_name": "first_name", "last_name": "last_name", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "company_name|first_name|last_name", "resource_type": "aircall_contact", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id", "updated_at": "updated_at"},
+				StaticAttributes: map[string]string{"record_class": "asset", "schema": "contacts", "source_system": "aircall"},
 			},
 			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "aircall_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "aircall"},
+				Name:             familyNumbers,
+				Path:             "/numbers",
+				URNKind:          "aircall_numbers",
+				IDKeys:           []string{"id", "digits", "name"},
+				CursorParam:      "page",
+				NextCursorKeys:   []string{"meta.next_page_link"},
+				PageSizeParams:   []string{"per_page"},
+				ListKeys:         []string{"numbers"},
+				TimestampKeys:    []string{"updated_at", "created_at"},
+				Attributes:       map[string]string{"availability_status": "availability_status", "country": "country", "created_at": "created_at", "digits": "digits", "name": "name", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "name|digits", "resource_type": "aircall_number", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id", "time_zone": "time_zone"},
+				StaticAttributes: map[string]string{"record_class": "asset", "schema": "numbers", "source_system": "aircall"},
 			},
 		},
 	})

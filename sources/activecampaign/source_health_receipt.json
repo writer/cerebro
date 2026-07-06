@@ -1,6 +1,7 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
+  "adapter_health_path": "/api/3/users/me",
+  "auth_mechanics": "api_token_header",
+  "auth_model": "api_key",
   "evidence_cas_reference_kind": "activecampaign.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

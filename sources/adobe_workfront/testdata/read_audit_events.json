@@ -5,7 +5,7 @@
       "actor_id": "adobe_workfront-users-1",
       "actor_name": "actor-name-source-adobe_workfront-audit_events-1",
       "api_method": "GET",
-      "api_path": "/v1/audit_events",
+      "api_path": "/jrnle/search",
       "event_type": "adobe_workfront.audit_events.observed",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-adobe_workfront-audit_events-1",
       "evidence_cas_digest": "sha256:test",
@@ -38,7 +38,7 @@
       "actor_id": "adobe_workfront-users-1",
       "actor_name": "actor-name-source-adobe_workfront-audit_events-1",
       "api_method": "GET",
-      "api_path": "/v1/audit_events",
+      "api_path": "/jrnle/search",
       "event_id": "source-adobe_workfront-audit_events-1",
       "event_type": "adobe_workfront.audit_events.observed",
       "evidence_cas": {
@@ -64,7 +64,8 @@
       "schema_ref": "adobe_workfront/audit_events/v1",
       "source_id": "adobe_workfront",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "updated_at": "2026-06-01T00:00:00Z",
+      "ID": "source-adobe_workfront-audit_events-1"
     },
     "schema_ref": "adobe_workfront/audit_events/v1",
     "source_id": "adobe_workfront",

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "alation-groups-201",
+    "kind": "alation.groups",
+    "schema_ref": "alation/groups/v1",
+    "source_id": "alation",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "201",
+      "group_id": "201",
+      "group_name": "Data Stewards",
+      "display_name": "Data Stewards",
+      "email": "stewards@example.test",
+      "resource_id": "201",
+      "resource_name": "Data Stewards",
+      "resource_type": "group",
+      "record_class": "identity_group",
+      "schema": "groups",
+      "source_system": "alation"
+    },
+    "payload": {
+      "id": 201,
+      "display_name": "Data Stewards",
+      "email": "stewards@example.test",
+      "ts_created": "2026-06-01 00:00:00"
+    }
+  }
+]

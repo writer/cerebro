@@ -16,19 +16,18 @@ var catalogFS embed.FS
 
 const (
 	sourceID               = "alchemer"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
+	defaultFamily          = familyAccountUsers
+	defaultHealthPath      = "/v5/account?api_token=${config.api_token}&api_token_secret=${config.api_token_secret}"
 	defaultBaseURLTemplate = "${config.base_url}"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
-	familyUsers            = "users"
-	familyAccounts         = "accounts"
-	familyRecords          = "records"
-	familyPolicies         = "policies"
-	familyAuditEvents      = "audit_events"
+	familyAccount          = "account"
+	familyAccountUsers     = "account_users"
+	familyAccountTeams     = "account_teams"
+	familySurveys          = "surveys"
+	familyContactLists     = "contact_lists"
+	familySSOIntegrations  = "sso_integrations"
 )
 
-var templateKeys = []string{"base_url", "token"}
+var templateKeys = []string{"base_url", "api_token", "api_token_secret"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -44,74 +43,89 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
+		AuthModel:       "none",
 		Families: []jsonapi.Family{
 			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "alchemer_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				Name:             familyAccount,
+				Path:             "/v5/account",
+				URNKind:          "alchemer_account",
+				IDKeys:           []string{"id", "organization"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "alchemer"},
+				Singleton:        true,
+				RequireID:        true,
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "date_created|updated_at|observed_at", "resource_id": "id", "resource_name": "organization|name", "resource_type": "account", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "account", "schema": "account", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), ResourceURNKind: "alchemer_account"},
 			},
 			{
-				Name:             familyAccounts,
-				Path:             "/v1/accounts",
-				URNKind:          "alchemer_accounts",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				Name:             familyAccountUsers,
+				Path:             "/v5/accountuser",
+				URNKind:          "alchemer_account_users",
+				IDKeys:           []string{"id", "email", "username"},
+				CursorParam:      "page",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"resultsperpage"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "account", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "accounts", "source_system": "alchemer"},
+				TimestampKeys:    []string{"last_login", "created_at", "updated_at"},
+				Attributes:       map[string]string{"display_name": "username|name", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "last_login_at": "last_login", "license": "license", "observed_at": "last_login|updated_at|observed_at", "resource_id": "id", "resource_name": "username|email", "resource_type": "account_user", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "account_users", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), DefaultPageSize: 100},
 			},
 			{
-				Name:             familyRecords,
-				Path:             "/v1/records",
-				URNKind:          "alchemer_records",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				Name:             familyAccountTeams,
+				Path:             "/v5/accountteams",
+				URNKind:          "alchemer_account_teams",
+				IDKeys:           []string{"id", "team_name", "name"},
+				CursorParam:      "page",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"resultsperpage"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "record", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "records", "source_system": "alchemer"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "updated_at|observed_at", "resource_id": "id", "resource_name": "team_name|name", "resource_type": "account_team", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "account_team", "schema": "account_teams", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), DefaultPageSize: 100, ResourceURNKind: "alchemer_account_team"},
 			},
 			{
-				Name:             familyPolicies,
-				Path:             "/v1/policies",
-				URNKind:          "alchemer_policies",
-				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				Name:             familySurveys,
+				Path:             "/v5/survey",
+				URNKind:          "alchemer_surveys",
+				IDKeys:           []string{"id", "title", "name"},
+				CursorParam:      "page",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"resultsperpage"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "policy", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "policies", "source_system": "alchemer"},
+				TimestampKeys:    []string{"modified_on", "created_on", "date_modified", "date_created"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "modified_on|date_modified|created_on|date_created|observed_at", "resource_id": "id", "resource_name": "title|name", "resource_type": "survey", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "survey", "schema": "surveys", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), DefaultPageSize: 100, ResourceURNKind: "alchemer_survey"},
 			},
 			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "alchemer_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				Name:             familyContactLists,
+				Path:             "/v5/contactlist",
+				URNKind:          "alchemer_contact_lists",
+				IDKeys:           []string{"id", "list_name", "name"},
+				CursorParam:      "page",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"resultsperpage"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "alchemer"},
+				TimestampKeys:    []string{"date_modified", "date_modifed", "date_created"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "date_modified|date_modifed|date_created|observed_at", "resource_id": "id", "resource_name": "list_name|name", "resource_type": "contact_list", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "contact_list", "schema": "contact_lists", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), DefaultPageSize: 100, ResourceURNKind: "alchemer_contact_list"},
+			},
+			{
+				Name:             familySSOIntegrations,
+				Path:             "/v5/sso",
+				URNKind:          "alchemer_sso_integrations",
+				IDKeys:           []string{"id", "name", "entity_id"},
+				CursorParam:      "page",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"resultsperpage"},
+				ListKeys:         []string{"data"},
+				MapRecords:       map[string]string{"data": "sso_integration"},
+				TimestampKeys:    []string{"sso_integration.dModified", "sso_integration.created", "dModified", "created"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "sso_integration.evidence_cas.commit_id|sso_integration.evidence_cas_commit_id|evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "sso_integration.evidence_cas.digest|sso_integration.evidence_cas_digest|evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "sso_integration.evidence_cas.merkle_root|sso_integration.evidence_cas_merkle_root|evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "sso_integration.evidence_cas.ref_type|sso_integration.evidence_cas_ref_type|evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "sso_integration.evidence_cas.uri|sso_integration.evidence_cas_uri|evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "sso_integration.dModified|sso_integration.created|dModified|created|observed_at", "policy_id": "sso_integration.id|id", "policy_name": "sso_integration.name|sso_integration.entity_id|name", "policy_status": "sso_integration.status|status", "policy_type": "sso_integration", "resource_id": "sso_integration.id|id", "resource_name": "sso_integration.name|sso_integration.entity_id|name", "resource_type": "sso_integration", "resource_urn": "sso_integration.resource_urn|sso_integration.urn|sso_integration.metadata.resource_urn|resource_urn|urn|metadata.resource_urn", "source_event_id": "sso_integration.event_id|sso_integration.id|event_id|id|metadata.event_id", "tenant_id": "sso_integration.tenant_id|sso_integration.metadata.tenant_id|tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"policy_type": "sso_integration", "record_class": "policy", "schema": "sso_integrations", "source_system": "alchemer"},
+				Config:           jsonapi.FamilyConfig{ConfigQuery: alchemerAuthQuery(), DefaultPageSize: 100},
 			},
 		},
 	})
@@ -119,6 +133,10 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func alchemerAuthQuery() map[string]string {
+	return map[string]string{"api_token": "api_token", "api_token_secret": "api_token_secret"}
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {

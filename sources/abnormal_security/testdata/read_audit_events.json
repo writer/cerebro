@@ -1,73 +1,38 @@
 [
   {
-    "attributes": {
-      "actor_email": "actor@abnormal-security.example.test",
-      "actor_id": "abnormal_security-users-1",
-      "actor_name": "actor-name-source-abnormal_security-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit_events",
-      "event_type": "abnormal_security.audit_events.observed",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-abnormal_security-audit_events-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-abnormal_security-audit_events-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/abnormal_security/audit_events/source-abnormal_security-audit_events-1",
-      "external_id": "source-abnormal_security-audit_events-1",
-      "family": "audit_events",
-      "id": "source-abnormal_security-audit_events-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "provider": "abnormal_security",
-      "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@abnormal-security.example.test",
-      "resource_id": "source-abnormal_security-audit_events-1",
-      "resource_name": "Abnormal Security Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:abnormal_security_audit_events:source-abnormal_security-audit_events-1",
-      "schema": "audit_events",
-      "source_event_id": "source-abnormal_security-audit_events-1",
-      "source_provider": "abnormal_security",
-      "source_system": "abnormal_security",
-      "tenant_id": "tenant"
-    },
-    "id": "source-abnormal_security-audit_events-event-1",
-    "kind": "abnormal_security.audit_events",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "actor_email": "actor@abnormal-security.example.test",
-      "actor_id": "abnormal_security-users-1",
-      "actor_name": "actor-name-source-abnormal_security-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit_events",
-      "event_id": "source-abnormal_security-audit_events-1",
-      "event_type": "abnormal_security.audit_events.observed",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-abnormal_security-audit_events-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-abnormal_security-audit_events-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/abnormal_security/audit_events/source-abnormal_security-audit_events-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/abnormal_security/audit_events/source-abnormal_security-audit_events-1",
-      "family": "audit_events",
-      "id": "source-abnormal_security-audit_events-1",
-      "name": "Abnormal Security Audit Events Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@abnormal-security.example.test",
-      "resource_id": "source-abnormal_security-audit_events-1",
-      "resource_name": "Abnormal Security Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:abnormal_security_audit_events:source-abnormal_security-audit_events-1",
-      "schema_ref": "abnormal_security/audit_events/v1",
-      "source_id": "abnormal_security",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "abnormal_security/audit_events/v1",
+    "id": "abnormal-security-audit-1",
     "source_id": "abnormal_security",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "kind": "abnormal_security.audit_events",
+    "schema_ref": "abnormal_security/audit_events/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "2026-06-01T00:00:00Z",
+      "actor_email": "analyst@example.com",
+      "actor_id": "analyst@example.com",
+      "event_type": "update_remediation_status",
+      "resource_id": "message-1",
+      "resource_name": "/v1.0/search_v2/666/purge_messages/",
+      "resource_type": "search-and-respond-notifications",
+      "record_class": "audit_event",
+      "schema": "audit_events",
+      "source_system": "abnormal_security",
+      "observed_at": "2026-06-01T00:00:00Z"
+    },
+    "payload": {
+      "action": "update_remediation_status",
+      "actionDetails": {
+        "message_id": "message-1",
+        "request_url": "/v1.0/search_v2/666/purge_messages/"
+      },
+      "category": "search-and-respond-notifications",
+      "sourceIp": "192.0.2.10",
+      "status": "SUCCESS",
+      "timestamp": "2026-06-01T00:00:00Z",
+      "user": {
+        "email": "analyst@example.com"
+      }
+    }
   }
 ]

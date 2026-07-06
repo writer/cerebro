@@ -1,0 +1,51 @@
+[
+  {
+    "id": "aircall-calls-812",
+    "kind": "aircall.calls",
+    "schema_ref": "aircall/calls/v1",
+    "source_id": "aircall",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "812",
+      "provider": "aircall",
+      "source_provider": "aircall",
+      "source_system": "aircall",
+      "schema": "calls",
+      "record_class": "audit_event",
+      "resource_urn": "urn:cerebro:tenant:aircall_calls:812",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "actor_id": "456",
+      "actor_email": "john.doe@example.com",
+      "actor_name": "John Doe",
+      "event_type": "outbound",
+      "resource_id": "812",
+      "resource_name": "CA1234567890",
+      "resource_type": "aircall_call",
+      "sid": "CA1234567890",
+      "call_direction": "outbound",
+      "call_status": "done"
+    },
+    "payload": {
+      "id": 812,
+      "sid": "CA1234567890",
+      "direct_link": "https://example.com/aircall/calls/812",
+      "direction": "outbound",
+      "status": "done",
+      "started_at": 1584998199,
+      "answered_at": 1584998205,
+      "ended_at": 1584998210,
+      "duration": 11,
+      "raw_digits": "+18001234567",
+      "user": {
+        "id": 456,
+        "name": "John Doe",
+        "email": "john.doe@example.com"
+      },
+      "tenant_id": "tenant",
+      "source_id": "aircall",
+      "schema_ref": "aircall/calls/v1"
+    }
+  }
+]

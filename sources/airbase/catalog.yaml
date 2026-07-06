@@ -131,3 +131,27 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+provider_api_disproof:
+  status: invalidated
+  reason: generated_runtime_paths_not_in_public_airbase_api_docs
+  checked_at: 2026-07-06T00:00:00Z
+  references:
+    - https://developer.airbase.io/
+    - https://learn.microsoft.com/en-us/entra/identity/saas-apps/airbase-provisioning-tutorial
+    - https://www.stitchflow.com/user-management/airbase/api
+  affected_families:
+    - accounts
+    - audit_events
+    - policies
+    - records
+    - users
+  missing_paths:
+    - /v1/accounts
+    - /v1/audit_events
+    - /v1/policies
+    - /v1/records
+    - /v1/users
+  notes:
+    - The provider-owned Airbase API portal describes an invite-only Guided Procurement API and instructs customers to contact an Airbase Program Manager for API access and related documentation; it does not publish endpoint paths for the generated runtime families.
+    - Microsoft Entra documentation confirms Airbase exposes a tenant-specific provisioning Base URL and API Token for SCIM user provisioning, but it does not document the generated /v1/users path or accounts, records, policies, or audit event APIs.
+    - Third-party SCIM guidance lists tenant-specific /Users, /Groups, and /Schemas paths, which is insufficient to verify the generated /v1/* runtime paths or promote the current Airbase source without a provider-owned public API reference.

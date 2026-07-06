@@ -1,28 +1,67 @@
 id: airbyte_cloud
 name: "Airbyte Cloud"
-description: "Collects users, accounts, records, policies, and audit events from Airbyte Cloud and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Airbyte Cloud users, organizations, sources, permissions, and connections and projects them into the Cerebro graph as identity users, assets, policy-like access records, and operational integration context."
 emitted_kinds:
   - airbyte_cloud.users
-  - airbyte_cloud.accounts
-  - airbyte_cloud.records
-  - airbyte_cloud.policies
-  - airbyte_cloud.audit_events
+  - airbyte_cloud.organizations
+  - airbyte_cloud.sources
+  - airbyte_cloud.permissions
+  - airbyte_cloud.connections
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
+  - connections
+  - organizations
+  - permissions
+  - sources
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_authorization_header
+  base_url: https://api.airbyte.com/v1
+  spec_url: https://reference.airbyte.com/reference/listconnections.md
+  spec_kind: provider_reference_markdown
+  references:
+    - https://docs.airbyte.com/developers/api-documentation
+    - https://reference.airbyte.com/reference/listuserswithinanorganization.md
+    - https://reference.airbyte.com/reference/listorganizationsforuser.md
+    - https://reference.airbyte.com/reference/listsources.md
+    - https://reference.airbyte.com/reference/listpermissions.md
+    - https://reference.airbyte.com/reference/listconnections.md
+    - https://reference.airbyte.com/reference/get_health.md
+  families:
+    - id: connections
+      method: GET
+      path: /connections
+      operation: listConnections
+    - id: organizations
+      method: GET
+      path: /organizations
+      operation: listOrganizationsForUser
+    - id: permissions
+      method: GET
+      path: /permissions
+      operation: listPermissions
+    - id: sources
+      method: GET
+      path: /sources
+      operation: listSources
+    - id: users
+      method: GET
+      path: /users
+      operation: listUsersWithinAnOrganization
 kind_lifecycle:
   - kind: airbyte_cloud.users
     status: active
-  - kind: airbyte_cloud.accounts
+  - kind: airbyte_cloud.organizations
     status: active
-  - kind: airbyte_cloud.records
+  - kind: airbyte_cloud.sources
     status: active
-  - kind: airbyte_cloud.policies
+  - kind: airbyte_cloud.permissions
     status: active
-  - kind: airbyte_cloud.audit_events
+  - kind: airbyte_cloud.connections
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -35,49 +74,49 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Reads organization users from Airbyte's documented GET /users endpoint.
+    - id: organizations
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "Organizations"
+      families: [organizations]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Reads accessible Airbyte organizations from the documented GET /organizations endpoint.
+    - id: sources
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Sources"
+      families: [sources]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Reads Airbyte source connector configurations from the documented GET /sources endpoint.
+    - id: permissions
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "Permissions"
+      families: [permissions]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      control_domains: [identity_access, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads Airbyte access permissions from the documented GET /permissions endpoint.
+    - id: connections
+      type: entity_family
+      title: "Connections"
+      families: [connections]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot, configuration_state]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Airbyte data connections from the documented GET /connections endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,8 +132,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: airbyte_cloud.accounts
-    schema_ref: airbyte_cloud/accounts/v1
+  - kind: airbyte_cloud.organizations
+    schema_ref: airbyte_cloud/organizations/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -102,9 +141,9 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: airbyte_cloud.records
-    schema_ref: airbyte_cloud/records/v1
+      - organizationId
+  - kind: airbyte_cloud.sources
+    schema_ref: airbyte_cloud/sources/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -112,22 +151,23 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: airbyte_cloud.policies
-    schema_ref: airbyte_cloud/policies/v1
+      - sourceId
+  - kind: airbyte_cloud.permissions
+    schema_ref: airbyte_cloud/permissions/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - policy_id
       - policy_name
     required_payload_fields:
-      - id
-  - kind: airbyte_cloud.audit_events
-    schema_ref: airbyte_cloud/audit_events/v1
+      - permissionId
+  - kind: airbyte_cloud.connections
+    schema_ref: airbyte_cloud/connections/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
-      - id
+      - connectionId

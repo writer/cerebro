@@ -1,3 +1,9 @@
-[
-  "urn:cerebro:tenant:amplitude_users:source-amplitude-users-1"
-]
+{
+  "Resources": [
+    {
+      "id": "datamonster@example.com",
+      "userName": "datamonster@example.com"
+    }
+  ],
+  "totalResults": 1
+}

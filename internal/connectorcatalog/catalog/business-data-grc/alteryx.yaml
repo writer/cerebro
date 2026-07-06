@@ -4,7 +4,7 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: OAuth2 bearer access token
             reference_only: true
             required: true
             secret: true
@@ -14,11 +14,11 @@ entries:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Alteryx Server base URL, without the /webapi suffix.
           key: base_url
-          label: API base URL
+          label: Server base URL
           required: true
-      description: Collects users, accounts, records, policies, and audit events from Alteryx and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+      description: Collects Alteryx Server users, user groups, workflows, collections, and audit events and projects them into the Cerebro graph as identities, assets, and audit events for owner, evidence, and compliance context.
       display_name: Alteryx
       id: builtin-alteryx
       ingest:
@@ -47,141 +47,127 @@ entries:
           id_field: id
           label: Users
           method: GET
-          name_field: name
+          name_field: email
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: none
+          path: /v3/users
           projection:
             fields:
-              display_name: name
+              display_name: firstName+lastName
               email: email
-              status: status
+              status: isActive
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - accounts
+                - usergroups
               high_value: true
-              id: accounts
+              id: usergroups
               support: partial
-              title: Accounts
+              title: User groups
               type: entity_family
           default_enabled: true
           event:
-            kind: alteryx.accounts
+            kind: alteryx.usergroups
             required_payload_fields:
               - id
-            schema_ref: alteryx/accounts/v1
-            urn_kind: alteryx_accounts
-          id: accounts
+            schema_ref: alteryx/usergroups/v1
+            urn_kind: alteryx_usergroups
+          id: usergroups
           id_field: id
-          label: Accounts
+          label: User groups
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+            type: none
+          path: /v3/usergroups
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: account
-            template: asset
-          record_selector: $.data[*]
+              group_id: id
+              group_name: name
+              role: role
+            template: identity_group
+          record_selector: $[*]
         - coverage:
             - control_domains:
+                - asset_inventory
                 - data_governance
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - workflows
               high_value: true
-              id: records
+              id: workflows
               support: partial
-              title: Records
+              title: Workflows
               type: entity_family
           default_enabled: true
           event:
-            kind: alteryx.records
+            kind: alteryx.workflows
             required_payload_fields:
               - id
-            schema_ref: alteryx/records/v1
-            urn_kind: alteryx_records
-          id: records
+            schema_ref: alteryx/workflows/v1
+            urn_kind: alteryx_workflows
+          id: workflows
           id_field: id
-          label: Records
+          label: Workflows
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/records
+            type: none
+          path: /v3/workflows
           projection:
             fields:
-              id: id
               name: name
+              owner_id: ownerId
               resource_id: id
               resource_name: name
-              resource_type: record
+              resource_type: workflow
             template: asset
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - configuration_management
+                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - policies
+                - collections
               high_value: true
-              id: policies
+              id: collections
               support: partial
-              title: Policies
+              title: Collections
               type: entity_family
           default_enabled: true
           event:
-            kind: alteryx.policies
+            kind: alteryx.collections
             required_payload_fields:
               - id
-            schema_ref: alteryx/policies/v1
-            urn_kind: alteryx_policies
-          id: policies
+            schema_ref: alteryx/collections/v1
+            urn_kind: alteryx_collections
+          id: collections
           id_field: id
-          label: Policies
+          label: Collections
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
+            type: none
+          path: /v3/collections
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
+              name: name
+              owner_id: ownerId
+              resource_id: id
+              resource_name: name
+              resource_type: collection
+            template: asset
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -205,31 +191,26 @@ entries:
           id_field: id
           label: Audit events
           method: GET
-          name_field: name
+          name_field: event
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            type: none
+          path: /admin/v1/auditlog
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
+              actor_id: userId
+              event_type: event
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              resource_id: entityId
+              resource_type: entity
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: alteryx
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: ${config.base_url}/webapi
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /v3/users

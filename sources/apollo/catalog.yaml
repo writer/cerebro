@@ -1,28 +1,49 @@
 id: apollo
 name: "Apollo"
-description: "Collects users, accounts, records, policies, and audit events from Apollo and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Apollo workspace users, saved accounts, and saved contacts from the documented Apollo REST API and projects them into the Cerebro graph as identity users and account/contact inventory for owner and evidence context."
 emitted_kinds:
   - apollo.users
   - apollo.accounts
-  - apollo.records
-  - apollo.policies
-  - apollo.audit_events
+  - apollo.contacts
 runtime_families:
   - accounts
-  - audit_events
-  - policies
-  - records
+  - contacts
   - users
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x_api_key_header
+  base_url: https://api.apollo.io/api/v1
+  spec_url: https://docs.apollo.io/openapi/apollo-rest-api.json
+  spec_kind: openapi
+  references:
+    - https://docs.apollo.io/reference/openapi-specification
+    - https://docs.apollo.io/reference/authentication
+    - https://docs.apollo.io/reference/get-a-list-of-users
+    - https://docs.apollo.io/reference/search-for-accounts
+    - https://docs.apollo.io/reference/search-for-contacts
+  families:
+    - id: accounts
+      method: POST
+      path: /accounts/search
+      operation: search-for-accounts
+    - id: contacts
+      method: POST
+      path: /contacts/search
+      operation: search-for-contacts
+    - id: users
+      method: GET
+      path: /users/search
+      operation: get-a-list-of-users
 kind_lifecycle:
   - kind: apollo.users
     status: active
   - kind: apollo.accounts
     status: active
-  - kind: apollo.records
-    status: active
-  - kind: apollo.policies
-    status: active
-  - kind: apollo.audit_events
+  - kind: apollo.contacts
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -37,7 +58,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Apollo workspace users from the documented GET /users/search endpoint.
     - id: accounts
       type: entity_family
       title: "Accounts"
@@ -47,37 +68,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Reads saved Apollo company accounts from the documented POST /accounts/search endpoint.
+    - id: contacts
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Contacts"
+      families: [contacts]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads saved Apollo contacts from the documented POST /contacts/search endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -103,31 +104,11 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: apollo.records
-    schema_ref: apollo/records/v1
+  - kind: apollo.contacts
+    schema_ref: apollo/contacts/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: apollo.policies
-    schema_ref: apollo/policies/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
-  - kind: apollo.audit_events
-    schema_ref: apollo/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
+      - user_id
     required_payload_fields:
       - id

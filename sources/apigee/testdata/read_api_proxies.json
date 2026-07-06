@@ -1,0 +1,44 @@
+[
+  {
+    "attributes": {
+      "id": "orders",
+      "name": "orders",
+      "resource_id": "orders",
+      "resource_name": "orders",
+      "resource_type": "apigee_api_proxy",
+      "tenant_id": "tenant",
+      "source_event_id": "orders",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "api_proxies",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "api_proxies",
+      "resource_urn": "urn:cerebro:tenant:apigee_api_proxies:orders"
+    },
+    "id": "source-apigee-api_proxies-event-1",
+    "kind": "apigee.api_proxies",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "orders",
+      "name": "orders",
+      "resource_id": "orders",
+      "resource_name": "orders",
+      "resource_type": "apigee_api_proxy",
+      "tenant_id": "tenant",
+      "source_event_id": "orders",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "api_proxies",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "api_proxies",
+      "resource_urn": "urn:cerebro:tenant:apigee_api_proxies:orders",
+      "source_id": "apigee",
+      "schema_ref": "apigee/api_proxies/v1"
+    },
+    "schema_ref": "apigee/api_proxies/v1",
+    "source_id": "apigee",
+    "tenant_id": "tenant"
+  }
+]

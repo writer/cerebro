@@ -1,11 +1,12 @@
 # Anomalo
 
-Generated Source Runtime SDK scaffold for `anomalo`.
+Provider-verified Source Runtime SDK scaffold for `anomalo`.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Base URL: Anomalo tenant public API base, for example `https://<tenant>/api/public/v1`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,15 @@ Generated Source Runtime SDK scaffold for `anomalo`.
 
 ## Families
 
-- `users`, emits `anomalo.users`, reads `/v1/users`
-- `accounts`, emits `anomalo.accounts`, reads `/v1/accounts`
-- `records`, emits `anomalo.records`, reads `/v1/records`
-- `policies`, emits `anomalo.policies`, reads `/v1/policies`
-- `audit_events`, emits `anomalo.audit_events`, reads `/v1/audit_events`
+- `warehouses`, emits `anomalo.warehouses`, reads `GET /api/public/v1/list_warehouses`
+- `tables`, emits `anomalo.tables`, reads `GET /api/public/v1/get_table_information`
+- `checks`, emits `anomalo.checks`, reads `GET /api/public/v1/get_checks_for_table`
+- `notification_channels`, emits `anomalo.notification_channels`, reads `GET /api/public/v1/list_notification_channels`
+- `organizations`, emits `anomalo.organizations`, reads `GET /api/public/v1/organizations`
 
 ## Tests
 
-- `go test ./sources/anomalo ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/anomalo ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/anomalo/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

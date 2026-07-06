@@ -1,5 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
+  "adapter_health_path": "/hr/v2/workers/meta",
+  "auth_mechanics": "oauth2_access_token_bearer_authorization_header_with_mtls_client_certificate",
   "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "adp_workforce_now.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

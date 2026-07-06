@@ -1,0 +1,42 @@
+[
+  {
+    "id": "source-ada_support-conversations-event-1",
+    "kind": "ada_support.conversations",
+    "source_id": "ada_support",
+    "tenant_id": "tenant",
+    "schema_ref": "ada_support/conversations/v1",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v2/export/conversations",
+      "family": "conversations",
+      "provider": "ada_support",
+      "record_selector": "$.items[*]",
+      "resource_urn": "urn:cerebro:tenant:ada_support_conversations:conversation-1",
+      "schema": "conversations",
+      "source_provider": "ada_support",
+      "source_system": "ada_support",
+      "tenant_id": "tenant",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "resource_id": "conversation-1",
+      "resource_name": "Billing question",
+      "resource_type": "conversation",
+      "source_event_id": "conversation-1"
+    },
+    "payload": {
+      "_id": "conversation-1",
+      "inquiry_summary": "Billing question",
+      "date_created": "2026-06-01T00:00:00Z",
+      "date_updated": "2026-06-02T00:00:00Z",
+      "end_user_id": "end-user-1",
+      "api_method": "GET",
+      "api_path": "/v2/export/conversations",
+      "schema_ref": "ada_support/conversations/v1",
+      "source_id": "ada_support",
+      "tenant_id": "tenant",
+      "resource_id": "conversation-1",
+      "resource_urn": "urn:cerebro:tenant:ada_support_conversations:conversation-1",
+      "event_id": "conversation-1"
+    }
+  }
+]

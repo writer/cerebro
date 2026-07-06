@@ -14,11 +14,15 @@ entries:
         - saas
         - devops_ci_cd
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Account-specific Aha! domain, such as https://company.aha.io.
           key: base_url
-          label: API base URL
+          label: Aha! account base URL
           required: true
-      description: Collects users, projects, repositories, deployments, and audit events from Aha and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context.
+        - help: Product identifier used when reading product-scoped releases.
+          key: product_id
+          label: Product ID
+          required: false
+      description: Collects users, products, features, releases, and audit events from Aha! and projects them into the Cerebro graph as users, assets, release records, and audit evidence for product development context.
       display_name: Aha
       id: builtin-aha
       ingest:
@@ -49,139 +53,141 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            first_cursor: "1"
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/users
+          path: /users
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
-              user_id: id
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: user
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.users[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - projects
+                - products
               high_value: true
-              id: projects
+              id: products
               support: partial
-              title: Projects
+              title: Products
               type: entity_family
           default_enabled: true
           event:
-            kind: aha.projects
+            kind: aha.products
             required_payload_fields:
               - id
-            schema_ref: aha/projects/v1
-            urn_kind: aha_projects
-          id: projects
+            schema_ref: aha/products/v1
+            urn_kind: aha_products
+          id: products
           id_field: id
-          label: Projects
+          label: Products
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            first_cursor: "1"
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/projects
+          path: /products
           projection:
             fields:
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: project
+              resource_type: product
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.products[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - repositories
+                - features
               high_value: true
-              id: repositories
+              id: features
               support: partial
-              title: Repositories
+              title: Features
               type: entity_family
           default_enabled: true
           event:
-            kind: aha.repositories
+            kind: aha.features
             required_payload_fields:
               - id
-            schema_ref: aha/repositories/v1
-            urn_kind: aha_repositories
-          id: repositories
+            schema_ref: aha/features/v1
+            urn_kind: aha_features
+          id: features
           id_field: id
-          label: Repositories
+          label: Features
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            first_cursor: "1"
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/repositories
+          path: /features
           projection:
             fields:
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: repository
-            template: repository
-          record_selector: $.data[*]
+              resource_type: feature
+            template: asset
+          record_selector: $.features[*]
         - coverage:
             - control_domains:
-                - change_management
+                - secure_delivery
               evidence_types:
                 - change_management
               families:
-                - deployments
+                - releases
               high_value: true
-              id: deployments
+              id: releases
               support: partial
-              title: Deployments
-              type: deployment_state
+              title: Releases
+              type: entity_family
           default_enabled: true
           event:
-            kind: aha.deployments
+            kind: aha.releases
             required_payload_fields:
               - id
-            schema_ref: aha/deployments/v1
-            urn_kind: aha_deployments
-          id: deployments
+            schema_ref: aha/releases/v1
+            urn_kind: aha_releases
+          id: releases
           id_field: id
-          label: Deployments
+          label: Releases
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            first_cursor: "1"
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/deployments
+          path: /products/{product_id}/releases
           projection:
             fields:
-              deployment_id: id
-              deployment_name: name
-              deployment_status: status
-              resource_id: resource_id
-            template: deployment
-          record_selector: $.data[*]
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: release
+            template: asset
+          record_selector: $.releases[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -205,31 +211,30 @@ entries:
           id_field: id
           label: Audit events
           method: GET
-          name_field: name
+          name_field: id
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            first_cursor: "1"
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/audit_events
+          path: /audits
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: audit_event
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.audits[*]
       schema_version: cerebro.integration/v1
       source_id: aha
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: ${config.base_url}/api/v1
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /me

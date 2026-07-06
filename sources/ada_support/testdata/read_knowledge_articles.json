@@ -1,0 +1,44 @@
+[
+  {
+    "id": "source-ada_support-knowledge_articles-event-1",
+    "kind": "ada_support.knowledge_articles",
+    "source_id": "ada_support",
+    "tenant_id": "tenant",
+    "schema_ref": "ada_support/knowledge_articles/v1",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v2/knowledge/articles/",
+      "family": "knowledge_articles",
+      "provider": "ada_support",
+      "record_selector": "$.data[*]",
+      "resource_urn": "urn:cerebro:tenant:ada_support_knowledge_articles:article-1",
+      "schema": "knowledge_articles",
+      "source_provider": "ada_support",
+      "source_system": "ada_support",
+      "tenant_id": "tenant",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "policy_id": "article-1",
+      "policy_name": "Refund policy",
+      "policy_status": "true",
+      "policy_type": "knowledge_article",
+      "source_event_id": "article-1"
+    },
+    "payload": {
+      "id": "article-1",
+      "name": "Refund policy",
+      "enabled": true,
+      "language": "en",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-02T00:00:00Z",
+      "api_method": "GET",
+      "api_path": "/v2/knowledge/articles/",
+      "schema_ref": "ada_support/knowledge_articles/v1",
+      "source_id": "ada_support",
+      "tenant_id": "tenant",
+      "policy_id": "article-1",
+      "policy_name": "Refund policy",
+      "event_id": "article-1"
+    }
+  }
+]

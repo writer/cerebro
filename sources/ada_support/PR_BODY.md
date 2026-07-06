@@ -1,16 +1,19 @@
 ## Summary
 
-- Adds the `ada_support` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Promotes the `ada_support` Source Runtime SDK to provider-verified API proof.
+- Reshapes generated placeholder families to documented Ada API resources: end users, platform integrations, conversations, knowledge articles, and audit log events.
+- Syncs runtime paths, catalog proof metadata, connector definition, fixtures, health receipt, and projection registrations.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
-- Health endpoint: `/source-runtimes/health?source_id=ada_support`
-- Freshness: `24h0m0s`
+- Provider API proof score: 100
+- Runtime depth: reference runtime
 
 ## Tests
 
-- `go test ./sources/ada_support ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/ada_support ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/ada_support/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`
