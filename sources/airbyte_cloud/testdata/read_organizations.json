@@ -1,0 +1,23 @@
+[
+  {
+    "attributes": {
+      "resource_id": "org-1",
+      "resource_name": "Example Organization",
+      "resource_type": "airbyte_organization",
+      "resource_urn": "urn:cerebro:tenant:runtime_airbyte_organization:org-1",
+      "source_event_id": "org-1",
+      "tenant_id": "tenant"
+    },
+    "id": "airbyte-cloud-organizations-event-1",
+    "kind": "airbyte_cloud.organizations",
+    "schema_ref": "airbyte_cloud/organizations/v1",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "organizationId": "org-1",
+      "organizationName": "Example Organization",
+      "email": "admin@example.com"
+    },
+    "source_id": "airbyte_cloud"
+  }
+]

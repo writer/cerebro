@@ -14,11 +14,19 @@ entries:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Optional API base URL override. Defaults to Airbyte Cloud's public API base URL.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, accounts, records, policies, and audit events from Airbyte Cloud and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+          required: false
+        - help: Airbyte organization ID used by the users endpoint.
+          key: organization_id
+          label: Organization ID
+          required: false
+        - help: Optional comma-separated workspace IDs used by source and connection list endpoints.
+          key: workspace_ids
+          label: Workspace IDs
+          required: false
+      description: Collects Airbyte Cloud users, organizations, sources, permissions, and connections and projects them into the Cerebro graph as identity users, assets, policy-like access records, and operational integration context.
       display_name: Airbyte Cloud
       id: builtin-airbyte_cloud
       ingest:
@@ -48,13 +56,7 @@ entries:
           label: Users
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+          path: /users
           projection:
             fields:
               display_name: name
@@ -69,38 +71,32 @@ entries:
               evidence_types:
                 - source_snapshot
               families:
-                - accounts
+                - organizations
               high_value: true
-              id: accounts
+              id: organizations
               support: partial
-              title: Accounts
+              title: Organizations
               type: entity_family
           default_enabled: true
           event:
-            kind: airbyte_cloud.accounts
+            kind: airbyte_cloud.organizations
             required_payload_fields:
-              - id
-            schema_ref: airbyte_cloud/accounts/v1
-            urn_kind: airbyte_cloud_accounts
-          id: accounts
-          id_field: id
-          label: Accounts
+              - organizationId
+            schema_ref: airbyte_cloud/organizations/v1
+            urn_kind: airbyte_cloud_organizations
+          id: organizations
+          id_field: organizationId
+          label: Organizations
           method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+          name_field: organizationName
+          path: /organizations
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: account
+              id: organizationId
+              name: organizationName
+              resource_id: organizationId
+              resource_name: organizationName
+              resource_type: airbyte_organization
             template: asset
           record_selector: $.data[*]
         - coverage:
@@ -109,127 +105,121 @@ entries:
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - sources
               high_value: true
-              id: records
+              id: sources
               support: partial
-              title: Records
+              title: Sources
               type: entity_family
           default_enabled: true
           event:
-            kind: airbyte_cloud.records
+            kind: airbyte_cloud.sources
             required_payload_fields:
-              - id
-            schema_ref: airbyte_cloud/records/v1
-            urn_kind: airbyte_cloud_records
-          id: records
-          id_field: id
-          label: Records
+              - sourceId
+            schema_ref: airbyte_cloud/sources/v1
+            urn_kind: airbyte_cloud_sources
+          id: sources
+          id_field: sourceId
+          label: Sources
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/records
+            type: offset
+          path: /sources
           projection:
             fields:
-              id: id
+              id: sourceId
               name: name
-              resource_id: id
+              resource_id: sourceId
               resource_name: name
-              resource_type: record
+              resource_type: airbyte_source
             template: asset
           record_selector: $.data[*]
         - coverage:
             - control_domains:
-                - configuration_management
+                - identity_access
+                - security_operations
               evidence_types:
-                - source_snapshot
+                - configuration_state
               families:
-                - policies
+                - permissions
               high_value: true
-              id: policies
+              id: permissions
               support: partial
-              title: Policies
-              type: entity_family
+              title: Permissions
+              type: lifecycle_state
           default_enabled: true
           event:
-            kind: airbyte_cloud.policies
+            kind: airbyte_cloud.permissions
             required_payload_fields:
-              - id
-            schema_ref: airbyte_cloud/policies/v1
-            urn_kind: airbyte_cloud_policies
-          id: policies
-          id_field: id
-          label: Policies
+              - permissionId
+            schema_ref: airbyte_cloud/permissions/v1
+            urn_kind: airbyte_cloud_permissions
+          id: permissions
+          id_field: permissionId
+          label: Permissions
           method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
+          name_field: permissionType
+          path: /permissions
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
+              policy_id: permissionId
+              policy_name: permissionType
+              policy_status: active
+              policy_type: airbyte_permission
             template: policy
           record_selector: $.data[*]
         - coverage:
             - control_domains:
-                - logging_monitoring
+                - asset_inventory
+                - data_governance
               evidence_types:
-                - logging_configuration
+                - source_snapshot
+                - configuration_state
               families:
-                - audit_events
+                - connections
               high_value: true
-              id: audit_events
+              id: connections
               support: partial
-              title: Audit events
-              type: audit_event
+              title: Connections
+              type: entity_family
           default_enabled: true
           event:
-            kind: airbyte_cloud.audit_events
+            kind: airbyte_cloud.connections
             required_payload_fields:
-              - id
-            schema_ref: airbyte_cloud/audit_events/v1
-            urn_kind: airbyte_cloud_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
+              - connectionId
+            schema_ref: airbyte_cloud/connections/v1
+            urn_kind: airbyte_cloud_connections
+          id: connections
+          id_field: connectionId
+          label: Connections
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            type: offset
+          path: /connections
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
+              id: connectionId
+              name: name
+              resource_id: connectionId
+              resource_name: name
+              resource_type: airbyte_connection
+            template: asset
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1
       source_id: airbyte_cloud
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.airbyte.com/v1
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /health

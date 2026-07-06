@@ -1,14 +1,12 @@
 sourceId: airbyte_cloud
 secretKeys:
-  - AIRBYTE_CLOUD_BASE_URL
   - AIRBYTE_CLOUD_TOKEN
 runtimes:
-  - localId: users
+  - localId: organizations
     config:
-      base_url: env:AIRBYTE_CLOUD_BASE_URL
-      family: users
+      family: organizations
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /health
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

@@ -11,20 +11,20 @@ func airbyteCloudUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return identityUserProjections(event, identityProjectionProfile{Provider: "airbyte_cloud"})
 }
 
-func airbyteCloudAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func airbyteCloudOrganizationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return airbyteCloudGenericAssetProjections(event)
 }
 
-func airbyteCloudRecordsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func airbyteCloudSourcesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return airbyteCloudGenericAssetProjections(event)
 }
 
-func airbyteCloudPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func airbyteCloudPermissionsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return airbyteCloudGenericPolicyProjections(event)
 }
 
-func airbyteCloudAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "airbyte_cloud"})
+func airbyteCloudConnectionsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return airbyteCloudGenericAssetProjections(event)
 }
 
 func airbyteCloudGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

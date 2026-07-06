@@ -985,11 +985,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"airbrake.source_maps":        airbrakeSourceMapsProjections,
 
 	// airbyte_cloud generated projectors (sourcegen promotion)
-	"airbyte_cloud.accounts":     airbyteCloudAccountsProjections,
-	"airbyte_cloud.audit_events": airbyteCloudAuditEventsProjections,
-	"airbyte_cloud.policies":     airbyteCloudPoliciesProjections,
-	"airbyte_cloud.records":      airbyteCloudRecordsProjections,
-	"airbyte_cloud.users":        airbyteCloudUsersProjections,
+	"airbyte_cloud.connections":   airbyteCloudConnectionsProjections,
+	"airbyte_cloud.organizations": airbyteCloudOrganizationsProjections,
+	"airbyte_cloud.permissions":   airbyteCloudPermissionsProjections,
+	"airbyte_cloud.sources":       airbyteCloudSourcesProjections,
+	"airbyte_cloud.users":         airbyteCloudUsersProjections,
 
 	// aircall generated projectors (sourcegen promotion)
 	"aircall.audit_events": aircallAuditEventsProjections,

@@ -1,0 +1,23 @@
+[
+  {
+    "attributes": {
+      "policy_id": "permission-1",
+      "policy_name": "workspace_admin",
+      "source_event_id": "permission-1",
+      "tenant_id": "tenant"
+    },
+    "id": "airbyte-cloud-permissions-event-1",
+    "kind": "airbyte_cloud.permissions",
+    "schema_ref": "airbyte_cloud/permissions/v1",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "permissionId": "permission-1",
+      "permissionType": "workspace_admin",
+      "userId": "user-1",
+      "scope": "workspace",
+      "scopeId": "workspace-1"
+    },
+    "source_id": "airbyte_cloud"
+  }
+]

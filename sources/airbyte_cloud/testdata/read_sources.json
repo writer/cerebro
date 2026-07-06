@@ -1,0 +1,25 @@
+[
+  {
+    "attributes": {
+      "resource_id": "source-1",
+      "resource_name": "Postgres Source",
+      "resource_type": "airbyte_source",
+      "resource_urn": "urn:cerebro:tenant:runtime_airbyte_source:source-1",
+      "source_event_id": "source-1",
+      "tenant_id": "tenant"
+    },
+    "id": "airbyte-cloud-sources-event-1",
+    "kind": "airbyte_cloud.sources",
+    "schema_ref": "airbyte_cloud/sources/v1",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "sourceId": "source-1",
+      "name": "Postgres Source",
+      "sourceType": "postgres",
+      "workspaceId": "workspace-1",
+      "definitionId": "definition-1"
+    },
+    "source_id": "airbyte_cloud"
+  }
+]
