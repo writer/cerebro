@@ -6,9 +6,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/connectorcatalog"
 )
 
 const newSourcePackageLOCBudget = 300
+
+// deepTierSourcePackages are promoted to the Deep source tier: they are exempt
+// from the flat LOC budget and instead held to the Depth Contract
+// (connectorcatalog.RuntimeDepth score of 100). See docs/engineering/non-goals.md
+// "Sources are tiered" and docs/engineering/source-cdk-extraction.md "Deep Source
+// Tier". Adding a source here without it meeting the Depth Contract fails
+// TestDeepTierSourcesMeetDepthContract.
+var deepTierSourcePackages = map[string]struct{}{
+	"digitalocean": {},
+}
+
+const deepTierDepthContractScore = 100
 
 // Grandfathered budgets are exact current nonblank Go LOC ceilings for legacy
 // sources. If a source shrinks, lower its ceiling in the same change; if a
@@ -79,6 +93,11 @@ func TestSourcePackagesStayWithinLOCBudget(t *testing.T) {
 		if !entry.IsDir() || entry.Name() == "internal" {
 			continue
 		}
+		if _, ok := deepTierSourcePackages[entry.Name()]; ok {
+			// Deep-tier sources are bounded by the Depth Contract, not the LOC
+			// budget; see TestDeepTierSourcesMeetDepthContract.
+			continue
+		}
 		limit := newSourcePackageLOCBudget
 		if grandfatheredLimit, ok := grandfatheredSourcePackageLOCBudgets[entry.Name()]; ok {
 			limit = grandfatheredLimit
@@ -128,6 +147,26 @@ func TestGrandfatheredSourceExtractionPlanIsDocumented(t *testing.T) {
 		marker := fmt.Sprintf("| `%s` | %d |", name, budget)
 		if !strings.Contains(text, marker) {
 			t.Fatalf("docs/engineering/source-cdk-extraction.md missing grandfathered source marker %q", marker)
+		}
+	}
+}
+
+func TestDeepTierSourcesMeetDepthContract(t *testing.T) {
+	if len(deepTierSourcePackages) == 0 {
+		t.Skip("no deep-tier sources registered")
+	}
+	root := repoRoot(t)
+	inventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth: %v", err)
+	}
+	for name := range deepTierSourcePackages {
+		depth, ok := inventory[name]
+		if !ok {
+			t.Fatalf("deep-tier source %q has no runtime depth inventory entry", name)
+		}
+		if depth.Score != deepTierDepthContractScore {
+			t.Fatalf("deep-tier source %q runtime depth score = %d (missing=%v), want %d; a Deep source must meet the Depth Contract in exchange for exceeding the LOC budget", name, depth.Score, depth.Missing, deepTierDepthContractScore)
 		}
 	}
 }

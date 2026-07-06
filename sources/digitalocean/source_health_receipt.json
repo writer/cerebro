@@ -12,6 +12,6 @@
   "health_endpoint": "/source-runtimes/health?source_id=digitalocean",
   "receipt_kind": "source_health.receipt",
   "source_id": "digitalocean",
-  "source_type": "json_api",
+  "source_type": "rest",
   "stale_after_seconds": 86400
 }

@@ -1,0 +1,7 @@
+{
+  "vpcs": [
+    {"id": "vpc-1111", "name": "default-nyc3", "ip_range": "192.0.2.0/24", "region": "nyc3", "default": true, "created_at": "2026-05-01T00:00:00Z"}
+  ],
+  "links": {},
+  "meta": {"total": 1}
+}

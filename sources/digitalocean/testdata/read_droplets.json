@@ -1,61 +1,8 @@
-[
-  {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/droplets",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-digitalocean-droplets-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-digitalocean-droplets-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/digitalocean/droplets/source-digitalocean-droplets-1",
-      "external_id": "source-digitalocean-droplets-1",
-      "family": "droplets",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "provider": "digitalocean",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-digitalocean-droplets-1",
-      "resource_name": "Digitalocean Droplets Fixture",
-      "resource_type": "droplets",
-      "resource_urn": "urn:cerebro:tenant:digitalocean_droplets:source-digitalocean-droplets-1",
-      "schema": "droplets",
-      "source_event_id": "source-digitalocean-droplets-1",
-      "source_provider": "digitalocean",
-      "source_system": "digitalocean",
-      "tenant_id": "tenant"
-    },
-    "id": "source-digitalocean-droplets-event-1",
-    "kind": "digitalocean.droplets",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/droplets",
-      "event_id": "source-digitalocean-droplets-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-digitalocean-droplets-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-digitalocean-droplets-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/digitalocean/droplets/source-digitalocean-droplets-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/digitalocean/droplets/source-digitalocean-droplets-1",
-      "family": "droplets",
-      "id": "source-digitalocean-droplets-1",
-      "name": "Digitalocean Droplets Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-digitalocean-droplets-1",
-      "resource_type": "droplets",
-      "resource_urn": "urn:cerebro:tenant:digitalocean_droplets:source-digitalocean-droplets-1",
-      "schema_ref": "digitalocean/droplets/v1",
-      "source_id": "digitalocean",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "digitalocean/droplets/v1",
-    "source_id": "digitalocean",
-    "tenant_id": "tenant"
-  }
-]
+{
+  "droplets": [
+    {"id": 3164444, "name": "web-01", "status": "active", "vpc_uuid": "vpc-1111", "region": {"slug": "nyc3"}, "created_at": "2026-06-01T00:00:00Z"},
+    {"id": 3164445, "name": "web-02", "status": "active", "vpc_uuid": "vpc-1111", "region": {"slug": "nyc3"}, "created_at": "2026-06-01T00:00:00Z"}
+  ],
+  "links": {},
+  "meta": {"total": 2}
+}

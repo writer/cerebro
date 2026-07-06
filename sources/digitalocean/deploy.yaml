@@ -11,3 +11,21 @@ runtimes:
       stale_after_seconds: "86400"
       per_page: "100"
       token: env:DIGITALOCEAN_TOKEN
+  - localId: vpcs
+    config:
+      family: vpcs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /account
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:DIGITALOCEAN_TOKEN
+  - localId: firewalls
+    config:
+      family: firewalls
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /account
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:DIGITALOCEAN_TOKEN

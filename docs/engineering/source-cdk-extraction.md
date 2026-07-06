@@ -7,6 +7,12 @@ Source CDK, not in one source.
 
 Legacy sources above the 300 LOC budget are grandfathered with exact no-growth ceilings in `tools/archtests/source_packages_test.go`. If one shrinks, lower the budget in the same PR. If one needs new shared behavior, extract the behavior into `internal/sourcecdk` or another shared source-support package before growing the source.
 
+## Deep Source Tier
+
+Standard connectors stay within the 300 LOC budget above. A small set of high-value providers need GitHub/AWS-class coverage that does not fit that budget. Those are promoted to the **Deep source tier**, registered in `deepTierSourcePackages` in `tools/archtests/source_packages_test.go`.
+
+A Deep source is exempt from the flat LOC ceiling but is instead held to the **Depth Contract**: `connectorcatalog.DiscoverRuntimeDepth` must score it at 100 (verified `provider_api` proof, event and coverage contracts, read/discover fixture pairs, deploy manifest, and typed projector coverage). The arch test swaps the LOC assertion for the Depth Contract assertion for these packages. Deep sources may construct a vendored provider SDK client (for example `github.com/digitalocean/godo`) through a Source CDK factory; all other source boundaries (`no os.Getenv`, `no context.Background`, no direct store writes, provider I/O through the CDK) still apply. Shared client, pagination, retry, and URN plumbing must still land in `internal/sourcecdk` so Deep sources do not each re-copy provider-agnostic loops. See the Depth Contract entry in [`non-goals.md`](non-goals.md).
+
 ## Extraction Themes
 
 - Move provider client construction, retry policy, and pagination loops into

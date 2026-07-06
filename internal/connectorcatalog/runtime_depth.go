@@ -664,6 +664,7 @@ func runtimeTransportMatchesProviderAPI(repoRoot *os.Root, sourceGoPath string, 
 		return strings.Contains(source, "sources/internal/jsonapi") ||
 			strings.Contains(source, "github.com/google/go-github") ||
 			strings.Contains(source, "sources/internal/githubapi") ||
+			strings.Contains(source, "github.com/digitalocean/godo") ||
 			strings.Contains(source, "net/http")
 	default:
 		return true

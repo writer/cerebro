@@ -1,36 +1,52 @@
 id: digitalocean
 name: "DigitalOcean"
-description: "Collects droplets, teams, and audit events from DigitalOcean and projects them into the Cerebro graph as cloud resources, groups, and audit events for repository, build, deployment, and release context."
+description: "Collects droplets, VPCs, and firewalls from DigitalOcean through the official godo SDK and projects them into the Cerebro graph as cloud compute, network, and security assets with droplet-to-VPC and firewall-to-droplet reachability edges."
 emitted_kinds:
   - digitalocean.droplets
-  - digitalocean.teams
-  - digitalocean.audit_events
+  - digitalocean.firewalls
+  - digitalocean.vpcs
 runtime_families:
-  - audit_events
   - droplets
-  - teams
+  - firewalls
+  - vpcs
 kind_lifecycle:
   - kind: digitalocean.droplets
     status: active
-  - kind: digitalocean.teams
+  - kind: digitalocean.firewalls
     status: active
-  - kind: digitalocean.audit_events
+  - kind: digitalocean.vpcs
     status: active
-provider_api_disproof:
-  status: invalidated
-  reason: runtime_families_not_in_provider_spec
-  checked_at: 2026-07-04T00:00:00Z
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://api.digitalocean.com/v2
+  spec_url: https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml
+  spec_kind: openapi
   references:
+    - https://docs.digitalocean.com/reference/api/api-reference/
     - https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml
-    - https://github.com/digitalocean/openapi
-  affected_families:
-    - audit_events
-    - teams
-  missing_paths:
-    - /v2/teams
-  notes:
-    - The public v2 OpenAPI lists /v2/droplets and /v2/actions, but no teams collection.
-    - The /v2/actions collection returns provider action records, not actor-scoped audit events, so audit_events needs a rewrite as actions or removal.
+    - https://docs.digitalocean.com/reference/api/api-reference/#tag/Droplets
+    - https://docs.digitalocean.com/reference/api/api-reference/#tag/VPCs
+    - https://docs.digitalocean.com/reference/api/api-reference/#tag/Firewalls
+  auth_evidence:
+    - https://docs.digitalocean.com/reference/api/intro/
+  families:
+    - id: droplets
+      method: GET
+      path: /v2/droplets
+      operation: droplets_list
+    - id: vpcs
+      method: GET
+      path: /v2/vpcs
+      operation: vpcs_list
+    - id: firewalls
+      method: GET
+      path: /v2/firewalls
+      operation: firewalls_list
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: digitalocean
@@ -44,27 +60,27 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: teams
+        - Reads Droplets from /v2/droplets via godo and carries vpc_uuid for droplet-to-VPC edges.
+    - id: vpcs
       type: entity_family
-      title: "Teams"
-      families: [teams]
+      title: "VPCs"
+      families: [vpcs]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads VPCs from /v2/vpcs via godo as network assets.
+    - id: firewalls
+      type: entity_family
+      title: "Firewalls"
+      families: [firewalls]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Firewalls from /v2/firewalls via godo and derives firewall-to-droplet reachability from inbound rules.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -82,20 +98,23 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: digitalocean.teams
-    schema_ref: digitalocean/teams/v1
+  - kind: digitalocean.vpcs
+    schema_ref: digitalocean/vpcs/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - group_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
-  - kind: digitalocean.audit_events
-    schema_ref: digitalocean/audit_events/v1
+  - kind: digitalocean.firewalls
+    schema_ref: digitalocean/firewalls/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id

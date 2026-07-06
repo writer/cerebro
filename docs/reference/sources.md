@@ -228,7 +228,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `devtron` | Devtron source | devtron.audit_events, devtron.deployments, devtron.projects, devtron.repositories, devtron.users |
 | `dialpad` | Dialpad source | dialpad.audit_events, dialpad.documents, dialpad.groups, dialpad.users, dialpad.workspaces |
 | `dig_security` | Dig Security source | dig_security.assets, dig_security.audit_events, dig_security.findings, dig_security.policies, dig_security.vulnerabilities |
-| `digitalocean` | Digitalocean source | digitalocean.audit_events, digitalocean.droplets, digitalocean.teams |
+| `digitalocean` | Digitalocean source | digitalocean.droplets, digitalocean.firewalls, digitalocean.vpcs |
 | `discord` | Discord source | discord.audit_log, discord.member, discord.permission, discord.role |
 | `discourse` | Discourse source | discourse.backups_json, discourse.groups_json, discourse.notifications_json, discourse.user_actions_json |
 | `divvy` | Divvy source | divvy.accounts, divvy.audit_events, divvy.policies, divvy.records, divvy.users |

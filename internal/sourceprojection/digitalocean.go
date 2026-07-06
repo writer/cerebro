@@ -8,33 +8,89 @@ import (
 )
 
 func digitaloceanDropletsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return digitaloceanGenericAssetProjections(event)
-}
-
-func digitaloceanTeamsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "digitalocean"})
-}
-
-func digitaloceanAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "digitalocean"})
-}
-
-func digitaloceanGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
+	tenant, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	resourceID := firstNonEmpty(attributes["resource_id"], attributes["external_id"], event.GetId())
-	resourceType := firstNonEmpty(attributes["resource_type"], attributes["schema"], "asset")
-	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, "runtime_"+normalizeCloudType(resourceType), resourceID))
+	dropletURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenant, "digitalocean_droplets", attributes["resource_id"]))
+	if dropletURN == "" {
+		return nil, nil, nil
+	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	addEntity(entities, &ports.ProjectedEntity{URN: resourceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime." + strings.ReplaceAll(normalizeCloudType(resourceType), "_", "."), Label: firstNonEmpty(attributes["resource_name"], resourceID), Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType, "source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})
-	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
-		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
-		addEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime.evidence", Label: evidenceID, Attributes: map[string]string{"evidence_id": evidenceID, "evidence_cas_uri": strings.TrimSpace(attributes["evidence_cas_uri"]), "evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"])}})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        dropletURN,
+		TenantID:   tenant,
+		SourceID:   event.GetSourceId(),
+		EntityType: "runtime.compute.droplet",
+		Label:      firstNonEmpty(attributes["resource_name"], attributes["resource_id"]),
+		Attributes: map[string]string{"resource_id": attributes["resource_id"], "resource_type": "droplet", "region": attributes["region"]},
+	})
+	if vpc := strings.TrimSpace(attributes["vpc_uuid"]); vpc != "" {
+		if vpcURN := projectionURN(tenant, "digitalocean_vpcs", vpc); vpcURN != "" {
+			addLink(links, projectedLink(tenant, event.GetSourceId(), dropletURN, vpcURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func digitaloceanVPCsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenant, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	vpcURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenant, "digitalocean_vpcs", attributes["resource_id"]))
+	if vpcURN == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        vpcURN,
+		TenantID:   tenant,
+		SourceID:   event.GetSourceId(),
+		EntityType: "runtime.network.vpc",
+		Label:      firstNonEmpty(attributes["resource_name"], attributes["resource_id"]),
+		Attributes: map[string]string{"resource_id": attributes["resource_id"], "resource_type": "vpc", "region": attributes["region"]},
+	})
+	return identityProjectionResult(entities, map[string]*ports.ProjectedLink{})
+}
+
+func digitaloceanFirewallsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenant, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	firewallURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenant, "digitalocean_firewalls", attributes["resource_id"]))
+	if firewallURN == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	public := strings.EqualFold(strings.TrimSpace(attributes["public_ingress"]), "true")
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        firewallURN,
+		TenantID:   tenant,
+		SourceID:   event.GetSourceId(),
+		EntityType: "runtime.network.firewall",
+		Label:      firstNonEmpty(attributes["resource_name"], attributes["resource_id"]),
+		Attributes: map[string]string{"resource_id": attributes["resource_id"], "resource_type": "firewall", "public_ingress": attributes["public_ingress"]},
+	})
+	for _, raw := range strings.Split(attributes["droplet_ids"], ",") {
+		dropletID := strings.TrimSpace(raw)
+		if dropletID == "" {
+			continue
+		}
+		dropletURN := projectionURN(tenant, "digitalocean_droplets", dropletID)
+		if dropletURN == "" {
+			continue
+		}
+		addLink(links, projectedLink(tenant, event.GetSourceId(), firewallURN, dropletURN, relationAttachedTo, map[string]string{"event_id": event.GetId()}))
+		if public {
+			addLink(links, projectedLink(tenant, event.GetSourceId(), firewallURN, dropletURN, relationCanReach, map[string]string{"event_id": event.GetId(), "exposure": "public"}))
+		}
 	}
 	return identityProjectionResult(entities, links)
 }
