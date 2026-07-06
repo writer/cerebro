@@ -218,7 +218,7 @@ entries:
           id_field: id
           label: SSO integrations
           method: GET
-          name_field: name
+          name_field: sso_integration.name
           pagination:
             cursor_param: page
             page_size: 100
@@ -227,12 +227,14 @@ entries:
           path: /v5/sso
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
+              policy_id: sso_integration.id
+              policy_name: sso_integration.name
+              policy_status: sso_integration.status
               policy_type: sso_integration
             template: policy
-          record_selector: $.data[*]
+          read:
+            map_records:
+              data: sso_integration
       schema_version: cerebro.integration/v1
       source_id: alchemer
       tenant_id: builtin_catalog

@@ -47,6 +47,7 @@ provider_api:
     - https://apihelp.alchemer.com/help/accountteams-object-v5
     - https://apihelp.alchemer.com/help/survey-object-v5
     - https://apihelp.alchemer.com/help/contactlist-object-v5
+    - https://apihelp.alchemer.com/help/sso-integration-list
     - https://apihelp.alchemer.com/help/sso-object-v5
   families:
     - id: account
