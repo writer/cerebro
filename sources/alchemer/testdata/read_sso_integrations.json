@@ -30,9 +30,9 @@
       "name": "123",
       "sso_integration": {
         "id": "123",
-        "entity_id": "https://example.alchemer.com/adfs/services/trust",
-        "login": "https://example.alchemer.com/adfs/ls/",
-        "logout": "https://example.alchemer.com/adfs/ls/",
+        "entity_id": "https://idp.example.com/adfs/services/trust",
+        "login": "https://idp.example.com/adfs/ls/",
+        "logout": "https://idp.example.com/adfs/ls/",
         "cert_fingerprint": "abcd1234efgh5678ijkl9101112",
         "customerid": "xxxxx",
         "created": "2017-02-06 15:51:04",
