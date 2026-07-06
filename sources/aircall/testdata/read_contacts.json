@@ -1,0 +1,47 @@
+[
+  {
+    "id": "aircall-contacts-710",
+    "kind": "aircall.contacts",
+    "schema_ref": "aircall/contacts/v1",
+    "source_id": "aircall",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-07-06T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "710",
+      "provider": "aircall",
+      "source_provider": "aircall",
+      "source_system": "aircall",
+      "schema": "contacts",
+      "record_class": "asset",
+      "resource_urn": "urn:cerebro:tenant:aircall_contacts:710",
+      "observed_at": "2026-07-06T00:00:00Z",
+      "resource_id": "710",
+      "resource_name": "TeleWorm",
+      "resource_type": "aircall_contact",
+      "first_name": "Vicente",
+      "last_name": "Abad",
+      "company_name": "TeleWorm"
+    },
+    "payload": {
+      "id": 710,
+      "direct_link": "https://api.aircall.io/v1/contacts/710",
+      "first_name": "Vicente",
+      "last_name": "Abad",
+      "company_name": "TeleWorm",
+      "is_shared": true,
+      "created_at": 1400691054,
+      "updated_at": 1444336506,
+      "phone_numbers": [
+        {
+          "id": 3367,
+          "label": "Mobile",
+          "value": "+34664673697"
+        }
+      ],
+      "tenant_id": "tenant",
+      "source_id": "aircall",
+      "schema_ref": "aircall/contacts/v1"
+    }
+  }
+]

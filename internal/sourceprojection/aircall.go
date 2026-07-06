@@ -11,19 +11,19 @@ func aircallUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	return identityUserProjections(event, identityProjectionProfile{Provider: "aircall"})
 }
 
-func aircallGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func aircallTeamsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "aircall"})
 }
 
-func aircallWorkspacesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func aircallNumbersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aircallGenericAssetProjections(event)
 }
 
-func aircallDocumentsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func aircallContactsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aircallGenericAssetProjections(event)
 }
 
-func aircallAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func aircallCallsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAuditProjections(event, identityProjectionProfile{Provider: "aircall"})
 }
 

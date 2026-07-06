@@ -3,27 +3,188 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: username
+            label: API ID
+            reference_only: true
+            required: true
+          - key: password
+            label: API token
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: basic
         requires_references: true
       categories:
         - saas
         - collaboration_productivity
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Optional Aircall Public API base URL override. Defaults to https://api.aircall.io/v1.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, groups, workspaces, documents, and audit events from Aircall and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context.
+          required: false
+      description: Collects Aircall users, teams, calls, contacts, and numbers from the documented Public API and projects them into the Cerebro graph as users, groups, assets, and call activity evidence for cloud phone inventory and collaboration context.
       display_name: Aircall
       id: builtin-aircall
       ingest:
         mode: pull
       resource_families:
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - calls
+              high_value: true
+              id: calls
+              support: partial
+              title: Calls
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: aircall.calls
+            required_payload_fields:
+              - id
+            schema_ref: aircall/calls/v1
+            urn_kind: aircall_calls
+          id: calls
+          id_field: id
+          label: Calls
+          method: GET
+          name_field: sid
+          pagination:
+            cursor_json_path: $.meta.next_page_link
+            cursor_param: page
+            page_size: 50
+            page_size_param: per_page
+            type: cursor
+          path: /calls
+          projection:
+            fields:
+              actor_id: user.id
+              event_type: direction
+              id: id
+              resource_id: id
+              resource_type: aircall_call
+            template: audit_event
+          record_selector: $.calls[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - contacts
+              high_value: true
+              id: contacts
+              support: partial
+              title: Contacts
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: aircall.contacts
+            required_payload_fields:
+              - id
+            schema_ref: aircall/contacts/v1
+            urn_kind: aircall_contacts
+          id: contacts
+          id_field: id
+          label: Contacts
+          method: GET
+          name_field: company_name
+          pagination:
+            cursor_json_path: $.meta.next_page_link
+            cursor_param: page
+            page_size: 50
+            page_size_param: per_page
+            type: cursor
+          path: /contacts
+          projection:
+            fields:
+              id: id
+              name: company_name
+              resource_id: id
+              resource_name: company_name
+              resource_type: aircall_contact
+            template: asset
+          record_selector: $.contacts[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - numbers
+              high_value: true
+              id: numbers
+              support: partial
+              title: Numbers
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: aircall.numbers
+            required_payload_fields:
+              - id
+            schema_ref: aircall/numbers/v1
+            urn_kind: aircall_numbers
+          id: numbers
+          id_field: id
+          label: Numbers
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.meta.next_page_link
+            cursor_param: page
+            page_size: 50
+            page_size_param: per_page
+            type: cursor
+          path: /numbers
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: aircall_number
+            template: asset
+          record_selector: $.numbers[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - teams
+              high_value: true
+              id: teams
+              support: partial
+              title: Teams
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: aircall.teams
+            required_payload_fields:
+              - id
+            schema_ref: aircall/teams/v1
+            urn_kind: aircall_teams
+          id: teams
+          id_field: id
+          label: Teams
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.meta.next_page_link
+            cursor_param: page
+            page_size: 50
+            page_size_param: per_page
+            type: cursor
+          path: /teams
+          projection:
+            fields:
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $.teams[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -49,185 +210,27 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.meta.next_page_link
+            cursor_param: page
+            page_size: 50
+            page_size_param: per_page
             type: cursor
-          path: /v1/users
+          path: /users
           projection:
             fields:
               display_name: name
               email: email
-              status: status
+              status: availability_status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - groups
-              high_value: true
-              id: groups
-              support: partial
-              title: Groups
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: aircall.groups
-            required_payload_fields:
-              - id
-            schema_ref: aircall/groups/v1
-            urn_kind: aircall_groups
-          id: groups
-          id_field: id
-          label: Groups
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
-          projection:
-            fields:
-              group_id: id
-              group_name: name
-            template: identity_group
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - workspaces
-              high_value: true
-              id: workspaces
-              support: partial
-              title: Workspaces
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: aircall.workspaces
-            required_payload_fields:
-              - id
-            schema_ref: aircall/workspaces/v1
-            urn_kind: aircall_workspaces
-          id: workspaces
-          id_field: id
-          label: Workspaces
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/workspaces
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: workspace
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - documents
-              high_value: true
-              id: documents
-              support: partial
-              title: Documents
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: aircall.documents
-            required_payload_fields:
-              - id
-            schema_ref: aircall/documents/v1
-            urn_kind: aircall_documents
-          id: documents
-          id_field: id
-          label: Documents
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/documents
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: document
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: aircall.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: aircall/audit_events/v1
-            urn_kind: aircall_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.users[*]
       schema_version: cerebro.integration/v1
       source_id: aircall
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.aircall.io/v1
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /ping

@@ -1,28 +1,63 @@
 id: aircall
 name: "Aircall"
-description: "Collects users, groups, workspaces, documents, and audit events from Aircall and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+description: "Collects Aircall users, teams, calls, contacts, and numbers from the documented Public API and projects them into the Cerebro graph as users, groups, assets, and call activity evidence for cloud phone inventory and collaboration context."
 emitted_kinds:
   - aircall.users
-  - aircall.groups
-  - aircall.workspaces
-  - aircall.documents
-  - aircall.audit_events
+  - aircall.teams
+  - aircall.calls
+  - aircall.contacts
+  - aircall.numbers
 runtime_families:
-  - audit_events
-  - documents
-  - groups
+  - calls
+  - contacts
+  - numbers
+  - teams
   - users
-  - workspaces
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: http_basic_api_id_api_token_header
+  base_url: https://api.aircall.io/v1
+  spec_url: https://raw.githubusercontent.com/api-evangelist/aircall/refs/heads/main/openapi/aircall-openapi.yml
+  spec_kind: openapi
+  references:
+    - https://developer.aircall.io/api-references/
+    - https://developer.aircall.io/tutorials/basic-authentication/
+    - https://raw.githubusercontent.com/api-evangelist/aircall/refs/heads/main/openapi/aircall-openapi.yml
+  families:
+    - id: calls
+      method: GET
+      path: /calls
+      operation: listCalls
+    - id: contacts
+      method: GET
+      path: /contacts
+      operation: listContacts
+    - id: numbers
+      method: GET
+      path: /numbers
+      operation: listNumbers
+    - id: teams
+      method: GET
+      path: /teams
+      operation: listTeams
+    - id: users
+      method: GET
+      path: /users
+      operation: listUsers
 kind_lifecycle:
   - kind: aircall.users
     status: active
-  - kind: aircall.groups
+  - kind: aircall.teams
     status: active
-  - kind: aircall.workspaces
+  - kind: aircall.calls
     status: active
-  - kind: aircall.documents
+  - kind: aircall.contacts
     status: active
-  - kind: aircall.audit_events
+  - kind: aircall.numbers
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -37,47 +72,47 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: groups
+        - Reads Aircall users from the documented GET /v1/users Public API endpoint.
+    - id: teams
       type: entity_family
-      title: "Groups"
-      families: [groups]
+      title: "Teams"
+      families: [teams]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: workspaces
-      type: entity_family
-      title: "Workspaces"
-      families: [workspaces]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: documents
-      type: entity_family
-      title: "Documents"
-      families: [documents]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
+        - Reads Aircall teams from the documented GET /v1/teams Public API endpoint.
+    - id: calls
       type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+      title: "Calls"
+      families: [calls]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Aircall call records from the documented GET /v1/calls Public API endpoint as call activity evidence.
+    - id: contacts
+      type: entity_family
+      title: "Contacts"
+      families: [contacts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads Aircall shared contacts from the documented GET /v1/contacts Public API endpoint.
+    - id: numbers
+      type: entity_family
+      title: "Numbers"
+      families: [numbers]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads Aircall phone numbers from the documented GET /v1/numbers Public API endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,40 +128,38 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: aircall.groups
-    schema_ref: aircall/groups/v1
+  - kind: aircall.teams
+    schema_ref: aircall/teams/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - group_id
     required_payload_fields:
       - id
-  - kind: aircall.workspaces
-    schema_ref: aircall/workspaces/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: aircall.documents
-    schema_ref: aircall/documents/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: aircall.audit_events
-    schema_ref: aircall/audit_events/v1
+  - kind: aircall.calls
+    schema_ref: aircall/calls/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: aircall.contacts
+    schema_ref: aircall/contacts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_id
+      - resource_type
+    required_payload_fields:
+      - id
+  - kind: aircall.numbers
+    schema_ref: aircall/numbers/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_id
+      - resource_type
     required_payload_fields:
       - id

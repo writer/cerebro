@@ -992,11 +992,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"airbyte_cloud.users":         airbyteCloudUsersProjections,
 
 	// aircall generated projectors (sourcegen promotion)
-	"aircall.audit_events": aircallAuditEventsProjections,
-	"aircall.documents":    aircallDocumentsProjections,
-	"aircall.groups":       aircallGroupsProjections,
-	"aircall.users":        aircallUsersProjections,
-	"aircall.workspaces":   aircallWorkspacesProjections,
+	"aircall.calls":    aircallCallsProjections,
+	"aircall.contacts": aircallContactsProjections,
+	"aircall.numbers":  aircallNumbersProjections,
+	"aircall.teams":    aircallTeamsProjections,
+	"aircall.users":    aircallUsersProjections,
 
 	// airfocus generated projectors (sourcegen promotion)
 	"airfocus.audit_events": airfocusAuditEventsProjections,
