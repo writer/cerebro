@@ -949,8 +949,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"adobe_workfront.audit_events": adobeWorkfrontAuditEventsProjections,
 	"adobe_workfront.documents":    adobeWorkfrontDocumentsProjections,
 	"adobe_workfront.groups":       adobeWorkfrontGroupsProjections,
+	"adobe_workfront.projects":     adobeWorkfrontProjectsProjections,
 	"adobe_workfront.users":        adobeWorkfrontUsersProjections,
-	"adobe_workfront.workspaces":   adobeWorkfrontWorkspacesProjections,
 
 	// adp_workforce_now generated projectors (sourcegen promotion)
 	"adp_workforce_now.accounts":     adpWorkforceNowAccountsProjections,

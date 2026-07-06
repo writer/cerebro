@@ -15,7 +15,7 @@ func adobeWorkfrontGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "adobe_workfront"})
 }
 
-func adobeWorkfrontWorkspacesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func adobeWorkfrontProjectsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return adobeWorkfrontGenericAssetProjections(event)
 }
 

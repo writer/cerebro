@@ -1,24 +1,24 @@
 id: adobe_workfront
 name: "Adobe Workfront"
-description: "Collects users, groups, workspaces, documents, and audit events from Adobe Workfront and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+description: "Collects users, groups, projects, documents, and journal-derived audit events from Adobe Workfront and projects them into the Cerebro graph as users, groups, assets, and audit events for project, document, and collaboration context."
 emitted_kinds:
   - adobe_workfront.users
   - adobe_workfront.groups
-  - adobe_workfront.workspaces
+  - adobe_workfront.projects
   - adobe_workfront.documents
   - adobe_workfront.audit_events
 runtime_families:
   - audit_events
   - documents
   - groups
+  - projects
   - users
-  - workspaces
 kind_lifecycle:
   - kind: adobe_workfront.users
     status: active
   - kind: adobe_workfront.groups
     status: active
-  - kind: adobe_workfront.workspaces
+  - kind: adobe_workfront.projects
     status: active
   - kind: adobe_workfront.documents
     status: active
@@ -37,7 +37,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Workfront User objects through the documented /user/search endpoint.
     - id: groups
       type: entity_family
       title: "Groups"
@@ -47,17 +47,17 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: workspaces
+        - Reads Workfront Group objects through the documented /group/search endpoint.
+    - id: projects
       type: entity_family
-      title: "Workspaces"
-      families: [workspaces]
+      title: "Projects"
+      families: [projects]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Workfront Project objects through the documented /proj/search endpoint.
     - id: documents
       type: entity_family
       title: "Documents"
@@ -67,7 +67,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Workfront Document objects through the documented /docu/search endpoint.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -77,7 +77,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Workfront JournalEntry objects through /jrnle/search as audit-style change evidence.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -92,7 +92,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
+      - ID
   - kind: adobe_workfront.groups
     schema_ref: adobe_workfront/groups/v1
     required_attributes:
@@ -100,9 +100,9 @@ event_contracts:
       - source_event_id
       - group_id
     required_payload_fields:
-      - id
-  - kind: adobe_workfront.workspaces
-    schema_ref: adobe_workfront/workspaces/v1
+      - ID
+  - kind: adobe_workfront.projects
+    schema_ref: adobe_workfront/projects/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -110,7 +110,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - ID
   - kind: adobe_workfront.documents
     schema_ref: adobe_workfront/documents/v1
     required_attributes:
@@ -120,7 +120,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - ID
   - kind: adobe_workfront.audit_events
     schema_ref: adobe_workfront/audit_events/v1
     required_attributes:
@@ -129,4 +129,45 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - ID
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: apiKey_header
+  base_url: ${config.base_url}
+  spec_url: https://developer.workfront.com/res/swagger/swagger210909/attask210909.json
+  spec_kind: openapi
+  references:
+    - https://developer.workfront.com/
+    - https://developer.workfront.com/users.html
+    - https://developer.workfront.com/documents.html
+    - https://developer.workfront.com/projects.html
+    - https://developer.workfront.com/otherFtoH.html
+    - https://developer.workfront.com/otherItoL.html
+    - https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-api/api-general-information/api-basics
+  scope_evidence: []
+  auth_evidence: []
+  families:
+    - id: audit_events
+      method: GET
+      path: /jrnle/search
+      operation: getJRNLESearch
+    - id: documents
+      method: GET
+      path: /docu/search
+      operation: getDOCUSearch
+    - id: groups
+      method: GET
+      path: /group/search
+      operation: getGROUPSearch
+    - id: projects
+      method: GET
+      path: /proj/search
+      operation: getPROJSearch
+    - id: users
+      method: GET
+      path: /user/search
+      operation: getUSERSearch
