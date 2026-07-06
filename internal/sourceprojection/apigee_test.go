@@ -6,39 +6,39 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestApigeeIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := apigeeUsersProjections(event)
+func TestApigeeDeveloperProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.developers", Attributes: map[string]string{"user_id": "dev-1", "email": "dev@fixture.invalid", "display_name": "Developer One"}}
+	entities, _, err := apigeeDevelopersProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected identity user")
+		t.Fatal("expected projected developer identity")
 	}
 }
 
-func TestApigeeAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.projects", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := apigeeProjectsProjections(event)
+func TestApigeeOrganizationProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.organizations", Attributes: map[string]string{"resource_id": "org-1", "resource_type": "apigee_organization", "resource_name": "org-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := apigeeOrganizationsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
+		t.Fatal("expected projected organization entities")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
 	}
 }
 
-func TestApigeeRepositoriesProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.repositories", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := apigeeRepositoriesProjections(event)
+func TestApigeeAPIProxiesProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.api_proxies", Attributes: map[string]string{"resource_id": "proxy-1", "resource_type": "apigee_api_proxy", "resource_name": "proxy-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := apigeeAPIProxiesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
+		t.Fatal("expected projected API proxy entities")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
@@ -59,13 +59,16 @@ func TestApigeeDeploymentProjection(t *testing.T) {
 	}
 }
 
-func TestApigeeAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := apigeeAuditEventsProjections(event)
+func TestApigeeAppsProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apigee", Kind: "apigee.apps", Attributes: map[string]string{"resource_id": "app-1", "resource_type": "apigee_app", "resource_name": "orders-app", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := apigeeAppsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected app entities")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
 	}
 }

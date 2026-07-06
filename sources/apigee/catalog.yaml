@@ -1,63 +1,91 @@
 id: apigee
 name: "Apigee"
-description: "Collects users, projects, repositories, deployments, and audit events from Apigee and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+description: "Collects Apigee organizations, API proxies, deployments, developers, and apps from the Google Cloud Apigee API and projects them into the Cerebro graph as assets, deployments, and identities for API management inventory and delivery context."
 emitted_kinds:
-  - apigee.users
-  - apigee.projects
-  - apigee.repositories
+  - apigee.organizations
+  - apigee.api_proxies
   - apigee.deployments
-  - apigee.audit_events
+  - apigee.developers
+  - apigee.apps
 runtime_families:
-  - audit_events
+  - api_proxies
+  - apps
   - deployments
-  - projects
-  - repositories
-  - users
+  - developers
+  - organizations
 kind_lifecycle:
-  - kind: apigee.users
+  - kind: apigee.organizations
     status: active
-  - kind: apigee.projects
-    status: active
-  - kind: apigee.repositories
+  - kind: apigee.api_proxies
     status: active
   - kind: apigee.deployments
     status: active
-  - kind: apigee.audit_events
+  - kind: apigee.developers
     status: active
+  - kind: apigee.apps
+    status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: google_oauth_bearer
+  auth_mechanics: oauth2_bearer_token
+  base_url: https://apigee.googleapis.com
+  spec_url: https://apigee.googleapis.com/$discovery/rest?version=v1
+  spec_kind: google_discovery
+  references:
+    - https://cloud.google.com/apigee/docs/reference/apis/apigee/rest
+    - https://cloud.google.com/docs/authentication
+  auth_evidence:
+    - https://cloud.google.com/docs/authentication
+  scope_evidence:
+    - https://www.googleapis.com/auth/cloud-platform
+  families:
+    - id: organizations
+      method: GET
+      path: /v1/organizations
+      operation: apigee.organizations.list
+    - id: api_proxies
+      method: GET
+      path: /v1/{parent=organizations/*}/apis
+      operation: apigee.organizations.apis.list
+    - id: deployments
+      method: GET
+      path: /v1/{parent=organizations/*}/deployments
+      operation: apigee.organizations.deployments.list
+    - id: developers
+      method: GET
+      path: /v1/{parent=organizations/*}/developers
+      operation: apigee.organizations.developers.list
+    - id: apps
+      method: GET
+      path: /v1/{parent=organizations/*}/apps
+      operation: apigee.organizations.apps.list
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: apigee
   dimensions:
-    - id: users
+    - id: organizations
       type: entity_family
-      title: "Users"
-      families: [users]
+      title: "Organizations"
+      families: [organizations]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: projects
+        - Lists Apigee organizations associated with Google Cloud projects from the documented organizations.list endpoint.
+    - id: api_proxies
       type: entity_family
-      title: "Projects"
-      families: [projects]
+      title: "API Proxies"
+      families: [api_proxies]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: repositories
-      type: entity_family
-      title: "Repositories"
-      families: [repositories]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Lists API proxies managed in an Apigee organization from the documented organizations.apis.list endpoint.
     - id: deployments
       type: deployment_state
       title: "Deployments"
@@ -67,17 +95,27 @@ coverage_contract:
       evidence_types: [change_management]
       control_domains: [secure_delivery]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Lists deployed API proxies or shared flows for an Apigee organization from the documented organizations.deployments.list endpoint.
+    - id: developers
+      type: entity_family
+      title: "Developers"
+      families: [developers]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Lists Apigee developers by email address from the documented organizations.developers.list endpoint.
+    - id: apps
+      type: entity_family
+      title: "Apps"
+      families: [apps]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Lists organization apps from the documented organizations.apps.list endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,16 +123,8 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: apigee.users
-    schema_ref: apigee/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: apigee.projects
-    schema_ref: apigee/projects/v1
+  - kind: apigee.organizations
+    schema_ref: apigee/organizations/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +133,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: apigee.repositories
-    schema_ref: apigee/repositories/v1
+  - kind: apigee.api_proxies
+    schema_ref: apigee/api_proxies/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -122,12 +152,21 @@ event_contracts:
       - deployment_name
     required_payload_fields:
       - id
-  - kind: apigee.audit_events
-    schema_ref: apigee/audit_events/v1
+  - kind: apigee.developers
+    schema_ref: apigee/developers/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apigee.apps
+    schema_ref: apigee/apps/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id

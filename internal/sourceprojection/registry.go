@@ -1100,11 +1100,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apideck.ledger_account": apideckLedgerAccountProjections,
 
 	// apigee generated projectors (sourcegen promotion)
-	"apigee.audit_events": apigeeAuditEventsProjections,
-	"apigee.deployments":  apigeeDeploymentsProjections,
-	"apigee.projects":     apigeeProjectsProjections,
-	"apigee.repositories": apigeeRepositoriesProjections,
-	"apigee.users":        apigeeUsersProjections,
+	"apigee.api_proxies":   apigeeAPIProxiesProjections,
+	"apigee.apps":          apigeeAppsProjections,
+	"apigee.deployments":   apigeeDeploymentsProjections,
+	"apigee.developers":    apigeeDevelopersProjections,
+	"apigee.organizations": apigeeOrganizationsProjections,
 
 	// apiiro generated projectors (sourcegen promotion)
 	"apiiro.assets":          apiiroAssetsProjections,

@@ -1,0 +1,48 @@
+[
+  {
+    "attributes": {
+      "id": "app-1",
+      "app_id": "app-1",
+      "name": "orders-app",
+      "status": "approved",
+      "resource_id": "app-1",
+      "resource_name": "orders-app",
+      "resource_type": "apigee_app",
+      "tenant_id": "tenant",
+      "source_event_id": "app-1",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "apps",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "apps",
+      "resource_urn": "urn:cerebro:tenant:apigee_apps:app-1"
+    },
+    "id": "source-apigee-apps-event-1",
+    "kind": "apigee.apps",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "app-1",
+      "app_id": "app-1",
+      "name": "orders-app",
+      "status": "approved",
+      "resource_id": "app-1",
+      "resource_name": "orders-app",
+      "resource_type": "apigee_app",
+      "tenant_id": "tenant",
+      "source_event_id": "app-1",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "apps",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "apps",
+      "resource_urn": "urn:cerebro:tenant:apigee_apps:app-1",
+      "source_id": "apigee",
+      "schema_ref": "apigee/apps/v1"
+    },
+    "schema_ref": "apigee/apps/v1",
+    "source_id": "apigee",
+    "tenant_id": "tenant"
+  }
+]

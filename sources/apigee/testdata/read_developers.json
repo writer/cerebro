@@ -1,0 +1,48 @@
+[
+  {
+    "attributes": {
+      "id": "dev@fixture.invalid",
+      "user_id": "dev@fixture.invalid",
+      "email": "dev@fixture.invalid",
+      "display_name": "dev@fixture.invalid",
+      "status": "active",
+      "resource_id": "dev@fixture.invalid",
+      "resource_name": "dev@fixture.invalid",
+      "resource_type": "apigee_developer",
+      "tenant_id": "tenant",
+      "source_event_id": "dev@fixture.invalid",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "developers",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "developers"
+    },
+    "id": "source-apigee-developers-event-1",
+    "kind": "apigee.developers",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "dev@fixture.invalid",
+      "user_id": "dev@fixture.invalid",
+      "email": "dev@fixture.invalid",
+      "display_name": "dev@fixture.invalid",
+      "status": "active",
+      "resource_id": "dev@fixture.invalid",
+      "resource_name": "dev@fixture.invalid",
+      "resource_type": "apigee_developer",
+      "tenant_id": "tenant",
+      "source_event_id": "dev@fixture.invalid",
+      "source_system": "apigee",
+      "source_provider": "apigee",
+      "provider": "apigee",
+      "family": "developers",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "schema": "developers",
+      "source_id": "apigee",
+      "schema_ref": "apigee/developers/v1"
+    },
+    "schema_ref": "apigee/developers/v1",
+    "source_id": "apigee",
+    "tenant_id": "tenant"
+  }
+]

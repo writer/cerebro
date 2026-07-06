@@ -4,7 +4,7 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: Google OAuth2 access token
             reference_only: true
             required: true
             secret: true
@@ -14,11 +14,11 @@ entries:
         - saas
         - devops_ci_cd
       config_fields:
-        - help: Tenant or regional API base URL.
-          key: base_url
-          label: API base URL
+        - help: Apigee organization name used in organization-scoped API paths.
+          key: organization
+          label: Apigee organization
           required: true
-      description: Collects users, projects, repositories, deployments, and audit events from Apigee and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context.
+      description: Collects Apigee organizations, API proxies, deployments, developers, and apps from the Google Cloud Apigee API and projects them into the Cerebro graph as assets, deployments, and identities for API management inventory and delivery context.
       display_name: Apigee
       id: builtin-apigee
       ingest:
@@ -30,119 +30,72 @@ entries:
               evidence_types:
                 - source_snapshot
               families:
-                - users
+                - organizations
               high_value: true
-              id: users
+              id: organizations
               support: partial
-              title: Users
+              title: Organizations
               type: entity_family
           default_enabled: true
           event:
-            kind: apigee.users
+            kind: apigee.organizations
             required_payload_fields:
               - id
-            schema_ref: apigee/users/v1
-            urn_kind: apigee_users
-          id: users
-          id_field: id
-          label: Users
+            schema_ref: apigee/organizations/v1
+            urn_kind: apigee_organizations
+          id: organizations
+          id_field: organization
+          label: Organizations
           method: GET
-          name_field: name
+          name_field: organization
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: none
+          path: /v1/organizations
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
-              user_id: id
-            template: identity_user
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - projects
-              high_value: true
-              id: projects
-              support: partial
-              title: Projects
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: apigee.projects
-            required_payload_fields:
-              - id
-            schema_ref: apigee/projects/v1
-            urn_kind: apigee_projects
-          id: projects
-          id_field: id
-          label: Projects
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/projects
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: project
+              id: organization
+              name: organization
+              resource_id: organization
+              resource_name: organization
+              resource_type: apigee_organization
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.organizations[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - repositories
+                - api_proxies
               high_value: true
-              id: repositories
+              id: api_proxies
               support: partial
-              title: Repositories
+              title: API Proxies
               type: entity_family
           default_enabled: true
           event:
-            kind: apigee.repositories
+            kind: apigee.api_proxies
             required_payload_fields:
               - id
-            schema_ref: apigee/repositories/v1
-            urn_kind: apigee_repositories
-          id: repositories
-          id_field: id
-          label: Repositories
+            schema_ref: apigee/api_proxies/v1
+            urn_kind: apigee_api_proxies
+          id: api_proxies
+          id_field: name
+          label: API Proxies
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/repositories
+            type: none
+          path: /v1/organizations/${config.organization}/apis
           projection:
             fields:
-              id: id
+              id: name
               name: name
-              resource_id: id
+              resource_id: name
               resource_name: name
-              resource_type: repository
-            template: repository
-          record_selector: $.data[*]
+              resource_type: apigee_api_proxy
+            template: asset
+          record_selector: $.proxies[*]
         - coverage:
             - control_domains:
                 - change_management
@@ -163,73 +116,108 @@ entries:
             schema_ref: apigee/deployments/v1
             urn_kind: apigee_deployments
           id: deployments
-          id_field: id
+          id_field: apiProxy
           label: Deployments
           method: GET
-          name_field: name
+          name_field: apiProxy
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/deployments
+            type: none
+          path: /v1/organizations/${config.organization}/deployments
           projection:
             fields:
-              deployment_id: id
-              deployment_name: name
-              deployment_status: status
-              resource_id: resource_id
+              deployment_environment: environment
+              deployment_id: apiProxy
+              deployment_name: apiProxy
+              deployment_status: state
+              resource_id: apiProxy
             template: deployment
-          record_selector: $.data[*]
+          record_selector: $.deployments[*]
         - coverage:
             - control_domains:
-                - logging_monitoring
+                - asset_inventory
               evidence_types:
-                - logging_configuration
+                - source_snapshot
               families:
-                - audit_events
+                - developers
               high_value: true
-              id: audit_events
+              id: developers
               support: partial
-              title: Audit events
-              type: audit_event
+              title: Developers
+              type: entity_family
           default_enabled: true
           event:
-            kind: apigee.audit_events
+            kind: apigee.developers
             required_payload_fields:
               - id
-            schema_ref: apigee/audit_events/v1
-            urn_kind: apigee_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
+            schema_ref: apigee/developers/v1
+            urn_kind: apigee_developers
+          id: developers
+          id_field: email
+          label: Developers
+          method: GET
+          name_field: email
+          pagination:
+            cursor_json_path: $.developer[-1:].email
+            cursor_param: startKey
+            page_size: 100
+            page_size_param: count
+            type: cursor
+          path: /v1/organizations/${config.organization}/developers
+          projection:
+            fields:
+              display_name: email
+              email: email
+              status: status
+              user_id: email
+            template: identity_user
+          record_selector: $.developer[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - apps
+              high_value: true
+              id: apps
+              support: partial
+              title: Apps
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: apigee.apps
+            required_payload_fields:
+              - id
+            schema_ref: apigee/apps/v1
+            urn_kind: apigee_apps
+          id: apps
+          id_field: appId
+          label: Apps
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
             page_size: 100
-            page_size_param: limit
+            page_size_param: pageSize
             type: cursor
-          path: /v1/audit_events
+          path: /v1/organizations/${config.organization}/apps
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              id: appId
+              name: name
+              resource_id: appId
+              resource_name: name
+              resource_type: apigee_app
+            template: asset
+          record_selector: $.app[*]
       schema_version: cerebro.integration/v1
       source_id: apigee
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://apigee.googleapis.com
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /v1/organizations/${config.organization}
