@@ -999,11 +999,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aircall.users":    aircallUsersProjections,
 
 	// airfocus generated projectors (sourcegen promotion)
-	"airfocus.audit_events": airfocusAuditEventsProjections,
-	"airfocus.deployments":  airfocusDeploymentsProjections,
-	"airfocus.projects":     airfocusProjectsProjections,
-	"airfocus.repositories": airfocusRepositoriesProjections,
-	"airfocus.users":        airfocusUsersProjections,
+	"airfocus.api_keys":         airfocusAPIKeysProjections,
+	"airfocus.link_types":       airfocusLinkTypesProjections,
+	"airfocus.users":            airfocusUsersProjections,
+	"airfocus.workspace_groups": airfocusWorkspaceGroupsProjections,
+	"airfocus.workspaces":       airfocusWorkspacesProjections,
 
 	// airtable generated projectors (sourcegen promotion)
 	"airtable.audit_events": airtableAuditEventsProjections,

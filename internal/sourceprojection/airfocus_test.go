@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestAirfocusIdentityUserProjection(t *testing.T) {
@@ -17,9 +18,36 @@ func TestAirfocusIdentityUserProjection(t *testing.T) {
 	}
 }
 
-func TestAirfocusAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.projects", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := airfocusProjectsProjections(event)
+func TestAirfocusWorkspaceProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.workspaces", Attributes: airfocusAssetAttributes("workspace-1", "workspace")}
+	entities, links, err := airfocusWorkspacesProjections(event)
+	assertAirfocusAssetProjection(t, entities, links, err)
+}
+
+func TestAirfocusWorkspaceGroupsProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.workspace_groups", Attributes: airfocusAssetAttributes("group-1", "workspace_group")}
+	entities, links, err := airfocusWorkspaceGroupsProjections(event)
+	assertAirfocusAssetProjection(t, entities, links, err)
+}
+
+func TestAirfocusLinkTypesProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.link_types", Attributes: airfocusAssetAttributes("link-type-1", "link_type")}
+	entities, links, err := airfocusLinkTypesProjections(event)
+	assertAirfocusAssetProjection(t, entities, links, err)
+}
+
+func TestAirfocusAPIKeysProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.api_keys", Attributes: airfocusAssetAttributes("api-key-1", "api_key")}
+	entities, links, err := airfocusAPIKeysProjections(event)
+	assertAirfocusAssetProjection(t, entities, links, err)
+}
+
+func airfocusAssetAttributes(resourceID, resourceType string) map[string]string {
+	return map[string]string{"resource_id": resourceID, "resource_type": resourceType, "resource_name": resourceID, "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}
+}
+
+func assertAirfocusAssetProjection(t *testing.T, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink, err error) {
+	t.Helper()
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -28,44 +56,5 @@ func TestAirfocusAssetProjection(t *testing.T) {
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestAirfocusRepositoriesProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.repositories", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := airfocusRepositoriesProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestAirfocusDeploymentProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.deployments", Attributes: map[string]string{"deployment_id": "dep-1", "deployment_name": "Production", "deployment_environment": "production", "deployment_status": "ready", "evidence_id": "evidence-1"}}
-	entities, links, err := airfocusDeploymentsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected deployment")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestAirfocusAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "airfocus", Kind: "airfocus.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := airfocusAuditEventsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
 	}
 }

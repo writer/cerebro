@@ -14,16 +14,95 @@ entries:
         - saas
         - devops_ci_cd
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Airfocus API base URL, such as https://app.airfocus.com or https://app.us.airfocus.com.
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, projects, repositories, deployments, and audit events from Airfocus and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context.
+      description: Collects users, workspaces, workspace groups, item link types, and API keys from Airfocus and projects them into the Cerebro graph as identities and product-management assets.
       display_name: Airfocus
       id: builtin-airfocus
       ingest:
         mode: pull
       resource_families:
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API Keys
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: airfocus.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: airfocus/api_keys/v1
+            urn_kind: airfocus_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          path: /api/profile/api-keys
+          projection:
+            fields:
+              api_key_scopes: scopes
+              api_key_user_id: userId
+              id: id
+              last_used_at: lastUsedAt
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: api_key
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - link_types
+              high_value: true
+              id: link_types
+              support: partial
+              title: Item Link Types
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: airfocus.link_types
+            required_payload_fields:
+              - id
+            schema_ref: airfocus/link_types/v1
+            urn_kind: airfocus_link_types
+          id: link_types
+          id_field: id
+          label: Item link types
+          method: POST
+          name_field: name
+          pagination:
+            cursor_json_path: $.offset
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /api/link-types/search
+          projection:
+            fields:
+              id: id
+              inward_name: inwardName
+              name: name
+              outward_name: outwardName
+              resource_id: id
+              resource_name: name
+              resource_type: link_type
+            template: asset
+          record_selector: $.items[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -47,182 +126,97 @@ entries:
           id_field: id
           label: Users
           method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+          name_field: fullName
+          path: /api/team/users
           projection:
             fields:
-              display_name: name
+              display_name: fullName
               email: email
-              status: status
+              status: disabled
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - projects
+                - workspace_groups
               high_value: true
-              id: projects
+              id: workspace_groups
               support: partial
-              title: Projects
+              title: Workspace Groups
               type: entity_family
           default_enabled: true
           event:
-            kind: airfocus.projects
+            kind: airfocus.workspace_groups
             required_payload_fields:
               - id
-            schema_ref: airfocus/projects/v1
-            urn_kind: airfocus_projects
-          id: projects
+            schema_ref: airfocus/workspace_groups/v1
+            urn_kind: airfocus_workspace_groups
+          id: workspace_groups
           id_field: id
-          label: Projects
-          method: GET
+          label: Workspace groups
+          method: POST
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.offset
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/projects
+            type: offset
+          path: /api/workspaces/groups/search
           projection:
             fields:
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: project
+              resource_type: workspace_group
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.items[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - repositories
+                - workspaces
               high_value: true
-              id: repositories
+              id: workspaces
               support: partial
-              title: Repositories
+              title: Workspaces
               type: entity_family
           default_enabled: true
           event:
-            kind: airfocus.repositories
+            kind: airfocus.workspaces
             required_payload_fields:
               - id
-            schema_ref: airfocus/repositories/v1
-            urn_kind: airfocus_repositories
-          id: repositories
+            schema_ref: airfocus/workspaces/v1
+            urn_kind: airfocus_workspaces
+          id: workspaces
           id_field: id
-          label: Repositories
-          method: GET
+          label: Workspaces
+          method: POST
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.offset
+            cursor_param: offset
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/repositories
+            type: offset
+          path: /api/workspaces/search
           projection:
             fields:
+              alias: alias
               id: id
               name: name
               resource_id: id
               resource_name: name
-              resource_type: repository
-            template: repository
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - change_management
-              evidence_types:
-                - change_management
-              families:
-                - deployments
-              high_value: true
-              id: deployments
-              support: partial
-              title: Deployments
-              type: deployment_state
-          default_enabled: true
-          event:
-            kind: airfocus.deployments
-            required_payload_fields:
-              - id
-            schema_ref: airfocus/deployments/v1
-            urn_kind: airfocus_deployments
-          id: deployments
-          id_field: id
-          label: Deployments
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/deployments
-          projection:
-            fields:
-              deployment_id: id
-              deployment_name: name
-              deployment_status: status
-              resource_id: resource_id
-            template: deployment
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: airfocus.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: airfocus/audit_events/v1
-            urn_kind: airfocus_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              resource_type: workspace
+            template: asset
+          record_selector: $.items[*]
       schema_version: cerebro.integration/v1
       source_id: airfocus
       tenant_id: builtin_catalog
@@ -232,4 +226,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /api/team

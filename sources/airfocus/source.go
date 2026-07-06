@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"net/http"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -17,15 +18,15 @@ var catalogFS embed.FS
 const (
 	sourceID               = "airfocus"
 	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
+	defaultHealthPath      = "/api/team"
 	defaultBaseURLTemplate = "${config.base_url}"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
 	familyUsers            = "users"
-	familyProjects         = "projects"
-	familyRepositories     = "repositories"
-	familyDeployments      = "deployments"
-	familyAuditEvents      = "audit_events"
+	familyWorkspaces       = "workspaces"
+	familyWorkspaceGroups  = "workspace_groups"
+	familyLinkTypes        = "link_types"
+	familyAPIKeys          = "api_keys"
 )
 
 var templateKeys = []string{"base_url", "token"}
@@ -48,77 +49,131 @@ func New() (*Source, error) {
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
-			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "airfocus_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "airfocus"},
-			},
-			{
-				Name:             familyProjects,
-				Path:             "/v1/projects",
-				URNKind:          "airfocus_projects",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "project", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "projects", "source_system": "airfocus"},
-			},
-			{
-				Name:             familyRepositories,
-				Path:             "/v1/repositories",
-				URNKind:          "airfocus_repositories",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "repository", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "repositories", "source_system": "airfocus"},
-			},
-			{
-				Name:             familyDeployments,
-				Path:             "/v1/deployments",
-				URNKind:          "airfocus_deployments",
-				IDKeys:           []string{"id", "name", "deployment_id", "url", "uid"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"deployment_branch": "branch|ref|git_branch|head_branch", "deployment_commit_sha": "commit_sha|commit|sha|revision|git_sha", "deployment_created_at": "created_at|created|date_created", "deployment_environment": "environment|env|stage|target", "deployment_id": "id", "deployment_name": "name", "deployment_status": "status", "deployment_updated_at": "updated_at|updated|last_modified", "deployment_url": "url|deployment_url|endpoint|domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "deployment", "schema": "deployments", "source_system": "airfocus"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "airfocus_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "airfocus"},
-			},
+			airfocusUsersFamily(),
+			airfocusSearchAssetFamily(familyWorkspaces, "/api/workspaces/search", "airfocus_workspaces", "workspace", workspaceAttributes()),
+			airfocusSearchAssetFamily(familyWorkspaceGroups, "/api/workspaces/groups/search", "airfocus_workspace_groups", "workspace_group", workspaceGroupAttributes()),
+			airfocusSearchAssetFamily(familyLinkTypes, "/api/link-types/search", "airfocus_link_types", "link_type", linkTypeAttributes()),
+			airfocusAPIKeysFamily(),
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func airfocusUsersFamily() jsonapi.Family {
+	return jsonapi.Family{
+		Name:          familyUsers,
+		Path:          "/api/team/users",
+		URNKind:       "airfocus_users",
+		IDKeys:        []string{"id", "email", "fullName"},
+		ListKeys:      []string{"items"},
+		TimestampKeys: []string{"updatedAt", "createdAt", "lastSeenAt"},
+		Attributes: map[string]string{
+			"created_at":      "createdAt",
+			"display_name":    "fullName|name|email",
+			"email":           "email",
+			"last_login_at":   "lastSeenAt",
+			"login":           "email",
+			"observed_at":     "updatedAt|lastSeenAt|createdAt",
+			"primary_email":   "email",
+			"resource_id":     "id",
+			"resource_name":   "fullName|email",
+			"resource_type":   "user",
+			"role":            "role",
+			"source_event_id": "id",
+			"status":          "disabled",
+			"tenant_id":       "tenant_id|metadata.tenant_id",
+			"user_id":         "id",
+		},
+		StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "airfocus"},
+	}
+}
+
+func airfocusSearchAssetFamily(name, path, urnKind, resourceType string, attrs map[string]string) jsonapi.Family {
+	attrs["resource_type"] = resourceType
+	return jsonapi.Family{
+		Name:           name,
+		Path:           path,
+		URNKind:        urnKind,
+		IDKeys:         []string{"id", "alias", "name", "title"},
+		CursorParam:    "offset",
+		PageSizeParams: []string{"limit"},
+		ListKeys:       []string{"items"},
+		TimestampKeys:  []string{"updatedAt", "createdAt"},
+		Attributes:     attrs,
+		StaticAttributes: map[string]string{
+			"record_class":  "asset",
+			"resource_type": resourceType,
+			"schema":        name,
+			"source_system": "airfocus",
+		},
+		Config: jsonapi.FamilyConfig{
+			Method:          http.MethodPost,
+			OffsetCursor:    true,
+			DefaultPageSize: 100,
+			ResourceURNKind: urnKind,
+		},
+	}
+}
+
+func airfocusAPIKeysFamily() jsonapi.Family {
+	attrs := assetAttributes()
+	attrs["api_key_user_id"] = "userId"
+	attrs["api_key_scopes"] = "scopes"
+	attrs["last_used_at"] = "lastUsedAt"
+	attrs["resource_type"] = "api_key"
+	return jsonapi.Family{
+		Name:          familyAPIKeys,
+		Path:          "/api/profile/api-keys",
+		URNKind:       "airfocus_api_keys",
+		IDKeys:        []string{"id", "name"},
+		ListKeys:      []string{"items"},
+		TimestampKeys: []string{"lastUsedAt", "createdAt"},
+		Attributes:    attrs,
+		StaticAttributes: map[string]string{
+			"record_class":  "asset",
+			"resource_type": "api_key",
+			"schema":        "api_keys",
+			"source_system": "airfocus",
+		},
+		Config: jsonapi.FamilyConfig{ResourceURNKind: "airfocus_api_keys"},
+	}
+}
+
+func workspaceAttributes() map[string]string {
+	attrs := assetAttributes()
+	attrs["alias"] = "alias"
+	attrs["description"] = "description.markdown|description"
+	attrs["workspace_id"] = "id"
+	return attrs
+}
+
+func workspaceGroupAttributes() map[string]string {
+	attrs := assetAttributes()
+	attrs["workspace_group_id"] = "id"
+	return attrs
+}
+
+func linkTypeAttributes() map[string]string {
+	attrs := assetAttributes()
+	attrs["inward_name"] = "inwardName"
+	attrs["outward_name"] = "outwardName"
+	return attrs
+}
+
+func assetAttributes() map[string]string {
+	return map[string]string{
+		"created_at":      "createdAt",
+		"id":              "id",
+		"name":            "name|title|alias|id",
+		"observed_at":     "updatedAt|createdAt|lastUsedAt",
+		"resource_id":     "id",
+		"resource_name":   "name|title|alias|id",
+		"source_event_id": "id",
+		"tenant_id":       "tenant_id|metadata.tenant_id",
+	}
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {
