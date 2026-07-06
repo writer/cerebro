@@ -1,5 +1,7 @@
 sourceId: apache
 secretKeys:
+  - APACHE_BASE_URL
+  - APACHE_USERNAME
   - APACHE_PASSWORD
 runtimes:
   - localId: eventlog
