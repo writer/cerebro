@@ -21,18 +21,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/api/v2/end-users/" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"end_user_id": "end-user-1", "external_id": "crm-1", "profile": map[string]any{"display_name": "Ada Lovelace", "email": "ada@example.test"}, "created_at": "2026-06-01T00:00:00Z", "updated_at": "2026-06-02T00:00:00Z"}}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL + "/api", "family": defaultFamily, "token": "test-token"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -45,7 +41,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	event := pull.Events[0]
-	if event.Kind != "ada_support.users" {
+	if event.Kind != "ada_support.end_users" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
 	if strings.TrimSpace(event.Id) == "" {

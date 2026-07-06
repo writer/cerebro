@@ -932,11 +932,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"acunetix.vulnerabilities":   acunetixVulnerabilitiesProjections,
 
 	// ada_support generated projectors (sourcegen promotion)
-	"ada_support.accounts":     adaSupportAccountsProjections,
-	"ada_support.audit_events": adaSupportAuditEventsProjections,
-	"ada_support.policies":     adaSupportPoliciesProjections,
-	"ada_support.records":      adaSupportRecordsProjections,
-	"ada_support.users":        adaSupportUsersProjections,
+	"ada_support.audit_events":          adaSupportAuditEventsProjections,
+	"ada_support.conversations":         adaSupportConversationsProjections,
+	"ada_support.end_users":             adaSupportEndUsersProjections,
+	"ada_support.knowledge_articles":    adaSupportKnowledgeArticlesProjections,
+	"ada_support.platform_integrations": adaSupportPlatformIntegrationsProjections,
 
 	// addigy generated projectors (sourcegen promotion)
 	"addigy.audit_events": addigyAuditEventsProjections,

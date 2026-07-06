@@ -1,0 +1,45 @@
+[
+  {
+    "id": "source-ada_support-end_users-event-1",
+    "kind": "ada_support.end_users",
+    "source_id": "ada_support",
+    "tenant_id": "tenant",
+    "schema_ref": "ada_support/end_users/v1",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v2/end-users/",
+      "family": "end_users",
+      "provider": "ada_support",
+      "record_selector": "$.data[*]",
+      "resource_urn": "urn:cerebro:tenant:ada_support_end_users:end-user-1",
+      "schema": "end_users",
+      "source_provider": "ada_support",
+      "source_system": "ada_support",
+      "tenant_id": "tenant",
+      "observed_at": "2026-06-02T00:00:00Z",
+      "user_id": "end-user-1",
+      "display_name": "Ada Lovelace",
+      "email": "ada@example.test",
+      "primary_email": "ada@example.test",
+      "source_event_id": "end-user-1"
+    },
+    "payload": {
+      "end_user_id": "end-user-1",
+      "external_id": "crm-1",
+      "profile": {
+        "display_name": "Ada Lovelace",
+        "email": "ada@example.test"
+      },
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-02T00:00:00Z",
+      "api_method": "GET",
+      "api_path": "/v2/end-users/",
+      "schema_ref": "ada_support/end_users/v1",
+      "source_id": "ada_support",
+      "tenant_id": "tenant",
+      "user_id": "end-user-1",
+      "event_id": "end-user-1"
+    }
+  }
+]

@@ -14,181 +14,165 @@ entries:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Ada tenant API base URL, for example https://example.ada.support/api.
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, accounts, records, policies, and audit events from Ada Support and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+        - help: Optional ISO timestamp for Data Export conversation reads.
+          key: created_since
+          label: Conversation created since
+          required: false
+        - help: Optional ISO timestamp for Audit Log reads.
+          key: start_date
+          label: Audit start date
+          required: false
+      description: Collects Ada end users, platform integrations, conversations, knowledge articles, and audit log events from Ada Support and projects them into the Cerebro graph for identity, asset, policy, evidence, and compliance context.
       display_name: Ada Support
       id: builtin-ada_support
       ingest:
         mode: pull
       resource_families:
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - users
+            - control_domains: [asset_inventory]
+              evidence_types: [source_snapshot]
+              families: [end_users]
               high_value: true
-              id: users
+              id: end_users
               support: partial
-              title: Users
+              title: End Users
               type: entity_family
           default_enabled: true
           event:
-            kind: ada_support.users
-            required_payload_fields:
-              - id
-            schema_ref: ada_support/users/v1
-            urn_kind: ada_support_users
-          id: users
-          id_field: id
-          label: Users
+            kind: ada_support.end_users
+            required_payload_fields: [end_user_id]
+            schema_ref: ada_support/end_users/v1
+            urn_kind: ada_support_end_users
+          id: end_users
+          id_field: end_user_id
+          label: End users
           method: GET
-          name_field: name
+          name_field: profile.display_name
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.meta.next_page_url
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/users
+          path: /v2/end-users/
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
-              user_id: id
+              display_name: profile.display_name
+              email: profile.email
+              user_id: end_user_id
             template: identity_user
           record_selector: $.data[*]
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - accounts
+            - control_domains: [asset_inventory]
+              evidence_types: [source_snapshot]
+              families: [platform_integrations]
               high_value: true
-              id: accounts
+              id: platform_integrations
               support: partial
-              title: Accounts
+              title: Platform Integrations
               type: entity_family
           default_enabled: true
           event:
-            kind: ada_support.accounts
-            required_payload_fields:
-              - id
-            schema_ref: ada_support/accounts/v1
-            urn_kind: ada_support_accounts
-          id: accounts
+            kind: ada_support.platform_integrations
+            required_payload_fields: [id]
+            schema_ref: ada_support/platform_integrations/v1
+            urn_kind: ada_support_platform_integrations
+          id: platform_integrations
           id_field: id
-          label: Accounts
+          label: Platform integrations
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.meta.next_page_url
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/accounts
+          path: /v2/platform-integrations/
           projection:
             fields:
-              id: id
-              name: name
               resource_id: id
               resource_name: name
-              resource_type: account
+              resource_type: platform_integration
             template: asset
           record_selector: $.data[*]
         - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - records
+            - control_domains: [data_governance]
+              evidence_types: [source_snapshot]
+              families: [conversations]
               high_value: true
-              id: records
+              id: conversations
               support: partial
-              title: Records
+              title: Conversations
               type: entity_family
           default_enabled: true
           event:
-            kind: ada_support.records
-            required_payload_fields:
-              - id
-            schema_ref: ada_support/records/v1
-            urn_kind: ada_support_records
-          id: records
-          id_field: id
-          label: Records
+            kind: ada_support.conversations
+            required_payload_fields: [_id]
+            schema_ref: ada_support/conversations/v1
+            urn_kind: ada_support_conversations
+          id: conversations
+          id_field: _id
+          label: Conversations
           method: GET
-          name_field: name
+          name_field: inquiry_summary
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.meta.next_page_uri
             cursor_param: cursor
             page_size: 100
-            page_size_param: limit
+            page_size_param: page_size
             type: cursor
-          path: /v1/records
+          path: /v2/export/conversations
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: record
+              resource_id: _id
+              resource_name: inquiry_summary
+              resource_type: conversation
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.items[*]
         - coverage:
-            - control_domains:
-                - configuration_management
-              evidence_types:
-                - source_snapshot
-              families:
-                - policies
+            - control_domains: [security_operations]
+              evidence_types: [configuration_state]
+              families: [knowledge_articles]
               high_value: true
-              id: policies
+              id: knowledge_articles
               support: partial
-              title: Policies
-              type: entity_family
+              title: Knowledge Articles
+              type: lifecycle_state
           default_enabled: true
           event:
-            kind: ada_support.policies
-            required_payload_fields:
-              - id
-            schema_ref: ada_support/policies/v1
-            urn_kind: ada_support_policies
-          id: policies
+            kind: ada_support.knowledge_articles
+            required_payload_fields: [id]
+            schema_ref: ada_support/knowledge_articles/v1
+            urn_kind: ada_support_knowledge_articles
+          id: knowledge_articles
           id_field: id
-          label: Policies
+          label: Knowledge articles
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.meta.next_page_url
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/policies
+          path: /v2/knowledge/articles/
           projection:
             fields:
               policy_id: id
               policy_name: name
-              policy_status: status
-              policy_type: policy
+              policy_status: enabled
+              policy_type: knowledge_article
             template: policy
           record_selector: $.data[*]
         - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
+            - control_domains: [logging_monitoring]
+              evidence_types: [logging_configuration]
+              families: [audit_events]
               high_value: true
               id: audit_events
               support: partial
@@ -197,30 +181,29 @@ entries:
           default_enabled: true
           event:
             kind: ada_support.audit_events
-            required_payload_fields:
-              - id
+            required_payload_fields: [id]
             schema_ref: ada_support/audit_events/v1
             urn_kind: ada_support_audit_events
           id: audit_events
           id_field: id
           label: Audit events
           method: GET
-          name_field: name
+          name_field: entity_name
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.meta.next_page_url
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/audit_events
+          path: /v2/analytics/audit-log/events/
           projection:
             fields:
               actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
+              actor_id: actor_user_id
+              event_type: activity
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              resource_id: entity_id
+              resource_type: entity_type
             template: audit_event
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1
@@ -229,7 +212,6 @@ entries:
       transport:
         base_url: ${config.base_url}
         verification:
-          expect_status:
-            - 200
+          expect_status: [200]
           method: GET
-          path: /v1/me
+          path: /v2/end-users/

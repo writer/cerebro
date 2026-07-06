@@ -7,8 +7,8 @@ import (
 )
 
 func TestAdaSupportAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.accounts", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := adaSupportAccountsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.platform_integrations", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "platform_integration", "resource_name": "Knowledge Hub", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := adaSupportPlatformIntegrationsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -20,9 +20,23 @@ func TestAdaSupportAssetProjection(t *testing.T) {
 	}
 }
 
+func TestAdaSupportConversationProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.conversations", Attributes: map[string]string{"resource_id": "conversation-1", "resource_type": "conversation", "resource_name": "Billing question", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := adaSupportConversationsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected conversation")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
+	}
+}
+
 func TestAdaSupportPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := adaSupportPoliciesProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.knowledge_articles", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Refund policy", "policy_type": "knowledge_article", "policy_status": "enabled", "evidence_id": "evidence-1"}}
+	entities, links, err := adaSupportKnowledgeArticlesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -35,8 +49,8 @@ func TestAdaSupportPolicyProjection(t *testing.T) {
 }
 
 func TestAdaSupportIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := adaSupportUsersProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "ada_support", Kind: "ada_support.end_users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
+	entities, _, err := adaSupportEndUsersProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

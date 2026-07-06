@@ -7,19 +7,19 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func adaSupportUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func adaSupportEndUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityUserProjections(event, identityProjectionProfile{Provider: "ada_support"})
 }
 
-func adaSupportAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func adaSupportPlatformIntegrationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return adaSupportGenericAssetProjections(event)
 }
 
-func adaSupportRecordsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func adaSupportConversationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return adaSupportGenericAssetProjections(event)
 }
 
-func adaSupportPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func adaSupportKnowledgeArticlesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return adaSupportGenericPolicyProjections(event)
 }
 
