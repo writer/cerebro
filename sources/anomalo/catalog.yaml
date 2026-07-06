@@ -131,3 +131,29 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+provider_api_disproof:
+  status: invalidated
+  reason: no_provider_owned_machine_readable_or_reference_api_for_generated_runtime_paths
+  checked_at: 2026-07-06T00:00:00Z
+  references:
+    - https://apitracker.io/a/anomalo
+    - https://docs.atlan.com/apps/connectors/observability/anomalo/how-tos/set-up-anomalo
+    - https://pypi.org/project/anomalo/
+    - https://github.com/square/anomalo-go/blob/v1.2.0/anomalo/client.go
+  affected_families:
+    - accounts
+    - audit_events
+    - policies
+    - records
+    - users
+  missing_paths:
+    - /v1/accounts
+    - /v1/audit_events
+    - /v1/policies
+    - /v1/records
+    - /v1/users
+  notes:
+    - "Anomalo's public API profile does not list provider-owned developer documentation, an API reference, a base endpoint, or documented API styles that can ground these generated runtime paths."
+    - "Atlan's Anomalo connector documentation confirms API-key authentication for fetching Anomalo metadata but does not document the generated /v1 users, accounts, records, policies, or audit-events endpoints."
+    - "The provider-published PyPI package describes Python bindings for the Anomalo API, and the public Go client documents /api/public/v1 endpoints for ping, tables, checks, notification channels, organizations, and warehouses, not the generated /v1 family paths."
+    - "Promotion needs a provider-owned API reference or machine-readable specification for Anomalo's real resources before reshaping this generated runtime."
