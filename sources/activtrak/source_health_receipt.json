@@ -1,6 +1,7 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
+  "adapter_health_path": "/scim/v1/ping",
+  "auth_mechanics": "x_api_key_header",
+  "auth_model": "api_key",
   "evidence_cas_reference_kind": "activtrak.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

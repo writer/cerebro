@@ -911,17 +911,17 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"abuseipdb.reports":      abuseipdbReportsProjections,
 
 	// activecampaign generated projectors (sourcegen promotion)
-	"activecampaign.accounts":     activecampaignAccountsProjections,
-	"activecampaign.automations":  activecampaignAutomationsProjections,
-	"activecampaign.campaigns":    activecampaignCampaignsProjections,
-	"activecampaign.contacts":     activecampaignContactsProjections,
-	"activecampaign.users":        activecampaignUsersProjections,
+	"activecampaign.accounts":    activecampaignAccountsProjections,
+	"activecampaign.automations": activecampaignAutomationsProjections,
+	"activecampaign.campaigns":   activecampaignCampaignsProjections,
+	"activecampaign.contacts":    activecampaignContactsProjections,
+	"activecampaign.users":       activecampaignUsersProjections,
 
 	// activtrak generated projectors (sourcegen promotion)
-	"activtrak.accounts":     activtrakAccountsProjections,
-	"activtrak.audit_events": activtrakAuditEventsProjections,
-	"activtrak.policies":     activtrakPoliciesProjections,
-	"activtrak.records":      activtrakRecordsProjections,
+	"activtrak.activity_log": activtrakActivityLogProjections,
+	"activtrak.clients":      activtrakClientsProjections,
+	"activtrak.consumers":    activtrakConsumersProjections,
+	"activtrak.groups":       activtrakGroupsProjections,
 	"activtrak.users":        activtrakUsersProjections,
 
 	// acunetix generated projectors (sourcegen promotion)

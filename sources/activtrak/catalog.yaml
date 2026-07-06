@@ -1,83 +1,122 @@
 id: activtrak
-name: "Activtrak"
-description: "Collects users, accounts, records, policies, and audit events from Activtrak and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+name: "ActivTrak"
+description: "Collects ActivTrak SCIM users and groups, administration clients and consumers, and activity-log events from the documented public API, then projects them into the Cerebro graph for identity, asset, access, and audit context."
 emitted_kinds:
   - activtrak.users
-  - activtrak.accounts
-  - activtrak.records
-  - activtrak.policies
-  - activtrak.audit_events
+  - activtrak.groups
+  - activtrak.clients
+  - activtrak.consumers
+  - activtrak.activity_log
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
+  - activity_log
+  - clients
+  - consumers
+  - groups
   - users
 kind_lifecycle:
   - kind: activtrak.users
     status: active
-  - kind: activtrak.accounts
+  - kind: activtrak.groups
     status: active
-  - kind: activtrak.records
+  - kind: activtrak.clients
     status: active
-  - kind: activtrak.policies
+  - kind: activtrak.consumers
     status: active
-  - kind: activtrak.audit_events
+  - kind: activtrak.activity_log
     status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x_api_key_header
+  base_url: https://api.activtrak.com
+  spec_url: https://developers.activtrak.com/reports/activity-log/get-activity-log.md
+  spec_kind: api_reference_markdown
+  references:
+    - https://developers.activtrak.com/introduction
+    - https://developers.activtrak.com/administration/scim/ping
+    - https://developers.activtrak.com/administration/scim/users/get-users.md
+    - https://developers.activtrak.com/administration/scim/groups/get-groups.md
+    - https://developers.activtrak.com/administration/clients/get-all-clients.md
+    - https://developers.activtrak.com/administration/consumers/get-all-consumers.md
+    - https://developers.activtrak.com/reports/activity-log/get-activity-log.md
+  families:
+    - id: activity_log
+      method: GET
+      path: /reports/v2/activitylog
+      operation: get_activity_log
+    - id: clients
+      method: GET
+      path: /admin/v1/clients
+      operation: get_all_clients
+    - id: consumers
+      method: GET
+      path: /admin/v1/consumers
+      operation: get_all_consumers
+    - id: groups
+      method: GET
+      path: /scim/v1/groups
+      operation: get_groups
+    - id: users
+      method: GET
+      path: /scim/v1/users
+      operation: get_users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: activtrak
   dimensions:
     - id: users
       type: entity_family
-      title: "Users"
+      title: "SCIM Users"
       families: [users]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Lists ActivTrak SCIM users through the documented `GET /scim/v1/users` endpoint.
+    - id: groups
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
+      title: "SCIM Groups"
+      families: [groups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
+        - Lists ActivTrak SCIM groups through the documented `GET /scim/v1/groups` endpoint.
+    - id: clients
       type: entity_family
-      title: "Records"
-      families: [records]
+      title: "Clients"
+      families: [clients]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
-      type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+        - Lists ActivTrak administration clients through the documented `GET /admin/v1/clients` endpoint.
+    - id: consumers
+      type: entity_family
+      title: "Consumers"
+      families: [consumers]
       support: partial
       high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
+        - Lists ActivTrak app-access consumers and roles through the documented `GET /admin/v1/consumers` endpoint.
+    - id: activity_log
       type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+      title: "Activity Log"
+      families: [activity_log]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads ActivTrak activity-log events through the documented `GET /reports/v2/activitylog` endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,8 +132,8 @@ event_contracts:
       - user_id
     required_payload_fields:
       - id
-  - kind: activtrak.accounts
-    schema_ref: activtrak/accounts/v1
+  - kind: activtrak.groups
+    schema_ref: activtrak/groups/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -103,8 +142,8 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: activtrak.records
-    schema_ref: activtrak/records/v1
+  - kind: activtrak.clients
+    schema_ref: activtrak/clients/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -113,21 +152,20 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
-  - kind: activtrak.policies
-    schema_ref: activtrak/policies/v1
+  - kind: activtrak.consumers
+    schema_ref: activtrak/consumers/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - policy_id
-      - policy_name
+      - user_id
     required_payload_fields:
       - id
-  - kind: activtrak.audit_events
-    schema_ref: activtrak/audit_events/v1
+  - kind: activtrak.activity_log
+    schema_ref: activtrak/activity_log/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - logId

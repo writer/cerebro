@@ -1,0 +1,27 @@
+[
+  {
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "10",
+      "resource_urn": "urn:cerebro:tenant:runtime_activtrak_client:10",
+      "resource_type": "activtrak_client",
+      "resource_id": "10",
+      "resource_name": "John Doe",
+      "source_system": "activtrak",
+      "record_class": "asset",
+      "schema": "clients"
+    },
+    "id": "source-activtrak-clients-event-1",
+    "kind": "activtrak.clients",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "10",
+      "domain": "example",
+      "name": "jdoe",
+      "alias": "John Doe"
+    },
+    "schema_ref": "activtrak/clients/v1",
+    "source_id": "activtrak",
+    "tenant_id": "tenant"
+  }
+]

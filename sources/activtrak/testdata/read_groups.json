@@ -1,0 +1,25 @@
+[
+  {
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "group-1",
+      "resource_urn": "urn:cerebro:tenant:runtime_activtrak_group:group-1",
+      "resource_type": "activtrak_group",
+      "resource_id": "group-1",
+      "resource_name": "Engineering",
+      "source_system": "activtrak",
+      "record_class": "asset",
+      "schema": "groups"
+    },
+    "id": "source-activtrak-groups-event-1",
+    "kind": "activtrak.groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "group-1",
+      "displayName": "Engineering"
+    },
+    "schema_ref": "activtrak/groups/v1",
+    "source_id": "activtrak",
+    "tenant_id": "tenant"
+  }
+]

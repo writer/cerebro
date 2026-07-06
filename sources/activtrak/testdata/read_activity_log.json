@@ -1,0 +1,30 @@
+[
+  {
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "30",
+      "event_type": "Code Editor",
+      "actor_id": "jdoe",
+      "actor_name": "jdoe",
+      "resource_id": "40",
+      "resource_type": "activity_log",
+      "source_system": "activtrak",
+      "record_class": "audit_event",
+      "schema": "activity_log"
+    },
+    "id": "source-activtrak-activity_log-event-1",
+    "kind": "activtrak.activity_log",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "logId": "30",
+      "time_utc": "2026-06-01T00:00:00Z",
+      "user": "jdoe",
+      "computerId": "40",
+      "description": "Code Editor",
+      "duration": 120
+    },
+    "schema_ref": "activtrak/activity_log/v1",
+    "source_id": "activtrak",
+    "tenant_id": "tenant"
+  }
+]

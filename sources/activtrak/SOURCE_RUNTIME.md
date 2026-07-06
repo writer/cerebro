@@ -1,11 +1,12 @@
-# Activtrak
+# ActivTrak
 
-Generated Source Runtime SDK scaffold for `activtrak`.
+Provider-verified Source Runtime SDK adapter for `activtrak`.
 
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `bearer_token`
+- Auth model: `api_key`
+- Auth mechanics: `x-api-key` header
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +19,15 @@ Generated Source Runtime SDK scaffold for `activtrak`.
 
 ## Families
 
-- `users`, emits `activtrak.users`, reads `/v1/users`
-- `accounts`, emits `activtrak.accounts`, reads `/v1/accounts`
-- `records`, emits `activtrak.records`, reads `/v1/records`
-- `policies`, emits `activtrak.policies`, reads `/v1/policies`
-- `audit_events`, emits `activtrak.audit_events`, reads `/v1/audit_events`
+- `users`, emits `activtrak.users`, reads `GET /scim/v1/users`
+- `groups`, emits `activtrak.groups`, reads `GET /scim/v1/groups`
+- `clients`, emits `activtrak.clients`, reads `GET /admin/v1/clients`
+- `consumers`, emits `activtrak.consumers`, reads `GET /admin/v1/consumers`
+- `activity_log`, emits `activtrak.activity_log`, reads `GET /reports/v2/activitylog`
 
 ## Tests
 
-- `go test ./sources/activtrak ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/activtrak ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/activtrak/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

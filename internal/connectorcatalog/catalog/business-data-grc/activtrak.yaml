@@ -3,23 +3,23 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: api_key
+            label: API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: ActivTrak API base URL. Defaults to the global production endpoint.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, accounts, records, policies, and audit events from Activtrak and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
-      display_name: Activtrak
+          required: false
+      description: Collects ActivTrak SCIM users and groups, administration clients and consumers, and activity-log events from the documented public API, then projects them into the Cerebro graph for identity, asset, access, and audit context.
+      display_name: ActivTrak
       id: builtin-activtrak
       ingest:
         mode: pull
@@ -34,7 +34,7 @@ entries:
               high_value: true
               id: users
               support: partial
-              title: Users
+              title: SCIM Users
               type: entity_family
           default_enabled: true
           event:
@@ -45,191 +45,177 @@ entries:
             urn_kind: activtrak_users
           id: users
           id_field: id
-          label: Users
+          label: SCIM Users
           method: GET
-          name_field: name
+          name_field: displayName
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.startIndex
+            cursor_param: startIndex
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: count
+            type: offset
+          path: /scim/v1/users
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
+              display_name: displayName
+              email: emails.0.value
+              status: active
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.resources[*]
         - coverage:
             - control_domains:
                 - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - accounts
+                - groups
               high_value: true
-              id: accounts
+              id: groups
               support: partial
-              title: Accounts
+              title: SCIM Groups
               type: entity_family
           default_enabled: true
           event:
-            kind: activtrak.accounts
+            kind: activtrak.groups
             required_payload_fields:
               - id
-            schema_ref: activtrak/accounts/v1
-            urn_kind: activtrak_accounts
-          id: accounts
+            schema_ref: activtrak/groups/v1
+            urn_kind: activtrak_groups
+          id: groups
           id_field: id
-          label: Accounts
+          label: SCIM Groups
           method: GET
-          name_field: name
+          name_field: displayName
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.startIndex
+            cursor_param: startIndex
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+            page_size_param: count
+            type: offset
+          path: /scim/v1/groups
           projection:
             fields:
               id: id
-              name: name
+              name: displayName
               resource_id: id
-              resource_name: name
-              resource_type: account
+              resource_name: displayName
+              resource_type: activtrak_group
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.resources[*]
         - coverage:
             - control_domains:
-                - data_governance
+                - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - clients
               high_value: true
-              id: records
+              id: clients
               support: partial
-              title: Records
+              title: Clients
               type: entity_family
           default_enabled: true
           event:
-            kind: activtrak.records
+            kind: activtrak.clients
             required_payload_fields:
               - id
-            schema_ref: activtrak/records/v1
-            urn_kind: activtrak_records
-          id: records
+            schema_ref: activtrak/clients/v1
+            urn_kind: activtrak_clients
+          id: clients
           id_field: id
-          label: Records
+          label: Clients
           method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/records
+          name_field: alias
+          path: /admin/v1/clients
           projection:
             fields:
               id: id
-              name: name
+              name: alias
               resource_id: id
-              resource_name: name
-              resource_type: record
+              resource_name: alias
+              resource_type: activtrak_client
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.clients[*]
         - coverage:
             - control_domains:
-                - configuration_management
+                - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - policies
+                - consumers
               high_value: true
-              id: policies
+              id: consumers
               support: partial
-              title: Policies
+              title: Consumers
               type: entity_family
           default_enabled: true
           event:
-            kind: activtrak.policies
+            kind: activtrak.consumers
             required_payload_fields:
               - id
-            schema_ref: activtrak/policies/v1
-            urn_kind: activtrak_policies
-          id: policies
+            schema_ref: activtrak/consumers/v1
+            urn_kind: activtrak_consumers
+          id: consumers
           id_field: id
-          label: Policies
+          label: Consumers
           method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
+          name_field: username
+          path: /admin/v1/consumers
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
+              display_name: username
+              email: email
+              user_id: id
+            template: identity_user
+          record_selector: $.consumers[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
               evidence_types:
                 - logging_configuration
               families:
-                - audit_events
+                - activity_log
               high_value: true
-              id: audit_events
+              id: activity_log
               support: partial
-              title: Audit events
+              title: Activity Log
               type: audit_event
           default_enabled: true
           event:
-            kind: activtrak.audit_events
+            kind: activtrak.activity_log
             required_payload_fields:
-              - id
-            schema_ref: activtrak/audit_events/v1
-            urn_kind: activtrak_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
+              - logId
+            schema_ref: activtrak/activity_log/v1
+            urn_kind: activtrak_activity_log
+          id: activity_log
+          id_field: logId
+          label: Activity Log
           method: GET
-          name_field: name
+          name_field: description
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.cursor
             cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            page_size: 150
+            page_size_param: pageSize
             type: cursor
-          path: /v1/audit_events
+          path: /reports/v2/activitylog
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_id: user
+              event_type: description
+              id: logId
+              resource_id: computerId
+              resource_type: activity_log
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.activity[*]
       schema_version: cerebro.integration/v1
       source_id: activtrak
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.activtrak.com
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /scim/v1/ping

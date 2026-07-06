@@ -1,0 +1,28 @@
+[
+  {
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "20",
+      "user_id": "20",
+      "display_name": "Jane Doe",
+      "email": "jane@example.test",
+      "source_system": "activtrak",
+      "record_class": "identity_user",
+      "schema": "consumers"
+    },
+    "id": "source-activtrak-consumers-event-1",
+    "kind": "activtrak.consumers",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "20",
+      "firstName": "Jane",
+      "lastName": "Doe",
+      "username": "jane",
+      "email": "jane@example.test",
+      "ssoEnabled": true
+    },
+    "schema_ref": "activtrak/consumers/v1",
+    "source_id": "activtrak",
+    "tenant_id": "tenant"
+  }
+]
