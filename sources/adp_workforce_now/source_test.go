@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -99,5 +100,75 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if eventPull.Events[0].Kind != "adp_workforce_now.event_notifications" {
 		t.Fatalf("event notification kind = %q", eventPull.Events[0].Kind)
+	}
+}
+
+func TestReadUsersAdvancesSkipByPageSizeAfterFullPage(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if r.URL.Path != "/hr/v2/workers" {
+			t.Fatalf("path = %q, want /hr/v2/workers", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$top"); got != "100" {
+			t.Fatalf("$top query = %q, want 100", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("$skip") {
+		case "0":
+			workers := make([]map[string]any, 0, 100)
+			for i := range 100 {
+				workers = append(workers, map[string]any{
+					"associateOID": "worker-full-page-" + strconv.Itoa(i),
+					"person":       map[string]any{"legalName": map[string]string{"formattedName": "Full Page Worker"}},
+					"businessCommunication": map[string]any{
+						"emails": []map[string]string{{"emailUri": "full.page.worker@example.test"}},
+					},
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"workers": workers})
+		case "100":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workers": []map[string]any{{
+					"associateOID": "worker-after-full-page",
+					"person":       map[string]any{"legalName": map[string]string{"formattedName": "Next Page Worker"}},
+				}},
+			})
+		default:
+			t.Fatalf("unexpected $skip query = %q", r.URL.Query().Get("$skip"))
+		}
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyUsers, "token": "test-token", "per_page": "100"})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "100" {
+		t.Fatalf("first NextCursor = %#v, want 100", first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(requests))
+	}
+	if got := requests[0].URL.Query().Get("$skip"); got != "0" {
+		t.Fatalf("first $skip query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("$skip"); got != "100" {
+		t.Fatalf("second $skip query = %q, want 100", got)
+	}
+	if got := requests[1].URL.Query().Get("$skip"); got == "1" {
+		t.Fatalf("second $skip query = %q, want page-size offset", got)
 	}
 }
