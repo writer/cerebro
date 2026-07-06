@@ -1113,12 +1113,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"apiiro.policies":        apiiroPoliciesProjections,
 	"apiiro.vulnerabilities": apiiroVulnerabilitiesProjections,
 
-	// apollo generated projectors (sourcegen promotion)
-	"apollo.accounts":     apolloAccountsProjections,
-	"apollo.audit_events": apolloAuditEventsProjections,
-	"apollo.policies":     apolloPoliciesProjections,
-	"apollo.records":      apolloRecordsProjections,
-	"apollo.users":        apolloUsersProjections,
+	// apollo provider-verified projectors (sourcegen promotion)
+	"apollo.accounts": apolloAccountsProjections,
+	"apollo.contacts": apolloContactsProjections,
+	"apollo.users":    apolloUsersProjections,
 
 	// appcircle generated projectors (sourcegen promotion)
 	"appcircle.audit_events": appcircleAuditEventsProjections,

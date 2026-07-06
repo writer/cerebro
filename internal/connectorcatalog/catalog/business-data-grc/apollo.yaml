@@ -3,22 +3,22 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: api_key
+            label: API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Optional Apollo API base URL override. Defaults to https://api.apollo.io/api/v1.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, accounts, records, policies, and audit events from Apollo and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+          required: false
+      description: Collects Apollo workspace users, saved accounts, and saved contacts from the documented Apollo REST API and projects them into the Cerebro graph as identity users and account/contact inventory for owner and evidence context.
       display_name: Apollo
       id: builtin-apollo
       ingest:
@@ -49,20 +49,19 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/users
+          path: /users/search
           projection:
             fields:
               display_name: name
               email: email
-              status: status
+              status: deleted
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.users[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -85,151 +84,68 @@ entries:
           id: accounts
           id_field: id
           label: Accounts
-          method: GET
+          method: POST
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/accounts
+          path: /accounts/search
           projection:
             fields:
-              id: id
-              name: name
+              domain: domain
+              organization_id: organization_id
               resource_id: id
               resource_name: name
-              resource_type: account
+              resource_type: apollo_account
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.accounts[*]
         - coverage:
             - control_domains:
-                - data_governance
+                - asset_inventory
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - contacts
               high_value: true
-              id: records
+              id: contacts
               support: partial
-              title: Records
+              title: Contacts
               type: entity_family
           default_enabled: true
           event:
-            kind: apollo.records
+            kind: apollo.contacts
             required_payload_fields:
               - id
-            schema_ref: apollo/records/v1
-            urn_kind: apollo_records
-          id: records
+            schema_ref: apollo/contacts/v1
+            urn_kind: apollo_contacts
+          id: contacts
           id_field: id
-          label: Records
-          method: GET
+          label: Contacts
+          method: POST
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
             page_size: 100
-            page_size_param: limit
+            page_size_param: per_page
             type: cursor
-          path: /v1/records
+          path: /contacts/search
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: record
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - configuration_management
-              evidence_types:
-                - source_snapshot
-              families:
-                - policies
-              high_value: true
-              id: policies
-              support: partial
-              title: Policies
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: apollo.policies
-            required_payload_fields:
-              - id
-            schema_ref: apollo/policies/v1
-            urn_kind: apollo_policies
-          id: policies
-          id_field: id
-          label: Policies
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
-          projection:
-            fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: apollo.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: apollo/audit_events/v1
-            urn_kind: apollo_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              display_name: name
+              email: email
+              status: email_status
+              user_id: id
+            template: identity_user
+          record_selector: $.contacts[*]
       schema_version: cerebro.integration/v1
       source_id: apollo
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.apollo.io/api/v1
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /users/api_profile
