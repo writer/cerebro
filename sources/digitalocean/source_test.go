@@ -47,9 +47,9 @@ func TestSourceReadsFamilies(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.family, func(t *testing.T) {
-			source, err := New()
+			source, err := newSource(clientOptions{allowLoopback: true})
 			if err != nil {
-				t.Fatalf("New() error = %v", err)
+				t.Fatalf("newSource() error = %v", err)
 			}
 			cfg := sourcecdk.NewConfig(map[string]string{
 				"tenant_id": "tenant",

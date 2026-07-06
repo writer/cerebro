@@ -4,7 +4,7 @@ Generated Source Runtime SDK scaffold for `digitalocean`.
 
 ## Runtime input
 
-- Source type: `json_api`
+- Source type: `rest`
 - Auth model: `bearer_token`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`

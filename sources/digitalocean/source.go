@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -35,6 +37,15 @@ type settings struct {
 	family   string
 	token    string
 	baseURL  string
+	pageSize int
+}
+
+// clientOptions carries test-only overrides for the outbound HTTP client. In
+// production every field is zero, which yields a fully hardened client that
+// blocks loopback, private, and link-local targets.
+type clientOptions struct {
+	allowLoopback bool
+	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
 }
 
 // Source reads DigitalOcean droplets, VPCs, and firewalls through the official
@@ -46,37 +57,45 @@ type Source struct {
 
 // New builds the DigitalOcean source with one godo-backed page reader per family.
 func New() (*Source, error) {
+	return newSource(clientOptions{})
+}
+
+func newSource(opts clientOptions) (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
 		return nil, err
 	}
+	clients := func(ctx context.Context, s settings) (*godo.Client, error) {
+		return newClient(ctx, s, opts)
+	}
+	pageSize := func(s settings) int { return s.pageSize }
 	engine, err := sourcecdk.NewFamilyEngineWithSourceID(
 		sourceID,
 		parseSettings,
 		func(s settings) string { return s.family },
 		sourcecdk.FamilyFromPageReader(sourcecdk.PageReader[settings, *godo.Client, godo.Droplet]{
 			SourceID: sourceID, Family: familyDroplets, Label: "digitalocean droplets",
-			Clients:  newClient,
+			Clients:  clients,
 			List:     listDroplets,
 			Event:    dropletEvent,
 			URN:      dropletURN,
-			PageSize: func(settings) int { return defaultPageSize },
+			PageSize: pageSize,
 		}),
 		sourcecdk.FamilyFromPageReader(sourcecdk.PageReader[settings, *godo.Client, *godo.VPC]{
 			SourceID: sourceID, Family: familyVPCs, Label: "digitalocean vpcs",
-			Clients:  newClient,
+			Clients:  clients,
 			List:     listVPCs,
 			Event:    vpcEvent,
 			URN:      vpcURN,
-			PageSize: func(settings) int { return defaultPageSize },
+			PageSize: pageSize,
 		}),
 		sourcecdk.FamilyFromPageReader(sourcecdk.PageReader[settings, *godo.Client, godo.Firewall]{
 			SourceID: sourceID, Family: familyFirewalls, Label: "digitalocean firewalls",
-			Clients:  newClient,
+			Clients:  clients,
 			List:     listFirewalls,
 			Event:    firewallEvent,
 			URN:      firewallURN,
-			PageSize: func(settings) int { return defaultPageSize },
+			PageSize: pageSize,
 		}),
 	)
 	if err != nil {
@@ -129,16 +148,35 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		family:   family,
 		token:    token,
 		baseURL:  sourcecdk.ConfigValue(cfg, "base_url"),
+		pageSize: parsePageSize(sourcecdk.ConfigValue(cfg, "per_page")),
 	}, nil
 }
 
-func newClient(ctx context.Context, s settings) (*godo.Client, error) {
-	httpClient := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: s.token}))
-	opts := make([]godo.ClientOpt, 0, 1)
-	if base := strings.TrimSpace(s.baseURL); base != "" {
-		opts = append(opts, godo.SetBaseURL(base))
+func parsePageSize(raw string) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && n > 0 {
+		return n
 	}
-	client, err := godo.New(httpClient, opts...)
+	return defaultPageSize
+}
+
+// newClient builds a godo client whose outbound requests flow through the
+// shared sourcehttp SafeRoundTripper (SSRF/DNS-rebinding guards, response body
+// limits, timeout, no redirects). The oauth2 bearer transport wraps the safe
+// transport so credentials are attached before the safety layer inspects and
+// pins the request host.
+func newClient(ctx context.Context, s settings, opts clientOptions) (*godo.Client, error) {
+	safe := sourcehttp.NewClient(sourcehttp.ClientOptions{
+		SourceID:      sourceID,
+		AllowLoopback: opts.allowLoopback,
+		LookupIPAddrs: opts.lookupIPAddrs,
+	})
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, safe)
+	httpClient := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: s.token}))
+	clientOpts := make([]godo.ClientOpt, 0, 1)
+	if base := strings.TrimSpace(s.baseURL); base != "" {
+		clientOpts = append(clientOpts, godo.SetBaseURL(base))
+	}
+	client, err := godo.New(httpClient, clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("%s: build client: %w", sourceID, err)
 	}

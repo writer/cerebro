@@ -37,11 +37,12 @@ entries:
           label: Droplets
           method: GET
           pagination:
-            cursor_json_path: $.links.pages.next
-            cursor_param: page
+            inject_first_page: true
+            page_param: page
             page_size: 50
             page_size_param: per_page
-            type: cursor
+            start_page: 1
+            type: page
           path: /droplets
           projection:
             fields:
@@ -73,11 +74,12 @@ entries:
           label: VPCs
           method: GET
           pagination:
-            cursor_json_path: $.links.pages.next
-            cursor_param: page
+            inject_first_page: true
+            page_param: page
             page_size: 50
             page_size_param: per_page
-            type: cursor
+            start_page: 1
+            type: page
           path: /vpcs
           projection:
             fields:
@@ -109,11 +111,12 @@ entries:
           label: Firewalls
           method: GET
           pagination:
-            cursor_json_path: $.links.pages.next
-            cursor_param: page
+            inject_first_page: true
+            page_param: page
             page_size: 50
             page_size_param: per_page
-            type: cursor
+            start_page: 1
+            type: page
           path: /firewalls
           projection:
             fields:
