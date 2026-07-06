@@ -108,6 +108,7 @@ event_contracts:
       - policy_id
       - policy_name
     required_payload_fields:
+      - check_static_id
       - check_type
   - kind: anomalo.notification_channels
     schema_ref: anomalo/notification_channels/v1

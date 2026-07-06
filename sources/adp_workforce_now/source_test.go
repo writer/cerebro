@@ -37,6 +37,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 								"worker": map[string]string{"associateOID": "G3GMA28TB2SVJ2TF"},
 							},
 						},
+						"eventID":         "event-1",
 						"eventNameCode":   map[string]string{"codeValue": "worker.hire"},
 						"eventStatusCode": map[string]string{"effectiveDateTime": "2026-07-01T12:00:00Z"},
 					}},

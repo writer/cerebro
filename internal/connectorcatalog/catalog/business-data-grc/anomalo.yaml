@@ -111,6 +111,7 @@ entries:
           event:
             kind: anomalo.checks
             required_payload_fields:
+              - check_static_id
               - check_type
             schema_ref: anomalo/checks/v1
             urn_kind: anomalo_checks

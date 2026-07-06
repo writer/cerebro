@@ -11,7 +11,7 @@
       "source_event_id": "7",
       "source_system": "akeyless",
       "tenant_id": "tenant",
-      "resource_urn": "urn:cerebro:tenant:runtime_auth_methods:7"
+      "resource_urn": "urn:cerebro:tenant:akeyless_auth_methods:7"
     },
     "id": "source-akeyless-auth_methods-event-1",
     "kind": "akeyless.auth_methods",

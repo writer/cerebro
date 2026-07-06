@@ -50,6 +50,7 @@ event_contracts:
       - source_event_id
       - event_type
     required_payload_fields:
+      - eventID
       - eventNameCode
   - kind: adp_workforce_now.users
     schema_ref: adp_workforce_now/users/v1

@@ -46,7 +46,7 @@ func New() (*Source, error) {
 			{
 				Name:             familyItems,
 				Path:             "/list-items",
-				URNKind:          "runtime_items",
+				URNKind:          "akeyless_items",
 				IDKeys:           []string{"item_id", "uid", "name", "item_name"},
 				CursorParam:      "pagination-token",
 				NextCursorKeys:   []string{"next_page"},
@@ -60,7 +60,7 @@ func New() (*Source, error) {
 			{
 				Name:             familyAuthMethods,
 				Path:             "/list-auth-methods",
-				URNKind:          "runtime_auth_methods",
+				URNKind:          "akeyless_auth_methods",
 				IDKeys:           []string{"auth_method_id", "auth_method_access_id", "auth_method_name"},
 				CursorParam:      "pagination-token",
 				NextCursorKeys:   []string{"next_page"},
@@ -74,7 +74,7 @@ func New() (*Source, error) {
 			{
 				Name:             familyRoles,
 				Path:             "/list-roles",
-				URNKind:          "runtime_roles",
+				URNKind:          "akeyless_roles",
 				IDKeys:           []string{"role_id", "role_name", "id"},
 				CursorParam:      "pagination-token",
 				NextCursorKeys:   []string{"next_page"},
@@ -88,7 +88,7 @@ func New() (*Source, error) {
 			{
 				Name:             familyAnalytics,
 				Path:             "/get-analytics-data",
-				URNKind:          "runtime_analytics",
+				URNKind:          "akeyless_analytics",
 				IDKeys:           []string{"date_updated", "id"},
 				TimestampKeys:    []string{"observed_at", "updated_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|date_updated", "resource_id": "date_updated|id", "resource_name": "name|report_name", "resource_type": "resource_type|type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "date_updated|id", "tenant_id": "tenant_id|metadata.tenant_id", "total_clients": "usage_reports.*.total_clients|total_clients", "total_secrets": "usage_reports.*.total_secrets|total_secrets"},

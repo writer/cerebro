@@ -111,7 +111,7 @@ event_contracts:
       - secret_id
       - secret_name
     required_payload_fields:
-      - id
+      - item_id
   - kind: akeyless.auth_methods
     schema_ref: akeyless/auth_methods/v1
     required_attributes:
@@ -121,7 +121,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - auth_method_id
   - kind: akeyless.roles
     schema_ref: akeyless/roles/v1
     required_attributes:
@@ -129,7 +129,7 @@ event_contracts:
       - source_event_id
       - group_id
     required_payload_fields:
-      - id
+      - role_id
   - kind: akeyless.analytics
     schema_ref: akeyless/analytics/v1
     required_attributes:

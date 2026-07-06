@@ -116,7 +116,7 @@ entries:
             schema_ref: apigee/deployments/v1
             urn_kind: apigee_deployments
           id: deployments
-          id_field: apiProxy
+          id_field: id
           label: Deployments
           method: GET
           name_field: apiProxy

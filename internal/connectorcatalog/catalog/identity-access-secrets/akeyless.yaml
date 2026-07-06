@@ -29,11 +29,11 @@ entries:
           event:
             kind: akeyless.items
             required_payload_fields:
-              - id
+              - item_id
             schema_ref: akeyless/items/v1
             urn_kind: akeyless_items
           id: items
-          id_field: id
+          id_field: item_id
           label: Items
           method: POST
           pagination:
@@ -44,7 +44,7 @@ entries:
           path: /list-items
           projection:
             fields:
-              secret_id: id
+              secret_id: item_id
               secret_status: secret_status|status|state
               secret_type: secret_type|type|kind
             template: secret
@@ -64,11 +64,11 @@ entries:
           event:
             kind: akeyless.auth_methods
             required_payload_fields:
-              - id
+              - auth_method_id
             schema_ref: akeyless/auth_methods/v1
             urn_kind: akeyless_auth_methods
           id: auth_methods
-          id_field: id
+          id_field: auth_method_id
           label: Auth methods
           method: POST
           pagination:
@@ -99,11 +99,11 @@ entries:
           event:
             kind: akeyless.roles
             required_payload_fields:
-              - id
+              - role_id
             schema_ref: akeyless/roles/v1
             urn_kind: akeyless_roles
           id: roles
-          id_field: id
+          id_field: role_id
           label: Roles
           method: POST
           pagination:
