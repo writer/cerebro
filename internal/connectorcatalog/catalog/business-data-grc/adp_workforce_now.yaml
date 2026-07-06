@@ -14,16 +14,51 @@ entries:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Optional ADP API base URL override. Defaults to the production API host.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, accounts, records, policies, and audit events from ADP Workforce Now and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+          required: false
+      description: Collects worker profiles and event notification messages from ADP Workforce Now and projects them into the Cerebro graph as identity users and audit-style change events for HR and workforce ownership context.
       display_name: ADP Workforce Now
       id: builtin-adp_workforce_now
       ingest:
         mode: pull
       resource_families:
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - event_notifications
+              high_value: true
+              id: event_notifications
+              support: partial
+              title: Event Notifications
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: adp_workforce_now.event_notifications
+            required_payload_fields:
+              - eventNameCode
+            schema_ref: adp_workforce_now/event_notifications/v1
+            urn_kind: adp_workforce_now_event_notifications
+          id: event_notifications
+          id_field: eventID
+          label: Event notifications
+          method: GET
+          name_field: eventNameCode.codeValue
+          path: /core/v1/event-notification-messages
+          singleton: true
+          projection:
+            fields:
+              actor_id: originator.associateOID
+              event_type: eventNameCode.codeValue
+              id: eventID
+              resource_id: data.eventContext.worker.associateOID
+              resource_type: worker
+            template: audit_event
+          record_selector: $.events[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -40,196 +75,35 @@ entries:
           event:
             kind: adp_workforce_now.users
             required_payload_fields:
-              - id
+              - associateOID
             schema_ref: adp_workforce_now/users/v1
             urn_kind: adp_workforce_now_users
           id: users
-          id_field: id
+          id_field: associateOID
           label: Users
           method: GET
-          name_field: name
+          name_field: person.legalName.formattedName
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: $skip
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: $top
+            type: offset
+          path: /hr/v2/workers
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
-              user_id: id
+              display_name: person.legalName.formattedName
+              email: businessCommunication.emails.0.emailUri
+              status: workerStatus.statusCode.codeValue
+              user_id: associateOID
             template: identity_user
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - accounts
-              high_value: true
-              id: accounts
-              support: partial
-              title: Accounts
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: adp_workforce_now.accounts
-            required_payload_fields:
-              - id
-            schema_ref: adp_workforce_now/accounts/v1
-            urn_kind: adp_workforce_now_accounts
-          id: accounts
-          id_field: id
-          label: Accounts
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: account
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - records
-              high_value: true
-              id: records
-              support: partial
-              title: Records
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: adp_workforce_now.records
-            required_payload_fields:
-              - id
-            schema_ref: adp_workforce_now/records/v1
-            urn_kind: adp_workforce_now_records
-          id: records
-          id_field: id
-          label: Records
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/records
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: record
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - configuration_management
-              evidence_types:
-                - source_snapshot
-              families:
-                - policies
-              high_value: true
-              id: policies
-              support: partial
-              title: Policies
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: adp_workforce_now.policies
-            required_payload_fields:
-              - id
-            schema_ref: adp_workforce_now/policies/v1
-            urn_kind: adp_workforce_now_policies
-          id: policies
-          id_field: id
-          label: Policies
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
-          projection:
-            fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: adp_workforce_now.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: adp_workforce_now/audit_events/v1
-            urn_kind: adp_workforce_now_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
-          projection:
-            fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.workers[*]
       schema_version: cerebro.integration/v1
       source_id: adp_workforce_now
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.adp.com
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /hr/v2/workers/meta

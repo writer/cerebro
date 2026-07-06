@@ -953,11 +953,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"adobe_workfront.users":        adobeWorkfrontUsersProjections,
 
 	// adp_workforce_now generated projectors (sourcegen promotion)
-	"adp_workforce_now.accounts":     adpWorkforceNowAccountsProjections,
-	"adp_workforce_now.audit_events": adpWorkforceNowAuditEventsProjections,
-	"adp_workforce_now.policies":     adpWorkforceNowPoliciesProjections,
-	"adp_workforce_now.records":      adpWorkforceNowRecordsProjections,
-	"adp_workforce_now.users":        adpWorkforceNowUsersProjections,
+	"adp_workforce_now.event_notifications": adpWorkforceNowEventNotificationsProjections,
+	"adp_workforce_now.users":               adpWorkforceNowUsersProjections,
 
 	// agiloft generated projectors (sourcegen promotion)
 	"agiloft.accounts":     agiloftAccountsProjections,

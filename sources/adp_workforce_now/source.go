@@ -15,17 +15,14 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID               = "adp_workforce_now"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
-	familyUsers            = "users"
-	familyAccounts         = "accounts"
-	familyRecords          = "records"
-	familyPolicies         = "policies"
-	familyAuditEvents      = "audit_events"
+	sourceID                 = "adp_workforce_now"
+	defaultFamily            = familyUsers
+	defaultHealthPath        = "/hr/v2/workers/meta"
+	defaultBaseURLTemplate   = "https://api.adp.com"
+	tokenHeader              = ""
+	tokenScheme              = "Bearer"
+	familyUsers              = "users"
+	familyEventNotifications = "event_notifications"
 )
 
 var templateKeys = []string{"base_url", "token"}
@@ -50,68 +47,30 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/users",
+				Path:             "/hr/v2/workers",
 				URNKind:          "adp_workforce_now_users",
-				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				IDKeys:           []string{"associateOID", "workerID.idValue", "person.legalName.formattedName", "person.communication.emails.0.emailUri"},
+				CursorParam:      "$skip",
+				PageFirstCursor:  "0",
+				PageSizeParams:   []string{"$top"},
+				ListKeys:         []string{"workers"},
+				TimestampKeys:    []string{"workerDates.originalHireDate", "workerDates.terminationDate", "observed_at"},
+				Attributes:       map[string]string{"created_at": "workerDates.originalHireDate", "department": "workAssignments.0.homeOrganizationalUnits.0.nameCode.shortName|workAssignments.0.assignedOrganizationalUnits.0.nameCode.shortName", "display_name": "person.legalName.formattedName", "domain": "businessCommunication.emails.0.emailUri|person.communication.emails.0.emailUri", "email": "businessCommunication.emails.0.emailUri|person.communication.emails.0.emailUri", "job_title": "workAssignments.0.jobTitle", "last_login_at": "", "login": "businessCommunication.emails.0.emailUri|person.communication.emails.0.emailUri|associateOID", "manager": "workAssignments.0.reportsTo.0.workerID.idValue|workAssignments.0.reportsTo.0.associateOID", "observed_at": "workerDates.originalHireDate|workerDates.terminationDate", "primary_email": "businessCommunication.emails.0.emailUri|person.communication.emails.0.emailUri", "resource_id": "associateOID", "resource_name": "person.legalName.formattedName", "resource_type": "worker", "source_event_id": "associateOID", "status": "workerStatus.statusCode.codeValue|workerStatus.statusCode.shortName", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "associateOID"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "adp_workforce_now"},
 			},
 			{
-				Name:             familyAccounts,
-				Path:             "/v1/accounts",
-				URNKind:          "adp_workforce_now_accounts",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "account", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "accounts", "source_system": "adp_workforce_now"},
-			},
-			{
-				Name:             familyRecords,
-				Path:             "/v1/records",
-				URNKind:          "adp_workforce_now_records",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "record", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "records", "source_system": "adp_workforce_now"},
-			},
-			{
-				Name:             familyPolicies,
-				Path:             "/v1/policies",
-				URNKind:          "adp_workforce_now_policies",
-				IDKeys:           []string{"id", "name", "policy_id", "key", "control_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "policy", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "policies", "source_system": "adp_workforce_now"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit_events",
-				URNKind:          "adp_workforce_now_audit_events",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email", "actor_id": "actor_id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "adp_workforce_now"},
+				Name:          familyEventNotifications,
+				Path:          "/core/v1/event-notification-messages",
+				URNKind:       "adp_workforce_now_event_notifications",
+				IDKeys:        []string{"eventID", "eventNameCode.codeValue", "data.eventContext.worker.associateOID"},
+				ListKeys:      []string{"events"},
+				TimestampKeys: []string{"eventStatusCode.effectiveDateTime", "data.eventContext.effectiveDateTime", "eventDateTime", "observed_at"},
+				Attributes:    map[string]string{"actor_id": "originator.associateOID|actor.associateOID", "event_type": "eventNameCode.codeValue", "id": "eventID|eventNameCode.codeValue", "observed_at": "eventStatusCode.effectiveDateTime|eventDateTime", "resource_id": "data.eventContext.worker.associateOID", "resource_type": "worker", "source_event_id": "eventID|eventNameCode.codeValue", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{
+					"record_class":  "audit_event",
+					"schema":        "event_notifications",
+					"source_system": "adp_workforce_now",
+				},
 			},
 		},
 	})

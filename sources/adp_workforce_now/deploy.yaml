@@ -1,14 +1,21 @@
 sourceId: adp_workforce_now
 secretKeys:
-  - ADP_WORKFORCE_NOW_BASE_URL
   - ADP_WORKFORCE_NOW_TOKEN
 runtimes:
+  - localId: event-notifications
+    config:
+      family: event_notifications
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /hr/v2/workers/meta
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ADP_WORKFORCE_NOW_TOKEN
   - localId: users
     config:
-      base_url: env:ADP_WORKFORCE_NOW_BASE_URL
       family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /hr/v2/workers/meta
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

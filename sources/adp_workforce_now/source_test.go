@@ -21,15 +21,53 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.RequestURI() == "/v1/me" {
+		if r.URL.RequestURI() == "/hr/v2/workers/meta" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/hr/v2/workers" {
+			if r.URL.Path == "/core/v1/event-notification-messages" {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"events": []map[string]any{{
+						"actor": map[string]string{"associateOID": "G557KMGC6KCSVZRD"},
+						"data": map[string]any{
+							"eventContext": map[string]any{
+								"worker": map[string]string{"associateOID": "G3GMA28TB2SVJ2TF"},
+							},
+						},
+						"eventNameCode":   map[string]string{"codeValue": "worker.hire"},
+						"eventStatusCode": map[string]string{"effectiveDateTime": "2026-07-01T12:00:00Z"},
+					}},
+				})
+				return
+			}
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"workers": []map[string]any{{
+				"associateOID": "G3GMA28TB2SVJ2TF",
+				"businessCommunication": map[string]any{
+					"emails": []map[string]string{{"emailUri": "jordan.worker@example.test"}},
+				},
+				"person": map[string]any{
+					"legalName": map[string]string{"formattedName": "Jordan Worker"},
+				},
+				"workAssignments": []map[string]any{{
+					"jobTitle": "HR Analyst",
+					"homeOrganizationalUnits": []map[string]any{{
+						"nameCode": map[string]string{"shortName": "People Operations"},
+					}},
+				}},
+				"workerDates": map[string]string{
+					"originalHireDate": "2022-01-15",
+				},
+				"workerStatus": map[string]any{
+					"statusCode": map[string]string{"codeValue": "Active"},
+				},
+			}},
+		})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
@@ -50,5 +88,16 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	eventCfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": "event_notifications", "token": "test-token"})
+	eventPull, err := source.Read(context.Background(), eventCfg, nil)
+	if err != nil {
+		t.Fatalf("Read(event_notifications) error = %v", err)
+	}
+	if len(eventPull.Events) != 1 {
+		t.Fatalf("event notification events = %d, want 1", len(eventPull.Events))
+	}
+	if eventPull.Events[0].Kind != "adp_workforce_now.event_notifications" {
+		t.Fatalf("event notification kind = %q", eventPull.Events[0].Kind)
 	}
 }
