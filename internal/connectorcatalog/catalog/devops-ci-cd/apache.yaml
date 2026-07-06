@@ -125,6 +125,7 @@ entries:
       event:
         kind: apache.user
         required_payload_fields:
+        - username
         - email
         schema_ref: apache/user/v1
         urn_kind: apache_user
