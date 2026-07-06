@@ -2,53 +2,89 @@ package digitalocean
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+func TestSourceReadsFamilies(t *testing.T) {
+	fixtures := map[string]string{
+		"/v2/droplets":  "testdata/read_droplets.json",
+		"/v2/vpcs":      "testdata/read_vpcs.json",
+		"/v2/firewalls": "testdata/read_firewalls.json",
 	}
-	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("Authorization = %q, want Bearer test-token", got)
 		}
-		if r.URL.RequestURI() == "/account" {
-			w.WriteHeader(http.StatusNoContent)
+		fixture, ok := fixtures[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Path != "/droplets" {
-			t.Fatalf("path = %q", r.URL.Path)
+		body, err := os.ReadFile(filepath.FromSlash(fixture))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_, _ = w.Write(body)
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
-	if err := source.Check(context.Background(), cfg); err != nil {
-		t.Fatalf("Check() error = %v", err)
+
+	cases := []struct {
+		family string
+		kind   string
+	}{
+		{familyDroplets, "digitalocean.droplets"},
+		{familyVPCs, "digitalocean.vpcs"},
+		{familyFirewalls, "digitalocean.firewalls"},
 	}
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
-	}
-	event := pull.Events[0]
-	if event.Kind != "digitalocean.droplets" {
-		t.Fatalf("kind = %q", event.Kind)
-	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+	for _, tc := range cases {
+		t.Run(tc.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			cfg := sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "tenant",
+				"token":     "test-token",
+				"family":    tc.family,
+				"base_url":  server.URL + "/",
+			})
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			urns, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if len(urns) == 0 {
+				t.Fatalf("Discover() returned no URNs")
+			}
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) == 0 {
+				t.Fatalf("Read() returned no events")
+			}
+			for _, event := range pull.Events {
+				if event.GetKind() != tc.kind {
+					t.Fatalf("event kind = %q, want %q", event.GetKind(), tc.kind)
+				}
+				if strings.TrimSpace(event.GetId()) == "" {
+					t.Fatalf("event id is empty")
+				}
+				if err := sourcecdk.ValidateEventEnvelope(event); err != nil {
+					t.Fatalf("ValidateEventEnvelope() error = %v", err)
+				}
+			}
+		})
 	}
 }

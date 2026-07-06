@@ -18,9 +18,9 @@ Generated Source Runtime SDK scaffold for `digitalocean`.
 
 ## Families
 
-- `droplets`, emits `digitalocean.droplets`, reads `/droplets`
-- `teams`, emits `digitalocean.teams`, reads `/teams`
-- `audit_events`, emits `digitalocean.audit_events`, reads `/actions`
+- `droplets`, emits `digitalocean.droplets`, reads `/v2/droplets`
+- `vpcs`, emits `digitalocean.vpcs`, reads `/v2/vpcs`
+- `firewalls`, emits `digitalocean.firewalls`, reads `/v2/firewalls`
 
 ## Tests
 

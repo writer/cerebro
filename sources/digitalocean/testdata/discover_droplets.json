@@ -1,3 +1,8 @@
-[
-  "urn:cerebro:tenant:digitalocean_droplets:source-digitalocean-droplets-1"
-]
+{
+  "droplets": [
+    {"id": 3164444, "name": "web-01", "status": "active", "vpc_uuid": "vpc-1111", "region": {"slug": "nyc3"}, "created_at": "2026-06-01T00:00:00Z"},
+    {"id": 3164445, "name": "web-02", "status": "active", "vpc_uuid": "vpc-1111", "region": {"slug": "nyc3"}, "created_at": "2026-06-01T00:00:00Z"}
+  ],
+  "links": {},
+  "meta": {"total": 2}
+}

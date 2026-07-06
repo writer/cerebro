@@ -2331,10 +2331,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"dig_security.policies":        digSecurityPoliciesProjections,
 	"dig_security.vulnerabilities": digSecurityVulnerabilitiesProjections,
 
-	// digitalocean generated projectors (sourcegen promotion)
-	"digitalocean.audit_events": digitaloceanAuditEventsProjections,
-	"digitalocean.droplets":     digitaloceanDropletsProjections,
-	"digitalocean.teams":        digitaloceanTeamsProjections,
+	// digitalocean deep-tier projectors (godo SDK: compute, network, security)
+	"digitalocean.droplets":  digitaloceanDropletsProjections,
+	"digitalocean.firewalls": digitaloceanFirewallsProjections,
+	"digitalocean.vpcs":      digitaloceanVPCsProjections,
 
 	// discourse generated projectors (sourcegen promotion)
 	"discourse.backups_json":       discourseBackupsJsonProjections,

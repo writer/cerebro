@@ -1,0 +1,7 @@
+{
+  "firewalls": [
+    {"id": "fw-2222", "name": "web-fw", "status": "succeeded", "droplet_ids": [3164444, 3164445], "inbound_rules": [{"protocol": "tcp", "ports": "443", "sources": {"addresses": ["0.0.0.0/0", "::/0"]}}], "outbound_rules": [], "created_at": "2026-05-15T00:00:00Z"}
+  ],
+  "links": {},
+  "meta": {"total": 1}
+}

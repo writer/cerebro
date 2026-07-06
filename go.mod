@@ -84,6 +84,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/vpclattice v1.22.1
 	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3
 	github.com/aws/smithy-go v1.27.1
+	github.com/digitalocean/godo v1.197.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/google/go-github/v66 v66.0.0
@@ -143,6 +144,8 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

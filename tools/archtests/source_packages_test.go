@@ -18,7 +18,9 @@ const newSourcePackageLOCBudget = 300
 // "Sources are tiered" and docs/engineering/source-cdk-extraction.md "Deep Source
 // Tier". Adding a source here without it meeting the Depth Contract fails
 // TestDeepTierSourcesMeetDepthContract.
-var deepTierSourcePackages = map[string]struct{}{}
+var deepTierSourcePackages = map[string]struct{}{
+	"digitalocean": {},
+}
 
 const deepTierDepthContractScore = 100
 
