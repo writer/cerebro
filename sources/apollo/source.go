@@ -114,7 +114,12 @@ func apolloAccountsFamily() jsonapi.Family {
 			"source_event_id":  "id",
 			"tenant_id":        "tenant_id|metadata.tenant_id",
 		},
-		Config:           jsonapi.FamilyConfig{Method: http.MethodPost, DefaultPageSize: 100, ResourceURNKind: "apollo_accounts"},
+		Config: jsonapi.FamilyConfig{
+			Method:          http.MethodPost,
+			DefaultPageSize: 100,
+			ResourceURNKind: "apollo_accounts",
+			JSONBody:        jsonapi.JSONBodyConfig{CursorParam: "page", SizeParam: "per_page"},
+		},
 		StaticAttributes: map[string]string{"record_class": "asset", "schema": "accounts", "source_system": "apollo"},
 	}
 }
@@ -148,7 +153,12 @@ func apolloContactsFamily() jsonapi.Family {
 			"tenant_id":       "tenant_id|metadata.tenant_id",
 			"user_id":         "id|person_id|email",
 		},
-		Config:           jsonapi.FamilyConfig{Method: http.MethodPost, DefaultPageSize: 100, ResourceURNKind: "apollo_contacts"},
+		Config: jsonapi.FamilyConfig{
+			Method:          http.MethodPost,
+			DefaultPageSize: 100,
+			ResourceURNKind: "apollo_contacts",
+			JSONBody:        jsonapi.JSONBodyConfig{CursorParam: "page", SizeParam: "per_page"},
+		},
 		StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "contacts", "source_system": "apollo"},
 	}
 }

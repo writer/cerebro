@@ -29,19 +29,19 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-current", "email": "owner@example.test"})
 		case "/users/search":
-			assertApolloPageRequest(t, r, http.MethodGet)
+			assertApolloQueryPageRequest(t, r, http.MethodGet)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
 				"users":      []map[string]any{{"id": "user-1", "email": "user@example.test", "name": "Apollo User", "created_at": "2026-06-01T00:00:00Z", "deleted": false}},
 			})
 		case "/accounts/search":
-			assertApolloPageRequest(t, r, http.MethodPost)
+			assertApolloJSONBodyPageRequest(t, r, http.MethodPost)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
 				"accounts":   []map[string]any{{"id": "account-1", "name": "Apollo Account", "domain": "example.test", "organization_id": "org-1", "created_at": "2026-06-01T00:00:00Z"}},
 			})
 		case "/contacts/search":
-			assertApolloPageRequest(t, r, http.MethodPost)
+			assertApolloJSONBodyPageRequest(t, r, http.MethodPost)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"pagination": map[string]any{"page": 1, "per_page": 100, "total_entries": 1, "total_pages": 1},
 				"contacts":   []map[string]any{{"id": "contact-1", "person_id": "person-1", "email": "contact@example.test", "name": "Apollo Contact", "title": "Buyer", "created_at": "2026-06-01T00:00:00Z"}},
@@ -89,7 +89,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 	}
 }
 
-func assertApolloPageRequest(t *testing.T, r *http.Request, method string) {
+func assertApolloQueryPageRequest(t *testing.T, r *http.Request, method string) {
 	t.Helper()
 	if r.Method != method {
 		t.Fatalf("method for %s = %q, want %q", r.URL.Path, r.Method, method)
@@ -99,5 +99,28 @@ func assertApolloPageRequest(t *testing.T, r *http.Request, method string) {
 	}
 	if got := r.URL.Query().Get("per_page"); got != "1" && got != "100" {
 		t.Fatalf("per_page for %s = %q, want 1 or 100", r.URL.Path, got)
+	}
+}
+
+func assertApolloJSONBodyPageRequest(t *testing.T, r *http.Request, method string) {
+	t.Helper()
+	if r.Method != method {
+		t.Fatalf("method for %s = %q, want %q", r.URL.Path, r.Method, method)
+	}
+	if got := r.URL.Query().Get("page"); got != "" {
+		t.Fatalf("page query for %s = %q, want empty", r.URL.Path, got)
+	}
+	if got := r.URL.Query().Get("per_page"); got != "" {
+		t.Fatalf("per_page query for %s = %q, want empty", r.URL.Path, got)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("decode JSON request body for %s: %v", r.URL.Path, err)
+	}
+	if got := body["page"]; got != float64(1) {
+		t.Fatalf("page body for %s = %#v, want 1", r.URL.Path, got)
+	}
+	if got := body["per_page"]; got != float64(1) && got != float64(100) {
+		t.Fatalf("per_page body for %s = %#v, want 1 or 100", r.URL.Path, got)
 	}
 }
