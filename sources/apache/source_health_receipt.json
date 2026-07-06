@@ -1,5 +1,6 @@
 {
   "adapter_health_path": "/eventLogs",
+  "auth_mechanics": "basic_authorization_header_username_password",
   "auth_model": "basic",
   "evidence_cas_reference_kind": "apache.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

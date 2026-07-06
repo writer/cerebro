@@ -203,7 +203,7 @@ entries:
     source_id: apache
     tenant_id: builtin_catalog
     transport:
-      base_url: "/api/v1"
+      base_url: ${config.base_url}
       retry:
         backoff: exponential
         max_attempts: 3

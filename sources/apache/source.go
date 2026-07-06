@@ -18,9 +18,7 @@ const (
 	sourceID               = "apache"
 	defaultFamily          = familyEventlog
 	defaultHealthPath      = "/eventLogs"
-	defaultBaseURLTemplate = "/api/v1"
-	tokenHeader            = ""
-	tokenScheme            = "Basic"
+	defaultBaseURLTemplate = ""
 	familyEventlog         = "eventlog"
 	familyRole             = "role"
 	familyUser             = "user"
@@ -44,8 +42,6 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		AuthModel:       "basic",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{
 				Name:             familyEventlog,
