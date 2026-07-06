@@ -1,53 +1,88 @@
 id: acunetix
 name: "Acunetix"
-description: "Collects assets, findings, vulnerabilities, policies, and audit events from Acunetix and projects them into the Cerebro graph as assets, findings, vulnerabilities, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+description: "Collects targets, scans, vulnerabilities, scanning profiles, and reports from Acunetix and projects them into the Cerebro graph for web asset exposure, vulnerability, scan, report, and scan policy context."
 emitted_kinds:
-  - acunetix.assets
-  - acunetix.findings
+  - acunetix.targets
+  - acunetix.scans
   - acunetix.vulnerabilities
-  - acunetix.policies
-  - acunetix.audit_events
+  - acunetix.scanning_profiles
+  - acunetix.reports
 runtime_families:
-  - assets
-  - audit_events
-  - findings
-  - policies
+  - reports
+  - scanning_profiles
+  - scans
+  - targets
   - vulnerabilities
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: x_auth_header
+  base_url: ${config.base_url}
+  spec_url: https://raw.githubusercontent.com/xiaobaibai12/API/main/Acunetix-API-Documentation.yaml
+  spec_kind: openapi
+  references:
+    - https://www.acunetix.com/support/docs/access-api-documentation/
+    - https://www.acunetix.com/blog/docs/managing-scans-bash-api/
+    - https://raw.githubusercontent.com/xiaobaibai12/API/main/Acunetix-API-Documentation.yaml
+  families:
+    - id: reports
+      method: GET
+      path: /reports
+      operation: get_reports
+    - id: scanning_profiles
+      method: GET
+      path: /scanning_profiles
+      operation: get_scanning_profiles
+    - id: scans
+      method: GET
+      path: /scans
+      operation: get_scans
+    - id: targets
+      method: GET
+      path: /targets
+      operation: get_targets
+    - id: vulnerabilities
+      method: GET
+      path: /vulnerabilities
+      operation: get_vulnerabilities
 kind_lifecycle:
-  - kind: acunetix.assets
+  - kind: acunetix.targets
     status: active
-  - kind: acunetix.findings
+  - kind: acunetix.scans
     status: active
   - kind: acunetix.vulnerabilities
     status: active
-  - kind: acunetix.policies
+  - kind: acunetix.scanning_profiles
     status: active
-  - kind: acunetix.audit_events
+  - kind: acunetix.reports
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: acunetix
   dimensions:
-    - id: assets
+    - id: targets
       type: entity_family
-      title: "Assets"
-      families: [assets]
+      title: "Targets"
+      families: [targets]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: findings
+        - Reads Acunetix scan targets from the documented GET /targets endpoint.
+    - id: scans
       type: remediation_state
-      title: "Findings"
-      families: [findings]
+      title: "Scans"
+      families: [scans]
       support: partial
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Acunetix scan runs from the documented GET /scans endpoint.
     - id: vulnerabilities
       type: remediation_state
       title: "Vulnerabilities"
@@ -57,27 +92,27 @@ coverage_contract:
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Reads Acunetix vulnerabilities from the documented GET /vulnerabilities endpoint.
+    - id: scanning_profiles
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
+      title: "Scanning Profiles"
+      families: [scanning_profiles]
       support: partial
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
+        - Reads Acunetix scan policy profiles from the documented GET /scanning_profiles endpoint.
+    - id: reports
+      type: entity_family
+      title: "Reports"
+      families: [reports]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Acunetix reports from the documented GET /reports endpoint.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -85,8 +120,8 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
 event_contracts:
-  - kind: acunetix.assets
-    schema_ref: acunetix/assets/v1
+  - kind: acunetix.targets
+    schema_ref: acunetix/targets/v1
     required_attributes:
       - tenant_id
       - source_event_id
@@ -94,18 +129,17 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: acunetix.findings
-    schema_ref: acunetix/findings/v1
+      - target_id
+  - kind: acunetix.scans
+    schema_ref: acunetix/scans/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - finding_id
       - resource_urn
-      - severity
       - status
     required_payload_fields:
-      - id
+      - scan_id
   - kind: acunetix.vulnerabilities
     schema_ref: acunetix/vulnerabilities/v1
     required_attributes:
@@ -116,22 +150,23 @@ event_contracts:
       - severity
       - status
     required_payload_fields:
-      - id
-  - kind: acunetix.policies
-    schema_ref: acunetix/policies/v1
+      - vuln_id
+  - kind: acunetix.scanning_profiles
+    schema_ref: acunetix/scanning_profiles/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - policy_id
       - policy_name
     required_payload_fields:
-      - id
-  - kind: acunetix.audit_events
-    schema_ref: acunetix/audit_events/v1
+      - profile_id
+  - kind: acunetix.reports
+    schema_ref: acunetix/reports/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
-      - id
+      - report_id

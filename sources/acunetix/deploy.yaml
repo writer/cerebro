@@ -1,15 +1,15 @@
 sourceId: acunetix
 secretKeys:
   - ACUNETIX_BASE_URL
-  - ACUNETIX_TOKEN
+  - ACUNETIX_API_KEY
 runtimes:
-  - localId: assets
+  - localId: targets
     config:
       base_url: env:ACUNETIX_BASE_URL
-      family: assets
+      family: targets
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /targets
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:ACUNETIX_TOKEN
+      token: env:ACUNETIX_API_KEY

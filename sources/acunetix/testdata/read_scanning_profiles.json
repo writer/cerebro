@@ -1,0 +1,30 @@
+[
+  {
+    "attributes": {
+      "policy_description": "Full Scan",
+      "policy_id": "11111111-1111-1111-1111-111111111111",
+      "policy_name": "Full Scan",
+      "policy_severity": "1",
+      "policy_type": "scanning_profile",
+      "record_class": "policy",
+      "resource_id": "11111111-1111-1111-1111-111111111111",
+      "resource_name": "Full Scan",
+      "resource_type": "scanning_profile",
+      "schema": "scanning_profiles",
+      "source_event_id": "11111111-1111-1111-1111-111111111111",
+      "source_system": "acunetix",
+      "tenant_id": "tenant"
+    },
+    "id": "acunetix-scanning-profiles-full-scan",
+    "kind": "acunetix.scanning_profiles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "name": "Full Scan",
+      "profile_id": "11111111-1111-1111-1111-111111111111",
+      "sort_order": 1
+    },
+    "schema_ref": "acunetix/scanning_profiles/v1",
+    "source_id": "acunetix",
+    "tenant_id": "tenant"
+  }
+]

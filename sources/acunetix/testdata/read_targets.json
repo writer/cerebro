@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "criticality": "30",
+      "description": "Primary application",
+      "id": "target-1",
+      "name": "https://app.example.test",
+      "record_class": "asset",
+      "resource_id": "target-1",
+      "resource_name": "https://app.example.test",
+      "resource_type": "target",
+      "resource_urn": "urn:cerebro:tenant:acunetix_targets:target-1",
+      "schema": "targets",
+      "source_event_id": "target-1",
+      "source_system": "acunetix",
+      "target_id": "target-1",
+      "tenant_id": "tenant"
+    },
+    "id": "acunetix-targets-target-1",
+    "kind": "acunetix.targets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "address": "https://app.example.test",
+      "criticality": 30,
+      "description": "Primary application",
+      "target_id": "target-1",
+      "type": "default"
+    },
+    "schema_ref": "acunetix/targets/v1",
+    "source_id": "acunetix",
+    "tenant_id": "tenant"
+  }
+]

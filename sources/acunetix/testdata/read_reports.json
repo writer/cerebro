@@ -1,0 +1,30 @@
+[
+  {
+    "attributes": {
+      "id": "report-1",
+      "name": "Developer Report",
+      "record_class": "asset",
+      "resource_id": "report-1",
+      "resource_name": "Developer Report",
+      "resource_type": "report",
+      "resource_urn": "urn:cerebro:tenant:acunetix_reports:report-1",
+      "schema": "reports",
+      "source_event_id": "report-1",
+      "source_system": "acunetix",
+      "status": "completed",
+      "tenant_id": "tenant"
+    },
+    "id": "acunetix-reports-report-1",
+    "kind": "acunetix.reports",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "generation_date": "2026-06-01T00:00:00Z",
+      "report_id": "report-1",
+      "status": "completed",
+      "template_name": "Developer Report"
+    },
+    "schema_ref": "acunetix/reports/v1",
+    "source_id": "acunetix",
+    "tenant_id": "tenant"
+  }
+]

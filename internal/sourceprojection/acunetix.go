@@ -7,11 +7,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func acunetixAssetsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func acunetixTargetsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return acunetixGenericAssetProjections(event)
 }
 
-func acunetixFindingsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func acunetixScansProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return acunetixGenericFindingProjections(event)
 }
 
@@ -19,12 +19,12 @@ func acunetixVulnerabilitiesProjections(event *cerebrov1.EventEnvelope) ([]*port
 	return acunetixGenericFindingProjections(event)
 }
 
-func acunetixPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func acunetixScanningProfilesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return acunetixGenericPolicyProjections(event)
 }
 
-func acunetixAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "acunetix"})
+func acunetixReportsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return acunetixGenericAssetProjections(event)
 }
 
 func acunetixGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

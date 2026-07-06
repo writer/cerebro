@@ -925,11 +925,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"activtrak.users":        activtrakUsersProjections,
 
 	// acunetix generated projectors (sourcegen promotion)
-	"acunetix.assets":          acunetixAssetsProjections,
-	"acunetix.audit_events":    acunetixAuditEventsProjections,
-	"acunetix.findings":        acunetixFindingsProjections,
-	"acunetix.policies":        acunetixPoliciesProjections,
-	"acunetix.vulnerabilities": acunetixVulnerabilitiesProjections,
+	"acunetix.reports":           acunetixReportsProjections,
+	"acunetix.scanning_profiles": acunetixScanningProfilesProjections,
+	"acunetix.scans":             acunetixScansProjections,
+	"acunetix.targets":           acunetixTargetsProjections,
+	"acunetix.vulnerabilities":   acunetixVulnerabilitiesProjections,
 
 	// ada_support generated projectors (sourcegen promotion)
 	"ada_support.accounts":     adaSupportAccountsProjections,
