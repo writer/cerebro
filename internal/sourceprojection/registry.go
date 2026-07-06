@@ -907,7 +907,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"abnormal_security.threats":         abnormalSecurityThreatsProjections,
 
 	// abuseipdb generated projectors (sourcegen promotion)
-	"abuseipdb.audit_events": abuseipdbAuditEventsProjections,
 	"abuseipdb.ip_addresses": abuseipdbIpAddressesProjections,
 	"abuseipdb.reports":      abuseipdbReportsProjections,
 

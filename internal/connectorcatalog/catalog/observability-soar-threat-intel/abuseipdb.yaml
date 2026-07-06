@@ -10,7 +10,7 @@ entries:
       categories:
         - threat_intel
         - security
-      description: Collects reports, IP addresses, and audit events from AbuseIPDB and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context.
+      description: Collects AbuseIPDB report history and blacklist IP reputation snapshots, then projects them into the Cerebro graph as findings and threat-intelligence assets for alert, incident, service health, and response context.
       display_name: AbuseIPDB
       id: builtin-abuseipdb
       resource_families:
@@ -29,28 +29,27 @@ entries:
           event:
             kind: abuseipdb.reports
             required_payload_fields:
-              - id
+              - reportedAt
             schema_ref: abuseipdb/reports/v1
             urn_kind: abuseipdb_reports
           id: reports
-          id_field: id
+          id_field: reportedAt
           label: Reports
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
+            cursor_json_path: $.data.nextPageUrl
+            cursor_param: page
+            page_size: 25
+            page_size_param: perPage
             type: cursor
           path: /reports
           projection:
             fields:
-              description: description|summary
-              finding_id: id
-              severity: severity|risk|priority
-              status: status|state
+              description: comment
+              finding_id: reportedAt
+              resource_id: ipAddress
             template: finding
-          record_selector: $.data[*]
+          record_selector: $.data.results[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -66,11 +65,11 @@ entries:
           event:
             kind: abuseipdb.ip_addresses
             required_payload_fields:
-              - id
+              - ipAddress
             schema_ref: abuseipdb/ip_addresses/v1
             urn_kind: abuseipdb_ip_addresses
           id: ip_addresses
-          id_field: id
+          id_field: ipAddress
           label: IP addresses
           method: GET
           pagination:
@@ -79,50 +78,13 @@ entries:
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /ip-addresses
+          path: /blacklist
           projection:
             fields:
-              resource_id: id
+              resource_id: ipAddress
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          event:
-            kind: abuseipdb.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: abuseipdb/audit_events/v1
-            urn_kind: abuseipdb_audit_events
-          id: audit_events
-          id_field: id
-          label: Audit events
-          method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /audit-events
-          projection:
-            fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
-            template: audit_event
           record_selector: $.data[*]
       schema_version: cerebro.integration/v1
       source_id: abuseipdb

@@ -1,5 +1,6 @@
 {
   "adapter_health_path": "/blacklist",
+  "auth_mechanics": "key_header",
   "auth_model": "api_key",
   "evidence_cas_reference_kind": "abuseipdb.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

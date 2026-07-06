@@ -1,12 +1,10 @@
 id: abuseipdb
 name: "AbuseIPDB"
-description: "Collects reports, IP addresses, and audit events from AbuseIPDB and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context."
+description: "Collects AbuseIPDB report history and blacklist IP reputation snapshots, then projects them into the Cerebro graph as findings and threat-intelligence assets for alert, incident, service health, and response context."
 emitted_kinds:
   - abuseipdb.reports
   - abuseipdb.ip_addresses
-  - abuseipdb.audit_events
 runtime_families:
-  - audit_events
   - ip_addresses
   - reports
 kind_lifecycle:
@@ -14,12 +12,42 @@ kind_lifecycle:
     status: active
   - kind: abuseipdb.ip_addresses
     status: active
-  - kind: abuseipdb.audit_events
-    status: active
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-06T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: key_header
+  base_url: https://api.abuseipdb.com/api/v2
+  spec_url: https://raw.githubusercontent.com/api-evangelist/abuseipdb/main/openapi/abuseipdb-apiv2-openapi.yml
+  spec_kind: openapi
+  references:
+    - https://docs.abuseipdb.com/
+    - https://www.abuseipdb.com/api.html
+  families:
+    - id: ip_addresses
+      method: GET
+      path: /blacklist
+      operation: getBlacklist
+    - id: reports
+      method: GET
+      path: /reports
+      operation: listReports
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: abuseipdb
   dimensions:
+    - id: ip_addresses
+      type: entity_family
+      title: "Blacklist IP addresses"
+      families: [ip_addresses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads documented AbuseIPDB blacklist entries from GET /blacklist.
     - id: reports
       type: remediation_state
       title: "Reports"
@@ -29,27 +57,7 @@ coverage_contract:
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: ip_addresses
-      type: entity_family
-      title: "Ip Addresses"
-      families: [ip_addresses]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads documented AbuseIPDB report history for a configured IP address from GET /reports.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -67,7 +75,7 @@ event_contracts:
       - severity
       - status
     required_payload_fields:
-      - id
+      - reportedAt
   - kind: abuseipdb.ip_addresses
     schema_ref: abuseipdb/ip_addresses/v1
     required_attributes:
@@ -77,13 +85,4 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
-  - kind: abuseipdb.audit_events
-    schema_ref: abuseipdb/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+      - ipAddress

@@ -2,12 +2,12 @@ sourceId: abuseipdb
 secretKeys:
   - ABUSEIPDB_API_TOKEN
 runtimes:
-  - localId: reports
+  - localId: ip-addresses
     config:
-      family: reports
+      family: ip_addresses
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /blacklist
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      api_token: env:ABUSEIPDB_API_TOKEN
+      api_key: env:ABUSEIPDB_API_TOKEN
