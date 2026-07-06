@@ -1,0 +1,30 @@
+[
+  {
+    "id": "alation-data-sources-301",
+    "kind": "alation.data_sources",
+    "schema_ref": "alation/data_sources/v1",
+    "source_id": "alation",
+    "tenant_id": "tenant",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "301",
+      "resource_id": "301",
+      "resource_name": "Warehouse",
+      "resource_type": "data_source",
+      "resource_urn": "urn:cerebro:tenant:alation_data_sources:301",
+      "dbtype": "snowflake",
+      "record_class": "asset",
+      "schema": "data_sources",
+      "source_system": "alation"
+    },
+    "payload": {
+      "id": 301,
+      "title": "Warehouse",
+      "dbtype": "snowflake",
+      "description": "Production warehouse",
+      "is_virtual": false,
+      "url": "/data/301/"
+    }
+  }
+]

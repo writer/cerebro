@@ -7,8 +7,8 @@ import (
 )
 
 func TestAlationAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alation", Kind: "alation.accounts", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := alationAccountsProjections(event)
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alation", Kind: "alation.data_sources", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "data_source", "resource_name": "warehouse", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := alationDataSourcesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -45,13 +45,30 @@ func TestAlationIdentityUserProjection(t *testing.T) {
 	}
 }
 
-func TestAlationAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alation", Kind: "alation.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := alationAuditEventsProjections(event)
+func TestAlationGroupProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alation", Kind: "alation.groups", Attributes: map[string]string{"group_id": "group-1", "group_name": "Data Stewards"}}
+	entities, links, err := alationGroupsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if len(entities) == 0 {
+		t.Fatal("expected projected identity group")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected identity group links")
+	}
+}
+
+func TestAlationTermsProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alation", Kind: "alation.terms", Attributes: map[string]string{"resource_id": "term-1", "resource_type": "term", "resource_name": "Customer", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := alationTermsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected term")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
 	}
 }

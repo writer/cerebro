@@ -11,11 +11,11 @@ func alationUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	return identityUserProjections(event, identityProjectionProfile{Provider: "alation"})
 }
 
-func alationAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return alationGenericAssetProjections(event)
+func alationGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupProjections(event, identityProjectionProfile{Provider: "alation"})
 }
 
-func alationRecordsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func alationDataSourcesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return alationGenericAssetProjections(event)
 }
 
@@ -23,8 +23,8 @@ func alationPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	return alationGenericPolicyProjections(event)
 }
 
-func alationAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "alation"})
+func alationTermsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return alationGenericAssetProjections(event)
 }
 
 func alationGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

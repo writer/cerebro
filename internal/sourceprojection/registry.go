@@ -1025,10 +1025,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeneo.v1_attribute":                 akeneoV1AttributeProjections,
 
 	// alation generated projectors (sourcegen promotion)
-	"alation.accounts":     alationAccountsProjections,
-	"alation.audit_events": alationAuditEventsProjections,
+	"alation.data_sources": alationDataSourcesProjections,
+	"alation.groups":       alationGroupsProjections,
 	"alation.policies":     alationPoliciesProjections,
-	"alation.records":      alationRecordsProjections,
+	"alation.terms":        alationTermsProjections,
 	"alation.users":        alationUsersProjections,
 
 	// alchemer generated projectors (sourcegen promotion)

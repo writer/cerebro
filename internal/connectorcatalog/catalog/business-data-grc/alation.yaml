@@ -4,21 +4,21 @@ entries:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: API access token
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
       categories:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Tenant or regional Alation API base URL, for example https://yourcompany.alationcloud.com.
           key: base_url
           label: API base URL
           required: true
-      description: Collects users, accounts, records, policies, and audit events from Alation and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+      description: Collects users, groups, data sources, policies, and terms from Alation and projects them into the Cerebro graph as identities, assets, policies, and data-governance context.
       display_name: Alation
       id: builtin-alation
       ingest:
@@ -47,114 +47,110 @@ entries:
           id_field: id
           label: Users
           method: GET
-          name_field: name
+          name_field: display_name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: skip
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: offset
+          path: /integration/v2/user/
           projection:
             fields:
-              display_name: name
+              display_name: display_name
               email: email
-              status: status
+              status: profile_status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - accounts
+                - groups
               high_value: true
-              id: accounts
+              id: groups
               support: partial
-              title: Accounts
+              title: Groups
               type: entity_family
           default_enabled: true
           event:
-            kind: alation.accounts
+            kind: alation.groups
             required_payload_fields:
               - id
-            schema_ref: alation/accounts/v1
-            urn_kind: alation_accounts
-          id: accounts
+            schema_ref: alation/groups/v1
+            urn_kind: alation_groups
+          id: groups
           id_field: id
-          label: Accounts
+          label: Groups
           method: GET
-          name_field: name
+          name_field: display_name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: skip
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+            type: offset
+          path: /integration/v1/group/
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: account
-            template: asset
-          record_selector: $.data[*]
+              group_id: id
+              group_name: display_name
+            template: identity_group
+          record_selector: $[*]
         - coverage:
             - control_domains:
+                - asset_inventory
                 - data_governance
               evidence_types:
                 - source_snapshot
               families:
-                - records
+                - data_sources
               high_value: true
-              id: records
+              id: data_sources
               support: partial
-              title: Records
+              title: Data Sources
               type: entity_family
           default_enabled: true
           event:
-            kind: alation.records
+            kind: alation.data_sources
             required_payload_fields:
               - id
-            schema_ref: alation/records/v1
-            urn_kind: alation_records
-          id: records
+            schema_ref: alation/data_sources/v1
+            urn_kind: alation_data_sources
+          id: data_sources
           id_field: id
-          label: Records
+          label: Data Sources
           method: GET
-          name_field: name
+          name_field: title
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: skip
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/records
+            type: offset
+          path: /integration/v1/datasource/
           projection:
             fields:
               id: id
-              name: name
+              name: title
               resource_id: id
-              resource_name: name
-              resource_type: record
+              resource_name: title
+              resource_type: data_source
             template: asset
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - configuration_management
+                - security_operations
+                - data_governance
               evidence_types:
-                - source_snapshot
+                - configuration_state
               families:
                 - policies
               high_value: true
               id: policies
               support: partial
               title: Policies
-              type: entity_family
+              type: lifecycle_state
           default_enabled: true
           event:
             kind: alation.policies
@@ -166,63 +162,60 @@ entries:
           id_field: id
           label: Policies
           method: GET
-          name_field: name
+          name_field: title
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: skip
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/policies
+            type: offset
+          path: /integration/v1/business_policies/
           projection:
             fields:
               policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
+              policy_name: title
+              policy_status: deleted
+              policy_type: business_policy
             template: policy
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - logging_monitoring
+                - data_governance
               evidence_types:
-                - logging_configuration
+                - source_snapshot
               families:
-                - audit_events
+                - terms
               high_value: true
-              id: audit_events
+              id: terms
               support: partial
-              title: Audit events
-              type: audit_event
+              title: Terms
+              type: entity_family
           default_enabled: true
           event:
-            kind: alation.audit_events
+            kind: alation.terms
             required_payload_fields:
               - id
-            schema_ref: alation/audit_events/v1
-            urn_kind: alation_audit_events
-          id: audit_events
+            schema_ref: alation/terms/v1
+            urn_kind: alation_terms
+          id: terms
           id_field: id
-          label: Audit events
+          label: Terms
           method: GET
-          name_field: name
+          name_field: title
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: skip
             page_size: 100
             page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            type: offset
+          path: /integration/v2/term/
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
               id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              name: title
+              resource_id: id
+              resource_name: title
+              resource_type: term
+            template: asset
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: alation
       tenant_id: builtin_catalog
@@ -232,4 +225,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /integration/v2/user/?limit=1&skip=0
