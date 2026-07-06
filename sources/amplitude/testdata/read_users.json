@@ -6,8 +6,8 @@
   "Resources": [
     {
       "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
-      "id": "datamonster@amplitude.com",
-      "userName": "datamonster@amplitude.com",
+      "id": "datamonster@example.com",
+      "userName": "datamonster@example.com",
       "name": {
         "givenName": "Data",
         "familyName": "Monster"
@@ -15,7 +15,7 @@
       "active": true,
       "emails": [
         {
-          "value": "datamonster@amplitude.com",
+          "value": "datamonster@example.com",
           "primary": true
         }
       ],

@@ -1,8 +1,8 @@
 {
   "Resources": [
     {
-      "id": "datamonster@amplitude.com",
-      "userName": "datamonster@amplitude.com"
+      "id": "datamonster@example.com",
+      "userName": "datamonster@example.com"
     }
   ],
   "totalResults": 1
