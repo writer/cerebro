@@ -112,8 +112,12 @@ event_contracts:
       - source_event_id
       - event_type
       - actor_id
+      - observed_at
     required_payload_fields:
-      - dag_id
+      - event_log_id
+      - when
+      - event
+      - owner
   - kind: apache.role
     schema_ref: apache/role/v1
     required_attributes:
@@ -122,13 +126,16 @@ event_contracts:
       - group_id
     required_payload_fields:
       - name
+      - actions
   - kind: apache.user
     schema_ref: apache/user/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - user_id
+      - email
     required_payload_fields:
+      - username
       - email
   - kind: apache.permission
     schema_ref: apache/permission/v1

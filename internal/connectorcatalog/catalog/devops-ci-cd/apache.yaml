@@ -36,16 +36,19 @@ entries:
       event:
         kind: apache.eventlog
         required_payload_fields:
-        - dag_id
+        - event_log_id
+        - when
+        - event
+        - owner
         schema_ref: apache/eventlog/v1
         urn_kind: apache_eventlog
       event_kind: eventlog
       id: eventlog
-      id_field: dag_id
+      id_field: event_log_id
       label: Eventlog
       list_key: event_logs
       method: GET
-      name_field: dag_id
+      name_field: event
       pagination:
         limit_param: limit
         offset_param: offset
@@ -54,9 +57,13 @@ entries:
       path: "/eventLogs"
       projection:
         fields:
-          id: dag_id
-          name: dag_id
-          provider_id: dag_id
+          actor_id: owner
+          event_type: event
+          id: event_log_id
+          name: event
+          observed_at: when
+          provider_id: event_log_id
+          source_event_id: event_log_id
         template: audit_event
       record_selector: "$.event_logs[*]"
     - coverage:
@@ -76,6 +83,7 @@ entries:
         kind: apache.role
         required_payload_fields:
         - name
+        - actions
         schema_ref: apache/role/v1
         urn_kind: apache_role
       event_kind: role
@@ -93,9 +101,12 @@ entries:
       path: "/roles"
       projection:
         fields:
+          group_id: name
+          group_name: name
           id: name
           name: name
           provider_id: name
+          source_event_id: name
         template: identity_group
       record_selector: "$.roles[*]"
     - coverage:
@@ -119,7 +130,7 @@ entries:
         urn_kind: apache_user
       event_kind: user
       id: user
-      id_field: email
+      id_field: username
       label: User
       list_key: users
       method: GET
@@ -132,9 +143,12 @@ entries:
       path: "/users"
       projection:
         fields:
-          id: email
+          email: email
+          id: username
           name: username
-          provider_id: email
+          provider_id: username
+          source_event_id: username
+          user_id: username
         template: identity_user
       record_selector: "$.users[*]"
     - coverage:
@@ -173,9 +187,11 @@ entries:
         fields:
           id: name
           name: name
+          provider_id: name
           resource_id: name
           resource_name: name
           resource_type: permission
+          source_event_id: name
         template: asset
       record_selector: "$.actions[*]"
     schema_version: cerebro.integration/v1
