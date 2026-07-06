@@ -1040,11 +1040,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"alchemer.surveys":          alchemerSurveysProjections,
 
 	// alteryx generated projectors (sourcegen promotion)
-	"alteryx.accounts":     alteryxAccountsProjections,
 	"alteryx.audit_events": alteryxAuditEventsProjections,
-	"alteryx.policies":     alteryxPoliciesProjections,
-	"alteryx.records":      alteryxRecordsProjections,
+	"alteryx.collections":  alteryxCollectionsProjections,
+	"alteryx.usergroups":   alteryxUserGroupsProjections,
 	"alteryx.users":        alteryxUsersProjections,
+	"alteryx.workflows":    alteryxWorkflowsProjections,
 
 	// amplitude generated projectors (sourcegen promotion)
 	"amplitude.accounts":     amplitudeAccountsProjections,

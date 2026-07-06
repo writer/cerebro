@@ -11,44 +11,69 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+func TestSourceCheckAndReadFamilies(t *testing.T) {
+	tests := []struct {
+		family string
+		path   string
+		kind   string
+		body   any
+	}{
+		{family: familyUsers, path: "/v3/users", kind: "alteryx.users", body: []map[string]any{{"id": "user-1", "email": "user@example.com", "firstName": "User", "lastName": "One", "isActive": true}}},
+		{family: familyUserGroups, path: "/v3/usergroups", kind: "alteryx.usergroups", body: []map[string]any{{"id": "group-1", "name": "Curators", "role": "Curator"}}},
+		{family: familyWorkflows, path: "/v3/workflows", kind: "alteryx.workflows", body: []map[string]any{{"id": "workflow-1", "name": "Daily Evidence", "ownerId": "user-1", "executionMode": "Safe"}}},
+		{family: familyCollections, path: "/v3/collections", kind: "alteryx.collections", body: []map[string]any{{"id": "collection-1", "name": "Security", "ownerId": "user-1"}}},
+		{family: familyAuditEvents, path: "/admin/v1/auditlog", kind: "alteryx.audit_events", body: []map[string]any{{"id": "audit-1", "entity": "User", "entityId": "user-1", "userId": "admin-1", "timestamp": "2026-06-01T00:00:00Z", "event": "Update"}}},
 	}
-	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/v1/users" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
-	}))
-	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
-	if err := source.Check(context.Background(), cfg); err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
-	}
-	event := pull.Events[0]
-	if event.Kind != "alteryx.users" {
-		t.Fatalf("kind = %q", event.Kind)
-	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			var sawHealth bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer test-token" {
+					t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+				}
+				if r.URL.Path == defaultHealthPath {
+					sawHealth = true
+					_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "health-user"}})
+					return
+				}
+				if r.URL.Path != tt.path {
+					t.Fatalf("path = %q, want %q", r.URL.Path, tt.path)
+				}
+				if tt.family == familyAuditEvents && r.URL.Query().Get("entity") != "User" {
+					t.Fatalf("audit entity query = %q", r.URL.RawQuery)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(tt.body)
+			}))
+			defer server.Close()
+
+			cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": tt.family, "token": "test-token"})
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			if !sawHealth {
+				t.Fatal("health endpoint was not called")
+			}
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.kind {
+				t.Fatalf("kind = %q, want %q", event.Kind, tt.kind)
+			}
+			if strings.TrimSpace(event.Id) == "" {
+				t.Fatalf("event id is empty: %#v", event)
+			}
+		})
 	}
 }

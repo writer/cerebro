@@ -1,11 +1,13 @@
 # Alteryx
 
-Generated Source Runtime SDK scaffold for `alteryx`.
+Provider-verified Source Runtime SDK contract for `alteryx`.
 
 ## Runtime input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
+- Auth mechanics: OAuth2 access token sent as `Authorization: Bearer <token>`
+- Base URL: `${config.base_url}/webapi`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,13 +20,15 @@ Generated Source Runtime SDK scaffold for `alteryx`.
 
 ## Families
 
-- `users`, emits `alteryx.users`, reads `/v1/users`
-- `accounts`, emits `alteryx.accounts`, reads `/v1/accounts`
-- `records`, emits `alteryx.records`, reads `/v1/records`
-- `policies`, emits `alteryx.policies`, reads `/v1/policies`
-- `audit_events`, emits `alteryx.audit_events`, reads `/v1/audit_events`
+- `users`, emits `alteryx.users`, reads `GET /v3/users`
+- `usergroups`, emits `alteryx.usergroups`, reads `GET /v3/usergroups`
+- `workflows`, emits `alteryx.workflows`, reads `GET /v3/workflows`
+- `collections`, emits `alteryx.collections`, reads `GET /v3/collections`
+- `audit_events`, emits `alteryx.audit_events`, reads `GET /admin/v1/auditlog`
 
 ## Tests
 
-- `go test ./sources/alteryx ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/alteryx ./internal/sourceprojection ./sources/internal/catalogruntime ./internal/connectordefinitions ./internal/connectorcatalog -count=1`
+- `golangci-lint run -j 4 --timeout 5m ./sources/alteryx/...`
+- `make catalog-check sourcegen-check`
+- `make connector-catalog-review`

@@ -6,9 +6,9 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestAlteryxAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.accounts", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := alteryxAccountsProjections(event)
+func TestAlteryxWorkflowProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.workflows", Attributes: map[string]string{"resource_id": "workflow-1", "resource_type": "workflow", "resource_name": "Workflow One", "owner_id": "user-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := alteryxWorkflowsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -20,17 +20,25 @@ func TestAlteryxAssetProjection(t *testing.T) {
 	}
 }
 
-func TestAlteryxPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := alteryxPoliciesProjections(event)
+func TestAlteryxCollectionProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.collections", Attributes: map[string]string{"resource_id": "collection-1", "resource_type": "collection", "resource_name": "Security", "evidence_id": "evidence-1"}}
+	entities, _, err := alteryxCollectionsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected policy")
+		t.Fatal("expected projected collection")
 	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+}
+
+func TestAlteryxUserGroupProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.usergroups", Attributes: map[string]string{"group_id": "group-1", "group_name": "Curators"}}
+	entities, _, err := alteryxUserGroupsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected identity group")
 	}
 }
 
@@ -46,7 +54,7 @@ func TestAlteryxIdentityUserProjection(t *testing.T) {
 }
 
 func TestAlteryxAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "alteryx", Kind: "alteryx.audit_events", Attributes: map[string]string{"event_type": "Update", "actor_id": "user-1", "resource_id": "app-1", "resource_type": "User"}}
 	entities, links, err := alteryxAuditEventsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)

@@ -1,0 +1,28 @@
+[
+  {
+    "id": "source-alteryx-usergroups-event-1",
+    "tenant_id": "tenant",
+    "source_id": "alteryx",
+    "kind": "alteryx.usergroups",
+    "schema_ref": "alteryx/usergroups/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "provider": "alteryx",
+      "source_system": "alteryx",
+      "schema": "usergroups",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "group_id": "group-1",
+      "group_name": "Curators",
+      "source_event_id": "group-1"
+    },
+    "payload": {
+      "id": "group-1",
+      "name": "Curators",
+      "role": "Curator",
+      "tenant_id": "tenant",
+      "schema_ref": "alteryx/usergroups/v1",
+      "source_id": "alteryx"
+    }
+  }
+]
