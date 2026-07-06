@@ -6,6 +6,8 @@ Provider-verified Source Runtime SDK adapter for `anchore`.
 
 - Source type: `json_api`
 - Auth model: `basic`
+- Base URL: renders `https://${config.enterprise_url}/v2` when `base_url` is unset.
+- Required config: `enterprise_url`, `app_id`, `version_id`, `username`, `password`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 

@@ -1,11 +1,13 @@
 sourceId: anchore
 secretKeys:
+  - ANCHORE_ENTERPRISE_URL
   - ANCHORE_PASSWORD
   - ANCHORE_USERNAME
 runtimes:
   - localId: assets
     config:
       app_id: required
+      enterprise_url: env:ANCHORE_ENTERPRISE_URL
       family: assets
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /system
