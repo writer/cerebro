@@ -51,6 +51,7 @@ nav:
   - Engineering:
       - Development: engineering/development.md
       - Non-Goals: engineering/non-goals.md
+      - Trusted Decisions Implementation Plan: engineering/trusted-decisions-implementation-plan.md
       - Durability Contract: engineering/durability-contract.md
       - Source Sync Recovery: engineering/source-sync-recovery.md
       - Source CDK Extraction: engineering/source-cdk-extraction.md

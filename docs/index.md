@@ -96,6 +96,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | MCP setup | [MCP native Droid setup](domains/mcp-droid-setup.md) |
 | Endpoint telemetry | [Endpoint security platform integration](domains/endpoint-security-platform-integration.md) |
 | Release artifacts | [Release contract](operations/release-contract.md) |
+| Trusted decision roadmap implementation | [Trusted decisions implementation plan](engineering/trusted-decisions-implementation-plan.md) |
 | Contribution rules | [Development](engineering/development.md) and [non-goals](engineering/non-goals.md) |
 
 ## Source Of Truth
