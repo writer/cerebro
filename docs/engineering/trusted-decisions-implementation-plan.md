@@ -195,6 +195,80 @@ go test ./internal/observability ./internal/telemetry
 For #1300 through #1304, record which acceptance criteria are already satisfied
 and leave the issue open only for remaining behavior.
 
+### First implementation assignment
+
+Start with slice 1 as a reconciliation PR, not as a production-behavior PR.
+Its purpose is to turn #1300 through #1304 into an evidence-backed backlog
+before any recovery or stream-topology changes begin.
+
+The PR must add
+`docs/engineering/jetstream-durability-acceptance-matrix.md` with one row for
+every acceptance criterion in each issue. Use these columns:
+
+| Field | Required value |
+| --- | --- |
+| Issue | `#1300`, `#1301`, `#1302`, `#1303`, or `#1304` |
+| Acceptance criterion | The criterion being evaluated, paraphrased if needed |
+| Status | `satisfied`, `partial`, `missing`, or `stale` |
+| Implementation evidence | Exact package, type or function, and line link |
+| Test evidence | Exact test and the behavior it proves |
+| Runtime evidence | Command or receipt when the criterion requires live infrastructure |
+| Remaining gap | One bounded behavior; blank only when `satisfied` |
+| Follow-up | Existing issue or one narrowly scoped new issue |
+
+Classification rules:
+
+- `satisfied` requires implementation evidence and test evidence. Add runtime
+  evidence when the criterion is about deployed stream ownership, broker stats,
+  replay, or operator behavior.
+- `partial` means part of the behavior exists but at least one observable or
+  failure-path requirement remains.
+- `missing` means no implementation satisfies the criterion.
+- `stale` means the requested behavior is no longer valid because a documented
+  contract or architecture decision superseded it. Code presence alone does
+  not make an issue stale.
+
+Inspect at least these paths:
+
+- `internal/appendlog/jetstream`
+- `internal/appendlog/recovery`
+- `internal/statestore/postgres`
+- `internal/observability`
+- `internal/telemetry`
+- `internal/graphingest`
+- `internal/findingrules`
+- `cmd/cerebro/append_log.go`
+- JetStream configuration and deployment manifests
+
+Add only missing acceptance tests that exercise behavior already implemented.
+A production-code edit is allowed only for a small testability seam and must
+not change runtime behavior, schemas, subjects, stream ownership, retry policy,
+or defaults. If an acceptance test exposes a production defect, leave a focused
+reproducer in the owning issue, record it in the matrix, and add the regression
+test with the later fix. Do not merge a known failing or permanently skipped
+test in the reconciliation PR.
+
+The PR is complete when:
+
+1. every acceptance criterion in #1300 through #1304 has exactly one matrix
+   row,
+2. every `satisfied` row points to a test that passes in CI,
+3. #1302's closed state is revalidated rather than assumed,
+4. each `partial` or `missing` row maps to one owner and one bounded follow-up,
+5. issue comments link to the matrix and state what remains without duplicating
+   the matrix, and
+6. no production behavior or persistent state changes.
+
+Use this validation set:
+
+```bash
+go test ./internal/appendlog/... ./internal/statestore/postgres \
+  ./internal/observability ./internal/telemetry ./internal/graphingest \
+  ./internal/findingrules ./cmd/cerebro
+make docs-drift-check
+git diff --check
+```
+
 ## Workstream 1: Golden Workflows And Outcome Metrics
 
 Issue: [#1721](https://github.com/writer/cerebro/issues/1721)
