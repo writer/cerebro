@@ -53,6 +53,7 @@ nav:
       - Non-Goals: engineering/non-goals.md
       - Trusted Decisions Implementation Plan: engineering/trusted-decisions-implementation-plan.md
       - Durability Contract: engineering/durability-contract.md
+      - Decision Packet Convergence: engineering/decision-packet-convergence.md
       - Source Sync Recovery: engineering/source-sync-recovery.md
       - Source CDK Extraction: engineering/source-cdk-extraction.md
       - Security Regression Harness: engineering/security-regression-harness.md
