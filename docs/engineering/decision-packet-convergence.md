@@ -31,7 +31,7 @@ decision.
 | `internal/agentplatform.ClaimVerification` | Maps supporting, counter, missing, freshness, coverage, approval, and requested stage inputs to a verdict and allowed next stage. | Verdict and stage-gate logic. | Feed it server-resolved inputs. The decision builder must not accept a caller-declared verdict. |
 | `internal/evidencepackets.Response` | Builds audit/control evidence collections, lineage, review state, questionnaire answers, gaps, and export artifacts. | Audit packet ownership and export behavior. | Reference audit packet IDs or selected evidence records; do not embed the full audit export in every decision. |
 | `internal/proactivetriage.Service` | Loads findings and memory, builds an agent evidence packet, asks a recommender, and writes an auto-generated knowledge action with a floating-point confidence. | Finding selection, memory lookup, and bounded action write-back. | Make it the first decision-packet adopter. Stop treating model/recommender confidence as decision confidence. |
-| `internal/graphactions` | Defines provider action metadata, dry-run results, reversal metadata, approval requirements, execution status, and reconciliation. | Action catalog and safety contract. | Convert eligible metadata into proposals only. Packet construction cannot call `Execute`. |
+| `internal/graphactions` | Defines provider action metadata, dry-run results, reversal metadata, approval requirements, execution status, and reconciliation. The current mutation request accepts caller-supplied `approved=true`; it does not bind execution to a durable approval over an immutable proposal. | Action catalog, eligibility, target resolution, provider adapters, and reconciliation primitives. | Convert eligible metadata into proposal previews only. Packet construction cannot call `Execute`. Complete #1760 before treating an approval or execution as trusted workflow state. |
 | `internal/knowledge` and `internal/workflowevents` | Build decisions, actions, and outcomes and emit `workflow.v1.knowledge.*` events before graph projection when an append log is configured. | Durable event shapes and workflow projection. | Complete #1740 so append does not depend on graph availability and a missing append log cannot silently produce a graph-only trusted decision. |
 | Finding, evidence, source coverage, control, and graph ports | Read current findings, persisted evidence, source runtime state, control mappings, and bounded graph context. | Existing authoritative/current-state reads. | Compose them behind the decision service; do not expose transport request types to the domain package. |
 
@@ -78,6 +78,17 @@ A decision event answers: "What did the authenticated actor do with the packet?"
 It records accepted, rejected, or deferred state and references the immutable
 packet ID. Packet construction and decision recording are separate operations.
 
+### Action proposal and approval receipt
+
+An action proposal answers: "Which exact mutation, target, parameters, reversal,
+evidence snapshot, and verification plan may be reviewed?"
+
+The decision packet may return the inputs for a proposal preview. It does not
+own the durable action proposal, approval receipt, execution claim, provider
+attempt, or verification result. Those records belong to the graph-action
+workflow defined by #1760. A packet receipt digest is not an action-proposal
+digest, and accepting a decision packet is not approval to execute an action.
+
 ## Ownership Flow
 
 ```text
@@ -110,6 +121,15 @@ authenticated tenant + actor + bounded request
        separate accept / reject / defer
        -> durable knowledge decision event
        -> optional graph projection
+                    |
+                    | if a mutation is requested
+                    v
+       separate graph-action workflow (#1760)
+       -> immutable action proposal digest
+       -> authenticated approval receipt
+       -> durable execution claim
+       -> provider reconciliation
+       -> fresh finding verification
 ```
 
 ## Prerequisite: Durable Business Ledger
@@ -131,6 +151,35 @@ graph available -> maybe append -> graph projection
 
 Packet reads may still use bounded Neo4j context. Packet receipts and accepted
 decision events must remain durable when Neo4j is unavailable.
+
+## Prerequisite: Durable Action Approval
+
+Complete #1760 before any packet-generated proposal can authorize mutation.
+The required invariant is:
+
+```text
+packet receipt
+  -> immutable action proposal digest
+  -> authenticated approval receipt over that digest
+  -> durable execution claim
+  -> provider submission and reconciliation
+  -> fresh evidence verification
+  -> finding closeout
+```
+
+These shortcuts are explicitly invalid:
+
+- using `approved=true` as approval evidence,
+- treating the graph-action write scope as approval of a specific proposal,
+- reusing the packet receipt digest as the action proposal digest,
+- changing a target, parameter, reason, ticket, reversal, evidence revision, or
+  verification plan after approval,
+- treating provider success or a reconciled external status as proof that the
+  finding is fixed,
+- or allowing packet construction or proactive triage to claim an execution.
+
+Proposal and execution state remain available when Neo4j is unavailable. A
+projection failure cannot reopen the approval gate or repeat provider dispatch.
 
 ## Target Package Contracts
 
@@ -254,8 +303,9 @@ control domain resolver. An empty result set is not enough.
 - `approval_required`
 
 The packet does not return `approved`, `executing`, `executed`, `verified`, or
-`closed`. Those states belong to later workflow events and graph-action
-reconciliation.
+`closed`. Those states belong to the durable proposal, approval, execution,
+reconciliation, and verification workflow in #1760. A provider-reported
+success is not the `verified` state.
 
 ## Confidence Contract
 
@@ -299,7 +349,7 @@ storage implementations.
 | Controls and policies | compliance/control registries | Return applicable control IDs and explicit applicability state. |
 | Audit packets | evidence packet service/receipt | Return packet ID, scope, period, digest, freshness, and selected evidence refs only. |
 | Graph context | `ports.GraphQueryStore` | Use authorized scope roots and the guardrail budget; graph failure becomes an explicit gap unless the workflow requires graph proof. |
-| Actions | `graphactions.Registry` and dry-run metadata | Return eligible proposal metadata without calling provider execution. |
+| Actions | `graphactions.Registry` and dry-run metadata | Return eligible proposal-preview inputs without calling provider execution. Include the action catalog version and every execution-relevant field needed for #1760 to create its own canonical proposal digest. |
 
 Evidence supplied by a caller is a resolution hint. If an ID is missing,
 foreign, deleted, or unauthorized, fail without confirming protected record
@@ -435,7 +485,9 @@ After the packet read and receipt are stable:
 7. Replace the uncalibrated recommendation confidence as the authoritative
    value. Persist packet ID, confidence level, confidence reason codes, decision
    state, and trace ID with the auto-generated action.
-8. Do not execute the graph action. Approval and execution remain separate.
+8. Do not create an approval, claim execution, or call the graph-action
+   provider. If an operator chooses the proposal, hand the packet receipt and
+   proposal inputs to #1760, which creates a separate immutable proposal.
 
 ## Golden Fixtures
 
@@ -514,7 +566,9 @@ generation, telemetry labels, shared error mapping, and contract parity tests.
 
 Replace caller-assembled agent packet reasoning with the resolved decision
 packet, persist packet linkage, remove ungrounded recommendation confidence from
-decision semantics, and add finding-to-fix fixtures. Keep execution separate.
+decision semantics, and add finding-to-fix fixtures. The adopter may emit a
+proposal preview only. It cannot set `approved`, create an approval receipt,
+claim an execution, or call a provider.
 
 ### PR 7: Task-level MCP read
 
@@ -553,6 +607,9 @@ make docker-smoke
 5. Add proactive triage as the first adopter and compare recommendation state,
    gaps, and packet confidence against the prior path.
 6. Add the MCP read tool after contract and selection evals pass.
+7. Enable proposal handoff only after #1760 enforces digest-bound approval and
+   durable execution claims. Keep all packet surfaces read/proposal-only if that
+   dependency is disabled or unhealthy.
 
 Rollback disables new callers and the route. Immutable receipts remain readable
 for audit. Legacy agent packet, claim verification, audit packet, and graph
@@ -573,7 +630,10 @@ approved.
 - Proactive triage cannot represent an ungrounded model score as decision
   confidence.
 - No packet build performs an external action.
+- No packet receipt, accepted decision event, agent action stage, or write scope
+  can substitute for the action proposal and approval receipt defined by #1760.
+- Provider success cannot close a finding without fresh verification evidence.
 - Golden fixtures cover supported, partial, stale, contradicted, empty,
   unauthorized, not-applicable, and truncated evidence states.
 
-Refs #1721, #1722, #1726, #1727, and #1740.
+Refs #1721, #1722, #1726, #1727, #1740, and #1760.
