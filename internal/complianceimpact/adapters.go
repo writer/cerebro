@@ -163,14 +163,14 @@ func AdaptCompatibility(request AdapterRequest) (AdapterResult, error) {
 	if err != nil {
 		return AdapterResult{}, err
 	}
-	if uint32(len(sources)) > request.Limits.MaxSources {
+	if uint64(len(sources)) > uint64(request.Limits.MaxSources) {
 		return AdapterResult{}, fmt.Errorf("%w: sources %d exceed max_sources %d", ErrAdapterLimit, len(sources), request.Limits.MaxSources)
 	}
 	mappingsBySource := make(map[string][]CompatibilityMapping, len(request.Mappings))
 	for _, mapping := range request.Mappings {
 		normalized, err := normalizeMapping(mapping)
 		if err != nil {
-			return AdapterResult{}, fmt.Errorf("%w: mapping normalization: %v", ErrInvalidAdapterRequest, err)
+			return AdapterResult{}, fmt.Errorf("%w: mapping normalization: %w", ErrInvalidAdapterRequest, err)
 		}
 		key := provenanceKey(normalized.Source)
 		mappingsBySource[key] = append(mappingsBySource[key], normalized)
@@ -228,11 +228,11 @@ func AdaptCompatibility(request AdapterRequest) (AdapterResult, error) {
 		}
 		issues = append(issues, AdapterIssue{Code: ReasonImpactIncomplete, Source: provenance(source), ImpactReason: issue.Code})
 	}
-	if uint32(len(issues)) > request.Limits.MaxIssues {
+	if uint64(len(issues)) > uint64(request.Limits.MaxIssues) {
 		return AdapterResult{}, fmt.Errorf("%w: issues %d exceed max_issues %d", ErrAdapterLimit, len(issues), request.Limits.MaxIssues)
 	}
 
-	if uint32(len(targetBuilders)) > request.Limits.MaxTargets {
+	if uint64(len(targetBuilders)) > uint64(request.Limits.MaxTargets) {
 		return AdapterResult{}, fmt.Errorf("%w: targets %d exceed max_targets %d", ErrAdapterLimit, len(targetBuilders), request.Limits.MaxTargets)
 	}
 	targets := make([]CompatibilityTarget, 0, len(targetBuilders))
@@ -242,7 +242,7 @@ func AdaptCompatibility(request AdapterRequest) (AdapterResult, error) {
 		actionCount += len(target.Actions)
 		targets = append(targets, target)
 	}
-	if uint32(actionCount) > request.Limits.MaxActions {
+	if uint64(actionCount) > uint64(request.Limits.MaxActions) {
 		return AdapterResult{}, fmt.Errorf("%w: actions %d exceed max_actions %d", ErrAdapterLimit, actionCount, request.Limits.MaxActions)
 	}
 	sort.Slice(targets, func(i, j int) bool {
@@ -303,14 +303,14 @@ func validateAdapterRequest(request AdapterRequest) error {
 			}
 		}
 	}
-	if uint32(len(request.Mappings)) > request.Limits.MaxMappings {
+	if uint64(len(request.Mappings)) > uint64(request.Limits.MaxMappings) {
 		return fmt.Errorf("%w: mappings %d exceed max_mappings %d", ErrAdapterLimit, len(request.Mappings), request.Limits.MaxMappings)
 	}
 	if !boundedValue(request.MappingSet.RevisionID, 512) {
 		return fmt.Errorf("%w: mapping_set revision_id is required and must be bounded", ErrInvalidAdapterRequest)
 	}
 	if err := compliance.ValidateContentDigest(compliance.ContentDigest(strings.TrimSpace(string(request.MappingSet.ContentDigest)))); err != nil {
-		return fmt.Errorf("%w: mapping_set content_digest: %v", ErrInvalidAdapterRequest, err)
+		return fmt.Errorf("%w: mapping_set content_digest: %w", ErrInvalidAdapterRequest, err)
 	}
 	inputActions := 0
 	for index, mapping := range request.Mappings {
@@ -318,7 +318,7 @@ func validateAdapterRequest(request AdapterRequest) error {
 			return fmt.Errorf("%w: mapping[%d] crosses tenant boundary", ErrAdapterTenantBoundary, index)
 		}
 		if _, err := revisionFromProvenance(mapping.Source); err != nil {
-			return fmt.Errorf("%w: mapping[%d] source: %v", ErrInvalidAdapterRequest, index, err)
+			return fmt.Errorf("%w: mapping[%d] source: %w", ErrInvalidAdapterRequest, index, err)
 		}
 		if !validCompatibilityTargetKind(mapping.TargetKind) {
 			return fmt.Errorf("%w: mapping[%d] target_kind %q", ErrInvalidAdapterRequest, index, mapping.TargetKind)
@@ -359,7 +359,7 @@ func collectImpactSources(tenantID string, impact Result) ([]MappedImpactSource,
 		}
 		ref, err := revisionFromProvenance(value.Revision)
 		if err != nil {
-			return fmt.Errorf("%w: affected revision: %v", ErrInvalidAdapterRequest, err)
+			return fmt.Errorf("%w: affected revision: %w", ErrInvalidAdapterRequest, err)
 		}
 		key := ref.ExactKey()
 		value.Reasons = canonicalReasons(value.Reasons)

@@ -3,9 +3,11 @@ package complianceimpact
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +96,7 @@ func TestCompatibilityAdapterFixtureStableReplayAndAllDestinationSlices(t *testi
 
 func TestCompatibilityAdapterDoesNotMapSimilarSubjectAtDifferentRevision(t *testing.T) {
 	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
-	mapping := adapterMapping(root, TargetPolicy, "policy-1", "review.complete")
+	mapping := adapterMapping(root, "policy-1", "review.complete")
 	mapping.Source.ContentDigest = compliance.ContentDigest(adapterDigest("b"))
 
 	result, err := AdaptCompatibility(adapterRequest(adapterImpact(t, root), []CompatibilityMapping{mapping}))
@@ -112,8 +114,8 @@ func TestCompatibilityAdapterDoesNotMapSimilarSubjectAtDifferentRevision(t *test
 func TestCompatibilityAdapterRejectsAmbiguousTargetsWithoutGuessing(t *testing.T) {
 	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
 	mappings := []CompatibilityMapping{
-		adapterMapping(root, TargetPolicy, "policy-b", "review.complete"),
-		adapterMapping(root, TargetPolicy, "policy-a", "review.complete"),
+		adapterMapping(root, "policy-b", "review.complete"),
+		adapterMapping(root, "policy-a", "review.complete"),
 	}
 	result, err := AdaptCompatibility(adapterRequest(adapterImpact(t, root), mappings))
 	if err != nil {
@@ -130,8 +132,8 @@ func TestCompatibilityAdapterRejectsAmbiguousTargetsWithoutGuessing(t *testing.T
 func TestCompatibilityAdapterMergesActionsForOneExplicitTarget(t *testing.T) {
 	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
 	mappings := []CompatibilityMapping{
-		adapterMapping(root, TargetPolicy, "policy-1", "review.complete"),
-		adapterMapping(root, TargetPolicy, "policy-1", "exception.renew"),
+		adapterMapping(root, "policy-1", "review.complete"),
+		adapterMapping(root, "policy-1", "exception.renew"),
 	}
 	result, err := AdaptCompatibility(adapterRequest(adapterImpact(t, root), mappings))
 	if err != nil {
@@ -148,7 +150,7 @@ func TestCompatibilityAdapterMergesActionsForOneExplicitTarget(t *testing.T) {
 func TestCompatibilityAdapterRejectsTenantBoundaryInvalidMappingsAndLimits(t *testing.T) {
 	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
 	impact := adapterImpact(t, root)
-	mapping := adapterMapping(root, TargetPolicy, "policy-1", "review.complete")
+	mapping := adapterMapping(root, "policy-1", "review.complete")
 
 	tenantRequest := adapterRequest(impact, []CompatibilityMapping{mapping})
 	tenantRequest.Mappings[0].TenantID = "tenant-b"
@@ -174,7 +176,7 @@ func TestCompatibilityAdapterCarriesIncompleteImpactReason(t *testing.T) {
 	impact := adapterImpact(t, root)
 	impact.Complete = false
 	impact.Issues = []Issue{{Code: ReasonDepthBudgetExceeded, Revision: root}}
-	result, err := AdaptCompatibility(adapterRequest(impact, []CompatibilityMapping{adapterMapping(root, TargetPolicy, "policy-1", "review.complete")}))
+	result, err := AdaptCompatibility(adapterRequest(impact, []CompatibilityMapping{adapterMapping(root, "policy-1", "review.complete")}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,15 +215,19 @@ func adapterRequest(impact Result, mappings []CompatibilityMapping) AdapterReque
 	}
 }
 
-func adapterMapping(source complianceintegration.RevisionRef, kind CompatibilityTargetKind, id string, actions ...string) CompatibilityMapping {
-	return CompatibilityMapping{TenantID: "tenant-a", Source: provenance(source), TargetKind: kind, TargetID: id, ActionIDs: actions}
+func adapterMapping(source complianceintegration.RevisionRef, id string, actions ...string) CompatibilityMapping {
+	return CompatibilityMapping{TenantID: "tenant-a", Source: provenance(source), TargetKind: TargetPolicy, TargetID: id, ActionIDs: actions}
 }
 
 func adapterRevision(t *testing.T, kind complianceintegration.FactKind, id string, version uint64) complianceintegration.RevisionRef {
 	t.Helper()
+	if version > math.MaxInt64 {
+		t.Fatalf("version %d exceeds test timestamp range", version)
+	}
+	seconds := int64(version) // #nosec G115 -- bounded by MaxInt64 above.
 	ref, err := complianceintegration.AdaptRevisionRef("tenant-a", "test.domain", kind, compliance.RevisionRef{
-		ID: id, RevisionID: id + "-r" + string(rune('0'+version)), Version: version,
-		ContentDigest: compliance.ContentDigest(adapterDigest("a")), LastModified: time.Unix(int64(version), 0),
+		ID: id, RevisionID: id + "-r" + strconv.FormatUint(version, 10), Version: version,
+		ContentDigest: compliance.ContentDigest(adapterDigest("a")), LastModified: time.Unix(seconds, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
