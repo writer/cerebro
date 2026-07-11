@@ -2,7 +2,7 @@
 
 Status: implementation proposal
 
-Issues: #1760 and #1761
+Issues: #1760, #1761, and #1765
 
 Depends on: #1740 and #1742
 
@@ -50,6 +50,7 @@ approval or verification boundary:
 | Dispatch ordering | The provider is called before the workflow event and finding external reference are written. | Commit the execution claim, outbound request digest, and event outbox row before dispatch. |
 | Ambiguous result | The access-approvals client can read by external ID only. A timed-out create may not return an ID. | Certify provider idempotency replay or add lookup by idempotency key before enforcement. Never blind-retry an uncertified ambiguous create. |
 | Reconciliation | Provider state is refreshed into a finding external reference and a generic action event. | Reconciliation updates the durable execution record; it does not verify or close the finding. |
+| Event identity | Initial submission and later reconciliation use the same generic action event ID because it is derived from stable `ActionID`; JetStream publishes that ID as `Nats-Msg-Id`. | Complete #1765 so stable action identity is separate from immutable provider-observation identity and material transitions cannot be deduplicated. |
 | Verification | Reversible remediation metadata contains prose verification steps only. | Store a machine-readable verification plan and run fresh collection plus the exact finding rule. |
 | Action correctness | Finding attributes contain a string allowlist. Two existing rules advertise an action that cannot negate their predicates. | Complete #1761 and authorize from a certified rule/action binding catalog. |
 | Graph dependency | Workflow action events project to the graph, but graph state is not suitable as approval authority. | Keep proposal, approval, execution, and verification rows canonical in Postgres. Project asynchronously. |
@@ -117,6 +118,9 @@ proves device revocation negates its predicate.
     cause provider dispatch to repeat.
 13. Tenant is part of every key, lookup, uniqueness constraint, digest input,
     event, metric boundary, and provider request.
+14. One stable action has many immutable lifecycle observations. An unchanged
+    provider observation replays idempotently; a material state transition has a
+    distinct event ID.
 
 ## Canonical Ownership
 
@@ -941,6 +945,11 @@ The original approval is never reusable.
 
 ## Workflow Events
 
+Complete #1765 before outcome consumers rely on the existing generic graph
+action event. `action_id` remains stable across the provider lifecycle, while
+each canonical provider observation receives its own immutable event ID. Do not
+derive every reconciliation event ID from `action_id` alone.
+
 Add registry-backed versioned events:
 
 ```text
@@ -1109,6 +1118,15 @@ Files:
 Remove the unsafe action attributes and prove execution eligibility rejects both
 rules. This PR is independently shippable and should land first.
 
+### PR 0b: Preserve reconciliation transitions
+
+Owner: #1765.
+
+Separate stable graph-action identity from immutable provider-observation event
+identity. Prove queued/running/terminal transitions survive JetStream dedupe and
+project into one action lifecycle. This PR is independently shippable and lands
+before the new workflow events.
+
 ### PR 1: Remediation binding and provider capability catalogs
 
 Files:
@@ -1255,6 +1273,7 @@ the PR. Do not invent a passing result.
 ### Audit entry gate
 
 - #1761 containment landed;
+- #1765 reconciliation event identity correction landed;
 - canonical store and outbox concurrency tests pass;
 - actor binding and tenant tests pass;
 - provider capability remains visible as uncertified until contract proof;
@@ -1315,4 +1334,4 @@ available.
 - Each PR slice can be implemented without inventing domain ownership, state
   transitions, or failure semantics.
 
-Refs #1740, #1742, #1760, and #1761.
+Refs #1740, #1742, #1760, #1761, and #1765.
