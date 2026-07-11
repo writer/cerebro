@@ -73,6 +73,14 @@ Every implementation slice must preserve these invariants:
    MCP, and SDK adapters must not reimplement domain rules.
 10. Deployment-specific schedules, account identifiers, hostnames, and secrets
     stay outside this public runtime repository.
+11. An action proposal is not execution authority. Mutation requires the
+    immutable proposal, authenticated approval, durable execution claim, and
+    provider recovery contract defined by #1760.
+12. An action is proposed only when a reviewed rule/action binding proves its
+    target and effect can remediate the finding predicate. Finding attributes
+    are not execution authority; complete #1761 before expanding actions.
+13. Provider success never proves a fix. Fresh, complete re-evaluation of the
+    finding predicate is required before verified closure.
 
 ## Target Request Flow
 
@@ -391,7 +399,7 @@ overlapping foundations that must become inputs or compatibility adapters:
 | `agentplatform.ClaimVerification` | supported, weakly supported, contradicted, and unknown claim verdicts plus supporting, counter, missing, freshness, and action-stage fields | canonical claim-verification input to decision-state derivation |
 | `evidencepackets.Response` | audit/control evidence collection, lineage, freshness, gaps, review state, questionnaire reasoning, and exports | optional referenced audit evidence; it remains a different grain |
 | `proactivetriage.Service` | finding load, memory hints, agent packet construction, recommendation generation, and knowledge action write-back | first finding-to-fix adopter after decision packets are evidence-resolved |
-| `graphactions.ReversibleRemediationPlan` | dry run, reversal metadata, approval gate, target, and verification steps | source for bounded action proposals; execution remains separate |
+| `graphactions.ReversibleRemediationPlan` | dry run, reversal metadata, approval gate, target, and verification steps | source for bounded proposal previews only; #1760 owns durable approval/execution/verification and #1761 owns rule/action effect certification |
 | `knowledge.Service` and `workflowevents` | durable event shapes for decisions, actions, and outcomes | business ledger after #1740 removes Neo4j from the append precondition |
 
 The current agent packet is a readiness and guardrail plan. It does not load
@@ -546,8 +554,9 @@ The initial derivation should use explicit rules:
    caller-declared verdicts.
 10. Build coverage gaps before mapping claim verdict to decision state.
 11. Derive decision confidence from explicit rules, separately from readiness.
-12. Build action proposals from `graphactions` metadata without dispatching
-    them.
+12. Build action proposal previews from certified rule/action bindings and
+    `graphactions` metadata without creating approval state, claiming execution,
+    or dispatching them. A packet receipt is not an action-proposal digest.
 13. Sort all repeated fields deterministically.
 14. Hash the canonical JSON to produce the packet ID and receipt digest.
 15. Persist the bounded receipt when a receipt store is configured.
@@ -828,8 +837,10 @@ Expose these six task tools to clients that request the task profile:
 These tools compose existing services. They are not aliases that call the MCP
 endpoint recursively.
 
-`cerebro.action.plan` returns proposals only. Existing execution operations
-remain separate and require write scopes and approval state.
+`cerebro.action.plan` returns proposal previews only. Existing execution
+operations remain separate. A write scope or caller-supplied approval flag does
+not authorize mutation; execution must use the durable digest-bound workflow in
+#1760 and a certified remediation binding from #1761.
 
 ### Profiles and compatibility
 
@@ -1464,6 +1475,7 @@ checks.
 | Decision workflow/telemetry | `go test ./internal/decisionworkflow ./internal/telemetry ./internal/observability` |
 | Decision packet domain | `go test ./internal/decisionpacket ./internal/agentplatform ./internal/evidencepackets` |
 | Decision packet transports | `go test ./internal/bootstrap`; `make proto-generate-check openapi-check mcp-contract-check` |
+| Graph action approval and verification | `go test ./internal/graphactionworkflow ./internal/graphactions ./internal/graphactionapi ./internal/sourcehttp/graphactionhandler ./internal/statestore/postgres`; provider idempotency, concurrent execution claim, crash recovery, and post-action finding fixtures |
 | Certification | `go test ./internal/sourcecdk ./internal/sourcecoverage ./internal/sourcecertification ./internal/connectorcatalog`; `make catalog-check` |
 | MCP profiles | `go test ./internal/bootstrap ./internal/agentplatform`; `make mcp-contract-check mcp-sdk-compat` |
 | Migrations | `go test ./internal/statestore/postgres`; Postgres integration job from an old schema fixture |
@@ -1579,6 +1591,9 @@ This plan is complete when:
 - the three golden workflows have executable state and outcome contracts,
 - consequential read operations return one versioned decision packet,
 - connector availability reflects computed proof and live health,
+- graph actions require certified predicate/effect bindings, authenticated
+  digest-bound approval, durable execution claims, and fresh finding
+  verification,
 - agent onboarding uses a task-level MCP profile,
 - schema evolution is ordered and immutable,
 - source page recovery and dead-letter replay survive process failure,
