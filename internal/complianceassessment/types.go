@@ -332,7 +332,7 @@ func ValidateInputManifest(value InputManifest) error {
 	}
 	for _, digest := range []string{value.RequestedScopeDigest, value.ResolvedObjectiveSetDigest, value.MappingSetDigest} {
 		if err := compliance.ValidateContentDigest(compliance.ContentDigest(digest)); err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalidManifest, err)
+			return fmt.Errorf("%w: %w", ErrInvalidManifest, err)
 		}
 	}
 	if len(value.Revisions) == 0 || len(value.Receipts) == 0 {
@@ -343,7 +343,7 @@ func ValidateInputManifest(value InputManifest) error {
 			return fmt.Errorf("%w: revisions[%d] is incomplete", ErrInvalidManifest, index)
 		}
 		if err := compliance.ValidateContentDigest(compliance.ContentDigest(revision.Digest)); err != nil {
-			return fmt.Errorf("%w: revisions[%d]: %v", ErrInvalidManifest, index, err)
+			return fmt.Errorf("%w: revisions[%d]: %w", ErrInvalidManifest, index, err)
 		}
 		if index > 0 {
 			previous := value.Revisions[index-1]
@@ -354,7 +354,7 @@ func ValidateInputManifest(value InputManifest) error {
 	}
 	for index, receipt := range value.Receipts {
 		if err := validateCollectionReceipt(receipt); err != nil {
-			return fmt.Errorf("%w: receipts[%d]: %v", ErrInvalidManifest, index, err)
+			return fmt.Errorf("%w: receipts[%d]: %w", ErrInvalidManifest, index, err)
 		}
 		if index > 0 {
 			previous := value.Receipts[index-1]
@@ -407,17 +407,17 @@ func CanonicalTime(value time.Time) time.Time {
 func canonicalBytes(value any) ([]byte, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidCanonicalValue, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidCanonicalValue, err)
 	}
 	var decoded any
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.UseNumber()
 	if err := decoder.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidCanonicalValue, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidCanonicalValue, err)
 	}
 	canonical, err := json.Marshal(decoded)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidCanonicalValue, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidCanonicalValue, err)
 	}
 	return canonical, nil
 }
