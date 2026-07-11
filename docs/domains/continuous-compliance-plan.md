@@ -20,6 +20,32 @@ This plan turns the existing control catalog, evidence, findings, policy lifecyc
 readiness, source coverage, workflow events, jobs, and exports into that closed loop.
 It does not add a second control catalog, a second evidence store, or a web UI.
 
+## Draft Implementation Series
+
+The implementation is split into stacked draft pull requests so each ownership
+boundary can be reviewed before its dependents. Review the foundation and
+canonical semantics first, then review each phase's core before its persistence,
+adapter, or transport slice.
+
+| Phase | Draft pull requests | Review boundary |
+| --- | --- | --- |
+| 0 | #1731 | Complete input scans, replay paging, leased jobs, lossless schedules, and canonical compliance event envelopes. |
+| 1 | #1739 | Stable identifiers and revisions, mapping semantics, result axes, conformance fixtures, and event identity. |
+| 2 | #1747, #1751 | Program/scope/implementation revisions followed by tenant-scoped Postgres projections and replay receipts. |
+| 3 | #1743, #1748, #1754 | Immutable evidence artifacts and claims, durable projections, and an explicit legacy finding-evidence adapter. |
+| 4 | #1744, #1749 | Assessment plans and recoverable runs followed by manifest, result-chunk, and terminal-hash projections. |
+| 5 | #1737, #1758, #1750, #1764 | Activities, complete populations, deterministic samples, source trust, exact proof revisions, and immutable source-check snapshots. |
+| 6 | #1752, #1762 | Protobuf/OpenAPI/auth contracts followed by conditional live read handlers over a typed repository capability. |
+| 7 | #1746, #1753 | Review revisions, risks, exceptions, work, and remediation followed by optimistic current-state projections. |
+| 8 | #1741, #1755 | Audit engagements, requests, submissions, samples, packages, capabilities, grants, and canonical event projections. |
+| 9 | #1745, #1756 | Bounded impact analysis followed by explicit read-only adapters for policy, finding, vendor, questionnaire, and access-review owners. |
+| 10 | #1738, #1757 | Deterministic exchange validation followed by staged imports, signature receipts, authorized commit intents, and append-first commit requests. |
+| 11 | #1736, #1759 | Timed and change-triggered monitors, debounce/overlap leases, operator runbooks, and append-first monitor updates and triggers. |
+
+Every pull request remains draft until its dependency is reviewed. A later slice
+must not be merged around a rejected ownership or correctness decision in its
+base.
+
 ## Why The Current Model Needs A New Center
 
 The existing components are useful, but they stop at different points in the same
