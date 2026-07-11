@@ -66,7 +66,7 @@ func AdaptRevisionRef(tenantID, domain string, kind FactKind, source compliance.
 		return RevisionRef{}, fmt.Errorf("%w: invalid fact kind %q", ErrInvalidFact, kind)
 	}
 	if err := source.Validate(); err != nil {
-		return RevisionRef{}, fmt.Errorf("%w: revision: %v", ErrInvalidFact, err)
+		return RevisionRef{}, fmt.Errorf("%w: revision: %w", ErrInvalidFact, err)
 	}
 	if strings.ContainsRune(source.ID, '\x00') || strings.ContainsRune(source.RevisionID, '\x00') {
 		return RevisionRef{}, fmt.Errorf("%w: revision identifiers contain a reserved character", ErrInvalidFact)

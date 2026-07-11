@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/writer/cerebro/internal/compliance"
@@ -22,7 +23,8 @@ func NewAnalyzer(graph ports.ComplianceImpactGraph, limits Limits) (*Analyzer, e
 	if graph == nil {
 		return nil, fmt.Errorf("%w: graph is required", ErrInvalidGraph)
 	}
-	if limits.MaxNodes == 0 || limits.MaxEdges == 0 || limits.MaxDepth == 0 || limits.PageSize == 0 {
+	if limits.MaxNodes == 0 || limits.MaxEdges == 0 || limits.MaxDepth == 0 || limits.PageSize == 0 ||
+		limits.MaxNodes > math.MaxInt32 || limits.PageSize > math.MaxInt32 {
 		return nil, ErrInvalidLimits
 	}
 	return &Analyzer{graph: graph, limits: limits}, nil
@@ -96,7 +98,8 @@ func (a *Analyzer) Analyze(ctx context.Context, signal complianceintegration.Cha
 				}
 				continue
 			}
-			if uint32(len(visited)) >= a.limits.MaxNodes {
+			// #nosec G115 -- NewAnalyzer bounds MaxNodes to MaxInt32.
+			if len(visited) >= int(a.limits.MaxNodes) {
 				result.Complete = false
 				result.Issues = append(result.Issues, Issue{Code: ReasonNodeBudgetExceeded, Revision: current.fact.Revision(), Related: ref})
 				continue
@@ -181,7 +184,8 @@ func (a *Analyzer) listDependents(ctx context.Context, tenantID string, current 
 		if err != nil {
 			return nil, 0, nil, false, err
 		}
-		if uint32(len(page.Dependents)) > limit {
+		// #nosec G115 -- NewAnalyzer bounds PageSize, and limit cannot exceed it.
+		if len(page.Dependents) > int(limit) {
 			return nil, 0, nil, false, fmt.Errorf("%w: dependent page exceeds requested limit", ErrInvalidGraph)
 		}
 		for _, rawRef := range page.Dependents {
@@ -397,7 +401,7 @@ func adaptPortRevision(ref ports.ComplianceImpactRevisionRef) (complianceintegra
 		LastModified:  ref.LastModified,
 	})
 	if err != nil {
-		return complianceintegration.RevisionRef{}, fmt.Errorf("%w: invalid stored revision: %v", ErrInvalidGraph, err)
+		return complianceintegration.RevisionRef{}, fmt.Errorf("%w: invalid stored revision: %w", ErrInvalidGraph, err)
 	}
 	return result, nil
 }
@@ -411,17 +415,17 @@ func adaptPortFact(raw ports.ComplianceImpactDomainFact) (complianceintegration.
 	for index, rawDependency := range raw.Dependencies {
 		dependencyRevision, err := adaptPortRevision(rawDependency.Revision)
 		if err != nil {
-			return complianceintegration.DomainFact{}, fmt.Errorf("%w: dependency[%d]: %v", ErrInvalidGraph, index, err)
+			return complianceintegration.DomainFact{}, fmt.Errorf("%w: dependency[%d]: %w", ErrInvalidGraph, index, err)
 		}
 		dependency, err := complianceintegration.NewDependencyRef(dependencyRevision, rawDependency.Relation)
 		if err != nil {
-			return complianceintegration.DomainFact{}, fmt.Errorf("%w: dependency[%d]: %v", ErrInvalidGraph, index, err)
+			return complianceintegration.DomainFact{}, fmt.Errorf("%w: dependency[%d]: %w", ErrInvalidGraph, index, err)
 		}
 		dependencies = append(dependencies, dependency)
 	}
 	fact, err := complianceintegration.NewDomainFact(revision, dependencies)
 	if err != nil {
-		return complianceintegration.DomainFact{}, fmt.Errorf("%w: stored fact: %v", ErrInvalidGraph, err)
+		return complianceintegration.DomainFact{}, fmt.Errorf("%w: stored fact: %w", ErrInvalidGraph, err)
 	}
 	return fact, nil
 }

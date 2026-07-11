@@ -248,7 +248,7 @@ func impactRevision(t *testing.T, tenant string, kind complianceintegration.Fact
 	t.Helper()
 	ref, err := complianceintegration.AdaptRevisionRef(tenant, "test.domain", kind, compliance.RevisionRef{
 		ID: id, RevisionID: id + "-r" + strconv.FormatUint(version, 10), Version: version,
-		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(int64(version), 0),
+		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(1, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
