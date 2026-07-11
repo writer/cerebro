@@ -550,7 +550,7 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 	case "cerebro.health":
 		return protoJSONValue(healthResponse(r.Context(), app.cfg, app.deps))
 	case "cerebro.version":
-		return protoJSONValue(compliancecontract.VersionResponse())
+		return protoJSONValue(compliancecontract.VersionResponseFor(app.deps.StateStore))
 	case "cerebro.sources.list":
 		return app.mcpListSources()
 	case "cerebro.sources.check":
@@ -3373,7 +3373,7 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 		case "health":
 			value, err = protoJSONValue(healthResponse(r.Context(), app.cfg, app.deps))
 		case "version":
-			value, err = protoJSONValue(compliancecontract.VersionResponse())
+			value, err = protoJSONValue(compliancecontract.VersionResponseFor(app.deps.StateStore))
 		default:
 			err = ports.ErrGraphEntityNotFound
 		}

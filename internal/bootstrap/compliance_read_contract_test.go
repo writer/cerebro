@@ -2,10 +2,7 @@ package bootstrap
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -85,8 +82,8 @@ func TestComplianceReadScopesDoNotGrantOtherReadSlices(t *testing.T) {
 	}
 }
 
-func TestComplianceReadContractIsPublishedButHandlerIsNotRegistered(t *testing.T) {
-	contract := compliancecontract.VersionResponse().GetComplianceReads()
+func TestComplianceReadContractReportsRuntimeRegistration(t *testing.T) {
+	contract := compliancecontract.VersionResponse(false).GetComplianceReads()
 	if contract.GetServiceName() != cerebrov1connect.ComplianceReadServiceName {
 		t.Fatalf("service_name = %q", contract.GetServiceName())
 	}
@@ -107,14 +104,8 @@ func TestComplianceReadContractIsPublishedButHandlerIsNotRegistered(t *testing.T
 			t.Fatalf("OAuth discovery missing compliance read scope %q", scope)
 		}
 	}
-
-	root := bootstrapRepoRoot(t)
-	// #nosec G304 -- fixed repo-relative route registry path.
-	body, err := os.ReadFile(filepath.Join(root, "internal", "bootstrap", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(body), "NewComplianceReadServiceHandler") {
-		t.Fatal("compliance read Connect handler registered before durable store implementation")
+	registered := compliancecontract.VersionResponse(true).GetComplianceReads()
+	if registered.GetRouteState() != cerebrov1.ComplianceReadRouteState_COMPLIANCE_READ_ROUTE_STATE_REGISTERED {
+		t.Fatalf("registered route_state = %v", registered.GetRouteState())
 	}
 }

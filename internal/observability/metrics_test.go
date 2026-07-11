@@ -38,6 +38,13 @@ func TestNormalizeRouteLabelBoundsUnknownPaths(t *testing.T) {
 	if got := normalizeRouteLabel("/platform/runtime-freshness"); got != "/platform/runtime-freshness" {
 		t.Fatalf("runtime freshness route label = %q", got)
 	}
+	complianceRoute := "/cerebro.v1.ComplianceReadService/ListCompliancePrograms"
+	if got := normalizeRouteLabel(complianceRoute); got != complianceRoute {
+		t.Fatalf("compliance Connect route label = %q", got)
+	}
+	if got := routeFamily(complianceRoute); got != "grpc/compliance-read" {
+		t.Fatalf("compliance Connect route family = %q", got)
+	}
 }
 
 func TestNormalizeMethodLabelBoundsUnknownMethods(t *testing.T) {

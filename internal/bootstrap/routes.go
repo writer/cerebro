@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 
 	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
+	"github.com/writer/cerebro/internal/complianceread"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
@@ -59,6 +60,10 @@ func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, dep
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
+	if repository := complianceread.RepositoryFrom(deps.StateStore); repository != nil {
+		path, handler = cerebrov1connect.NewComplianceReadServiceHandler(complianceread.NewHandler(repository, effectiveTenantFilter), connect.WithInterceptors(authInterceptor(cfg.Auth)))
+		mux.Handle(path, handler)
+	}
 }
 func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /health", routeSurfacePublicHTTP, app.handleHealth)

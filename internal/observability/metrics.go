@@ -292,6 +292,9 @@ func routeFamily(route string) string {
 	if len(parts) >= 2 && parts[0] == "cerebro.v1.BootstrapService" {
 		return "grpc/bootstrap"
 	}
+	if len(parts) >= 2 && parts[0] == "cerebro.v1.ComplianceReadService" {
+		return "grpc/compliance-read"
+	}
 	return parts[0]
 }
 
@@ -653,6 +656,22 @@ var exactRouteLabels = map[string]struct{}{
 	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingCandidates": {},
 	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingRules":      {},
 	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings":          {},
+	"/cerebro.v1.ComplianceReadService/ListCompliancePrograms":            {},
+	"/cerebro.v1.ComplianceReadService/GetComplianceProgram":              {},
+	"/cerebro.v1.ComplianceReadService/ListControlImplementations":        {},
+	"/cerebro.v1.ComplianceReadService/GetControlImplementation":          {},
+	"/cerebro.v1.ComplianceReadService/ListEvidenceArtifactMetadata":      {},
+	"/cerebro.v1.ComplianceReadService/GetEvidenceArtifactMetadata":       {},
+	"/cerebro.v1.ComplianceReadService/ListAssessmentPlans":               {},
+	"/cerebro.v1.ComplianceReadService/GetAssessmentPlan":                 {},
+	"/cerebro.v1.ComplianceReadService/ListAssessmentRuns":                {},
+	"/cerebro.v1.ComplianceReadService/GetAssessmentRun":                  {},
+	"/cerebro.v1.ComplianceReadService/ListAssessmentResults":             {},
+	"/cerebro.v1.ComplianceReadService/GetAssessmentResult":               {},
+	"/cerebro.v1.ComplianceReadService/ListAssessmentReviews":             {},
+	"/cerebro.v1.ComplianceReadService/GetAssessmentReview":               {},
+	"/cerebro.v1.ComplianceReadService/ListComplianceWorkItems":           {},
+	"/cerebro.v1.ComplianceReadService/GetComplianceWorkItem":             {},
 }
 
 func dynamicRouteLabel(parts []string) (string, bool) {
@@ -770,7 +789,7 @@ func unmatchedRouteLabel(parts []string) string {
 		return "/{unmatched}"
 	}
 	switch parts[0] {
-	case ".well-known", "api", "cerebro.v1.BootstrapService", "finding-candidates", "finding-evaluation-runs", "finding-evidence", "finding-rules", "findings", "grc", "health", "healthz", "livez", "metrics", "oauth", "openapi.yaml", "platform", "report-runs", "reports", "source-runtimes", "sources":
+	case ".well-known", "api", "cerebro.v1.BootstrapService", "cerebro.v1.ComplianceReadService", "finding-candidates", "finding-evaluation-runs", "finding-evidence", "finding-rules", "findings", "grc", "health", "healthz", "livez", "metrics", "oauth", "openapi.yaml", "platform", "report-runs", "reports", "source-runtimes", "sources":
 		return "/" + parts[0] + "/{unmatched}"
 	default:
 		return "/{unmatched}"

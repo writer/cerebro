@@ -573,7 +573,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
-	return connect.NewResponse(compliancecontract.VersionResponse()), nil
+	return connect.NewResponse(compliancecontract.VersionResponseFor(s.deps.StateStore)), nil
 }
 
 func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[cerebrov1.CheckHealthRequest]) (*connect.Response[cerebrov1.CheckHealthResponse], error) {

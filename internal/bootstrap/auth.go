@@ -688,7 +688,7 @@ func principalScopeRestricted(principal authPrincipal) bool {
 }
 
 func isConnectProcedurePath(path string) bool {
-	return strings.HasPrefix(path, "/cerebro.v1.BootstrapService/")
+	return strings.HasPrefix(path, "/cerebro.v1.") && strings.Contains(path, "Service/")
 }
 
 func tenantIDFromMetadata(metadata map[string]any) string {
@@ -1488,7 +1488,8 @@ func accessAuditRoute(r *http.Request) string {
 	}
 	path := strings.TrimSpace(r.URL.Path)
 	if isConnectProcedurePath(path) {
-		return "/cerebro.v1.BootstrapService/{Procedure}"
+		service := strings.SplitN(strings.Trim(path, "/"), "/", 2)[0]
+		return "/" + service + "/{Procedure}"
 	}
 	if pattern := strings.TrimSpace(r.Pattern); pattern != "" {
 		if strings.Contains(pattern, " ") {
@@ -1504,7 +1505,7 @@ func accessAuditConnectProcedure(path string) string {
 		return ""
 	}
 	procedure := "/" + strings.Trim(path, "/")
-	if _, ok := knownAccessAuditConnectProcedures[procedure]; !ok {
+	if _, ok := knownAccessAuditConnectProcedures[procedure]; !ok && connectProcedurePolicyFor(procedure).Scope == "" {
 		return "unknown"
 	}
 	return strings.TrimPrefix(procedure, "/")
