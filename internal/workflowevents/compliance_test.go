@@ -54,6 +54,17 @@ func TestComplianceExchangeRequestAndCommitRemainDistinctFacts(t *testing.T) {
 	}
 }
 
+func TestComplianceSourceCheckUsesItsOwnRegisteredFact(t *testing.T) {
+	t.Parallel()
+	if EventKindComplianceSourceCheckRecorded == EventKindComplianceActivityRecorded ||
+		EventKindComplianceSourceCheckRecorded == EventKindComplianceInputManifestRecorded {
+		t.Fatal("source check event overloads an activity or input-manifest fact")
+	}
+	if !KindRegistered(EventKindComplianceSourceCheckRecorded) {
+		t.Fatal("source check event kind is not registered")
+	}
+}
+
 func TestComplianceAggregateRejectsUnsafePayload(t *testing.T) {
 	t.Parallel()
 	base := ComplianceAggregateRecorded{
