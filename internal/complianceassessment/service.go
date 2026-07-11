@@ -88,12 +88,6 @@ func (s *Service) PublishPlan(ctx context.Context, tenantID, planID, actorID str
 	plan.PublishedAt = CanonicalTime(s.now())
 	plan.PublishedBy = strings.TrimSpace(actorID)
 	plan.Version++
-	plan.ContentDigest = ""
-	digest, err := semanticHash(plan)
-	if err != nil {
-		return AssessmentPlanRevision{}, err
-	}
-	plan.ContentDigest = digest
 	if err := validatePlan(plan); err != nil {
 		return AssessmentPlanRevision{}, err
 	}
