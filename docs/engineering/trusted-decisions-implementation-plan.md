@@ -81,6 +81,9 @@ Every implementation slice must preserve these invariants:
     are not execution authority; complete #1761 before expanding actions.
 13. Provider success never proves a fix. Fresh, complete re-evaluation of the
     finding predicate is required before verified closure.
+14. A stable action identity and an immutable lifecycle observation identity
+    are separate. Complete #1765 so reconciliation transitions cannot be lost
+    to event-stream deduplication.
 
 ## Target Request Flow
 
@@ -1475,7 +1478,7 @@ checks.
 | Decision workflow/telemetry | `go test ./internal/decisionworkflow ./internal/telemetry ./internal/observability` |
 | Decision packet domain | `go test ./internal/decisionpacket ./internal/agentplatform ./internal/evidencepackets` |
 | Decision packet transports | `go test ./internal/bootstrap`; `make proto-generate-check openapi-check mcp-contract-check` |
-| Graph action approval and verification | `go test ./internal/graphactionworkflow ./internal/graphactions ./internal/graphactionapi ./internal/sourcehttp/graphactionhandler ./internal/statestore/postgres`; provider idempotency, concurrent execution claim, crash recovery, and post-action finding fixtures |
+| Graph action approval and verification | `go test ./internal/graphactionworkflow ./internal/graphactions ./internal/graphactionapi ./internal/sourcehttp/graphactionhandler ./internal/statestore/postgres`; provider idempotency, concurrent execution claim, distinct reconciliation event identity, crash recovery, and post-action finding fixtures |
 | Certification | `go test ./internal/sourcecdk ./internal/sourcecoverage ./internal/sourcecertification ./internal/connectorcatalog`; `make catalog-check` |
 | MCP profiles | `go test ./internal/bootstrap ./internal/agentplatform`; `make mcp-contract-check mcp-sdk-compat` |
 | Migrations | `go test ./internal/statestore/postgres`; Postgres integration job from an old schema fixture |
