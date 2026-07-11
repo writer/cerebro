@@ -2,6 +2,7 @@ package complianceintegration
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -128,8 +129,8 @@ func TestRevisionAdapterRejectsInvalidIdentity(t *testing.T) {
 func testRevision(t *testing.T, tenant string, kind FactKind, id string, version uint64) RevisionRef {
 	t.Helper()
 	ref, err := AdaptRevisionRef(tenant, "test.domain", kind, compliance.RevisionRef{
-		ID: id, RevisionID: id + "-r" + string(rune('0'+version)), Version: version,
-		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(int64(version), 0),
+		ID: id, RevisionID: id + "-r" + strconv.FormatUint(version, 10), Version: version,
+		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(1, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
