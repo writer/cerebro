@@ -93,7 +93,7 @@ func NewComplianceAggregateEvent(payload ComplianceAggregateRecorded) (*cerebrov
 		ContentDigest: payload.ContentDigest, PayloadJSON: payload.PayloadJSON,
 		ActorID: payload.ActorID, RecordedAt: payload.RecordedAt,
 	}
-	primaryID := payload.AggregateID + "|" + fmt.Sprintf("%d", payload.AggregateVersion) + "|" + payload.Operation
+	primaryID := payload.AggregateType + "|" + payload.AggregateID + "|" + fmt.Sprintf("%d", payload.AggregateVersion) + "|" + payload.Operation
 	return newEvent(contract, SchemaComplianceAggregate, payload.TenantID, "compliance", primaryID, payload.RecordedAt, map[string]string{
 		EventAttributeWorkflowKind: "compliance_aggregate",
 		"aggregate_type":           payload.AggregateType,
