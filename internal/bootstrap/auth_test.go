@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -64,8 +65,16 @@ func TestCapabilityTokenCanAuthorizeWithRoleOnlyGrant(t *testing.T) {
 	if !ok {
 		t.Fatal("authenticateCapabilityToken() rejected role-only token")
 	}
-	if got := expandedPrincipalScopes(principal); len(got) != 2 || got[0] != scopeCosmoSecurityRead || got[1] != scopeUserPreferencesWrite {
-		t.Fatalf("expanded scopes = %#v, want [%s %s]", got, scopeCosmoSecurityRead, scopeUserPreferencesWrite)
+	wantScopes := []string{
+		scopeCosmoSecurityRead,
+		scopeUserPreferencesWrite,
+		scopeComplianceProgramsRead,
+		scopeComplianceEvidenceRead,
+		scopeComplianceAssessmentsRead,
+		scopeComplianceWorkRead,
+	}
+	if got := expandedPrincipalScopes(principal); !reflect.DeepEqual(got, wantScopes) {
+		t.Fatalf("expanded scopes = %#v, want %#v", got, wantScopes)
 	}
 	if err := authorizePrincipalHTTPPolicy(principal, httpRoutePolicyFor("GET", "/sources")); err != nil {
 		t.Fatalf("role-only capability token rejected for read route: %v", err)

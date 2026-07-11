@@ -24,6 +24,10 @@ const (
 	scopeDashboardsWrite           = "cerebro.dashboards.write"
 	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	scopeComplianceProgramsRead    = "cerebro.compliance.programs.read"
+	scopeComplianceEvidenceRead    = "cerebro.compliance.evidence.read"
+	scopeComplianceAssessmentsRead = "cerebro.compliance.assessments.read"
+	scopeComplianceWorkRead        = "cerebro.compliance.work.read"
 )
 
 type connectProcedureAuthPolicy struct {
@@ -93,6 +97,26 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		return connectProcedureAuthPolicy{Scope: scopeKnowledgeWrite}
 	case cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeWorkflowReplay}
+	case cerebrov1connect.ComplianceReadServiceListComplianceProgramsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetComplianceProgramProcedure,
+		cerebrov1connect.ComplianceReadServiceListControlImplementationsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetControlImplementationProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeComplianceProgramsRead}
+	case cerebrov1connect.ComplianceReadServiceListEvidenceArtifactMetadataProcedure,
+		cerebrov1connect.ComplianceReadServiceGetEvidenceArtifactMetadataProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeComplianceEvidenceRead}
+	case cerebrov1connect.ComplianceReadServiceListAssessmentPlansProcedure,
+		cerebrov1connect.ComplianceReadServiceGetAssessmentPlanProcedure,
+		cerebrov1connect.ComplianceReadServiceListAssessmentRunsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetAssessmentRunProcedure,
+		cerebrov1connect.ComplianceReadServiceListAssessmentResultsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetAssessmentResultProcedure,
+		cerebrov1connect.ComplianceReadServiceListAssessmentReviewsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetAssessmentReviewProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeComplianceAssessmentsRead}
+	case cerebrov1connect.ComplianceReadServiceListComplianceWorkItemsProcedure,
+		cerebrov1connect.ComplianceReadServiceGetComplianceWorkItemProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeComplianceWorkRead}
 	default:
 		return connectProcedureAuthPolicy{}
 	}

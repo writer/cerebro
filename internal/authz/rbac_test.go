@@ -35,6 +35,27 @@ func TestUserPreferencesWriteScopeRoleExpansion(t *testing.T) {
 	}
 }
 
+func TestComplianceReadScopesExpandForReadAndGRCReviewRoles(t *testing.T) {
+	for _, role := range []string{
+		RoleCerebroViewer,
+		"viewer",
+		"reader",
+		"read_only",
+		RoleCerebroAnalyst,
+		"analyst",
+		"editor",
+		RoleCerebroGRCReviewer,
+		RoleCerebroAdmin,
+	} {
+		scopes := ScopesForRoles([]string{role})
+		for _, scope := range complianceReadScopes {
+			if !hasScope(scopes, scope) {
+				t.Fatalf("role %q did not expand to %s", role, scope)
+			}
+		}
+	}
+}
+
 func assertGRCContentWriteScopeExpansion(t *testing.T, scope string) {
 	t.Helper()
 	for _, role := range []string{

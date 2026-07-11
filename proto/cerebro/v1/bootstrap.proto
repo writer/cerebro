@@ -7,6 +7,7 @@ option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 import "cerebro/v1/primitives.proto";
 import "cerebro/v1/source.proto";
 import "cerebro/v1/finding.proto";
+import "cerebro/v1/compliance.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -70,6 +71,10 @@ message GetVersionResponse {
   string commit = 3;
   string build_date = 4;
   string api_version = 5;
+  // compliance_reads advertises the generated contract and whether its handler
+  // is registered. CONTRACT_ONLY prevents schema publication from implying an
+  // executable route before durable store wiring exists.
+  ComplianceReadContract compliance_reads = 6;
 }
 
 // CheckHealthRequest requests the current bootstrap health snapshot.

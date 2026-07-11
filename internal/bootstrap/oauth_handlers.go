@@ -94,6 +94,10 @@ func supportedOAuthScopes() []string {
 		scopeSourceRuntimesWrite,
 		scopeUserPreferencesWrite,
 		scopeWorkflowReplay,
+		scopeComplianceProgramsRead,
+		scopeComplianceEvidenceRead,
+		scopeComplianceAssessmentsRead,
+		scopeComplianceWorkRead,
 	}
 }
 
