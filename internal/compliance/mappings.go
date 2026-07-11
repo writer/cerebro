@@ -52,10 +52,10 @@ func (mapping ControlMapping) Validate() error {
 		return fmt.Errorf("%w: id and revision_id are required", ErrInvalidMapping)
 	}
 	if err := mapping.Source.Validate(); err != nil {
-		return fmt.Errorf("%w: source: %v", ErrInvalidMapping, err)
+		return fmt.Errorf("%w: source: %w", ErrInvalidMapping, err)
 	}
 	if err := mapping.Target.Validate(); err != nil {
-		return fmt.Errorf("%w: target: %v", ErrInvalidMapping, err)
+		return fmt.Errorf("%w: target: %w", ErrInvalidMapping, err)
 	}
 	if mapping.Source.ID == mapping.Target.ID && mapping.Source.RevisionID == mapping.Target.RevisionID {
 		return fmt.Errorf("%w: source and target must differ", ErrInvalidMapping)
@@ -87,7 +87,7 @@ func (mapping ControlMapping) Validate() error {
 	}
 	for index, reference := range mapping.Provenance {
 		if err := reference.Validate(); err != nil {
-			return fmt.Errorf("%w: provenance[%d]: %v", ErrInvalidMapping, index, err)
+			return fmt.Errorf("%w: provenance[%d]: %w", ErrInvalidMapping, index, err)
 		}
 	}
 	return nil
