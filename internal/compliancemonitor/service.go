@@ -198,6 +198,10 @@ func normalizeMonitorUpdate(monitor *ports.ComplianceMonitor, expectedVersion ui
 }
 
 func monitorUpdatedEvent(monitor *ports.ComplianceMonitor, version uint64, operation, actorID string, recordedAt time.Time) (*cerebrov1.EventEnvelope, error) {
+	if version == 0 || version > math.MaxInt64 {
+		return nil, errors.New("compliance monitor event version exceeds its limit")
+	}
+	aggregateVersion := int64(version) // #nosec G115 -- bounded by MaxInt64 above.
 	payload := definitionPayload(monitor)
 	encoded, digest, err := encodedDigest(payload)
 	if err != nil {
@@ -206,7 +210,7 @@ func monitorUpdatedEvent(monitor *ports.ComplianceMonitor, version uint64, opera
 	event, err := workflowevents.NewComplianceAggregateEvent(workflowevents.ComplianceAggregateRecorded{
 		Kind: workflowevents.EventKindComplianceMonitorUpdated, TenantID: monitor.TenantID,
 		AggregateType: monitorAggregateType, AggregateID: monitor.ID,
-		RevisionID: fmt.Sprintf("%s:v%d", monitor.ID, version), AggregateVersion: int64(version),
+		RevisionID: fmt.Sprintf("%s:v%d", monitor.ID, version), AggregateVersion: aggregateVersion,
 		Operation: operation, ContentDigest: digest, PayloadJSON: string(encoded),
 		ActorID: strings.TrimSpace(actorID), RecordedAt: canonicalTime(recordedAt).Format(time.RFC3339Nano),
 	})

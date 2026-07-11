@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -55,6 +56,14 @@ func TestUpdateMonitorAppendsCanonicalRevisionBeforeProjection(t *testing.T) {
 	}
 	if snapshot["plan_revision_id"] != "plan-revision-1" || snapshot["next_run_at"] != "2026-07-11T11:00:00.123Z" {
 		t.Fatalf("monitor snapshot = %#v", snapshot)
+	}
+}
+
+func TestMonitorUpdatedEventRejectsOutOfRangeVersion(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 10, 0, 0, 0, time.UTC)
+	if _, err := monitorUpdatedEvent(validDefinitionMonitor(now), math.MaxUint64, operationUpdated, "operator-1", now); err == nil {
+		t.Fatal("out-of-range monitor event version unexpectedly accepted")
 	}
 }
 
