@@ -46,6 +46,7 @@ const (
 	KindAppendLogRuntimeIndex     = "append_log_runtime_index"
 	KindProactiveFindingTriage    = "proactive_finding_triage"
 	KindGRCUpload                 = "grc_upload"
+	KindComplianceAssessment      = "compliance_assessment"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
