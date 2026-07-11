@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -63,6 +64,52 @@ func TestFindingItemsNormalizeRiskInboxRows(t *testing.T) {
 	}
 	if len(item.Controls) != 1 || item.Controls[0].ControlID != "CC6.1" {
 		t.Fatalf("Controls = %#v, want SOC 2 CC6.1", item.Controls)
+	}
+	if len(item.Profiles) == 0 {
+		t.Fatal("ComplianceProfiles is empty, want profiles linked through SOC 2 CC6.1")
+	}
+}
+
+func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *testing.T) {
+	index := buildFindingProfileIndex(compliance.ControlCoverageIndex{Profiles: []compliance.ControlCoverageProfile{{
+		ID:   "access-program",
+		Name: "Access Program",
+		Controls: []compliance.ControlCoverageControl{{
+			FrameworkName: "Custom Framework",
+			ControlID:     "IAM-1",
+			MappedControlRefs: []compliance.ControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.1",
+			}},
+		}},
+		Rules: []compliance.ControlCoverageRule{{
+			RuleID: "privileged-mfa",
+			Controls: []compliance.ControlRef{{
+				FrameworkName: "Custom Framework",
+				ControlID:     "IAM-1",
+			}},
+		}},
+	}}})
+
+	profiles := index.profilesForFinding("privileged-mfa", []ControlRef{{
+		FrameworkName: "SOC 2",
+		ControlID:     "CC6.1",
+	}})
+	if len(profiles) != 1 {
+		t.Fatalf("len(profiles) = %d, want 1: %#v", len(profiles), profiles)
+	}
+	if profiles[0].ID != "access-program" || len(profiles[0].MatchedControls) != 1 {
+		t.Fatalf("profiles[0] = %#v, want one access-program IAM-1 match", profiles[0])
+	}
+	if got := profiles[0].MatchedControls[0]; got.FrameworkName != "Custom Framework" || got.ControlID != "IAM-1" {
+		t.Fatalf("matched control = %#v, want Custom Framework IAM-1", got)
+	}
+	profiles = index.profilesForFinding("unknown-rule", []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}})
+	if len(profiles) != 1 || profiles[0].ID != "access-program" {
+		t.Fatalf("control fallback profiles = %#v, want access-program", profiles)
+	}
+	if profiles := index.profilesForFinding("unknown-rule", []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}}); len(profiles) != 0 {
+		t.Fatalf("unrelated control profiles = %#v, want none", profiles)
 	}
 }
 

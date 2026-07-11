@@ -11,6 +11,8 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `policies/**.yaml` | Policy IDs, names, domains, severities, resources, remediation, control refs, metadata tags, risk categories, and MITRE refs. |
 | `internal/findings/public_detection_catalog.json` | Public detection IDs, packs, sources, evaluation modes, runtime tags, control refs, audit depth, and source coverage refs for every public finding type. |
 | `internal/compliance/control_families.yaml` | Framework names, control IDs, and control family labels. |
+| `internal/compliance/control_profiles.yaml` | Named compliance program scopes composed from explicit frameworks, families, controls, and included profiles. |
+| `internal/compliance/control_coverage_index.yaml` | Generated profile-control-rule joins, including catalog-backed `maps_to` links. |
 | `internal/compliance/framework_sources.yaml` | Framework authority, version, lifecycle, source URL, control model, evidence model, and assessment notes for each framework in the control catalog. |
 | `internal/compliance/policy_rule_extensions.yaml` | Shared audit language by defaults, evidence mode, domain, policy override, finding-domain alias, and finding override. |
 | `internal/compliance/framework_review_areas.yaml` | Framework-level review queues that group direct control refs without changing evidence status. |
@@ -80,6 +82,7 @@ For non-policy detections, public detection catalog fields load first as fallbac
 | `control_relationships.csv` | One row per YAML control relationship, including child requirement, sibling scope, evidence dependency, accountability, and follow-up hints. |
 | `finding_review_area_map.csv` | One row per public detection matched into a YAML framework review area through direct control refs. |
 | `finding_control_relationship_map.csv` | One row per public detection-control relationship hint through direct control refs. |
+| `finding_profile_map.csv` | One row per named compliance profile and public finding, with the matched profile controls and a direct or catalog-mapped basis for every link. |
 | `evidence_capabilities.csv` | One row per YAML source/dimension capability with declared source-backed control refs. |
 | `source_capability_review_map.csv` | One row per source/dimension comparing YAML capability refs with observed public catalog source coverage refs. |
 | `framework_control_enrichment_map.csv` | One row per framework control showing direct findings, source-backed findings, source capabilities, review areas, and relationships. |
@@ -171,6 +174,8 @@ Within the `direct` lane, `direct_source_backed` means every direct finding for 
 `framework_review_areas.yaml` groups related controls into reviewer queues such as access authorization, technical safeguards, privacy incident response, payment-card authentication, and AI management planning. A finding enters `finding_review_area_map.csv` when one of its direct control refs is in the YAML area.
 
 `control_relationships.yaml` adds explicit links such as child requirements, sibling scope, evidence dependencies, accountability dependencies, corrective-action follow-up, and operating context. A finding enters `finding_control_relationship_map.csv` when it has the direct control ref. These rows are review hints only; they do not change `source_backed`, `partial_source_backed`, or `control_only` status.
+
+`finding_profile_map.csv` joins findings to named compliance program scopes through the generated control coverage index. A `direct` link means the finding and profile share the same cataloged control. A `catalog_mapping` link means the selected profile control explicitly declares the finding's control in `maps_to`. The export records each mapping path and fails generation if a profile-finding link has neither basis. Control relationships and review areas never create profile-finding links.
 
 `evidence_capabilities.yaml` declares what a source/dimension can support when source coverage is available. `source_capability_review_map.csv` compares those YAML declarations with the public detection catalog so capability gaps are visible without treating review context as evidence.
 

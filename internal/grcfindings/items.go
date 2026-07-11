@@ -37,6 +37,7 @@ type FindingItem struct {
 	PolicyID     string       `json:"policy_id,omitempty"`
 	PolicyName   string       `json:"policy_name,omitempty"`
 	Controls     []ControlRef `json:"controls,omitempty"`
+	Profiles     []ProfileRef `json:"compliance_profiles,omitempty"`
 	GRCFindingRisk
 	GRCFindingWorkflowMetadata
 	EvidenceCount   int        `json:"evidence_count"`
@@ -71,6 +72,12 @@ type GRCFindingRisk struct {
 type ControlRef struct {
 	FrameworkName string `json:"framework_name"`
 	ControlID     string `json:"control_id"`
+}
+
+type ProfileRef struct {
+	ID              string       `json:"id"`
+	Name            string       `json:"name"`
+	MatchedControls []ControlRef `json:"matched_controls,omitempty"`
 }
 
 type ControlItem struct {
@@ -118,6 +125,7 @@ func FindingItems(findings []*ports.FindingRecord, sourceIDs map[string]string, 
 			PolicyID:     finding.PolicyID,
 			PolicyName:   finding.PolicyName,
 			Controls:     ControlRefs(finding.ControlRefs),
+			Profiles:     builtinFindingProfiles(finding.RuleID, finding.ControlRefs),
 			GRCFindingRisk: GRCFindingRisk{
 				RiskScore:       finding.RiskScore,
 				LikelihoodScore: finding.LikelihoodScore,

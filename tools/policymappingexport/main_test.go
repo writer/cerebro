@@ -60,6 +60,26 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
 }
 
+func TestGenerateFilesLinksComplianceProfilesToFindings(t *testing.T) {
+	rows := readGeneratedCSV(t, generatedFileByName(t, repoGeneratedFiles(t), "finding_profile_map.csv"))
+	header := rows[0]
+	profileCol := columnIndex(t, header, "profile_id")
+	findingCol := columnIndex(t, header, "finding_id")
+	var matched []string
+	for _, row := range rows[1:] {
+		if row[profileCol] == "soc2-security-core" && row[findingCol] == "cerebro-high-risk-api-access" {
+			matched = row
+			break
+		}
+	}
+	if matched == nil {
+		t.Fatal("finding_profile_map.csv missing soc2-security-core -> cerebro-high-risk-api-access")
+	}
+	assertCellContains(t, header, matched, "mapping_basis", "direct")
+	assertCellContains(t, header, matched, "matched_profile_control_refs", "SOC 2 CC6.1")
+	assertCellContains(t, header, matched, "mapping_paths", "direct: SOC 2 CC6.1")
+}
+
 func TestResolveFindingAuditDepthYAMLOverridesCatalogFallback(t *testing.T) {
 	resolved := resolveFindingAuditDepth(publicDetection{
 		ID:                "api-admin-token",
