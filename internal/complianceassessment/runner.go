@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,14 @@ import (
 )
 
 const resultChunkSize = 250
+
+func sortResults(results []ObjectiveResult) {
+	sort.Slice(results, func(i, j int) bool {
+		left, right := results[i], results[j]
+		return left.ControlRef.FrameworkID+"\x00"+left.ControlRef.ControlID+"\x00"+left.ObjectiveID+"\x00"+left.ID <
+			right.ControlRef.FrameworkID+"\x00"+right.ControlRef.ControlID+"\x00"+right.ObjectiveID+"\x00"+right.ID
+	})
+}
 
 func (s *Service) Runner() platformjobs.Runner {
 	return func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
