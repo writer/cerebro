@@ -2,7 +2,6 @@ package complianceassessment
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -289,12 +288,4 @@ func applyDisposition(result ObjectiveResult) ObjectiveResult {
 		result.NextActions = append(result.NextActions, ActionRetest)
 	}
 	return NormalizeResult(result)
-}
-
-func sortResults(results []ObjectiveResult) {
-	sort.Slice(results, func(i, j int) bool {
-		left, right := results[i], results[j]
-		return left.ControlRef.FrameworkID+"\x00"+left.ControlRef.ControlID+"\x00"+left.ObjectiveID+"\x00"+left.ID <
-			right.ControlRef.FrameworkID+"\x00"+right.ControlRef.ControlID+"\x00"+right.ObjectiveID+"\x00"+right.ID
-	})
 }
