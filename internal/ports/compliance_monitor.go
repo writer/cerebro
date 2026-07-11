@@ -81,7 +81,9 @@ type ComplianceChangeWindow struct {
 // overlap leases. Advancing a monitor is an acknowledgement after durable job
 // creation, never part of claiming the occurrence.
 type ComplianceMonitorStore interface {
-	PutComplianceMonitor(context.Context, *ComplianceMonitor, uint64) (*ComplianceMonitor, error)
+	// ProjectComplianceMonitor applies one already-appended aggregate version to
+	// current state. Application writes must use the compliancemonitor service.
+	ProjectComplianceMonitor(context.Context, *ComplianceMonitor, uint64) (*ComplianceMonitor, error)
 	GetComplianceMonitor(context.Context, string, string) (*ComplianceMonitor, error)
 	ListComplianceMonitors(context.Context, ComplianceMonitorFilter) ([]*ComplianceMonitor, error)
 	ClaimDueComplianceMonitors(context.Context, time.Time, string, time.Duration, uint32) ([]*ComplianceMonitor, error)

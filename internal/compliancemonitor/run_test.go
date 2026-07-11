@@ -2,13 +2,16 @@ package compliancemonitor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 func TestRunDueCreatesJobBeforeAdvancingAndPreventsOverlap(t *testing.T) {
@@ -20,16 +23,22 @@ func TestRunDueCreatesJobBeforeAdvancingAndPreventsOverlap(t *testing.T) {
 		IntervalSeconds: 3600, Enabled: true, NextRunAt: now,
 	}}}
 	jobStore := newMemoryJobStore(now)
+	appendLog := &memoryMonitorAppendLog{jobStore: jobStore, monitorStore: monitors}
 	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
 		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
 	})
+	service := newMonitorTestService(t, monitors, appendLog, jobs)
 
-	count, err := RunDue(context.Background(), monitors, jobs, now)
+	count, err := service.RunDue(context.Background(), now)
 	if err != nil {
 		t.Fatalf("RunDue() error = %v", err)
 	}
 	if count != 1 || !monitors.completed || !monitors.jobExistedAtComplete(jobStore) {
 		t.Fatalf("count=%d completed=%v jobExistedAtComplete=%v", count, monitors.completed, monitors.jobExistedAtComplete(jobStore))
+	}
+	assertTriggerEvent(t, appendLog.events, ports.ComplianceTriggerTime, "monitor-1", 0)
+	if !appendLog.jobExistedAtAppend || appendLog.monitorAcknowledgedAtAppend {
+		t.Fatalf("jobExistedAtAppend=%v monitorAcknowledgedAtAppend=%v", appendLog.jobExistedAtAppend, appendLog.monitorAcknowledgedAtAppend)
 	}
 	if err := jobs.Wait(context.Background()); err != nil {
 		t.Fatalf("Wait() error = %v", err)
@@ -55,8 +64,9 @@ func TestRunDueReleasesClaimsWhenJobCreationFails(t *testing.T) {
 	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(context.Context, *ports.Job, *platformjobs.Service) (map[string]any, map[string]string, error) {
 		return nil, nil, nil
 	})
+	service := newMonitorTestService(t, monitors, &memoryMonitorAppendLog{}, jobs)
 
-	count, err := RunDue(context.Background(), monitors, jobs, now)
+	count, err := service.RunDue(context.Background(), now)
 	if err == nil || count != 0 {
 		t.Fatalf("RunDue() = (%d, %v), want error", count, err)
 	}
@@ -76,10 +86,75 @@ func TestRunDueSkipsOverlappingPlan(t *testing.T) {
 	jobs := platformjobs.New(newMemoryJobStore(now)).WithRunner(platformjobs.KindComplianceAssessment, func(context.Context, *ports.Job, *platformjobs.Service) (map[string]any, map[string]string, error) {
 		return nil, nil, nil
 	})
+	service := newMonitorTestService(t, monitors, &memoryMonitorAppendLog{}, jobs)
 
-	count, err := RunDue(context.Background(), monitors, jobs, now)
+	count, err := service.RunDue(context.Background(), now)
 	if err != nil || count != 0 || !monitors.claimReleased {
 		t.Fatalf("RunDue() = (%d, %v), claimReleased=%v", count, err, monitors.claimReleased)
+	}
+}
+
+func TestRunDueRetriesSameJobAndEventAfterAppendFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 30, 0, 0, time.UTC)
+	monitors := &memoryMonitorStore{due: []*ports.ComplianceMonitor{{
+		ID: "monitor-retry", TenantID: "tenant-1", ProgramID: "program-1",
+		PlanRevisionID: "plan-revision-1", TriggerKind: ports.ComplianceTriggerTime,
+		IntervalSeconds: 3600, Enabled: true, NextRunAt: now,
+	}}}
+	jobStore := newMemoryJobStore(now)
+	appendLog := &memoryMonitorAppendLog{err: errors.New("log unavailable"), failCount: 1, jobStore: jobStore, monitorStore: monitors}
+	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
+	})
+	service := newMonitorTestService(t, monitors, appendLog, jobs)
+
+	if count, err := service.RunDue(context.Background(), now); err == nil || count != 0 {
+		t.Fatalf("first RunDue() = (%d, %v)", count, err)
+	}
+	if monitors.completed || !monitors.claimReleased || monitors.planLeaseOwner == "" {
+		t.Fatalf("completed=%v claimReleased=%v planLeaseOwner=%q", monitors.completed, monitors.claimReleased, monitors.planLeaseOwner)
+	}
+	if count, err := service.RunDue(context.Background(), now.Add(time.Second)); err != nil || count != 1 {
+		t.Fatalf("second RunDue() = (%d, %v)", count, err)
+	}
+	if len(jobStore.jobs) != 1 || len(appendLog.attempts) != 2 || len(appendLog.events) != 1 {
+		t.Fatalf("jobs=%d attempts=%d events=%d", len(jobStore.jobs), len(appendLog.attempts), len(appendLog.events))
+	}
+	if !sameEnvelope(appendLog.attempts[0], appendLog.attempts[1]) {
+		t.Fatal("append retry changed trigger event identity or payload")
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunDueRetriesAcknowledgementWithoutChangingJobRequest(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 45, 0, 0, time.UTC)
+	monitors := &memoryMonitorStore{due: []*ports.ComplianceMonitor{{
+		ID: "monitor-ack-retry", TenantID: "tenant-1", ProgramID: "program-1",
+		PlanRevisionID: "plan-revision-1", TriggerKind: ports.ComplianceTriggerTime,
+		IntervalSeconds: 3600, Enabled: true, NextRunAt: now,
+	}}, completeErrCount: 1, completeErr: errors.New("projection unavailable")}
+	jobStore := newMemoryJobStore(now)
+	appendLog := &memoryMonitorAppendLog{jobStore: jobStore, monitorStore: monitors}
+	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
+	})
+	service := newMonitorTestService(t, monitors, appendLog, jobs)
+
+	if count, err := service.RunDue(context.Background(), now); err == nil || count != 0 {
+		t.Fatalf("first RunDue() = (%d, %v)", count, err)
+	}
+	if count, err := service.RunDue(context.Background(), now.Add(time.Second)); err != nil || count != 1 {
+		t.Fatalf("second RunDue() = (%d, %v)", count, err)
+	}
+	if len(jobStore.jobs) != 1 || len(appendLog.events) != 2 || !sameEnvelope(appendLog.events[0], appendLog.events[1]) {
+		t.Fatalf("jobs=%d events=%d", len(jobStore.jobs), len(appendLog.events))
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -93,16 +168,22 @@ func TestRunDueChangesCreatesJobBeforeAcknowledgingExactWindow(t *testing.T) {
 		ScopeDigest: "sha256:scope",
 	}}}
 	jobStore := newMemoryJobStore(now)
+	appendLog := &memoryMonitorAppendLog{jobStore: jobStore, monitorStore: monitors}
 	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
 		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
 	})
+	service := newMonitorTestService(t, monitors, appendLog, jobs)
 
-	count, err := RunDueChanges(context.Background(), monitors, jobs, now)
+	count, err := service.RunDueChanges(context.Background(), now)
 	if err != nil {
 		t.Fatalf("RunDueChanges() error = %v", err)
 	}
 	if count != 1 || !monitors.changeCompleted || monitors.completedChangeVersion != 4 || !monitors.changeJobExistedAtComplete(jobStore) {
 		t.Fatalf("count=%d completed=%v version=%d jobExistedAtComplete=%v", count, monitors.changeCompleted, monitors.completedChangeVersion, monitors.changeJobExistedAtComplete(jobStore))
+	}
+	assertTriggerEvent(t, appendLog.events, ports.ComplianceTriggerChange, "monitor-change-1", 4)
+	if !appendLog.jobExistedAtAppend || appendLog.changeAcknowledgedAtAppend {
+		t.Fatalf("jobExistedAtAppend=%v changeAcknowledgedAtAppend=%v", appendLog.jobExistedAtAppend, appendLog.changeAcknowledgedAtAppend)
 	}
 	if err := jobs.Wait(context.Background()); err != nil {
 		t.Fatalf("Wait() error = %v", err)
@@ -113,7 +194,10 @@ type memoryMonitorStore struct {
 	mu                     sync.Mutex
 	due                    []*ports.ComplianceMonitor
 	planLeaseOwner         string
+	planLeaseOccurrence    string
 	completed              bool
+	completeErrCount       int
+	completeErr            error
 	claimReleased          bool
 	outcomeRecorded        bool
 	changeWindows          []*ports.ComplianceChangeWindow
@@ -121,7 +205,7 @@ type memoryMonitorStore struct {
 	completedChangeVersion uint64
 }
 
-func (s *memoryMonitorStore) PutComplianceMonitor(context.Context, *ports.ComplianceMonitor, uint64) (*ports.ComplianceMonitor, error) {
+func (s *memoryMonitorStore) ProjectComplianceMonitor(context.Context, *ports.ComplianceMonitor, uint64) (*ports.ComplianceMonitor, error) {
 	return nil, nil
 }
 func (s *memoryMonitorStore) GetComplianceMonitor(context.Context, string, string) (*ports.ComplianceMonitor, error) {
@@ -136,6 +220,10 @@ func (s *memoryMonitorStore) ClaimDueComplianceMonitors(context.Context, time.Ti
 func (s *memoryMonitorStore) CompleteComplianceMonitorClaim(_ context.Context, _, _, _ string, _, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.completeErrCount > 0 {
+		s.completeErrCount--
+		return s.completeErr
+	}
 	s.completed = true
 	return nil
 }
@@ -145,13 +233,14 @@ func (s *memoryMonitorStore) ReleaseComplianceMonitorClaim(context.Context, stri
 	s.claimReleased = true
 	return nil
 }
-func (s *memoryMonitorStore) AcquireCompliancePlanLease(_ context.Context, _, _, owner, _ string, _ time.Time, _ time.Duration) error {
+func (s *memoryMonitorStore) AcquireCompliancePlanLease(_ context.Context, _, _, owner, occurrence string, _ time.Time, _ time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.planLeaseOwner != "" && s.planLeaseOwner != owner {
+	if s.planLeaseOwner != "" && s.planLeaseOwner != owner && s.planLeaseOccurrence != occurrence {
 		return ports.ErrComplianceMonitorOverlap
 	}
 	s.planLeaseOwner = owner
+	s.planLeaseOccurrence = occurrence
 	return nil
 }
 func (s *memoryMonitorStore) ReleaseCompliancePlanLease(_ context.Context, _, _, owner string) error {
@@ -159,6 +248,7 @@ func (s *memoryMonitorStore) ReleaseCompliancePlanLease(_ context.Context, _, _,
 	defer s.mu.Unlock()
 	if s.planLeaseOwner == owner {
 		s.planLeaseOwner = ""
+		s.planLeaseOccurrence = ""
 	}
 	return nil
 }
@@ -218,6 +308,9 @@ func (s *memoryJobStore) CreateJob(_ context.Context, request ports.CreateJobReq
 		return nil, false, s.createErr
 	}
 	if existing := s.byKey[request.IdempotencyKey]; existing != nil {
+		if existing.RequestHash != request.RequestHash {
+			return nil, false, ports.ErrJobIdempotencyConflict
+		}
 		return cloneJob(existing), false, nil
 	}
 	job := &ports.Job{ID: "job-1", Kind: request.Kind, Status: ports.JobStatusQueued, TenantID: request.TenantID, SubjectType: request.SubjectType, SubjectID: request.SubjectID, IdempotencyKey: request.IdempotencyKey, RequestHash: request.RequestHash, Payload: request.Payload, CreatedAt: s.now, UpdatedAt: s.now}
@@ -275,4 +368,71 @@ func cloneJob(job *ports.Job) *ports.Job {
 		clone.Payload[key] = value
 	}
 	return &clone
+}
+
+type memoryMonitorAppendLog struct {
+	mu                          sync.Mutex
+	events                      []*cerebrov1.EventEnvelope
+	attempts                    []*cerebrov1.EventEnvelope
+	err                         error
+	failCount                   int
+	jobStore                    *memoryJobStore
+	monitorStore                *memoryMonitorStore
+	jobExistedAtAppend          bool
+	monitorAcknowledgedAtAppend bool
+	changeAcknowledgedAtAppend  bool
+}
+
+func (l *memoryMonitorAppendLog) Ping(context.Context) error { return nil }
+func (l *memoryMonitorAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.attempts = append(l.attempts, event)
+	if l.failCount > 0 {
+		l.failCount--
+		return l.err
+	}
+	l.events = append(l.events, event)
+	if l.jobStore != nil {
+		l.jobStore.mu.Lock()
+		l.jobExistedAtAppend = len(l.jobStore.jobs) != 0
+		l.jobStore.mu.Unlock()
+	}
+	if l.monitorStore != nil {
+		l.monitorStore.mu.Lock()
+		l.monitorAcknowledgedAtAppend = l.monitorStore.completed
+		l.changeAcknowledgedAtAppend = l.monitorStore.changeCompleted
+		l.monitorStore.mu.Unlock()
+	}
+	return nil
+}
+
+func newMonitorTestService(t *testing.T, store ports.ComplianceMonitorStore, appendLog ports.AppendLog, jobs *platformjobs.Service) *Service {
+	t.Helper()
+	service, err := New(store, appendLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.WithJobs(jobs)
+}
+
+func assertTriggerEvent(t *testing.T, events []*cerebrov1.EventEnvelope, triggerKind, monitorID string, windowVersion uint64) {
+	t.Helper()
+	if len(events) != 1 {
+		t.Fatalf("trigger events = %d, want 1", len(events))
+	}
+	payload, err := workflowevents.DecodeComplianceAggregate(events[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Kind != workflowevents.EventKindComplianceMonitorTriggered || payload.AggregateVersion != 1 || payload.RevisionID != "job-1" {
+		t.Fatalf("trigger aggregate = %#v", payload)
+	}
+	var trigger monitorTriggerEvent
+	if err := json.Unmarshal([]byte(payload.PayloadJSON), &trigger); err != nil {
+		t.Fatal(err)
+	}
+	if trigger.TriggerKind != triggerKind || trigger.MonitorID != monitorID || trigger.WindowVersion != windowVersion {
+		t.Fatalf("trigger payload = %#v", trigger)
+	}
 }

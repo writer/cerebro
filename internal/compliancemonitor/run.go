@@ -2,6 +2,8 @@ package compliancemonitor
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,13 +23,13 @@ const (
 // RunDue claims due monitor occurrences, obtains one durable lease per tenant
 // and plan revision, creates the assessment job, and advances the monitor only
 // after the job exists.
-func RunDue(ctx context.Context, store ports.ComplianceMonitorStore, jobs *platformjobs.Service, now time.Time) (int, error) {
-	if store == nil || jobs == nil {
-		return 0, nil
+func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
+	if s == nil || s.store == nil || s.jobs == nil || s.appendLog == nil {
+		return 0, ErrServiceUnavailable
 	}
 	now = now.UTC()
 	owner := newOwner()
-	due, err := store.ClaimDueComplianceMonitors(ctx, now, owner, claimTTL, claimBatch)
+	due, err := s.store.ClaimDueComplianceMonitors(ctx, now, owner, claimTTL, claimBatch)
 	if err != nil {
 		return 0, err
 	}
@@ -38,14 +40,15 @@ func RunDue(ctx context.Context, store ports.ComplianceMonitorStore, jobs *platf
 			continue
 		}
 		occurrence := occurrenceKey(monitor)
-		if err := store.AcquireCompliancePlanLease(ctx, monitor.TenantID, monitor.PlanRevisionID, owner, occurrence, now, planLeaseTTL); err != nil {
-			_ = store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
+		leaseOwner := occurrenceLeaseOwner(monitor.TenantID, monitor.PlanRevisionID, occurrence)
+		if err := s.store.AcquireCompliancePlanLease(ctx, monitor.TenantID, monitor.PlanRevisionID, leaseOwner, occurrence, now, planLeaseTTL); err != nil {
+			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			if !errors.Is(err, ports.ErrComplianceMonitorOverlap) {
 				errs = append(errs, fmt.Errorf("compliance monitor %q plan lease: %w", monitor.ID, err))
 			}
 			continue
 		}
-		job, created, createErr := jobs.Create(ctx, ports.CreateJobRequest{
+		job, _, createErr := s.jobs.Create(ctx, ports.CreateJobRequest{
 			Kind:           platformjobs.KindComplianceAssessment,
 			TenantID:       monitor.TenantID,
 			SubjectType:    subjectType,
@@ -56,23 +59,33 @@ func RunDue(ctx context.Context, store ports.ComplianceMonitorStore, jobs *platf
 				"plan_revision_id":      monitor.PlanRevisionID,
 				"monitor_id":            monitor.ID,
 				"scheduled_for":         monitor.NextRunAt.UTC().Format(time.RFC3339Nano),
-				"plan_lease_owner":      owner,
+				"plan_lease_owner":      leaseOwner,
 				"plan_lease_occurrence": occurrence,
 			},
 		})
 		if createErr != nil {
-			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, owner)
-			_ = store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
+			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q enqueue: %w", monitor.ID, createErr))
 			continue
 		}
-		if err := store.CompleteComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner, monitor.NextRunAt, now); err != nil {
+		triggerEvent, eventErr := monitorTimeTriggeredEvent(monitor, occurrence, job)
+		if eventErr != nil {
+			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
+			errs = append(errs, fmt.Errorf("compliance monitor %q trigger event: %w", monitor.ID, eventErr))
+			continue
+		}
+		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
+			errs = append(errs, fmt.Errorf("compliance monitor %q trigger append: %w", monitor.ID, appendErr))
+			continue
+		}
+		if err := s.store.CompleteComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner, monitor.NextRunAt, now); err != nil {
+			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q completion: %w", monitor.ID, err))
 			continue
 		}
-		if created {
-			jobs.StartAsync(ctx, job)
-		}
+		s.jobs.StartAsync(ctx, job)
 		enqueued++
 	}
 	return enqueued, errors.Join(errs...)
@@ -81,9 +94,13 @@ func RunDue(ctx context.Context, store ports.ComplianceMonitorStore, jobs *platf
 // RunDueChanges claims coalesced change windows, obtains the same per-plan
 // overlap lease used by time monitors, creates one assessment job, and only
 // then acknowledges the exact claimed window version.
-func RunDueChanges(ctx context.Context, store ports.ComplianceChangeMonitorStore, jobs *platformjobs.Service, now time.Time) (int, error) {
-	if store == nil || jobs == nil {
-		return 0, nil
+func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error) {
+	if s == nil || s.store == nil || s.jobs == nil || s.appendLog == nil {
+		return 0, ErrServiceUnavailable
+	}
+	store, ok := s.store.(ports.ComplianceChangeMonitorStore)
+	if !ok {
+		return 0, ErrServiceUnavailable
 	}
 	now = now.UTC()
 	owner := newOwner()
@@ -98,14 +115,15 @@ func RunDueChanges(ctx context.Context, store ports.ComplianceChangeMonitorStore
 			continue
 		}
 		occurrence := changeOccurrenceKey(window)
-		if err := store.AcquireCompliancePlanLease(ctx, window.TenantID, window.PlanRevisionID, owner, occurrence, now, planLeaseTTL); err != nil {
+		leaseOwner := occurrenceLeaseOwner(window.TenantID, window.PlanRevisionID, occurrence)
+		if err := store.AcquireCompliancePlanLease(ctx, window.TenantID, window.PlanRevisionID, leaseOwner, occurrence, now, planLeaseTTL); err != nil {
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			if !errors.Is(err, ports.ErrComplianceMonitorOverlap) {
 				errs = append(errs, fmt.Errorf("compliance change monitor %q plan lease: %w", window.MonitorID, err))
 			}
 			continue
 		}
-		job, created, createErr := jobs.Create(ctx, ports.CreateJobRequest{
+		job, _, createErr := s.jobs.Create(ctx, ports.CreateJobRequest{
 			Kind:           platformjobs.KindComplianceAssessment,
 			TenantID:       window.TenantID,
 			SubjectType:    subjectType,
@@ -119,14 +137,25 @@ func RunDueChanges(ctx context.Context, store ports.ComplianceChangeMonitorStore
 				"change_window_opened_at": window.OpenedAt.UTC().Format(time.RFC3339Nano),
 				"change_signal_count":     window.SignalCount,
 				"change_scope_digest":     window.ScopeDigest,
-				"plan_lease_owner":        owner,
+				"plan_lease_owner":        leaseOwner,
 				"plan_lease_occurrence":   occurrence,
 			},
 		})
 		if createErr != nil {
-			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, owner)
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q enqueue: %w", window.MonitorID, createErr))
+			continue
+		}
+		triggerEvent, eventErr := monitorChangeTriggeredEvent(window, occurrence, job)
+		if eventErr != nil {
+			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
+			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger event: %w", window.MonitorID, eventErr))
+			continue
+		}
+		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
+			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger append: %w", window.MonitorID, appendErr))
 			continue
 		}
 		if err := store.CompleteComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner, window.Version); err != nil {
@@ -134,9 +163,7 @@ func RunDueChanges(ctx context.Context, store ports.ComplianceChangeMonitorStore
 			errs = append(errs, fmt.Errorf("compliance change monitor %q completion: %w", window.MonitorID, err))
 			continue
 		}
-		if created {
-			jobs.StartAsync(ctx, job)
-		}
+		s.jobs.StartAsync(ctx, job)
 		enqueued++
 	}
 	return enqueued, errors.Join(errs...)
@@ -158,6 +185,11 @@ func changeOccurrenceKey(window *ports.ComplianceChangeWindow) string {
 
 func newOwner() string {
 	return "compliance-scheduler-" + strings.TrimPrefix(platformjobs.NewID(), "job-")
+}
+
+func occurrenceLeaseOwner(tenantID, planRevisionID, occurrence string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + strings.TrimSpace(planRevisionID) + "\x00" + strings.TrimSpace(occurrence)))
+	return "compliance-occurrence-" + hex.EncodeToString(sum[:])
 }
 
 // ReleasePlanLease releases the overlap guard after the assessment runner has

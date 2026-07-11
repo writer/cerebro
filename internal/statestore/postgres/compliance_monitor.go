@@ -84,7 +84,9 @@ func (s *Store) ensureComplianceMonitorTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceMonitor, "compliance_monitors", ensureComplianceMonitorStatements)
 }
 
-func (s *Store) PutComplianceMonitor(ctx context.Context, monitor *ports.ComplianceMonitor, expectedVersion uint64) (*ports.ComplianceMonitor, error) {
+// ProjectComplianceMonitor applies an already-appended monitor revision to the
+// Postgres current-state projection.
+func (s *Store) ProjectComplianceMonitor(ctx context.Context, monitor *ports.ComplianceMonitor, expectedVersion uint64) (*ports.ComplianceMonitor, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
