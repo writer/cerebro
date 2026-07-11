@@ -25,6 +25,22 @@ revision. Operators should use these fields when deciding what action to take:
    scheduler pass.
 6. Confirm `next_run_at` advanced only after the job record appeared.
 
+## Change-triggered occurrence
+
+Change monitors keep a tenant-scoped receipt for each monitor and source event.
+Repeated delivery of one event does not increase the window count. New events
+extend the monitor's debounce window and increment its version.
+
+1. Confirm the monitor is enabled, uses the `change` trigger, and has a positive
+   debounce window.
+2. Check the change receipt by tenant, monitor, and event ID.
+3. Check `ready_at`. A window is not missed while its debounce period is open.
+4. If a claim exists, compare its version with the current window version. A
+   newer version means another signal arrived while the older claim ran.
+5. Confirm the assessment job exists before acknowledging the claimed version.
+6. Leave a newer window in place. The plan run lease prevents it from starting
+   until the current assessment reaches a terminal state.
+
 ## Stuck plan lease
 
 1. Find the assessment job referenced by the occurrence.
@@ -50,4 +66,3 @@ revision. Operators should use these fields when deciding what action to take:
 Cancel the platform job. The runner records a readable cancelled run and releases
 the plan lease after its terminal event is durable. Do not delete the run, its
 input receipts, or completed result chunks.
-
