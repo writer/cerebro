@@ -27,6 +27,26 @@ func TestCreateRejectsUnsupportedKind(t *testing.T) {
 	}
 }
 
+func TestCreateRejectsIdempotencyKeyWithDifferentRequest(t *testing.T) {
+	service := New(newMemoryJobStore())
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, nil
+	})
+	first := ports.CreateJobRequest{Kind: KindReportRun, TenantID: "tenant-a", IdempotencyKey: "same-key", Payload: map[string]any{"report_id": "one"}}
+	job, created, err := service.Create(context.Background(), first)
+	if err != nil || !created {
+		t.Fatalf("Create(first) job=%+v created=%v error=%v", job, created, err)
+	}
+	reused, created, err := service.Create(context.Background(), first)
+	if err != nil || created || reused.ID != job.ID {
+		t.Fatalf("Create(reuse) job=%+v created=%v error=%v", reused, created, err)
+	}
+	_, _, err = service.Create(context.Background(), ports.CreateJobRequest{Kind: KindReportRun, TenantID: "tenant-a", IdempotencyKey: "same-key", Payload: map[string]any{"report_id": "two"}})
+	if !errors.Is(err, ports.ErrJobIdempotencyConflict) {
+		t.Fatalf("Create(conflict) error = %v, want ErrJobIdempotencyConflict", err)
+	}
+}
+
 func TestCancelDoesNotOverwriteTerminalJob(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-complete"] = &ports.Job{ID: "job-complete", Kind: KindReportRun, Status: ports.JobStatusCompleted}
@@ -259,11 +279,175 @@ func TestStartAsyncDetachesFromRequestAndWaitCancelsJob(t *testing.T) {
 	}
 }
 
+func TestRunCancellationTransitionsLeasedJobToCancelled(t *testing.T) {
+	store := newMemoryJobStore()
+	service := New(store).WithLeaseTiming(200*time.Millisecond, 20*time.Millisecond)
+	started := make(chan struct{})
+	service.WithRunner(KindReportRun, func(ctx context.Context, _ *ports.Job, _ *Service) (map[string]any, map[string]string, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, nil, ctx.Err()
+	})
+	job, _, err := service.Create(context.Background(), ports.CreateJobRequest{Kind: KindReportRun})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.StartAsync(context.Background(), job)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not start")
+	}
+	if _, err := service.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		stored, getErr := store.GetJob(context.Background(), job.ID)
+		if getErr != nil {
+			t.Fatalf("GetJob() error = %v", getErr)
+		}
+		if stored.Status == ports.JobStatusCancelled {
+			if stored.LeaseOwner != "" || !stored.LeaseExpiresAt.IsZero() {
+				t.Fatalf("cancelled job retained lease: %+v", stored)
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("job did not transition to cancelled")
+}
+
+func TestRecoverRestartsExpiredLeasedJob(t *testing.T) {
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newMemoryJobStore()
+	store.jobs["job-expired"] = &ports.Job{
+		ID:             "job-expired",
+		Kind:           KindReportRun,
+		Status:         ports.JobStatusRunning,
+		Attempt:        1,
+		LeaseOwner:     "dead-worker",
+		LeaseExpiresAt: now.Add(-time.Minute),
+	}
+	service := New(store)
+	service.now = func() time.Time { return now }
+	completed := make(chan struct{})
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		close(completed)
+		return nil, nil, nil
+	})
+
+	count, err := service.Recover(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Recover() count = %d, want 1", count)
+	}
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("recovered job did not execute")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		stored, getErr := store.GetJob(context.Background(), "job-expired")
+		if getErr != nil {
+			t.Fatalf("GetJob() error = %v", getErr)
+		}
+		if stored.Status == ports.JobStatusCompleted {
+			if stored.Attempt != 2 {
+				t.Fatalf("attempt = %d, want 2", stored.Attempt)
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("recovered job did not complete")
+}
+
+func TestRunClassifiesRetryableFailure(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-retryable"] = &ports.Job{ID: "job-retryable", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, Retryable(errors.New("temporary dependency failure"))
+	})
+
+	if err := service.Run(context.Background(), "job-retryable"); err == nil {
+		t.Fatal("Run() error = nil, want retryable failure")
+	}
+	stored, err := store.GetJob(context.Background(), "job-retryable")
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.Status != ports.JobStatusFailed || stored.FailureClass != JobFailureRetryable {
+		t.Fatalf("job = %+v, want failed/retryable", stored)
+	}
+}
+
+func TestRunRenewsLeaseDuringLongExecution(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-heartbeat"] = &ports.Job{ID: "job-heartbeat", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store).WithLeaseTiming(100*time.Millisecond, 10*time.Millisecond)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		time.Sleep(35 * time.Millisecond)
+		return nil, nil, nil
+	})
+
+	if err := service.Run(context.Background(), "job-heartbeat"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	store.mu.Lock()
+	renewCount := store.renewCount
+	store.mu.Unlock()
+	if renewCount == 0 {
+		t.Fatal("job lease was not renewed")
+	}
+}
+
+func TestRunCannotCompleteAfterLeaseOwnershipChanges(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-stale-worker"] = &ports.Job{ID: "job-stale-worker", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store).WithLeaseTiming(time.Second, 500*time.Millisecond)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		close(started)
+		<-release
+		return nil, nil, nil
+	})
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- service.Run(context.Background(), "job-stale-worker")
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not start")
+	}
+	store.mu.Lock()
+	store.jobs["job-stale-worker"].LeaseOwner = "replacement-worker"
+	store.mu.Unlock()
+	close(release)
+	if err := <-errCh; !errors.Is(err, ports.ErrJobUpdateConflict) {
+		t.Fatalf("Run() error = %v, want ErrJobUpdateConflict", err)
+	}
+	stored, err := store.GetJob(context.Background(), "job-stale-worker")
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.Status != ports.JobStatusRunning || stored.LeaseOwner != "replacement-worker" {
+		t.Fatalf("stale worker changed job: %+v", stored)
+	}
+}
+
 type memoryJobStore struct {
-	mu     sync.Mutex
-	nextID int
-	jobs   map[string]*ports.Job
-	events []*ports.JobEvent
+	mu         sync.Mutex
+	nextID     int
+	jobs       map[string]*ports.Job
+	events     []*ports.JobEvent
+	renewCount int
 }
 
 func newMemoryJobStore() *memoryJobStore {
@@ -277,6 +461,16 @@ func (s *memoryJobStore) Ping(context.Context) error {
 func (s *memoryJobStore) CreateJob(_ context.Context, request ports.CreateJobRequest) (*ports.Job, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if request.IdempotencyKey != "" {
+		for _, existing := range s.jobs {
+			if existing.TenantID == request.TenantID && existing.IdempotencyKey == request.IdempotencyKey {
+				if existing.RequestHash != request.RequestHash {
+					return nil, false, ports.ErrJobIdempotencyConflict
+				}
+				return cloneJob(existing), false, nil
+			}
+		}
+	}
 	id := "job-test"
 	if s.nextID > 1 {
 		id = fmt.Sprintf("job-test-%d", s.nextID)
@@ -290,6 +484,7 @@ func (s *memoryJobStore) CreateJob(_ context.Context, request ports.CreateJobReq
 		SubjectType:    request.SubjectType,
 		SubjectID:      request.SubjectID,
 		IdempotencyKey: request.IdempotencyKey,
+		RequestHash:    request.RequestHash,
 		Payload:        cloneAnyMap(request.Payload),
 	}
 	s.jobs[id] = cloneJob(job)
@@ -324,6 +519,12 @@ func (s *memoryJobStore) UpdateJob(_ context.Context, id string, update ports.Jo
 	if len(update.AllowedStatuses) > 0 && !containsStatus(update.AllowedStatuses, job.Status) {
 		return nil, ports.ErrJobUpdateConflict
 	}
+	if update.ExpectedLeaseOwner != "" && update.ExpectedLeaseOwner != job.LeaseOwner {
+		return nil, ports.ErrJobUpdateConflict
+	}
+	if update.RequireNotCancelled && job.CancelRequested {
+		return nil, ports.ErrJobUpdateConflict
+	}
 	if update.Status != "" {
 		job.Status = update.Status
 	}
@@ -335,6 +536,9 @@ func (s *memoryJobStore) UpdateJob(_ context.Context, id string, update ports.Jo
 	}
 	if update.Error != "" {
 		job.Error = update.Error
+	}
+	if update.FailureClass != "" {
+		job.FailureClass = update.FailureClass
 	}
 	if update.Result != nil {
 		job.Result = cloneAnyMap(update.Result)
@@ -351,7 +555,69 @@ func (s *memoryJobStore) UpdateJob(_ context.Context, id string, update ports.Jo
 	if update.CancelRequested != nil {
 		job.CancelRequested = *update.CancelRequested
 	}
+	if update.ClearLease {
+		job.LeaseOwner = ""
+		job.LeaseExpiresAt = time.Time{}
+		job.HeartbeatAt = time.Time{}
+	}
 	return cloneJob(job), nil
+}
+
+func (s *memoryJobStore) ClaimJob(_ context.Context, request ports.JobClaimRequest) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[request.JobID]
+	if !ok {
+		return nil, ports.ErrJobNotFound
+	}
+	now := request.Now.UTC()
+	claimable := job.Status == ports.JobStatusQueued || (job.Status == ports.JobStatusRunning && (job.LeaseExpiresAt.IsZero() || !job.LeaseExpiresAt.After(now)))
+	if !claimable || job.CancelRequested {
+		return nil, ports.ErrJobLeaseConflict
+	}
+	job.Status = ports.JobStatusRunning
+	job.Attempt++
+	job.LeaseOwner = request.Owner
+	job.LeaseExpiresAt = now.Add(request.TTL)
+	job.HeartbeatAt = now
+	if job.StartedAt.IsZero() {
+		job.StartedAt = now
+	}
+	return cloneJob(job), nil
+}
+
+func (s *memoryJobStore) RenewJobLease(_ context.Context, request ports.JobLeaseRenewRequest) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[request.JobID]
+	if !ok {
+		return nil, ports.ErrJobNotFound
+	}
+	if job.Status != ports.JobStatusRunning || job.LeaseOwner != request.Owner || !job.LeaseExpiresAt.After(request.Now) {
+		return nil, ports.ErrJobLeaseConflict
+	}
+	job.HeartbeatAt = request.Now
+	job.LeaseExpiresAt = request.Now.Add(request.TTL)
+	s.renewCount++
+	return cloneJob(job), nil
+}
+
+func (s *memoryJobStore) RecoverJobs(_ context.Context, request ports.JobRecoveryRequest) ([]*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	jobs := make([]*ports.Job, 0)
+	for _, job := range s.jobs {
+		if job.Status == ports.JobStatusRunning && (job.LeaseExpiresAt.IsZero() || !job.LeaseExpiresAt.After(request.Now)) {
+			job.Status = ports.JobStatusQueued
+			job.LeaseOwner = ""
+			job.LeaseExpiresAt = time.Time{}
+			job.HeartbeatAt = time.Time{}
+		}
+		if job.Status == ports.JobStatusQueued && !job.CancelRequested {
+			jobs = append(jobs, cloneJob(job))
+		}
+	}
+	return jobs, nil
 }
 
 func (s *memoryJobStore) AppendJobEvent(_ context.Context, event ports.JobEvent) (*ports.JobEvent, error) {
