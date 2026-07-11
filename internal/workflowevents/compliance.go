@@ -28,6 +28,7 @@ const (
 	EventKindComplianceActivityRecorded            = "workflow.v1.compliance.assessment_activity_recorded"
 	EventKindCompliancePopulationRecorded          = "workflow.v1.compliance.assessment_population_recorded"
 	EventKindComplianceSampleRecorded              = "workflow.v1.compliance.assessment_sample_recorded"
+	EventKindComplianceSourceCheckRecorded         = "workflow.v1.compliance.assessment_source_check_recorded"
 	EventKindComplianceReviewRecorded              = "workflow.v1.compliance.assessment_review_recorded"
 	EventKindComplianceRiskDecisionRecorded        = "workflow.v1.compliance.risk_decision_recorded"
 	EventKindComplianceExceptionUpdated            = "workflow.v1.compliance.exception_updated"
@@ -124,6 +125,7 @@ func registeredComplianceKinds() []string {
 		EventKindComplianceResultChunkRecorded, EventKindComplianceAssessmentCompleted,
 		EventKindComplianceAssessmentCancelled, EventKindComplianceActivityRecorded,
 		EventKindCompliancePopulationRecorded, EventKindComplianceSampleRecorded,
+		EventKindComplianceSourceCheckRecorded,
 		EventKindComplianceReviewRecorded, EventKindComplianceRiskDecisionRecorded,
 		EventKindComplianceExceptionUpdated, EventKindComplianceWorkItemUpdated,
 		EventKindComplianceRemediationMilestoneUpdated, EventKindComplianceAuditEngagementRecorded,
