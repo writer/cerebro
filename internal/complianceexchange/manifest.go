@@ -90,7 +90,7 @@ func prepareFiles(input []File, limits Limits) ([]File, []ManifestFile, int64, e
 	var total int64
 	for _, source := range input {
 		if err := validatePackagePath(source.Path, limits.MaxPathBytes); err != nil {
-			return nil, nil, 0, fmt.Errorf("%w: %q: %v", ErrInvalidPackage, source.Path, err)
+			return nil, nil, 0, fmt.Errorf("%w: %q: %w", ErrInvalidPackage, source.Path, err)
 		}
 		key := collisionKey(source.Path)
 		if prior, ok := seen[key]; ok {

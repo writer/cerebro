@@ -19,7 +19,7 @@ import (
 var exchangeTestTime = time.Date(2026, time.July, 11, 12, 30, 0, 123456000, time.UTC)
 
 func TestBuildDeterministicManifestAndCompleteCoverage(t *testing.T) {
-	signer, trust := newEd25519Fixture(t, "package-key-1")
+	signer, trust := newEd25519Fixture(t)
 	request := BuildRequest{
 		PackageID: "package-1", TenantID: "tenant-1", CreatedAt: exchangeTestTime,
 		DisclosurePolicy: "auditor", RedactionMode: "external",
@@ -59,7 +59,7 @@ func TestBuildDeterministicManifestAndCompleteCoverage(t *testing.T) {
 }
 
 func TestBuildCopiesFileBytesBeforeDigesting(t *testing.T) {
-	signer, _ := newEd25519Fixture(t, "package-key-1")
+	signer, _ := newEd25519Fixture(t)
 	data := []byte("original")
 	built, err := Build(context.Background(), BuildRequest{
 		PackageID: "package-1", TenantID: "tenant-1", CreatedAt: exchangeTestTime,
@@ -235,7 +235,7 @@ func TestValidateES256RoundTrip(t *testing.T) {
 }
 
 func TestBuildRejectsUnsafePathsDuplicatesAndLimits(t *testing.T) {
-	signer, _ := newEd25519Fixture(t, "package-key-1")
+	signer, _ := newEd25519Fixture(t)
 	tests := []struct {
 		name   string
 		files  []File
@@ -290,7 +290,7 @@ func TestSignDetachedRejectsUnapprovedAlgorithm(t *testing.T) {
 }
 
 func TestBuildRejectsInvalidPredecessorAndSignatureShape(t *testing.T) {
-	signer, _ := newEd25519Fixture(t, "package-key-1")
+	signer, _ := newEd25519Fixture(t)
 	request := fixtureBuildRequest()
 	request.PredecessorDigest = "sha256:not-a-digest"
 	if _, err := Build(context.Background(), request, signer); !errors.Is(err, ErrInvalidPackage) {
@@ -350,7 +350,7 @@ type packageFixture struct {
 
 func buildFixture(t *testing.T) packageFixture {
 	t.Helper()
-	signer, trust := newEd25519Fixture(t, "package-key-1")
+	signer, trust := newEd25519Fixture(t)
 	built, err := Build(context.Background(), fixtureBuildRequest(), signer)
 	if err != nil {
 		t.Fatalf("Build fixture: %v", err)
@@ -369,8 +369,9 @@ func fixtureBuildRequest() BuildRequest {
 	}
 }
 
-func newEd25519Fixture(t *testing.T, keyID string) (CryptoSigner, TrustResolver) {
+func newEd25519Fixture(t *testing.T) (CryptoSigner, TrustResolver) {
 	t.Helper()
+	const keyID = "package-key-1"
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
