@@ -678,6 +678,60 @@ export type AgentWorkflow = {
   state_check: AgentNextAction;
 };
 
+export type AssessmentPlan = {
+  approved_by?: string;
+  implementation_revision_ids?: string[];
+  name: string;
+  objective_revision_ids?: string[];
+  program_id: string;
+  program_revision_id: string;
+  published_at?: string;
+  revision: ComplianceRevisionMetadata;
+  scope_revision_id: string;
+  status: string;
+};
+
+export type AssessmentResult = {
+  assurance: string;
+  design_effectiveness: string;
+  evidence_claim_revision_ids?: string[];
+  finding_revision_ids?: string[];
+  objective_id: string;
+  objective_revision_id: string;
+  operating_effectiveness: string;
+  reason_codes?: string[];
+  revision: ComplianceRevisionMetadata;
+  run_id: string;
+  run_revision_id: string;
+  status: string;
+};
+
+export type AssessmentReview = {
+  rationale: string;
+  result_revision_id?: string;
+  reviewed_at: string;
+  reviewer_id: string;
+  revision: ComplianceRevisionMetadata;
+  run_id: string;
+  run_revision_id: string;
+  state: string;
+};
+
+export type AssessmentRun = {
+  completed_at?: string;
+  evidence_period_end?: string;
+  evidence_period_start?: string;
+  input_manifest_digest: string;
+  plan_id: string;
+  plan_revision_id: string;
+  program_id: string;
+  program_revision_id: string;
+  review_revision_id?: string;
+  revision: ComplianceRevisionMetadata;
+  started_at?: string;
+  status: string;
+};
+
 export type AuthErrorResponse = {
   auth: AgentAuthDiscovery;
   error: string;
@@ -705,6 +759,44 @@ export type Claim = {
   subject_urn?: string;
   valid_from?: string;
   valid_to?: string;
+};
+
+export type CompliancePage = {
+  next_cursor?: string;
+};
+
+export type ComplianceProgram = {
+  active_scope_revision_id: string;
+  framework_revision_ids?: string[];
+  name: string;
+  owner_team_id: string;
+  profile_revision_ids?: string[];
+  revision: ComplianceRevisionMetadata;
+  risk_owner_id?: string;
+  status: string;
+};
+
+export type ComplianceRevisionMetadata = {
+  content_digest: string;
+  etag: string;
+  id: string;
+  last_modified: string;
+  revision_id: string;
+  version: number;
+};
+
+export type ComplianceWorkItem = {
+  aggregate_version: number;
+  closed_at?: string;
+  due_at?: string;
+  objective_revision_id?: string;
+  owner_id: string;
+  program_id: string;
+  program_revision_id: string;
+  revision: ComplianceRevisionMetadata;
+  source_result_revision_id?: string;
+  status: string;
+  work_type: string;
 };
 
 export type ConnectorCoverageResponse = {
@@ -947,6 +1039,19 @@ export type ConnectorDepositResponse = {
   tenant_id: string;
 };
 
+export type ControlImplementation = {
+  control_revision_id: string;
+  evidence_requirement_revision_ids?: string[];
+  objective_revision_ids?: string[];
+  owner_team_id?: string;
+  program_id: string;
+  program_revision_id: string;
+  responsibility_type?: string;
+  revision: ComplianceRevisionMetadata;
+  scope_revision_id: string;
+  status: string;
+};
+
 export type CoverageControlRef = {
   control_id?: string;
   framework_id?: string;
@@ -1171,6 +1276,21 @@ export type EventSubscriptionContract = {
   signing: Record<string, unknown>;
   summary: string;
   version: string;
+};
+
+/** Evidence provenance and integrity metadata. Raw evidence content is intentionally excluded. */
+export type EvidenceArtifactMetadata = {
+  artifact_type: string;
+  expires_at?: string;
+  lifecycle_state: string;
+  media_type: string;
+  observed_at: string;
+  owner_id: string;
+  revision: ComplianceRevisionMetadata;
+  source_domain: string;
+  source_revision_id: string;
+  subject_revision_ids?: string[];
+  valid_from?: string;
 };
 
 export type Finding = {
@@ -2883,10 +3003,42 @@ export type GRCUploadStructuredField = {
   value?: string;
 };
 
+export type GetAssessmentPlanResponse = {
+  plan: AssessmentPlan;
+};
+
+export type GetAssessmentResultResponse = {
+  result: AssessmentResult;
+};
+
+export type GetAssessmentReviewResponse = {
+  review: AssessmentReview;
+};
+
+export type GetAssessmentRunResponse = {
+  run: AssessmentRun;
+};
+
+export type GetComplianceProgramResponse = {
+  program: ComplianceProgram;
+};
+
+export type GetComplianceWorkItemResponse = {
+  work_item: ComplianceWorkItem;
+};
+
+export type GetControlImplementationResponse = {
+  implementation: ControlImplementation;
+};
+
 export type GetEntityNeighborhoodResponse = {
   neighbors?: GraphEntity[];
   relations?: GraphRelation[];
   root?: GraphEntity;
+};
+
+export type GetEvidenceArtifactMetadataResponse = {
+  artifact: EvidenceArtifactMetadata;
 };
 
 export type GetSourceRuntimeResponse = {
@@ -3042,8 +3194,48 @@ export type IssueBootstrapTokenResponse = {
   token_id: string;
 };
 
+export type ListAssessmentPlansResponse = {
+  page: CompliancePage;
+  plans: AssessmentPlan[];
+};
+
+export type ListAssessmentResultsResponse = {
+  page: CompliancePage;
+  results: AssessmentResult[];
+};
+
+export type ListAssessmentReviewsResponse = {
+  page: CompliancePage;
+  reviews: AssessmentReview[];
+};
+
+export type ListAssessmentRunsResponse = {
+  page: CompliancePage;
+  runs: AssessmentRun[];
+};
+
 export type ListClaimsResponse = {
   claims?: Claim[];
+};
+
+export type ListComplianceProgramsResponse = {
+  page: CompliancePage;
+  programs: ComplianceProgram[];
+};
+
+export type ListComplianceWorkItemsResponse = {
+  page: CompliancePage;
+  work_items: ComplianceWorkItem[];
+};
+
+export type ListControlImplementationsResponse = {
+  implementations: ControlImplementation[];
+  page: CompliancePage;
+};
+
+export type ListEvidenceArtifactMetadataResponse = {
+  artifacts: EvidenceArtifactMetadata[];
+  page: CompliancePage;
 };
 
 export type NHICoverageLaneSummary = {

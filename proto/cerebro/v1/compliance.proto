@@ -1,0 +1,368 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/timestamp.proto";
+
+// ComplianceReadService defines tenant-scoped read contracts. The generated
+// handler is intentionally not registered until a durable compliance read store
+// is wired; publishing a schema must not create an unimplemented route.
+service ComplianceReadService {
+  rpc ListCompliancePrograms(ListComplianceProgramsRequest) returns (ListComplianceProgramsResponse);
+  rpc GetComplianceProgram(GetComplianceProgramRequest) returns (GetComplianceProgramResponse);
+  rpc ListControlImplementations(ListControlImplementationsRequest) returns (ListControlImplementationsResponse);
+  rpc GetControlImplementation(GetControlImplementationRequest) returns (GetControlImplementationResponse);
+  rpc ListEvidenceArtifactMetadata(ListEvidenceArtifactMetadataRequest) returns (ListEvidenceArtifactMetadataResponse);
+  rpc GetEvidenceArtifactMetadata(GetEvidenceArtifactMetadataRequest) returns (GetEvidenceArtifactMetadataResponse);
+  rpc ListAssessmentPlans(ListAssessmentPlansRequest) returns (ListAssessmentPlansResponse);
+  rpc GetAssessmentPlan(GetAssessmentPlanRequest) returns (GetAssessmentPlanResponse);
+  rpc ListAssessmentRuns(ListAssessmentRunsRequest) returns (ListAssessmentRunsResponse);
+  rpc GetAssessmentRun(GetAssessmentRunRequest) returns (GetAssessmentRunResponse);
+  rpc ListAssessmentResults(ListAssessmentResultsRequest) returns (ListAssessmentResultsResponse);
+  rpc GetAssessmentResult(GetAssessmentResultRequest) returns (GetAssessmentResultResponse);
+  rpc ListAssessmentReviews(ListAssessmentReviewsRequest) returns (ListAssessmentReviewsResponse);
+  rpc GetAssessmentReview(GetAssessmentReviewRequest) returns (GetAssessmentReviewResponse);
+  rpc ListComplianceWorkItems(ListComplianceWorkItemsRequest) returns (ListComplianceWorkItemsResponse);
+  rpc GetComplianceWorkItem(GetComplianceWorkItemRequest) returns (GetComplianceWorkItemResponse);
+}
+
+enum ComplianceReadRouteState {
+  COMPLIANCE_READ_ROUTE_STATE_UNSPECIFIED = 0;
+  COMPLIANCE_READ_ROUTE_STATE_CONTRACT_ONLY = 1;
+  COMPLIANCE_READ_ROUTE_STATE_REGISTERED = 2;
+}
+
+// ComplianceReadContract lets the bootstrap version response distinguish a
+// published schema from a registered service handler.
+message ComplianceReadContract {
+  string service_name = 1;
+  ComplianceReadRouteState route_state = 2;
+  repeated string required_scopes = 3;
+}
+
+// ComplianceRevisionMetadata identifies one exact immutable revision. Etag is
+// the transport precondition value for a later mutation against this version.
+message ComplianceRevisionMetadata {
+  string id = 1;
+  string revision_id = 2;
+  uint64 version = 3;
+  string content_digest = 4;
+  google.protobuf.Timestamp last_modified = 5;
+  string etag = 6;
+}
+
+// CompliancePageRequest uses an opaque cursor. Clients must not parse or
+// synthesize cursor values.
+message CompliancePageRequest {
+  string cursor = 1;
+  uint32 page_size = 2;
+}
+
+// CompliancePageResponse returns an opaque cursor only when another page is
+// available.
+message CompliancePageResponse {
+  string next_cursor = 1;
+}
+
+message ComplianceProgram {
+  ComplianceRevisionMetadata revision = 1;
+  string name = 2;
+  string status = 3;
+  string owner_team_id = 4;
+  string risk_owner_id = 5;
+  string active_scope_revision_id = 6;
+  repeated string framework_revision_ids = 7;
+  repeated string profile_revision_ids = 8;
+}
+
+message ListComplianceProgramsRequest {
+  string status = 1;
+  string owner_team_id = 2;
+  string framework_revision_id = 3;
+  CompliancePageRequest page = 4;
+}
+
+message ListComplianceProgramsResponse {
+  repeated ComplianceProgram programs = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetComplianceProgramRequest requires the stable ID and exact revision ID.
+// Missing and foreign-tenant records both return NOT_FOUND.
+message GetComplianceProgramRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetComplianceProgramResponse {
+  ComplianceProgram program = 1;
+}
+
+message ControlImplementation {
+  ComplianceRevisionMetadata revision = 1;
+  string program_id = 2;
+  string program_revision_id = 3;
+  string scope_revision_id = 4;
+  string control_revision_id = 5;
+  repeated string objective_revision_ids = 6;
+  string status = 7;
+  string responsibility_type = 8;
+  string owner_team_id = 9;
+  repeated string evidence_requirement_revision_ids = 10;
+}
+
+message ListControlImplementationsRequest {
+  string program_id = 1;
+  string program_revision_id = 2;
+  string scope_revision_id = 3;
+  string control_revision_id = 4;
+  string status = 5;
+  CompliancePageRequest page = 6;
+}
+
+message ListControlImplementationsResponse {
+  repeated ControlImplementation implementations = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetControlImplementationRequest requires an exact revision. Missing and
+// foreign-tenant records both return NOT_FOUND.
+message GetControlImplementationRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetControlImplementationResponse {
+  ControlImplementation implementation = 1;
+}
+
+// EvidenceArtifactMetadata contains provenance and integrity metadata only. It
+// never embeds raw evidence content.
+message EvidenceArtifactMetadata {
+  ComplianceRevisionMetadata revision = 1;
+  string artifact_type = 2;
+  string media_type = 3;
+  string owner_id = 4;
+  string source_domain = 5;
+  string source_revision_id = 6;
+  repeated string subject_revision_ids = 7;
+  google.protobuf.Timestamp observed_at = 8;
+  google.protobuf.Timestamp valid_from = 9;
+  google.protobuf.Timestamp expires_at = 10;
+  string lifecycle_state = 11;
+}
+
+message ListEvidenceArtifactMetadataRequest {
+  string artifact_type = 1;
+  string owner_id = 2;
+  string subject_revision_id = 3;
+  string lifecycle_state = 4;
+  CompliancePageRequest page = 5;
+}
+
+message ListEvidenceArtifactMetadataResponse {
+  repeated EvidenceArtifactMetadata artifacts = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetEvidenceArtifactMetadataRequest requires an exact metadata revision.
+// Missing and foreign-tenant records both return NOT_FOUND.
+message GetEvidenceArtifactMetadataRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetEvidenceArtifactMetadataResponse {
+  EvidenceArtifactMetadata artifact = 1;
+}
+
+message AssessmentPlan {
+  ComplianceRevisionMetadata revision = 1;
+  string program_id = 2;
+  string program_revision_id = 3;
+  string scope_revision_id = 4;
+  string name = 5;
+  string status = 6;
+  repeated string objective_revision_ids = 7;
+  repeated string implementation_revision_ids = 8;
+  string approved_by = 9;
+  google.protobuf.Timestamp published_at = 10;
+}
+
+message ListAssessmentPlansRequest {
+  string program_id = 1;
+  string program_revision_id = 2;
+  string status = 3;
+  CompliancePageRequest page = 4;
+}
+
+message ListAssessmentPlansResponse {
+  repeated AssessmentPlan plans = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetAssessmentPlanRequest requires an exact plan revision. Missing and
+// foreign-tenant records both return NOT_FOUND.
+message GetAssessmentPlanRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetAssessmentPlanResponse {
+  AssessmentPlan plan = 1;
+}
+
+message AssessmentRun {
+  ComplianceRevisionMetadata revision = 1;
+  string program_id = 2;
+  string program_revision_id = 3;
+  string plan_id = 4;
+  string plan_revision_id = 5;
+  string status = 6;
+  string input_manifest_digest = 7;
+  string review_revision_id = 8;
+  google.protobuf.Timestamp evidence_period_start = 9;
+  google.protobuf.Timestamp evidence_period_end = 10;
+  google.protobuf.Timestamp started_at = 11;
+  google.protobuf.Timestamp completed_at = 12;
+}
+
+message ListAssessmentRunsRequest {
+  string program_id = 1;
+  string program_revision_id = 2;
+  string plan_id = 3;
+  string plan_revision_id = 4;
+  string status = 5;
+  CompliancePageRequest page = 6;
+}
+
+message ListAssessmentRunsResponse {
+  repeated AssessmentRun runs = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetAssessmentRunRequest requires an exact run revision. Missing and
+// foreign-tenant records both return NOT_FOUND.
+message GetAssessmentRunRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetAssessmentRunResponse {
+  AssessmentRun run = 1;
+}
+
+message AssessmentResult {
+  ComplianceRevisionMetadata revision = 1;
+  string run_id = 2;
+  string run_revision_id = 3;
+  string objective_id = 4;
+  string objective_revision_id = 5;
+  string status = 6;
+  string design_effectiveness = 7;
+  string operating_effectiveness = 8;
+  string assurance = 9;
+  repeated string evidence_claim_revision_ids = 10;
+  repeated string finding_revision_ids = 11;
+  repeated string reason_codes = 12;
+}
+
+message ListAssessmentResultsRequest {
+  string run_id = 1;
+  string run_revision_id = 2;
+  string objective_revision_id = 3;
+  string status = 4;
+  CompliancePageRequest page = 5;
+}
+
+message ListAssessmentResultsResponse {
+  repeated AssessmentResult results = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetAssessmentResultRequest requires an exact result revision. Missing and
+// foreign-tenant records both return NOT_FOUND.
+message GetAssessmentResultRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetAssessmentResultResponse {
+  AssessmentResult result = 1;
+}
+
+message AssessmentReview {
+  ComplianceRevisionMetadata revision = 1;
+  string run_id = 2;
+  string run_revision_id = 3;
+  string result_revision_id = 4;
+  string state = 5;
+  string reviewer_id = 6;
+  string rationale = 7;
+  google.protobuf.Timestamp reviewed_at = 8;
+}
+
+message ListAssessmentReviewsRequest {
+  string run_id = 1;
+  string run_revision_id = 2;
+  string result_revision_id = 3;
+  string state = 4;
+  CompliancePageRequest page = 5;
+}
+
+message ListAssessmentReviewsResponse {
+  repeated AssessmentReview reviews = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetAssessmentReviewRequest requires an exact review revision. Missing and
+// foreign-tenant records both return NOT_FOUND.
+message GetAssessmentReviewRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetAssessmentReviewResponse {
+  AssessmentReview review = 1;
+}
+
+message ComplianceWorkItem {
+  ComplianceRevisionMetadata revision = 1;
+  uint64 aggregate_version = 2;
+  string program_id = 3;
+  string program_revision_id = 4;
+  string objective_revision_id = 5;
+  string source_result_revision_id = 6;
+  string work_type = 7;
+  string status = 8;
+  string owner_id = 9;
+  google.protobuf.Timestamp due_at = 10;
+  google.protobuf.Timestamp closed_at = 11;
+}
+
+message ListComplianceWorkItemsRequest {
+  string program_id = 1;
+  string program_revision_id = 2;
+  string objective_revision_id = 3;
+  string status = 4;
+  string owner_id = 5;
+  CompliancePageRequest page = 6;
+}
+
+message ListComplianceWorkItemsResponse {
+  repeated ComplianceWorkItem work_items = 1;
+  CompliancePageResponse page = 2;
+}
+
+// GetComplianceWorkItemRequest requires an exact work-item revision. Missing
+// and foreign-tenant records both return NOT_FOUND.
+message GetComplianceWorkItemRequest {
+  string id = 1;
+  string revision_id = 2;
+}
+
+message GetComplianceWorkItemResponse {
+  ComplianceWorkItem work_item = 1;
+}

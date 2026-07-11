@@ -5513,12 +5513,477 @@ paths:
         '401':
           description: Authenticated user identity is required.
 
+  /grc/programs:
+    get:
+      operationId: listCompliancePrograms
+      summary: List compliance programs
+      description: Returns exact tenant-scoped program revisions. Cursors are opaque and must be returned unchanged.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.programs.read
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string}
+        - name: owner_team_id
+          in: query
+          schema: {type: string}
+        - name: framework_revision_id
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact program revisions and an optional next-page cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListComplianceProgramsResponse'
+        '403':
+          description: Caller lacks the compliance programs read scope.
+  /grc/programs/{programID}:
+    get:
+      operationId: getComplianceProgram
+      summary: Get a compliance program revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.programs.read
+      parameters:
+        - $ref: '#/components/parameters/programID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact compliance program revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetComplianceProgramResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/programs/{programID}/control-implementations:
+    get:
+      operationId: listControlImplementations
+      summary: List control implementations
+      description: Returns implementations for an exact tenant-scoped program revision.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.programs.read
+      parameters:
+        - $ref: '#/components/parameters/programID'
+        - $ref: '#/components/parameters/programRevisionIDQuery'
+        - name: scope_revision_id
+          in: query
+          schema: {type: string}
+        - name: control_revision_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact control implementation revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListControlImplementationsResponse'
+  /grc/control-implementations/{implementationID}:
+    get:
+      operationId: getControlImplementation
+      summary: Get a control implementation revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.programs.read
+      parameters:
+        - $ref: '#/components/parameters/implementationID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact control implementation revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetControlImplementationResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/evidence-artifacts:
+    get:
+      operationId: listEvidenceArtifactMetadata
+      summary: List evidence artifact metadata
+      description: Returns provenance and integrity metadata only; raw evidence content is not included.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.evidence.read
+      parameters:
+        - name: artifact_type
+          in: query
+          schema: {type: string}
+        - name: owner_id
+          in: query
+          schema: {type: string}
+        - name: subject_revision_id
+          in: query
+          schema: {type: string}
+        - name: lifecycle_state
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact evidence metadata revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListEvidenceArtifactMetadataResponse'
+  /grc/evidence-artifacts/{evidenceArtifactID}:
+    get:
+      operationId: getEvidenceArtifactMetadata
+      summary: Get evidence artifact metadata
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.evidence.read
+      parameters:
+        - $ref: '#/components/parameters/evidenceArtifactID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact evidence metadata revision without artifact content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEvidenceArtifactMetadataResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/assessment-plans:
+    get:
+      operationId: listAssessmentPlans
+      summary: List assessment plans
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - name: program_id
+          in: query
+          schema: {type: string}
+        - name: program_revision_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact assessment plan revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAssessmentPlansResponse'
+  /grc/assessment-plans/{planID}:
+    get:
+      operationId: getAssessmentPlan
+      summary: Get an assessment plan revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/planID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact assessment plan revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssessmentPlanResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/compliance-assessments:
+    get:
+      operationId: listAssessmentRuns
+      summary: List compliance assessment runs
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - name: program_id
+          in: query
+          schema: {type: string}
+        - name: program_revision_id
+          in: query
+          schema: {type: string}
+        - name: plan_id
+          in: query
+          schema: {type: string}
+        - name: plan_revision_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact assessment run revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAssessmentRunsResponse'
+  /grc/compliance-assessments/{runID}:
+    get:
+      operationId: getAssessmentRun
+      summary: Get a compliance assessment run revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/runID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact assessment run revision and immutable manifest digest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssessmentRunResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/compliance-assessments/{runID}/objectives:
+    get:
+      operationId: listAssessmentResults
+      summary: List objective results for an assessment run
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/runID'
+        - $ref: '#/components/parameters/runRevisionIDQuery'
+        - name: objective_revision_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact objective result revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAssessmentResultsResponse'
+  /grc/compliance-results/{resultID}:
+    get:
+      operationId: getAssessmentResult
+      summary: Get an assessment result revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/resultID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact objective result revision with separate effectiveness and assurance axes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssessmentResultResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/compliance-assessments/{runID}/reviews:
+    get:
+      operationId: listAssessmentReviews
+      summary: List review revisions for an assessment run
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/runID'
+        - $ref: '#/components/parameters/runRevisionIDQuery'
+        - name: result_revision_id
+          in: query
+          schema: {type: string}
+        - name: state
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Review revisions that do not mutate automated results.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAssessmentReviewsResponse'
+  /grc/compliance-reviews/{reviewID}:
+    get:
+      operationId: getAssessmentReview
+      summary: Get an assessment review revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.assessments.read
+      parameters:
+        - $ref: '#/components/parameters/reviewID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact assessment review revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssessmentReviewResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+  /grc/work-items:
+    get:
+      operationId: listComplianceWorkItems
+      summary: List compliance work items
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.work.read
+      parameters:
+        - name: program_id
+          in: query
+          schema: {type: string}
+        - name: program_revision_id
+          in: query
+          schema: {type: string}
+        - name: objective_revision_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+        - name: owner_id
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/opaqueCursorQuery'
+        - $ref: '#/components/parameters/pageSizeQuery'
+      responses:
+        '200':
+          description: Exact work-item revisions with current aggregate versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListComplianceWorkItemsResponse'
+  /grc/work-items/{workItemID}:
+    get:
+      operationId: getComplianceWorkItem
+      summary: Get a compliance work-item revision
+      description: Missing and foreign-tenant records return the same non-disclosing not-found response.
+      tags: [GRC]
+      x-cerebro-route-state: contract_only
+      x-required-scope: cerebro.compliance.work.read
+      parameters:
+        - $ref: '#/components/parameters/workItemID'
+        - $ref: '#/components/parameters/revisionIDQuery'
+      responses:
+        '200':
+          description: Exact work-item revision with ETag and aggregate version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetComplianceWorkItemResponse'
+        '404':
+          $ref: '#/components/responses/ComplianceNotFound'
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
   parameters:
+    programID:
+      name: programID
+      in: path
+      required: true
+      schema:
+        type: string
+    implementationID:
+      name: implementationID
+      in: path
+      required: true
+      schema:
+        type: string
+    evidenceArtifactID:
+      name: evidenceArtifactID
+      in: path
+      required: true
+      schema:
+        type: string
+    planID:
+      name: planID
+      in: path
+      required: true
+      schema:
+        type: string
+    resultID:
+      name: resultID
+      in: path
+      required: true
+      schema:
+        type: string
+    reviewID:
+      name: reviewID
+      in: path
+      required: true
+      schema:
+        type: string
+    workItemID:
+      name: workItemID
+      in: path
+      required: true
+      schema:
+        type: string
+    revisionIDQuery:
+      name: revision_id
+      in: query
+      required: true
+      description: Exact immutable revision identifier.
+      schema:
+        type: string
+    programRevisionIDQuery:
+      name: program_revision_id
+      in: query
+      required: true
+      description: Exact immutable program revision identifier.
+      schema:
+        type: string
+    runRevisionIDQuery:
+      name: run_revision_id
+      in: query
+      required: true
+      description: Exact immutable assessment run revision identifier.
+      schema:
+        type: string
+    opaqueCursorQuery:
+      name: cursor
+      in: query
+      description: Opaque page cursor returned by the previous response. Clients must not parse or synthesize it.
+      schema:
+        type: string
+    pageSizeQuery:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 250
     sourceID:
       name: sourceID
       in: path
@@ -5627,7 +6092,294 @@ components:
       description: Optional retry key for agent task requests, limited to 255 UTF-8 bytes. When also present as idempotency_key in the JSON body, both values must match.
       schema:
         type: string
+  responses:
+    ComplianceNotFound:
+      description: The exact revision does not exist in the authenticated tenant. Foreign-tenant records use this same response.
   schemas:
+    ComplianceRevisionMetadata:
+      type: object
+      required: [id, revision_id, version, content_digest, last_modified, etag]
+      properties:
+        id:
+          type: string
+        revision_id:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        content_digest:
+          type: string
+          pattern: '^sha256:[a-f0-9]{64}$'
+        last_modified:
+          type: string
+          format: date-time
+        etag:
+          type: string
+          description: Transport precondition value for a later mutation against this version.
+    CompliancePage:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          description: Opaque cursor present only when another page is available.
+    ComplianceProgram:
+      type: object
+      required: [revision, name, status, owner_team_id, active_scope_revision_id]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        name:
+          type: string
+        status:
+          type: string
+        owner_team_id:
+          type: string
+        risk_owner_id:
+          type: string
+        active_scope_revision_id:
+          type: string
+        framework_revision_ids:
+          type: array
+          items: {type: string}
+        profile_revision_ids:
+          type: array
+          items: {type: string}
+    ControlImplementation:
+      type: object
+      required: [revision, program_id, program_revision_id, scope_revision_id, control_revision_id, status]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        program_id: {type: string}
+        program_revision_id: {type: string}
+        scope_revision_id: {type: string}
+        control_revision_id: {type: string}
+        objective_revision_ids:
+          type: array
+          items: {type: string}
+        status: {type: string}
+        responsibility_type: {type: string}
+        owner_team_id: {type: string}
+        evidence_requirement_revision_ids:
+          type: array
+          items: {type: string}
+    EvidenceArtifactMetadata:
+      type: object
+      description: Evidence provenance and integrity metadata. Raw evidence content is intentionally excluded.
+      required: [revision, artifact_type, media_type, owner_id, source_domain, source_revision_id, observed_at, lifecycle_state]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        artifact_type: {type: string}
+        media_type: {type: string}
+        owner_id: {type: string}
+        source_domain: {type: string}
+        source_revision_id: {type: string}
+        subject_revision_ids:
+          type: array
+          items: {type: string}
+        observed_at: {type: string, format: date-time}
+        valid_from: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        lifecycle_state: {type: string}
+    AssessmentPlan:
+      type: object
+      required: [revision, program_id, program_revision_id, scope_revision_id, name, status]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        program_id: {type: string}
+        program_revision_id: {type: string}
+        scope_revision_id: {type: string}
+        name: {type: string}
+        status: {type: string}
+        objective_revision_ids:
+          type: array
+          items: {type: string}
+        implementation_revision_ids:
+          type: array
+          items: {type: string}
+        approved_by: {type: string}
+        published_at: {type: string, format: date-time}
+    AssessmentRun:
+      type: object
+      required: [revision, program_id, program_revision_id, plan_id, plan_revision_id, status, input_manifest_digest]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        program_id: {type: string}
+        program_revision_id: {type: string}
+        plan_id: {type: string}
+        plan_revision_id: {type: string}
+        status: {type: string}
+        input_manifest_digest:
+          type: string
+          pattern: '^sha256:[a-f0-9]{64}$'
+        review_revision_id: {type: string}
+        evidence_period_start: {type: string, format: date-time}
+        evidence_period_end: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+    AssessmentResult:
+      type: object
+      required: [revision, run_id, run_revision_id, objective_id, objective_revision_id, status, design_effectiveness, operating_effectiveness, assurance]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        run_id: {type: string}
+        run_revision_id: {type: string}
+        objective_id: {type: string}
+        objective_revision_id: {type: string}
+        status: {type: string}
+        design_effectiveness: {type: string}
+        operating_effectiveness: {type: string}
+        assurance: {type: string}
+        evidence_claim_revision_ids:
+          type: array
+          items: {type: string}
+        finding_revision_ids:
+          type: array
+          items: {type: string}
+        reason_codes:
+          type: array
+          items: {type: string}
+    AssessmentReview:
+      type: object
+      required: [revision, run_id, run_revision_id, state, reviewer_id, rationale, reviewed_at]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        run_id: {type: string}
+        run_revision_id: {type: string}
+        result_revision_id: {type: string}
+        state: {type: string}
+        reviewer_id: {type: string}
+        rationale: {type: string}
+        reviewed_at: {type: string, format: date-time}
+    ComplianceWorkItem:
+      type: object
+      required: [revision, aggregate_version, program_id, program_revision_id, work_type, status, owner_id]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ComplianceRevisionMetadata'
+        aggregate_version:
+          type: integer
+          format: int64
+          minimum: 1
+        program_id: {type: string}
+        program_revision_id: {type: string}
+        objective_revision_id: {type: string}
+        source_result_revision_id: {type: string}
+        work_type: {type: string}
+        status: {type: string}
+        owner_id: {type: string}
+        due_at: {type: string, format: date-time}
+        closed_at: {type: string, format: date-time}
+    ListComplianceProgramsResponse:
+      type: object
+      required: [programs, page]
+      properties:
+        programs:
+          type: array
+          items: {$ref: '#/components/schemas/ComplianceProgram'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetComplianceProgramResponse:
+      type: object
+      required: [program]
+      properties:
+        program: {$ref: '#/components/schemas/ComplianceProgram'}
+    ListControlImplementationsResponse:
+      type: object
+      required: [implementations, page]
+      properties:
+        implementations:
+          type: array
+          items: {$ref: '#/components/schemas/ControlImplementation'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetControlImplementationResponse:
+      type: object
+      required: [implementation]
+      properties:
+        implementation: {$ref: '#/components/schemas/ControlImplementation'}
+    ListEvidenceArtifactMetadataResponse:
+      type: object
+      required: [artifacts, page]
+      properties:
+        artifacts:
+          type: array
+          items: {$ref: '#/components/schemas/EvidenceArtifactMetadata'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetEvidenceArtifactMetadataResponse:
+      type: object
+      required: [artifact]
+      properties:
+        artifact: {$ref: '#/components/schemas/EvidenceArtifactMetadata'}
+    ListAssessmentPlansResponse:
+      type: object
+      required: [plans, page]
+      properties:
+        plans:
+          type: array
+          items: {$ref: '#/components/schemas/AssessmentPlan'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetAssessmentPlanResponse:
+      type: object
+      required: [plan]
+      properties:
+        plan: {$ref: '#/components/schemas/AssessmentPlan'}
+    ListAssessmentRunsResponse:
+      type: object
+      required: [runs, page]
+      properties:
+        runs:
+          type: array
+          items: {$ref: '#/components/schemas/AssessmentRun'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetAssessmentRunResponse:
+      type: object
+      required: [run]
+      properties:
+        run: {$ref: '#/components/schemas/AssessmentRun'}
+    ListAssessmentResultsResponse:
+      type: object
+      required: [results, page]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/AssessmentResult'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetAssessmentResultResponse:
+      type: object
+      required: [result]
+      properties:
+        result: {$ref: '#/components/schemas/AssessmentResult'}
+    ListAssessmentReviewsResponse:
+      type: object
+      required: [reviews, page]
+      properties:
+        reviews:
+          type: array
+          items: {$ref: '#/components/schemas/AssessmentReview'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetAssessmentReviewResponse:
+      type: object
+      required: [review]
+      properties:
+        review: {$ref: '#/components/schemas/AssessmentReview'}
+    ListComplianceWorkItemsResponse:
+      type: object
+      required: [work_items, page]
+      properties:
+        work_items:
+          type: array
+          items: {$ref: '#/components/schemas/ComplianceWorkItem'}
+        page: {$ref: '#/components/schemas/CompliancePage'}
+    GetComplianceWorkItemResponse:
+      type: object
+      required: [work_item]
+      properties:
+        work_item: {$ref: '#/components/schemas/ComplianceWorkItem'}
     GRCEvidencePacketsResponse:
       type: object
       additionalProperties: true

@@ -25,6 +25,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
+	"github.com/writer/cerebro/internal/compliancecontract"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
@@ -572,13 +573,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
-	return connect.NewResponse(&cerebrov1.GetVersionResponse{
-		ServiceName: buildinfo.ServiceName,
-		Version:     buildinfo.Version,
-		Commit:      buildinfo.Commit,
-		BuildDate:   buildinfo.BuildDate,
-		ApiVersion:  buildinfo.APIVersion,
-	}), nil
+	return connect.NewResponse(compliancecontract.VersionResponse()), nil
 }
 
 func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[cerebrov1.CheckHealthRequest]) (*connect.Response[cerebrov1.CheckHealthResponse], error) {

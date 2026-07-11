@@ -18,6 +18,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/compliancecontract"
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingapi"
@@ -549,13 +550,7 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 	case "cerebro.health":
 		return protoJSONValue(healthResponse(r.Context(), app.cfg, app.deps))
 	case "cerebro.version":
-		return protoJSONValue(&cerebrov1.GetVersionResponse{
-			ServiceName: buildinfo.ServiceName,
-			Version:     buildinfo.Version,
-			Commit:      buildinfo.Commit,
-			BuildDate:   buildinfo.BuildDate,
-			ApiVersion:  buildinfo.APIVersion,
-		})
+		return protoJSONValue(compliancecontract.VersionResponse())
 	case "cerebro.sources.list":
 		return app.mcpListSources()
 	case "cerebro.sources.check":
@@ -3378,13 +3373,7 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 		case "health":
 			value, err = protoJSONValue(healthResponse(r.Context(), app.cfg, app.deps))
 		case "version":
-			value, err = protoJSONValue(&cerebrov1.GetVersionResponse{
-				ServiceName: buildinfo.ServiceName,
-				Version:     buildinfo.Version,
-				Commit:      buildinfo.Commit,
-				BuildDate:   buildinfo.BuildDate,
-				ApiVersion:  buildinfo.APIVersion,
-			})
+			value, err = protoJSONValue(compliancecontract.VersionResponse())
 		default:
 			err = ports.ErrGraphEntityNotFound
 		}

@@ -24,6 +24,10 @@ const (
 	ScopeDashboardsWrite           = "cerebro.dashboards.write"
 	ScopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	ScopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	ScopeComplianceProgramsRead    = "cerebro.compliance.programs.read"
+	ScopeComplianceEvidenceRead    = "cerebro.compliance.evidence.read"
+	ScopeComplianceAssessmentsRead = "cerebro.compliance.assessments.read"
+	ScopeComplianceWorkRead        = "cerebro.compliance.work.read"
 
 	RoleCerebroAdmin            = "cerebro.admin"
 	RoleCerebroViewer           = "cerebro.viewer"
@@ -58,13 +62,24 @@ var allScopes = []string{
 	ScopeDashboardsWrite,
 	ScopeRiskScoringWrite,
 	ScopeUserPreferencesWrite,
+	ScopeComplianceProgramsRead,
+	ScopeComplianceEvidenceRead,
+	ScopeComplianceAssessmentsRead,
+	ScopeComplianceWorkRead,
+}
+
+var complianceReadScopes = []string{
+	ScopeComplianceProgramsRead,
+	ScopeComplianceEvidenceRead,
+	ScopeComplianceAssessmentsRead,
+	ScopeComplianceWorkRead,
 }
 
 var roleScopes = map[string][]string{
-	RoleCerebroViewer: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"viewer":          {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"reader":          {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"read_only":       {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
+	RoleCerebroViewer: append([]string{ScopeCosmoSecurityRead, ScopeUserPreferencesWrite}, complianceReadScopes...),
+	"viewer":          append([]string{ScopeCosmoSecurityRead, ScopeUserPreferencesWrite}, complianceReadScopes...),
+	"reader":          append([]string{ScopeCosmoSecurityRead, ScopeUserPreferencesWrite}, complianceReadScopes...),
+	"read_only":       append([]string{ScopeCosmoSecurityRead, ScopeUserPreferencesWrite}, complianceReadScopes...),
 	RoleCerebroAnalyst: {
 		ScopeCosmoSecurityRead,
 		ScopeUserPreferencesWrite,
@@ -75,6 +90,10 @@ var roleScopes = map[string][]string{
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
+		ScopeComplianceProgramsRead,
+		ScopeComplianceEvidenceRead,
+		ScopeComplianceAssessmentsRead,
+		ScopeComplianceWorkRead,
 	},
 	"analyst": {
 		ScopeCosmoSecurityRead,
@@ -86,6 +105,10 @@ var roleScopes = map[string][]string{
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
+		ScopeComplianceProgramsRead,
+		ScopeComplianceEvidenceRead,
+		ScopeComplianceAssessmentsRead,
+		ScopeComplianceWorkRead,
 	},
 	"editor": {
 		ScopeCosmoSecurityRead,
@@ -97,9 +120,13 @@ var roleScopes = map[string][]string{
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
+		ScopeComplianceProgramsRead,
+		ScopeComplianceEvidenceRead,
+		ScopeComplianceAssessmentsRead,
+		ScopeComplianceWorkRead,
 	},
 	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite},
-	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite},
+	RoleCerebroGRCReviewer:    append([]string{ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite}, complianceReadScopes...),
 	RoleCerebroConnectorManager: {
 		ScopeCosmoSecurityRead,
 		ScopeUserPreferencesWrite,
