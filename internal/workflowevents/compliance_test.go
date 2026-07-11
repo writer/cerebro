@@ -42,6 +42,18 @@ func TestComplianceAggregateKindsRegistered(t *testing.T) {
 	}
 }
 
+func TestComplianceExchangeRequestAndCommitRemainDistinctFacts(t *testing.T) {
+	t.Parallel()
+	if EventKindComplianceExchangeCommitRequested == EventKindComplianceExchangeCommitted {
+		t.Fatal("exchange commit request and completed commit share an event kind")
+	}
+	for _, kind := range []string{EventKindComplianceExchangeCommitRequested, EventKindComplianceExchangeCommitted} {
+		if !KindRegistered(kind) {
+			t.Fatalf("kind %q is not registered", kind)
+		}
+	}
+}
+
 func TestComplianceAggregateRejectsUnsafePayload(t *testing.T) {
 	t.Parallel()
 	base := ComplianceAggregateRecorded{

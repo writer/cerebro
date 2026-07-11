@@ -39,6 +39,7 @@ const (
 	EventKindComplianceAuditPackageRecorded        = "workflow.v1.compliance.audit_package_recorded"
 	EventKindComplianceAuditDeliveryRecorded       = "workflow.v1.compliance.audit_delivery_recorded"
 	EventKindComplianceExchangeStaged              = "workflow.v1.compliance.exchange_staged"
+	EventKindComplianceExchangeCommitRequested     = "workflow.v1.compliance.exchange_commit_requested"
 	EventKindComplianceExchangeCommitted           = "workflow.v1.compliance.exchange_committed"
 	EventKindComplianceMonitorUpdated              = "workflow.v1.compliance.monitor_updated"
 	EventKindComplianceMonitorTriggered            = "workflow.v1.compliance.monitor_triggered"
@@ -128,7 +129,8 @@ func registeredComplianceKinds() []string {
 		EventKindComplianceRemediationMilestoneUpdated, EventKindComplianceAuditEngagementRecorded,
 		EventKindComplianceAuditRequestUpdated, EventKindComplianceAuditSubmissionRecorded,
 		EventKindComplianceAuditPackageRecorded, EventKindComplianceAuditDeliveryRecorded,
-		EventKindComplianceExchangeStaged, EventKindComplianceExchangeCommitted,
+		EventKindComplianceExchangeStaged, EventKindComplianceExchangeCommitRequested,
+		EventKindComplianceExchangeCommitted,
 		EventKindComplianceMonitorUpdated, EventKindComplianceMonitorTriggered,
 	}
 }
