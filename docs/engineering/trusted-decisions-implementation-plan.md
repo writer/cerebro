@@ -113,17 +113,21 @@ Use this order. Later slices depend on the contracts and safety properties of
 earlier slices.
 
 1. Reconcile already-landed durability work with its open issues.
-2. Define workflow and outcome telemetry.
-3. Add the decision packet domain contract and pure builder.
-4. Persist packet receipts and expose one HTTP/Connect operation.
-5. Add connector certification as a computed read model.
-6. Add opt-in certification availability gates.
-7. Add the task-level MCP surface and evaluation suite.
-8. Replace mutable schema checksums with ordered migrations.
-9. Complete source-page recovery and harden dead-letter replay.
-10. Introduce runtime roles after projection can be recovered independently.
-11. Pilot data-only signed content packs.
-12. Separate candidate artifacts from stable release publication.
+2. Make decision, action, and outcome events durable without Neo4j through
+   [#1740](https://github.com/writer/cerebro/issues/1740).
+3. Define workflow and outcome telemetry from the durable ledger.
+4. Converge the existing agent evidence packet and claim-verification contracts
+   into the decision packet contract.
+5. Add the decision packet read builder.
+6. Persist packet receipts and expose one HTTP/Connect operation.
+7. Add connector certification as a computed read model.
+8. Add opt-in certification availability gates.
+9. Add the task-level MCP surface and evaluation suite.
+10. Replace mutable schema checksums with ordered migrations.
+11. Complete source-page recovery and harden dead-letter replay.
+12. Introduce runtime roles after projection can be recovered independently.
+13. Pilot data-only signed content packs.
+14. Separate candidate artifacts from stable release publication.
 
 Do not implement the content-pack or runtime-role work before the durability and
 migration gates are complete.
@@ -273,6 +277,16 @@ git diff --check
 
 Issue: [#1721](https://github.com/writer/cerebro/issues/1721)
 
+### Durability prerequisite
+
+Complete [#1740](https://github.com/writer/cerebro/issues/1740) before treating
+decision or outcome metrics as product truth. `internal/knowledge` currently
+requires graph query and projection stores before it attempts an append, and it
+silently allows graph-only writes when no append log is configured. The golden
+workflow ledger must be append-first and must report projection state
+independently. Neo4j availability cannot decide whether a completed business
+outcome exists.
+
 ### Workflow identifiers
 
 Use these stable workflow IDs:
@@ -366,9 +380,42 @@ logs. A completed decision must have:
 
 Issue: [#1726](https://github.com/writer/cerebro/issues/1726)
 
+### Existing surface reconciliation
+
+Do not begin by adding a second packet vocabulary. Current `main` already has
+overlapping foundations that must become inputs or compatibility adapters:
+
+| Current surface | What it already owns | Target role |
+| --- | --- | --- |
+| `agentplatform.AgentEvidencePacket` | tenant-forced preflight, capability gates, caller-supplied evidence URNs, verifier results, action ladder, connector gates, eval checklist, memory plan, simulation plan, and agent-readiness confidence | compatibility wrapper for agent-run guardrails; not the evidence-backed decision result |
+| `agentplatform.ClaimVerification` | supported, weakly supported, contradicted, and unknown claim verdicts plus supporting, counter, missing, freshness, and action-stage fields | canonical claim-verification input to decision-state derivation |
+| `evidencepackets.Response` | audit/control evidence collection, lineage, freshness, gaps, review state, questionnaire reasoning, and exports | optional referenced audit evidence; it remains a different grain |
+| `proactivetriage.Service` | finding load, memory hints, agent packet construction, recommendation generation, and knowledge action write-back | first finding-to-fix adopter after decision packets are evidence-resolved |
+| `graphactions.ReversibleRemediationPlan` | dry run, reversal metadata, approval gate, target, and verification steps | source for bounded action proposals; execution remains separate |
+| `knowledge.Service` and `workflowevents` | durable event shapes for decisions, actions, and outcomes | business ledger after #1740 removes Neo4j from the append precondition |
+
+The current agent packet is a readiness and guardrail plan. It does not load
+the evidence URNs supplied by the caller, detect contradictions across resolved
+records, persist an immutable receipt, or establish a decision outcome. Its
+`confidence` therefore means agent readiness, not confidence in the requested
+decision. Keep those meanings separate.
+
 ### Package boundary
 
-Create `internal/decisionpacket`.
+Create `internal/decisionpacket` only after extracting a reusable guardrail
+view from `internal/agentplatform`.
+
+First add a pure `agentplatform.AgentDecisionGuardrails` projection containing
+preflight, verifier results, action-stage status, connector gates, required
+write-back, and a renamed readiness assessment. `BuildEvidencePacket` must keep
+its existing JSON behavior for HTTP, MCP, and A2A clients by adapting that
+projection into `AgentEvidencePacket`; do not silently change the
+`agent-evidence-packet` artifact schema.
+
+`internal/decisionpacket` then owns evidence resolution, contradiction and gap
+derivation, the decision state, decision confidence, stable packet hashing, and
+receipt coordination. It consumes `AgentDecisionGuardrails` and
+`ClaimVerification`; it does not copy their policy logic.
 
 The package may depend on `internal/ports`, `internal/sourcecoverage`,
 `internal/agentplatform`, and domain response types. It must not depend on
@@ -436,6 +483,18 @@ Required action states:
 
 A decision packet never returns `executed`.
 
+Map the existing claim-verification verdicts explicitly:
+
+| Claim verdict | Decision state before coverage/freshness caps |
+| --- | --- |
+| `supported` | `supported` |
+| `weakly_supported` | `supported_with_gaps` |
+| `contradicted` | `blocked` |
+| `unknown` | `insufficient_evidence` |
+
+`not_applicable` comes from a domain applicability result, not from a missing
+claim. Authorization failures remain transport errors.
+
 ### Confidence
 
 Confidence must be deterministic and explainable:
@@ -449,6 +508,11 @@ type Confidence struct {
 
 Start with `high`, `medium`, `low`, and `unknown`. Do not add a percentage until
 the team has a calibrated outcome dataset.
+
+Do not reuse `agentplatform.AgentPacketConfidence.Level == "blocked"` as a
+decision confidence. `blocked` is a guardrail or decision state. The decision
+packet must expose the agent readiness assessment and decision confidence as
+separate fields until the legacy agent packet can evolve compatibly.
 
 The initial derivation should use explicit rules:
 
@@ -467,22 +531,26 @@ The initial derivation should use explicit rules:
 1. Validate workflow, scope, and budgets.
 2. Receive the forced tenant from the caller; do not accept a tenant override
    inside the service request.
-3. Run `agentplatform.AgentRunPreflight` for capability, provenance, and
-   coverage requirements.
+3. Build `agentplatform.AgentDecisionGuardrails` for capability, provenance,
+   coverage, connector, and action-stage requirements.
 4. Resolve effective connector certification and source health.
-5. Load findings, claims, evidence, controls, and bounded graph context through
-   ports.
+5. Load findings, claims, evidence, controls, audit-packet references, and
+   bounded graph context through ports.
 6. Normalize evidence references and deduplicate by stable source/evidence ID.
 7. Calculate freshness from observed timestamps and declared freshness
    expectations.
 8. Detect contradictions by subject, predicate, and overlapping validity
    interval.
-9. Build coverage gaps before deriving the decision state.
-10. Derive confidence from explicit rules.
-11. Build action proposals without dispatching them.
-12. Sort all repeated fields deterministically.
-13. Hash the canonical JSON to produce the packet ID and receipt digest.
-14. Persist the bounded receipt when a receipt store is configured.
+9. Build the `agentplatform.ClaimVerification` input from the resolved
+   supporting, counter, missing, freshness, and coverage records; do not accept
+   caller-declared verdicts.
+10. Build coverage gaps before mapping claim verdict to decision state.
+11. Derive decision confidence from explicit rules, separately from readiness.
+12. Build action proposals from `graphactions` metadata without dispatching
+    them.
+13. Sort all repeated fields deterministically.
+14. Hash the canonical JSON to produce the packet ID and receipt digest.
+15. Persist the bounded receipt when a receipt store is configured.
 
 The builder must return the same packet for the same normalized inputs and
 clock. Tests should inject the clock.
@@ -519,6 +587,9 @@ Requirements:
 - Retention is configurable by deployment and documented.
 - A packet receipt is immutable. A later decision creates a new packet.
 - Store the packet schema version and digests required for audit comparison.
+- A later `knowledge.DecisionRecorded` event references `packet_id` explicitly;
+  the packet receipt is the decision-time snapshot, while the decision event is
+  the actor's accepted, rejected, or deferred outcome.
 
 Do not project the full packet into Neo4j. A durable knowledge decision may link
 to the packet receipt URN and evidence URNs.
@@ -532,6 +603,11 @@ to `BootstrapService`:
 BuildDecisionPacket(BuildDecisionPacketRequest)
   returns (BuildDecisionPacketResponse)
 ```
+
+Do not repurpose `/api/v1/agent-platform/evidence-packets` or the A2A
+`agent-evidence-packet` skill. Add the decision operation separately, document
+the old surface as agent-run readiness, and add a compatibility test proving
+that the legacy JSON artifact is unchanged.
 
 Add one JSON operation:
 
@@ -1413,9 +1489,12 @@ Do not assign this entire document as one coding task. Use these bounded PRs:
 
 1. **Durability reconciliation** — verify current #1300–#1304 behavior and add
    missing acceptance tests without changing architecture.
-2. **Workflow vocabulary** — add workflow/state constants and bounded telemetry.
-3. **Decision packet types** — pure contract, normalization, confidence, and
-   golden tests.
+2. **Decision ledger and workflow vocabulary** — complete #1740's event-first
+   knowledge write boundary, then add workflow/state constants and bounded
+   telemetry from durable outcomes.
+3. **Decision packet convergence and types** — extract agent decision
+   guardrails, preserve the legacy agent packet JSON, reuse claim verification,
+   and add the pure decision contract, confidence, and golden tests.
 4. **Decision packet builder** — compose existing read ports; no transport.
 5. **Decision packet receipt migration/store** — ordered migration plus tenant
    tests.
