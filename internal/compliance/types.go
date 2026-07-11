@@ -79,7 +79,7 @@ func (metadata VersionMetadata) Validate() error {
 		return fmt.Errorf("%w: version and last_modified are required", ErrInvalidRevision)
 	}
 	if err := ValidateContentDigest(metadata.ContentDigest); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidRevision, err)
+		return fmt.Errorf("%w: %w", ErrInvalidRevision, err)
 	}
 	return nil
 }
@@ -95,7 +95,7 @@ func (revision RevisionRef) Validate() error {
 		return fmt.Errorf("%w: version must be greater than zero", ErrInvalidRevision)
 	}
 	if err := ValidateContentDigest(revision.ContentDigest); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidRevision, err)
+		return fmt.Errorf("%w: %w", ErrInvalidRevision, err)
 	}
 	if revision.LastModified.IsZero() {
 		return fmt.Errorf("%w: last_modified is required", ErrInvalidRevision)
