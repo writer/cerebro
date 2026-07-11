@@ -52,6 +52,7 @@ nav:
       - Development: engineering/development.md
       - Non-Goals: engineering/non-goals.md
       - Durability Contract: engineering/durability-contract.md
+      - JetStream Durability Matrix: engineering/jetstream-durability-acceptance-matrix.md
       - Source Sync Recovery: engineering/source-sync-recovery.md
       - Source CDK Extraction: engineering/source-cdk-extraction.md
       - Security Regression Harness: engineering/security-regression-harness.md
