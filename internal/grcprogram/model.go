@@ -199,6 +199,14 @@ type ControlImplementationRevisionRecord struct {
 	Specification    ControlImplementationSpecification `json:"specification"`
 }
 
+// ControlImplementationRecordedPayload is the bounded event payload used to
+// reconstruct both the implementation current pointer and its immutable
+// revision from the append log.
+type ControlImplementationRecordedPayload struct {
+	Implementation ControlImplementationRecord         `json:"implementation"`
+	Revision       ControlImplementationRevisionRecord `json:"revision"`
+}
+
 type AppendProgramScopeRevisionRequest struct {
 	TenantID               string
 	ProgramID              string

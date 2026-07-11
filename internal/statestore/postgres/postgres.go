@@ -46,6 +46,7 @@ type grcTablesReady struct {
 	customDashboards     bool
 	vendorDiscovery      bool
 	questionnaireRun     bool
+	complianceProgram    bool
 }
 
 type appendLogTablesReady struct {
