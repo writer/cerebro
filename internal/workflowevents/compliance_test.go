@@ -65,6 +65,27 @@ func TestComplianceSourceCheckUsesItsOwnRegisteredFact(t *testing.T) {
 	}
 }
 
+func TestComplianceAggregateIdentityIncludesAggregateType(t *testing.T) {
+	t.Parallel()
+	base := ComplianceAggregateRecorded{
+		Kind: EventKindComplianceSourceCheckRecorded, TenantID: "tenant-a",
+		AggregateType: "source_check", AggregateID: "shared-id", AggregateVersion: 1,
+		Operation: "recorded", RecordedAt: "2026-07-11T08:00:00Z",
+	}
+	first, err := NewComplianceAggregateEvent(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.AggregateType = "objective_source_assessment"
+	second, err := NewComplianceAggregateEvent(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.GetId() == second.GetId() {
+		t.Fatalf("aggregate types produced the same event id %q", first.GetId())
+	}
+}
+
 func TestComplianceAggregateRejectsUnsafePayload(t *testing.T) {
 	t.Parallel()
 	base := ComplianceAggregateRecorded{
