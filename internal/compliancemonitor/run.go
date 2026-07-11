@@ -78,11 +78,82 @@ func RunDue(ctx context.Context, store ports.ComplianceMonitorStore, jobs *platf
 	return enqueued, errors.Join(errs...)
 }
 
+// RunDueChanges claims coalesced change windows, obtains the same per-plan
+// overlap lease used by time monitors, creates one assessment job, and only
+// then acknowledges the exact claimed window version.
+func RunDueChanges(ctx context.Context, store ports.ComplianceChangeMonitorStore, jobs *platformjobs.Service, now time.Time) (int, error) {
+	if store == nil || jobs == nil {
+		return 0, nil
+	}
+	now = now.UTC()
+	owner := newOwner()
+	windows, err := store.ClaimDueComplianceChangeWindows(ctx, now, owner, claimTTL, claimBatch)
+	if err != nil {
+		return 0, err
+	}
+	enqueued := 0
+	var errs []error
+	for _, window := range windows {
+		if window == nil {
+			continue
+		}
+		occurrence := changeOccurrenceKey(window)
+		if err := store.AcquireCompliancePlanLease(ctx, window.TenantID, window.PlanRevisionID, owner, occurrence, now, planLeaseTTL); err != nil {
+			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
+			if !errors.Is(err, ports.ErrComplianceMonitorOverlap) {
+				errs = append(errs, fmt.Errorf("compliance change monitor %q plan lease: %w", window.MonitorID, err))
+			}
+			continue
+		}
+		job, created, createErr := jobs.Create(ctx, ports.CreateJobRequest{
+			Kind:           platformjobs.KindComplianceAssessment,
+			TenantID:       window.TenantID,
+			SubjectType:    subjectType,
+			SubjectID:      window.MonitorID,
+			IdempotencyKey: occurrence,
+			Payload: map[string]any{
+				"program_id":              window.ProgramID,
+				"plan_revision_id":        window.PlanRevisionID,
+				"monitor_id":              window.MonitorID,
+				"change_window_version":   window.Version,
+				"change_window_opened_at": window.OpenedAt.UTC().Format(time.RFC3339Nano),
+				"change_signal_count":     window.SignalCount,
+				"change_scope_digest":     window.ScopeDigest,
+				"plan_lease_owner":        owner,
+				"plan_lease_occurrence":   occurrence,
+			},
+		})
+		if createErr != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, owner)
+			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
+			errs = append(errs, fmt.Errorf("compliance change monitor %q enqueue: %w", window.MonitorID, createErr))
+			continue
+		}
+		if err := store.CompleteComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner, window.Version); err != nil {
+			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
+			errs = append(errs, fmt.Errorf("compliance change monitor %q completion: %w", window.MonitorID, err))
+			continue
+		}
+		if created {
+			jobs.StartAsync(ctx, job)
+		}
+		enqueued++
+	}
+	return enqueued, errors.Join(errs...)
+}
+
 func occurrenceKey(monitor *ports.ComplianceMonitor) string {
 	if monitor == nil {
 		return ""
 	}
 	return "compliance-monitor:" + strings.TrimSpace(monitor.ID) + ":" + monitor.NextRunAt.UTC().Format(time.RFC3339Nano)
+}
+
+func changeOccurrenceKey(window *ports.ComplianceChangeWindow) string {
+	if window == nil {
+		return ""
+	}
+	return fmt.Sprintf("compliance-change:%s:%d:%s", strings.TrimSpace(window.MonitorID), window.Version, window.OpenedAt.UTC().Format(time.RFC3339Nano))
 }
 
 func newOwner() string {

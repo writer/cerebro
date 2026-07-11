@@ -22,6 +22,7 @@ var ensureComplianceMonitorStatements = []string{
   expected_coverage TEXT NOT NULL DEFAULT '',
   maximum_evidence_age_seconds BIGINT NOT NULL DEFAULT 0,
   grace_period_seconds BIGINT NOT NULL DEFAULT 0,
+  debounce_seconds BIGINT NOT NULL DEFAULT 0,
   escalation_owner TEXT NOT NULL DEFAULT '',
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   aggregate_version BIGINT NOT NULL DEFAULT 1,
@@ -34,6 +35,8 @@ var ensureComplianceMonitorStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (tenant_id, id)
 )`,
+	`ALTER TABLE compliance_monitors ADD COLUMN IF NOT EXISTS debounce_seconds BIGINT NOT NULL DEFAULT 0`,
+	`ALTER TABLE compliance_monitors ALTER COLUMN next_run_at DROP NOT NULL`,
 	`CREATE INDEX IF NOT EXISTS compliance_monitors_due_idx ON compliance_monitors (next_run_at) WHERE enabled`,
 	`CREATE INDEX IF NOT EXISTS compliance_monitors_plan_idx ON compliance_monitors (tenant_id, plan_revision_id)`,
 	`CREATE TABLE IF NOT EXISTS compliance_plan_run_leases (
@@ -47,9 +50,35 @@ var ensureComplianceMonitorStatements = []string{
   PRIMARY KEY (tenant_id, plan_revision_id)
 )`,
 	`CREATE INDEX IF NOT EXISTS compliance_plan_run_leases_expiry_idx ON compliance_plan_run_leases (lease_expires_at)`,
+	`CREATE TABLE IF NOT EXISTS compliance_monitor_change_signals (
+  tenant_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  monitor_id TEXT NOT NULL,
+  signal_kind TEXT NOT NULL,
+  scope_digest TEXT NOT NULL,
+  observed_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, monitor_id, event_id)
+)`,
+	`CREATE TABLE IF NOT EXISTS compliance_monitor_change_windows (
+  tenant_id TEXT NOT NULL,
+  monitor_id TEXT NOT NULL,
+  window_version BIGINT NOT NULL DEFAULT 1,
+  opened_at TIMESTAMPTZ NOT NULL,
+  last_signal_at TIMESTAMPTZ NOT NULL,
+  ready_at TIMESTAMPTZ NOT NULL,
+  signal_count BIGINT NOT NULL DEFAULT 1,
+  scope_digest TEXT NOT NULL,
+  claim_owner TEXT NOT NULL DEFAULT '',
+  claim_expires_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, monitor_id),
+  FOREIGN KEY (tenant_id, monitor_id) REFERENCES compliance_monitors(tenant_id, id) ON DELETE CASCADE
+)`,
+	`CREATE INDEX IF NOT EXISTS compliance_monitor_change_windows_due_idx ON compliance_monitor_change_windows (ready_at)`,
 }
 
-const complianceMonitorColumns = `tenant_id, id, program_id, plan_revision_id, trigger_kind, interval_seconds, expected_coverage, maximum_evidence_age_seconds, grace_period_seconds, escalation_owner, enabled, aggregate_version, next_run_at, last_success_at, consecutive_failures, claim_owner, claim_expires_at, created_at, updated_at`
+const complianceMonitorColumns = `tenant_id, id, program_id, plan_revision_id, trigger_kind, interval_seconds, expected_coverage, maximum_evidence_age_seconds, grace_period_seconds, debounce_seconds, escalation_owner, enabled, aggregate_version, next_run_at, last_success_at, consecutive_failures, claim_owner, claim_expires_at, created_at, updated_at`
 
 func (s *Store) ensureComplianceMonitorTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceMonitor, "compliance_monitors", ensureComplianceMonitorStatements)
@@ -73,10 +102,10 @@ func (s *Store) PutComplianceMonitor(ctx context.Context, monitor *ports.Complia
 	query := fmt.Sprintf(`
 INSERT INTO compliance_monitors (
   tenant_id, id, program_id, plan_revision_id, trigger_kind, interval_seconds,
-  expected_coverage, maximum_evidence_age_seconds, grace_period_seconds,
+  expected_coverage, maximum_evidence_age_seconds, grace_period_seconds, debounce_seconds,
   escalation_owner, enabled, aggregate_version, next_run_at
 )
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 ON CONFLICT (tenant_id, id) DO UPDATE SET
   program_id = EXCLUDED.program_id,
   plan_revision_id = EXCLUDED.plan_revision_id,
@@ -85,6 +114,7 @@ ON CONFLICT (tenant_id, id) DO UPDATE SET
   expected_coverage = EXCLUDED.expected_coverage,
   maximum_evidence_age_seconds = EXCLUDED.maximum_evidence_age_seconds,
   grace_period_seconds = EXCLUDED.grace_period_seconds,
+  debounce_seconds = EXCLUDED.debounce_seconds,
   escalation_owner = EXCLUDED.escalation_owner,
   enabled = EXCLUDED.enabled,
   aggregate_version = compliance_monitors.aggregate_version + 1,
@@ -92,14 +122,18 @@ ON CONFLICT (tenant_id, id) DO UPDATE SET
   claim_owner = '',
   claim_expires_at = NULL,
   updated_at = NOW()
-WHERE compliance_monitors.aggregate_version = $14
+WHERE compliance_monitors.aggregate_version = $15
 RETURNING %s`, complianceMonitorColumns)
+	var nextRunAt any
+	if monitor.TriggerKind == ports.ComplianceTriggerTime {
+		nextRunAt = monitor.NextRunAt.UTC()
+	}
 	row := s.db.QueryRowContext(ctx, query,
 		strings.TrimSpace(monitor.TenantID), strings.TrimSpace(monitor.ID), strings.TrimSpace(monitor.ProgramID),
 		strings.TrimSpace(monitor.PlanRevisionID), strings.TrimSpace(monitor.TriggerKind), monitor.IntervalSeconds,
 		strings.TrimSpace(monitor.ExpectedCoverage), int64(monitor.MaximumEvidenceAge/time.Second),
-		int64(monitor.GracePeriod/time.Second), strings.TrimSpace(monitor.EscalationOwner), monitor.Enabled,
-		version, monitor.NextRunAt.UTC(), expectedVersion)
+		int64(monitor.GracePeriod/time.Second), int64(monitor.DebounceWindow/time.Second), strings.TrimSpace(monitor.EscalationOwner), monitor.Enabled,
+		version, nextRunAt, expectedVersion)
 	stored, err := scanComplianceMonitor(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -210,8 +244,8 @@ func (s *Store) CompleteComplianceMonitorClaim(ctx context.Context, tenantID, mo
 	}
 	result, err := s.db.ExecContext(ctx, `
 UPDATE compliance_monitors
-SET next_run_at = $5::timestamptz + make_interval(secs => interval_seconds),
-    claim_owner = '', claim_expires_at = NULL, updated_at = NOW()
+SET next_run_at = $4::timestamptz + make_interval(secs => interval_seconds),
+    claim_owner = '', claim_expires_at = NULL, updated_at = $5
 WHERE tenant_id = $1 AND id = $2 AND claim_owner = $3 AND next_run_at = $4`,
 		strings.TrimSpace(tenantID), strings.TrimSpace(monitorID), strings.TrimSpace(owner), occurrenceAt.UTC(), completedAt.UTC())
 	if err != nil {
@@ -296,6 +330,165 @@ WHERE tenant_id = $1 AND id = $2`, strings.TrimSpace(tenantID), strings.TrimSpac
 	return nil
 }
 
+func (s *Store) RecordComplianceChangeSignal(ctx context.Context, signal ports.ComplianceChangeSignal) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("postgres is not configured")
+	}
+	signal.EventID = strings.TrimSpace(signal.EventID)
+	signal.TenantID = strings.TrimSpace(signal.TenantID)
+	signal.MonitorID = strings.TrimSpace(signal.MonitorID)
+	signal.SignalKind = strings.TrimSpace(signal.SignalKind)
+	signal.ScopeDigest = strings.TrimSpace(signal.ScopeDigest)
+	if signal.EventID == "" || signal.TenantID == "" || signal.MonitorID == "" || signal.SignalKind == "" || signal.ScopeDigest == "" || signal.ObservedAt.IsZero() {
+		return false, errors.New("change signal event, tenant, monitor, kind, scope digest, and observed time are required")
+	}
+	if len(signal.SignalKind) > 128 || len(signal.ScopeDigest) > 256 {
+		return false, errors.New("change signal kind or scope digest exceeds its limit")
+	}
+	if err := s.ensureComplianceMonitorTables(ctx); err != nil {
+		return false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin compliance change signal: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var debounceSeconds int64
+	if err := tx.QueryRowContext(ctx, `SELECT debounce_seconds FROM compliance_monitors WHERE tenant_id = $1 AND id = $2 AND enabled AND trigger_kind = 'change'`, signal.TenantID, signal.MonitorID).Scan(&debounceSeconds); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, ports.ErrComplianceMonitorNotFound
+		}
+		return false, fmt.Errorf("read compliance change monitor: %w", err)
+	}
+	if debounceSeconds <= 0 {
+		return false, errors.New("change-triggered compliance monitor debounce window must be positive")
+	}
+	result, err := tx.ExecContext(ctx, `
+INSERT INTO compliance_monitor_change_signals (tenant_id, event_id, monitor_id, signal_kind, scope_digest, observed_at)
+VALUES ($1,$2,$3,$4,$5,$6)
+ON CONFLICT (tenant_id, monitor_id, event_id) DO NOTHING`, signal.TenantID, signal.EventID, signal.MonitorID, signal.SignalKind, signal.ScopeDigest, signal.ObservedAt.UTC())
+	if err != nil {
+		return false, fmt.Errorf("record compliance change signal: %w", err)
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count compliance change signal insert: %w", err)
+	}
+	if inserted == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO compliance_monitor_change_windows (
+  tenant_id, monitor_id, window_version, opened_at, last_signal_at, ready_at,
+  signal_count, scope_digest
+)
+VALUES ($1,$2,1,$3,$3,$3::timestamptz + $5::bigint * INTERVAL '1 second',1,$4)
+ON CONFLICT (tenant_id, monitor_id) DO UPDATE SET
+  window_version = compliance_monitor_change_windows.window_version + 1,
+  last_signal_at = GREATEST(compliance_monitor_change_windows.last_signal_at, EXCLUDED.last_signal_at),
+  ready_at = GREATEST(compliance_monitor_change_windows.ready_at, EXCLUDED.ready_at),
+  signal_count = compliance_monitor_change_windows.signal_count + 1,
+  scope_digest = CASE
+    WHEN compliance_monitor_change_windows.scope_digest = EXCLUDED.scope_digest
+      THEN compliance_monitor_change_windows.scope_digest
+    ELSE 'multiple'
+  END,
+  updated_at = NOW()`, signal.TenantID, signal.MonitorID, signal.ObservedAt.UTC(), signal.ScopeDigest, debounceSeconds); err != nil {
+		return false, fmt.Errorf("coalesce compliance change signal: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit compliance change signal: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Store) ClaimDueComplianceChangeWindows(ctx context.Context, now time.Time, owner string, ttl time.Duration, limit uint32) ([]*ports.ComplianceChangeWindow, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	owner = strings.TrimSpace(owner)
+	if owner == "" || ttl <= 0 {
+		return nil, errors.New("compliance change claim owner and positive ttl are required")
+	}
+	if limit == 0 || limit > 100 {
+		limit = 50
+	}
+	if err := s.ensureComplianceMonitorTables(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+WITH due AS (
+  SELECT w.tenant_id, w.monitor_id
+  FROM compliance_monitor_change_windows w
+  JOIN compliance_monitors m ON m.tenant_id = w.tenant_id AND m.id = w.monitor_id
+  WHERE m.enabled AND m.trigger_kind = 'change' AND w.ready_at <= $1
+    AND (w.claim_expires_at IS NULL OR w.claim_expires_at <= $1)
+  ORDER BY w.ready_at, w.tenant_id, w.monitor_id
+  LIMIT $2 FOR UPDATE OF w SKIP LOCKED
+), claimed AS (
+  UPDATE compliance_monitor_change_windows w
+  SET claim_owner = $3,
+      claim_expires_at = $1::timestamptz + $4::bigint * INTERVAL '1 millisecond',
+      updated_at = NOW()
+  FROM due
+  WHERE w.tenant_id = due.tenant_id AND w.monitor_id = due.monitor_id
+  RETURNING w.*
+)
+SELECT c.tenant_id, c.monitor_id, m.program_id, m.plan_revision_id,
+       c.window_version, c.opened_at, c.last_signal_at, c.ready_at,
+       c.signal_count, c.scope_digest, c.claim_owner, c.claim_expires_at
+FROM claimed c
+JOIN compliance_monitors m ON m.tenant_id = c.tenant_id AND m.id = c.monitor_id
+ORDER BY c.ready_at, c.tenant_id, c.monitor_id`, now.UTC(), limit, owner, ttl.Milliseconds())
+	if err != nil {
+		return nil, fmt.Errorf("claim compliance change windows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	windows := []*ports.ComplianceChangeWindow{}
+	for rows.Next() {
+		var window ports.ComplianceChangeWindow
+		if err := rows.Scan(&window.TenantID, &window.MonitorID, &window.ProgramID, &window.PlanRevisionID,
+			&window.Version, &window.OpenedAt, &window.LastSignalAt, &window.ReadyAt,
+			&window.SignalCount, &window.ScopeDigest, &window.ClaimOwner, &window.ClaimExpiresAt); err != nil {
+			return nil, fmt.Errorf("scan compliance change window: %w", err)
+		}
+		window.OpenedAt = window.OpenedAt.UTC()
+		window.LastSignalAt = window.LastSignalAt.UTC()
+		window.ReadyAt = window.ReadyAt.UTC()
+		window.ClaimExpiresAt = window.ClaimExpiresAt.UTC()
+		windows = append(windows, &window)
+	}
+	return windows, rows.Err()
+}
+
+func (s *Store) CompleteComplianceChangeWindow(ctx context.Context, tenantID, monitorID, owner string, version uint64) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureComplianceMonitorTables(ctx); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM compliance_monitor_change_windows WHERE tenant_id = $1 AND monitor_id = $2 AND claim_owner = $3 AND window_version = $4`, strings.TrimSpace(tenantID), strings.TrimSpace(monitorID), strings.TrimSpace(owner), version)
+	if err != nil {
+		return fmt.Errorf("complete compliance change window: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		return ports.ErrComplianceMonitorConflict
+	}
+	return nil
+}
+
+func (s *Store) ReleaseComplianceChangeWindow(ctx context.Context, tenantID, monitorID, owner string) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureComplianceMonitorTables(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE compliance_monitor_change_windows SET claim_owner = '', claim_expires_at = NULL, updated_at = NOW() WHERE tenant_id = $1 AND monitor_id = $2 AND claim_owner = $3`, strings.TrimSpace(tenantID), strings.TrimSpace(monitorID), strings.TrimSpace(owner))
+	return err
+}
+
 func validateComplianceMonitor(monitor *ports.ComplianceMonitor) error {
 	if monitor == nil {
 		return errors.New("compliance monitor is required")
@@ -309,7 +502,10 @@ func validateComplianceMonitor(monitor *ports.ComplianceMonitor) error {
 	if monitor.TriggerKind == ports.ComplianceTriggerTime && monitor.IntervalSeconds <= 0 {
 		return errors.New("time-triggered compliance monitor interval must be positive")
 	}
-	if monitor.NextRunAt.IsZero() {
+	if monitor.TriggerKind == ports.ComplianceTriggerChange && monitor.DebounceWindow <= 0 {
+		return errors.New("change-triggered compliance monitor debounce window must be positive")
+	}
+	if monitor.TriggerKind == ports.ComplianceTriggerTime && monitor.NextRunAt.IsZero() {
 		return errors.New("compliance monitor next run time is required")
 	}
 	return nil
@@ -317,26 +513,29 @@ func validateComplianceMonitor(monitor *ports.ComplianceMonitor) error {
 
 func scanComplianceMonitor(row scanner) (*ports.ComplianceMonitor, error) {
 	var monitor ports.ComplianceMonitor
-	var maximumAgeSeconds, graceSeconds int64
-	var lastSuccessAt, claimExpiresAt sql.NullTime
+	var maximumAgeSeconds, graceSeconds, debounceSeconds int64
+	var nextRunAt, lastSuccessAt, claimExpiresAt sql.NullTime
 	if err := row.Scan(
 		&monitor.TenantID, &monitor.ID, &monitor.ProgramID, &monitor.PlanRevisionID,
 		&monitor.TriggerKind, &monitor.IntervalSeconds, &monitor.ExpectedCoverage,
-		&maximumAgeSeconds, &graceSeconds, &monitor.EscalationOwner, &monitor.Enabled,
-		&monitor.Version, &monitor.NextRunAt, &lastSuccessAt, &monitor.ConsecutiveFailures,
+		&maximumAgeSeconds, &graceSeconds, &debounceSeconds, &monitor.EscalationOwner, &monitor.Enabled,
+		&monitor.Version, &nextRunAt, &lastSuccessAt, &monitor.ConsecutiveFailures,
 		&monitor.ClaimOwner, &claimExpiresAt, &monitor.CreatedAt, &monitor.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	monitor.MaximumEvidenceAge = time.Duration(maximumAgeSeconds) * time.Second
 	monitor.GracePeriod = time.Duration(graceSeconds) * time.Second
+	monitor.DebounceWindow = time.Duration(debounceSeconds) * time.Second
 	if lastSuccessAt.Valid {
 		monitor.LastSuccessAt = lastSuccessAt.Time.UTC()
+	}
+	if nextRunAt.Valid {
+		monitor.NextRunAt = nextRunAt.Time.UTC()
 	}
 	if claimExpiresAt.Valid {
 		monitor.ClaimExpiresAt = claimExpiresAt.Time.UTC()
 	}
-	monitor.NextRunAt = monitor.NextRunAt.UTC()
 	monitor.CreatedAt = monitor.CreatedAt.UTC()
 	monitor.UpdatedAt = monitor.UpdatedAt.UTC()
 	return &monitor, nil

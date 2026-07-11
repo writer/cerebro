@@ -83,14 +83,42 @@ func TestRunDueSkipsOverlappingPlan(t *testing.T) {
 	}
 }
 
+func TestRunDueChangesCreatesJobBeforeAcknowledgingExactWindow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 9, 0, 0, 0, time.UTC)
+	monitors := &memoryMonitorStore{changeWindows: []*ports.ComplianceChangeWindow{{
+		TenantID: "tenant-1", MonitorID: "monitor-change-1", ProgramID: "program-1",
+		PlanRevisionID: "plan-revision-1", Version: 4, OpenedAt: now.Add(-time.Minute),
+		LastSignalAt: now.Add(-30 * time.Second), ReadyAt: now, SignalCount: 3,
+		ScopeDigest: "sha256:scope",
+	}}}
+	jobStore := newMemoryJobStore(now)
+	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
+	})
+
+	count, err := RunDueChanges(context.Background(), monitors, jobs, now)
+	if err != nil {
+		t.Fatalf("RunDueChanges() error = %v", err)
+	}
+	if count != 1 || !monitors.changeCompleted || monitors.completedChangeVersion != 4 || !monitors.changeJobExistedAtComplete(jobStore) {
+		t.Fatalf("count=%d completed=%v version=%d jobExistedAtComplete=%v", count, monitors.changeCompleted, monitors.completedChangeVersion, monitors.changeJobExistedAtComplete(jobStore))
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+}
+
 type memoryMonitorStore struct {
-	mu               sync.Mutex
-	due              []*ports.ComplianceMonitor
-	planLeaseOwner   string
-	completed        bool
-	claimReleased    bool
-	completeJobCount int
-	outcomeRecorded  bool
+	mu                     sync.Mutex
+	due                    []*ports.ComplianceMonitor
+	planLeaseOwner         string
+	completed              bool
+	claimReleased          bool
+	outcomeRecorded        bool
+	changeWindows          []*ports.ComplianceChangeWindow
+	changeCompleted        bool
+	completedChangeVersion uint64
 }
 
 func (s *memoryMonitorStore) PutComplianceMonitor(context.Context, *ports.ComplianceMonitor, uint64) (*ports.ComplianceMonitor, error) {
@@ -140,12 +168,35 @@ func (s *memoryMonitorStore) RecordComplianceMonitorOutcome(context.Context, str
 	s.outcomeRecorded = true
 	return nil
 }
+func (s *memoryMonitorStore) RecordComplianceChangeSignal(context.Context, ports.ComplianceChangeSignal) (bool, error) {
+	return true, nil
+}
+func (s *memoryMonitorStore) ClaimDueComplianceChangeWindows(context.Context, time.Time, string, time.Duration, uint32) ([]*ports.ComplianceChangeWindow, error) {
+	return s.changeWindows, nil
+}
+func (s *memoryMonitorStore) CompleteComplianceChangeWindow(_ context.Context, _, _, _ string, version uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.changeCompleted = true
+	s.completedChangeVersion = version
+	return nil
+}
+func (s *memoryMonitorStore) ReleaseComplianceChangeWindow(context.Context, string, string, string) error {
+	return nil
+}
 func (s *memoryMonitorStore) jobExistedAtComplete(store *memoryJobStore) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	return s.completed && len(store.jobs) == 1
+}
+func (s *memoryMonitorStore) changeJobExistedAtComplete(store *memoryJobStore) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return s.changeCompleted && len(store.jobs) == 1
 }
 
 type memoryJobStore struct {
