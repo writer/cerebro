@@ -75,6 +75,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | Coding agent setup handoff | [Agent onboarding](start/agent-onboarding.md) |
 | Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
 | Evidence-backed decision packet implementation | [Decision packet convergence](engineering/decision-packet-convergence.md) |
+| Finding-to-verified-fix implementation | [Finding-to-verified-fix reference](engineering/finding-to-verified-fix-reference.md) |
 | Runtime configuration | [Configuration variables](reference/config-env-vars.md) |
 | Hosting and operations | [Hosting](operations/hosting.md), [runtime profiles](operations/runtime-profiles.md), [deployment readiness](operations/deployment-readiness.md), [cloud deployment](operations/cloud-deployment.md), [deployment examples](operations/deployment-examples.md), [operations runbook](operations/operations-runbook.md), and [troubleshooting](operations/troubleshooting.md) |
 | API contracts | [API reference](reference/api-reference.md), [generated API contracts](reference/api-contracts.md), `../api/openapi.yaml`, and `../proto/cerebro/v1/bootstrap.proto` |
