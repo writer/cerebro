@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
 	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -42,6 +43,12 @@ func TestJoinGRCErrorsPreservesAllFailures(t *testing.T) {
 
 func TestGRCQuestionnaireRuntimeUnavailableMapsToServiceUnavailable(t *testing.T) {
 	if got := grcHTTPStatusCode(questionnairehttp.ErrRuntimeUnavailable); got != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", got, http.StatusServiceUnavailable)
+	}
+}
+
+func TestGRCSourceCoverageEvaluatorUnavailableMapsToServiceUnavailable(t *testing.T) {
+	if got := grcHTTPStatusCode(sourcecoverage.ErrEvaluatorUnavailable); got != http.StatusServiceUnavailable {
 		t.Fatalf("status code = %d, want %d", got, http.StatusServiceUnavailable)
 	}
 }

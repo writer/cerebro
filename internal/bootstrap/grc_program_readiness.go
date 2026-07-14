@@ -38,13 +38,17 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		writeGRCError(w, err)
 		return
 	}
-	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{
+	coverage, err := a.sourceCoverageRecords(r.Context(), runtimes, ports.SourceRuntimeFilter{
 		RuntimeID:  scope.RuntimeID,
 		RuntimeIDs: scope.RuntimeIDs,
 		TenantID:   scope.TenantID,
 		SourceID:   scope.SourceID,
 		Limit:      scope.Limit,
 	}, generatedAt)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	readiness := grcprogram.Build(grcprogram.BuildInput{
 		Result:             result,

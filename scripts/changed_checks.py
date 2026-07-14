@@ -96,6 +96,9 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, prefixes=("internal/graphagent/staticvalidator/",), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/graphagent/staticvalidator.go", "internal/graphagent/staticvalidator.wasm")) for path in files):
         add_command(commands, seen, "graphagent-static-validator-check", ["make", "graphagent-static-validator-check"], "Static Cypher validator source, host, or embedded module changed.")
 
+    if any(path_matches(path, prefixes=("internal/sourcecoverage/evaluator/",), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/sourcecoverage/evaluator.go", "internal/sourcecoverage/evaluator.wasm")) for path in files):
+        add_command(commands, seen, "sourcecoverage-evaluator-check", ["make", "sourcecoverage-evaluator-check"], "Source coverage evaluator source, host, or embedded module changed.")
+
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")
 

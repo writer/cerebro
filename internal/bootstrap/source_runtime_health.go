@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -247,7 +248,10 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
 	}
-	coverage := a.sourceCoverageRecords(visibleRuntimes, filter, generatedAt)
+	coverage, err := a.sourceCoverageRecords(r.Context(), visibleRuntimes, filter, generatedAt)
+	if err != nil {
+		return sourceRuntimeHealthResponse{}, err
+	}
 	return sourceRuntimeHealthResponse{
 		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
 		Runtimes:        records,
@@ -288,21 +292,25 @@ func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFresh
 	}
 }
 
-func (a *App) sourceCoverageRecords(runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) []sourcecoverage.Record {
+func (a *App) sourceCoverageRecords(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) ([]sourcecoverage.Record, error) {
 	if a == nil || a.sources == nil {
-		return nil
+		return nil, nil
 	}
 	contracts := sourcecoverage.ContractsFromRegistry(a.sources)
 	if len(contracts) == 0 {
-		return nil
+		return nil, nil
 	}
 	observations := sourcecoverage.ObservationsFromRuntimes(runtimes, func(runtime *cerebrov1.SourceRuntime) string {
 		return runtimeHealthStatus(runtime, generatedAt)
 	})
-	return sourcecoverage.Evaluate(contracts, observations, sourcecoverage.Options{
+	records, err := sourcecoverage.Evaluate(ctx, contracts, observations, sourcecoverage.Options{
 		TenantID: strings.TrimSpace(filter.TenantID),
 		SourceID: strings.TrimSpace(filter.SourceID),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: evaluate source coverage: %w", sourceruntime.ErrRuntimeUnavailable, err)
+	}
+	return records, nil
 }
 
 func emitSourceCoverageGateTelemetry(ctx context.Context, report sourcecoverage.Report) {
