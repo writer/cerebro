@@ -411,27 +411,40 @@ fn has_variable_length_relationship_pattern(query: &str) -> bool {
         let Some(close) = matching_square_bracket(bytes, i) else {
             return true;
         };
-        if relationship_dash_after(bytes, close) && bytes[i + 1..close].contains(&b'*') {
+        let Some(relationship_end) = relationship_end_after(bytes, close) else {
+            i = close + 1;
+            continue;
+        };
+        if bytes[i + 1..close].contains(&b'*')
+            || has_postfix_pattern_quantifier(bytes, relationship_end)
+        {
             return true;
         }
         i = close + 1;
     }
-    false
+    has_quantified_abbreviated_relationship(query)
 }
 
 fn matching_square_bracket(query: &[u8], open: usize) -> Option<usize> {
     let mut depth = 1;
-    for (index, byte) in query.iter().enumerate().skip(open + 1) {
-        match byte {
+    let mut cursor = open + 1;
+    while cursor < query.len() {
+        if query[cursor] == b'`' {
+            let (_, end) = escaped_identifier_token(query, cursor);
+            cursor = end + 1;
+            continue;
+        }
+        match query[cursor] {
             b'[' => depth += 1,
             b']' => {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(index);
+                    return Some(cursor);
                 }
             }
             _ => {}
         }
+        cursor += 1;
     }
     None
 }
@@ -444,11 +457,71 @@ fn relationship_dash_before(query: &[u8], index: usize) -> bool {
         .is_some_and(|byte| *byte == b'-')
 }
 
-fn relationship_dash_after(query: &[u8], index: usize) -> bool {
-    query[index + 1..]
+fn relationship_end_after(query: &[u8], index: usize) -> Option<usize> {
+    let dash = query[index + 1..]
         .iter()
-        .find(|byte| !is_whitespace(**byte))
-        .is_some_and(|byte| *byte == b'-')
+        .position(|byte| !is_whitespace(*byte))?
+        + index
+        + 1;
+    if query[dash] != b'-' {
+        return None;
+    }
+    let Some(next) = next_non_whitespace_index(query, dash + 1) else {
+        return Some(dash);
+    };
+    Some(if query[next] == b'>' { next } else { dash })
+}
+
+fn has_postfix_pattern_quantifier(query: &[u8], pattern_end: usize) -> bool {
+    next_non_whitespace_index(query, pattern_end + 1)
+        .is_some_and(|index| matches!(query[index], b'*' | b'+' | b'{'))
+}
+
+fn has_quantified_abbreviated_relationship(query: &str) -> bool {
+    let bytes = query.as_bytes();
+    bytes.iter().enumerate().any(|(index, byte)| {
+        if *byte != b')' {
+            return false;
+        }
+        let Some(start) = next_non_whitespace_index(bytes, index + 1) else {
+            return false;
+        };
+        let relationship_end = match bytes[start] {
+            b'-' => {
+                let Some(second_dash) = next_non_whitespace_index(bytes, start + 1) else {
+                    return false;
+                };
+                if bytes[second_dash] != b'-' {
+                    return false;
+                }
+                next_non_whitespace_index(bytes, second_dash + 1)
+                    .filter(|next| bytes[*next] == b'>')
+                    .unwrap_or(second_dash)
+            }
+            b'<' => {
+                let Some(first_dash) = next_non_whitespace_index(bytes, start + 1) else {
+                    return false;
+                };
+                let Some(second_dash) = next_non_whitespace_index(bytes, first_dash + 1) else {
+                    return false;
+                };
+                if bytes[first_dash] != b'-' || bytes[second_dash] != b'-' {
+                    return false;
+                }
+                second_dash
+            }
+            _ => return false,
+        };
+        has_postfix_pattern_quantifier(bytes, relationship_end)
+    })
+}
+
+fn next_non_whitespace_index(query: &[u8], start: usize) -> Option<usize> {
+    query
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find_map(|(index, byte)| (!is_whitespace(*byte)).then_some(index))
 }
 
 fn all_node_patterns_tenant_scoped(query: &str) -> bool {
@@ -981,6 +1054,46 @@ mod tests {
             validate(unclosed, 100).decision,
             Decision::VariableLengthRelationshipNotAllowed
         );
+    }
+
+    #[test]
+    fn escaped_relationship_types_cannot_hide_variable_length_traversals() {
+        let fixed_length = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R]`]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(validate(fixed_length, 100).decision, Decision::Allow);
+
+        let variable_length = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R]`*1..9999]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(
+            validate(variable_length, 100).decision,
+            Decision::VariableLengthRelationshipNotAllowed
+        );
+    }
+
+    #[test]
+    fn quantified_relationships_are_variable_length_traversals() {
+        let fixed_length = "MATCH (a:Entity {tenant_id:$tenant_id})-->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(validate(fixed_length, 100).decision, Decision::Allow);
+
+        let queries = [
+            "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->+(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->*(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})-->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})--+(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})<--*(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::VariableLengthRelationshipNotAllowed,
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn quantified_path_patterns_fail_closed() {
+        let query = "MATCH (a:Entity {tenant_id:$tenant_id}) ((x:Entity {tenant_id:$tenant_id})-[r:R]->(y:Entity {tenant_id:$tenant_id})){1,9999} (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_ne!(validate(query, 100).decision, Decision::Allow);
     }
 
     #[test]
