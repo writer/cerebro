@@ -124,9 +124,6 @@ type familyData struct {
 	Path                  string
 	Method                string
 	AuthModel             string
-	PaginationType        string
-	IncrementalState      string
-	ProjectionTemplate    string
 	RecordSelector        string
 	URNKind               string
 	EventKind             string
@@ -146,8 +143,11 @@ type familyData struct {
 }
 
 type familyContractData struct {
-	Projection *connectordefinitions.ProjectionSpec
-	Coverage   []connectordefinitions.CoverageDimensionSpec
+	Projection         *connectordefinitions.ProjectionSpec
+	Coverage           []connectordefinitions.CoverageDimensionSpec
+	PaginationType     string
+	IncrementalState   string
+	ProjectionTemplate string
 }
 
 type familyConfigData struct {
@@ -752,9 +752,6 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			Path:                  resource.Path,
 			Method:                methodForResource(resource),
 			AuthModel:             authModel,
-			PaginationType:        paginationTypeForResource(resource),
-			IncrementalState:      incrementalStateForResource(resource),
-			ProjectionTemplate:    strings.TrimSpace(resource.Projection.Template),
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
@@ -771,8 +768,11 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 			Contract: familyContractData{
-				Projection: resource.Projection,
-				Coverage:   append([]connectordefinitions.CoverageDimensionSpec(nil), resource.Coverage...),
+				Projection:         resource.Projection,
+				Coverage:           append([]connectordefinitions.CoverageDimensionSpec(nil), resource.Coverage...),
+				PaginationType:     paginationTypeForResource(resource),
+				IncrementalState:   incrementalStateForResource(resource),
+				ProjectionTemplate: strings.TrimSpace(resource.Projection.Template),
 			},
 		})
 	}

@@ -96,9 +96,9 @@ func grammarFeatures(request normalizedRequest) []string {
 			method = "GET"
 		}
 		features["method."+method] = struct{}{}
-		features["pagination."+firstNonEmptyString(family.PaginationType, "none")] = struct{}{}
-		features["incremental."+firstNonEmptyString(family.IncrementalState, "none")] = struct{}{}
-		projection := firstNonEmptyString(family.ProjectionTemplate, family.Class)
+		features["pagination."+firstNonEmptyString(family.Contract.PaginationType, "none")] = struct{}{}
+		features["incremental."+firstNonEmptyString(family.Contract.IncrementalState, "none")] = struct{}{}
+		projection := firstNonEmptyString(family.Contract.ProjectionTemplate, family.Class)
 		if projection != "" {
 			features["projection."+projection] = struct{}{}
 		}
