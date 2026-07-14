@@ -98,7 +98,13 @@ import (
 // auth discovery stays at the HTTP boundary. Agent task review hardening keeps
 // tenant-before-mutation checks and auth-challenge classification in bootstrap
 // because those depend on bootstrap auth sentinels and HTTP route policy.
-const bootstrapProductionGoLineBudget = 27373
+// Compliance remediation adds capability-gated service composition, route/auth
+// registration, tenant and actor stamping, and request/response/error mapping;
+// work derivation, transition validation, independent verification, append-first
+// persistence, projection replay, and invalidation reopening stay behind
+// internal/complianceremediation, while Postgres adaptation stays in the
+// concrete state-store package.
+const bootstrapProductionGoLineBudget = 27600
 
 type bootstrapFileLineCount struct {
 	path  string

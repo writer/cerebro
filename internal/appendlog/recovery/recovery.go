@@ -69,6 +69,14 @@ func (l *Log) Replay(ctx context.Context, request ports.ReplayRequest) ([]*cereb
 	return replayer.Replay(ctx, request)
 }
 
+func (l *Log) ReplayPage(ctx context.Context, request ports.ReplayRequest) (ports.ReplayPage, error) {
+	replayer, ok := l.inner.(ports.EventReplayPager)
+	if !ok || replayer == nil {
+		return ports.ReplayPage{}, errors.New("append log replay pager is not configured")
+	}
+	return replayer.ReplayPage(ctx, request)
+}
+
 func (l *Log) ScanRuntimeIndex(ctx context.Context, fromSeq uint64, batch uint32) (ports.RuntimeIndexScan, error) {
 	source, ok := l.inner.(ports.RuntimeIndexSource)
 	if !ok || source == nil {
@@ -179,4 +187,5 @@ func shortRecordHash(value string) string {
 var _ ports.AppendLog = (*Log)(nil)
 var _ ports.AppendLogBatcher = (*Log)(nil)
 var _ ports.EventReplayer = (*Log)(nil)
+var _ ports.EventReplayPager = (*Log)(nil)
 var _ ports.RuntimeIndexSource = (*Log)(nil)

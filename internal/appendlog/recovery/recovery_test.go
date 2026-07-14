@@ -121,6 +121,19 @@ func TestReplayDelegatesToInnerReplayer(t *testing.T) {
 	}
 }
 
+func TestReplayPageDelegatesToInnerPager(t *testing.T) {
+	inner := &recordingLog{replayPage: ports.ReplayPage{Complete: true}}
+	log := Wrap(inner, &recordingStore{}).(ports.EventReplayPager)
+
+	page, err := log.ReplayPage(context.Background(), ports.ReplayRequest{KindPrefix: "workflow.v1.compliance."})
+	if err != nil || !page.Complete {
+		t.Fatalf("ReplayPage() = %+v, %v", page, err)
+	}
+	if inner.pageRequests != 1 {
+		t.Fatalf("inner page requests = %d, want 1", inner.pageRequests)
+	}
+}
+
 func recoveryTestEvent(id string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:       id,
@@ -140,6 +153,8 @@ type recordingLog struct {
 	events         []*cerebrov1.EventEnvelope
 	replayEvents   []*cerebrov1.EventEnvelope
 	replayRequests int
+	replayPage     ports.ReplayPage
+	pageRequests   int
 }
 
 func (l *recordingLog) Ping(context.Context) error { return nil }
@@ -155,6 +170,11 @@ func (l *recordingLog) Append(_ context.Context, event *cerebrov1.EventEnvelope)
 func (l *recordingLog) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	l.replayRequests++
 	return l.replayEvents, nil
+}
+
+func (l *recordingLog) ReplayPage(context.Context, ports.ReplayRequest) (ports.ReplayPage, error) {
+	l.pageRequests++
+	return l.replayPage, nil
 }
 
 type recordingStore struct {
