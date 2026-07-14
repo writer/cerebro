@@ -597,7 +597,7 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	attackTagValues := findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)
-	mitreContext, err := mitre.EvaluateContext(ctx, mitre.ContextInput{
+	contextInput := mitre.ContextInput{
 		AttackTacticValues: append(
 			findingMetadataValues(finding.Metadata, workflowMITREAttackTacticKeys...),
 			attackTagValues...,
@@ -607,7 +607,11 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 		DefendTacticValues:      findingMetadataValues(finding.Metadata, workflowMITREDefendTacticKeys...),
 		DefendTechniqueValues:   findingMetadataValues(finding.Metadata, workflowMITREDefendTechniqueKeys...),
 		DefendArtifactValues:    findingMetadataValues(finding.Metadata, workflowMITREDefendArtifactKeys...),
-	})
+	}
+	if !contextInput.HasValues() {
+		return s.pruneFindingMITREContextLinks(ctx, tenantID, sourceID, anchorURN, nil, result)
+	}
+	mitreContext, err := mitre.EvaluateContext(ctx, contextInput)
 	if err != nil {
 		return fmt.Errorf("evaluate finding MITRE context: %w", err)
 	}
