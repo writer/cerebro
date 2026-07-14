@@ -408,16 +408,32 @@ fn has_variable_length_relationship_pattern(query: &str) -> bool {
             i += 1;
             continue;
         }
-        let Some(relative_close) = bytes[i + 1..].iter().position(|byte| *byte == b']') else {
+        let Some(close) = matching_square_bracket(bytes, i) else {
             return true;
         };
-        let close = i + 1 + relative_close;
         if relationship_dash_after(bytes, close) && bytes[i + 1..close].contains(&b'*') {
             return true;
         }
         i = close + 1;
     }
     false
+}
+
+fn matching_square_bracket(query: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 1;
+    for (index, byte) in query.iter().enumerate().skip(open + 1) {
+        match byte {
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn relationship_dash_before(query: &[u8], index: usize) -> bool {
@@ -947,6 +963,24 @@ mod tests {
         assert_eq!(validate(query, 100).decision, Decision::UnsafeClause);
         let query = "MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'CREATE' AS c RETURN a LIMIT 25";
         assert_eq!(validate(query, 100).decision, Decision::Allow);
+    }
+
+    #[test]
+    fn relationship_bracket_matching_tracks_nested_lists_and_fails_closed() {
+        let bypass = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*1..9999 {x:[1]}]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(
+            validate(bypass, 100).decision,
+            Decision::VariableLengthRelationshipNotAllowed
+        );
+
+        let finite = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R {x:[1]}]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(validate(finite, 100).decision, Decision::Allow);
+
+        let unclosed = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R {x:[1]} RETURN a LIMIT 1";
+        assert_eq!(
+            validate(unclosed, 100).decision,
+            Decision::VariableLengthRelationshipNotAllowed
+        );
     }
 
     #[test]
