@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/wasmjson"
 )
 
 func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
@@ -103,22 +105,33 @@ func TestPanopticonResourceObjectsWasmMatchesGoDerivedNameAliases(t *testing.T) 
 
 func TestPanopticonResourceObjectsWasmBoundsInputWithoutEchoingPayload(t *testing.T) {
 	t.Parallel()
-	payload := []byte(`{"resources":["` + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
+	marker := "payload-marker-that-must-not-be-logged"
+	payload := []byte(`{"resources":["` + marker + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
 	_, err := panopticonResourceObjectsWasm(context.Background(), payload)
-	if err == nil {
-		t.Fatal("oversized payload error = nil")
+	if !errors.Is(err, errPanopticonResourceExtractorUnavailable) {
+		t.Fatalf("oversized payload error = %v, want extractor unavailable", err)
 	}
-	if !errors.Is(err, errPanopticonResourcesPayloadTooLarge) {
-		t.Fatalf("oversized payload error = %v, want %v", err, errPanopticonResourcesPayloadTooLarge)
+	if !errors.Is(err, wasmjson.ErrInputTooLarge) {
+		t.Fatalf("oversized payload error = %v, want input too large", err)
 	}
 }
 
-func TestPanopticonResourceObjectsWasmHonorsCanceledContext(t *testing.T) {
+func TestPanopticonResourceObjectsWasmAcceptsEmptyPayloadWithLiveContext(t *testing.T) {
+	resources, err := panopticonResourceObjectsWasm(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("empty payload error = %v", err)
+	}
+	if resources != nil {
+		t.Fatalf("empty payload resources = %#v, want nil", resources)
+	}
+}
+
+func TestPanopticonResourceObjectsWasmHonorsCanceledContextForEmptyPayload(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := panopticonResourceObjectsWasm(ctx, []byte(`{"resources":["resource-1"]}`))
+	_, err := panopticonResourceObjectsWasm(ctx, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled extraction error = %v, want %v", err, context.Canceled)
 	}
