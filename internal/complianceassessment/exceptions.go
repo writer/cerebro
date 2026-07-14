@@ -141,6 +141,9 @@ func TransitionException(current Exception, expectedVersion uint64, input Except
 		next.VerifiedBy = value
 	}
 	if next.State == ExceptionApproved {
+		if err := validateRenewalApproval(current.Approval, input.Approval, current.UpdatedAt); err != nil {
+			return Exception{}, fmt.Errorf("%w: %w", ErrInvalidException, err)
+		}
 		if err := validateApprovedException(next, at); err != nil {
 			return Exception{}, err
 		}
