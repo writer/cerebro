@@ -44,6 +44,33 @@ func TestVerifyRejectsTamperedPacket(t *testing.T) {
 	assertDefect(t, Verify(submission), "packet_verification_failed")
 }
 
+func TestVerifyRejectsPacketWithIncompleteEvidenceSnapshot(t *testing.T) {
+	t.Parallel()
+	for _, gapCode := range []string{"evidence_snapshot_truncated", "evidence_total_unavailable"} {
+		t.Run(gapCode, func(t *testing.T) {
+			submission := validSubmission(t)
+			var packet grcauditpacket.Packet
+			if err := json.Unmarshal(submission.PacketJSON, &packet); err != nil {
+				t.Fatal(err)
+			}
+			packet.Gaps = append(packet.Gaps, grcauditpacket.Gap{
+				Code: gapCode, Message: "The evidence snapshot is not complete.",
+			})
+			packet.Digest = mustPacketDigest(t, packet)
+			submission.PacketJSON = marshal(t, packet)
+			assertDefect(t, Verify(submission), "packet_evidence_incomplete")
+		})
+	}
+}
+
+func TestVerifyRejectsCitationWithoutEvidencePayload(t *testing.T) {
+	t.Parallel()
+	submission := validSubmission(t)
+	submission.Citations[0].Payload = nil
+	submission.Citations[0].Digest = DigestCitation(submission.Citations[0])
+	assertDefect(t, Verify(submission), "citation_payload_missing")
+}
+
 func TestVerifyRejectsIncompleteOrLateChangedPopulation(t *testing.T) {
 	t.Parallel()
 	incomplete := validSubmission(t)

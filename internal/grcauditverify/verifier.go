@@ -90,6 +90,12 @@ func verifySubmission(submission Submission, trustedKeys map[string]string) []De
 		if err := grcauditpacket.Verify(packet); err != nil {
 			defects = append(defects, defect("packet_verification_failed", "packet_json", err.Error()))
 		}
+		for _, gap := range packet.Gaps {
+			switch gap.Code {
+			case "evidence_snapshot_truncated", "evidence_total_unavailable":
+				defects = append(defects, defect("packet_evidence_incomplete", "packet_json.gaps", "The immutable packet does not contain a complete evidence snapshot."))
+			}
+		}
 		if packet.TenantID != request.TenantID {
 			defects = append(defects, defect("packet_tenant_mismatch", "packet_json", "The packet tenant does not match the audit request."))
 		}
@@ -126,6 +132,9 @@ func verifyCitations(request RequestManifest, citations []Citation, population *
 			continue
 		}
 		byID[citation.ID] = citation
+		if len(citation.Payload) == 0 {
+			defects = append(defects, defect("citation_payload_missing", "citations."+citation.ID, "The citation must include the cited evidence payload."))
+		}
 		if citation.Digest == "" || citation.Digest != DigestCitation(citation) {
 			defects = append(defects, defect("citation_digest_invalid", "citations."+citation.ID, "The citation digest does not match its payload."))
 		}
