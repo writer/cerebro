@@ -1264,6 +1264,43 @@ func TestGRCAuditPacketRecordsGraphGapWhenProjectionUnavailable(t *testing.T) {
 	}
 }
 
+func TestGRCAuditPacketRecordsTruncatedEvidenceSnapshot(t *testing.T) {
+	now := time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "okta"}},
+		findings: map[string]*ports.FindingRecord{"finding-1": {
+			ID: "finding-1", TenantID: "writer", RuntimeID: "runtime-1", Status: "open", LastObservedAt: now,
+			FindingWorkflow: ports.FindingWorkflow{StatusUpdatedAt: now},
+		}},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: "runtime-1", FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: "runtime-1", FindingId: "finding-1", CreatedAt: timestamppb.New(now.Add(-time.Minute))},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, AppendLog: &recordingAppendLog{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, err := server.Client().Post(server.URL+"/grc/audit-packets?limit=1", "application/json", bytes.NewBufferString(`{"finding_id":"finding-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusCreated)
+	}
+	packet := grcAuditPacketResponse{}
+	if err := json.NewDecoder(response.Body).Decode(&packet); err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.Evidence) != 1 || len(packet.EvidenceReferences) != 1 {
+		t.Fatalf("captured evidence = %d/%d, want one limited record", len(packet.Evidence), len(packet.EvidenceReferences))
+	}
+	if !hasGRCAuditPacketGap(packet.Gaps, "evidence_snapshot_truncated") {
+		t.Fatalf("gaps = %#v, want evidence_snapshot_truncated", packet.Gaps)
+	}
+}
+
 func TestGRCAuditPacketDoesNotProjectWhenAppendFails(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{

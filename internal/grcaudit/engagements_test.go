@@ -28,6 +28,19 @@ func TestAuthorizeEngagementAccessDeniesSameTenantForeignEngagement(t *testing.T
 	}
 }
 
+func TestAuthorizeEngagementAccessRejectsMisboundParticipant(t *testing.T) {
+	engagement, _, err := NewEngagement(testCreateEngagementRequest())
+	if err != nil {
+		t.Fatalf("NewEngagement() error = %v", err)
+	}
+	misbound := engagement
+	misbound.Participants = append([]Participant(nil), engagement.Participants...)
+	misbound.Participants[0].EngagementID = "engagement-b"
+	if err := AuthorizeEngagementAccess(Principal{TenantID: "tenant-a", ID: "auditor-a"}, misbound, EngagementPermissionRead); !errors.Is(err, ErrEngagementNotFound) {
+		t.Fatalf("misbound participant access error = %v, want ErrEngagementNotFound", err)
+	}
+}
+
 func TestEngagementRevisionsAreImmutableAcrossParticipantAndScopeChanges(t *testing.T) {
 	request := testCreateEngagementRequest()
 	engagement, first, err := NewEngagement(request)

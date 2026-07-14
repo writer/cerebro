@@ -201,11 +201,7 @@ func newID() (string, error) {
 }
 
 func findingReference(finding *ports.FindingRecord) FindingReference {
-	revision := finding.StatusUpdatedAt
-	if revision.IsZero() {
-		revision = finding.LastObservedAt
-	}
-	return FindingReference{ID: finding.ID, Fingerprint: finding.Fingerprint, Status: finding.Status, StatusRevision: revision.UTC()}
+	return FindingReference{ID: finding.ID, Fingerprint: finding.Fingerprint, Status: finding.Status, StatusRevision: finding.StatusUpdatedAt.UTC()}
 }
 
 func evidenceReferences(evidence []*cerebrov1.FindingEvidence, findingWatermark time.Time) ([]EvidenceReference, GraphReferences) {
@@ -305,7 +301,7 @@ func sourceRuntimeReferences(runtimes []*cerebrov1.SourceRuntime) []SourceRuntim
 }
 
 func gaps(preview Packet, packet Packet) []Gap {
-	result := []Gap{}
+	result := append([]Gap(nil), preview.Gaps...)
 	if strings.TrimSpace(packet.FindingReference.Fingerprint) == "" {
 		result = append(result, Gap{Code: "finding_fingerprint_unavailable", Message: "The finding had no durable fingerprint when this packet was created."})
 	}

@@ -35,6 +35,30 @@ func TestBuildPackageManifestIsDeterministicAcrossEntryOrder(t *testing.T) {
 	}
 }
 
+func TestCanonicalPackageManifestBytesNormalizeEquivalentEntryOrder(t *testing.T) {
+	manifest, err := BuildPackageManifest(testManifestRequest(testManifestEntries()))
+	if err != nil {
+		t.Fatalf("BuildPackageManifest() error = %v", err)
+	}
+	want, err := CanonicalPackageManifestBytes(manifest)
+	if err != nil {
+		t.Fatalf("CanonicalPackageManifestBytes(canonical) error = %v", err)
+	}
+	equivalent := manifest
+	equivalent.Entries = append([]PackageManifestEntry(nil), manifest.Entries...)
+	equivalent.Entries[0], equivalent.Entries[1] = equivalent.Entries[1], equivalent.Entries[0]
+	if err := VerifyPackageManifest(equivalent); err != nil {
+		t.Fatalf("VerifyPackageManifest(equivalent) error = %v", err)
+	}
+	got, err := CanonicalPackageManifestBytes(equivalent)
+	if err != nil {
+		t.Fatalf("CanonicalPackageManifestBytes(equivalent) error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("canonical bytes depend on equivalent entry order:\n%s\n%s", got, want)
+	}
+}
+
 func TestPackageManifestDetectsAlteredEntry(t *testing.T) {
 	manifest, err := BuildPackageManifest(testManifestRequest(testManifestEntries()))
 	if err != nil {

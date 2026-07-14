@@ -609,6 +609,22 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
+	evidenceTotal, err := a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{FindingID: finding.ID})
+	if err != nil {
+		return grcAuditPacketResponse{}, err
+	}
+	packetGaps := []grcAuditPacketGap{}
+	switch {
+	case evidenceTotal == nil:
+		packetGaps = append(packetGaps, grcAuditPacketGap{
+			Code: "evidence_total_unavailable", Message: "The evidence store could not report the total matching record count; snapshot completeness is unverified.",
+		})
+	case *evidenceTotal > len(evidence):
+		packetGaps = append(packetGaps, grcAuditPacketGap{
+			Code:    "evidence_snapshot_truncated",
+			Message: fmt.Sprintf("The snapshot includes %d of %d matching evidence records because the request limit is %d.", len(evidence), *evidenceTotal, limit),
+		})
+	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
 		if graphStore := graphQueryStore(a.deps.GraphStore); graphStore != nil {
@@ -633,7 +649,7 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 		Controls:          controls,
 		RecommendedAction: grcRecommendedAction(items[0]),
 		GeneratedAt:       generatedAt,
-		Gaps:              []grcAuditPacketGap{},
+		Gaps:              packetGaps,
 		Supersedes:        []string{},
 		FindingRecord:     finding,
 		EvidenceRecords:   evidence,

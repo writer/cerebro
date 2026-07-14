@@ -7,6 +7,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/grcfindings"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestPacketReferencesAndGapsPreserveUnavailableHistory(t *testing.T) {
@@ -38,6 +39,20 @@ func TestPacketReferencesAndGapsPreserveUnavailableHistory(t *testing.T) {
 	}
 	if got := packet.SourceRuntimes[0].CompletenessState; got != "unknown" {
 		t.Fatalf("completeness = %q, want unknown without checkpoint", got)
+	}
+}
+
+func TestFindingReferenceDoesNotSubstituteObservationTimeForStatusRevision(t *testing.T) {
+	t.Parallel()
+	reference := findingReference(&ports.FindingRecord{
+		ID: "finding-one", Status: "open", LastObservedAt: time.Date(2026, time.July, 14, 8, 0, 0, 0, time.UTC),
+	})
+	if !reference.StatusRevision.IsZero() {
+		t.Fatalf("status revision = %v, want unavailable when status_updated_at is absent", reference.StatusRevision)
+	}
+	packet := Packet{FindingReference: reference}
+	if got := gaps(Packet{}, packet); !hasGap(got, "finding_status_revision_unavailable") {
+		t.Fatalf("gaps = %#v, want finding_status_revision_unavailable", got)
 	}
 }
 
