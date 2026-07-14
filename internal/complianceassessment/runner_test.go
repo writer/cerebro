@@ -131,6 +131,52 @@ func TestRunRequestAppendFailurePreventsProjectionAndEnqueue(t *testing.T) {
 	}
 }
 
+func TestReconcileUnboundRunStartsExistingQueuedJob(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: completeManifest(now), results: validResults(now, 1)})
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	store.applyRunVersion = 2
+	store.applyRunErr = errors.New("run projection unavailable")
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "recover-existing-job", RequestedBy: "assessor-1",
+	})
+	if err == nil || run.ID == "" || run.JobID == "" {
+		t.Fatalf("RequestRun() = (%#v, %v), want run and binding projection error", run, err)
+	}
+	persisted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.JobID != "" || persisted.State != RunQueued {
+		t.Fatalf("persisted run = %#v, want queued without a job binding", persisted)
+	}
+
+	store.applyRunErr = nil
+	bound, err := service.ReconcileUnboundRuns(context.Background(), 10)
+	if err != nil || bound != 1 {
+		t.Fatalf("ReconcileUnboundRuns() = (%d, %v), want (1, nil)", bound, err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != RunComplete || completed.JobID != run.JobID {
+		t.Fatalf("completed run = %#v, want completed with recovered job %q", completed, run.JobID)
+	}
+}
+
 func recordPublishedPlan(t *testing.T, service *Service, now time.Time) AssessmentPlanRevision {
 	t.Helper()
 	plan, err := service.RecordPlan(context.Background(), validPlan(now), "owner-1", 0)
@@ -209,12 +255,14 @@ func (l *runLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error
 }
 
 type runStore struct {
-	mu     sync.Mutex
-	plans  map[string]AssessmentPlanRevision
-	runs   map[string]AssessmentRun
-	byKey  map[string]string
-	chunks map[string]map[uint32]ResultChunk
-	events map[string]struct{}
+	mu              sync.Mutex
+	plans           map[string]AssessmentPlanRevision
+	runs            map[string]AssessmentRun
+	byKey           map[string]string
+	chunks          map[string]map[uint32]ResultChunk
+	events          map[string]struct{}
+	applyRunVersion uint64
+	applyRunErr     error
 }
 
 func newRunStore() *runStore {
@@ -250,6 +298,9 @@ func (s *runStore) GetPlan(_ context.Context, tenantID, id string) (AssessmentPl
 func (s *runStore) ApplyRun(_ context.Context, eventID string, run AssessmentRun, expected uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if run.Version == s.applyRunVersion && s.applyRunErr != nil {
+		return s.applyRunErr
+	}
 	if _, ok := s.events[eventID]; ok {
 		return nil
 	}

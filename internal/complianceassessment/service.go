@@ -166,7 +166,7 @@ func (s *Service) RequestRun(ctx context.Context, request RunRequest) (Assessmen
 }
 
 func (s *Service) bindRunJob(ctx context.Context, run AssessmentRun) (AssessmentRun, bool, error) {
-	job, created, err := s.jobs.Create(ctx, ports.CreateJobRequest{
+	job, _, err := s.jobs.Create(ctx, ports.CreateJobRequest{
 		Kind: JobKindComplianceAssessment, TenantID: run.TenantID, SubjectType: "assessment_run", SubjectID: run.ID,
 		IdempotencyKey: "assessment-run:" + run.ID,
 		Payload:        map[string]any{"run_id": run.ID, "tenant_id": run.TenantID},
@@ -180,9 +180,7 @@ func (s *Service) bindRunJob(ctx context.Context, run AssessmentRun) (Assessment
 	if err := s.appendRun(ctx, workflowevents.EventKindComplianceAssessmentJobBound, "assessment_job_bound", run, expectedVersion); err != nil {
 		return run, false, err
 	}
-	if created {
-		s.jobs.StartAsync(ctx, job)
-	}
+	s.jobs.StartAsync(ctx, job)
 	return run, true, nil
 }
 
