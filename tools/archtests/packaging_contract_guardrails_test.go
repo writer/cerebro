@@ -96,6 +96,9 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"Dispatch stable deployment request",
 		"for target in sec-dev go-prod; do",
 		`cerebro-runtime-contract-${target}.json`,
+		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
+		`test "$(jq '.client_payload | length' "${payload}")" -le 10`,
+		`gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"`,
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
@@ -135,7 +138,6 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 			t.Fatalf("release workflow must guard %s secret fetch behind the bootstrap check", name)
 		}
 	}
-
 	candidateBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "cut-release.yml"))
 	if err != nil {
 		t.Fatalf("read candidate workflow: %v", err)
@@ -160,7 +162,6 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 			t.Fatalf("candidate workflow contains stable publication marker %q", forbidden)
 		}
 	}
-
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
