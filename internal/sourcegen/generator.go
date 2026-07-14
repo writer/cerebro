@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"go/format"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -221,10 +220,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	if normalized.DryRun {
 		return result, nil
 	}
-	if err := os.MkdirAll(normalized.OutputDir, 0o750); err != nil {
-		return nil, err
-	}
-	root, err := os.OpenRoot(normalized.OutputDir)
+	root, err := openOrCreateGenerationRoot(normalized.OutputDir)
 	if err != nil {
 		return nil, err
 	}

@@ -2328,6 +2328,16 @@ func TestGenerateRejectsSymlinkedOutputSubdirectory(t *testing.T) {
 	}
 }
 
+func TestGenerateCreatesNestedOutputRoot(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "nested", "output")
+	if _, err := Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "sources", "demo_source", "source.go")); err != nil {
+		t.Fatalf("generated source stat: %v", err)
+	}
+}
+
 func TestGenerateFindingOnlyScaffold(t *testing.T) {
 	outputDir := t.TempDir()
 	if _, err := Generate(Request{

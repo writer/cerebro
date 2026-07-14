@@ -204,6 +204,36 @@ func loadGenerationManifest(outputDir string, path string) (*generationManifest,
 	return &manifest, nil
 }
 
+func openOrCreateGenerationRoot(outputDir string) (*os.Root, error) {
+	absoluteOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sourcegen output root: %w", err)
+	}
+	volumeRoot := filepath.VolumeName(absoluteOutputDir) + string(filepath.Separator)
+	filesystemRoot, err := os.OpenRoot(volumeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open sourcegen filesystem root: %w", err)
+	}
+	relativeOutputDir, err := filepath.Rel(volumeRoot, absoluteOutputDir)
+	if err != nil {
+		_ = filesystemRoot.Close()
+		return nil, fmt.Errorf("resolve sourcegen output path: %w", err)
+	}
+	if relativeOutputDir == "." {
+		return filesystemRoot, nil
+	}
+	if err := filesystemRoot.MkdirAll(relativeOutputDir, 0o750); err != nil {
+		_ = filesystemRoot.Close()
+		return nil, fmt.Errorf("create sourcegen output root: %w", err)
+	}
+	root, err := filesystemRoot.OpenRoot(relativeOutputDir)
+	_ = filesystemRoot.Close()
+	if err != nil {
+		return nil, fmt.Errorf("open sourcegen output root: %w", err)
+	}
+	return root, nil
+}
+
 func manifestOutputPath(outputDir string, manifestPath string) (string, error) {
 	path := filepath.Join(outputDir, filepath.FromSlash(manifestPath))
 	relativePath, err := manifestRelativePath(outputDir, path)
