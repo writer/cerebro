@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -63,6 +64,39 @@ func TestCoverageEvaluatorRejectsMalformedAndOversizedInput(t *testing.T) {
 	oversized := make([]byte, coverageEvaluatorMaxInput+1)
 	if _, err := runCoverageEvaluator(context.Background(), oversized); !errors.Is(err, ErrEvaluatorUnavailable) {
 		t.Fatalf("runCoverageEvaluator(oversized) error = %v, want ErrEvaluatorUnavailable", err)
+	}
+}
+
+func TestCoverageEvaluatorSupportsConcurrentCalls(t *testing.T) {
+	t.Parallel()
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "source-a",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID: "users", Type: "entity_family", Title: "Users", Families: []string{"user"}, Support: sourcecdk.CoverageSupportSupported,
+		}},
+	}}
+	observations := []RuntimeObservation{{RuntimeID: "runtime-a", SourceID: "source-a", Family: "user", Status: "healthy"}}
+
+	var wait sync.WaitGroup
+	errors := make(chan error, 8)
+	for range 8 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			records, err := Evaluate(context.Background(), contracts, observations, Options{})
+			if err != nil {
+				errors <- err
+				return
+			}
+			if len(records) != 1 || records[0].State != StateHealthy {
+				errors <- fmt.Errorf("records = %#v; want one healthy record", records)
+			}
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		t.Errorf("concurrent Evaluate() error = %v", err)
 	}
 }
 
