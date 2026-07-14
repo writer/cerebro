@@ -312,10 +312,6 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 	if minimumSample < 1 {
 		minimumSample = 1
 	}
-	type bucket struct {
-		key     string
-		results []RealizedResult
-	}
 	buckets := map[string][]RealizedResult{}
 	for _, result := range results {
 		if result.CensoredReason != "" {
