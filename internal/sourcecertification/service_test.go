@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestEvaluateConcreteCertificationStates(t *testing.T) {
@@ -73,6 +75,39 @@ func TestEvaluateRequiresDurableOutcomeReceipt(t *testing.T) {
 	input.Outcome = OutcomeObservation{Accepted: true, LastObservedAt: now}
 	if result := Evaluate(input); result.EffectiveTier != TierProductionObserved {
 		t.Fatalf("EffectiveTier = %q, want production_observed without durable outcome receipt", result.EffectiveTier)
+	}
+}
+
+func TestRuntimeObservationsRequireFreshHealthyRuntime(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	observations := RuntimeObservations([]*cerebrov1.SourceRuntime{
+		{
+			SourceId:     "github",
+			Config:       map[string]string{"__cerebro_runtime_status": "healthy"},
+			LastSyncedAt: timestamppb.New(now.Add(-DefaultRuntimeFreshness - time.Hour)),
+		},
+		{
+			SourceId:     "github",
+			Config:       map[string]string{"__cerebro_runtime_status": "failed"},
+			LastSyncedAt: timestamppb.New(now.Add(-time.Minute)),
+		},
+	}, now)
+
+	observation := observations["github"]
+	if !observation.Healthy {
+		t.Fatal("Healthy = false, want true when a healthy runtime exists")
+	}
+	if observation.Fresh {
+		t.Fatal("Fresh = true, want false when the only fresh runtime is unhealthy")
+	}
+	wantObservedAt := now.Add(-DefaultRuntimeFreshness - time.Hour)
+	if !observation.LastObservedAt.Equal(wantObservedAt) {
+		t.Fatalf("LastObservedAt = %s, want latest healthy observation %s", observation.LastObservedAt, wantObservedAt)
+	}
+	input := certifiedInput("github", now, true)
+	input.Runtime = observation
+	if result := Evaluate(input); result.EffectiveTier != TierContractTested {
+		t.Fatalf("EffectiveTier = %q, want contract_tested without a fresh healthy runtime", result.EffectiveTier)
 	}
 }
 

@@ -145,8 +145,9 @@ func RuntimeObservations(runtimes []*cerebrov1.SourceRuntime, now time.Time) map
 		sourceID := strings.TrimSpace(runtime.GetSourceId())
 		observation := result[sourceID]
 		observation.Configured = true
-		observation.Healthy = observation.Healthy || RuntimeHealthy(runtime)
-		if syncedAt := runtime.GetLastSyncedAt(); syncedAt != nil && syncedAt.AsTime().After(observation.LastObservedAt) {
+		healthy := RuntimeHealthy(runtime)
+		observation.Healthy = observation.Healthy || healthy
+		if syncedAt := runtime.GetLastSyncedAt(); healthy && syncedAt != nil && syncedAt.AsTime().After(observation.LastObservedAt) {
 			observation.LastObservedAt = syncedAt.AsTime().UTC()
 		}
 		result[sourceID] = observation
