@@ -578,7 +578,8 @@ func normalizeResourceRefs(refs []ResourceRef) []ResourceRef {
 func normalizeObligationInput(input *ObligationInput) {
 	input.TenantID = strings.TrimSpace(input.TenantID)
 	input.ObligationID = strings.TrimSpace(input.ObligationID)
-	input.ContractRef = normalizeVersionedRefs([]VersionedRef{input.ContractRef})[0]
+	input.ContractRef.ID = strings.TrimSpace(input.ContractRef.ID)
+	input.ContractRef.Version = strings.TrimSpace(input.ContractRef.Version)
 	input.CommitmentRef = strings.TrimSpace(input.CommitmentRef)
 	input.Controls = normalizeVersionedRefs(input.Controls)
 	input.EvidenceRequirements = normalizeVersionedRefs(input.EvidenceRequirements)
