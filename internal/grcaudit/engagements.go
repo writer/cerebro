@@ -274,7 +274,9 @@ func AuthorizeEngagementAccess(principal Principal, engagement Engagement, permi
 		return nil
 	}
 	for _, participant := range engagement.Participants {
-		if participant.Status != ParticipantStatusActive || participant.PrincipalID != strings.TrimSpace(principal.ID) {
+		if strings.TrimSpace(participant.TenantID) != strings.TrimSpace(engagement.TenantID) ||
+			strings.TrimSpace(participant.EngagementID) != strings.TrimSpace(engagement.ID) ||
+			participant.Status != ParticipantStatusActive || participant.PrincipalID != strings.TrimSpace(principal.ID) {
 			continue
 		}
 		if roleAllows(participant.Role, permission) {
