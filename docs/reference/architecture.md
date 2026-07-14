@@ -86,6 +86,11 @@ Stateless source MCP tools stay limited to request/response mapping over
 reserved runtime key rejection, while bootstrap invokes that guard at the MCP
 transport boundary.
 
+Connector certification keeps tier evaluation, proof expiry and invalidation,
+source-runtime observations, and availability decisions in
+`internal/sourcecertification`. Bootstrap passes runtime records and returns the
+resulting state through HTTP and MCP connector discovery.
+
 The current budget includes a narrow transport-boundary exception for graph
 reasoning: HTTP and MCP handlers clear the server write deadline before entering
 the long-running reasoning pipeline. That deadline is owned by `net/http` and

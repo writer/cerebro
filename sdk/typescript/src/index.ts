@@ -1,3 +1,24 @@
+import type {
+  CreatePlatformJobRequest,
+  GetSourceRuntimeResponse,
+  PlatformJobEventListResponse,
+  PlatformJobListResponse,
+  PlatformJobResponse,
+  PutSourceRuntimeResponse,
+  SourceRuntime,
+} from "./generated/openapi-types.ts";
+
+export type {
+  GetSourceRuntimeResponse,
+  PlatformJob,
+  PlatformJobEvent,
+  PlatformJobEventListResponse,
+  PlatformJobListResponse,
+  PlatformJobResponse,
+  PutSourceRuntimeResponse,
+  SourceRuntime,
+} from "./generated/openapi-types.ts";
+
 export interface ClientConfig {
   baseUrl: string;
   apiKey?: string;
@@ -94,14 +115,7 @@ export interface IntegrationOptions {
   integration: string;
 }
 
-export interface CreateJobRequest {
-  kind: string;
-  tenant_id?: string;
-  subject_type?: string;
-  subject_id?: string;
-  idempotency_key?: string;
-  payload?: Record<string, unknown>;
-}
+export type CreateJobRequest = CreatePlatformJobRequest;
 
 export interface ListJobsOptions {
   tenant_id?: string;
@@ -137,12 +151,12 @@ export class Client {
     this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
-  async putSourceRuntime(runtimeId: string, runtime: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.requestJson<Record<string, unknown>>("PUT", `/source-runtimes/${encodeURIComponent(runtimeId)}`, { runtime });
+  async putSourceRuntime(runtimeId: string, runtime: SourceRuntime): Promise<PutSourceRuntimeResponse> {
+    return this.requestJson<PutSourceRuntimeResponse>("PUT", `/source-runtimes/${encodeURIComponent(runtimeId)}`, { runtime });
   }
 
-  async getSourceRuntime(runtimeId: string): Promise<Record<string, unknown>> {
-    return this.requestJson<Record<string, unknown>>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}`);
+  async getSourceRuntime(runtimeId: string): Promise<GetSourceRuntimeResponse> {
+    return this.requestJson<GetSourceRuntimeResponse>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}`);
   }
 
   async writeClaims(runtimeId: string, claims: Claim[], options: WriteClaimsOptions = {}): Promise<Record<string, unknown>> {
@@ -176,15 +190,15 @@ export class Client {
     return this.requestJson<GraphNeighborhood>("GET", `/platform/graph/neighborhood?${query.toString()}`);
   }
 
-  async createJob(request: CreateJobRequest, idempotencyKey = ""): Promise<Record<string, unknown>> {
+  async createJob(request: CreateJobRequest, idempotencyKey = ""): Promise<PlatformJobResponse> {
     const headers: Record<string, string> = {};
     if (idempotencyKey) {
       headers["Idempotency-Key"] = idempotencyKey;
     }
-    return this.requestJson<Record<string, unknown>>("POST", "/platform/jobs", request, headers);
+    return this.requestJson<PlatformJobResponse>("POST", "/platform/jobs", request, headers);
   }
 
-  async listJobs(options: ListJobsOptions = {}): Promise<Record<string, unknown>> {
+  async listJobs(options: ListJobsOptions = {}): Promise<PlatformJobListResponse> {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(options)) {
       if (value === undefined || value === null || value === "") {
@@ -193,20 +207,20 @@ export class Client {
       query.set(key, String(value));
     }
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs${suffix}`);
+    return this.requestJson<PlatformJobListResponse>("GET", `/platform/jobs${suffix}`);
   }
 
-  async getJob(jobId: string): Promise<Record<string, unknown>> {
-    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs/${encodeURIComponent(jobId)}`);
+  async getJob(jobId: string): Promise<PlatformJobResponse> {
+    return this.requestJson<PlatformJobResponse>("GET", `/platform/jobs/${encodeURIComponent(jobId)}`);
   }
 
-  async listJobEvents(jobId: string, limit = 0): Promise<Record<string, unknown>> {
+  async listJobEvents(jobId: string, limit = 0): Promise<PlatformJobEventListResponse> {
     const suffix = limit > 0 ? `?limit=${encodeURIComponent(String(limit))}` : "";
-    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs/${encodeURIComponent(jobId)}/events${suffix}`);
+    return this.requestJson<PlatformJobEventListResponse>("GET", `/platform/jobs/${encodeURIComponent(jobId)}/events${suffix}`);
   }
 
-  async cancelJob(jobId: string): Promise<Record<string, unknown>> {
-    return this.requestJson<Record<string, unknown>>("POST", `/platform/jobs/${encodeURIComponent(jobId)}/cancel`);
+  async cancelJob(jobId: string): Promise<PlatformJobResponse> {
+    return this.requestJson<PlatformJobResponse>("POST", `/platform/jobs/${encodeURIComponent(jobId)}/cancel`);
   }
 
   integration(options: IntegrationOptions): IntegrationClient {
@@ -279,7 +293,7 @@ export class IntegrationClient {
     this.integrationName = options.integration;
   }
 
-  async ensureRuntime(config: Record<string, string> = {}): Promise<Record<string, unknown>> {
+  async ensureRuntime(config: Record<string, string> = {}): Promise<PutSourceRuntimeResponse> {
     return this.client.putSourceRuntime(this.runtimeId, {
       source_id: "sdk",
       tenant_id: this.tenantId,

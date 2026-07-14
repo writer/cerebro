@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,11 +16,16 @@ import (
 )
 
 type stubReportScheduleStore struct {
-	schedules   map[string]*ports.ReportSchedule
-	due         []*ports.ReportSchedule
-	runs        []*cerebrov1.ReportRun
-	createdJobs []ports.CreateJobRequest
-	claimLimit  uint32
+	schedules       map[string]*ports.ReportSchedule
+	due             []*ports.ReportSchedule
+	runs            []*cerebrov1.ReportRun
+	createdJobs     []ports.CreateJobRequest
+	claimLimit      uint32
+	claimOwner      string
+	claimTTL        time.Duration
+	completedClaims []string
+	releasedClaims  []string
+	createJobErr    error
 }
 
 func newStubReportScheduleStore() *stubReportScheduleStore {
@@ -60,9 +66,21 @@ func (s *stubReportScheduleStore) DeleteReportSchedule(_ context.Context, id str
 	return nil
 }
 
-func (s *stubReportScheduleStore) ClaimDueReportSchedules(_ context.Context, _ time.Time, limit uint32) ([]*ports.ReportSchedule, error) {
+func (s *stubReportScheduleStore) ClaimDueReportSchedules(_ context.Context, _ time.Time, owner string, ttl time.Duration, limit uint32) ([]*ports.ReportSchedule, error) {
 	s.claimLimit = limit
+	s.claimOwner = owner
+	s.claimTTL = ttl
 	return s.due, nil
+}
+
+func (s *stubReportScheduleStore) CompleteReportScheduleClaim(_ context.Context, id string, owner string, _ time.Time, _ time.Time) error {
+	s.completedClaims = append(s.completedClaims, id+":"+owner)
+	return nil
+}
+
+func (s *stubReportScheduleStore) ReleaseReportScheduleClaim(_ context.Context, id string, owner string) error {
+	s.releasedClaims = append(s.releasedClaims, id+":"+owner)
+	return nil
 }
 
 func (s *stubReportScheduleStore) ListReportRuns(_ context.Context, _ ports.ReportRunFilter) ([]*cerebrov1.ReportRun, error) {
@@ -71,6 +89,9 @@ func (s *stubReportScheduleStore) ListReportRuns(_ context.Context, _ ports.Repo
 
 func (s *stubReportScheduleStore) CreateJob(_ context.Context, request ports.CreateJobRequest) (*ports.Job, bool, error) {
 	s.createdJobs = append(s.createdJobs, request)
+	if s.createJobErr != nil {
+		return nil, false, s.createJobErr
+	}
 	return &ports.Job{ID: "job-stub", Kind: request.Kind, Status: "queued"}, false, nil
 }
 
@@ -253,7 +274,7 @@ func TestHandleDeleteReportScheduleScopesTenant(t *testing.T) {
 func TestRunDueReportSchedulesEnqueuesReportRunJobs(t *testing.T) {
 	store := newStubReportScheduleStore()
 	store.due = []*ports.ReportSchedule{
-		{ID: "a", TenantID: "local", ReportID: "finding-summary", IntervalSeconds: 3600, Enabled: true, Parameters: map[string]string{"tenant_id": "local", "runtime_ids": "rt-1"}},
+		{ID: "a", TenantID: "local", ReportID: "finding-summary", IntervalSeconds: 3600, Enabled: true, NextRunAt: time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC), Parameters: map[string]string{"tenant_id": "local", "runtime_ids": "rt-1"}},
 	}
 	app := reportScheduleTestApp(store)
 
@@ -271,6 +292,12 @@ func TestRunDueReportSchedulesEnqueuesReportRunJobs(t *testing.T) {
 	if job.Kind != "report_run" || job.TenantID != "local" {
 		t.Fatalf("unexpected job %+v", job)
 	}
+	if job.IdempotencyKey != "report-schedule:a:2026-07-11T08:00:00Z" {
+		t.Fatalf("unexpected idempotency key %q", job.IdempotencyKey)
+	}
+	if len(store.completedClaims) != 1 || len(store.releasedClaims) != 0 {
+		t.Fatalf("completed=%v released=%v, want one completion and no release", store.completedClaims, store.releasedClaims)
+	}
 	if job.Payload["report_id"] != "finding-summary" {
 		t.Fatalf("unexpected job report_id %v", job.Payload["report_id"])
 	}
@@ -280,6 +307,25 @@ func TestRunDueReportSchedulesEnqueuesReportRunJobs(t *testing.T) {
 	}
 	if parameters["tenant_id"] != "local" || parameters["runtime_ids"] != "rt-1" {
 		t.Fatalf("unexpected job parameters %+v", parameters)
+	}
+}
+
+func TestRunDueReportSchedulesReleasesClaimWhenEnqueueFails(t *testing.T) {
+	store := newStubReportScheduleStore()
+	store.createJobErr = errors.New("job store unavailable")
+	store.due = []*ports.ReportSchedule{{
+		ID: "a", TenantID: "local", ReportID: "finding-summary", IntervalSeconds: 3600,
+		Enabled: true, NextRunAt: time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC),
+		Parameters: map[string]string{"tenant_id": "local", "runtime_ids": "rt-1"},
+	}}
+	app := reportScheduleTestApp(store)
+
+	enqueued, err := app.RunDueReportSchedules(context.Background())
+	if err == nil {
+		t.Fatal("RunDueReportSchedules() error = nil, want enqueue failure")
+	}
+	if enqueued != 0 || len(store.completedClaims) != 0 || len(store.releasedClaims) != 1 {
+		t.Fatalf("enqueued=%d completed=%v released=%v", enqueued, store.completedClaims, store.releasedClaims)
 	}
 }
 

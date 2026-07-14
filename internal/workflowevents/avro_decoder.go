@@ -104,6 +104,8 @@ func decodeAvroPayload(kind string, data []byte, payload any) error {
 		err = decodeFindingStatusChanged(reader, target)
 	case *FindingTombstoned:
 		err = decodeFindingTombstoned(reader, target)
+	case *ComplianceAggregateRecorded:
+		err = decodeComplianceAggregateRecorded(reader, target)
 	default:
 		return fmt.Errorf("unsupported workflow payload target %T for %s", payload, kind)
 	}
@@ -114,6 +116,39 @@ func decodeAvroPayload(kind string, data []byte, payload any) error {
 		return fmt.Errorf("payload has %d trailing bytes", reader.remaining())
 	}
 	return nil
+}
+
+func decodeComplianceAggregateRecorded(reader *avroReader, payload *ComplianceAggregateRecorded) error {
+	var err error
+	if payload.TenantID, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.AggregateType, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.AggregateID, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.RevisionID, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.AggregateVersion, err = reader.long(); err != nil {
+		return err
+	}
+	if payload.Operation, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.ContentDigest, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.PayloadJSON, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.ActorID, err = reader.string(); err != nil {
+		return err
+	}
+	payload.RecordedAt, err = reader.string()
+	return err
 }
 
 func decodeDecisionRecorded(reader *avroReader, payload *DecisionRecorded) error {
