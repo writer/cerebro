@@ -22,6 +22,7 @@ const JobKindComplianceAssessment = "compliance_assessment"
 type Service struct {
 	store     Store
 	log       ports.AppendLog
+	replayer  ports.EventReplayPager
 	jobs      *platformjobs.Service
 	collector Collector
 	now       func() time.Time
@@ -29,6 +30,16 @@ type Service struct {
 
 func NewAssessmentService(store Store, log ports.AppendLog, jobs *platformjobs.Service, collector Collector) *Service {
 	return &Service{store: store, log: log, jobs: jobs, collector: collector, now: func() time.Time { return time.Now().UTC() }}
+}
+
+// WithEventReplayPager enables append-first projection recovery. The pager is
+// optional so focused domain callers can keep using the service without a
+// production append-log runtime.
+func (s *Service) WithEventReplayPager(replayer ports.EventReplayPager) *Service {
+	if s != nil {
+		s.replayer = replayer
+	}
+	return s
 }
 
 func (s *Service) RecordPlan(ctx context.Context, plan AssessmentPlanRevision, actorID string, expectedVersion uint64) (AssessmentPlanRevision, error) {

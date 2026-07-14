@@ -121,6 +121,23 @@ func TestReplayDelegatesToInnerReplayer(t *testing.T) {
 	}
 }
 
+func TestReplayPageDelegatesToInnerPager(t *testing.T) {
+	event := recoveryTestEvent("finding-1")
+	inner := &recordingLog{replayPage: ports.ReplayPage{Events: []*cerebrov1.EventEnvelope{event}, Complete: true}}
+	log := Wrap(inner, &recordingStore{}).(ports.EventReplayPager)
+
+	got, err := log.ReplayPage(context.Background(), ports.ReplayRequest{KindPrefix: "workflow.v1.compliance.", Limit: 50})
+	if err != nil {
+		t.Fatalf("ReplayPage() error = %v", err)
+	}
+	if len(got.Events) != 1 || got.Events[0].GetId() != "finding-1" || !got.Complete {
+		t.Fatalf("ReplayPage() = %#v", got)
+	}
+	if inner.replayPageRequests != 1 {
+		t.Fatalf("inner replay page requests = %d, want 1", inner.replayPageRequests)
+	}
+}
+
 func recoveryTestEvent(id string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:       id,
@@ -135,14 +152,21 @@ func recoveryTestEvent(id string) *cerebrov1.EventEnvelope {
 }
 
 type recordingLog struct {
-	err            error
-	failOnID       string
-	events         []*cerebrov1.EventEnvelope
-	replayEvents   []*cerebrov1.EventEnvelope
-	replayRequests int
+	err                error
+	failOnID           string
+	events             []*cerebrov1.EventEnvelope
+	replayEvents       []*cerebrov1.EventEnvelope
+	replayRequests     int
+	replayPage         ports.ReplayPage
+	replayPageRequests int
 }
 
 func (l *recordingLog) Ping(context.Context) error { return nil }
+
+func (l *recordingLog) ReplayPage(_ context.Context, _ ports.ReplayRequest) (ports.ReplayPage, error) {
+	l.replayPageRequests++
+	return l.replayPage, nil
+}
 
 func (l *recordingLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
 	l.events = append(l.events, event)
