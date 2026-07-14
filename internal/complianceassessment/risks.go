@@ -182,6 +182,9 @@ func TransitionRisk(current Risk, expectedVersion uint64, input RiskTransitionIn
 		next.VerifiedBy = value
 	}
 	if next.State == RiskAccepted {
+		if err := validateRenewalApproval(current.Approval, input.Approval, current.UpdatedAt); err != nil {
+			return Risk{}, fmt.Errorf("%w: %w", ErrInvalidRisk, err)
+		}
 		if err := validateAcceptedRisk(next, at); err != nil {
 			return Risk{}, err
 		}
@@ -251,6 +254,23 @@ func normalizeApproval(value Approval) Approval {
 func validateApproval(value *Approval) error {
 	if value == nil || strings.TrimSpace(value.ID) == "" || strings.TrimSpace(value.ApprovedBy) == "" || value.ApprovedAt.IsZero() {
 		return errors.New("approval id, approver, and approval time are required")
+	}
+	return nil
+}
+
+func validateRenewalApproval(current, proposed *Approval, notBefore time.Time) error {
+	if current == nil {
+		return nil
+	}
+	if err := validateApproval(proposed); err != nil {
+		return errors.New("renewal requires a new approval")
+	}
+	next := normalizeApproval(*proposed)
+	if next.ID == strings.TrimSpace(current.ID) {
+		return errors.New("renewal requires a new approval id")
+	}
+	if next.ApprovedAt.Before(CanonicalTime(notBefore)) {
+		return errors.New("renewal approval predates the current review")
 	}
 	return nil
 }
