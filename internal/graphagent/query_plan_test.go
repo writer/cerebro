@@ -791,6 +791,12 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
 			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
 		},
+		{
+			name:        "limit variable does not hide later clause",
+			query:       `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 1000`,
+			wantQuery:   `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 100`,
+			wantChanged: true,
+		},
 	}
 
 	for _, tt := range tests {

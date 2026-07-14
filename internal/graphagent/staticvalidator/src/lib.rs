@@ -667,7 +667,11 @@ fn node_patterns_in_text(text: &str, require_valid: bool) -> (Vec<NodePattern>, 
 
 fn node_pattern_at(text: &str, index: usize) -> (NodePattern, bool, bool) {
     let bytes = text.as_bytes();
-    if bytes[index] != b'(' || index > 0 && is_identifier_byte(bytes[index - 1]) {
+    if bytes[index] != b'('
+        || index > 0
+            && is_identifier_byte(bytes[index - 1])
+            && !keyword_ends_at(text, index, "MATCH")
+    {
         return (NodePattern::default(), false, false);
     }
     let Some(close) = bytes[index + 1..].iter().position(|byte| *byte == b')') else {
@@ -677,6 +681,10 @@ fn node_pattern_at(text: &str, index: usize) -> (NodePattern, bool, bool) {
         .map_or((NodePattern::default(), true, false), |pattern| {
             (pattern, true, true)
         })
+}
+
+fn keyword_ends_at(query: &str, end: usize, keyword: &str) -> bool {
+    end >= keyword.len() && keyword_at(query, end - keyword.len(), keyword)
 }
 
 fn parse_node_pattern(body: &str) -> Option<NodePattern> {
@@ -1036,6 +1044,24 @@ mod tests {
         assert_eq!(validate(query, 100).decision, Decision::UnsafeClause);
         let query = "MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'CREATE' AS c RETURN a LIMIT 25";
         assert_eq!(validate(query, 100).decision, Decision::Allow);
+    }
+
+    #[test]
+    fn match_keyword_adjacency_does_not_hide_node_scope() {
+        let scoped = "MATCH(e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25";
+        assert_eq!(validate(scoped, 100).decision, Decision::Allow);
+
+        let queries = [
+            "MATCH(e:Entity) MATCH (b:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25",
+            "MATCH (b:Entity {tenant_id:$tenant_id}) OPTIONAL MATCH(e:Entity) RETURN e LIMIT 25",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
     }
 
     #[test]

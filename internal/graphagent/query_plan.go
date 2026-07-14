@@ -1332,12 +1332,12 @@ func lastNumericCypherLimit(query string) (int, int, int, bool) {
 			continue
 		}
 		if index+1 >= len(tokens) || tokens[index+1].kind != 'n' {
-			return 0, 0, 0, false
+			continue
 		}
 		number := tokens[index+1]
 		parsed, err := strconv.Atoi(query[number.start:number.end])
 		if err != nil {
-			return 0, 0, 0, false
+			continue
 		}
 		value, valueStart, valueEnd, found = parsed, number.start, number.end, true
 	}
