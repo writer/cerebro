@@ -1,6 +1,7 @@
 package codegencatalog
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,7 @@ func TestCatalogValidateRejectsDuplicateFamilies(t *testing.T) {
 		Outputs:   []string{"gen"},
 	}
 	catalog := Catalog{APIVersion: APIVersion, Kind: Kind, Families: []Family{family, family}}
-	if err := catalog.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate family id") {
+	if err := catalog.Validate(); !errors.Is(err, ErrInvalidCatalog) {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }

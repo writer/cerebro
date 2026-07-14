@@ -16,6 +16,8 @@ const (
 	Kind       = "CodegenCatalog"
 )
 
+var ErrInvalidCatalog = errors.New("invalid codegen catalog")
+
 type Catalog struct {
 	APIVersion string   `json:"api_version"`
 	Kind       string   `json:"kind"`
@@ -114,7 +116,7 @@ func (c Catalog) Validate() error {
 		}
 	}
 	if len(issues) > 0 {
-		return errors.New("invalid codegen catalog: " + strings.Join(issues, "; "))
+		return fmt.Errorf("%w: %s", ErrInvalidCatalog, strings.Join(issues, "; "))
 	}
 	return nil
 }
