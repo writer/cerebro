@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,30 +113,65 @@ func TestIncompleteManifestFailsWithoutTerminalResult(t *testing.T) {
 	}
 }
 
-func TestAssessmentRunnerDoesNotReexecuteTerminalRun(t *testing.T) {
+func TestAssessmentRecoveryPreservesTerminalRunJobState(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
-	for _, state := range []string{RunComplete, RunFailed, RunCancelled, RunSuperseded} {
-		state := state
-		t.Run(state, func(t *testing.T) {
+	now := time.Now().UTC()
+	for _, test := range []struct {
+		runState     string
+		jobState     string
+		failureClass string
+	}{
+		{runState: RunComplete, jobState: ports.JobStatusCompleted},
+		{runState: RunFailed, jobState: ports.JobStatusFailed, failureClass: platformjobs.JobFailurePermanent},
+		{runState: RunCancelled, jobState: ports.JobStatusCancelled, failureClass: platformjobs.JobFailureCancelled},
+		{runState: RunSuperseded, jobState: ports.JobStatusCancelled, failureClass: platformjobs.JobFailureCancelled},
+	} {
+		test := test
+		t.Run(test.runState, func(t *testing.T) {
 			store := newRunStore()
-			run := AssessmentRun{ID: "run-1", TenantID: "tenant-1", State: state, Version: 3}
+			run := AssessmentRun{ID: "run-1", TenantID: "tenant-1", State: test.runState, Version: 3, FailureCode: "terminal"}
 			store.runs[runKey(run.TenantID, run.ID)] = run
 			collector := &testCollector{err: errors.New("terminal run was re-executed")}
-			service := NewAssessmentService(store, &runLog{}, platformjobs.New(newRunJobStore(now)), collector)
+			jobStore := newRunJobStore(now)
+			jobStore.jobs["job-1"] = &ports.Job{
+				ID: "job-1", Kind: JobKindComplianceAssessment, Status: ports.JobStatusRunning,
+				TenantID: run.TenantID, Payload: map[string]any{"run_id": run.ID},
+				Attempt: 1, LeaseOwner: "expired-worker", LeaseExpiresAt: now.Add(-time.Minute),
+			}
+			jobs := platformjobs.New(jobStore).WithLeaseTiming(time.Second, 100*time.Millisecond)
+			service := NewAssessmentService(store, &runLog{}, jobs, collector)
+			jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
 
-			result, refs, err := service.Runner()(context.Background(), &ports.Job{
-				TenantID: run.TenantID,
-				Payload:  map[string]any{"run_id": run.ID},
-			}, nil)
-			if err != nil {
-				t.Fatalf("Runner() error = %v", err)
+			count, err := jobs.Recover(context.Background(), 1)
+			if err != nil || count != 1 {
+				t.Fatalf("Recover() = (%d, %v), want (1, nil)", count, err)
 			}
-			if result["state"] != state || refs["assessment_run"] != run.ID {
-				t.Fatalf("Runner() = (%v, %v), want terminal state %q", result, refs, state)
+			deadline := time.Now().Add(time.Second)
+			for {
+				job, getErr := jobStore.GetJob(context.Background(), "job-1")
+				if getErr != nil {
+					t.Fatal(getErr)
+				}
+				if job.Status == test.jobState {
+					if job.Attempt != 2 {
+						t.Fatalf("job attempt = %d, want 2", job.Attempt)
+					}
+					if job.FailureClass != test.failureClass {
+						t.Fatalf("job failure class = %q, want %q", job.FailureClass, test.failureClass)
+					}
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("job status = %q, want %q", job.Status, test.jobState)
+				}
+				time.Sleep(5 * time.Millisecond)
 			}
-			if collector.calls != 0 {
-				t.Fatalf("collector calls = %d, want 0", collector.calls)
+			if collector.calls.Load() != 0 {
+				t.Fatalf("collector calls = %d, want 0", collector.calls.Load())
+			}
+			persisted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+			if err != nil || persisted.State != test.runState || persisted.Version != run.Version {
+				t.Fatalf("terminal run = (%#v, %v), want unchanged %q", persisted, err, test.runState)
 			}
 		})
 	}
@@ -290,11 +326,11 @@ type testCollector struct {
 	manifest InputManifest
 	results  []ObjectiveResult
 	err      error
-	calls    int
+	calls    atomic.Int32
 }
 
 func (c *testCollector) Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error) {
-	c.calls++
+	c.calls.Add(1)
 	return c.manifest, append([]ObjectiveResult(nil), c.results...), c.err
 }
 
@@ -480,8 +516,29 @@ func (s *runJobStore) UpdateJob(_ context.Context, id string, update ports.JobUp
 	if job == nil {
 		return nil, ports.ErrJobNotFound
 	}
+	if len(update.AllowedStatuses) > 0 && !runJobStatusAllowed(update.AllowedStatuses, job.Status) {
+		return nil, ports.ErrJobUpdateConflict
+	}
+	if update.ExpectedLeaseOwner != "" && update.ExpectedLeaseOwner != job.LeaseOwner {
+		return nil, ports.ErrJobUpdateConflict
+	}
+	if update.RequireNotCancelled && job.CancelRequested {
+		return nil, ports.ErrJobUpdateConflict
+	}
 	if update.Status != "" {
 		job.Status = update.Status
+	}
+	if update.Progress != nil {
+		job.Progress = *update.Progress
+	}
+	if update.Message != "" {
+		job.Message = update.Message
+	}
+	if update.Error != "" {
+		job.Error = update.Error
+	}
+	if update.FailureClass != "" {
+		job.FailureClass = update.FailureClass
 	}
 	job.Result = update.Result
 	job.ResultRefs = update.ResultRefs
@@ -491,6 +548,14 @@ func (s *runJobStore) UpdateJob(_ context.Context, id string, update ports.JobUp
 	if update.FinishedAt != nil {
 		job.FinishedAt = *update.FinishedAt
 	}
+	if update.CancelRequested != nil {
+		job.CancelRequested = *update.CancelRequested
+	}
+	if update.ClearLease {
+		job.LeaseOwner = ""
+		job.LeaseExpiresAt = time.Time{}
+		job.HeartbeatAt = time.Time{}
+	}
 	return cloneRunJob(job), nil
 }
 func (s *runJobStore) AppendJobEvent(_ context.Context, event ports.JobEvent) (*ports.JobEvent, error) {
@@ -498,6 +563,70 @@ func (s *runJobStore) AppendJobEvent(_ context.Context, event ports.JobEvent) (*
 }
 func (s *runJobStore) ListJobEvents(context.Context, string, uint32) ([]*ports.JobEvent, error) {
 	return nil, nil
+}
+func (s *runJobStore) ClaimJob(_ context.Context, request ports.JobClaimRequest) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job := s.jobs[request.JobID]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	claimable := job.Status == ports.JobStatusQueued || (job.Status == ports.JobStatusRunning && !job.LeaseExpiresAt.After(request.Now))
+	if !claimable || job.CancelRequested {
+		return nil, ports.ErrJobLeaseConflict
+	}
+	job.Status = ports.JobStatusRunning
+	job.Attempt++
+	job.LeaseOwner = request.Owner
+	job.LeaseExpiresAt = request.Now.Add(request.TTL)
+	job.HeartbeatAt = request.Now
+	return cloneRunJob(job), nil
+}
+func (s *runJobStore) RenewJobLease(_ context.Context, request ports.JobLeaseRenewRequest) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job := s.jobs[request.JobID]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	if job.Status != ports.JobStatusRunning || job.LeaseOwner != request.Owner {
+		return nil, ports.ErrJobLeaseConflict
+	}
+	job.LeaseExpiresAt = request.Now.Add(request.TTL)
+	job.HeartbeatAt = request.Now
+	return cloneRunJob(job), nil
+}
+func (s *runJobStore) RecoverJobs(_ context.Context, request ports.JobRecoveryRequest) ([]*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := request.Limit
+	if limit == 0 {
+		limit = 100
+	}
+	result := make([]*ports.Job, 0, limit)
+	for _, job := range s.jobs {
+		if job.Status == ports.JobStatusRunning && !job.LeaseExpiresAt.After(request.Now) {
+			job.Status = ports.JobStatusQueued
+			job.LeaseOwner = ""
+			job.LeaseExpiresAt = time.Time{}
+			job.HeartbeatAt = time.Time{}
+		}
+		if job.Status == ports.JobStatusQueued && !job.CancelRequested {
+			result = append(result, cloneRunJob(job))
+			if uint32(len(result)) == limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+func runJobStatusAllowed(allowed []string, status string) bool {
+	for _, candidate := range allowed {
+		if candidate == status {
+			return true
+		}
+	}
+	return false
 }
 func cloneRunJob(job *ports.Job) *ports.Job {
 	if job == nil {
