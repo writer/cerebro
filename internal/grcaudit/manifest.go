@@ -145,6 +145,11 @@ func BuildPackageManifest(request PackageManifestRequest) (PackageManifest, erro
 
 // VerifyPackageManifest validates canonical fields and detects altered semantic content.
 func VerifyPackageManifest(manifest PackageManifest) error {
+	_, err := verifiedPackageManifest(manifest)
+	return err
+}
+
+func verifiedPackageManifest(manifest PackageManifest) (PackageManifest, error) {
 	rebuilt, err := BuildPackageManifest(PackageManifestRequest{
 		PackageID:         manifest.PackageID,
 		TenantID:          manifest.TenantID,
@@ -157,20 +162,21 @@ func VerifyPackageManifest(manifest PackageManifest) error {
 		Entries:           manifest.Entries,
 	})
 	if err != nil {
-		return err
+		return PackageManifest{}, err
 	}
 	if manifest.SchemaVersion != rebuilt.SchemaVersion || manifest.SemanticDigest != rebuilt.SemanticDigest {
-		return ErrManifestDigestMismatch
+		return PackageManifest{}, ErrManifestDigestMismatch
 	}
-	return nil
+	return rebuilt, nil
 }
 
 // CanonicalPackageManifestBytes returns the stable bytes covered by a signature.
 func CanonicalPackageManifestBytes(manifest PackageManifest) ([]byte, error) {
-	if err := VerifyPackageManifest(manifest); err != nil {
+	canonical, err := verifiedPackageManifest(manifest)
+	if err != nil {
 		return nil, err
 	}
-	payload, err := json.Marshal(manifest)
+	payload, err := json.Marshal(canonical)
 	if err != nil {
 		return nil, fmt.Errorf("encode package manifest: %w", err)
 	}
