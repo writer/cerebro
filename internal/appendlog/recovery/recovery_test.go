@@ -53,7 +53,7 @@ func TestAppendRecordsExhaustedPublish(t *testing.T) {
 }
 
 func TestDeadLetterDiagnosticDoesNotPersistWrappedError(t *testing.T) {
-	secret := "Bearer test-sensitive-value"
+	secret := "Bearer test-sensitive-value" // #nosec G101 -- credential-shaped test data verifies diagnostic redaction.
 	diagnostic := deadLetterDiagnostic(&ports.AppendLogPublishExhaustedError{
 		Subject:       "sec.findings.v1.recorded",
 		ErrorCategory: "no_response",
