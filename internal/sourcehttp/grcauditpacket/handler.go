@@ -42,6 +42,7 @@ func (h *HTTPHandler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	request := struct {
 		FindingID  string   `json:"finding_id"`
 		Supersedes []string `json:"supersedes,omitempty"`
@@ -59,19 +60,19 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	preview, err := h.preview(r, request.FindingID)
 	if err == nil {
-		preview, err = grcauditpacket.Freeze(r.Context(), store, preview, request.Supersedes, func(tenantID string) bool { return h.tenantAllowed(r.Context(), tenantID) })
+		preview, err = grcauditpacket.Freeze(ctx, store, preview, request.Supersedes, func(tenantID string) bool { return h.tenantAllowed(ctx, tenantID) })
 	}
 	var event *cerebrov1.EventEnvelope
 	if err == nil {
 		event, err = grcauditpacket.RecordedEvent(preview)
 	}
 	if err == nil {
-		if appendErr := h.appendLog.Append(r.Context(), event); appendErr != nil {
+		if appendErr := h.appendLog.Append(ctx, event); appendErr != nil {
 			err = fmt.Errorf("%w: append audit packet receipt", findings.ErrRuntimeUnavailable)
 		}
 	}
 	if err == nil {
-		if _, projectionErr := store.ApplyAuditProjectionEvent(r.Context(), event); projectionErr != nil {
+		if _, projectionErr := store.ApplyAuditProjectionEvent(ctx, event); projectionErr != nil {
 			err = fmt.Errorf("%w: project audit packet receipt", findings.ErrRuntimeUnavailable)
 		}
 	}
@@ -84,12 +85,12 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) Get(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	h.write(w, http.StatusOK, packet, err)
 }
 
 func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -106,10 +107,10 @@ func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
 	for _, gap := range packet.Gaps {
 		markdown += fmt.Sprintf("- Gap `%s`: %s\n", gap.Code, gap.Message)
 	}
-	_, _ = w.Write([]byte(markdown))
+	_, _ = w.Write([]byte(markdown)) // #nosec G705 -- the response is a nosniff text/markdown attachment, not browser-rendered HTML.
 }
 
-func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {
+func (h *HTTPHandler) load(ctx context.Context, r *http.Request) (grcauditpacket.Packet, error) {
 	packetID := strings.TrimSpace(r.PathValue("packetID"))
 	if packetID == "" {
 		return grcauditpacket.Packet{}, h.invalid(fmt.Errorf("packet id is required"))
@@ -118,7 +119,7 @@ func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {
 	if !ok {
 		return grcauditpacket.Packet{}, findings.ErrRuntimeUnavailable
 	}
-	return grcauditpacket.Load(r.Context(), store, packetID, func(tenantID string) bool { return h.tenantAllowed(r.Context(), tenantID) })
+	return grcauditpacket.Load(ctx, store, packetID, func(tenantID string) bool { return h.tenantAllowed(ctx, tenantID) })
 }
 
 func (h *HTTPHandler) write(w http.ResponseWriter, status int, packet grcauditpacket.Packet, err error) {
