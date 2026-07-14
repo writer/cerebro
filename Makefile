@@ -422,18 +422,14 @@ graph-action-check: rust-fmt-check rust-clippy rust-test ## Verify generated gra
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
-	$(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
+	RUSTFLAGS="--remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
 	cp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
 	chmod 0644 "$(STATIC_VALIDATOR_WASM)"
 
 graphagent-static-validator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded static Cypher validator is current.
 	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator -- -D warnings
-	$(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
-	@if [ "$$(uname -s)" = "Linux" ]; then \
-		cmp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"; \
-	else \
-		echo "skipping validator artifact byte comparison outside Linux; CI verifies the checked-in artifact"; \
-	fi
+	RUSTFLAGS="--remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
+	cmp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
 
 finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DSL YAML.
 	go run ./tools/findingdsl --migrate-policies --write
