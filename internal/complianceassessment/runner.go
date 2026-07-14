@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,25 +16,6 @@ import (
 )
 
 const resultChunkSize = 250
-
-func sortResults(results []ObjectiveResult) {
-	sort.Slice(results, func(i, j int) bool {
-		left, right := results[i], results[j]
-		return left.ControlRef.FrameworkID+"\x00"+left.ControlRef.ControlID+"\x00"+left.ObjectiveID+"\x00"+left.ID <
-			right.ControlRef.FrameworkID+"\x00"+right.ControlRef.ControlID+"\x00"+right.ObjectiveID+"\x00"+right.ID
-	})
-}
-
-func normalizeAndSortResults(results []ObjectiveResult) error {
-	for index := range results {
-		results[index] = NormalizeResult(results[index])
-		if err := ValidateObjectiveResult(results[index]); err != nil {
-			return fmt.Errorf("results[%d]: %w", index, err)
-		}
-	}
-	sortResults(results)
-	return nil
-}
 
 func (s *Service) Runner() platformjobs.Runner {
 	return func(ctx context.Context, job *ports.Job, jobs *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -100,11 +80,15 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err := s.appendRun(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "input_manifest_recorded", run, expectedVersion); err != nil {
 			return nil, nil, err
 		}
-		if err := normalizeAndSortResults(results); err != nil {
+		results, err = canonicalResultSet(results)
+		if err != nil {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_invalid")
 		}
-		resultHash, err := s.appendResultChunks(ctx, run, results)
+		resultHash, err := CanonicalResultSetDigest(results)
 		if err != nil {
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_hash_failed")
+		}
+		if err := s.appendResultChunks(ctx, run, results); err != nil {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_projection_failed")
 		}
 		expectedVersion = run.Version
@@ -120,11 +104,7 @@ func (s *Service) Runner() platformjobs.Runner {
 	}
 }
 
-func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, results []ObjectiveResult) (string, error) {
-	resultHash, err := CanonicalResultSetDigest(results)
-	if err != nil {
-		return "", err
-	}
+func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, results []ObjectiveResult) error {
 	previous := ""
 	for start := 0; start < len(results); start += resultChunkSize {
 		end := start + resultChunkSize
@@ -134,11 +114,11 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 		chunkResults := append([]ObjectiveResult(nil), results[start:end]...)
 		payload, err := canonicalBytes(chunkResults)
 		if err != nil {
-			return "", err
+			return err
 		}
 		chunkCount, err := boundedChunkCount(len(chunkResults))
 		if err != nil {
-			return "", err
+			return err
 		}
 		chunk := ResultChunk{
 			RunID: run.ID, Sequence: uint32(start/resultChunkSize + 1),
@@ -148,7 +128,7 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 		}
 		encoded, err := json.Marshal(chunk)
 		if err != nil {
-			return "", err
+			return err
 		}
 		event, err := workflowevents.NewComplianceAggregateEvent(workflowevents.ComplianceAggregateRecorded{
 			Kind: workflowevents.EventKindComplianceResultChunkRecorded, TenantID: run.TenantID,
@@ -158,17 +138,17 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 			ActorID: run.RequestedBy, RecordedAt: CanonicalTime(s.now()).Format(time.RFC3339Nano),
 		})
 		if err != nil {
-			return "", err
+			return err
 		}
 		if err := s.log.Append(ctx, event); err != nil {
-			return "", fmt.Errorf("append result chunk: %w", err)
+			return fmt.Errorf("append result chunk: %w", err)
 		}
 		if err := s.store.ApplyResultChunk(ctx, event.GetId(), run.TenantID, chunk); err != nil {
-			return "", fmt.Errorf("project result chunk: %w", err)
+			return fmt.Errorf("project result chunk: %w", err)
 		}
 		previous = chunk.Digest
 	}
-	return resultHash, nil
+	return nil
 }
 
 func digestResultChunkPayload(previous string, payload []byte) string {

@@ -187,21 +187,6 @@ func VerifyDeterministicReplay(ctx context.Context, input ReplayVerificationInpu
 	return receipt, nil
 }
 
-func CanonicalResultSetDigest(values []ObjectiveResult) (string, error) {
-	if len(values) == 0 {
-		return "", errors.New("at least one objective result is required")
-	}
-	values = append([]ObjectiveResult(nil), values...)
-	if err := normalizeAndSortResults(values); err != nil {
-		return "", err
-	}
-	data, err := canonicalBytes(values)
-	if err != nil {
-		return "", err
-	}
-	return digestBytes(data), nil
-}
-
 func RevisionArtifactKey(revision ManifestRevision) string {
 	return strings.TrimSpace(revision.Kind) + "\x00" + strings.TrimSpace(revision.ID) + "\x00" + strings.TrimSpace(revision.RevisionID)
 }

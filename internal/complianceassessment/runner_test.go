@@ -2,6 +2,8 @@ package complianceassessment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -24,10 +26,11 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	jobStore := newRunJobStore(now)
 	jobs := platformjobs.New(jobStore)
 	results := validResults(now, 1205)
-	results[0].ID = "result-z"
-	results[0].ControlRef.FrameworkID = "framework-a"
-	results[1].ID = "result-a"
-	results[1].ControlRef.FrameworkID = "framework-z"
+	for index := range results {
+		// Keep result identity order intentionally different from objective order.
+		// Replay hashing must use the runtime's canonical assessment identity.
+		results[index].ID = fmt.Sprintf("result-%04d", len(results)-index)
+	}
 	collector := &testCollector{manifest: completeManifest(now), results: results}
 	service := NewAssessmentService(store, log, jobs, collector)
 	service.now = func() time.Time { return now }
@@ -67,16 +70,48 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 			t.Fatalf("chunk %d previous digest mismatch", chunk.Sequence)
 		}
 	}
-	projectedResults := make([]ObjectiveResult, 0, completed.ResultCount)
+	storedResults := make([]ObjectiveResult, 0, completed.ResultCount)
+	storedHash := sha256.New()
 	for _, chunk := range chunks {
-		projectedResults = append(projectedResults, chunk.Results...)
+		storedResults = append(storedResults, chunk.Results...)
+		payload, encodeErr := canonicalBytes(chunk.Results)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		_, _ = storedHash.Write(payload)
 	}
-	expectedResultHash, err := CanonicalResultSetDigest(projectedResults)
+	chunkDigest := "sha256:" + hex.EncodeToString(storedHash.Sum(nil))
+	if chunkDigest == completed.AutomatedResultHash {
+		t.Fatalf("AutomatedResultHash = concatenated chunk digest %q, want one canonical result-set digest", chunkDigest)
+	}
+	canonicalResults, err := canonicalResultSet(storedResults)
 	if err != nil {
-		t.Fatalf("CanonicalResultSetDigest() error = %v", err)
+		t.Fatal(err)
 	}
-	if completed.AutomatedResultHash != expectedResultHash {
-		t.Fatalf("AutomatedResultHash = %q, want canonical result-set digest %q", completed.AutomatedResultHash, expectedResultHash)
+	canonicalPayload, err := canonicalBytes(canonicalResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wholeSetDigest := digestBytes(canonicalPayload)
+	if completed.AutomatedResultHash != wholeSetDigest {
+		t.Fatalf("AutomatedResultHash = %q, want whole result-set digest %q", completed.AutomatedResultHash, wholeSetDigest)
+	}
+	storedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedDigest != completed.AutomatedResultHash {
+		t.Fatalf("stored result digest = %q, want %q", storedDigest, completed.AutomatedResultHash)
+	}
+	for left, right := 0, len(storedResults)-1; left < right; left, right = left+1, right-1 {
+		storedResults[left], storedResults[right] = storedResults[right], storedResults[left]
+	}
+	permutedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permutedDigest != completed.AutomatedResultHash {
+		t.Fatalf("permuted result digest = %q, want %q", permutedDigest, completed.AutomatedResultHash)
 	}
 }
 
