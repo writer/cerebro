@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/wasmjson"
@@ -30,6 +31,25 @@ type ContextInput struct {
 	DefendTacticValues      []string `json:"defend_tactic_values,omitempty"`
 	DefendTechniqueValues   []string `json:"defend_technique_values,omitempty"`
 	DefendArtifactValues    []string `json:"defend_artifact_values,omitempty"`
+}
+
+// HasValues reports whether the input contains MITRE metadata to normalize.
+func (input ContextInput) HasValues() bool {
+	for _, values := range [][]string{
+		input.AttackTacticValues,
+		input.AttackTechniqueValues,
+		input.AttackTechniqueIDValues,
+		input.DefendTacticValues,
+		input.DefendTechniqueValues,
+		input.DefendArtifactValues,
+	} {
+		for _, value := range values {
+			if strings.TrimSpace(value) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Context is one normalized MITRE ATT&CK and D3FEND metadata batch.

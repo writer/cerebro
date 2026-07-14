@@ -4,9 +4,36 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/wasmjson"
 )
+
+func TestContextInputHasValues(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input ContextInput
+		want  bool
+	}{
+		{name: "empty", input: ContextInput{}, want: false},
+		{name: "blank", input: ContextInput{AttackTacticValues: []string{"", " \t"}}, want: false},
+		{name: "attack tactic", input: ContextInput{AttackTacticValues: []string{"TA0001"}}, want: true},
+		{name: "attack technique", input: ContextInput{AttackTechniqueValues: []string{"T1190"}}, want: true},
+		{name: "attack technique ID", input: ContextInput{AttackTechniqueIDValues: []string{"T1562.001"}}, want: true},
+		{name: "defend tactic", input: ContextInput{DefendTacticValues: []string{"d3f:Model"}}, want: true},
+		{name: "defend technique", input: ContextInput{DefendTechniqueValues: []string{"d3f:ProcessTermination"}}, want: true},
+		{name: "defend artifact", input: ContextInput{DefendArtifactValues: []string{"d3f:Credential"}}, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := test.input.HasValues(); got != test.want {
+				t.Fatalf("HasValues() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
 
 func TestContextEvaluatorMatchesGoOracle(t *testing.T) {
 	t.Parallel()
@@ -89,14 +116,13 @@ func TestContextEvaluatorRejectsMalformedAndOversizedInput(t *testing.T) {
 	if _, err := runContextEvaluator(context.Background(), []byte("{")); !errors.Is(err, ErrEvaluatorUnavailable) {
 		t.Fatalf("runContextEvaluator(malformed) error = %v; want ErrEvaluatorUnavailable", err)
 	}
-	marker := "metadata-marker-that-must-not-be-logged"
-	oversized := []byte(marker + strings.Repeat("x", contextEvaluatorMaxInput))
+	oversized := make([]byte, contextEvaluatorMaxInput+1)
 	_, err := runContextEvaluator(context.Background(), oversized)
 	if !errors.Is(err, ErrEvaluatorUnavailable) {
 		t.Fatalf("runContextEvaluator(oversized) error = %v; want ErrEvaluatorUnavailable", err)
 	}
-	if strings.Contains(err.Error(), marker) {
-		t.Fatalf("oversized input error exposed metadata: %v", err)
+	if !errors.Is(err, wasmjson.ErrInputTooLarge) {
+		t.Fatalf("runContextEvaluator(oversized) error = %v; want ErrInputTooLarge", err)
 	}
 }
 
