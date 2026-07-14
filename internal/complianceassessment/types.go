@@ -458,28 +458,21 @@ func CanonicalResultDigest(value ObjectiveResult) (string, error) {
 	return digestBytes(data), nil
 }
 
-// CanonicalResultSetDigest preserves the assessment runtime's result-set hash
-// contract: normalized results are ordered by their assessment identity, split
-// at the persisted chunk boundary, and each canonical chunk payload is written
-// into one SHA-256 stream.
+// CanonicalResultSetDigest hashes one canonical array of normalized results.
+// Persisted chunk boundaries do not change the result-set identity.
 func CanonicalResultSetDigest(values []ObjectiveResult) (string, error) {
+	if len(values) == 0 {
+		return "", errors.New("at least one objective result is required")
+	}
 	values, err := canonicalResultSet(values)
 	if err != nil {
 		return "", err
 	}
-	hash := sha256.New()
-	for start := 0; start < len(values); start += resultChunkSize {
-		end := start + resultChunkSize
-		if end > len(values) {
-			end = len(values)
-		}
-		payload, err := canonicalBytes(values[start:end])
-		if err != nil {
-			return "", err
-		}
-		_, _ = hash.Write(payload)
+	payload, err := canonicalBytes(values)
+	if err != nil {
+		return "", err
 	}
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+	return digestBytes(payload), nil
 }
 
 func canonicalResultSet(values []ObjectiveResult) ([]ObjectiveResult, error) {

@@ -81,8 +81,20 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 		_, _ = storedHash.Write(payload)
 	}
 	chunkDigest := "sha256:" + hex.EncodeToString(storedHash.Sum(nil))
-	if chunkDigest != completed.AutomatedResultHash {
-		t.Fatalf("persisted chunk digest = %q, want %q", chunkDigest, completed.AutomatedResultHash)
+	if chunkDigest == completed.AutomatedResultHash {
+		t.Fatalf("AutomatedResultHash = concatenated chunk digest %q, want one canonical result-set digest", chunkDigest)
+	}
+	canonicalResults, err := canonicalResultSet(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalPayload, err := canonicalBytes(canonicalResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wholeSetDigest := digestBytes(canonicalPayload)
+	if completed.AutomatedResultHash != wholeSetDigest {
+		t.Fatalf("AutomatedResultHash = %q, want whole result-set digest %q", completed.AutomatedResultHash, wholeSetDigest)
 	}
 	storedDigest, err := CanonicalResultSetDigest(storedResults)
 	if err != nil {
