@@ -80,6 +80,11 @@ var ensureComplianceAssessmentStatements = []string{
 	`CREATE INDEX IF NOT EXISTS compliance_assessment_event_receipts_aggregate_idx ON compliance_assessment_event_receipts (tenant_id, aggregate_type, aggregate_id, aggregate_version)`,
 }
 
+const insertComplianceAssessmentResultChunk = `
+INSERT INTO compliance_assessment_result_chunks (tenant_id,run_id,sequence,first_result_id,last_result_id,result_count,previous_digest,chunk_digest,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+ON CONFLICT (tenant_id,run_id,sequence) DO NOTHING`
+
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceAssessment, "compliance_assessment", ensureComplianceAssessmentStatements)
 }
@@ -285,16 +290,18 @@ func (s *Store) ApplyResultChunk(ctx context.Context, eventID, tenantID string, 
 	if applied {
 		return tx.Commit()
 	}
-	result, err := tx.ExecContext(ctx, `
-INSERT INTO compliance_assessment_result_chunks (tenant_id,run_id,sequence,first_result_id,last_result_id,result_count,previous_digest,chunk_digest,record_json)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-ON CONFLICT (tenant_id,run_id,sequence) DO UPDATE SET record_json=EXCLUDED.record_json
-WHERE compliance_assessment_result_chunks.chunk_digest=EXCLUDED.chunk_digest`, strings.TrimSpace(tenantID), chunk.RunID, chunk.Sequence, chunk.FirstResultID, chunk.LastResultID, chunk.Count, chunk.PreviousDigest, chunk.Digest, string(recordJSON))
+	result, err := tx.ExecContext(ctx, insertComplianceAssessmentResultChunk, strings.TrimSpace(tenantID), chunk.RunID, chunk.Sequence, chunk.FirstResultID, chunk.LastResultID, chunk.Count, chunk.PreviousDigest, chunk.Digest, string(recordJSON))
 	if err != nil {
 		return fmt.Errorf("project assessment result chunk: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
-		return complianceassessment.ErrAssessmentConflict
+		var existingJSON []byte
+		if err := tx.QueryRowContext(ctx, `SELECT record_json FROM compliance_assessment_result_chunks WHERE tenant_id=$1 AND run_id=$2 AND sequence=$3`, strings.TrimSpace(tenantID), chunk.RunID, chunk.Sequence).Scan(&existingJSON); err != nil {
+			return fmt.Errorf("read existing assessment result chunk: %w", err)
+		}
+		if !assessmentResultChunkPayloadMatches(existingJSON, digest) {
+			return complianceassessment.ErrAssessmentConflict
+		}
 	}
 	if err := insertAssessmentReceipt(ctx, tx, eventID, tenantID, "assessment_result_chunk", chunk.RunID, uint64(chunk.Sequence), digest); err != nil {
 		return err
@@ -363,4 +370,13 @@ func commitAssessmentTx(tx *sql.Tx, label string) error {
 func assessmentJSONDigest(data []byte) string {
 	digest := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func assessmentResultChunkPayloadMatches(data []byte, digest string) bool {
+	var chunk complianceassessment.ResultChunk
+	if err := json.Unmarshal(data, &chunk); err != nil {
+		return false
+	}
+	canonical, err := json.Marshal(chunk)
+	return err == nil && assessmentJSONDigest(canonical) == digest
 }

@@ -109,8 +109,14 @@ func cloneQualificationInput(input QualificationInput) QualificationInput {
 	clone.Result = NormalizeResult(input.Result)
 	clone.SourceProofs = append([]SourceProof(nil), input.SourceProofs...)
 	clone.EvidenceProofs = append([]EvidenceProof(nil), input.EvidenceProofs...)
-	clone.Limitations = append([]Limitation(nil), input.Limitations...)
-	clone.RequiredReviews = append([]ReviewRequirement(nil), input.RequiredReviews...)
-	clone.Exceptions = append([]ExceptionProof(nil), input.Exceptions...)
+	if input.Limitations != nil {
+		clone.Limitations = append([]Limitation{}, input.Limitations...)
+	}
+	if input.RequiredReviews != nil {
+		clone.RequiredReviews = append([]ReviewRequirement{}, input.RequiredReviews...)
+	}
+	if input.Exceptions != nil {
+		clone.Exceptions = append([]ExceptionProof{}, input.Exceptions...)
+	}
 	return clone
 }

@@ -105,6 +105,20 @@ func TestQualifyDecisionRequiresEveryAssuranceGate(t *testing.T) {
 			},
 			reason: QualificationVerificationFailed,
 		},
+		{
+			name: "verification state omitted",
+			mutate: func(input *QualificationInput) {
+				input.Verification = VerificationProof{}
+			},
+			reason: QualificationVerificationFailed,
+		},
+		{
+			name: "failed optional verification",
+			mutate: func(input *QualificationInput) {
+				input.Verification = VerificationProof{Required: false, State: VerificationFailed, VerifiedAt: input.AsOf.Add(-time.Hour)}
+			},
+			reason: QualificationVerificationFailed,
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -161,6 +175,9 @@ func TestAssuranceCanariesAreDetectedAndCannotAuthorizeProductionUse(t *testing.
 			}
 			if !containsQualificationReason(result.Reasons, testCase.reason) {
 				t.Fatalf("reasons = %v, want %q", result.Reasons, testCase.reason)
+			}
+			if containsQualificationReason(result.Reasons, QualificationLimitationsUndeclared) {
+				t.Fatalf("declared empty limitations were lost while cloning: %v", result.Reasons)
 			}
 			if !errors.Is(result.AuthorizeAuditPacket(), ErrCanaryProductionUse) || !errors.Is(result.AuthorizeAction(), ErrCanaryProductionUse) {
 				t.Fatal("canary authorized a production packet or action")
