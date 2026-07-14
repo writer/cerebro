@@ -184,7 +184,7 @@ The site entry point is [docs/index.md](docs/index.md), and `mkdocs.yml` defines
 
 | Component | Technology |
 | --- | --- |
-| Language | Go 1.26+ with `go1.26.4` toolchain |
+| Language | Go 1.26+ with `go1.26.5` toolchain |
 | HTTP server | Go `net/http` `ServeMux` |
 | RPC | Connect |
 | CLI | Standard Go CLI under `cmd/cerebro` |
