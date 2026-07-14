@@ -105,6 +105,20 @@ func TestQualifyDecisionRequiresEveryAssuranceGate(t *testing.T) {
 			},
 			reason: QualificationVerificationFailed,
 		},
+		{
+			name: "verification state omitted",
+			mutate: func(input *QualificationInput) {
+				input.Verification = VerificationProof{}
+			},
+			reason: QualificationVerificationFailed,
+		},
+		{
+			name: "failed optional verification",
+			mutate: func(input *QualificationInput) {
+				input.Verification = VerificationProof{Required: false, State: VerificationFailed, VerifiedAt: input.AsOf.Add(-time.Hour)}
+			},
+			reason: QualificationVerificationFailed,
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {

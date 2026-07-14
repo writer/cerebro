@@ -225,7 +225,7 @@ func evaluateQualification(input QualificationInput) QualifiedDecision {
 			addReason(QualificationExceptionExpired)
 		}
 	}
-	if input.Verification.Required && (input.Verification.State != VerificationPassed || input.Verification.VerifiedAt.IsZero() || input.Verification.VerifiedAt.After(input.AsOf) || (!input.Verification.ValidUntil.IsZero() && input.Verification.ValidUntil.Before(input.AsOf))) {
+	if !verificationQualifies(input.Verification, input.AsOf) {
 		addReason(QualificationVerificationFailed)
 	}
 	decision.ProofDigest = qualificationProofDigest(input)
@@ -247,6 +247,19 @@ func evaluateQualification(input QualificationInput) QualifiedDecision {
 		decision.DecisionDigest = digestBytes(data)
 	}
 	return decision
+}
+
+func verificationQualifies(proof VerificationProof, asOf time.Time) bool {
+	proof.VerifiedAt = CanonicalTime(proof.VerifiedAt)
+	proof.ValidUntil = CanonicalTime(proof.ValidUntil)
+	switch proof.State {
+	case VerificationNotRequired:
+		return !proof.Required
+	case VerificationPassed:
+		return !proof.VerifiedAt.IsZero() && !proof.VerifiedAt.After(asOf) && (proof.ValidUntil.IsZero() || !proof.ValidUntil.Before(asOf))
+	default:
+		return false
+	}
 }
 
 func checkSourceProofs(input QualificationInput, manifest InputManifest, result ObjectiveResult, addReason func(QualificationReason)) {
