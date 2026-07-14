@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -54,4 +56,27 @@ func TestComplianceAssessmentChunkReplayRequiresExactPayload(t *testing.T) {
 	if assessmentResultChunkPayloadMatches(stored, assessmentJSONDigest(altered)) {
 		t.Fatal("altered chunk payload matched the durable record")
 	}
+}
+
+func TestComplianceAssessmentReceiptTrimsTenantID(t *testing.T) {
+	t.Parallel()
+	recorder := &assessmentReceiptRecorder{}
+	if err := insertAssessmentReceipt(context.Background(), recorder, "event-1", "  tenant-1  ", "assessment_result_chunk", "run-1", 1, "sha256:digest"); err != nil {
+		t.Fatalf("insertAssessmentReceipt() error = %v", err)
+	}
+	if len(recorder.args) != 6 {
+		t.Fatalf("receipt args = %#v, want 6 values", recorder.args)
+	}
+	if got := recorder.args[1]; got != "tenant-1" {
+		t.Fatalf("receipt tenant_id = %q, want %q", got, "tenant-1")
+	}
+}
+
+type assessmentReceiptRecorder struct {
+	args []any
+}
+
+func (r *assessmentReceiptRecorder) ExecContext(_ context.Context, _ string, args ...any) (sql.Result, error) {
+	r.args = append([]any(nil), args...)
+	return nil, nil
 }
