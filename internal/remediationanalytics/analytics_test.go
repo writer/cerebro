@@ -2,6 +2,7 @@ package remediationanalytics
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,18 @@ func TestRealizedResultRejectsModifiedPredictionReceipt(t *testing.T) {
 	}
 }
 
+func TestRealizedResultRejectsPredictedFindingAsCollateral(t *testing.T) {
+	prediction := testPrediction(t)
+	value := 10.0
+	input := verifiedRealizedInput(prediction, "", &value, prediction.CreatedAt.Add(time.Hour))
+	input.CollateralFindingIDs = []string{"finding-a"}
+
+	_, err := NewRealizedResult(input)
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("error = %v, want ErrInvalidRecord", err)
+	}
+}
+
 func TestRealizedResultRecordsOperationalVarianceAndRollback(t *testing.T) {
 	prediction := testPrediction(t)
 	value := 10.0
@@ -178,6 +191,25 @@ func TestRealizedResultRecordsOperationalVarianceAndRollback(t *testing.T) {
 	}
 	if result.EffortPredictionError != 15*time.Minute || result.CostPredictionErrorMicros != 150000 || result.CollateralPredictionError != 0.9 || result.RollbackLatency != 90*time.Minute || len(result.CollateralFindingIDs) != 2 || result.RollbackPlanDigest != prediction.RollbackPlanDigest {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestBuildBenchmarksDoesNotOverflowAbsoluteOperationalErrors(t *testing.T) {
+	prediction := testPrediction(t)
+	value := 10.0
+	input := verifiedRealizedInput(prediction, "finding-a", &value, prediction.CreatedAt.Add(time.Hour))
+	input.ActualEffort = time.Duration(math.MaxInt64)
+	input.ActualCostMicros = math.MaxInt64
+	result, err := NewRealizedResult(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	benchmark := BuildBenchmarks([]RealizedResult{result, result}, 1)[0]
+	wantEffort := time.Duration(math.MaxInt64) - prediction.PredictedEffort
+	wantCost := int64(math.MaxInt64) - prediction.PredictedCostMicros
+	if benchmark.MeanAbsoluteEffortError != wantEffort || benchmark.MeanAbsoluteCostErrorMicros != wantCost {
+		t.Fatalf("operational errors = (%s, %d), want (%s, %d)", benchmark.MeanAbsoluteEffortError, benchmark.MeanAbsoluteCostErrorMicros, wantEffort, wantCost)
 	}
 }
 

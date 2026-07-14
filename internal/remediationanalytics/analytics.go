@@ -235,8 +235,10 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 		return RealizedResult{}, fmt.Errorf("%w: realized deltas must be finite", ErrInvalidRecord)
 	}
 	collateralFindings := normalizedStrings(input.CollateralFindingIDs)
-	if overlaps(collateralFindings, closed) || overlaps(collateralFindings, matching) {
-		return RealizedResult{}, fmt.Errorf("%w: collateral findings must be distinct from predicted findings", ErrInvalidRecord)
+	for _, findingID := range collateralFindings {
+		if _, predicted := allowed[findingID]; predicted {
+			return RealizedResult{}, fmt.Errorf("%w: collateral findings must be distinct from predicted findings", ErrInvalidRecord)
+		}
 	}
 	rollbackCompletedAt := canonicalTime(input.RollbackCompletedAt)
 	if input.RolledBack && (rollbackCompletedAt.IsZero() || rollbackCompletedAt.Before(input.Prediction.CreatedAt) || rollbackCompletedAt.After(input.ObservedAt)) {
@@ -432,8 +434,8 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 		latencies := make([]time.Duration, 0, len(values))
 		closed, failed, collateral, rolledBack := 0, 0, 0, 0
 		absoluteError, errorCount, absoluteCollateralError := 0.0, 0, 0.0
-		var absoluteEffortError time.Duration
-		var absoluteCostError int64
+		absoluteEffortError := newNonNegativeMean(len(values))
+		absoluteCostError := newNonNegativeMean(len(values))
 		for _, value := range values {
 			latencies = append(latencies, value.VerificationLatency)
 			if len(value.VerifiedClosedFindingIDs) > 0 {
@@ -448,8 +450,8 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 			if value.RolledBack {
 				rolledBack++
 			}
-			absoluteEffortError += absDuration(value.EffortPredictionError)
-			absoluteCostError += absInt64(value.CostPredictionErrorMicros)
+			absoluteEffortError.add(int64(absDuration(value.EffortPredictionError)))
+			absoluteCostError.add(absInt64(value.CostPredictionErrorMicros))
 			absoluteCollateralError += math.Abs(value.CollateralPredictionError)
 			if value.RiskPredictionError != nil {
 				absoluteError += math.Abs(*value.RiskPredictionError)
@@ -458,7 +460,7 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 		}
 		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 		parts := strings.Split(key, "\x00")
-		benchmark := Benchmark{TenantID: parts[0], PlanModelVersion: parts[1], ActionType: parts[2], TargetType: parts[3], SampleSize: len(values), MinimumSampleMet: len(values) >= minimumSample, VerifiedResolutionRate: float64(closed) / float64(len(values)), VerificationFailureRate: float64(failed) / float64(len(values)), MedianVerificationLatency: latencies[(len(latencies)-1)/2], MeanAbsoluteEffortError: absoluteEffortError / time.Duration(len(values)), MeanAbsoluteCostErrorMicros: absoluteCostError / int64(len(values)), MeanAbsoluteCollateralError: absoluteCollateralError / float64(len(values)), CollateralRate: float64(collateral) / float64(len(values)), RollbackRate: float64(rolledBack) / float64(len(values))}
+		benchmark := Benchmark{TenantID: parts[0], PlanModelVersion: parts[1], ActionType: parts[2], TargetType: parts[3], SampleSize: len(values), MinimumSampleMet: len(values) >= minimumSample, VerifiedResolutionRate: float64(closed) / float64(len(values)), VerificationFailureRate: float64(failed) / float64(len(values)), MedianVerificationLatency: latencies[(len(latencies)-1)/2], MeanAbsoluteEffortError: time.Duration(absoluteEffortError.value()), MeanAbsoluteCostErrorMicros: absoluteCostError.value(), MeanAbsoluteCollateralError: absoluteCollateralError / float64(len(values)), CollateralRate: float64(collateral) / float64(len(values)), RollbackRate: float64(rolledBack) / float64(len(values))}
 		if errorCount > 0 {
 			benchmark.MeanAbsoluteRiskError = absoluteError / float64(errorCount)
 		}
@@ -613,6 +615,32 @@ func absInt64(value int64) int64 {
 		return -value
 	}
 	return value
+}
+
+type nonNegativeMean struct {
+	divisor   int64
+	quotient  int64
+	remainder int64
+}
+
+func newNonNegativeMean(sampleSize int) nonNegativeMean {
+	return nonNegativeMean{divisor: int64(sampleSize)}
+}
+
+func (mean *nonNegativeMean) add(value int64) {
+	mean.quotient += value / mean.divisor
+	remainder := value % mean.divisor
+	space := mean.divisor - mean.remainder
+	if remainder >= space {
+		mean.quotient++
+		mean.remainder = remainder - space
+		return
+	}
+	mean.remainder += remainder
+}
+
+func (mean nonNegativeMean) value() int64 {
+	return mean.quotient
 }
 func lifecycleKey(value LifecycleObservation) string {
 	return strings.Join([]string{value.TenantID, value.FindingID, value.Fingerprint}, "\x00")
