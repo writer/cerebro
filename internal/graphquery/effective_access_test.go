@@ -65,6 +65,8 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 			"capability_entity_type":  "privileged.capability",
 			"capability_label":        "Cloud administrator",
 			"assignment_kind":         "group_app_assignment",
+			"identity_relation_chain": []any{"represents_identity"},
+			"identity_edges":          effectiveAccessIdentityTestEdges(),
 			"relation_chain":          []any{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
 			"edges":                   effectiveAccessPathTestEdges(),
 		}}},
@@ -97,6 +99,9 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 		"subject:Entity {tenant_id: $tenant_id}",
 		"ORDER BY subject.label, subject.urn",
 		"principal_link.tenant_id = $tenant_id",
+		"[subject, principal] AS identity_nodes",
+		"identity_relation_chain",
+		"identity_edges",
 		"MATCH (principal)-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})",
 		"MATCH (principal)-[membership:RELATION {relation: 'member_of'}]->(mediator:Entity {tenant_id: $tenant_id})-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})",
 		"membership.tenant_id = $tenant_id",
@@ -130,8 +135,8 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 	if got := path.Edges[1].Attributes["assignment_id"]; got != "asg-1" {
 		t.Fatalf("assignment attribute = %q, want asg-1", got)
 	}
-	if !path.Lineage.Qualified || path.Lineage.CompleteEdgeCount != 4 || path.Lineage.ProofDigest == "" {
-		t.Fatalf("lineage = %#v, want four qualified edges", path.Lineage)
+	if !path.Lineage.Qualified || path.Lineage.CompleteEdgeCount != 5 || path.Lineage.ProofDigest == "" {
+		t.Fatalf("lineage = %#v, want five qualified edges", path.Lineage)
 	}
 	if result.Counts.LineageQualifiedPaths != 1 || result.Counts.LineageIncompletePaths != 0 {
 		t.Fatalf("lineage counts = %#v", result.Counts)
@@ -186,11 +191,35 @@ func TestEffectiveAccessPathLineageFailsClosedWhenAnEventIsMissing(t *testing.T)
 
 	path.Edges[1].EventID = ""
 	incomplete := path.QualifyLineage()
-	if incomplete.Qualified || incomplete.ProofDigest != "" || incomplete.CompleteEdgeCount != 3 {
+	if incomplete.Qualified || incomplete.ProofDigest != "" || incomplete.CompleteEdgeCount != 4 {
 		t.Fatalf("incomplete lineage = %#v", incomplete)
 	}
-	if len(incomplete.Gaps) != 1 || incomplete.Gaps[0].EdgeIndex != 1 || strings.Join(incomplete.Gaps[0].Fields, ",") != "event_id" {
+	if len(incomplete.Gaps) != 1 || incomplete.Gaps[0].Segment != "access" || incomplete.Gaps[0].EdgeIndex != 1 || strings.Join(incomplete.Gaps[0].Fields, ",") != "event_id" {
 		t.Fatalf("lineage gaps = %#v", incomplete.Gaps)
+	}
+}
+
+func TestEffectiveAccessPathLineageRequiresIdentityToPrincipalProof(t *testing.T) {
+	path := effectiveAccessTestPath()
+	path.IdentityRelationChain = nil
+	path.IdentityEdges = nil
+	qualification := path.QualifyLineage()
+	if qualification.Qualified || qualification.ProofDigest != "" {
+		t.Fatalf("identity-unbound lineage = %#v", qualification)
+	}
+	if len(qualification.Gaps) != 1 || qualification.Gaps[0].Segment != "identity" || qualification.Gaps[0].EdgeIndex != -1 || strings.Join(qualification.Gaps[0].Fields, ",") != "identity_path" {
+		t.Fatalf("identity gaps = %#v", qualification.Gaps)
+	}
+}
+
+func TestEffectiveAccessPathLineageAllowsIdentityAsPrincipal(t *testing.T) {
+	path := effectiveAccessTestPath()
+	path.Identity = path.Principal
+	path.IdentityRelationChain = nil
+	path.IdentityEdges = nil
+	qualification := path.QualifyLineage()
+	if !qualification.Qualified || qualification.ProofDigest == "" || qualification.EdgeCount != len(path.Edges) {
+		t.Fatalf("direct-principal lineage = %#v", qualification)
 	}
 }
 
@@ -202,7 +231,7 @@ func TestEffectiveAccessPathLineageReportsStructuralGaps(t *testing.T) {
 		t.Fatalf("structurally invalid lineage = %#v", qualification)
 	}
 	last := qualification.Gaps[len(qualification.Gaps)-1]
-	if last.EdgeIndex != -1 || strings.Join(last.Fields, ",") != "principal" {
+	if last.Segment != "access" || last.EdgeIndex != -1 || strings.Join(last.Fields, ",") != "principal" {
 		t.Fatalf("structural gaps = %#v", qualification.Gaps)
 	}
 }
@@ -315,17 +344,38 @@ func effectiveAccessPathTestEdges() []any {
 	}
 }
 
+func effectiveAccessIdentityTestEdges() []any {
+	return []any{
+		map[string]any{
+			"from_urn":         "urn:cerebro:writer:identity:email:alice@example.com",
+			"from_entity_type": "identity.email",
+			"from_label":       "alice@example.com",
+			"relation":         "represents_identity",
+			"to_urn":           "urn:cerebro:writer:okta_user:00u1",
+			"to_entity_type":   "okta.user",
+			"to_label":         "alice@example.com",
+			"source_id":        "okta",
+			"runtime_id":       "writer-okta",
+			"attributes_json":  `{"event_id":"evt-identity","at":"2026-06-10T16:00:00Z"}`,
+		},
+	}
+}
+
 func effectiveAccessTestPath() EffectiveAccessPath {
 	mediator := GraphEntityRef{URN: "urn:cerebro:writer:okta_group:grp-security", EntityType: "okta.group", Label: "Security Engineering"}
 	path := EffectiveAccessPath{
-		Identity:       GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com", EntityType: "identity.email", Label: "alice@example.com"},
-		Principal:      GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1", EntityType: "okta.user", Label: "alice@example.com"},
-		Mediator:       &mediator,
-		AccessTarget:   GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin", EntityType: "okta.application", Label: "AWS Admin Console"},
-		Entitlement:    GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess", EntityType: "okta.entitlement", Label: "AdministratorAccess"},
-		Capability:     GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin", EntityType: "privileged.capability", Label: "Cloud administrator"},
-		AssignmentKind: "group_app_assignment",
-		RelationChain:  []string{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
+		Identity:              GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com", EntityType: "identity.email", Label: "alice@example.com"},
+		Principal:             GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1", EntityType: "okta.user", Label: "alice@example.com"},
+		Mediator:              &mediator,
+		AccessTarget:          GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin", EntityType: "okta.application", Label: "AWS Admin Console"},
+		Entitlement:           GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess", EntityType: "okta.entitlement", Label: "AdministratorAccess"},
+		Capability:            GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin", EntityType: "privileged.capability", Label: "Cloud administrator"},
+		AssignmentKind:        "group_app_assignment",
+		IdentityRelationChain: []string{"represents_identity"},
+		IdentityEdges: []EffectiveAccessPathEdge{
+			{From: GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com"}, Relation: "represents_identity", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-identity", At: "2026-06-10T16:00:00Z"},
+		},
+		RelationChain: []string{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
 		Edges: []EffectiveAccessPathEdge{
 			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1"}, Relation: "member_of", To: mediator, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-member", At: "2026-06-10T17:00:00Z"},
 			{From: mediator, Relation: "assigned_to", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-assign", At: "2026-06-10T18:00:00Z"},
