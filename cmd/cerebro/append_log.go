@@ -117,7 +117,7 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 	}
 	if err := appendWithDeadLetterReplayLease(ctx, deps.AppendLog, store, id, token, record.Event); err != nil {
 		if releaseErr := store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "append_failed"); releaseErr != nil {
-			return fmt.Errorf("replay append log dead letter %q: %w (release claim: %v)", id, err, releaseErr)
+			return fmt.Errorf("replay append log dead letter %q: %w", id, errors.Join(err, fmt.Errorf("release claim: %w", releaseErr)))
 		}
 		return fmt.Errorf("replay append log dead letter %q: %w", id, err)
 	}

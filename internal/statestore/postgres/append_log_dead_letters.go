@@ -222,11 +222,11 @@ func (s *Store) RenewAppendLogDeadLetterReplay(ctx context.Context, id string, t
 	if lease < time.Second {
 		return errors.New("append log dead letter replay lease must be at least one second")
 	}
-	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, `replay_lease_expires_at = NOW() + ($3 * INTERVAL '1 second'), updated_at = NOW()`, int64(lease/time.Second))
+	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, renewAppendLogDeadLetterReplaySQL, int64(lease/time.Second))
 }
 
 func (s *Store) CompleteAppendLogDeadLetterReplay(ctx context.Context, id string, token string) error {
-	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, `status = 'replayed', replayed_at = NOW(), replay_owner = '', replay_token = '', replay_lease_expires_at = NULL, last_replay_finished_at = NOW(), last_replay_error_category = '', updated_at = NOW()`)
+	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, completeAppendLogDeadLetterReplaySQL)
 }
 
 func (s *Store) ReleaseAppendLogDeadLetterReplay(ctx context.Context, id string, token string, errorCategory string) error {
@@ -234,10 +234,22 @@ func (s *Store) ReleaseAppendLogDeadLetterReplay(ctx context.Context, id string,
 	if len(errorCategory) > 64 {
 		errorCategory = errorCategory[:64]
 	}
-	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, `replay_owner = '', replay_token = '', replay_lease_expires_at = NULL, last_replay_finished_at = NOW(), last_replay_error_category = $3, updated_at = NOW()`, errorCategory)
+	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, releaseAppendLogDeadLetterReplaySQL, errorCategory)
 }
 
-func (s *Store) updateAppendLogDeadLetterReplayClaim(ctx context.Context, id string, token string, assignments string, extra ...any) error {
+const renewAppendLogDeadLetterReplaySQL = `UPDATE append_log_dead_letters
+SET replay_lease_expires_at = NOW() + ($3 * INTERVAL '1 second'), updated_at = NOW()
+WHERE id = $1 AND status = 'pending' AND replay_token = $2 AND replay_lease_expires_at > NOW()`
+
+const completeAppendLogDeadLetterReplaySQL = `UPDATE append_log_dead_letters
+SET status = 'replayed', replayed_at = NOW(), replay_owner = '', replay_token = '', replay_lease_expires_at = NULL, last_replay_finished_at = NOW(), last_replay_error_category = '', updated_at = NOW()
+WHERE id = $1 AND status = 'pending' AND replay_token = $2 AND replay_lease_expires_at > NOW()`
+
+const releaseAppendLogDeadLetterReplaySQL = `UPDATE append_log_dead_letters
+SET replay_owner = '', replay_token = '', replay_lease_expires_at = NULL, last_replay_finished_at = NOW(), last_replay_error_category = $3, updated_at = NOW()
+WHERE id = $1 AND status = 'pending' AND replay_token = $2 AND replay_lease_expires_at > NOW()`
+
+func (s *Store) updateAppendLogDeadLetterReplayClaim(ctx context.Context, id string, token string, query string, extra ...any) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -251,7 +263,6 @@ func (s *Store) updateAppendLogDeadLetterReplayClaim(ctx context.Context, id str
 	}
 	args := []any{id, token}
 	args = append(args, extra...)
-	query := `UPDATE append_log_dead_letters SET ` + assignments + ` WHERE id = $1 AND status = 'pending' AND replay_token = $2 AND replay_lease_expires_at > NOW()`
 	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("update append log dead letter %q replay claim: %w", id, err)
