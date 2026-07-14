@@ -35,9 +35,26 @@ The replayable envelope remains in Postgres. Production deployments must provide
 
 These limits are defaults. A deployment may set lower limits. Raising a hard limit requires a recorded policy change and confirmed database headroom.
 
+The recovery writer obtains one Postgres transaction advisory lock, reads the
+current pending count and bytes, applies an insert or replacement projection,
+and writes the record in the same transaction. A projected count or byte value
+above either hard limit rejects the record. Existing terminal records remain
+terminal and do not consume new pending capacity.
+
 ## Audited Actions
 
-Replay, discard, forced pending purge, and retention-policy changes record the authenticated actor, action, reason, record ID or policy revision, and timestamp. Claim tokens and event envelopes are excluded from audit payloads.
+Replay and discard record the operator-supplied actor, action, reason, record ID,
+and timestamp in the same transaction as the state transition. Claim tokens and
+event envelopes are excluded from audit payloads.
+
+Cerebro does not currently expose forced pending purge. The available CLI does
+not carry a verified principal, so accepting its `actor` value for destructive
+pending deletion would not satisfy the authenticated-actor requirement. Add
+forced pending purge only through an admin-gated API or maintenance job that
+derives the actor from the authenticated request context and commits one audit
+row per deleted record. Until that path exists, resolve hard-limit incidents by
+restoring publication, replaying or discarding pending records, and cleaning up
+terminal records.
 
 ## Recovery Procedure
 

@@ -205,7 +205,7 @@ func (s *recordingStore) RenewAppendLogDeadLetterReplay(context.Context, string,
 	return nil
 }
 
-func (s *recordingStore) CompleteAppendLogDeadLetterReplay(context.Context, string, string) error {
+func (s *recordingStore) CompleteAppendLogDeadLetterReplay(context.Context, string, string, string, string) error {
 	return nil
 }
 
@@ -213,7 +213,7 @@ func (s *recordingStore) ReleaseAppendLogDeadLetterReplay(context.Context, strin
 	return nil
 }
 
-func (s *recordingStore) DiscardAppendLogDeadLetter(context.Context, string, string) error {
+func (s *recordingStore) DiscardAppendLogDeadLetter(context.Context, string, string, string) error {
 	return nil
 }
 

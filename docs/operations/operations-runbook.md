@@ -126,7 +126,7 @@ If publish retries exhaust, check the recovery table before advancing runtime wo
 After JetStream publish health is restored, replay one record:
 
 ```bash
-./bin/cerebro append-log dead-letters replay <dead-letter-id>
+./bin/cerebro append-log dead-letters replay <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
 
 Replay first claims the pending record with a two-minute ownership lease. A
@@ -138,7 +138,7 @@ while holding a claim leaves the record recoverable after lease expiry.
 Discard a record only after confirming the event should not be replayed:
 
 ```bash
-./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+./bin/cerebro append-log dead-letters discard <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
 
 Dead-letter IDs are deterministic for the subject, event ID, and payload. If the
@@ -151,6 +151,7 @@ Delete replayed or discarded records after the retention window:
 ```bash
 ./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
 ./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 after_id=<next-after-id> limit=100
+./bin/cerebro append-log dead-letters cleanup actor=oncall@example.com reason=scheduled-retention limit=100
 ```
 
 Each committed deletion has an audit row with the actor and reason. Cleanup

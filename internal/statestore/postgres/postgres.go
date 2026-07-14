@@ -49,8 +49,9 @@ type grcTablesReady struct {
 }
 
 type appendLogTablesReady struct {
-	runtimeIndex bool
-	deadLetters  bool
+	runtimeIndex     bool
+	deadLetters      bool
+	deadLetterPolicy config.StateStoreConfig
 }
 
 // Store is the Postgres-backed current-state store implementation.
@@ -104,7 +105,7 @@ func Open(cfg config.StateStoreConfig) (*Store, error) {
 	if cfg.PostgresConnMaxIdleTime > 0 {
 		db.SetConnMaxIdleTime(cfg.PostgresConnMaxIdleTime)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, appendLog: appendLogTablesReady{deadLetterPolicy: cfg}}, nil
 }
 
 // Close closes the underlying database handle.

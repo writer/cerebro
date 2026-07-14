@@ -70,14 +70,17 @@ Exhausted JetStream publishes are recorded in Postgres when the state store is c
 Replay one record after the append-log path is healthy, or discard it after investigation:
 
 ```bash
-./bin/cerebro append-log dead-letters replay <dead-letter-id>
-./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+./bin/cerebro append-log dead-letters replay <dead-letter-id> actor=oncall@example.com reason=INC-1234
+./bin/cerebro append-log dead-letters discard <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
 
 `replay` claims the record before publishing. `list` reports the claim owner,
 lease expiry, attempt count, and last bounded replay error category without
 exposing the claim token. A second operator cannot replay or discard the record
 until the active claim completes or expires.
+
+Replay and discard commit the status transition and actor/action/reason audit
+row in one Postgres transaction.
 
 Dead-letter IDs are deterministic for the subject, event ID, and payload. A
 replayed or discarded record stays terminal if the same event exhausts again.
@@ -86,10 +89,13 @@ Delete terminal records before a retention cutoff in audited, resumable batches:
 
 ```bash
 ./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
+./bin/cerebro append-log dead-letters cleanup actor=oncall@example.com reason=scheduled-retention limit=100
 ```
 
 `cleanup` only deletes replayed or discarded records. When `has_more` is true,
 run the command again with the returned `next_after_id` as `after_id`.
+When `terminal_before` is omitted, the command uses the configured terminal
+retention period.
 
 ## Finding Rules
 

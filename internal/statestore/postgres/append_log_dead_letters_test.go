@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -58,6 +59,53 @@ func TestAppendLogDeadLetterCleanupSelectsOnlyTerminalRowsInBoundedLockingBatch(
 	}
 	if strings.Contains(query, "'pending'") {
 		t.Fatalf("appendLogDeadLetterCleanupSelectSQL() may not select pending rows:\n%s", query)
+	}
+}
+
+func TestAppendLogDeadLetterCapacityProjectionAndHardLimitBoundary(t *testing.T) {
+	base := ports.AppendLogDeadLetterBacklog{PendingRecords: 9, PendingPayloadBytes: 900}
+	policy := config.StateStoreConfig{DeadLetterHardRecords: 10, DeadLetterHardBytes: 1000}
+	created := projectAppendLogDeadLetterBacklog(base, "", 0, 100)
+	if created.PendingRecords != 10 || created.PendingPayloadBytes != 1000 || appendLogDeadLetterHardLimitExceeded(created, policy) {
+		t.Fatalf("created projection = %#v, want hard boundary accepted", created)
+	}
+	over := projectAppendLogDeadLetterBacklog(created, "", 0, 1)
+	if !appendLogDeadLetterHardLimitExceeded(over, policy) {
+		t.Fatalf("over projection = %#v, want hard limit rejection", over)
+	}
+	replaced := projectAppendLogDeadLetterBacklog(created, ports.AppendLogDeadLetterStatusPending, 100, 75)
+	if replaced.PendingRecords != 10 || replaced.PendingPayloadBytes != 975 {
+		t.Fatalf("replaced projection = %#v, want same row and adjusted bytes", replaced)
+	}
+	terminal := projectAppendLogDeadLetterBacklog(created, ports.AppendLogDeadLetterStatusReplayed, 100, 500)
+	if terminal != created {
+		t.Fatalf("terminal conflict projection = %#v, want unchanged %#v", terminal, created)
+	}
+}
+
+func TestAppendLogDeadLetterWritesSerializeCapacityAndAuditActions(t *testing.T) {
+	if !strings.Contains(appendLogDeadLetterCapacityLockSQL, "pg_advisory_xact_lock") {
+		t.Fatalf("capacity lock SQL = %q, want transaction advisory lock", appendLogDeadLetterCapacityLockSQL)
+	}
+	for _, fragment := range []string{"dead_letter_id", "action", "actor", "reason"} {
+		if !strings.Contains(appendLogDeadLetterAuditInsertSQL, fragment) {
+			t.Fatalf("audit insert SQL missing %q: %s", fragment, appendLogDeadLetterAuditInsertSQL)
+		}
+	}
+}
+
+func TestAppendLogDeadLetterMetricKeysHaveBoundedCardinality(t *testing.T) {
+	seen := map[string]struct{}{}
+	for _, key := range appendLogDeadLetterMetricKeys {
+		if _, ok := seen[key]; ok {
+			t.Fatalf("duplicate dead-letter metric key %q", key)
+		}
+		seen[key] = struct{}{}
+		for _, forbidden := range []string{"tenant", "source", "runtime", "record_id"} {
+			if strings.Contains(key, forbidden) {
+				t.Fatalf("dead-letter metric key %q contains unbounded dimension %q", key, forbidden)
+			}
+		}
 	}
 }
 

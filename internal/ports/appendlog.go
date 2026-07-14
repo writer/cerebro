@@ -17,6 +17,7 @@ var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not foun
 var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter already replayed")
 var ErrAppendLogDeadLetterReplayClaimed = errors.New("append log dead letter replay already claimed")
 var ErrAppendLogDeadLetterReplayClaimInvalid = errors.New("append log dead letter replay claim is invalid or expired")
+var ErrAppendLogDeadLetterBacklogHardLimit = errors.New("append log dead letter backlog hard limit reached")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"
@@ -123,6 +124,12 @@ type AppendLogDeadLetterBacklog struct {
 	TerminalRecords     int64
 	PendingPayloadBytes int64
 	OldestPendingAt     time.Time
+	PendingRetention    time.Duration
+	TerminalRetention   time.Duration
+	WarningRecords      int64
+	HardRecords         int64
+	WarningBytes        int64
+	HardBytes           int64
 }
 
 // AppendLogDeadLetterCleanupRequest scopes one resumable terminal-record purge.
@@ -150,9 +157,9 @@ type AppendLogDeadLetterStore interface {
 	GetAppendLogDeadLetter(context.Context, string) (AppendLogDeadLetter, error)
 	ClaimAppendLogDeadLetterReplay(context.Context, string, string, string, time.Duration) (AppendLogDeadLetter, error)
 	RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error
-	CompleteAppendLogDeadLetterReplay(context.Context, string, string) error
+	CompleteAppendLogDeadLetterReplay(context.Context, string, string, string, string) error
 	ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error
-	DiscardAppendLogDeadLetter(context.Context, string, string) error
+	DiscardAppendLogDeadLetter(context.Context, string, string, string) error
 	GetAppendLogDeadLetterBacklog(context.Context) (AppendLogDeadLetterBacklog, error)
 	CleanupAppendLogDeadLetters(context.Context, AppendLogDeadLetterCleanupRequest) (AppendLogDeadLetterCleanupResult, error)
 }

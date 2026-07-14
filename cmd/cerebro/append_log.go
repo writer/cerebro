@@ -88,7 +88,7 @@ func runAppendLogDeadLetterList(ctx context.Context, cfg appconfig.Config, args 
 }
 
 func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, args []string) error {
-	id, err := parseAppendLogDeadLetterIDArg("replay", args)
+	id, actor, reason, err := parseAppendLogDeadLetterActionArgs("replay", args)
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 		}
 		return fmt.Errorf("replay append log dead letter %q: %w", id, err)
 	}
-	if err := store.CompleteAppendLogDeadLetterReplay(ctx, id, token); err != nil {
+	if err := store.CompleteAppendLogDeadLetterReplay(ctx, id, token, actor, reason); err != nil {
 		if errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
 			return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
 		}
@@ -178,7 +178,7 @@ func newAppendLogDeadLetterReplayClaim() (string, string, error) {
 }
 
 func runAppendLogDeadLetterDiscard(ctx context.Context, cfg appconfig.Config, args []string) error {
-	id, reason, err := parseAppendLogDeadLetterDiscardArgs(args)
+	id, actor, reason, err := parseAppendLogDeadLetterDiscardArgs(args)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func runAppendLogDeadLetterDiscard(ctx context.Context, cfg appconfig.Config, ar
 	if strings.TrimSpace(record.Status) != ports.AppendLogDeadLetterStatusPending {
 		return fmt.Errorf("append log dead letter %q has status %q", id, record.Status)
 	}
-	if err := store.DiscardAppendLogDeadLetter(ctx, id, reason); err != nil {
+	if err := store.DiscardAppendLogDeadLetter(ctx, id, actor, reason); err != nil {
 		return err
 	}
 	return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusDiscarded))
@@ -228,6 +228,9 @@ func runAppendLogDeadLetterCleanup(ctx context.Context, cfg appconfig.Config, ar
 	request, err := parseAppendLogDeadLetterCleanupArgs(args)
 	if err != nil {
 		return err
+	}
+	if request.TerminalBefore.IsZero() {
+		request.TerminalBefore = time.Now().Add(-cfg.StateStore.DeadLetterTerminalRetention)
 	}
 	store, closeDeps, err := openAppendLogDeadLetterStore(ctx, cfg)
 	if err != nil {
@@ -295,33 +298,35 @@ func parseAppendLogDeadLetterListArgs(args []string) (ports.AppendLogDeadLetterF
 	return filter, nil
 }
 
-func parseAppendLogDeadLetterIDArg(command string, args []string) (string, error) {
-	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
-		return "", usageError(fmt.Sprintf("usage: %s append-log dead-letters %s <dead-letter-id>", os.Args[0], command))
-	}
-	return strings.TrimSpace(args[0]), nil
+func parseAppendLogDeadLetterDiscardArgs(args []string) (string, string, string, error) {
+	return parseAppendLogDeadLetterActionArgs("discard", args)
 }
 
-func parseAppendLogDeadLetterDiscardArgs(args []string) (string, string, error) {
+func parseAppendLogDeadLetterActionArgs(command string, args []string) (string, string, string, error) {
 	if len(args) < 2 || strings.TrimSpace(args[0]) == "" {
-		return "", "", usageError(fmt.Sprintf("usage: %s append-log dead-letters discard <dead-letter-id> reason=<reason>", os.Args[0]))
+		return "", "", "", usageError(fmt.Sprintf("usage: %s append-log dead-letters %s <dead-letter-id> actor=<actor> reason=<reason>", os.Args[0], command))
 	}
 	id := strings.TrimSpace(args[0])
+	actor := ""
 	reason := ""
 	for _, arg := range args[1:] {
 		key, value, ok := strings.Cut(arg, "=")
 		if !ok {
-			return "", "", fmt.Errorf("invalid append log dead-letter discard argument %q; want key=value", arg)
+			return "", "", "", fmt.Errorf("invalid append log dead-letter %s argument %q; want key=value", command, arg)
 		}
-		if strings.TrimSpace(key) != "reason" {
-			return "", "", fmt.Errorf("unsupported append log dead-letter discard argument %q", key)
+		switch strings.TrimSpace(key) {
+		case "actor":
+			actor = strings.TrimSpace(value)
+		case "reason":
+			reason = strings.TrimSpace(value)
+		default:
+			return "", "", "", fmt.Errorf("unsupported append log dead-letter %s argument %q", command, key)
 		}
-		reason = strings.TrimSpace(value)
 	}
-	if reason == "" {
-		return "", "", errors.New("discard reason is required")
+	if actor == "" || reason == "" {
+		return "", "", "", fmt.Errorf("%s actor and reason are required", command)
 	}
-	return id, reason, nil
+	return id, actor, reason, nil
 }
 
 func parseAppendLogDeadLetterCleanupArgs(args []string) (ports.AppendLogDeadLetterCleanupRequest, error) {
@@ -356,8 +361,8 @@ func parseAppendLogDeadLetterCleanupArgs(args []string) (ports.AppendLogDeadLett
 			return ports.AppendLogDeadLetterCleanupRequest{}, fmt.Errorf("unsupported append log dead-letter cleanup argument %q", key)
 		}
 	}
-	if request.TerminalBefore.IsZero() || strings.TrimSpace(request.Actor) == "" || strings.TrimSpace(request.Reason) == "" {
-		return ports.AppendLogDeadLetterCleanupRequest{}, usageError(fmt.Sprintf("usage: %s append-log dead-letters cleanup terminal_before=<RFC3339> actor=<actor> reason=<reason> [after_id=<dead-letter-id>] [limit=<count>]", os.Args[0]))
+	if strings.TrimSpace(request.Actor) == "" || strings.TrimSpace(request.Reason) == "" {
+		return ports.AppendLogDeadLetterCleanupRequest{}, usageError(fmt.Sprintf("usage: %s append-log dead-letters cleanup actor=<actor> reason=<reason> [terminal_before=<RFC3339>] [after_id=<dead-letter-id>] [limit=<count>]", os.Args[0]))
 	}
 	return request, nil
 }
@@ -400,10 +405,20 @@ type appendLogDeadLetterActionOutput struct {
 }
 
 type appendLogDeadLetterBacklogOutput struct {
-	PendingRecords      int64  `json:"pending_records"`
-	TerminalRecords     int64  `json:"terminal_records"`
-	PendingPayloadBytes int64  `json:"pending_payload_bytes"`
-	OldestPendingAt     string `json:"oldest_pending_at,omitempty"`
+	PendingRecords           int64  `json:"pending_records"`
+	TerminalRecords          int64  `json:"terminal_records"`
+	PendingPayloadBytes      int64  `json:"pending_payload_bytes"`
+	OldestPendingAt          string `json:"oldest_pending_at,omitempty"`
+	OldestPendingAgeSeconds  int64  `json:"oldest_pending_age_seconds,omitempty"`
+	PendingRetentionSeconds  int64  `json:"pending_retention_seconds"`
+	TerminalRetentionSeconds int64  `json:"terminal_retention_seconds"`
+	WarningRecords           int64  `json:"warning_records"`
+	HardRecords              int64  `json:"hard_records"`
+	WarningBytes             int64  `json:"warning_bytes"`
+	HardBytes                int64  `json:"hard_bytes"`
+	PendingRetentionExceeded bool   `json:"pending_retention_exceeded"`
+	WarningLimitReached      bool   `json:"warning_limit_reached"`
+	HardLimitReached         bool   `json:"hard_limit_reached"`
 }
 
 type appendLogDeadLetterCleanupOutput struct {
@@ -466,12 +481,25 @@ func appendLogDeadLetterActionResponse(record ports.AppendLogDeadLetter, status 
 
 func appendLogDeadLetterBacklogResponse(backlog ports.AppendLogDeadLetterBacklog) appendLogDeadLetterBacklogOutput {
 	response := appendLogDeadLetterBacklogOutput{
-		PendingRecords:      backlog.PendingRecords,
-		TerminalRecords:     backlog.TerminalRecords,
-		PendingPayloadBytes: backlog.PendingPayloadBytes,
+		PendingRecords:           backlog.PendingRecords,
+		TerminalRecords:          backlog.TerminalRecords,
+		PendingPayloadBytes:      backlog.PendingPayloadBytes,
+		PendingRetentionSeconds:  int64(backlog.PendingRetention.Seconds()),
+		TerminalRetentionSeconds: int64(backlog.TerminalRetention.Seconds()),
+		WarningRecords:           backlog.WarningRecords,
+		HardRecords:              backlog.HardRecords,
+		WarningBytes:             backlog.WarningBytes,
+		HardBytes:                backlog.HardBytes,
+		WarningLimitReached:      backlog.PendingRecords >= backlog.WarningRecords || backlog.PendingPayloadBytes >= backlog.WarningBytes,
+		HardLimitReached:         backlog.PendingRecords >= backlog.HardRecords || backlog.PendingPayloadBytes >= backlog.HardBytes,
 	}
 	if !backlog.OldestPendingAt.IsZero() {
 		response.OldestPendingAt = backlog.OldestPendingAt.UTC().Format(time.RFC3339)
+		age := time.Since(backlog.OldestPendingAt)
+		if age > 0 {
+			response.OldestPendingAgeSeconds = int64(age.Seconds())
+			response.PendingRetentionExceeded = backlog.PendingRetention > 0 && age >= backlog.PendingRetention
+		}
 	}
 	return response
 }

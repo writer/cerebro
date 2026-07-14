@@ -11,13 +11,18 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const appendLogDeadLetterDefaultLimit = uint32(50)
 const appendLogDeadLetterMaxLimit = uint32(500)
 const appendLogDeadLetterCleanupDefaultLimit = 100
 const appendLogDeadLetterCleanupMaxLimit = 500
+const appendLogDeadLetterCapacityLockID = int64(0x6170646c)
+const appendLogDeadLetterCapacityLockSQL = `SELECT pg_advisory_xact_lock($1)`
+const appendLogDeadLetterAuditInsertSQL = `INSERT INTO append_log_dead_letter_audit (dead_letter_id, action, actor, reason) VALUES ($1, $2, $3, $4)`
 
 var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS append_log_dead_letters (
   id TEXT PRIMARY KEY,
@@ -117,7 +122,33 @@ func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.Appe
 	if err != nil {
 		return fmt.Errorf("marshal append log dead letter event %q: %w", record.EventID, err)
 	}
-	_, err = s.db.ExecContext(ctx, recordAppendLogDeadLetterSQL,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin append log dead letter record: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, appendLogDeadLetterCapacityLockSQL, appendLogDeadLetterCapacityLockID); err != nil {
+		return fmt.Errorf("lock append log dead letter capacity: %w", err)
+	}
+	backlog, existingBytes, existingStatus, err := appendLogDeadLetterCapacity(ctx, tx, record.ID)
+	if err != nil {
+		return err
+	}
+	if existingStatus == ports.AppendLogDeadLetterStatusReplayed || existingStatus == ports.AppendLogDeadLetterStatusDiscarded {
+		annotateAppendLogDeadLetterBacklog(ctx, backlog, s.appendLog.deadLetterPolicy, "terminal_record_preserved")
+		return nil
+	}
+	projected := projectAppendLogDeadLetterBacklog(backlog, existingStatus, existingBytes, int64(record.PayloadBytes))
+	if projected.PendingRecords > 0 && projected.OldestPendingAt.IsZero() {
+		projected.OldestPendingAt = time.Now()
+	}
+	policy := s.appendLog.deadLetterPolicy
+	if appendLogDeadLetterHardLimitExceeded(projected, policy) {
+		annotateAppendLogDeadLetterBacklog(ctx, projected, policy, "hard_limit_rejected")
+		telemetry.IncrementMain(ctx, "append_log.dead_letter.hard_limit_rejection.count", 1)
+		return fmt.Errorf("%w: pending_records=%d hard_records=%d pending_bytes=%d hard_bytes=%d", ports.ErrAppendLogDeadLetterBacklogHardLimit, projected.PendingRecords, policy.DeadLetterHardRecords, projected.PendingPayloadBytes, policy.DeadLetterHardBytes)
+	}
+	_, err = tx.ExecContext(ctx, recordAppendLogDeadLetterSQL,
 		record.ID,
 		record.Status,
 		record.Subject,
@@ -139,7 +170,55 @@ func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.Appe
 	if err != nil {
 		return fmt.Errorf("record append log dead letter %q: %w", record.ID, err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit append log dead letter %q: %w", record.ID, err)
+	}
+	annotateAppendLogDeadLetterBacklog(ctx, projected, policy, "recorded")
+	if projected.PendingRecords >= policy.DeadLetterWarningRecords || projected.PendingPayloadBytes >= policy.DeadLetterWarningBytes {
+		telemetry.IncrementMain(ctx, "append_log.dead_letter.backlog_warning.count", 1)
+	}
 	return nil
+}
+
+func projectAppendLogDeadLetterBacklog(backlog ports.AppendLogDeadLetterBacklog, existingStatus string, existingBytes int64, payloadBytes int64) ports.AppendLogDeadLetterBacklog {
+	projected := backlog
+	switch strings.TrimSpace(existingStatus) {
+	case ports.AppendLogDeadLetterStatusPending:
+		projected.PendingPayloadBytes = projected.PendingPayloadBytes - existingBytes + payloadBytes
+	case "":
+		projected.PendingRecords++
+		projected.PendingPayloadBytes += payloadBytes
+	}
+	return projected
+}
+
+func appendLogDeadLetterHardLimitExceeded(backlog ports.AppendLogDeadLetterBacklog, policy config.StateStoreConfig) bool {
+	return backlog.PendingRecords > policy.DeadLetterHardRecords || backlog.PendingPayloadBytes > policy.DeadLetterHardBytes
+}
+
+type appendLogDeadLetterCapacityQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func appendLogDeadLetterCapacity(ctx context.Context, queryer appendLogDeadLetterCapacityQueryer, id string) (ports.AppendLogDeadLetterBacklog, int64, string, error) {
+	var backlog ports.AppendLogDeadLetterBacklog
+	var oldest sql.NullTime
+	var existingBytes sql.NullInt64
+	var existingStatus sql.NullString
+	err := queryer.QueryRowContext(ctx, `SELECT
+  COUNT(*) FILTER (WHERE status = 'pending'),
+  COALESCE(SUM(payload_bytes) FILTER (WHERE status = 'pending'), 0),
+  MIN(created_at) FILTER (WHERE status = 'pending'),
+	  (SELECT payload_bytes FROM append_log_dead_letters WHERE id = $1),
+	  (SELECT status FROM append_log_dead_letters WHERE id = $1)
+FROM append_log_dead_letters`, id).Scan(&backlog.PendingRecords, &backlog.PendingPayloadBytes, &oldest, &existingBytes, &existingStatus)
+	if err != nil {
+		return ports.AppendLogDeadLetterBacklog{}, 0, "", fmt.Errorf("get append log dead letter capacity: %w", err)
+	}
+	if oldest.Valid {
+		backlog.OldestPendingAt = oldest.Time
+	}
+	return backlog, existingBytes.Int64, strings.TrimSpace(existingStatus.String), nil
 }
 
 func (s *Store) ListAppendLogDeadLetters(ctx context.Context, filter ports.AppendLogDeadLetterFilter) ([]ports.AppendLogDeadLetter, error) {
@@ -236,8 +315,8 @@ func (s *Store) RenewAppendLogDeadLetterReplay(ctx context.Context, id string, t
 	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, renewAppendLogDeadLetterReplaySQL, int64(lease/time.Second))
 }
 
-func (s *Store) CompleteAppendLogDeadLetterReplay(ctx context.Context, id string, token string) error {
-	return s.updateAppendLogDeadLetterReplayClaim(ctx, id, token, completeAppendLogDeadLetterReplaySQL)
+func (s *Store) CompleteAppendLogDeadLetterReplay(ctx context.Context, id string, token string, actor string, reason string) error {
+	return s.completeAppendLogDeadLetterReplayWithAudit(ctx, id, token, actor, reason)
 }
 
 func (s *Store) ReleaseAppendLogDeadLetterReplay(ctx context.Context, id string, token string, errorCategory string) error {
@@ -322,12 +401,83 @@ func (s *Store) appendLogDeadLetterReplayClaimConflict(ctx context.Context, id s
 	return ports.ErrAppendLogDeadLetterReplayClaimInvalid
 }
 
-func (s *Store) DiscardAppendLogDeadLetter(ctx context.Context, id string, reason string) error {
+func (s *Store) DiscardAppendLogDeadLetter(ctx context.Context, id string, actor string, reason string) error {
+	actor = strings.TrimSpace(actor)
 	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		return errors.New("discard reason is required")
+	if actor == "" || reason == "" {
+		return errors.New("discard actor and reason are required")
 	}
-	return s.updateAppendLogDeadLetterStatus(ctx, id, ports.AppendLogDeadLetterStatusDiscarded, reason)
+	return s.transitionAppendLogDeadLetterWithAudit(ctx, id, ports.AppendLogDeadLetterStatusDiscarded, actor, reason, "")
+}
+
+func (s *Store) completeAppendLogDeadLetterReplayWithAudit(ctx context.Context, id string, token string, actor string, reason string) error {
+	id = strings.TrimSpace(id)
+	token = strings.TrimSpace(token)
+	actor = strings.TrimSpace(actor)
+	reason = strings.TrimSpace(reason)
+	if id == "" || token == "" || actor == "" || reason == "" {
+		return errors.New("replay id, token, actor, and reason are required")
+	}
+	return s.transitionAppendLogDeadLetterWithAudit(ctx, id, ports.AppendLogDeadLetterStatusReplayed, actor, reason, token)
+}
+
+func (s *Store) transitionAppendLogDeadLetterWithAudit(ctx context.Context, id string, status string, actor string, reason string, token string) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		return err
+	}
+	id = strings.TrimSpace(id)
+	actor = strings.TrimSpace(actor)
+	reason = strings.TrimSpace(reason)
+	if id == "" || actor == "" || reason == "" {
+		return errors.New("dead-letter id, actor, and reason are required")
+	}
+	var query string
+	var args []any
+	switch status {
+	case ports.AppendLogDeadLetterStatusReplayed:
+		query = completeAppendLogDeadLetterReplaySQL
+		args = []any{id, strings.TrimSpace(token)}
+	case ports.AppendLogDeadLetterStatusDiscarded:
+		query = `UPDATE append_log_dead_letters SET status = $2, updated_at = NOW(), discarded_at = NOW(), discard_reason = $3 WHERE id = $1 AND status = 'pending' AND (replay_token = '' OR replay_lease_expires_at IS NULL OR replay_lease_expires_at <= NOW())`
+		args = []any{id, status, reason}
+	default:
+		return fmt.Errorf("unsupported append log dead letter status %q", status)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin append log dead letter %s: %w", status, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update append log dead letter %q: %w", id, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update append log dead letter %q rows affected: %w", id, err)
+	}
+	if rows == 0 {
+		_ = tx.Rollback()
+		if status == ports.AppendLogDeadLetterStatusReplayed {
+			return s.appendLogDeadLetterReplayClaimConflict(ctx, id)
+		}
+		return s.appendLogDeadLetterStatusConflict(ctx, id, status)
+	}
+	if _, err := tx.ExecContext(ctx, appendLogDeadLetterAuditInsertSQL, id, status, actor, reason); err != nil {
+		return fmt.Errorf("audit append log dead letter %q %s: %w", id, status, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit append log dead letter %q %s: %w", id, status, err)
+	}
+	if status == ports.AppendLogDeadLetterStatusReplayed {
+		telemetry.IncrementMain(ctx, appendLogDeadLetterMetricKeys[8], 1)
+	} else {
+		telemetry.IncrementMain(ctx, appendLogDeadLetterMetricKeys[9], 1)
+	}
+	return nil
 }
 
 func (s *Store) GetAppendLogDeadLetterBacklog(ctx context.Context) (ports.AppendLogDeadLetterBacklog, error) {
@@ -356,10 +506,63 @@ FROM append_log_dead_letters`).Scan(
 	if oldest.Valid {
 		backlog.OldestPendingAt = oldest.Time
 	}
+	policy := s.appendLog.deadLetterPolicy
+	backlog.PendingRetention = policy.DeadLetterPendingRetention
+	backlog.TerminalRetention = policy.DeadLetterTerminalRetention
+	backlog.WarningRecords = policy.DeadLetterWarningRecords
+	backlog.HardRecords = policy.DeadLetterHardRecords
+	backlog.WarningBytes = policy.DeadLetterWarningBytes
+	backlog.HardBytes = policy.DeadLetterHardBytes
+	annotateAppendLogDeadLetterBacklog(ctx, backlog, policy, "observed")
 	return backlog, nil
 }
 
+var appendLogDeadLetterMetricKeys = [...]string{
+	"append_log.dead_letter.pending_records.max",
+	"append_log.dead_letter.pending_payload_bytes.max",
+	"append_log.dead_letter.oldest_pending_age_seconds.max",
+	"append_log.dead_letter.cleanup.deleted.count",
+	"append_log.dead_letter.cleanup.empty.count",
+	"append_log.dead_letter.cleanup.failed.count",
+	"append_log.dead_letter.hard_limit_rejection.count",
+	"append_log.dead_letter.backlog_warning.count",
+	"append_log.dead_letter.replay.completed.count",
+	"append_log.dead_letter.discard.completed.count",
+}
+
+func annotateAppendLogDeadLetterBacklog(ctx context.Context, backlog ports.AppendLogDeadLetterBacklog, policy config.StateStoreConfig, outcome string) {
+	telemetry.MaxMain(ctx, appendLogDeadLetterMetricKeys[0], backlog.PendingRecords)
+	telemetry.MaxMain(ctx, appendLogDeadLetterMetricKeys[1], backlog.PendingPayloadBytes)
+	if !backlog.OldestPendingAt.IsZero() {
+		age := time.Since(backlog.OldestPendingAt).Seconds()
+		if age > 0 {
+			telemetry.MaxMain(ctx, appendLogDeadLetterMetricKeys[2], int64(age))
+		}
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "append_log.dead_letter.last_capacity_outcome", Value: strings.TrimSpace(outcome)},
+		telemetry.Field{Key: "append_log.dead_letter.warning_records", Value: policy.DeadLetterWarningRecords},
+		telemetry.Field{Key: "append_log.dead_letter.hard_records", Value: policy.DeadLetterHardRecords},
+		telemetry.Field{Key: "append_log.dead_letter.warning_bytes", Value: policy.DeadLetterWarningBytes},
+		telemetry.Field{Key: "append_log.dead_letter.hard_bytes", Value: policy.DeadLetterHardBytes},
+	))
+}
+
 func (s *Store) CleanupAppendLogDeadLetters(ctx context.Context, request ports.AppendLogDeadLetterCleanupRequest) (ports.AppendLogDeadLetterCleanupResult, error) {
+	result, err := s.cleanupAppendLogDeadLetters(ctx, request)
+	if err != nil {
+		telemetry.IncrementMain(ctx, appendLogDeadLetterMetricKeys[5], 1)
+		return ports.AppendLogDeadLetterCleanupResult{}, err
+	}
+	if len(result.DeletedIDs) == 0 {
+		telemetry.IncrementMain(ctx, appendLogDeadLetterMetricKeys[4], 1)
+	} else {
+		telemetry.IncrementMain(ctx, appendLogDeadLetterMetricKeys[3], int64(len(result.DeletedIDs)))
+	}
+	return result, nil
+}
+
+func (s *Store) cleanupAppendLogDeadLetters(ctx context.Context, request ports.AppendLogDeadLetterCleanupRequest) (ports.AppendLogDeadLetterCleanupResult, error) {
 	if s == nil || s.db == nil {
 		return ports.AppendLogDeadLetterCleanupResult{}, errors.New("postgres is not configured")
 	}
@@ -450,46 +653,6 @@ WHERE status IN ('replayed', 'discarded')
 ORDER BY id ASC
 LIMIT $3
 FOR UPDATE SKIP LOCKED`
-}
-
-func (s *Store) updateAppendLogDeadLetterStatus(ctx context.Context, id string, status string, reason string) error {
-	if s == nil || s.db == nil {
-		return errors.New("postgres is not configured")
-	}
-	if err := s.ensureAppendLogDeadLetterTables(ctx); err != nil {
-		return err
-	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return errors.New("append log dead letter id is required")
-	}
-	status = strings.TrimSpace(status)
-	var (
-		query string
-		args  []any
-	)
-	switch status {
-	case ports.AppendLogDeadLetterStatusReplayed:
-		query = `UPDATE append_log_dead_letters SET status = $2, updated_at = NOW(), replayed_at = NOW() WHERE id = $1 AND status = 'pending'`
-		args = []any{id, status}
-	case ports.AppendLogDeadLetterStatusDiscarded:
-		query = `UPDATE append_log_dead_letters SET status = $2, updated_at = NOW(), discarded_at = NOW(), discard_reason = $3 WHERE id = $1 AND status = 'pending' AND (replay_token = '' OR replay_lease_expires_at IS NULL OR replay_lease_expires_at <= NOW())`
-		args = []any{id, status, strings.TrimSpace(reason)}
-	default:
-		return fmt.Errorf("unsupported append log dead letter status %q", status)
-	}
-	result, err := s.db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("update append log dead letter %q: %w", id, err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("update append log dead letter %q rows affected: %w", id, err)
-	}
-	if rows == 0 {
-		return s.appendLogDeadLetterStatusConflict(ctx, id, status)
-	}
-	return nil
 }
 
 func (s *Store) appendLogDeadLetterStatusConflict(ctx context.Context, id string, targetStatus string) error {
