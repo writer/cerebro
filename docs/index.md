@@ -75,6 +75,9 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | Coding agent setup handoff | [Agent onboarding](start/agent-onboarding.md) |
 | Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
 | JetStream durability status and implementation order | [JetStream durability acceptance matrix](engineering/jetstream-durability-acceptance-matrix.md) |
+| Evidence-backed decision packet implementation | [Decision packet convergence](engineering/decision-packet-convergence.md) |
+| Finding-to-verified-fix implementation | [Finding-to-verified-fix reference](engineering/finding-to-verified-fix-reference.md) |
+| Cross-resource navigation and outcome learning | [Reference fabric and deep-link compounding](engineering/reference-fabric-deep-linking.md) |
 | Runtime configuration | [Configuration variables](reference/config-env-vars.md) |
 | Hosting and operations | [Hosting](operations/hosting.md), [runtime profiles](operations/runtime-profiles.md), [deployment readiness](operations/deployment-readiness.md), [cloud deployment](operations/cloud-deployment.md), [deployment examples](operations/deployment-examples.md), [operations runbook](operations/operations-runbook.md), and [troubleshooting](operations/troubleshooting.md) |
 | API contracts | [API reference](reference/api-reference.md), [generated API contracts](reference/api-contracts.md), `../api/openapi.yaml`, and `../proto/cerebro/v1/bootstrap.proto` |
@@ -97,6 +100,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | MCP setup | [MCP native Droid setup](domains/mcp-droid-setup.md) |
 | Endpoint telemetry | [Endpoint security platform integration](domains/endpoint-security-platform-integration.md) |
 | Release artifacts | [Release contract](operations/release-contract.md) |
+| Trusted decision roadmap implementation | [Trusted decisions implementation plan](engineering/trusted-decisions-implementation-plan.md) |
 | Contribution rules | [Development](engineering/development.md) and [non-goals](engineering/non-goals.md) |
 
 ## Source Of Truth
