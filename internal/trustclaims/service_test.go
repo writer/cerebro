@@ -229,6 +229,14 @@ func TestExtractedObligationRequiresHumanConfirmationAndPreservesSupersession(t 
 	}
 }
 
+func TestInvalidObligationContractReturnsError(t *testing.T) {
+	input := validObligationInput(fixedTime())
+	input.ContractRef = VersionedRef{}
+	if _, err := SuggestObligation(input); !errors.Is(err, ErrInvalidReceipt) {
+		t.Fatalf("SuggestObligation() error = %v, want ErrInvalidReceipt", err)
+	}
+}
+
 func TestExistingQuestionnaireAndEvidencePacketLineageIsPreserved(t *testing.T) {
 	now := fixedTime()
 	questionnaireCitation := CitationFromQuestionnaire(ports.QuestionnaireCitation{
