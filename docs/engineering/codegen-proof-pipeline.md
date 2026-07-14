@@ -21,6 +21,7 @@ The repository currently enforces these parts of the pipeline:
 - Every sourcegen run returns a pre-write change plan and writes `.sourcegen-proof.json` with normalized input, output, ownership, grammar, provider-contract, and remaining-obligation evidence.
 - Connector onboarding writes `.provider-contract-lock.json`, classifies provider drift, and blocks selected-operation or auth changes until an operator records review.
 - `make sourcegen-repro-check` verifies output-root, normalized-input, map-order, and repeat-run invariance, then confirms that missing credentials, unstable projection identities, and modified generated files are rejected.
+- `make sourcegen-proof-check SOURCE_ID=<source_id>` re-hashes the current generated outputs, verifies the receipt and manifest binding, checks the provider contract lock, and lists pending promotion obligations.
 
 ## Proof bundle
 

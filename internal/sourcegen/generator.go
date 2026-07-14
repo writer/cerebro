@@ -236,6 +236,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		PRBody:              filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "PR_BODY.md"),
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
+			fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
 			"Register the source loader in internal/sourceregistry/registry.go.",
 			"Register generated projector functions in internal/sourceprojection/registry.go.",
 			fmt.Sprintf("Run: go test ./sources/%s ./internal/sourceprojection -count=1", normalized.SourceID),
