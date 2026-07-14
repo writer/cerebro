@@ -13,6 +13,15 @@ The pipeline is:
 5. Produce a proof bundle for the generated output.
 6. Promote only when the required proof gates pass.
 
+## Executable gates
+
+The repository currently enforces these parts of the pipeline:
+
+- `make sourcegen-grammar-check` renders one witness for every declared grammar feature and a deterministic pairwise covering set.
+- Every sourcegen run returns a pre-write change plan and writes `.sourcegen-proof.json` with normalized input, output, ownership, grammar, provider-contract, and remaining-obligation evidence.
+- Connector onboarding writes `.provider-contract-lock.json`, classifies provider drift, and blocks selected-operation or auth changes until an operator records review.
+- `make sourcegen-repro-check` verifies output-root, normalized-input, map-order, and repeat-run invariance, then confirms that missing credentials, unstable projection identities, and modified generated files are rejected.
+
 ## Proof bundle
 
 Every generator run should produce one deterministic proof bundle with:
