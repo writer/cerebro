@@ -36,6 +36,8 @@ type OnboardResult struct {
 	SourcegenError     string                          `json:"sourcegen_error,omitempty"`
 	SourcegenFiles     []string                        `json:"sourcegen_files,omitempty"`
 	GenerationManifest string                          `json:"generation_manifest,omitempty"`
+	ProofBundle        string                          `json:"proof_bundle,omitempty"`
+	ChangePlan         *sourcegen.ChangePlan           `json:"change_plan,omitempty"`
 	WiredFiles         []string                        `json:"wired_files,omitempty"`
 	Definition         connectordefinitions.Definition `json:"definition"`
 	NextSteps          []string                        `json:"next_steps"`
@@ -144,6 +146,8 @@ func main() {
 			result.Generateable = true
 			result.SourcegenFiles = genResult.Files
 			result.GenerationManifest = genResult.GenerationManifest
+			result.ProofBundle = genResult.ProofBundle
+			result.ChangePlan = &genResult.ChangePlan
 			if dryRun {
 				fmt.Fprintf(os.Stderr, "onboard: sourcegen dry-run passed (%d files)\n", len(genResult.Files))
 			} else {

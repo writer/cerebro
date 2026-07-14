@@ -78,16 +78,18 @@ type DefinitionRequest struct {
 
 // Result describes the files and operator receipt produced by the generator.
 type Result struct {
-	SourceID            string   `json:"source_id"`
-	SourceType          string   `json:"source_type"`
-	AuthModel           string   `json:"auth_model"`
-	DryRun              bool     `json:"dry_run"`
-	Files               []string `json:"files"`
-	HealthEndpoint      string   `json:"health_endpoint"`
-	SourceHealthReceipt string   `json:"source_health_receipt"`
-	GenerationManifest  string   `json:"generation_manifest"`
-	PRBody              string   `json:"pr_body"`
-	NextSteps           []string `json:"next_steps"`
+	SourceID            string     `json:"source_id"`
+	SourceType          string     `json:"source_type"`
+	AuthModel           string     `json:"auth_model"`
+	DryRun              bool       `json:"dry_run"`
+	Files               []string   `json:"files"`
+	HealthEndpoint      string     `json:"health_endpoint"`
+	SourceHealthReceipt string     `json:"source_health_receipt"`
+	GenerationManifest  string     `json:"generation_manifest"`
+	ProofBundle         string     `json:"proof_bundle"`
+	ChangePlan          ChangePlan `json:"change_plan"`
+	PRBody              string     `json:"pr_body"`
+	NextSteps           []string   `json:"next_steps"`
 }
 
 type normalizedRequest struct {
@@ -122,6 +124,9 @@ type familyData struct {
 	Path                  string
 	Method                string
 	AuthModel             string
+	PaginationType        string
+	IncrementalState      string
+	ProjectionTemplate    string
 	RecordSelector        string
 	URNKind               string
 	EventKind             string
@@ -206,6 +211,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		paths = append(paths, file.Path)
 	}
 	paths = append(paths, plan.ManifestPath)
+	paths = append(paths, plan.ProofPath)
 	result := &Result{
 		SourceID:            normalized.SourceID,
 		SourceType:          normalized.SourceType,
@@ -215,6 +221,8 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		HealthEndpoint:      healthEndpoint(normalized.SourceID),
 		SourceHealthReceipt: filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "source_health_receipt.json"),
 		GenerationManifest:  plan.ManifestPath,
+		ProofBundle:         plan.ProofPath,
+		ChangePlan:          plan.ChangePlan,
 		PRBody:              filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "PR_BODY.md"),
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
@@ -744,6 +752,9 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			Path:                  resource.Path,
 			Method:                methodForResource(resource),
 			AuthModel:             authModel,
+			PaginationType:        paginationTypeForResource(resource),
+			IncrementalState:      incrementalStateForResource(resource),
+			ProjectionTemplate:    strings.TrimSpace(resource.Projection.Template),
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
@@ -837,6 +848,20 @@ func cursorParamForResource(resource connectordefinitions.ResourceFamily) string
 		return ""
 	}
 	return strings.TrimSpace(resource.Pagination.CursorParam)
+}
+
+func paginationTypeForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Pagination == nil || strings.TrimSpace(resource.Pagination.Type) == "" {
+		return "none"
+	}
+	return strings.TrimSpace(resource.Pagination.Type)
+}
+
+func incrementalStateForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Incremental == nil || strings.TrimSpace(resource.Incremental.State) == "" {
+		return "none"
+	}
+	return strings.TrimSpace(resource.Incremental.State)
 }
 
 func nextCursorKeysForResource(resource connectordefinitions.ResourceFamily) []string {
