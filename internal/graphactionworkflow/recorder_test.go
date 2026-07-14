@@ -79,6 +79,85 @@ func TestRecordUsesCanonicalActionURNForProviderID(t *testing.T) {
 	}
 }
 
+func TestRecordUsesDistinctEventIDsForActionTransitions(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	finding := &ports.FindingRecord{ID: "finding-1", TenantID: "tenant-1", RuleID: "rule-1"}
+	queued := &graphactions.GraphAction{
+		ExternalID: "provider-action-1", Action: graphactions.ActionIdentityOktaSuspendUser,
+		Provider: graphactions.ProviderAccessApprovals, Status: "queued", ExternalStatus: "queued",
+		CreatedAtUnix: 1700000000, UpdatedAtUnix: 1700000001,
+	}
+	succeeded := *queued
+	succeeded.Status = "succeeded"
+	succeeded.ExternalStatus = "succeeded"
+	succeeded.UpdatedAtUnix = 1700000100
+	succeeded.CompletedAtUnix = 1700000100
+	if err := Record(context.Background(), appendLog, finding, queued, "00u123"); err != nil {
+		t.Fatalf("Record(queued) error = %v", err)
+	}
+	if err := Record(context.Background(), appendLog, finding, &succeeded, "00u123"); err != nil {
+		t.Fatalf("Record(succeeded) error = %v", err)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("recorded events = %d, want 2", got)
+	}
+	if appendLog.events[0].GetId() == appendLog.events[1].GetId() {
+		t.Fatalf("queued and succeeded event IDs are equal: %q", appendLog.events[0].GetId())
+	}
+	first, err := workflowevents.DecodeActionRecorded(appendLog.events[0])
+	if err != nil {
+		t.Fatalf("DecodeActionRecorded(queued) error = %v", err)
+	}
+	second, err := workflowevents.DecodeActionRecorded(appendLog.events[1])
+	if err != nil {
+		t.Fatalf("DecodeActionRecorded(succeeded) error = %v", err)
+	}
+	if first.ActionID != second.ActionID {
+		t.Fatalf("action IDs differ across transitions: %q vs %q", first.ActionID, second.ActionID)
+	}
+}
+
+func TestRecordKeepsIdenticalObservationEventIDStable(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	finding := &ports.FindingRecord{ID: "finding-1", TenantID: "tenant-1", RuleID: "rule-1"}
+	action := &graphactions.GraphAction{
+		ExternalID: "provider-action-1", Action: graphactions.ActionIdentityOktaSuspendUser,
+		Provider: graphactions.ProviderAccessApprovals, Status: "running", ExternalStatus: "running",
+		CreatedAtUnix: 1700000000,
+	}
+	for range 2 {
+		if err := Record(context.Background(), appendLog, finding, action, "00u123"); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+	}
+	if appendLog.events[0].GetId() != appendLog.events[1].GetId() {
+		t.Fatalf("identical observation IDs differ: %q vs %q", appendLog.events[0].GetId(), appendLog.events[1].GetId())
+	}
+	if string(appendLog.events[0].GetPayload()) != string(appendLog.events[1].GetPayload()) {
+		t.Fatalf("identical observations produced different payloads")
+	}
+}
+
+func TestRecordChangesEventIDWhenStatusReasonChangesWithoutProviderTimestamp(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	finding := &ports.FindingRecord{ID: "finding-1", TenantID: "tenant-1", RuleID: "rule-1"}
+	action := &graphactions.GraphAction{
+		ExternalID: "provider-action-1", Action: graphactions.ActionIdentityOktaSuspendUser,
+		Provider: graphactions.ProviderAccessApprovals, Status: "failed", ExternalStatus: "failed",
+		ExternalStatusReason: "provider timeout", CreatedAtUnix: 1700000000,
+	}
+	if err := Record(context.Background(), appendLog, finding, action, "00u123"); err != nil {
+		t.Fatalf("Record(first) error = %v", err)
+	}
+	action.ExternalStatusReason = "provider rejected request"
+	if err := Record(context.Background(), appendLog, finding, action, "00u123"); err != nil {
+		t.Fatalf("Record(second) error = %v", err)
+	}
+	if appendLog.events[0].GetId() == appendLog.events[1].GetId() {
+		t.Fatalf("material status reason change reused event ID %q", appendLog.events[0].GetId())
+	}
+}
+
 func TestRecordEmitsGraphActionMetricAfterAppend(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
