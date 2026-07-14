@@ -18,6 +18,7 @@ func FindingResponse(message *cerebrov1.Finding, finding *ports.FindingRecord) *
 	}
 	links, err := resourcelinks.FindingLinks(resourcelinks.FindingInput{
 		ID:           finding.ID,
+		TenantID:     finding.TenantID,
 		RuntimeID:    finding.RuntimeID,
 		ResourceURNs: finding.ResourceURNs,
 	})

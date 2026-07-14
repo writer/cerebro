@@ -7,12 +7,15 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/fabriccontract"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 // FindingInput is the authorization-safe subset of a finding needed to build
-// additive navigation links. It contains no tenant or sensitive attribute data.
+// additive navigation links. TenantID is used only to reject cross-tenant graph
+// targets; the input contains no sensitive attribute data.
 type FindingInput struct {
 	ID           string
+	TenantID     string
 	RuntimeID    string
 	ResourceURNs []string
 }
@@ -21,9 +24,14 @@ type FindingInput struct {
 // finding record. It does not load or imply authorization to any target.
 func FindingLinks(input FindingInput) ([]ResourceLink, error) {
 	findingID := strings.TrimSpace(input.ID)
+	tenantID := strings.TrimSpace(input.TenantID)
 	runtimeID := strings.TrimSpace(input.RuntimeID)
-	if findingID == "" || runtimeID == "" {
-		return nil, fmt.Errorf("%w: finding id and runtime id are required", ErrInvalidLink)
+	if findingID == "" || tenantID == "" || runtimeID == "" {
+		return nil, fmt.Errorf("%w: finding id, tenant id, and runtime id are required", ErrInvalidLink)
+	}
+	resourceURNs, err := normalizedGraphURNs(tenantID, input.ResourceURNs)
+	if err != nil {
+		return nil, err
 	}
 
 	references := []struct {
@@ -75,7 +83,6 @@ func FindingLinks(input FindingInput) ([]ResourceLink, error) {
 		},
 	}
 
-	resourceURNs := normalizedUnique(input.ResourceURNs)
 	for _, resourceURN := range resourceURNs {
 		query := url.Values{"root_urn": []string{resourceURN}}
 		references = append(references, struct {
@@ -115,23 +122,28 @@ func FindingLinks(input FindingInput) ([]ResourceLink, error) {
 	return links, nil
 }
 
-func evidenceCollectionPath(runtimeID, findingID string) string {
-	query := url.Values{"finding_id": []string{findingID}}
-	return "/source-runtimes/" + url.PathEscape(runtimeID) + "/finding-evidence?" + query.Encode()
-}
-
-func normalizedUnique(values []string) []string {
+func normalizedGraphURNs(tenantID string, values []string) ([]string, error) {
 	unique := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value != "" {
-			unique[value] = struct{}{}
+		if value == "" || !strings.HasPrefix(value, cerebrourn.Prefix) {
+			continue
 		}
+		parsed, err := cerebrourn.Parse(value)
+		if err != nil || len(parsed.Parts) == 0 || parsed.TenantID != tenantID {
+			return nil, fmt.Errorf("%w: affected resource urn is invalid or outside the finding tenant", ErrInvalidLink)
+		}
+		unique[value] = struct{}{}
 	}
 	result := make([]string, 0, len(unique))
 	for value := range unique {
 		result = append(result, value)
 	}
 	sort.Strings(result)
-	return result
+	return result, nil
+}
+
+func evidenceCollectionPath(runtimeID, findingID string) string {
+	query := url.Values{"finding_id": []string{findingID}}
+	return "/source-runtimes/" + url.PathEscape(runtimeID) + "/finding-evidence?" + query.Encode()
 }

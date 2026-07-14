@@ -2,6 +2,7 @@ package resourcelinks
 
 import (
 	"bytes"
+	"errors"
 	"net/url"
 	"reflect"
 	"testing"
@@ -12,11 +13,12 @@ import (
 func TestFindingLinksAreDeterministicAndRoundTripEscaping(t *testing.T) {
 	input := FindingInput{
 		ID:        "finding/a%2Fb ?#",
+		TenantID:  "tenant-a",
 		RuntimeID: "runtime/a%2Fb ?#",
 		ResourceURNs: []string{
-			"urn:cerebro:aws:resource/with space",
-			"urn:cerebro:aws:resource/with space",
-			"urn:cerebro:github:repo?name=a/b",
+			"urn:cerebro:tenant-a:aws:resource/with space",
+			"urn:cerebro:tenant-a:aws:resource/with space",
+			"urn:cerebro:tenant-a:github:repo?name=a/b",
 		},
 	}
 	first, err := FindingLinks(input)
@@ -61,6 +63,18 @@ func TestFindingLinksAreDeterministicAndRoundTripEscaping(t *testing.T) {
 		if got := parsed.Query().Get("root_urn"); got != link.Target.ID {
 			t.Fatalf("graph root_urn = %q, want %q", got, link.Target.ID)
 		}
+	}
+}
+
+func TestFindingLinksRejectCrossTenantAffectedResource(t *testing.T) {
+	_, err := FindingLinks(FindingInput{
+		ID:           "finding-1",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-1",
+		ResourceURNs: []string{"urn:cerebro:tenant-b:asset:resource-1"},
+	})
+	if !errors.Is(err, ErrInvalidLink) {
+		t.Fatalf("FindingLinks() error = %v, want %v", err, ErrInvalidLink)
 	}
 }
 
