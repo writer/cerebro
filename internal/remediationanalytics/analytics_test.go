@@ -2,13 +2,14 @@ package remediationanalytics
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestPredictionReceiptIsDeterministicAndVersionBound(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	input := PredictionInput{TenantID: "tenant-a", ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-b", Fingerprint: "fp-b", RuleID: "rule-b", Revision: 2}, {FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12.5, PredictedAttackPathDelta: 2, CreatedAt: now}
+	input := PredictionInput{TenantID: "tenant-a", ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-b", Fingerprint: "fp-b", RuleID: "rule-b", Revision: 2}, {FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12.5, PredictedAttackPathDelta: 2, PredictedEffort: 30 * time.Minute, PredictedCostMicros: 500000, PredictedCollateralRisk: 0.1, RollbackPlanDigest: testDigest("a"), CreatedAt: now}
 	first, err := NewPredictionReceipt(input)
 	if err != nil {
 		t.Fatal(err)
@@ -34,11 +35,11 @@ func TestPredictionReceiptIsDeterministicAndVersionBound(t *testing.T) {
 func TestRealizedResultCensorsUnhealthyVerification(t *testing.T) {
 	prediction := testPrediction(t)
 	value := 4.0
-	_, err := NewRealizedResult(RealizedInput{Prediction: prediction, SourceHealth: SourceUnhealthy, CensoredReason: "source_collection_failed", RealizedRiskDelta: &value, ObservedAt: prediction.CreatedAt.Add(time.Hour)})
+	_, err := NewRealizedResult(RealizedInput{Prediction: prediction, ExecutionID: "execution-a", ExecutorPrincipalID: "executor-a", ActualEffort: 40 * time.Minute, ActualCostMicros: 600000, SourceHealth: SourceUnhealthy, CensoredReason: "source_collection_failed", RealizedRiskDelta: &value, ObservedAt: prediction.CreatedAt.Add(time.Hour)})
 	if !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("error = %v, want ErrInvalidRecord", err)
 	}
-	result, err := NewRealizedResult(RealizedInput{Prediction: prediction, SourceHealth: SourceUnhealthy, CensoredReason: "source_collection_failed", ObservedAt: prediction.CreatedAt.Add(time.Hour)})
+	result, err := NewRealizedResult(RealizedInput{Prediction: prediction, ExecutionID: "execution-a", ExecutorPrincipalID: "executor-a", ActualEffort: 40 * time.Minute, ActualCostMicros: 600000, SourceHealth: SourceUnhealthy, CensoredReason: "source_collection_failed", ObservedAt: prediction.CreatedAt.Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestRealizedResultCensorsUnhealthyVerification(t *testing.T) {
 func TestRealizedResultRejectsUnboundFinding(t *testing.T) {
 	prediction := testPrediction(t)
 	value := 10.0
-	_, err := NewRealizedResult(RealizedInput{Prediction: prediction, VerificationID: "verify-a", VerifiedClosedFindingIDs: []string{"foreign-finding"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &value, ObservedAt: prediction.CreatedAt.Add(time.Hour)})
+	_, err := NewRealizedResult(verifiedRealizedInput(prediction, "foreign-finding", &value, prediction.CreatedAt.Add(time.Hour)))
 	if !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("error = %v, want ErrInvalidRecord", err)
 	}
@@ -92,14 +93,16 @@ func TestDeriveResolutionEpisodesDoesNotCreditUnhealthySource(t *testing.T) {
 func TestBuildBenchmarksSeparatesTenantAndVersionAndDisclosesSample(t *testing.T) {
 	prediction := testPrediction(t)
 	risk := 10.0
-	result, err := NewRealizedResult(RealizedInput{Prediction: prediction, VerificationID: "verify-a", VerifiedClosedFindingIDs: []string{"finding-a"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &risk, ObservedAt: prediction.CreatedAt.Add(2 * time.Hour)})
+	result, err := NewRealizedResult(verifiedRealizedInput(prediction, "finding-a", &risk, prediction.CreatedAt.Add(2*time.Hour)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherPrediction := prediction
-	otherPrediction.TenantID = "tenant-b"
-	otherPrediction.Digest = "sha256:other"
-	other, err := NewRealizedResult(RealizedInput{Prediction: otherPrediction, VerificationID: "verify-b", StillMatchingFindingIDs: []string{"finding-a"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &risk, ObservedAt: otherPrediction.CreatedAt.Add(4 * time.Hour)})
+	otherPrediction := testPredictionForTenant(t, "tenant-b")
+	otherInput := verifiedRealizedInput(otherPrediction, "", &risk, otherPrediction.CreatedAt.Add(4*time.Hour))
+	otherInput.VerificationID = "verify-b"
+	otherInput.VerifiedClosedFindingIDs = nil
+	otherInput.StillMatchingFindingIDs = []string{"finding-a"}
+	other, err := NewRealizedResult(otherInput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +111,7 @@ func TestBuildBenchmarksSeparatesTenantAndVersionAndDisclosesSample(t *testing.T
 		t.Fatalf("benchmarks = %d, want 2", len(benchmarks))
 	}
 	for _, benchmark := range benchmarks {
-		if benchmark.SampleSize != 1 || benchmark.MinimumSampleMet {
+		if benchmark.SampleSize != 1 || benchmark.MinimumSampleMet || benchmark.MeanAbsoluteEffortError != 10*time.Minute || benchmark.MeanAbsoluteCostErrorMicros != 100000 || benchmark.MeanAbsoluteCollateralError != 0.1 {
 			t.Fatalf("benchmark = %+v", benchmark)
 		}
 	}
@@ -116,9 +119,65 @@ func TestBuildBenchmarksSeparatesTenantAndVersionAndDisclosesSample(t *testing.T
 
 func testPrediction(t *testing.T) PredictionReceipt {
 	t.Helper()
-	receipt, err := NewPredictionReceipt(PredictionInput{TenantID: "tenant-a", ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12, PredictedAttackPathDelta: 1, CreatedAt: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)})
+	return testPredictionForTenant(t, "tenant-a")
+}
+
+func testPredictionForTenant(t *testing.T, tenantID string) PredictionReceipt {
+	t.Helper()
+	receipt, err := NewPredictionReceipt(PredictionInput{TenantID: tenantID, ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12, PredictedAttackPathDelta: 1, PredictedEffort: 30 * time.Minute, PredictedCostMicros: 500000, PredictedCollateralRisk: 0.1, RollbackPlanDigest: testDigest("a"), CreatedAt: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return receipt
+}
+
+func TestRealizedResultRequiresIndependentVerification(t *testing.T) {
+	prediction := testPrediction(t)
+	value := 10.0
+	input := verifiedRealizedInput(prediction, "finding-a", &value, prediction.CreatedAt.Add(time.Hour))
+	input.VerifierPrincipalID = input.ExecutorPrincipalID
+	_, err := NewRealizedResult(input)
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("error = %v, want ErrInvalidRecord", err)
+	}
+}
+
+func TestRealizedResultRejectsModifiedPredictionReceipt(t *testing.T) {
+	prediction := testPrediction(t)
+	prediction.PredictedEffort = time.Minute
+	value := 10.0
+	_, err := NewRealizedResult(verifiedRealizedInput(prediction, "finding-a", &value, prediction.CreatedAt.Add(time.Hour)))
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("error = %v, want ErrInvalidRecord", err)
+	}
+}
+
+func TestRealizedResultRecordsOperationalVarianceAndRollback(t *testing.T) {
+	prediction := testPrediction(t)
+	value := 10.0
+	input := verifiedRealizedInput(prediction, "finding-a", &value, prediction.CreatedAt.Add(2*time.Hour))
+	input.ActualEffort = 45 * time.Minute
+	input.ActualCostMicros = 650000
+	input.CollateralFindingIDs = []string{"collateral-b", "collateral-a", "collateral-a"}
+	input.RolledBack = true
+	input.RollbackCompletedAt = prediction.CreatedAt.Add(90 * time.Minute)
+	result, err := NewRealizedResult(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.EffortPredictionError != 15*time.Minute || result.CostPredictionErrorMicros != 150000 || result.CollateralPredictionError != 0.9 || result.RollbackLatency != 90*time.Minute || len(result.CollateralFindingIDs) != 2 || result.RollbackPlanDigest != prediction.RollbackPlanDigest {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func verifiedRealizedInput(prediction PredictionReceipt, closedFindingID string, risk *float64, observedAt time.Time) RealizedInput {
+	closed := []string(nil)
+	if closedFindingID != "" {
+		closed = []string{closedFindingID}
+	}
+	return RealizedInput{Prediction: prediction, ExecutionID: "execution-a", ExecutorPrincipalID: "executor-a", VerificationID: "verify-a", VerifierPrincipalID: "verifier-a", VerificationEvidenceDigest: testDigest("b"), VerifiedClosedFindingIDs: closed, SourceHealth: SourceHealthy, RealizedRiskDelta: risk, ActualEffort: 40 * time.Minute, ActualCostMicros: 600000, ObservedAt: observedAt}
+}
+
+func testDigest(value string) string {
+	return "sha256:" + strings.Repeat(value, 64)
 }

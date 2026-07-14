@@ -33,6 +33,10 @@ type PredictionReceipt struct {
 	FindingRevisions         []FindingRevision `json:"finding_revisions"`
 	PredictedRiskDelta       float64           `json:"predicted_risk_delta"`
 	PredictedAttackPathDelta float64           `json:"predicted_attack_path_delta"`
+	PredictedEffort          time.Duration     `json:"predicted_effort"`
+	PredictedCostMicros      int64             `json:"predicted_cost_micros"`
+	PredictedCollateralRisk  float64           `json:"predicted_collateral_risk"`
+	RollbackPlanDigest       string            `json:"rollback_plan_digest"`
 	CreatedAt                time.Time         `json:"created_at"`
 	Digest                   string            `json:"digest"`
 }
@@ -47,6 +51,10 @@ type PredictionInput struct {
 	FindingRevisions         []FindingRevision
 	PredictedRiskDelta       float64
 	PredictedAttackPathDelta float64
+	PredictedEffort          time.Duration
+	PredictedCostMicros      int64
+	PredictedCollateralRisk  float64
+	RollbackPlanDigest       string
 	CreatedAt                time.Time
 }
 
@@ -54,8 +62,9 @@ func NewPredictionReceipt(input PredictionInput) (PredictionReceipt, error) {
 	if missing(input.TenantID, input.ReportRunID, input.CandidateID, input.PlanModelVersion, input.ActionType, input.TargetType) {
 		return PredictionReceipt{}, fmt.Errorf("%w: prediction identity is required", ErrInvalidRecord)
 	}
-	if input.CreatedAt.IsZero() || invalidNumber(input.PredictedRiskDelta) || invalidNumber(input.PredictedAttackPathDelta) {
-		return PredictionReceipt{}, fmt.Errorf("%w: prediction time and finite deltas are required", ErrInvalidRecord)
+	if input.CreatedAt.IsZero() || invalidNumber(input.PredictedRiskDelta) || invalidNumber(input.PredictedAttackPathDelta) ||
+		input.PredictedEffort <= 0 || input.PredictedCostMicros < 0 || invalidProbability(input.PredictedCollateralRisk) || !validDigest(input.RollbackPlanDigest) {
+		return PredictionReceipt{}, fmt.Errorf("%w: prediction time, operational baseline, rollback plan, and finite deltas are required", ErrInvalidRecord)
 	}
 	findings, err := normalizeFindingRevisions(input.FindingRevisions)
 	if err != nil {
@@ -71,6 +80,10 @@ func NewPredictionReceipt(input PredictionInput) (PredictionReceipt, error) {
 		FindingRevisions:         findings,
 		PredictedRiskDelta:       input.PredictedRiskDelta,
 		PredictedAttackPathDelta: input.PredictedAttackPathDelta,
+		PredictedEffort:          input.PredictedEffort,
+		PredictedCostMicros:      input.PredictedCostMicros,
+		PredictedCollateralRisk:  input.PredictedCollateralRisk,
+		RollbackPlanDigest:       strings.TrimSpace(input.RollbackPlanDigest),
 		CreatedAt:                canonicalTime(input.CreatedAt),
 	}
 	receipt.Digest, err = digest(receipt)
@@ -86,39 +99,81 @@ const (
 )
 
 type RealizedResult struct {
-	TenantID                 string        `json:"tenant_id"`
-	PredictionDigest         string        `json:"prediction_digest"`
-	PlanModelVersion         string        `json:"plan_model_version"`
-	ActionType               string        `json:"action_type"`
-	TargetType               string        `json:"target_type"`
-	VerificationID           string        `json:"verification_id,omitempty"`
-	VerifiedClosedFindingIDs []string      `json:"verified_closed_finding_ids,omitempty"`
-	StillMatchingFindingIDs  []string      `json:"still_matching_finding_ids,omitempty"`
-	SourceHealth             SourceHealth  `json:"source_health"`
-	CensoredReason           string        `json:"censored_reason,omitempty"`
-	RealizedRiskDelta        *float64      `json:"realized_risk_delta,omitempty"`
-	RealizedAttackPathDelta  *float64      `json:"realized_attack_path_delta,omitempty"`
-	RiskPredictionError      *float64      `json:"risk_prediction_error,omitempty"`
-	VerificationLatency      time.Duration `json:"verification_latency"`
-	ObservedAt               time.Time     `json:"observed_at"`
-	Digest                   string        `json:"digest"`
+	RealizedIdentity
+	RealizedVerification
+	RealizedBenefit
+	RealizedOperations
+	Digest string `json:"digest"`
+}
+
+type RealizedIdentity struct {
+	TenantID         string `json:"tenant_id"`
+	PredictionDigest string `json:"prediction_digest"`
+	PlanModelVersion string `json:"plan_model_version"`
+	ActionType       string `json:"action_type"`
+	TargetType       string `json:"target_type"`
+	ExecutionID      string `json:"execution_id"`
+}
+
+type RealizedVerification struct {
+	VerificationID             string        `json:"verification_id,omitempty"`
+	ExecutorPrincipalID        string        `json:"executor_principal_id"`
+	VerifierPrincipalID        string        `json:"verifier_principal_id,omitempty"`
+	VerificationEvidenceDigest string        `json:"verification_evidence_digest,omitempty"`
+	SourceHealth               SourceHealth  `json:"source_health"`
+	CensoredReason             string        `json:"censored_reason,omitempty"`
+	VerificationLatency        time.Duration `json:"verification_latency"`
+	ObservedAt                 time.Time     `json:"observed_at"`
+}
+
+type RealizedBenefit struct {
+	VerifiedClosedFindingIDs []string `json:"verified_closed_finding_ids,omitempty"`
+	StillMatchingFindingIDs  []string `json:"still_matching_finding_ids,omitempty"`
+	RealizedRiskDelta        *float64 `json:"realized_risk_delta,omitempty"`
+	RealizedAttackPathDelta  *float64 `json:"realized_attack_path_delta,omitempty"`
+	RiskPredictionError      *float64 `json:"risk_prediction_error,omitempty"`
+}
+
+type RealizedOperations struct {
+	ActualEffort              time.Duration `json:"actual_effort"`
+	EffortPredictionError     time.Duration `json:"effort_prediction_error"`
+	ActualCostMicros          int64         `json:"actual_cost_micros"`
+	CostPredictionErrorMicros int64         `json:"cost_prediction_error_micros"`
+	CollateralFindingIDs      []string      `json:"collateral_finding_ids,omitempty"`
+	PredictedCollateralRisk   float64       `json:"predicted_collateral_risk"`
+	CollateralOccurred        bool          `json:"collateral_occurred"`
+	CollateralPredictionError float64       `json:"collateral_prediction_error"`
+	RollbackPlanDigest        string        `json:"rollback_plan_digest"`
+	RolledBack                bool          `json:"rolled_back"`
+	RollbackCompletedAt       time.Time     `json:"rollback_completed_at,omitempty"`
+	RollbackLatency           time.Duration `json:"rollback_latency,omitempty"`
 }
 
 type RealizedInput struct {
-	Prediction               PredictionReceipt
-	VerificationID           string
-	VerifiedClosedFindingIDs []string
-	StillMatchingFindingIDs  []string
-	SourceHealth             SourceHealth
-	CensoredReason           string
-	RealizedRiskDelta        *float64
-	RealizedAttackPathDelta  *float64
-	ObservedAt               time.Time
+	Prediction                 PredictionReceipt
+	VerificationID             string
+	ExecutionID                string
+	ExecutorPrincipalID        string
+	VerifierPrincipalID        string
+	VerificationEvidenceDigest string
+	VerifiedClosedFindingIDs   []string
+	StillMatchingFindingIDs    []string
+	SourceHealth               SourceHealth
+	CensoredReason             string
+	RealizedRiskDelta          *float64
+	RealizedAttackPathDelta    *float64
+	ActualEffort               time.Duration
+	ActualCostMicros           int64
+	CollateralFindingIDs       []string
+	RolledBack                 bool
+	RollbackCompletedAt        time.Time
+	ObservedAt                 time.Time
 }
 
 func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
-	if input.Prediction.Digest == "" || input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) {
-		return RealizedResult{}, fmt.Errorf("%w: prediction and bounded observation time are required", ErrInvalidRecord)
+	if !validPredictionReceipt(input.Prediction) || input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) ||
+		missing(input.ExecutionID, input.ExecutorPrincipalID) || input.ActualEffort <= 0 || input.ActualCostMicros < 0 {
+		return RealizedResult{}, fmt.Errorf("%w: prediction, execution identity, effort, cost, and bounded observation time are required", ErrInvalidRecord)
 	}
 	if input.SourceHealth != SourceHealthy && input.SourceHealth != SourceUnhealthy && input.SourceHealth != SourceUnknown {
 		return RealizedResult{}, fmt.Errorf("%w: source health is required", ErrInvalidRecord)
@@ -134,6 +189,9 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 	}
 	censored := strings.TrimSpace(input.CensoredReason)
 	verified := strings.TrimSpace(input.VerificationID)
+	executor := strings.TrimSpace(input.ExecutorPrincipalID)
+	verifier := strings.TrimSpace(input.VerifierPrincipalID)
+	verificationDigest := strings.TrimSpace(input.VerificationEvidenceDigest)
 	if input.SourceHealth != SourceHealthy || verified == "" {
 		if censored == "" {
 			return RealizedResult{}, fmt.Errorf("%w: unavailable verification must include a censored reason", ErrInvalidRecord)
@@ -141,27 +199,36 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 		if input.RealizedRiskDelta != nil || input.RealizedAttackPathDelta != nil || len(closed) != 0 || len(matching) != 0 {
 			return RealizedResult{}, fmt.Errorf("%w: censored results cannot claim realized benefit", ErrInvalidRecord)
 		}
-	} else if censored != "" {
-		return RealizedResult{}, fmt.Errorf("%w: healthy verified results cannot be censored", ErrInvalidRecord)
+	} else if censored != "" || verifier == "" || executor == verifier || !validDigest(verificationDigest) {
+		return RealizedResult{}, fmt.Errorf("%w: credited results require independent verification evidence", ErrInvalidRecord)
 	}
 	if invalidOptionalNumber(input.RealizedRiskDelta) || invalidOptionalNumber(input.RealizedAttackPathDelta) {
 		return RealizedResult{}, fmt.Errorf("%w: realized deltas must be finite", ErrInvalidRecord)
 	}
+	collateralFindings := normalizedStrings(input.CollateralFindingIDs)
+	if overlaps(collateralFindings, closed) || overlaps(collateralFindings, matching) {
+		return RealizedResult{}, fmt.Errorf("%w: collateral findings must be distinct from predicted findings", ErrInvalidRecord)
+	}
+	rollbackCompletedAt := canonicalTime(input.RollbackCompletedAt)
+	if input.RolledBack && (rollbackCompletedAt.IsZero() || rollbackCompletedAt.Before(input.Prediction.CreatedAt) || rollbackCompletedAt.After(input.ObservedAt)) {
+		return RealizedResult{}, fmt.Errorf("%w: rollback completion must be bounded by prediction and observation", ErrInvalidRecord)
+	}
+	if !input.RolledBack && !rollbackCompletedAt.IsZero() {
+		return RealizedResult{}, fmt.Errorf("%w: rollback completion requires a rollback", ErrInvalidRecord)
+	}
 	result := RealizedResult{
-		TenantID:                 input.Prediction.TenantID,
-		PredictionDigest:         input.Prediction.Digest,
-		PlanModelVersion:         input.Prediction.PlanModelVersion,
-		ActionType:               input.Prediction.ActionType,
-		TargetType:               input.Prediction.TargetType,
-		VerificationID:           verified,
-		VerifiedClosedFindingIDs: closed,
-		StillMatchingFindingIDs:  matching,
-		SourceHealth:             input.SourceHealth,
-		CensoredReason:           censored,
-		RealizedRiskDelta:        cloneFloat(input.RealizedRiskDelta),
-		RealizedAttackPathDelta:  cloneFloat(input.RealizedAttackPathDelta),
-		VerificationLatency:      canonicalTime(input.ObservedAt).Sub(input.Prediction.CreatedAt),
-		ObservedAt:               canonicalTime(input.ObservedAt),
+		RealizedIdentity:     RealizedIdentity{TenantID: input.Prediction.TenantID, PredictionDigest: input.Prediction.Digest, PlanModelVersion: input.Prediction.PlanModelVersion, ActionType: input.Prediction.ActionType, TargetType: input.Prediction.TargetType, ExecutionID: strings.TrimSpace(input.ExecutionID)},
+		RealizedVerification: RealizedVerification{VerificationID: verified, ExecutorPrincipalID: executor, VerifierPrincipalID: verifier, VerificationEvidenceDigest: verificationDigest, SourceHealth: input.SourceHealth, CensoredReason: censored, VerificationLatency: canonicalTime(input.ObservedAt).Sub(input.Prediction.CreatedAt), ObservedAt: canonicalTime(input.ObservedAt)},
+		RealizedBenefit:      RealizedBenefit{VerifiedClosedFindingIDs: closed, StillMatchingFindingIDs: matching, RealizedRiskDelta: cloneFloat(input.RealizedRiskDelta), RealizedAttackPathDelta: cloneFloat(input.RealizedAttackPathDelta)},
+		RealizedOperations:   RealizedOperations{ActualEffort: input.ActualEffort, EffortPredictionError: input.ActualEffort - input.Prediction.PredictedEffort, ActualCostMicros: input.ActualCostMicros, CostPredictionErrorMicros: input.ActualCostMicros - input.Prediction.PredictedCostMicros, CollateralFindingIDs: collateralFindings, PredictedCollateralRisk: input.Prediction.PredictedCollateralRisk, CollateralOccurred: len(collateralFindings) > 0, RollbackPlanDigest: input.Prediction.RollbackPlanDigest, RolledBack: input.RolledBack, RollbackCompletedAt: rollbackCompletedAt},
+	}
+	actualCollateral := 0.0
+	if result.CollateralOccurred {
+		actualCollateral = 1
+	}
+	result.CollateralPredictionError = actualCollateral - input.Prediction.PredictedCollateralRisk
+	if input.RolledBack {
+		result.RollbackLatency = rollbackCompletedAt.Sub(input.Prediction.CreatedAt)
 	}
 	if result.RealizedRiskDelta != nil {
 		errorValue := *result.RealizedRiskDelta - input.Prediction.PredictedRiskDelta
@@ -170,6 +237,18 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 	var err error
 	result.Digest, err = digest(result)
 	return result, err
+}
+
+func validPredictionReceipt(value PredictionReceipt) bool {
+	canonical, err := NewPredictionReceipt(PredictionInput{
+		TenantID: value.TenantID, ReportRunID: value.ReportRunID, CandidateID: value.CandidateID,
+		PlanModelVersion: value.PlanModelVersion, ActionType: value.ActionType, TargetType: value.TargetType,
+		FindingRevisions: value.FindingRevisions, PredictedRiskDelta: value.PredictedRiskDelta,
+		PredictedAttackPathDelta: value.PredictedAttackPathDelta, PredictedEffort: value.PredictedEffort,
+		PredictedCostMicros: value.PredictedCostMicros, PredictedCollateralRisk: value.PredictedCollateralRisk,
+		RollbackPlanDigest: value.RollbackPlanDigest, CreatedAt: value.CreatedAt,
+	})
+	return err == nil && canonical.Digest == value.Digest
 }
 
 type ObservationKind string
@@ -296,25 +375,26 @@ func DeriveResolutionEpisodes(observations []LifecycleObservation, asOf time.Tim
 }
 
 type Benchmark struct {
-	TenantID                  string        `json:"tenant_id"`
-	PlanModelVersion          string        `json:"plan_model_version"`
-	ActionType                string        `json:"action_type"`
-	TargetType                string        `json:"target_type"`
-	SampleSize                int           `json:"sample_size"`
-	MinimumSampleMet          bool          `json:"minimum_sample_met"`
-	VerifiedResolutionRate    float64       `json:"verified_resolution_rate"`
-	VerificationFailureRate   float64       `json:"verification_failure_rate"`
-	MedianVerificationLatency time.Duration `json:"median_verification_latency"`
-	MeanAbsoluteRiskError     float64       `json:"mean_absolute_risk_error"`
+	TenantID                    string        `json:"tenant_id"`
+	PlanModelVersion            string        `json:"plan_model_version"`
+	ActionType                  string        `json:"action_type"`
+	TargetType                  string        `json:"target_type"`
+	SampleSize                  int           `json:"sample_size"`
+	MinimumSampleMet            bool          `json:"minimum_sample_met"`
+	VerifiedResolutionRate      float64       `json:"verified_resolution_rate"`
+	VerificationFailureRate     float64       `json:"verification_failure_rate"`
+	MedianVerificationLatency   time.Duration `json:"median_verification_latency"`
+	MeanAbsoluteRiskError       float64       `json:"mean_absolute_risk_error"`
+	MeanAbsoluteEffortError     time.Duration `json:"mean_absolute_effort_error"`
+	MeanAbsoluteCostErrorMicros int64         `json:"mean_absolute_cost_error_micros"`
+	MeanAbsoluteCollateralError float64       `json:"mean_absolute_collateral_error"`
+	CollateralRate              float64       `json:"collateral_rate"`
+	RollbackRate                float64       `json:"rollback_rate"`
 }
 
 func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 	if minimumSample < 1 {
 		minimumSample = 1
-	}
-	type bucket struct {
-		key     string
-		results []RealizedResult
 	}
 	buckets := map[string][]RealizedResult{}
 	for _, result := range results {
@@ -333,8 +413,10 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 	for _, key := range keys {
 		values := buckets[key]
 		latencies := make([]time.Duration, 0, len(values))
-		closed, failed := 0, 0
-		absoluteError, errorCount := 0.0, 0
+		closed, failed, collateral, rolledBack := 0, 0, 0, 0
+		absoluteError, errorCount, absoluteCollateralError := 0.0, 0, 0.0
+		var absoluteEffortError time.Duration
+		var absoluteCostError int64
 		for _, value := range values {
 			latencies = append(latencies, value.VerificationLatency)
 			if len(value.VerifiedClosedFindingIDs) > 0 {
@@ -343,6 +425,15 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 			if len(value.StillMatchingFindingIDs) > 0 {
 				failed++
 			}
+			if len(value.CollateralFindingIDs) > 0 {
+				collateral++
+			}
+			if value.RolledBack {
+				rolledBack++
+			}
+			absoluteEffortError += absDuration(value.EffortPredictionError)
+			absoluteCostError += absInt64(value.CostPredictionErrorMicros)
+			absoluteCollateralError += math.Abs(value.CollateralPredictionError)
 			if value.RiskPredictionError != nil {
 				absoluteError += math.Abs(*value.RiskPredictionError)
 				errorCount++
@@ -350,7 +441,7 @@ func BuildBenchmarks(results []RealizedResult, minimumSample int) []Benchmark {
 		}
 		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 		parts := strings.Split(key, "\x00")
-		benchmark := Benchmark{TenantID: parts[0], PlanModelVersion: parts[1], ActionType: parts[2], TargetType: parts[3], SampleSize: len(values), MinimumSampleMet: len(values) >= minimumSample, VerifiedResolutionRate: float64(closed) / float64(len(values)), VerificationFailureRate: float64(failed) / float64(len(values)), MedianVerificationLatency: latencies[(len(latencies)-1)/2]}
+		benchmark := Benchmark{TenantID: parts[0], PlanModelVersion: parts[1], ActionType: parts[2], TargetType: parts[3], SampleSize: len(values), MinimumSampleMet: len(values) >= minimumSample, VerifiedResolutionRate: float64(closed) / float64(len(values)), VerificationFailureRate: float64(failed) / float64(len(values)), MedianVerificationLatency: latencies[(len(latencies)-1)/2], MeanAbsoluteEffortError: absoluteEffortError / time.Duration(len(values)), MeanAbsoluteCostErrorMicros: absoluteCostError / int64(len(values)), MeanAbsoluteCollateralError: absoluteCollateralError / float64(len(values)), CollateralRate: float64(collateral) / float64(len(values)), RollbackRate: float64(rolledBack) / float64(len(values))}
 		if errorCount > 0 {
 			benchmark.MeanAbsoluteRiskError = absoluteError / float64(errorCount)
 		}
@@ -428,6 +519,7 @@ func canonicalTime(value time.Time) time.Time {
 	return value.UTC().Round(0)
 }
 func invalidNumber(value float64) bool          { return math.IsNaN(value) || math.IsInf(value, 0) }
+func invalidProbability(value float64) bool     { return invalidNumber(value) || value < 0 || value > 1 }
 func invalidOptionalNumber(value *float64) bool { return value != nil && invalidNumber(*value) }
 func cloneFloat(value *float64) *float64 {
 	if value == nil {
@@ -484,6 +576,26 @@ func overlaps(left, right []string) bool {
 		}
 	}
 	return false
+}
+func validDigest(value string) bool {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "sha256:") || len(value) != len("sha256:")+sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil
+}
+func absDuration(value time.Duration) time.Duration {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+func absInt64(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 func lifecycleKey(value LifecycleObservation) string {
 	return strings.Join([]string{value.TenantID, value.FindingID, value.Fingerprint}, "\x00")
