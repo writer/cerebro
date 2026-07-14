@@ -39,6 +39,7 @@ processors:
     detectors: [env, ecs]
     timeout: 2s
     override: false
+  cumulativetodelta: {{}}
   batch/traces:
     timeout: 5s
     send_batch_size: 512
@@ -59,7 +60,7 @@ service:
     logs:
       level: info
     metrics:
-      level: detailed
+      level: basic
   pipelines:
     traces:
       receivers: [otlp]
@@ -67,7 +68,7 @@ service:
       exporters: [awsxray]
     metrics:
       receivers: [otlp, prometheus/internal]
-      processors: [memory_limiter, resourcedetection, batch/metrics]
+      processors: [memory_limiter, resourcedetection, cumulativetodelta, batch/metrics]
       exporters: [awsemf]
 """
 

@@ -22,8 +22,8 @@ config:
   cerebro:webOidcTokenEndpoint: https://writer.okta.com/oauth2/v1/token
   cerebro:webOidcUserInfoEndpoint: https://writer.okta.com/oauth2/v1/userinfo
   cerebro:webOidcClientId: 0oa234e4mu4Dnot0q1d8
-  cerebro:webCpu: 1024
-  cerebro:webMemory: 2048
+  cerebro:webCpu: 256
+  cerebro:webMemory: 512
   cerebro:webMinInstances: 1
   cerebro:webMaxInstances: 2
   cerebro:albIdleTimeoutSeconds: 600
@@ -37,8 +37,8 @@ config:
   cerebro:publicSubnetIds:
     - subnet-075aed8f036657648
     - subnet-0f3b3171121b9da7b
-  cerebro:apiCpu: 2048
-  cerebro:apiMemory: 4096
+  cerebro:apiCpu: 512
+  cerebro:apiMemory: 1024
   cerebro:apiMinInstances: 1
   # Pinned to 1 because cerebro:deviceAuthEnabled is true and the secheck
   # DPoP replay cache is in-process per replica. The Pulumi __main__.py
@@ -54,8 +54,8 @@ config:
   cerebro:otelCollectorEnabled: true
   cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
   cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG
-  cerebro:otelTracesSampleRate: "1"
-  cerebro:otelMetricsExportInterval: 30s
+  cerebro:otelTracesSampleRate: "0.10"
+  cerebro:otelMetricsExportInterval: 60s
   cerebro:postgresInstanceClass: db.t4g.medium
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
@@ -63,7 +63,7 @@ config:
   cerebro:postgresBackupRetentionDays: 14
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true
-  cerebro:cacheEnabled: true
+  cerebro:cacheEnabled: false
   cerebro:cacheEngine: valkey
   cerebro:cacheNamespace: cerebro:sec-dev:grc
   cerebro:cacheDefaultTTL: 30s
@@ -693,17 +693,17 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
-  # Default source-runtime drain tasks keep 4 vCPU / 8 GiB headroom; grouped
+  # Default source-runtime drain tasks keep 2 vCPU / 4 GiB headroom; grouped
   # inventory schedules opt into the smaller profile below.
-  cerebro:orchestratorCpu: 4096
-  cerebro:orchestratorMemory: 8192
+  cerebro:orchestratorCpu: 2048
+  cerebro:orchestratorMemory: 4096
   cerebro:orchestratorTaskProfiles:
     default:
-      cpu: 4096
-      memory: 8192
-    small:
       cpu: 2048
       memory: 4096
+    small:
+      cpu: 1024
+      memory: 2048
     large:
       cpu: 16384
       memory: 32768

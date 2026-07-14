@@ -44,9 +44,13 @@ class ProvisionOtelCollectorConfigTest(unittest.TestCase):
         self.assertIn("awsxray", config["exporters"])
         self.assertEqual(config["exporters"]["awsemf"]["namespace"], "Cerebro/OTEL")
         self.assertEqual(config["exporters"]["awsemf"]["log_group_name"], "/aws/otel/cerebro-sec-dev/metrics")
-        self.assertEqual(config["service"]["telemetry"]["metrics"]["level"], "detailed")
+        self.assertEqual(config["service"]["telemetry"]["metrics"]["level"], "basic")
         self.assertEqual(config["service"]["pipelines"]["traces"]["exporters"], ["awsxray"])
         self.assertEqual(config["service"]["pipelines"]["metrics"]["receivers"], ["otlp", "prometheus/internal"])
+        self.assertEqual(
+            config["service"]["pipelines"]["metrics"]["processors"],
+            ["memory_limiter", "resourcedetection", "cumulativetodelta", "batch/metrics"],
+        )
         self.assertEqual(config["service"]["pipelines"]["metrics"]["exporters"], ["awsemf"])
 
     def test_collector_config_sha_changes_with_service_name(self) -> None:
