@@ -596,23 +596,35 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
+	attackTagValues := findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)
+	mitreContext, err := mitre.EvaluateContext(ctx, mitre.ContextInput{
+		AttackTacticValues: append(
+			findingMetadataValues(finding.Metadata, workflowMITREAttackTacticKeys...),
+			attackTagValues...,
+		),
+		AttackTechniqueValues:   findingMetadataValues(finding.Metadata, workflowMITREAttackTechniqueKeys...),
+		AttackTechniqueIDValues: attackTagValues,
+		DefendTacticValues:      findingMetadataValues(finding.Metadata, workflowMITREDefendTacticKeys...),
+		DefendTechniqueValues:   findingMetadataValues(finding.Metadata, workflowMITREDefendTechniqueKeys...),
+		DefendArtifactValues:    findingMetadataValues(finding.Metadata, workflowMITREDefendArtifactKeys...),
+	})
+	if err != nil {
+		return fmt.Errorf("evaluate finding MITRE context: %w", err)
+	}
 	currentContextURNs := []string{}
 	appendContextURN := func(urn string) {
 		if urn = strings.TrimSpace(urn); urn != "" {
 			currentContextURNs = append(currentContextURNs, urn)
 		}
 	}
-	tactics := mitre.ExtractAttackTactics(append(findingMetadataValues(finding.Metadata, workflowMITREAttackTacticKeys...), findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
-	for _, tactic := range tactics {
+	for _, tactic := range mitreContext.AttackTactics {
 		tacticURN, err := s.ensureFindingMITREAttackTactic(ctx, finding, anchorURN, tactic, "attack_tactic", result)
 		if err != nil {
 			return err
 		}
 		appendContextURN(tacticURN)
 	}
-	techniques := mitre.ExtractAttackTechniques(findingMetadataValues(finding.Metadata, workflowMITREAttackTechniqueKeys...)...)
-	techniques = append(techniques, mitre.ExtractAttackTechniqueIDs(findingMetadataValues(finding.Metadata, workflowMITREAttackTagKeys...)...)...)
-	for _, technique := range techniques {
+	for _, technique := range mitreContext.AttackTechniques {
 		techniqueURN, err := s.ensureFindingMITREAttackTechnique(ctx, finding, anchorURN, technique, "attack_technique", result)
 		if err != nil {
 			return err
@@ -624,21 +636,21 @@ func (s *Service) ensureFindingMITREContext(ctx context.Context, finding workflo
 		}
 		currentContextURNs = append(currentContextURNs, knowledgeURNs...)
 	}
-	for _, tactic := range mitre.ExtractDefendTactics(findingMetadataValues(finding.Metadata, workflowMITREDefendTacticKeys...)...) {
+	for _, tactic := range mitreContext.DefendTactics {
 		tacticURN, err := s.ensureFindingMITREDefendTactic(ctx, finding, anchorURN, tactic, result)
 		if err != nil {
 			return err
 		}
 		appendContextURN(tacticURN)
 	}
-	for _, technique := range mitre.ExtractDefendTechniques(findingMetadataValues(finding.Metadata, workflowMITREDefendTechniqueKeys...)...) {
+	for _, technique := range mitreContext.DefendTechniques {
 		techniqueURN, err := s.ensureFindingMITREDefendTechnique(ctx, finding, anchorURN, technique, result)
 		if err != nil {
 			return err
 		}
 		appendContextURN(techniqueURN)
 	}
-	for _, artifact := range mitre.ExtractDefendArtifacts(findingMetadataValues(finding.Metadata, workflowMITREDefendArtifactKeys...)...) {
+	for _, artifact := range mitreContext.DefendArtifacts {
 		artifactURN, err := s.ensureFindingMITREDefendArtifact(ctx, finding, anchorURN, artifact, result)
 		if err != nil {
 			return err

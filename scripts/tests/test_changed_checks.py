@@ -60,6 +60,11 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("panopticon-resource-extractor-check", self.command_names([path]))
 
+    def test_mitre_context_paths_select_wasm_check(self):
+        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/mitre/evaluator/src/lib.rs", "internal/mitre/evaluator.go", "internal/mitre/evaluator.wasm", "internal/mitre/mitre.go"):
+            with self.subTest(path=path):
+                self.assertIn("mitre-context-evaluator-check", self.command_names([path]))
+
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])
         self.assertIn("readme-check", names)
