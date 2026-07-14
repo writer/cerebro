@@ -37,7 +37,7 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check graphagent-static-validator-check sourcecoverage-evaluator-check
+            command: make graph-action-check graphagent-static-validator-check sourcecoverage-evaluator-check panopticon-resource-extractor-check
           - name: docs-drift
             command: make docs-drift-check
           - name: readme
