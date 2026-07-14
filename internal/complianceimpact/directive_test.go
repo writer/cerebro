@@ -32,6 +32,18 @@ func TestBuildAssessmentDirectiveFallsBackToFullReconciliation(t *testing.T) {
 	}
 }
 
+func TestBuildAssessmentDirectiveTreatsRecordedIssueAsIncomplete(t *testing.T) {
+	result := directiveImpactResult(true)
+	result.Issues = []Issue{{Code: ReasonDepthBudgetExceeded}}
+	directive, err := BuildAssessmentDirective(result, time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if directive.Mode != AssessmentModeFullReconciliation || directive.ImpactComplete || len(directive.ObjectiveRevisions) != 0 {
+		t.Fatalf("directive = %#v", directive)
+	}
+}
+
 func TestBuildAssessmentDirectiveIsDeterministic(t *testing.T) {
 	result := directiveImpactResult(true)
 	at := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)

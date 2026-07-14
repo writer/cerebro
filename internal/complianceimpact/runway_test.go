@@ -53,6 +53,13 @@ func TestCalculateSourceRunway(t *testing.T) {
 			t.Fatalf("result = %#v", result)
 		}
 	})
+	t.Run("future checkpoint is rejected", func(t *testing.T) {
+		input := base
+		input.LastSuccessfulAt = asOf.Add(time.Minute)
+		if _, err := CalculateSourceRunway(input); err == nil {
+			t.Fatal("expected future checkpoint to be rejected")
+		}
+	})
 }
 
 func sourceRunwayInput(asOf time.Time) SourceRunwayInput {

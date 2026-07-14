@@ -62,7 +62,7 @@ type SourceRunway struct {
 func CalculateSourceRunway(input SourceRunwayInput) (SourceRunway, error) {
 	input.TenantID = strings.TrimSpace(input.TenantID)
 	if input.TenantID == "" || input.Objective.TenantID() != input.TenantID || input.SourceProof.TenantID() != input.TenantID ||
-		input.AsOf.IsZero() || input.ExpectedCadence <= 0 || input.MaximumStaleness <= 0 {
+		input.AsOf.IsZero() || input.ExpectedCadence <= 0 || input.MaximumStaleness <= 0 || input.LastSuccessfulAt.After(input.AsOf) {
 		return SourceRunway{}, ErrInvalidSourceRunway
 	}
 	result := SourceRunway{TenantID: input.TenantID, Objective: provenance(input.Objective), SourceProof: provenance(input.SourceProof), State: RunwayHealthy}

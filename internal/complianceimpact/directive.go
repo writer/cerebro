@@ -65,7 +65,7 @@ func BuildAssessmentDirective(result Result, requestedAt time.Time) (AssessmentD
 		change.Replacement = &value
 	}
 	directive := AssessmentDirective{
-		TenantID: result.TenantID, Change: change, ImpactComplete: result.Complete,
+		TenantID: result.TenantID, Change: change, ImpactComplete: result.Complete && len(result.Issues) == 0,
 		RequestedAt: requestedAt.UTC(),
 	}
 	for _, invalidation := range result.Invalidations {
@@ -74,7 +74,7 @@ func BuildAssessmentDirective(result Result, requestedAt time.Time) (AssessmentD
 	for _, issue := range result.Issues {
 		directive.Issues = append(directive.Issues, DirectiveIssue{Code: issue.Code, Revision: provenance(issue.Revision), Related: provenance(issue.Related)})
 	}
-	if result.Complete {
+	if directive.ImpactComplete {
 		directive.Mode = AssessmentModeTargeted
 		for _, objective := range result.Objectives {
 			directive.ObjectiveRevisions = append(directive.ObjectiveRevisions, provenance(objective.Revision))
