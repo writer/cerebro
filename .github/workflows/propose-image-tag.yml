@@ -469,7 +469,7 @@ jobs:
             while [ "${SECONDS}" -lt "${deadline}" ]; do
               if [ -z "${sec_dev_sha}" ]; then
                 sec_dev_pr="$(
-                  gh pr list \
+                  GH_TOKEN="${CHECKS_TOKEN}" gh pr list \
                     --repo "${GITHUB_REPOSITORY}" \
                     --state merged \
                     --head "${sec_dev_branch}" \
@@ -489,7 +489,7 @@ jobs:
               fi
 
               run="$(
-                gh run list \
+                GH_TOKEN="${CHECKS_TOKEN}" gh run list \
                   --repo "${GITHUB_REPOSITORY}" \
                   --workflow infra-deploy.yml \
                   --event push \
