@@ -10,9 +10,19 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 var errTestProjectionUnavailable = errors.New("projection unavailable")
+
+func TestValidateRecoveredAggregateRejectsOverflowVersion(t *testing.T) {
+	record := &workflowevents.ComplianceAggregateRecorded{
+		AggregateType: "assessment_run", TenantID: "tenant-a", AggregateID: "run-a", AggregateVersion: 1,
+	}
+	if err := validateRecoveredAggregate(record, "assessment_run", "tenant-a", "run-a", "", ^uint64(0)); err == nil {
+		t.Fatal("validateRecoveredAggregate() accepted a version larger than int64")
+	}
+}
 
 func TestRecoverProjectionsRebindsAndRunsAppendedRequest(t *testing.T) {
 	now := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
