@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/grcpolicylifecycle"
@@ -34,6 +35,7 @@ const (
 	grcDefaultLimit          = uint32(100)
 	grcMaxLimit              = uint32(500)
 	grcDashboardPreviewLimit = uint32(25)
+	grcAuditPacketSchema     = grcauditpacket.SchemaVersion
 )
 
 type grcScope struct {
@@ -86,16 +88,9 @@ type grcEntityImpactResponse struct {
 	GeneratedAt time.Time                 `json:"generated_at"`
 }
 
-type grcAuditPacketResponse struct {
-	ID                string                    `json:"id"`
-	Finding           grcFindingItem            `json:"finding"`
-	Evidence          []grcEvidenceItem         `json:"evidence"`
-	Graph             *ports.EntityNeighborhood `json:"graph,omitempty"`
-	Controls          []grcControlRef           `json:"controls,omitempty"`
-	RecommendedAction string                    `json:"recommended_action"`
-	Metadata          grccontrol.ReportMetadata `json:"metadata"`
-	GeneratedAt       time.Time                 `json:"generated_at"`
-}
+type grcAuditPacketResponse = grcauditpacket.Packet
+type grcAuditFindingReference = grcauditpacket.FindingReference
+type grcAuditPacketGap = grcauditpacket.Gap
 
 func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcDashboardTelemetryAttrs())
@@ -584,30 +579,8 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
-	packet, err := a.buildGRCAuditPacket(r)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, packet)
-}
-
-func (a *App) handleGRCAuditPacketExport(w http.ResponseWriter, r *http.Request) {
-	packet, err := a.buildGRCAuditPacket(r)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
-		writeJSON(w, http.StatusOK, packet)
-		return
-	}
-	writeGRCMarkdownExport(w, "finding-audit-packet.md", grccontrol.RenderFindingAuditPacketMarkdown(grcFindingAuditMarkdownInput(packet)))
-}
-
-func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, error) {
-	findingID := strings.TrimSpace(r.PathValue("packetID"))
+func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditPacketResponse, error) {
+	findingID = strings.TrimSpace(findingID)
 	if findingID == "" {
 		return grcAuditPacketResponse{}, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest)
 	}
@@ -636,6 +609,22 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
+	evidenceTotal, err := a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{FindingID: finding.ID})
+	if err != nil {
+		return grcAuditPacketResponse{}, err
+	}
+	packetGaps := []grcAuditPacketGap{}
+	switch {
+	case evidenceTotal == nil:
+		packetGaps = append(packetGaps, grcAuditPacketGap{
+			Code: "evidence_total_unavailable", Message: "The evidence store could not report the total matching record count; snapshot completeness is unverified.",
+		})
+	case *evidenceTotal > len(evidence):
+		packetGaps = append(packetGaps, grcAuditPacketGap{
+			Code:    "evidence_snapshot_truncated",
+			Message: fmt.Sprintf("The snapshot includes %d of %d matching evidence records because the request limit is %d.", len(evidence), *evidenceTotal, limit),
+		})
+	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
 		if graphStore := graphQueryStore(a.deps.GraphStore); graphStore != nil {
@@ -653,13 +642,18 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 	generatedAt := time.Now().UTC()
 	controls := grcControlRefs(finding.ControlRefs)
 	packet := grcAuditPacketResponse{
-		ID:                finding.ID,
+		ResourceState:     "live_preview",
 		Finding:           items[0],
 		Evidence:          grcEvidenceItems(evidence, map[string]string{finding.ID: finding.Title}),
 		Graph:             graph,
 		Controls:          controls,
 		RecommendedAction: grcRecommendedAction(items[0]),
 		GeneratedAt:       generatedAt,
+		Gaps:              packetGaps,
+		Supersedes:        []string{},
+		FindingRecord:     finding,
+		EvidenceRecords:   evidence,
+		RuntimeRecords:    runtimes,
 	}
 	packet.Metadata = grccontrol.BuildReportMetadata(grccontrol.ReportMetadataInput{
 		ReportType:    "finding",
@@ -676,38 +670,6 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 		Runtimes: reportScopeRuntimes,
 	})
 	return packet, nil
-}
-
-func grcFindingAuditMarkdownInput(packet grcAuditPacketResponse) grccontrol.FindingAuditMarkdownInput {
-	controls := make([]grccontrol.ControlRef, 0, len(packet.Controls))
-	for _, control := range packet.Controls {
-		controls = append(controls, grccontrol.ControlRef{FrameworkName: control.FrameworkName, ControlID: control.ControlID})
-	}
-	evidence := make([]grccontrol.FindingAuditMarkdownEvidence, 0, len(packet.Evidence))
-	for _, item := range packet.Evidence {
-		evidence = append(evidence, grccontrol.FindingAuditMarkdownEvidence{
-			ID:        item.ID,
-			RuleID:    item.RuleID,
-			CreatedAt: item.CreatedAt,
-		})
-	}
-	return grccontrol.FindingAuditMarkdownInput{
-		Finding: grccontrol.FindingAuditMarkdownFinding{
-			ID:        packet.Finding.ID,
-			Title:     packet.Finding.Title,
-			Severity:  packet.Finding.Severity,
-			Status:    packet.Finding.Status,
-			Summary:   packet.Finding.Summary,
-			RiskScore: packet.Finding.RiskScore,
-			Owner:     packet.Finding.Owner,
-			SLAStatus: packet.Finding.SLAStatus,
-		},
-		Controls:          controls,
-		Evidence:          evidence,
-		RecommendedAction: packet.RecommendedAction,
-		Metadata:          packet.Metadata,
-		GeneratedAt:       packet.GeneratedAt,
-	}
 }
 
 type grcFindingFilter = ports.ListFindingsRequest
@@ -781,6 +743,7 @@ func grcTelemetryErrorKind(err error) string {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound),
+		errors.Is(err, ports.ErrGRCAuditPacketNotFound),
 		errors.Is(err, ports.ErrGraphEntityNotFound),
 		errors.Is(err, ports.ErrGRCInventoryAssetReportNotFound):
 		return "not_found"
@@ -1453,6 +1416,7 @@ func grcHTTPStatusCode(err error) int {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound),
+		errors.Is(err, ports.ErrGRCAuditPacketNotFound),
 		errors.Is(err, ports.ErrGraphEntityNotFound),
 		errors.Is(err, ports.ErrGRCInventoryAssetReportNotFound),
 		errors.Is(err, ports.ErrGRCVendorDiscoveryDecisionNotFound),
