@@ -61,6 +61,7 @@ type ControlArchetypesResponse struct {
 }
 
 type ControlProfilesResponse struct {
+	Version     string                   `json:"version"`
 	Profiles    []ControlCoverageProfile `json:"profiles"`
 	GeneratedAt time.Time                `json:"generated_at"`
 }
@@ -322,6 +323,7 @@ func BuiltinControlProfiles(profileIDs []string, generatedAt time.Time) (Control
 		return ControlProfilesResponse{}, fmt.Errorf("load control coverage index: %w", err)
 	}
 	return ControlProfilesResponse{
+		Version:     strings.TrimSpace(index.Version),
 		Profiles:    filterControlCoverageProfiles(index.Profiles, profileIDs),
 		GeneratedAt: generatedAt,
 	}, nil

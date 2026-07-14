@@ -14,10 +14,10 @@ GO_TEST_SHARD_WEIGHTS ?= scripts/go_package_test_weights.json
 GO_TEST_SHARD_DEFAULT_WEIGHT ?= 1
 GO_RACE_SHARD_WEIGHTS ?= scripts/go_package_race_weights.json
 GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
-BUF := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
-GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
-GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/goreleaser/goreleaser/v2@v2.16.0
+GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/goreleaser/goreleaser/v2@v2.16.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
@@ -341,7 +341,7 @@ lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
 	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_SOURCE_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
 proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
@@ -432,10 +432,10 @@ policy-rule-generate: ## Regenerate generated policy rule catalog.
 policy-rule-check: finding-dsl-check ## Verify generated policy rule catalog is current.
 	go run ./tools/policyrulegen --check
 
-policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.
+policy-mapping-export: policy-rule-generate detection-catalog-generate control-index-generate ## Regenerate policy compliance mapping CSVs.
 	go run ./tools/policymappingexport --write
 
-policy-mapping-check: policy-rule-check detection-catalog-check ## Verify policy compliance mapping CSVs are current.
+policy-mapping-check: policy-rule-check detection-catalog-check control-index-check ## Verify policy compliance mapping CSVs are current.
 	go run ./tools/policymappingexport --check
 
 detection-catalog-generate: ## Regenerate public detection catalog.

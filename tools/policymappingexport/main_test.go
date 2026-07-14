@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	coverageops "github.com/writer/cerebro/internal/compliance"
 )
 
 var repoGeneratedFilesCache struct {
@@ -58,6 +60,134 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "resolved_audit_domain", "api")
 	assertCellContains(t, header, cerebroRow, "audit_language_source", "yaml:domain:api")
 	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
+}
+
+func TestGenerateFilesLinksComplianceProfilesToFindings(t *testing.T) {
+	rows := readGeneratedCSV(t, generatedFileByName(t, repoGeneratedFiles(t), "finding_profile_map.csv"))
+	header := rows[0]
+	profileCol := columnIndex(t, header, "profile_id")
+	findingCol := columnIndex(t, header, "finding_id")
+	var matched []string
+	for _, row := range rows[1:] {
+		if row[profileCol] == "soc2-security-core" && row[findingCol] == "cerebro-high-risk-api-access" {
+			matched = row
+			break
+		}
+	}
+	if matched == nil {
+		t.Fatal("finding_profile_map.csv missing soc2-security-core -> cerebro-high-risk-api-access")
+	}
+	assertCellContains(t, header, matched, "mapping_basis", "direct")
+	assertCellContains(t, header, matched, "matched_profile_control_refs", "SOC 2 CC6.1")
+	assertCellContains(t, header, matched, "mapping_paths", "direct: SOC 2 CC6.1")
+}
+
+func TestFindingProfileMapRowsClassifiesDirectCatalogAndCombinedLinks(t *testing.T) {
+	ref := func(framework, controlID string) coverageops.ControlRef {
+		return coverageops.ControlRef{FrameworkName: framework, ControlID: controlID}
+	}
+	catalog := publicDetectionCatalog{Detections: []publicDetection{
+		{ID: "direct-finding", ControlRefs: []publicDetectionControlRef{{FrameworkName: "Framework A", ControlID: "A-1"}}},
+		{ID: "catalog-finding", ControlRefs: []publicDetectionControlRef{{FrameworkName: "Framework B", ControlID: "B-1"}}},
+		{ID: "combined-finding", ControlRefs: []publicDetectionControlRef{{FrameworkName: "Framework A", ControlID: "A-1"}, {FrameworkName: "Framework B", ControlID: "B-1"}}},
+	}}
+	coverage := coverageops.ControlCoverageIndex{Profiles: []coverageops.ControlCoverageProfile{{
+		ID: "profile-a",
+		Controls: []coverageops.ControlCoverageControl{
+			{FrameworkName: "Framework A", ControlID: "A-1"},
+			{FrameworkName: "Framework A", ControlID: "A-2", MappedControlRefs: []coverageops.ControlRef{ref("Framework B", "B-1")}},
+		},
+		Rules: []coverageops.ControlCoverageRule{
+			{RuleID: "direct-finding", Controls: []coverageops.ControlRef{ref("Framework A", "A-1")}},
+			{RuleID: "catalog-finding", Controls: []coverageops.ControlRef{ref("Framework A", "A-2")}},
+			{RuleID: "combined-finding", Controls: []coverageops.ControlRef{ref("Framework A", "A-1"), ref("Framework A", "A-2")}},
+		},
+	}}}
+
+	rows, err := findingProfileMapRows(catalog, coverage, controlFamilyIndex{})
+	if err != nil {
+		t.Fatalf("findingProfileMapRows() error = %v", err)
+	}
+	assertProfileMappingBasis := func(findingID, want string) {
+		t.Helper()
+		for _, row := range rows {
+			if row[3] == findingID {
+				if row[11] != want {
+					t.Fatalf("%s mapping_basis = %q, want %q", findingID, row[11], want)
+				}
+				return
+			}
+		}
+		t.Fatalf("profile row for %s not found", findingID)
+	}
+	assertProfileMappingBasis("direct-finding", "direct")
+	assertProfileMappingBasis("catalog-finding", "catalog_mapping")
+	assertProfileMappingBasis("combined-finding", "direct_and_catalog_mapping")
+}
+
+func TestValidateFindingProfileCoverageRequiresReviewedCompleteLedger(t *testing.T) {
+	catalog := publicDetectionCatalog{Version: "v1", Detections: []publicDetection{{ID: "linked"}, {ID: "excluded"}}}
+	profileRow := make([]string, 12)
+	profileRow[3] = "linked"
+	profileRow[11] = "direct"
+	valid := findingProfileExclusionLedger{
+		Version:        "2026-07-14",
+		CatalogVersion: "v1",
+		Exclusions: []findingProfileExclusion{{
+			FindingID: "excluded", Reason: "No reviewed mapping exists.", Owner: "compliance-mapping",
+			ReviewState: "reviewed", ReviewedAt: "2026-07-14",
+		}},
+	}
+	if err := validateFindingProfileCoverage(catalog, [][]string{profileRow}, valid); err != nil {
+		t.Fatalf("validateFindingProfileCoverage() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*findingProfileExclusionLedger)
+		want string
+	}{
+		{name: "missing", edit: func(ledger *findingProfileExclusionLedger) { ledger.Exclusions = nil }, want: "has no named profile link or reviewed exclusion"},
+		{name: "duplicate", edit: func(ledger *findingProfileExclusionLedger) {
+			ledger.Exclusions = append(ledger.Exclusions, ledger.Exclusions[0])
+		}, want: "duplicate exclusion"},
+		{name: "unknown", edit: func(ledger *findingProfileExclusionLedger) { ledger.Exclusions[0].FindingID = "unknown" }, want: "references an unknown public finding"},
+		{name: "stale", edit: func(ledger *findingProfileExclusionLedger) { ledger.Exclusions[0].FindingID = "linked" }, want: "is stale because the finding now links"},
+		{name: "catalog version", edit: func(ledger *findingProfileExclusionLedger) { ledger.CatalogVersion = "old" }, want: "does not match public catalog version"},
+		{name: "review state", edit: func(ledger *findingProfileExclusionLedger) { ledger.Exclusions[0].ReviewState = "pending" }, want: "review_state must be reviewed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ledger := valid
+			ledger.Exclusions = append([]findingProfileExclusion(nil), valid.Exclusions...)
+			tt.edit(&ledger)
+			err := validateFindingProfileCoverage(catalog, [][]string{profileRow}, ledger)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("validateFindingProfileCoverage() error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestGeneratedFindingProfileReviewArtifacts(t *testing.T) {
+	files := repoGeneratedFiles(t)
+	exclusionRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_profile_exclusions.csv"))
+	if got, want := len(exclusionRows)-1, 17; got != want {
+		t.Fatalf("finding_profile_exclusions.csv rows = %d, want %d", got, want)
+	}
+	exclusionHeader := exclusionRows[0]
+	exclusion := findRow(t, exclusionRows, columnIndex(t, exclusionHeader, "finding_id"), "stripe-large-refund")
+	assertCellEquals(t, exclusionHeader, exclusion, "review_state", "reviewed")
+	assertCellContains(t, exclusionHeader, exclusion, "reason", "financial control family")
+
+	summaryRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_profile_summary.csv"))
+	if got, want := len(summaryRows)-1, 17; got != want {
+		t.Fatalf("finding_profile_summary.csv rows = %d, want %d", got, want)
+	}
+	summaryHeader := summaryRows[0]
+	soc2 := findRow(t, summaryRows, columnIndex(t, summaryHeader, "profile_id"), "soc2-security-core")
+	assertCellEquals(t, summaryHeader, soc2, "finding_link_status", "complete")
+	assertCellEquals(t, summaryHeader, soc2, "finding_link_gap_count", "0")
 }
 
 func TestResolveFindingAuditDepthYAMLOverridesCatalogFallback(t *testing.T) {
