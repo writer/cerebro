@@ -871,6 +871,9 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)))
 		return nil, err
 	}
+	if request.Cursor != "" {
+		useSubjectIndex = false
+	}
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		recordJetStreamReplayMetrics(ctx, replayScanStats{strategy: replayStrategyEmptyStream, subjectFilterCount: len(subjectFilters)}, "completed", "", time.Since(started), 0)
 		endAttrs := streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)).
@@ -949,6 +952,27 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	return events, nil
 }
 
+// ReplayPage returns one bounded page and an opaque cursor for older matches.
+// The page limit remains capped; callers can traverse more than the cap by
+// passing NextCursor into the next request.
+func (l *Log) ReplayPage(ctx context.Context, request ports.ReplayRequest) (ports.ReplayPage, error) {
+	request = normalizeReplayRequest(request)
+	limit := normalizeReplayLimit(request.Limit)
+	request.Limit = limit
+	events, err := l.Replay(ctx, request)
+	if err != nil {
+		return ports.ReplayPage{}, err
+	}
+	page := ports.ReplayPage{Events: events, Complete: len(events) < int(limit)}
+	if !page.Complete && len(events) > 0 {
+		page.NextCursor = strings.TrimSpace(events[0].GetId())
+		if page.NextCursor == "" {
+			return ports.ReplayPage{}, errors.New("replay page oldest event id is required")
+		}
+	}
+	return page, nil
+}
+
 type replayScanStats struct {
 	scanned            uint64
 	missing            uint64
@@ -972,6 +996,7 @@ func (s replayScanStats) attrs(limit uint32, candidateLimit uint32, ctx context.
 func replayLegacyReverse(ctx context.Context, streamName string, state jetstream.StreamState, stream replayStream, subjectPrefixes []string, request ports.ReplayRequest, candidateLimit uint32) ([]replayCandidate, replayScanStats, error) {
 	stats := replayScanStats{strategy: replayStrategyLegacyReverseScan}
 	candidates := make([]replayCandidate, 0, candidateLimit)
+	cursorSeen := request.Cursor == ""
 	for seq := state.LastSeq; ; seq-- {
 		stats.scanned++
 		raw, err := stream.GetMsg(ctx, seq)
@@ -994,6 +1019,15 @@ func replayLegacyReverse(ctx context.Context, streamName string, state jetstream
 				return nil, stats, fmt.Errorf("decode replay message %s:%d: %w", streamName, seq, err)
 			}
 			stats.decoded++
+			if !cursorSeen {
+				if event.GetId() == request.Cursor {
+					cursorSeen = true
+				}
+				if seq == state.FirstSeq {
+					break
+				}
+				continue
+			}
 			if matchesReplayRequest(event, request) {
 				stats.matched++
 				candidates = appendNewestReplayCandidate(candidates, replayCandidate{event: event, seq: seq}, candidateLimit)
@@ -1002,6 +1036,9 @@ func replayLegacyReverse(ctx context.Context, streamName string, state jetstream
 		if seq == state.FirstSeq {
 			break
 		}
+	}
+	if !cursorSeen {
+		return nil, stats, fmt.Errorf("%w: %s", ports.ErrReplayCursorNotFound, request.Cursor)
 	}
 	return candidates, stats, nil
 }
@@ -1069,7 +1106,7 @@ func appendNewestReplayCandidate(candidates []replayCandidate, candidate replayC
 // requests fall back to the subject/legacy strategies, which collect matched
 // candidates directly.
 func runtimeIndexReplayEligible(request ports.ReplayRequest) bool {
-	if request.RuntimeID == "" {
+	if request.RuntimeID == "" || request.Cursor != "" {
 		return false
 	}
 	if request.TenantID != "" || len(request.AttributeEquals) > 0 {
@@ -1850,6 +1887,7 @@ func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
 		TenantID:            strings.TrimSpace(req.TenantID),
 		AttributeEquals:     make(map[string]string, len(req.AttributeEquals)),
 		Limit:               req.Limit,
+		Cursor:              strings.TrimSpace(req.Cursor),
 	}
 	for key, value := range req.AttributeEquals {
 		trimmedKey := strings.TrimSpace(key)
