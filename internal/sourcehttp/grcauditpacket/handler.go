@@ -85,12 +85,12 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) Get(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	h.write(w, http.StatusOK, packet, err)
 }
 
 func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -107,13 +107,10 @@ func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
 	for _, gap := range packet.Gaps {
 		markdown += fmt.Sprintf("- Gap `%s`: %s\n", gap.Code, gap.Message)
 	}
-	// #nosec G705 -- this is a download-only text/markdown response with nosniff;
-	// the renderer intentionally preserves cited packet text rather than HTML.
-	_, _ = w.Write([]byte(markdown))
+	_, _ = w.Write([]byte(markdown)) // #nosec G705 -- the response is a nosniff text/markdown attachment, not browser-rendered HTML.
 }
 
-func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {
-	ctx := r.Context()
+func (h *HTTPHandler) load(ctx context.Context, r *http.Request) (grcauditpacket.Packet, error) {
 	packetID := strings.TrimSpace(r.PathValue("packetID"))
 	if packetID == "" {
 		return grcauditpacket.Packet{}, h.invalid(fmt.Errorf("packet id is required"))
