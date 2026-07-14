@@ -569,14 +569,14 @@ func TestRenderCustomMarkdownDelegates(t *testing.T) {
 			RuleID:                "privileged-access",
 			Status:                "open",
 			MappingBasis:          compliance.FindingProfileMappingDirect,
-			CoverageIndexVersion:  "revision-1",
-			CoverageIndexRevision: "content-revision-1",
+			CoverageIndexVersion:  "2026-07-14",
+			CoverageIndexRevision: "sha256:content-revision-1",
 			MatchedControls:       []compliance.ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
 		}},
 		ProfileMatchEvaluation: ProfileMatchEvaluation{EvaluatedFindings: 5, MatchedFindings: 1, EvaluationLimit: 500, ScanTruncated: true},
 	}
 	md := RenderCustomMarkdown(result)
-	for _, want := range []string{"Test Profile", "## Profile Findings", "Privileged access review", "direct", "revision-1", "Scan truncated: true"} {
+	for _, want := range []string{"Test Profile", "## Profile Findings", "Privileged access review", "direct", "| Privileged access review | privileged-access | open | direct | SOC 2 CC6.1 | sha256:content-revision-1 |", "Scan truncated: true"} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("RenderCustomMarkdown() missing %q:\n%s", want, md)
 		}

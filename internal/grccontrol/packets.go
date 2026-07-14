@@ -732,7 +732,7 @@ func RenderCustomMarkdown(result CustomPacketResult) string {
 				markdownCell(match.Status),
 				markdownCell(match.MappingBasis),
 				markdownCell(strings.Join(controls, ", ")),
-				markdownCell(match.CoverageIndexVersion),
+				markdownCell(match.CoverageIndexRevision),
 			)
 		}
 	}
