@@ -7,7 +7,7 @@ make build
 ./bin/cerebro version
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 Agent onboarding is a Makefile workflow around the CLI and HTTP API:
 
@@ -56,6 +56,18 @@ Source runtime persistence requires Postgres. Sync also requires NATS JetStream.
 ```
 
 See [Source runtime guide](../domains/source-runtime-guide.md) for store setup, secrets, sync behavior, and recovery.
+
+## Connector Certification
+
+List compiled and catalog-only connectors with their certification proof and availability state:
+
+```bash
+./bin/cerebro connector-catalog list
+./bin/cerebro connector-catalog list --min-certification-tier contract_tested
+./bin/cerebro connector-catalog list --min-certification-tier production_observed --include-preview
+```
+
+The minimum tier changes each connector's availability state. It does not hide catalog entries or promote static proof into a live production or outcome state.
 
 ## Append Log Recovery
 
