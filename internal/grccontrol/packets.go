@@ -29,14 +29,16 @@ type BuildInput struct {
 }
 
 type CustomBuildInput struct {
-	Request   compliance.ControlPackBuildRequest
-	Framework string
-	ControlID string
-	Findings  []*ports.FindingRecord
-	Evidence  []*cerebrov1.FindingEvidence
-	SourceIDs map[string]string
-	Runtimes  []*cerebrov1.SourceRuntime
-	Now       time.Time
+	Request                compliance.ControlPackBuildRequest
+	Framework              string
+	ControlID              string
+	Findings               []*ports.FindingRecord
+	Evidence               []*cerebrov1.FindingEvidence
+	SourceIDs              map[string]string
+	Runtimes               []*cerebrov1.SourceRuntime
+	Now                    time.Time
+	FindingEvaluationLimit uint32
+	FindingScanTruncated   bool
 }
 
 type PacketResult struct {
@@ -51,12 +53,20 @@ type PacketResult struct {
 }
 
 type CustomPacketResult struct {
-	Profile               Profile                          `json:"profile"`
-	Packet                compliance.ControlEvidencePacket `json:"packet"`
-	Controls              []ControlItem                    `json:"controls"`
-	ProfileFindingMatches []ProfileFindingMatch            `json:"profile_finding_matches,omitempty"`
-	Preview               compliance.ControlPackPreview    `json:"preview"`
-	Metadata              ReportMetadata                   `json:"metadata,omitempty"`
+	Profile                Profile                          `json:"profile"`
+	Packet                 compliance.ControlEvidencePacket `json:"packet"`
+	Controls               []ControlItem                    `json:"controls"`
+	ProfileFindingMatches  []ProfileFindingMatch            `json:"profile_finding_matches,omitempty"`
+	ProfileMatchEvaluation ProfileMatchEvaluation           `json:"profile_match_evaluation"`
+	Preview                compliance.ControlPackPreview    `json:"preview"`
+	Metadata               ReportMetadata                   `json:"metadata,omitempty"`
+}
+
+type ProfileMatchEvaluation struct {
+	EvaluatedFindings int    `json:"evaluated_findings"`
+	MatchedFindings   int    `json:"matched_findings"`
+	EvaluationLimit   uint32 `json:"evaluation_limit"`
+	ScanTruncated     bool   `json:"scan_truncated"`
 }
 
 type ProfileFindingMatch struct {
@@ -68,6 +78,7 @@ type ProfileFindingMatch struct {
 	ProfileID             string                                 `json:"profile_id"`
 	ProfileName           string                                 `json:"profile_name,omitempty"`
 	CoverageIndexVersion  string                                 `json:"coverage_index_version"`
+	CoverageIndexRevision string                                 `json:"coverage_index_revision"`
 	MappingBasis          string                                 `json:"mapping_basis"`
 	MatchedControls       []compliance.ControlRef                `json:"matched_controls,omitempty"`
 	DirectControls        []compliance.ControlRef                `json:"direct_controls,omitempty"`
@@ -306,6 +317,7 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 		packet.Controls = FilterPacketControls(packet.Controls, input.Framework, input.ControlID)
 		packet.Summary = SummarizePacket(packet.SelectionID, packet.Controls)
 		controls := ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs)
+		profileMatches := profileFindingMatches(profileFindingIndex, input.Findings, profileID)
 		return CustomPacketResult{
 			Profile: Profile{
 				ID:          item.Profile.ID,
@@ -314,8 +326,14 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 			},
 			Packet:                packet,
 			Controls:              controls,
-			ProfileFindingMatches: profileFindingMatches(profileFindingIndex, input.Findings, profileID),
-			Preview:               preview,
+			ProfileFindingMatches: profileMatches,
+			ProfileMatchEvaluation: ProfileMatchEvaluation{
+				EvaluatedFindings: len(input.Findings),
+				MatchedFindings:   len(profileMatches),
+				EvaluationLimit:   input.FindingEvaluationLimit,
+				ScanTruncated:     input.FindingScanTruncated,
+			},
+			Preview: preview,
 			Metadata: BuildReportMetadata(ReportMetadataInput{
 				ReportType:    "control",
 				Profile:       Profile{ID: item.Profile.ID, Name: item.Profile.Name, Description: item.Profile.Description},
@@ -355,6 +373,7 @@ func profileFindingMatches(index compliance.FindingProfileIndex, findings []*por
 				ProfileID:             match.ProfileID,
 				ProfileName:           match.ProfileName,
 				CoverageIndexVersion:  index.Version,
+				CoverageIndexRevision: index.ContentRevision,
 				MappingBasis:          match.MappingBasis,
 				MatchedControls:       append([]compliance.ControlRef(nil), match.MatchedControls...),
 				DirectControls:        append([]compliance.ControlRef(nil), match.DirectControls...),
@@ -683,10 +702,41 @@ func RenderMarkdown(result PacketResult) string {
 }
 
 func RenderCustomMarkdown(result CustomPacketResult) string {
-	return RenderMarkdown(PacketResult{
-		Profile: result.Profile,
-		Packet:  result.Packet,
+	base := RenderMarkdown(PacketResult{
+		Profile:  result.Profile,
+		Packet:   result.Packet,
+		Metadata: result.Metadata,
 	})
+	var builder strings.Builder
+	builder.WriteString(strings.TrimRight(base, "\n"))
+	writeMarkdownLine(&builder, "")
+	writeMarkdownLine(&builder, "")
+	writeMarkdownLine(&builder, "## Profile Findings")
+	writeMarkdownLine(&builder, "")
+	writeMarkdownLine(&builder, "- Evaluated findings: "+fmt.Sprintf("%d", result.ProfileMatchEvaluation.EvaluatedFindings))
+	writeMarkdownLine(&builder, "- Matched findings: "+fmt.Sprintf("%d", result.ProfileMatchEvaluation.MatchedFindings))
+	writeMarkdownLine(&builder, "- Evaluation limit: "+fmt.Sprintf("%d", result.ProfileMatchEvaluation.EvaluationLimit))
+	writeMarkdownLine(&builder, "- Scan truncated: "+fmt.Sprintf("%t", result.ProfileMatchEvaluation.ScanTruncated))
+	if len(result.ProfileFindingMatches) != 0 {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "| Finding | Rule | Status | Mapping basis | Matched controls | Coverage revision |")
+		writeMarkdownLine(&builder, "| --- | --- | --- | --- | --- | --- |")
+		for _, match := range result.ProfileFindingMatches {
+			controls := make([]string, 0, len(match.MatchedControls))
+			for _, control := range match.MatchedControls {
+				controls = append(controls, strings.TrimSpace(control.FrameworkName+" "+control.ControlID))
+			}
+			writeMarkdownRow(&builder,
+				markdownCell(fallbackString(match.FindingTitle, match.FindingID)),
+				markdownCell(match.RuleID),
+				markdownCell(match.Status),
+				markdownCell(match.MappingBasis),
+				markdownCell(strings.Join(controls, ", ")),
+				markdownCell(match.CoverageIndexVersion),
+			)
+		}
+	}
+	return strings.TrimRight(builder.String(), "\n") + "\n"
 }
 
 func writeExpectationsMarkdown(builder *strings.Builder, expectations []compliance.ControlEvidenceExpectationPosture) {

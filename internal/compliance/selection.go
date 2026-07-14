@@ -224,13 +224,14 @@ func ResolveRuleCoverage(resolution SelectionResolution, rules []RuleControlMapp
 // control supports the full target control. Empty preserves the legacy maps_to
 // behavior until a mapping has been reviewed and assigned typed semantics.
 func ControlMappingCreditsCoverage(ref ControlRef) bool {
-	if strings.TrimSpace(ref.Relationship) == ControlMappingRelationshipUnspecified {
+	ref = NormalizeControlRef(ref)
+	if controlMappingIsLegacy(ref) {
 		return true
 	}
-	if strings.TrimSpace(ref.ReviewStatus) != ControlMappingReviewStatusComplete {
+	if ref.ReviewStatus != ControlMappingReviewStatusComplete {
 		return false
 	}
-	switch strings.TrimSpace(ref.Relationship) {
+	switch ref.Relationship {
 	case ControlMappingRelationshipEqualTo,
 		ControlMappingRelationshipEquivalentTo,
 		ControlMappingRelationshipSupersetOf:

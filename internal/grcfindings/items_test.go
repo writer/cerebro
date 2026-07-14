@@ -72,7 +72,18 @@ func TestFindingItemsNormalizeRiskInboxRows(t *testing.T) {
 
 func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *testing.T) {
 	target := compliance.ControlRef{FrameworkName: "Custom Framework", ControlID: "IAM-1"}
-	source := compliance.ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.1"}
+	source := compliance.ControlRef{
+		FrameworkName:      "SOC 2",
+		ControlID:          "CC6.1",
+		Relationship:       compliance.ControlMappingRelationshipSupersetOf,
+		MatchingRationale:  compliance.ControlMappingRationaleFunctional,
+		MappingDescription: "The selected profile control covers the finding control.",
+		MappingAuthority:   "Compliance mapping review",
+		MappingSource:      "https://example.invalid/mappings/access-program",
+		ReviewStatus:       compliance.ControlMappingReviewStatusComplete,
+		ReviewedAt:         "2026-07-14",
+		MappingVersion:     "v1",
+	}
 	match := compliance.FindingProfileMatch{
 		ProfileID:             "access-program",
 		ProfileName:           "Access Program",
@@ -83,6 +94,7 @@ func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *test
 	}
 	index := buildFindingProfileIndex(compliance.FindingProfileIndex{
 		Version:          "2026-07-14",
+		ContentRevision:  "sha256:test-revision",
 		MatchesByRuleID:  map[string][]compliance.FindingProfileMatch{"privileged-mfa": {match}},
 		MatchesByControl: map[string][]compliance.FindingProfileMatch{compliance.ControlKey(source): {match}},
 	})
@@ -109,6 +121,13 @@ func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *test
 	if got := profiles[0].MatchedControls[0]; got.FrameworkName != "Custom Framework" || got.ControlID != "IAM-1" {
 		t.Fatalf("matched control = %#v, want Custom Framework IAM-1", got)
 	}
+	path := profiles[0].MappingPaths[0]
+	if path.MatchDirection != "finding_control_to_profile_control" || path.Source.ControlID != "CC6.1" || path.Target.ControlID != "IAM-1" {
+		t.Fatalf("match traversal = %#v, want finding control to profile control", path)
+	}
+	if path.DeclaredSource.ControlID != "IAM-1" || path.DeclaredTarget.ControlID != "CC6.1" || path.Relationship != compliance.ControlMappingRelationshipSupersetOf || path.CoverageCredit != "reviewed_catalog_mapping" {
+		t.Fatalf("declared relationship = %#v, want IAM-1 superset-of CC6.1 with reviewed credit", path)
+	}
 	profiles = index.profilesForFinding("unknown-rule", []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}})
 	if len(profiles) != 1 || profiles[0].ID != "access-program" {
 		t.Fatalf("control fallback profiles = %#v, want access-program", profiles)
@@ -122,9 +141,37 @@ func TestFindingProfileIndexValidationRejectsMissingRevisionAndProfiles(t *testi
 	if err := (findingProfileIndex{}).validate(); err == nil {
 		t.Fatal("validate() error = nil, want missing coverage index version")
 	}
-	index := findingProfileIndex{version: "2026-07-14", profiles: map[string]ProfileRef{}}
+	index := findingProfileIndex{version: "2026-07-14", contentRevision: "sha256:test-revision", profiles: map[string]ProfileRef{}}
 	if err := index.validate(); err == nil {
 		t.Fatal("validate() error = nil, want missing profiles")
+	}
+}
+
+func TestFindingProfileIndexRejectsEmptyAssociationsAndVersionDrift(t *testing.T) {
+	profileSet := compliance.ControlProfileSet{
+		Version:  "2026-07-14",
+		Profiles: []compliance.ControlSelection{{ID: "access-program", Name: "Access Program"}},
+	}
+	empty := findingProfileIndex{
+		version:         "2026-07-14",
+		contentRevision: "sha256:test-revision",
+		byRuleID:        map[string][]findingProfileMatch{},
+		byControlID:     map[string][]findingProfileMatch{},
+		profiles:        map[string]ProfileRef{},
+	}
+	if err := empty.applyProfiles(profileSet); err == nil {
+		t.Fatal("applyProfiles() error = nil, want empty serving index rejection")
+	}
+	matched := findingProfileMatch{profileID: "access-program", profileName: "Access Program"}
+	index := findingProfileIndex{
+		version:         "2026-07-13",
+		contentRevision: "sha256:test-revision",
+		byRuleID:        map[string][]findingProfileMatch{"rule": {matched}},
+		byControlID:     map[string][]findingProfileMatch{},
+		profiles:        map[string]ProfileRef{"access-program": {ID: "access-program", Name: "Access Program"}},
+	}
+	if err := index.applyProfiles(profileSet); err == nil {
+		t.Fatal("applyProfiles() error = nil, want profile/index version drift rejection")
 	}
 }
 

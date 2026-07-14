@@ -496,20 +496,37 @@ func validateControl(path string, control Control) []ValidationIssue {
 
 func validateControlMappingMetadata(path string, ref ControlRef) []ValidationIssue {
 	var issues []ValidationIssue
+	if controlMappingIsLegacy(ref) {
+		return issues
+	}
 	if ref.Relationship != "" && !controlMappingRelationshipAllowed(ref.Relationship) {
 		issues = append(issues, ValidationIssue{Message: path + ".relationship must be one of equal-to, equivalent-to, subset-of, superset-of, intersects-with, no-relationship"})
 	}
 	if ref.MatchingRationale != "" && !controlMappingRationaleAllowed(ref.MatchingRationale) {
 		issues = append(issues, ValidationIssue{Message: path + ".matching_rationale must be one of syntactic, semantic, functional"})
 	}
+	if ref.Relationship == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".relationship is required when typed mapping metadata is set"})
+	}
+	if ref.MatchingRationale == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".matching_rationale is required when typed mapping metadata is set"})
+	}
 	if (ref.Relationship == "") != (ref.MatchingRationale == "") {
 		issues = append(issues, ValidationIssue{Message: path + ".relationship and matching_rationale must be provided together"})
 	}
-	if ref.Relationship != "" && ref.MappingDescription == "" {
-		issues = append(issues, ValidationIssue{Message: path + ".mapping_description is required when relationship is set"})
+	if ref.MappingDescription == "" {
+		message := path + ".mapping_description is required when typed mapping metadata is set"
+		if ref.Relationship != "" {
+			message = path + ".mapping_description is required when relationship is set"
+		}
+		issues = append(issues, ValidationIssue{Message: message})
 	}
-	if ref.Relationship != "" && ref.ReviewStatus == "" {
-		issues = append(issues, ValidationIssue{Message: path + ".review_status is required when relationship is set"})
+	if ref.ReviewStatus == "" {
+		message := path + ".review_status is required when typed mapping metadata is set"
+		if ref.Relationship != "" {
+			message = path + ".review_status is required when relationship is set"
+		}
+		issues = append(issues, ValidationIssue{Message: message})
 	}
 	if ref.ReviewStatus != "" && !controlMappingReviewStatusAllowed(ref.ReviewStatus) {
 		issues = append(issues, ValidationIssue{Message: path + ".review_status must be one of complete, not-complete, draft, deprecated, superseded"})
@@ -520,21 +537,45 @@ func validateControlMappingMetadata(path string, ref ControlRef) []ValidationIss
 	if ref.MappingSource != "" && !absoluteControlMappingSource(ref.MappingSource) {
 		issues = append(issues, ValidationIssue{Message: path + ".mapping_source must be an absolute URI"})
 	}
-	if ref.ReviewStatus == ControlMappingReviewStatusComplete {
+	if ref.ReviewStatus == ControlMappingReviewStatusComplete || controlMappingHasProvenance(ref) {
+		requirement := " when mapping provenance is set"
+		if ref.ReviewStatus == ControlMappingReviewStatusComplete {
+			requirement = " when review_status is complete"
+		}
 		if ref.MappingAuthority == "" {
-			issues = append(issues, ValidationIssue{Message: path + ".mapping_authority is required when review_status is complete"})
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_authority is required" + requirement})
 		}
 		if ref.MappingSource == "" {
-			issues = append(issues, ValidationIssue{Message: path + ".mapping_source is required when review_status is complete"})
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_source is required" + requirement})
 		}
 		if ref.ReviewedAt == "" {
-			issues = append(issues, ValidationIssue{Message: path + ".reviewed_at is required when review_status is complete"})
+			issues = append(issues, ValidationIssue{Message: path + ".reviewed_at is required" + requirement})
 		}
 		if ref.MappingVersion == "" {
-			issues = append(issues, ValidationIssue{Message: path + ".mapping_version is required when review_status is complete"})
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_version is required" + requirement})
 		}
 	}
 	return issues
+}
+
+func controlMappingIsLegacy(ref ControlRef) bool {
+	ref = NormalizeControlRef(ref)
+	return ref.Relationship == "" &&
+		ref.MatchingRationale == "" &&
+		ref.MappingDescription == "" &&
+		ref.MappingAuthority == "" &&
+		ref.MappingSource == "" &&
+		ref.ReviewStatus == "" &&
+		ref.ReviewedAt == "" &&
+		ref.MappingVersion == ""
+}
+
+func controlMappingHasProvenance(ref ControlRef) bool {
+	ref = NormalizeControlRef(ref)
+	return ref.MappingAuthority != "" ||
+		ref.MappingSource != "" ||
+		ref.ReviewedAt != "" ||
+		ref.MappingVersion != ""
 }
 
 func controlMappingRelationshipAllowed(value string) bool {
@@ -620,15 +661,28 @@ func validateControlMappings(catalog ControlCatalog, index *CatalogIndex) []Vali
 		for familyIdx, family := range framework.Families {
 			for controlIdx, control := range family.Controls {
 				controlPath := fmt.Sprintf("frameworks[%d].families[%d].controls[%d]", frameworkIdx, familyIdx, controlIdx)
+				mappedTargets := map[string]int{}
 				for mapIdx, ref := range control.MapsTo {
 					ref = NormalizeControlRef(ref)
 					if ref.ControlID == "" || (ref.FrameworkID == "" && ref.FrameworkName == "") {
 						continue
 					}
-					if _, ok := index.Control(ref); !ok {
+					target, ok := index.Control(ref)
+					if !ok {
 						framework := firstNonEmpty(ref.FrameworkName, ref.FrameworkID)
 						issues = append(issues, ValidationIssue{Message: fmt.Sprintf("%s.maps_to[%d] %s %s is not declared", controlPath, mapIdx, framework, ref.ControlID)})
+						continue
 					}
+					targetKey := ControlKey(ControlRef{
+						FrameworkID:   target.FrameworkID,
+						FrameworkName: target.FrameworkName,
+						ControlID:     target.Control.ID,
+					})
+					if previousIdx, duplicate := mappedTargets[targetKey]; duplicate {
+						issues = append(issues, ValidationIssue{Message: fmt.Sprintf("%s.maps_to[%d] duplicates normalized target from maps_to[%d]", controlPath, mapIdx, previousIdx)})
+						continue
+					}
+					mappedTargets[targetKey] = mapIdx
 				}
 			}
 		}

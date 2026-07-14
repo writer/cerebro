@@ -30,9 +30,11 @@ import (
 )
 
 const (
-	grcDefaultLimit          = uint32(100)
-	grcMaxLimit              = uint32(500)
-	grcDashboardPreviewLimit = uint32(25)
+	grcDefaultLimit           = uint32(100)
+	grcMaxLimit               = uint32(500)
+	grcMaxRuntimeScope        = uint32(500)
+	grcRuntimeScopeFetchLimit = grcMaxRuntimeScope + 1
+	grcDashboardPreviewLimit  = uint32(25)
 )
 
 type grcScope struct {
@@ -372,6 +374,7 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 	}
 	profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
 	var selectedProfile grcfindings.ProfileRef
+	var profilePredicate grcfindings.ProfilePredicate
 	if profileID != "" {
 		var ok bool
 		selectedProfile, ok, err = grcfindings.BuiltinFindingProfile(profileID)
@@ -381,12 +384,15 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 		if !ok {
 			return grcFindingItemsPage{}, fmt.Errorf("%w: unknown profile_id %q", errInvalidHTTPRequest, profileID)
 		}
+		profilePredicate, ok, err = grcfindings.BuiltinFindingProfilePredicate(profileID)
+		if err != nil {
+			return grcFindingItemsPage{}, err
+		}
+		if !ok {
+			return grcFindingItemsPage{}, fmt.Errorf("%w: unknown profile_id %q", errInvalidHTTPRequest, profileID)
+		}
 	}
-	runtimeScope := scope
-	if profileID != "" {
-		runtimeScope.Limit = grcMaxLimit
-	}
-	runtimes, err := a.grcListRuntimes(r, runtimeScope)
+	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
 		return grcFindingItemsPage{}, err
 	}
@@ -400,17 +406,13 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 	if err != nil {
 		return grcFindingItemsPage{}, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 	}
-	fetchLimit := limit
-	if profileID != "" {
-		// Profile membership is derived from the immutable compliance index, not
-		// persisted finding columns. Evaluate a bounded superset before applying
-		// the caller's page limit so a non-match at the top of the risk ordering
-		// cannot hide a later matching finding.
-		fetchLimit = grcMaxLimit
-	}
+	// Fetch one additional row so truncation is exact. For profile reads the
+	// immutable rule/control predicate is applied by the store first.
+	fetchLimit := limit + 1
 	filter := grcFindingFilter{
 		FindingID:           strings.TrimSpace(r.URL.Query().Get("finding_id")),
 		RuleID:              strings.TrimSpace(r.URL.Query().Get("rule_id")),
+		ProfilePredicate:    profilePredicate,
 		Severity:            strings.TrimSpace(r.URL.Query().Get("severity")),
 		Status:              status,
 		ResourceURN:         strings.TrimSpace(r.URL.Query().Get("resource_urn")),
@@ -446,9 +448,12 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 	page := grcFindingItemsPage{
 		Items:     items,
 		Limit:     limit,
-		Truncated: limit > 0 && len(items) >= int(limit),
+		Truncated: limit > 0 && len(items) > int(limit),
 	}
 	if profileID == "" {
+		if page.Truncated {
+			page.Items = page.Items[:limit]
+		}
 		return page, nil
 	}
 	return grcfindings.PageForProfile(selectedProfile, items, len(findings), fetchLimit, limit), nil
@@ -903,10 +908,15 @@ func (a *App) grcListRuntimes(r *http.Request, scope grcScope) ([]*cerebrov1.Sou
 		RuntimeIDs: scope.RuntimeIDs,
 		TenantID:   scope.TenantID,
 		SourceID:   scope.SourceID,
-		Limit:      scope.Limit,
+		// Runtime scope is independent from the response row limit. Otherwise a
+		// small page can silently exclude findings from later runtimes.
+		Limit: grcRuntimeScopeFetchLimit,
 	})
 	if err != nil {
 		return nil, err
+	}
+	if len(runtimes) > int(grcMaxRuntimeScope) {
+		return nil, fmt.Errorf("%w: runtime scope exceeds %d runtimes; select a source or explicit runtime ids", errInvalidHTTPRequest, grcMaxRuntimeScope)
 	}
 	return runtimes, nil
 }
@@ -921,7 +931,7 @@ func (a *App) grcReportScopeRuntimes(r *http.Request, scope grcScope, fallback [
 		RuntimeIDs: scope.RuntimeIDs,
 		TenantID:   scope.TenantID,
 		SourceID:   scope.SourceID,
-		Limit:      scope.Limit,
+		Limit:      grcMaxRuntimeScope,
 	})
 	if err != nil {
 		return grccontrol.ReportScopeRuntimeSnapshots(fallback)
@@ -957,6 +967,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			RuntimeIDs:          runtimeIDs,
 			FindingID:           filter.FindingID,
 			RuleID:              filter.RuleID,
+			ProfilePredicate:    filter.ProfilePredicate,
 			Severity:            filter.Severity,
 			Status:              filter.Status,
 			ResourceURN:         filter.ResourceURN,
@@ -1035,6 +1046,7 @@ func (a *App) grcFindingSummary(r *http.Request, runtimes []*cerebrov1.SourceRun
 			RuntimeIDs:          runtimeIDs,
 			FindingID:           filter.FindingID,
 			RuleID:              filter.RuleID,
+			ProfilePredicate:    filter.ProfilePredicate,
 			Severity:            filter.Severity,
 			Status:              filter.Status,
 			ResourceURN:         filter.ResourceURN,

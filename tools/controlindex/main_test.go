@@ -116,6 +116,9 @@ func TestGenerateFindingProfileIndexBuildsServingProjection(t *testing.T) {
 	if got := index.MatchesByRuleID["privileged-access"]; len(got) != 1 || got[0].ProfileID != "access-audit" {
 		t.Fatalf("rule matches = %#v, want access-audit", got)
 	}
+	if index.SchemaVersion != compliance.FindingProfileIndexSchemaVersion || index.SourceDigest == "" || index.ContentRevision == "" {
+		t.Fatalf("durability metadata = schema %d source %q revision %q", index.SchemaVersion, index.SourceDigest, index.ContentRevision)
+	}
 }
 
 func TestValidateControlIndexFlagsRejectsProfileDefaultOutput(t *testing.T) {

@@ -21,11 +21,17 @@ type findingProfileMatch struct {
 }
 
 type findingProfileIndex struct {
-	version     string
-	byRuleID    map[string][]findingProfileMatch
-	byControlID map[string][]findingProfileMatch
-	profiles    map[string]ProfileRef
+	version         string
+	contentRevision string
+	byRuleID        map[string][]findingProfileMatch
+	byControlID     map[string][]findingProfileMatch
+	profiles        map[string]ProfileRef
 }
+
+// ProfilePredicate is the persisted finding selector for one immutable
+// compliance profile. Rule IDs and control references are alternatives: a
+// finding belongs to the profile when either selector matches.
+type ProfilePredicate = ports.FindingProfilePredicate
 
 var builtinFindingProfileIndex = sync.OnceValues(func() (findingProfileIndex, error) {
 	index, err := compliance.LoadBuiltinFindingProfileIndex()
@@ -56,6 +62,16 @@ func ValidateBuiltinFindingProfileIndex() error {
 }
 
 func (index *findingProfileIndex) applyProfiles(set compliance.ControlProfileSet) error {
+	if strings.TrimSpace(set.Version) == "" || strings.TrimSpace(set.Version) != index.version {
+		return fmt.Errorf("control profile version %q does not match serving index version %q", strings.TrimSpace(set.Version), index.version)
+	}
+	if len(index.byRuleID) == 0 && len(index.byControlID) == 0 {
+		return fmt.Errorf("serving index contains no finding associations")
+	}
+	matchedProfiles := make(map[string]struct{}, len(index.profiles))
+	for id := range index.profiles {
+		matchedProfiles[id] = struct{}{}
+	}
 	configured := make(map[string]struct{}, len(set.Profiles))
 	for _, selection := range set.Profiles {
 		id := strings.TrimSpace(selection.ID)
@@ -64,10 +80,13 @@ func (index *findingProfileIndex) applyProfiles(set compliance.ControlProfileSet
 			return fmt.Errorf("profile id and name are required")
 		}
 		configured[id] = struct{}{}
+		if _, ok := matchedProfiles[id]; !ok {
+			return fmt.Errorf("configured profile %q has no serving index associations", id)
+		}
 		if matched, ok := index.profiles[id]; ok && matched.Name != name {
 			return fmt.Errorf("profile %q name %q does not match serving index name %q", id, name, matched.Name)
 		}
-		index.profiles[id] = ProfileRef{ID: id, Name: name, CoverageIndexVersion: index.version}
+		index.profiles[id] = ProfileRef{ID: id, Name: name, CoverageIndexVersion: index.version, CoverageIndexRevision: index.contentRevision}
 	}
 	for id := range index.profiles {
 		if _, ok := configured[id]; !ok {
@@ -86,6 +105,55 @@ func BuiltinFindingProfile(profileID string) (ProfileRef, bool, error) {
 	}
 	profile, ok := index.profiles[strings.TrimSpace(profileID)]
 	return profile, ok, nil
+}
+
+// BuiltinFindingProfilePredicate returns the exact persisted finding selector
+// for a built-in profile. Callers apply it before ordering and pagination, then
+// retain profilesForFinding as a defensive serving-index verification step.
+func BuiltinFindingProfilePredicate(profileID string) (ProfilePredicate, bool, error) {
+	index, err := builtinFindingProfileIndex()
+	if err != nil {
+		return ProfilePredicate{}, false, err
+	}
+	profileID = strings.TrimSpace(profileID)
+	if _, ok := index.profiles[profileID]; !ok {
+		return ProfilePredicate{}, false, nil
+	}
+	predicate := ProfilePredicate{}
+	for ruleID, matches := range index.byRuleID {
+		if profileMatchesID(matches, profileID) {
+			predicate.RuleIDs = append(predicate.RuleIDs, ruleID)
+		}
+	}
+	for controlKey, matches := range index.byControlID {
+		if !profileMatchesID(matches, profileID) {
+			continue
+		}
+		frameworkName, controlID, ok := strings.Cut(controlKey, "\x00")
+		if !ok || strings.TrimSpace(frameworkName) == "" || strings.TrimSpace(controlID) == "" {
+			return ProfilePredicate{}, false, fmt.Errorf("profile %q has invalid control selector %q", profileID, controlKey)
+		}
+		predicate.ControlRefs = append(predicate.ControlRefs, ports.FindingControlRef{
+			FrameworkName: frameworkName,
+			ControlID:     controlID,
+		})
+	}
+	sort.Strings(predicate.RuleIDs)
+	sort.Slice(predicate.ControlRefs, func(i, j int) bool {
+		left := predicate.ControlRefs[i].FrameworkName + "\x00" + predicate.ControlRefs[i].ControlID
+		right := predicate.ControlRefs[j].FrameworkName + "\x00" + predicate.ControlRefs[j].ControlID
+		return left < right
+	})
+	return predicate, true, nil
+}
+
+func profileMatchesID(matches []findingProfileMatch, profileID string) bool {
+	for _, match := range matches {
+		if match.profileID == profileID {
+			return true
+		}
+	}
+	return false
 }
 
 func builtinFindingProfiles(ruleID string, refs []ports.FindingControlRef) []ProfileRef {
@@ -108,10 +176,11 @@ func builtinFindingProfiles(ruleID string, refs []ports.FindingControlRef) []Pro
 
 func buildFindingProfileIndex(index compliance.FindingProfileIndex) findingProfileIndex {
 	result := findingProfileIndex{
-		version:     strings.TrimSpace(index.Version),
-		byRuleID:    map[string][]findingProfileMatch{},
-		byControlID: map[string][]findingProfileMatch{},
-		profiles:    map[string]ProfileRef{},
+		version:         strings.TrimSpace(index.Version),
+		contentRevision: strings.TrimSpace(index.ContentRevision),
+		byRuleID:        map[string][]findingProfileMatch{},
+		byControlID:     map[string][]findingProfileMatch{},
+		profiles:        map[string]ProfileRef{},
 	}
 	for ruleID, matches := range index.MatchesByRuleID {
 		for _, match := range matches {
@@ -135,18 +204,27 @@ func (index *findingProfileIndex) addProfile(match findingProfileMatch) {
 		return
 	}
 	index.profiles[match.profileID] = ProfileRef{
-		ID:                   match.profileID,
-		Name:                 match.profileName,
-		CoverageIndexVersion: index.version,
+		ID:                    match.profileID,
+		Name:                  match.profileName,
+		CoverageIndexVersion:  index.version,
+		CoverageIndexRevision: index.contentRevision,
 	}
 }
 
 func findingProfileMatchFromCompliance(match compliance.FindingProfileMatch) findingProfileMatch {
 	paths := make([]ProfileMappingPath, 0, len(match.MappingPaths))
 	for _, path := range match.MappingPaths {
+		coverageCredit := "reviewed_catalog_mapping"
+		if strings.TrimSpace(path.Source.Relationship) == "" {
+			coverageCredit = "legacy_catalog_mapping"
+		}
 		paths = append(paths, ProfileMappingPath{
 			Source:             controlRefFromCompliance(path.Source),
 			Target:             controlRefFromCompliance(path.Target),
+			MatchDirection:     "finding_control_to_profile_control",
+			DeclaredSource:     controlRefFromCompliance(path.Target),
+			DeclaredTarget:     controlRefFromCompliance(path.Source),
+			CoverageCredit:     coverageCredit,
 			Relationship:       strings.TrimSpace(path.Source.Relationship),
 			MatchingRationale:  strings.TrimSpace(path.Source.MatchingRationale),
 			MappingDescription: strings.TrimSpace(path.Source.MappingDescription),
@@ -175,6 +253,7 @@ func (index findingProfileIndex) profilesForFinding(ruleID string, refs []Contro
 		profile.ID = match.profileID
 		profile.Name = match.profileName
 		profile.CoverageIndexVersion = index.version
+		profile.CoverageIndexRevision = index.contentRevision
 		profile.MatchedControls = appendUniqueControlRefs(profile.MatchedControls, match.controls...)
 		profile.DirectControls = appendUniqueControlRefs(profile.DirectControls, match.directControls...)
 		profile.CatalogMappedControls = appendUniqueControlRefs(profile.CatalogMappedControls, match.catalogMappedControls...)
@@ -247,6 +326,9 @@ func appendProfileMatch(matches []findingProfileMatch, candidate findingProfileM
 func (index findingProfileIndex) validate() error {
 	if index.version == "" {
 		return fmt.Errorf("coverage index version is required")
+	}
+	if index.contentRevision == "" {
+		return fmt.Errorf("coverage index content revision is required")
 	}
 	if len(index.profiles) == 0 {
 		return fmt.Errorf("at least one profile is required")

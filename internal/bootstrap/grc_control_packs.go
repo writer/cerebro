@@ -104,13 +104,14 @@ func (a *App) handleGRCCustomControlEvidencePacket(w http.ResponseWriter, r *htt
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"profile":                 result.Profile,
-		"packet":                  result.Packet,
-		"controls":                result.Controls,
-		"profile_finding_matches": result.ProfileFindingMatches,
-		"preview":                 result.Preview,
-		"metadata":                result.Metadata,
-		"generated_at":            result.Packet.GeneratedAt,
+		"profile":                  result.Profile,
+		"packet":                   result.Packet,
+		"controls":                 result.Controls,
+		"profile_finding_matches":  result.ProfileFindingMatches,
+		"profile_match_evaluation": result.ProfileMatchEvaluation,
+		"preview":                  result.Preview,
+		"metadata":                 result.Metadata,
+		"generated_at":             result.Packet.GeneratedAt,
 	})
 }
 
@@ -126,13 +127,14 @@ func (a *App) handleGRCCustomControlEvidencePacketExport(w http.ResponseWriter, 
 	}
 	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"profile":                 result.Profile,
-			"packet":                  result.Packet,
-			"controls":                result.Controls,
-			"profile_finding_matches": result.ProfileFindingMatches,
-			"preview":                 result.Preview,
-			"metadata":                result.Metadata,
-			"generated_at":            result.Packet.GeneratedAt,
+			"profile":                  result.Profile,
+			"packet":                   result.Packet,
+			"controls":                 result.Controls,
+			"profile_finding_matches":  result.ProfileFindingMatches,
+			"profile_match_evaluation": result.ProfileMatchEvaluation,
+			"preview":                  result.Preview,
+			"metadata":                 result.Metadata,
+			"generated_at":             result.Packet.GeneratedAt,
 		})
 		return
 	}
@@ -200,23 +202,29 @@ func (a *App) buildGRCCustomControlEvidencePacket(w http.ResponseWriter, r *http
 		return grccontrol.CustomPacketResult{}, nil, err
 	}
 	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: grcMaxLimit + 1})
 	if err != nil {
 		return grccontrol.CustomPacketResult{}, nil, err
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	scanTruncated := len(findings) > int(grcMaxLimit)
+	if scanTruncated {
+		findings = findings[:grcMaxLimit]
+	}
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: grcMaxLimit})
 	if err != nil {
 		return grccontrol.CustomPacketResult{}, nil, err
 	}
 	return grccontrol.BuildCustomEvidencePacket(grccontrol.CustomBuildInput{
-		Request:   request,
-		Framework: r.URL.Query().Get("framework"),
-		ControlID: r.URL.Query().Get("control"),
-		Findings:  findings,
-		Evidence:  evidence,
-		SourceIDs: grcRuntimeSourceIDs(runtimes),
-		Runtimes:  reportScopeRuntimes,
-		Now:       time.Now().UTC(),
+		Request:                request,
+		Framework:              r.URL.Query().Get("framework"),
+		ControlID:              r.URL.Query().Get("control"),
+		Findings:               findings,
+		Evidence:               evidence,
+		SourceIDs:              grcRuntimeSourceIDs(runtimes),
+		Runtimes:               reportScopeRuntimes,
+		Now:                    time.Now().UTC(),
+		FindingEvaluationLimit: grcMaxLimit,
+		FindingScanTruncated:   scanTruncated,
 	})
 }
 

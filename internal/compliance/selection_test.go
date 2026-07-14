@@ -165,6 +165,7 @@ func TestResolveRuleCoverageDoesNotPromotePartialOrNegativeMappings(t *testing.T
 		wantMapped   bool
 	}{
 		{name: "legacy unspecified", wantMapped: true},
+		{name: "orphan complete review", reviewStatus: ControlMappingReviewStatusComplete},
 		{name: "equal", relationship: ControlMappingRelationshipEqualTo, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
 		{name: "equivalent", relationship: ControlMappingRelationshipEquivalentTo, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
 		{name: "source superset", relationship: ControlMappingRelationshipSupersetOf, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
@@ -195,6 +196,12 @@ func TestResolveRuleCoverageDoesNotPromotePartialOrNegativeMappings(t *testing.T
 				t.Fatalf("MappedRules = %#v, mapped %t, want %t", coverage.MappedRules, got, test.wantMapped)
 			}
 		})
+	}
+}
+
+func TestControlMappingCreditsCoverageRejectsOrphanProvenance(t *testing.T) {
+	if ControlMappingCreditsCoverage(ControlRef{MappingAuthority: "Compliance Engineering"}) {
+		t.Fatal("ControlMappingCreditsCoverage() = true, want false for provenance without typed relationship semantics")
 	}
 }
 

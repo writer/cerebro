@@ -1,6 +1,9 @@
 package compliance
 
-import _ "embed"
+import (
+	_ "embed"
+	"fmt"
+)
 
 //go:embed control_families.yaml
 var builtinControlCatalogYAML []byte
@@ -33,7 +36,22 @@ func LoadBuiltinControlCoverageIndex() (ControlCoverageIndex, error) {
 }
 
 func LoadBuiltinFindingProfileIndex() (FindingProfileIndex, error) {
-	return LoadCompressedFindingProfileIndex(builtinFindingProfileIndexJSONGZ)
+	index, err := LoadCompressedFindingProfileIndex(builtinFindingProfileIndexJSONGZ)
+	if err != nil {
+		return FindingProfileIndex{}, err
+	}
+	coverage, err := LoadBuiltinControlCoverageIndex()
+	if err != nil {
+		return FindingProfileIndex{}, fmt.Errorf("load built-in control coverage for finding profile index: %w", err)
+	}
+	digest, err := findingProfileIndexSourceDigest(coverage, BuiltinRuleControlMappings())
+	if err != nil {
+		return FindingProfileIndex{}, err
+	}
+	if index.SourceDigest != digest {
+		return FindingProfileIndex{}, fmt.Errorf("built-in finding profile index source digest mismatch: got %q, want %q", index.SourceDigest, digest)
+	}
+	return index, nil
 }
 
 func LoadBuiltinControlArchetypeSet() (ControlArchetypeSet, error) {

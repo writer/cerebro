@@ -78,6 +78,7 @@ type ProfileRef struct {
 	ID                     string               `json:"id"`
 	Name                   string               `json:"name"`
 	CoverageIndexVersion   string               `json:"coverage_index_version"`
+	CoverageIndexRevision  string               `json:"coverage_index_revision"`
 	MappingBasis           string               `json:"mapping_basis"`
 	MatchedControls        []ControlRef         `json:"matched_controls,omitempty"`
 	DirectControls         []ControlRef         `json:"direct_controls,omitempty"`
@@ -89,6 +90,10 @@ type ProfileRef struct {
 type ProfileMappingPath struct {
 	Source             ControlRef `json:"source"`
 	Target             ControlRef `json:"target"`
+	MatchDirection     string     `json:"match_direction"`
+	DeclaredSource     ControlRef `json:"declared_source"`
+	DeclaredTarget     ControlRef `json:"declared_target"`
+	CoverageCredit     string     `json:"coverage_credit"`
 	Relationship       string     `json:"relationship,omitempty"`
 	MatchingRationale  string     `json:"matching_rationale,omitempty"`
 	MappingDescription string     `json:"mapping_description,omitempty"`

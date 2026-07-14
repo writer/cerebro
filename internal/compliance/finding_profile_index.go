@@ -3,6 +3,7 @@ package compliance
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ const DefaultFindingProfileIndexPath = "internal/compliance/finding_profile_inde
 
 const maxDecodedFindingProfileIndexBytes = 32 << 20
 
+const FindingProfileIndexSchemaVersion = 1
+
 const (
 	FindingProfileMappingDirect           = "direct"
 	FindingProfileMappingCatalog          = "catalog_mapping"
@@ -24,7 +27,10 @@ const (
 // finding rules and control references with named compliance profiles. The
 // full control coverage index remains the audit and explanation artifact.
 type FindingProfileIndex struct {
+	SchemaVersion    int                              `json:"schema_version"`
 	Version          string                           `json:"version"`
+	SourceDigest     string                           `json:"source_digest"`
+	ContentRevision  string                           `json:"content_revision"`
 	MatchesByRuleID  map[string][]FindingProfileMatch `json:"matches_by_rule_id"`
 	MatchesByControl map[string][]FindingProfileMatch `json:"matches_by_control"`
 }
@@ -45,7 +51,10 @@ type FindingProfileMappingPath struct {
 }
 
 type findingProfileIndexWire struct {
+	SchemaVersion    int                       `json:"schema_version"`
 	Version          string                    `json:"version"`
+	SourceDigest     string                    `json:"source_digest"`
+	ContentRevision  string                    `json:"content_revision"`
 	Profiles         map[string]string         `json:"profiles"`
 	Controls         map[string]ControlRef     `json:"controls"`
 	Matches          []findingProfileMatchWire `json:"matches"`
@@ -68,13 +77,21 @@ type findingProfileMappingPathWire struct {
 }
 
 func (index FindingProfileIndex) MarshalJSON() ([]byte, error) {
+	return json.Marshal(findingProfileIndexWireFor(index))
+}
+
+func findingProfileIndexWireFor(index FindingProfileIndex) findingProfileIndexWire {
 	wire := findingProfileIndexWire{
+		SchemaVersion:    index.SchemaVersion,
 		Version:          strings.TrimSpace(index.Version),
+		SourceDigest:     strings.TrimSpace(index.SourceDigest),
+		ContentRevision:  strings.TrimSpace(index.ContentRevision),
 		Profiles:         map[string]string{},
 		Controls:         map[string]ControlRef{},
 		MatchesByRuleID:  map[string][]int{},
 		MatchesByControl: map[string][]int{},
 	}
+	matchIndexes := map[string]int{}
 	appendMatches := func(matches []FindingProfileMatch) []int {
 		indexes := make([]int, 0, len(matches))
 		for _, match := range matches {
@@ -93,8 +110,15 @@ func (index FindingProfileIndex) MarshalJSON() ([]byte, error) {
 					TargetControlKey: targetKey,
 				})
 			}
-			indexes = append(indexes, len(wire.Matches))
-			wire.Matches = append(wire.Matches, encoded)
+			encodedContent, _ := json.Marshal(encoded)
+			encodedKey := string(encodedContent)
+			matchIndex, ok := matchIndexes[encodedKey]
+			if !ok {
+				matchIndex = len(wire.Matches)
+				matchIndexes[encodedKey] = matchIndex
+				wire.Matches = append(wire.Matches, encoded)
+			}
+			indexes = append(indexes, matchIndex)
 		}
 		return indexes
 	}
@@ -104,7 +128,7 @@ func (index FindingProfileIndex) MarshalJSON() ([]byte, error) {
 	for _, key := range sortedFindingProfileMapKeys(index.MatchesByControl) {
 		wire.MatchesByControl[key] = appendMatches(index.MatchesByControl[key])
 	}
-	return json.Marshal(wire)
+	return wire
 }
 
 func (index *FindingProfileIndex) UnmarshalJSON(content []byte) error {
@@ -142,7 +166,10 @@ func (index *FindingProfileIndex) UnmarshalJSON(content []byte) error {
 		return match, nil
 	}
 	result := FindingProfileIndex{
+		SchemaVersion:    wire.SchemaVersion,
 		Version:          wire.Version,
+		SourceDigest:     wire.SourceDigest,
+		ContentRevision:  wire.ContentRevision,
 		MatchesByRuleID:  map[string][]FindingProfileMatch{},
 		MatchesByControl: map[string][]FindingProfileMatch{},
 	}
@@ -216,21 +243,280 @@ func sortedFindingProfileMapKeys[T any](values map[string]T) []string {
 	return keys
 }
 
+type findingProfileIndexSource struct {
+	Version  string                             `json:"version"`
+	Profiles []findingProfileIndexSourceProfile `json:"profiles"`
+	Rules    []RuleControlMapping               `json:"rule_control_mappings"`
+}
+
+type findingProfileIndexSourceProfile struct {
+	ID       string                             `json:"id"`
+	Name     string                             `json:"name"`
+	Controls []findingProfileIndexSourceControl `json:"controls"`
+	Rules    []ControlCoverageRule              `json:"rules"`
+}
+
+type findingProfileIndexSourceControl struct {
+	Control           ControlRef   `json:"control"`
+	MappedControlRefs []ControlRef `json:"mapped_control_refs,omitempty"`
+}
+
+func findingProfileIndexSourceDigest(coverage ControlCoverageIndex, rules []RuleControlMapping) (string, error) {
+	source := findingProfileIndexSource{
+		Version: strings.TrimSpace(coverage.Version),
+		Rules:   canonicalFindingProfileRuleMappings(rules),
+	}
+	for _, profile := range coverage.Profiles {
+		item := findingProfileIndexSourceProfile{
+			ID:   strings.TrimSpace(profile.ID),
+			Name: strings.TrimSpace(profile.Name),
+		}
+		for _, control := range profile.Controls {
+			mapped := make([]ControlRef, 0, len(control.MappedControlRefs))
+			for _, ref := range control.MappedControlRefs {
+				if ControlMappingCreditsCoverage(ref) {
+					mapped = append(mapped, NormalizeControlRef(ref))
+				}
+			}
+			sortFindingProfileControlRefs(mapped)
+			item.Controls = append(item.Controls, findingProfileIndexSourceControl{
+				Control:           coverageControlRef(control),
+				MappedControlRefs: mapped,
+			})
+		}
+		sort.Slice(item.Controls, func(i, j int) bool {
+			left, _ := json.Marshal(item.Controls[i])
+			right, _ := json.Marshal(item.Controls[j])
+			return string(left) < string(right)
+		})
+		for _, rule := range profile.Rules {
+			item.Rules = append(item.Rules, ControlCoverageRule{
+				RuleID:   strings.TrimSpace(rule.RuleID),
+				Controls: canonicalFindingProfileControlRefs(rule.Controls),
+			})
+		}
+		sort.Slice(item.Rules, func(i, j int) bool {
+			if item.Rules[i].RuleID != item.Rules[j].RuleID {
+				return item.Rules[i].RuleID < item.Rules[j].RuleID
+			}
+			left, _ := json.Marshal(item.Rules[i].Controls)
+			right, _ := json.Marshal(item.Rules[j].Controls)
+			return string(left) < string(right)
+		})
+		source.Profiles = append(source.Profiles, item)
+	}
+	sort.Slice(source.Profiles, func(i, j int) bool {
+		if source.Profiles[i].ID != source.Profiles[j].ID {
+			return source.Profiles[i].ID < source.Profiles[j].ID
+		}
+		left, _ := json.Marshal(source.Profiles[i])
+		right, _ := json.Marshal(source.Profiles[j])
+		return string(left) < string(right)
+	})
+	content, err := json.Marshal(source)
+	if err != nil {
+		return "", fmt.Errorf("encode finding profile index source: %w", err)
+	}
+	return findingProfileSHA256(content), nil
+}
+
+func canonicalFindingProfileRuleMappings(rules []RuleControlMapping) []RuleControlMapping {
+	byID := make(map[string][]ControlRef, len(rules))
+	for _, rule := range rules {
+		ruleID := strings.TrimSpace(rule.RuleID)
+		if ruleID == "" {
+			continue
+		}
+		byID[ruleID] = canonicalFindingProfileControlRefs(rule.ControlRefs)
+	}
+	result := make([]RuleControlMapping, 0, len(byID))
+	for ruleID, refs := range byID {
+		result = append(result, RuleControlMapping{RuleID: ruleID, ControlRefs: refs})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].RuleID < result[j].RuleID })
+	return result
+}
+
+func canonicalFindingProfileControlRefs(refs []ControlRef) []ControlRef {
+	result := uniqueFindingProfileControlRefs(refs)
+	sortFindingProfileControlRefs(result)
+	return result
+}
+
+func sortFindingProfileControlRefs(refs []ControlRef) {
+	sort.Slice(refs, func(i, j int) bool {
+		left, _ := json.Marshal(NormalizeControlRef(refs[i]))
+		right, _ := json.Marshal(NormalizeControlRef(refs[j]))
+		return string(left) < string(right)
+	})
+}
+
+func findingProfileIndexContentRevision(index FindingProfileIndex) (string, error) {
+	wire := findingProfileIndexWireFor(index)
+	wire.ContentRevision = ""
+	content, err := json.Marshal(wire)
+	if err != nil {
+		return "", fmt.Errorf("encode finding profile index revision: %w", err)
+	}
+	return findingProfileSHA256(content), nil
+}
+
+func findingProfileSHA256(content []byte) string {
+	digest := sha256.Sum256(content)
+	return fmt.Sprintf("sha256:%x", digest)
+}
+
+func validFindingProfileDigest(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	for _, char := range value[len("sha256:"):] {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func LoadFindingProfileIndex(content []byte) (FindingProfileIndex, error) {
 	var index FindingProfileIndex
 	if err := json.Unmarshal(content, &index); err != nil {
 		return FindingProfileIndex{}, err
 	}
-	if strings.TrimSpace(index.Version) == "" {
-		return FindingProfileIndex{}, fmt.Errorf("finding profile index version is required")
+	if err := validateFindingProfileIndex(index, true); err != nil {
+		return FindingProfileIndex{}, err
 	}
-	if index.MatchesByRuleID == nil {
-		index.MatchesByRuleID = map[string][]FindingProfileMatch{}
+	revision, err := findingProfileIndexContentRevision(index)
+	if err != nil {
+		return FindingProfileIndex{}, err
 	}
-	if index.MatchesByControl == nil {
-		index.MatchesByControl = map[string][]FindingProfileMatch{}
+	if revision != strings.TrimSpace(index.ContentRevision) {
+		return FindingProfileIndex{}, fmt.Errorf("finding profile index content revision mismatch: got %q, want %q", index.ContentRevision, revision)
 	}
 	return index, nil
+}
+
+func validateFindingProfileIndex(index FindingProfileIndex, requireContentRevision bool) error {
+	if index.SchemaVersion != FindingProfileIndexSchemaVersion {
+		return fmt.Errorf("finding profile index schema version %d is unsupported; want %d", index.SchemaVersion, FindingProfileIndexSchemaVersion)
+	}
+	if strings.TrimSpace(index.Version) == "" {
+		return fmt.Errorf("finding profile index version is required")
+	}
+	if !validFindingProfileDigest(index.SourceDigest) {
+		return fmt.Errorf("finding profile index source digest must be a lowercase sha256 digest")
+	}
+	if requireContentRevision && !validFindingProfileDigest(index.ContentRevision) {
+		return fmt.Errorf("finding profile index content revision must be a lowercase sha256 digest")
+	}
+	if len(index.MatchesByRuleID) == 0 {
+		return fmt.Errorf("finding profile index rule matches are required")
+	}
+	if len(index.MatchesByControl) == 0 {
+		return fmt.Errorf("finding profile index control matches are required")
+	}
+	if err := validateFindingProfileMatchMap("rule", index.MatchesByRuleID, false); err != nil {
+		return err
+	}
+	return validateFindingProfileMatchMap("control", index.MatchesByControl, true)
+}
+
+func validateFindingProfileMatchMap(kind string, values map[string][]FindingProfileMatch, controlKeyed bool) error {
+	for key, matches := range values {
+		if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) || (controlKeyed && key == "\x00") {
+			return fmt.Errorf("finding profile index %s match key %q is invalid", kind, key)
+		}
+		if len(matches) == 0 {
+			return fmt.Errorf("finding profile index %s match key %q has no matches", kind, key)
+		}
+		seenProfiles := map[string]struct{}{}
+		for _, match := range matches {
+			if err := validateFindingProfileMatch(kind, key, match, controlKeyed); err != nil {
+				return err
+			}
+			if _, exists := seenProfiles[match.ProfileID]; exists {
+				return fmt.Errorf("finding profile index %s match key %q repeats profile %q", kind, key, match.ProfileID)
+			}
+			seenProfiles[match.ProfileID] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateFindingProfileMatch(kind, key string, match FindingProfileMatch, controlKeyed bool) error {
+	profileID := strings.TrimSpace(match.ProfileID)
+	if profileID == "" || profileID != match.ProfileID {
+		return fmt.Errorf("finding profile index %s match key %q has an invalid profile id", kind, key)
+	}
+	if strings.TrimSpace(match.ProfileName) == "" {
+		return fmt.Errorf("finding profile index %s match key %q profile %q has no name", kind, key, profileID)
+	}
+	direct := len(match.DirectControls) != 0
+	catalog := len(match.CatalogMappedControls) != 0
+	if !direct && !catalog {
+		return fmt.Errorf("finding profile index %s match key %q profile %q has no direct or catalog controls", kind, key, profileID)
+	}
+	wantBasis := findingProfileMappingBasis(direct, catalog)
+	if match.MappingBasis != wantBasis {
+		return fmt.Errorf("finding profile index %s match key %q profile %q mapping basis %q does not match %q", kind, key, profileID, match.MappingBasis, wantBasis)
+	}
+	matched := findingProfileControlSet(match.MatchedControls)
+	if len(matched) == 0 {
+		return fmt.Errorf("finding profile index %s match key %q profile %q has no matched controls", kind, key, profileID)
+	}
+	for _, ref := range append(append([]ControlRef(nil), match.DirectControls...), match.CatalogMappedControls...) {
+		refKey := ControlKey(ref)
+		if refKey == "\x00" {
+			return fmt.Errorf("finding profile index %s match key %q profile %q contains an invalid control", kind, key, profileID)
+		}
+		if _, ok := matched[refKey]; !ok {
+			return fmt.Errorf("finding profile index %s match key %q profile %q control %q is not declared as matched", kind, key, profileID, refKey)
+		}
+	}
+	catalogControls := findingProfileControlSet(match.CatalogMappedControls)
+	pathTargets := map[string]struct{}{}
+	keyHasBasis := !controlKeyed
+	for _, path := range match.MappingPaths {
+		sourceKey := ControlKey(path.Source)
+		targetKey := ControlKey(path.Target)
+		if sourceKey == "\x00" || targetKey == "\x00" {
+			return fmt.Errorf("finding profile index %s match key %q profile %q contains an invalid mapping path", kind, key, profileID)
+		}
+		if _, ok := catalogControls[targetKey]; !ok {
+			return fmt.Errorf("finding profile index %s match key %q profile %q mapping target %q is not catalog-mapped", kind, key, profileID, targetKey)
+		}
+		pathTargets[targetKey] = struct{}{}
+		if sourceKey == key {
+			keyHasBasis = true
+		}
+	}
+	for targetKey := range catalogControls {
+		if _, ok := pathTargets[targetKey]; !ok {
+			return fmt.Errorf("finding profile index %s match key %q profile %q catalog control %q has no mapping path", kind, key, profileID, targetKey)
+		}
+	}
+	if controlKeyed {
+		for _, ref := range match.DirectControls {
+			if ControlKey(ref) == key {
+				keyHasBasis = true
+			}
+		}
+		if !keyHasBasis {
+			return fmt.Errorf("finding profile index control match key %q profile %q has no matching direct control or mapping source", key, profileID)
+		}
+	}
+	return nil
+}
+
+func findingProfileControlSet(refs []ControlRef) map[string]struct{} {
+	result := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		if key := ControlKey(ref); key != "\x00" {
+			result[key] = struct{}{}
+		}
+	}
+	return result
 }
 
 func LoadCompressedFindingProfileIndex(content []byte) (FindingProfileIndex, error) {
@@ -254,12 +540,17 @@ func LoadCompressedFindingProfileIndex(content []byte) (FindingProfileIndex, err
 
 func BuildFindingProfileIndex(coverage ControlCoverageIndex, rules []RuleControlMapping) (FindingProfileIndex, error) {
 	result := FindingProfileIndex{
+		SchemaVersion:    FindingProfileIndexSchemaVersion,
 		Version:          strings.TrimSpace(coverage.Version),
 		MatchesByRuleID:  map[string][]FindingProfileMatch{},
 		MatchesByControl: map[string][]FindingProfileMatch{},
 	}
 	if result.Version == "" {
 		return FindingProfileIndex{}, fmt.Errorf("control coverage index version is required")
+	}
+	var err error
+	if result.SourceDigest, err = findingProfileIndexSourceDigest(coverage, rules); err != nil {
+		return FindingProfileIndex{}, err
 	}
 	rulesByID := make(map[string][]ControlRef, len(rules))
 	for _, rule := range rules {
@@ -321,6 +612,13 @@ func BuildFindingProfileIndex(coverage ControlCoverageIndex, rules []RuleControl
 		}
 	}
 	sortFindingProfileIndex(&result)
+	if err := validateFindingProfileIndex(result, false); err != nil {
+		return FindingProfileIndex{}, err
+	}
+	result.ContentRevision, err = findingProfileIndexContentRevision(result)
+	if err != nil {
+		return FindingProfileIndex{}, err
+	}
 	return result, nil
 }
 
