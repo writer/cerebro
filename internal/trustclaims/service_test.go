@@ -135,27 +135,28 @@ func TestIssueReceiptRejectsMalformedReferencesBeforeNormalization(t *testing.T)
 	tests := []struct {
 		name   string
 		mutate func(*ReceiptInput)
+		target error
 	}{
 		{name: "control version", mutate: func(input *ReceiptInput) {
 			input.Controls = append(input.Controls, VersionedRef{ID: "control-other", Version: " "})
-		}},
+		}, target: ErrInvalidVersionedReference},
 		{name: "policy id", mutate: func(input *ReceiptInput) {
 			input.Policies = append(input.Policies, VersionedRef{ID: " ", Version: "2"})
-		}},
+		}, target: ErrInvalidVersionedReference},
 		{name: "resource urn", mutate: func(input *ReceiptInput) {
 			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: " ", Revision: "2"})
-		}},
+		}, target: ErrInvalidResourceReference},
 		{name: "resource revision", mutate: func(input *ReceiptInput) {
 			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: "urn:resource:other", Revision: " "})
-		}},
+		}, target: ErrInvalidResourceReference},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validReceiptInput(now, ClaimStatusDraft, DisclosureInternal)
 			test.mutate(&input)
 			_, err := IssueReceipt(input)
-			if !errors.Is(err, ErrInvalidReceipt) || !errors.Is(err, ErrMalformedReference) {
-				t.Fatalf("IssueReceipt() error = %v, want invalid receipt and malformed reference", err)
+			if !errors.Is(err, ErrInvalidReceipt) || !errors.Is(err, test.target) {
+				t.Fatalf("IssueReceipt() error = %v, want ErrInvalidReceipt and %v", err, test.target)
 			}
 		})
 	}
