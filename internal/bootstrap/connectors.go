@@ -24,12 +24,14 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/connectordiagnostics"
 	"github.com/writer/cerebro/internal/connectorpreflight"
+	"github.com/writer/cerebro/internal/connectorpresentation"
 	"github.com/writer/cerebro/internal/connectorpreview"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/connectorvalidation"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcecertification"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
@@ -94,24 +96,26 @@ type connectorCatalogIdentity struct {
 	Description string `json:"description"`
 }
 type connectorCatalogDefinitionState struct {
-	EmittedKinds          []string                      `json:"emitted_kinds"`
-	CatalogStatus         string                        `json:"catalog_status,omitempty"`
-	ClassifierOutput      string                        `json:"classifier_output,omitempty"`
-	AuthModel             string                        `json:"auth_model,omitempty"`
-	RuntimeExecutable     bool                          `json:"runtime_executable,omitempty"`
-	MissingFeatures       []string                      `json:"missing_features,omitempty"`
-	CatalogCategories     []string                      `json:"catalog_categories,omitempty"`
-	VerificationEndpoint  string                        `json:"verification_endpoint,omitempty"`
-	ResourceFamilies      []connectorResourceFamilyView `json:"resource_families,omitempty"`
-	CatalogSchemaVersion  string                        `json:"catalog_schema_version,omitempty"`
-	CatalogCurrentVersion int                           `json:"catalog_current_version,omitempty"`
-	CatalogSourcePath     string                        `json:"catalog_source_path,omitempty"`
-	DefinitionOrigin      string                        `json:"definition_origin,omitempty"`
-	ReadinessStage        string                        `json:"readiness_stage,omitempty"`
-	ValidationGrade       string                        `json:"validation_grade,omitempty"`
-	Cataloged             bool                          `json:"cataloged"`
-	Callable              bool                          `json:"callable"`
-	IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth,omitempty"`
+	EmittedKinds          []string                         `json:"emitted_kinds"`
+	CatalogStatus         string                           `json:"catalog_status,omitempty"`
+	ClassifierOutput      string                           `json:"classifier_output,omitempty"`
+	AuthModel             string                           `json:"auth_model,omitempty"`
+	RuntimeExecutable     bool                             `json:"runtime_executable,omitempty"`
+	MissingFeatures       []string                         `json:"missing_features,omitempty"`
+	CatalogCategories     []string                         `json:"catalog_categories,omitempty"`
+	VerificationEndpoint  string                           `json:"verification_endpoint,omitempty"`
+	ResourceFamilies      []connectorResourceFamilyView    `json:"resource_families,omitempty"`
+	CatalogSchemaVersion  string                           `json:"catalog_schema_version,omitempty"`
+	CatalogCurrentVersion int                              `json:"catalog_current_version,omitempty"`
+	CatalogSourcePath     string                           `json:"catalog_source_path,omitempty"`
+	DefinitionOrigin      string                           `json:"definition_origin,omitempty"`
+	ReadinessStage        string                           `json:"readiness_stage,omitempty"`
+	ValidationGrade       string                           `json:"validation_grade,omitempty"`
+	Cataloged             bool                             `json:"cataloged"`
+	Callable              bool                             `json:"callable"`
+	IntegrationDepth      connectorIntegrationDepthView    `json:"integration_depth,omitempty"`
+	Certification         sourcecertification.Result       `json:"certification"`
+	Availability          sourcecertification.Availability `json:"availability"`
 	connectorcatalog.ProviderAPIView
 }
 type connectorCatalogRuntimeState struct {
@@ -563,9 +567,9 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
-	view, err := connectorLibraryView(r)
+	view, err := connectorpresentation.ParseLibraryView(r.URL.Query().Get("view"))
 	if err != nil {
-		writeConnectorError(w, err)
+		writeConnectorError(w, fmt.Errorf("%w: %v", connectorcredentials.ErrInvalidRequest, err))
 		return
 	}
 	pagination, err := connectorLibraryPaginationFromRequest(r)
@@ -573,29 +577,18 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
-	response := a.connectorLibrary(r, tenantID)
+	policy, err := sourcecertification.ParseAvailabilityPolicy(a.cfg.ConnectorAccess.MinCertificationTier, r.URL.Query().Get("min_certification_tier"), r.URL.Query().Get("include_preview"))
+	if err != nil {
+		writeConnectorError(w, fmt.Errorf("%w: %v", connectorcredentials.ErrInvalidRequest, err))
+		return
+	}
+	response := a.connectorLibraryWithPolicy(r, tenantID, policy)
 	response.Connectors, response.Page = pageConnectorLibraryEntries(response.Connectors, pagination)
 	if view == connectorLibraryViewSummary {
 		writeJSON(w, http.StatusOK, summarizeConnectorLibrary(response))
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-func connectorLibraryView(r *http.Request) (string, error) {
-	if r == nil || r.URL == nil {
-		return connectorLibraryViewFull, nil
-	}
-	view := strings.TrimSpace(r.URL.Query().Get("view"))
-	if view == "" {
-		return connectorLibraryViewFull, nil
-	}
-	switch view {
-	case connectorLibraryViewFull, connectorLibraryViewSummary:
-		return view, nil
-	default:
-		return "", fmt.Errorf("%w: connector library view must be full or summary", connectorcredentials.ErrInvalidRequest)
-	}
 }
 
 func summarizeConnectorLibrary(response connectorLibraryResponse) connectorLibrarySummaryResponse {
@@ -715,8 +708,15 @@ func summarizeConnectorCatalogEntry(entry connectorCatalogEntry) connectorCatalo
 }
 
 func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibraryResponse {
+	policy, _ := sourcecertification.ParseAvailabilityPolicy(a.cfg.ConnectorAccess.MinCertificationTier, "", "")
+	return a.connectorLibraryWithPolicy(r, tenantID, policy)
+}
+
+func (a *App) connectorLibraryWithPolicy(r *http.Request, tenantID string, policy sourcecertification.AvailabilityPolicy) connectorLibraryResponse {
 	runtimes, runtimeStoreStatus := a.connectorRuntimeCatalog(r, tenantID)
-	counts := connectorRuntimeCounts(runtimes)
+	counts := sourcecertification.RuntimeCounts(runtimes)
+	now := time.Now().UTC()
+	observations := sourcecertification.RuntimeObservations(runtimes, now)
 	sources := a.sourceService().List().GetSources()
 	transport := connectorTransportView{
 		Available: a.connectorTransitKey != nil,
@@ -758,19 +758,20 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		if !a.applyConnectorAccess(&entry, tenantID) {
 			continue
 		}
-		if count := counts[source.GetId()]; count.total > 0 {
-			entry.ConfiguredRuntimes = count.total
-			entry.HealthyRuntimes = count.healthy
-			entry.NeedsAttentionRuntimes = count.total - count.healthy
+		if count := counts[source.GetId()]; count.Total > 0 {
+			entry.ConfiguredRuntimes = count.Total
+			entry.HealthyRuntimes = count.Healthy
+			entry.NeedsAttentionRuntimes = count.Total - count.Healthy
 			switch {
-			case count.healthy == count.total:
+			case count.Healthy == count.Total:
 				entry.Status = "connected"
-			case count.healthy > 0:
+			case count.Healthy > 0:
 				entry.Status = "degraded"
 			default:
 				entry.Status = "needs_attention"
 			}
 		}
+		applyConnectorCertification(&entry, observations[source.GetId()], now, policy)
 		entries = append(entries, entry)
 		seen[source.GetId()] = struct{}{}
 	}
@@ -816,19 +817,20 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		if !a.applyConnectorAccess(&entry, tenantID) {
 			continue
 		}
-		if count := counts[sourceID]; count.total > 0 {
-			entry.ConfiguredRuntimes = count.total
-			entry.HealthyRuntimes = count.healthy
-			entry.NeedsAttentionRuntimes = count.total - count.healthy
+		if count := counts[sourceID]; count.Total > 0 {
+			entry.ConfiguredRuntimes = count.Total
+			entry.HealthyRuntimes = count.Healthy
+			entry.NeedsAttentionRuntimes = count.Total - count.Healthy
 			switch {
-			case count.healthy == count.total:
+			case count.Healthy == count.Total:
 				entry.Status = "connected"
-			case count.healthy > 0:
+			case count.Healthy > 0:
 				entry.Status = "degraded"
 			default:
 				entry.Status = "needs_attention"
 			}
 		}
+		applyConnectorCertification(&entry, observations[sourceID], now, policy)
 		entries = append(entries, entry)
 		seen[sourceID] = struct{}{}
 	}
@@ -859,6 +861,12 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		if !a.applyConnectorAccess(&entry, tenantID) {
 			continue
 		}
+		if count := counts[sourceID]; count.Total > 0 {
+			entry.ConfiguredRuntimes = count.Total
+			entry.HealthyRuntimes = count.Healthy
+			entry.NeedsAttentionRuntimes = count.Total - count.Healthy
+		}
+		applyConnectorCertification(&entry, observations[sourceID], now, policy)
 		entries = append(entries, entry)
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
@@ -882,6 +890,14 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		CredentialVault:     vaultStatus,
 		CredentialStores:    stores,
 	}
+}
+
+func applyConnectorCertification(entry *connectorCatalogEntry, observation sourcecertification.RuntimeObservation, now time.Time, policy sourcecertification.AvailabilityPolicy) {
+	if entry == nil {
+		return
+	}
+	entry.Certification = sourcecertification.CatalogResult(entry.SourceID, now, observation)
+	entry.Availability = sourcecertification.ApplyAvailability(entry.Certification, observation.Configured, policy)
 }
 
 func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
@@ -1830,11 +1846,6 @@ func (a *App) connectorRuntimeCatalog(r *http.Request, tenantID string) ([]*cere
 	return runtimes, "ready"
 }
 
-type connectorRuntimeCount struct {
-	total   int
-	healthy int
-}
-
 type connectorSchema struct {
 	ConfigKeys          map[string]struct{}
 	CredentialKeys      map[string]struct{}
@@ -2019,23 +2030,6 @@ func addConnectorSchemaConfigKey(keys map[string]struct{}, key string) {
 	keys[key] = struct{}{}
 }
 
-func connectorRuntimeCounts(runtimes []*cerebrov1.SourceRuntime) map[string]connectorRuntimeCount {
-	counts := make(map[string]connectorRuntimeCount)
-	for _, runtime := range runtimes {
-		sourceID := strings.TrimSpace(runtime.GetSourceId())
-		if sourceID == "" {
-			continue
-		}
-		count := counts[sourceID]
-		count.total++
-		if connectorRuntimeHealthy(runtime) {
-			count.healthy++
-		}
-		counts[sourceID] = count
-	}
-	return counts
-}
-
 func connectorEntryBySourceID(entries []connectorCatalogEntry, sourceID string) (connectorCatalogEntry, bool) {
 	normalized := strings.TrimSpace(sourceID)
 	for _, entry := range entries {
@@ -2097,12 +2091,12 @@ func (a *App) applyConnectorAccess(entry *connectorCatalogEntry, tenantID string
 		return false
 	}
 	sourceID := strings.TrimSpace(entry.SourceID)
-	if sourceID == "" || connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+	if sourceID == "" || connectorpresentation.SourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
 		return false
 	}
 	hasSetup := len(entry.ConnectionMethods) > 0
 	switch {
-	case connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID):
+	case connectorpresentation.SourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID):
 		entry.AccessStatus = connectorAccessRestricted
 		entry.AccessReason = firstNonEmpty(a.cfg.ConnectorAccess.RestrictionReason, "Connector setup is restricted by this deployment.")
 		entry.SetupAllowed = false
@@ -2153,23 +2147,13 @@ func connectorLibraryCountsFor(entries []connectorCatalogEntry) connectorLibrary
 }
 
 func (a *App) requireConnectorSetupAccess(sourceID string) error {
-	if connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+	if connectorpresentation.SourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
 		return fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, strings.TrimSpace(sourceID))
 	}
-	if connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID) {
+	if connectorpresentation.SourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID) {
 		return fmt.Errorf("%w: %s", errConnectorAccessRestricted, strings.TrimSpace(sourceID))
 	}
 	return nil
-}
-
-func connectorSourceListed(values []string, sourceID string) bool {
-	normalized := strings.TrimSpace(sourceID)
-	for _, value := range values {
-		if strings.EqualFold(strings.TrimSpace(value), normalized) {
-			return true
-		}
-	}
-	return false
 }
 
 func connectorCatalogOnlyReason(status string) string {
@@ -2854,7 +2838,7 @@ func connectorActivityFromHealth(records []sourceRuntimeHealthRecord) []connecto
 	for _, record := range records {
 		syncStatus := connectorSyncActivityStatus(record)
 		activity = append(activity, connectorActivityView{
-			ID:              connectorActivityID(record.RuntimeID, "sync", connectorRecordLastActivity(record)),
+			ID:              connectorpresentation.ActivityID(record.RuntimeID, "sync", connectorRecordLastActivity(record)),
 			RuntimeID:       record.RuntimeID,
 			SourceID:        record.SourceID,
 			TenantID:        record.TenantID,
@@ -2871,7 +2855,7 @@ func connectorActivityFromHealth(records []sourceRuntimeHealthRecord) []connecto
 		if record.LatestGraphRun != nil {
 			graphStatus := connectorGraphActivityStatus(record.LatestGraphRun.Status)
 			activity = append(activity, connectorActivityView{
-				ID:                connectorActivityID(record.RuntimeID, "graph", connectorGraphActivityTime(record.LatestGraphRun)),
+				ID:                connectorpresentation.ActivityID(record.RuntimeID, "graph", connectorGraphActivityTime(record.LatestGraphRun)),
 				RuntimeID:         record.RuntimeID,
 				SourceID:          record.SourceID,
 				TenantID:          record.TenantID,
@@ -3074,22 +3058,6 @@ func connectorGraphFailureClass(status string) string {
 		return "graph_ingest_failed"
 	}
 	return ""
-}
-
-func connectorActivityID(runtimeID string, kind string, occurredAt string) string {
-	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(kind), strings.TrimSpace(occurredAt)}
-	return strings.Trim(strings.Join(parts, ":"), ":")
-}
-
-func connectorRuntimeHealthy(runtime *cerebrov1.SourceRuntime) bool {
-	if runtime == nil {
-		return false
-	}
-	status := strings.TrimSpace(runtime.GetConfig()["__cerebro_runtime_status"])
-	if status != "" {
-		return status == "completed" || status == "healthy"
-	}
-	return runtime.GetLastSyncedAt() != nil
 }
 
 func (a *App) checkConnectorRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime, plaintextFields map[string]string) error {

@@ -152,11 +152,12 @@ type ConnectorSecretStoreConfig struct {
 
 // ConnectorAccessConfig controls connector catalog visibility and setup gates.
 type ConnectorAccessConfig struct {
-	HiddenSources       []string
-	RestrictedSources   []string
-	RestrictionReason   string
-	RequestAccessURL    string
-	RequestAccessAction string
+	HiddenSources        []string
+	RestrictedSources    []string
+	MinCertificationTier string
+	RestrictionReason    string
+	RequestAccessURL     string
+	RequestAccessAction  string
 }
 
 // GraphActionsConfig configures graph action executors.
@@ -474,11 +475,12 @@ func Load() (Config, error) {
 			},
 		},
 		ConnectorAccess: ConnectorAccessConfig{
-			HiddenSources:       parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
-			RestrictedSources:   parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
-			RestrictionReason:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
-			RequestAccessURL:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
-			RequestAccessAction: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
+			HiddenSources:        parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
+			RestrictedSources:    parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
+			MinCertificationTier: strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_SOURCE_MIN_CERTIFICATION_TIER"))),
+			RestrictionReason:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
+			RequestAccessURL:     strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
+			RequestAccessAction:  strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
 		},
 		GraphActions: GraphActionsConfig{
 			AccessApprovals: AccessApprovalsActionConfig{
@@ -510,6 +512,14 @@ func Load() (Config, error) {
 				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
 			},
 		},
+	}
+	if cfg.ConnectorAccess.MinCertificationTier == "" {
+		cfg.ConnectorAccess.MinCertificationTier = "cataloged"
+	}
+	switch cfg.ConnectorAccess.MinCertificationTier {
+	case "cataloged", "spec_verified", "contract_tested", "production_observed", "outcome_validated":
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_SOURCE_MIN_CERTIFICATION_TIER %q", cfg.ConnectorAccess.MinCertificationTier)
 	}
 	authEnabled, err := parseBoolEnvDefault("CEREBRO_API_AUTH_ENABLED", !cfg.DevMode)
 	if err != nil {
