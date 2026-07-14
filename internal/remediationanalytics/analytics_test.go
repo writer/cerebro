@@ -56,6 +56,17 @@ func TestRealizedResultRejectsUnboundFinding(t *testing.T) {
 	}
 }
 
+func TestRealizedResultRejectsTamperedPredictionReceipt(t *testing.T) {
+	prediction := testPrediction(t)
+	prediction.TenantID = "tenant-b"
+	value := 10.0
+
+	_, err := NewRealizedResult(RealizedInput{Prediction: prediction, VerificationID: "verify-a", VerifiedClosedFindingIDs: []string{"finding-a"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &value, ObservedAt: prediction.CreatedAt.Add(time.Hour)})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("error = %v, want ErrInvalidRecord", err)
+	}
+}
+
 func TestDeriveResolutionEpisodesTracksDurabilityAndRecurrence(t *testing.T) {
 	opened := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	closed := opened.Add(24 * time.Hour)
@@ -96,9 +107,7 @@ func TestBuildBenchmarksSeparatesTenantAndVersionAndDisclosesSample(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherPrediction := prediction
-	otherPrediction.TenantID = "tenant-b"
-	otherPrediction.Digest = "sha256:other"
+	otherPrediction := testPredictionForTenant(t, "tenant-b")
 	other, err := NewRealizedResult(RealizedInput{Prediction: otherPrediction, VerificationID: "verify-b", StillMatchingFindingIDs: []string{"finding-a"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &risk, ObservedAt: otherPrediction.CreatedAt.Add(4 * time.Hour)})
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +125,12 @@ func TestBuildBenchmarksSeparatesTenantAndVersionAndDisclosesSample(t *testing.T
 
 func testPrediction(t *testing.T) PredictionReceipt {
 	t.Helper()
-	receipt, err := NewPredictionReceipt(PredictionInput{TenantID: "tenant-a", ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12, PredictedAttackPathDelta: 1, CreatedAt: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)})
+	return testPredictionForTenant(t, "tenant-a")
+}
+
+func testPredictionForTenant(t *testing.T, tenantID string) PredictionReceipt {
+	t.Helper()
+	receipt, err := NewPredictionReceipt(PredictionInput{TenantID: tenantID, ReportRunID: "report-a", CandidateID: "candidate-a", PlanModelVersion: "model-v2", ActionType: "revoke_access", TargetType: "identity", FindingRevisions: []FindingRevision{{FindingID: "finding-a", Fingerprint: "fp-a", RuleID: "rule-a", Revision: 1}}, PredictedRiskDelta: 12, PredictedAttackPathDelta: 1, CreatedAt: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)})
 	if err != nil {
 		t.Fatal(err)
 	}

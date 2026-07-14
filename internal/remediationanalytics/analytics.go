@@ -77,6 +77,28 @@ func NewPredictionReceipt(input PredictionInput) (PredictionReceipt, error) {
 	return receipt, err
 }
 
+func validatePredictionReceipt(receipt PredictionReceipt) error {
+	rebuilt, err := NewPredictionReceipt(PredictionInput{
+		TenantID:                 receipt.TenantID,
+		ReportRunID:              receipt.ReportRunID,
+		CandidateID:              receipt.CandidateID,
+		PlanModelVersion:         receipt.PlanModelVersion,
+		ActionType:               receipt.ActionType,
+		TargetType:               receipt.TargetType,
+		FindingRevisions:         receipt.FindingRevisions,
+		PredictedRiskDelta:       receipt.PredictedRiskDelta,
+		PredictedAttackPathDelta: receipt.PredictedAttackPathDelta,
+		CreatedAt:                receipt.CreatedAt,
+	})
+	if err != nil {
+		return err
+	}
+	if rebuilt.Digest != receipt.Digest {
+		return fmt.Errorf("%w: prediction receipt does not match its digest", ErrInvalidRecord)
+	}
+	return nil
+}
+
 type SourceHealth string
 
 const (
@@ -117,7 +139,10 @@ type RealizedInput struct {
 }
 
 func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
-	if input.Prediction.Digest == "" || input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) {
+	if err := validatePredictionReceipt(input.Prediction); err != nil {
+		return RealizedResult{}, err
+	}
+	if input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) {
 		return RealizedResult{}, fmt.Errorf("%w: prediction and bounded observation time are required", ErrInvalidRecord)
 	}
 	if input.SourceHealth != SourceHealthy && input.SourceHealth != SourceUnhealthy && input.SourceHealth != SourceUnknown {
