@@ -149,9 +149,9 @@ WHERE tenant_id = $1 AND engagement_id = $2 AND package_id = $3 AND revision = $
 	if err != nil {
 		return nil, fmt.Errorf("get audit package manifest: %w", err)
 	}
-	var manifest grcaudit.PackageManifest
-	if err := json.Unmarshal([]byte(payload), &manifest); err != nil {
-		return nil, fmt.Errorf("decode audit package manifest: %w", err)
+	manifest, err := decodeAuditPackageManifest(payload)
+	if err != nil {
+		return nil, err
 	}
 	if err := grcaudit.AuthorizePackageAccess(principal, *engagement, manifest, permission); err != nil {
 		return nil, grcaudit.ErrPackageNotFound
@@ -326,7 +326,7 @@ func applyAuditSubmission(ctx context.Context, tx *sql.Tx, event auditProjection
 	if err != nil {
 		return err
 	}
-	if err := validateAuditAdvance(exists, currentVersion, event.aggregateVersion); err != nil {
+	if err := validateAuditSubmissionAdvance(exists, currentVersion, event.aggregateVersion, submission.RequestVersion); err != nil {
 		return err
 	}
 	stateJSON, err := marshalBoundedAuditJSON(request)
@@ -671,6 +671,16 @@ func validateAuditAdvance(exists bool, current uint64, incoming uint64) error {
 	return grcaudit.ErrVersionConflict
 }
 
+func validateAuditSubmissionAdvance(exists bool, current uint64, incoming uint64, requestVersion uint64) error {
+	if !exists {
+		return grcaudit.ErrProjectionGap
+	}
+	if requestVersion != current {
+		return grcaudit.ErrVersionConflict
+	}
+	return validateAuditAdvance(true, current, incoming)
+}
+
 func decodeAuditProjectionEvent(envelope *cerebrov1.EventEnvelope) (auditProjectionEvent, error) {
 	payload, err := workflowevents.DecodeComplianceAggregate(envelope)
 	if err != nil {
@@ -735,6 +745,17 @@ func decodeAuditPayload(event auditProjectionEvent, target any) error {
 		return fmt.Errorf("decode audit projection payload: %w", err)
 	}
 	return nil
+}
+
+func decodeAuditPackageManifest(payload string) (grcaudit.PackageManifest, error) {
+	var manifest grcaudit.PackageManifest
+	if err := json.Unmarshal([]byte(payload), &manifest); err != nil {
+		return grcaudit.PackageManifest{}, fmt.Errorf("decode audit package manifest: %w", err)
+	}
+	if err := grcaudit.VerifyPackageManifest(manifest); err != nil {
+		return grcaudit.PackageManifest{}, fmt.Errorf("verify audit package manifest: %w", err)
+	}
+	return manifest, nil
 }
 
 func marshalBoundedAuditJSON(value any) (string, error) {

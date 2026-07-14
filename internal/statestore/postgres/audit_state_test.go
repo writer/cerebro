@@ -88,6 +88,44 @@ func TestAuditProjectionVersionOrdering(t *testing.T) {
 	}
 }
 
+func TestAuditSubmissionProjectionRequiresExistingReferencedRequestVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		exists         bool
+		current        uint64
+		incoming       uint64
+		requestVersion uint64
+		want           error
+	}{
+		{name: "next request version", exists: true, current: 3, incoming: 4, requestVersion: 3},
+		{name: "missing request", incoming: 1, want: grcaudit.ErrProjectionGap},
+		{name: "wrong referenced version", exists: true, current: 3, incoming: 4, requestVersion: 2, want: grcaudit.ErrVersionConflict},
+		{name: "aggregate gap", exists: true, current: 3, incoming: 5, requestVersion: 3, want: grcaudit.ErrProjectionGap},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateAuditSubmissionAdvance(test.exists, test.current, test.incoming, test.requestVersion)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("validateAuditSubmissionAdvance() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestDecodeAuditPackageManifestRejectsDigestMismatch(t *testing.T) {
+	t.Parallel()
+	manifest := testAuditManifest(t, "tenant-manifest", "engagement-one")
+	manifest.Entries[0].RevisionID = "altered-revision"
+	payload, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal altered manifest: %v", err)
+	}
+	if _, err := decodeAuditPackageManifest(string(payload)); !errors.Is(err, grcaudit.ErrManifestDigestMismatch) {
+		t.Fatalf("decodeAuditPackageManifest() error = %v, want ErrManifestDigestMismatch", err)
+	}
+}
+
 func TestAuditProjectionReplayReconstructsDeterministically(t *testing.T) {
 	t.Parallel()
 	events := testAuditEvents(t, "tenant-replay")
