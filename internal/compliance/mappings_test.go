@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -62,8 +63,8 @@ func TestControlMappingRejectsWhitespaceEquivalentSelfMapping(t *testing.T) {
 	mapping.Source.RevisionID = " revision-a "
 	mapping.Target.ID = "control-a"
 	mapping.Target.RevisionID = "revision-a"
-	if err := mapping.Validate(); err == nil || !strings.Contains(err.Error(), "source and target must differ") {
-		t.Fatalf("Validate() error = %v, want self-mapping rejection", err)
+	if err := mapping.Validate(); !errors.Is(err, ErrInvalidMapping) || !errors.Is(err, ErrSelfMapping) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidMapping and ErrSelfMapping", err)
 	}
 }
 
