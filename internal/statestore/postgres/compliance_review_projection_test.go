@@ -132,6 +132,15 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRisk() error = %v", err)
 	}
+	skippedRisk := risk
+	skippedRisk.ID = "risk-skipped-version"
+	skippedRisk.Version = 2
+	if _, err := projector.ProjectRisk(ctx, ComplianceProjectionMetadata{EventID: "risk-skipped-version", ExpectedVersion: 1, OccurredAt: now}, skippedRisk); !errors.Is(err, ErrComplianceProjectionVersionConflict) {
+		t.Fatalf("ProjectRisk(skipped initial version) error = %v, want version conflict", err)
+	}
+	if _, err := store.GetComplianceRisk(ctx, tenantID, skippedRisk.ID); !errors.Is(err, ErrComplianceProjectionNotFound) {
+		t.Fatalf("GetComplianceRisk(skipped initial version) error = %v, want not found", err)
+	}
 	riskEvent := ComplianceProjectionMetadata{EventID: "risk-created", ExpectedVersion: 0, OccurredAt: now}
 	if _, err := projector.ProjectRisk(ctx, riskEvent, risk); err != nil {
 		t.Fatalf("ProjectRisk() error = %v", err)
