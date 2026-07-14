@@ -5,6 +5,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 ## Prerequisites
 
 - Go 1.26+; the repository pins `go1.26.4` in `go.mod`.
+- Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, and Clippy.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 
@@ -51,7 +52,7 @@ make sourcegen-check # connector definition sourcegen readiness
 make readme-check   # README drift checks
 make docs-drift-check  # generated docs drift checks
 make oss-audit      # public repository hygiene scan
-make clean          # remove bin/
+make clean          # remove bin/ and Cargo target output
 ```
 
 Focused validation:

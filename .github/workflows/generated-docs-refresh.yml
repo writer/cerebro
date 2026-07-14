@@ -52,6 +52,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Rust
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt
+
       - name: Merge base and regenerate generated artifacts
         id: refresh
         shell: bash

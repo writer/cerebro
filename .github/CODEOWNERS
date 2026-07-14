@@ -7,6 +7,9 @@
 /Dockerfile @writer/security
 /Dockerfile.runtime @writer/security
 /Makefile @writer/security
+/Cargo.toml @writer/security
+/Cargo.lock @writer/security
+/rust-toolchain.toml @writer/security
 /go.mod @writer/security
 /go.sum @writer/security
 /api/ @writer/security

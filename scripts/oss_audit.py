@@ -22,6 +22,7 @@ EXCLUDED_DIRS = {
     "bin",
     "dist",
     "node_modules",
+    "target",
     "tmp",
     "vendor",
 }

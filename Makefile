@@ -1,9 +1,11 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: rust-fmt-check rust-clippy rust-test
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
+CARGO ?= cargo
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -403,10 +405,19 @@ connector-import-promote: ## Append supported candidate connector definitions in
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
 
 graph-action-generate: ## Regenerate graph action registry from the action catalog.
-	go run ./tools/graphactiongen --write
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --write
 
-graph-action-check: ## Verify generated graph action registry is current.
-	go run ./tools/graphactiongen --check
+rust-fmt-check: ## Verify Rust source formatting.
+	$(CARGO) fmt --all -- --check
+
+rust-clippy: ## Run Rust static analysis with warnings denied.
+	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+rust-test: ## Run Rust workspace tests.
+	$(CARGO) test --workspace --all-targets --locked
+
+graph-action-check: rust-fmt-check rust-clippy rust-test ## Verify generated graph action registry is current.
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DSL YAML.
 	go run ./tools/findingdsl --migrate-policies --write
@@ -612,11 +623,15 @@ doctor: ## Check local development toolchain availability.
 	@command -v go >/dev/null || { echo "missing required tool: go" >&2; exit 2; }
 	@command -v python3 >/dev/null || { echo "missing required tool: python3" >&2; exit 2; }
 	@command -v npm >/dev/null || { echo "missing required tool: npm" >&2; exit 2; }
+	@command -v cargo >/dev/null || { echo "missing required tool: cargo" >&2; exit 2; }
+	@command -v rustc >/dev/null || { echo "missing required tool: rustc" >&2; exit 2; }
 	@command -v docker >/dev/null || echo "optional tool missing: docker (needed for make docker-smoke)"
 	@command -v gh >/dev/null || echo "optional tool missing: gh (needed for PR/release triage)"
 	@go version
 	@python3 --version
 	@npm --version
+	@cargo --version
+	@rustc --version
 	@echo "developer toolchain looks ready"
 
 # ==== Droid Review ====
@@ -662,7 +677,7 @@ ci-poll: ## Poll PR checks until complete or timeout (PR required, optional INTE
 # ==== Project Hygiene ====
 ##@ Project Hygiene
 clean: ## Remove build artifacts.
-	rm -rf bin/
+	rm -rf bin/ target/
 
 hooks: ## Install repository git hooks.
 	./scripts/install_hooks.sh

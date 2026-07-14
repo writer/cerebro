@@ -108,6 +108,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Rust
+        if: matrix.name == 'graph-actions'
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt
+
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
 
