@@ -48,6 +48,7 @@ type ControlMapping struct {
 }
 
 func (mapping ControlMapping) Validate() error {
+	mapping = NormalizeControlMapping(mapping)
 	if strings.TrimSpace(mapping.ID) == "" || strings.TrimSpace(mapping.RevisionID) == "" {
 		return fmt.Errorf("%w: id and revision_id are required", ErrInvalidMapping)
 	}

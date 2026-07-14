@@ -56,6 +56,17 @@ func TestControlMappingRelationshipCoverageInvariants(t *testing.T) {
 	}
 }
 
+func TestControlMappingRejectsWhitespaceEquivalentSelfMapping(t *testing.T) {
+	mapping := validControlMapping()
+	mapping.Source.ID = " control-a "
+	mapping.Source.RevisionID = " revision-a "
+	mapping.Target.ID = "control-a"
+	mapping.Target.RevisionID = "revision-a"
+	if err := mapping.Validate(); err == nil || !strings.Contains(err.Error(), "source and target must differ") {
+		t.Fatalf("Validate() error = %v, want self-mapping rejection", err)
+	}
+}
+
 func validControlMapping() ControlMapping {
 	digest := ContentDigest("sha256:" + strings.Repeat("c", 64))
 	modified := time.Unix(1, 123456789).UTC()
