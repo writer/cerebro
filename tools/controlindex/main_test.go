@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/compliance"
+	"gopkg.in/yaml.v3"
 )
 
 func TestGenerateCoverageIndexLoadsExtensionCatalogsAndProfiles(t *testing.T) {
@@ -81,6 +82,39 @@ func TestGenerateCoverageIndexRejectsUnknownProfileFilter(t *testing.T) {
 	_, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"}, []string{"missing-profile"})
 	if err == nil || !strings.Contains(err.Error(), `profile "missing-profile" is not declared`) {
 		t.Fatalf("generateCoverageIndex() error = %v, want missing profile error", err)
+	}
+}
+
+func TestGenerateFindingProfileIndexBuildsServingProjection(t *testing.T) {
+	coverage := compliance.ControlCoverageIndex{
+		Version: "2026-07-14",
+		Profiles: []compliance.ControlCoverageProfile{{
+			ID:       "access-audit",
+			Name:     "Access Audit",
+			Controls: []compliance.ControlCoverageControl{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+			Rules: []compliance.ControlCoverageRule{{
+				RuleID:   "privileged-access",
+				Controls: []compliance.ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+			}},
+		}},
+	}
+	coverageContent, err := yaml.Marshal(coverage)
+	if err != nil {
+		t.Fatalf("yaml.Marshal() error = %v", err)
+	}
+	content, err := generateFindingProfileIndex(coverageContent, []compliance.RuleControlMapping{{
+		RuleID:      "privileged-access",
+		ControlRefs: []compliance.ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+	}})
+	if err != nil {
+		t.Fatalf("generateFindingProfileIndex() error = %v", err)
+	}
+	index, err := compliance.LoadCompressedFindingProfileIndex(content)
+	if err != nil {
+		t.Fatalf("LoadFindingProfileIndex() error = %v", err)
+	}
+	if got := index.MatchesByRuleID["privileged-access"]; len(got) != 1 || got[0].ProfileID != "access-audit" {
+		t.Fatalf("rule matches = %#v, want access-audit", got)
 	}
 }
 

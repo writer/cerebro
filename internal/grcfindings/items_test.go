@@ -71,25 +71,21 @@ func TestFindingItemsNormalizeRiskInboxRows(t *testing.T) {
 }
 
 func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *testing.T) {
-	index := buildFindingProfileIndex(compliance.ControlCoverageIndex{Profiles: []compliance.ControlCoverageProfile{{
-		ID:   "access-program",
-		Name: "Access Program",
-		Controls: []compliance.ControlCoverageControl{{
-			FrameworkName: "Custom Framework",
-			ControlID:     "IAM-1",
-			MappedControlRefs: []compliance.ControlRef{{
-				FrameworkName: "SOC 2",
-				ControlID:     "CC6.1",
-			}},
-		}},
-		Rules: []compliance.ControlCoverageRule{{
-			RuleID: "privileged-mfa",
-			Controls: []compliance.ControlRef{{
-				FrameworkName: "Custom Framework",
-				ControlID:     "IAM-1",
-			}},
-		}},
-	}}})
+	target := compliance.ControlRef{FrameworkName: "Custom Framework", ControlID: "IAM-1"}
+	source := compliance.ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.1"}
+	match := compliance.FindingProfileMatch{
+		ProfileID:             "access-program",
+		ProfileName:           "Access Program",
+		MappingBasis:          compliance.FindingProfileMappingCatalog,
+		MatchedControls:       []compliance.ControlRef{target},
+		CatalogMappedControls: []compliance.ControlRef{target},
+		MappingPaths:          []compliance.FindingProfileMappingPath{{Source: source, Target: target}},
+	}
+	index := buildFindingProfileIndex(compliance.FindingProfileIndex{
+		Version:          "2026-07-14",
+		MatchesByRuleID:  map[string][]compliance.FindingProfileMatch{"privileged-mfa": {match}},
+		MatchesByControl: map[string][]compliance.FindingProfileMatch{compliance.ControlKey(source): {match}},
+	})
 
 	profiles := index.profilesForFinding("privileged-mfa", []ControlRef{{
 		FrameworkName: "SOC 2",
@@ -101,6 +97,15 @@ func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *test
 	if profiles[0].ID != "access-program" || len(profiles[0].MatchedControls) != 1 {
 		t.Fatalf("profiles[0] = %#v, want one access-program IAM-1 match", profiles[0])
 	}
+	if profiles[0].CoverageIndexVersion != "2026-07-14" {
+		t.Fatalf("coverage index version = %q, want 2026-07-14", profiles[0].CoverageIndexVersion)
+	}
+	if got := profiles[0].MappingBasis; got != compliance.FindingProfileMappingCatalog {
+		t.Fatalf("mapping basis = %q, want catalog mapping provenance", got)
+	}
+	if got := profiles[0].MatchedFindingControls; len(got) != 1 || got[0].FrameworkName != "SOC 2" || got[0].ControlID != "CC6.1" {
+		t.Fatalf("matched finding controls = %#v, want SOC 2 CC6.1", got)
+	}
 	if got := profiles[0].MatchedControls[0]; got.FrameworkName != "Custom Framework" || got.ControlID != "IAM-1" {
 		t.Fatalf("matched control = %#v, want Custom Framework IAM-1", got)
 	}
@@ -110,6 +115,16 @@ func TestFindingProfileIndexLinksRulesAndMappedControlsWithoutDuplicates(t *test
 	}
 	if profiles := index.profilesForFinding("unknown-rule", []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}}); len(profiles) != 0 {
 		t.Fatalf("unrelated control profiles = %#v, want none", profiles)
+	}
+}
+
+func TestFindingProfileIndexValidationRejectsMissingRevisionAndProfiles(t *testing.T) {
+	if err := (findingProfileIndex{}).validate(); err == nil {
+		t.Fatal("validate() error = nil, want missing coverage index version")
+	}
+	index := findingProfileIndex{version: "2026-07-14", profiles: map[string]ProfileRef{}}
+	if err := index.validate(); err == nil {
+		t.Fatal("validate() error = nil, want missing profiles")
 	}
 }
 

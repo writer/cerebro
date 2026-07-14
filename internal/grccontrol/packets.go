@@ -51,11 +51,28 @@ type PacketResult struct {
 }
 
 type CustomPacketResult struct {
-	Profile  Profile                          `json:"profile"`
-	Packet   compliance.ControlEvidencePacket `json:"packet"`
-	Controls []ControlItem                    `json:"controls"`
-	Preview  compliance.ControlPackPreview    `json:"preview"`
-	Metadata ReportMetadata                   `json:"metadata,omitempty"`
+	Profile               Profile                          `json:"profile"`
+	Packet                compliance.ControlEvidencePacket `json:"packet"`
+	Controls              []ControlItem                    `json:"controls"`
+	ProfileFindingMatches []ProfileFindingMatch            `json:"profile_finding_matches,omitempty"`
+	Preview               compliance.ControlPackPreview    `json:"preview"`
+	Metadata              ReportMetadata                   `json:"metadata,omitempty"`
+}
+
+type ProfileFindingMatch struct {
+	FindingID             string                                 `json:"finding_id"`
+	FindingTitle          string                                 `json:"finding_title,omitempty"`
+	RuleID                string                                 `json:"rule_id,omitempty"`
+	Severity              string                                 `json:"severity,omitempty"`
+	Status                string                                 `json:"status,omitempty"`
+	ProfileID             string                                 `json:"profile_id"`
+	ProfileName           string                                 `json:"profile_name,omitempty"`
+	CoverageIndexVersion  string                                 `json:"coverage_index_version"`
+	MappingBasis          string                                 `json:"mapping_basis"`
+	MatchedControls       []compliance.ControlRef                `json:"matched_controls,omitempty"`
+	DirectControls        []compliance.ControlRef                `json:"direct_controls,omitempty"`
+	CatalogMappedControls []compliance.ControlRef                `json:"catalog_mapped_controls,omitempty"`
+	MappingPaths          []compliance.FindingProfileMappingPath `json:"mapping_paths,omitempty"`
 }
 
 type Profile struct {
@@ -257,6 +274,13 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 	if err != nil || len(issues) != 0 {
 		return CustomPacketResult{}, issues, err
 	}
+	profileFindingIndex, err := compliance.BuildFindingProfileIndex(compliance.ControlCoverageIndex{
+		Version:  preview.Version,
+		Profiles: []compliance.ControlCoverageProfile{preview.Coverage},
+	}, compliance.BuiltinRuleControlMappings())
+	if err != nil {
+		return CustomPacketResult{}, nil, fmt.Errorf("build custom finding profile index: %w", err)
+	}
 	catalogIndex, catalogIssues := compliance.BuildCatalogIndex(compliance.MergeControlCatalogs(baseCatalog, preview.Catalog))
 	if len(catalogIssues) != 0 {
 		return CustomPacketResult{}, catalogIssues, fmt.Errorf("%w: generated control catalog has validation issues", ErrInvalidRequest)
@@ -288,9 +312,10 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 				Name:        item.Profile.Name,
 				Description: item.Profile.Description,
 			},
-			Packet:   packet,
-			Controls: controls,
-			Preview:  preview,
+			Packet:                packet,
+			Controls:              controls,
+			ProfileFindingMatches: profileFindingMatches(profileFindingIndex, input.Findings, profileID),
+			Preview:               preview,
 			Metadata: BuildReportMetadata(ReportMetadataInput{
 				ReportType:    "control",
 				Profile:       Profile{ID: item.Profile.ID, Name: item.Profile.Name, Description: item.Profile.Description},
@@ -305,6 +330,41 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 		}, nil, nil
 	}
 	return CustomPacketResult{}, []compliance.ValidationIssue{{Path: "profile_id", Message: fmt.Sprintf("generated profile %q was not resolved", profileID)}}, nil
+}
+
+func profileFindingMatches(index compliance.FindingProfileIndex, findings []*ports.FindingRecord, profileID string) []ProfileFindingMatch {
+	result := []ProfileFindingMatch{}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		refs := make([]compliance.ControlRef, 0, len(finding.ControlRefs))
+		for _, ref := range finding.ControlRefs {
+			refs = append(refs, compliance.ControlRef{FrameworkName: ref.FrameworkName, ControlID: ref.ControlID})
+		}
+		for _, match := range compliance.ResolveFindingProfileMatches(index, finding.RuleID, refs) {
+			if match.ProfileID != profileID {
+				continue
+			}
+			result = append(result, ProfileFindingMatch{
+				FindingID:             finding.ID,
+				FindingTitle:          finding.Title,
+				RuleID:                finding.RuleID,
+				Severity:              finding.Severity,
+				Status:                finding.Status,
+				ProfileID:             match.ProfileID,
+				ProfileName:           match.ProfileName,
+				CoverageIndexVersion:  index.Version,
+				MappingBasis:          match.MappingBasis,
+				MatchedControls:       append([]compliance.ControlRef(nil), match.MatchedControls...),
+				DirectControls:        append([]compliance.ControlRef(nil), match.DirectControls...),
+				CatalogMappedControls: append([]compliance.ControlRef(nil), match.CatalogMappedControls...),
+				MappingPaths:          append([]compliance.FindingProfileMappingPath(nil), match.MappingPaths...),
+			})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].FindingID < result[j].FindingID })
+	return result
 }
 
 func ResolveBuiltinProfile(profileID string) (Profile, compliance.SelectionResolution, error) {

@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
@@ -404,7 +405,7 @@ func TestGRCConnectorHealthUsesLastSyncedAtSeparatelyFromWatermark(t *testing.T)
 		},
 	}
 
-	connectors := grcConnectorItems(runtimes)
+	connectors := grcfindings.ConnectorItems(runtimes)
 	byID := map[string]grcConnector{}
 	for _, connector := range connectors {
 		byID[connector.RuntimeID] = connector
@@ -805,6 +806,90 @@ func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
 	}
 	if len(store.groupedCountRequest.FindingIDs) != 1 || store.groupedCountRequest.FindingIDs[0] != "finding-1" {
 		t.Fatalf("grouped count finding ids = %#v, want finding-1", store.groupedCountRequest.FindingIDs)
+	}
+}
+
+func TestGRCFindingsProfileFilterEvaluatesBeforePageLimit(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	tenantID := "tenant"
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "okta", TenantId: tenantID},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"higher-risk-non-match": {
+				ID:             "higher-risk-non-match",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Higher risk finding outside the selected profile",
+				Severity:       "CRITICAL",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 99},
+				LastObservedAt: now,
+			},
+			"lower-risk-match": {
+				ID:          "lower-risk-match",
+				TenantID:    tenantID,
+				RuntimeID:   runtimeID,
+				Title:       "Finding mapped to the selected profile",
+				Severity:    "HIGH",
+				Status:      "open",
+				FindingRisk: ports.FindingRisk{RiskScore: 50},
+				ControlRefs: []ports.FindingControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
+				LastObservedAt: now.Add(-time.Hour),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=" + tenantID + "&profile_id=soc2-security-core&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/findings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Findings       []grcFindingItem         `json:"findings"`
+		ProfileSummary grcFindingProfileSummary `json:"profile_summary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/findings: %v", err)
+	}
+	if len(payload.Findings) != 1 || payload.Findings[0].ID != "lower-risk-match" {
+		t.Fatalf("findings = %#v, want lower-risk-match", payload.Findings)
+	}
+	if payload.ProfileSummary.ProfileID != "soc2-security-core" || payload.ProfileSummary.MatchedFindings != 1 {
+		t.Fatalf("profile summary = %#v, want one SOC 2 match", payload.ProfileSummary)
+	}
+	if payload.ProfileSummary.EvaluatedFindings != 2 || payload.ProfileSummary.EvaluationLimit != grcMaxLimit {
+		t.Fatalf("profile evaluation = %#v, want both findings evaluated with the bounded limit", payload.ProfileSummary)
+	}
+	profile := payload.Findings[0].Profiles[0]
+	if profile.CoverageIndexVersion == "" || len(profile.MappingBasis) == 0 || len(profile.MatchedFindingControls) == 0 {
+		t.Fatalf("profile provenance = %#v, want version, basis, and matched finding controls", profile)
+	}
+}
+
+func TestGRCFindingsRejectsUnknownProfileFilter(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=tenant&profile_id=not-a-profile")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /grc/findings status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
 	}
 }
 

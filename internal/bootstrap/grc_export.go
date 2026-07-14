@@ -15,13 +15,13 @@ import (
 const grcExportLimit = grcMaxLimit
 
 func (a *App) handleGRCFindingsExport(w http.ResponseWriter, r *http.Request) {
-	items, _, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
+	page, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
+	rows := make([][]string, 0, len(page.Items))
+	for _, item := range page.Items {
 		rows = append(rows, grcFindingExportRow(item))
 	}
 	writeGRCCSV(w, grcExportFilename("findings"), grcFindingExportHeader(), rows)

@@ -3,9 +3,11 @@ package compliance
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,6 +17,30 @@ const DefaultControlCatalogPath = "internal/compliance/control_families.yaml"
 const (
 	FrameworkLifecycleActive   = "active"
 	FrameworkLifecycleUpcoming = "upcoming"
+)
+
+const (
+	ControlMappingRelationshipUnspecified    = ""
+	ControlMappingRelationshipEqualTo        = "equal-to"
+	ControlMappingRelationshipEquivalentTo   = "equivalent-to"
+	ControlMappingRelationshipSubsetOf       = "subset-of"
+	ControlMappingRelationshipSupersetOf     = "superset-of"
+	ControlMappingRelationshipIntersectsWith = "intersects-with"
+	ControlMappingRelationshipNoRelationship = "no-relationship"
+)
+
+const (
+	ControlMappingRationaleSyntactic  = "syntactic"
+	ControlMappingRationaleSemantic   = "semantic"
+	ControlMappingRationaleFunctional = "functional"
+)
+
+const (
+	ControlMappingReviewStatusComplete    = "complete"
+	ControlMappingReviewStatusNotComplete = "not-complete"
+	ControlMappingReviewStatusDraft       = "draft"
+	ControlMappingReviewStatusDeprecated  = "deprecated"
+	ControlMappingReviewStatusSuperseded  = "superseded"
 )
 
 type ValidationIssue struct {
@@ -85,10 +111,18 @@ type EvidenceExpectation struct {
 }
 
 type ControlRef struct {
-	FrameworkID   string `json:"framework_id,omitempty" yaml:"framework_id,omitempty"`
-	FrameworkName string `json:"framework_name,omitempty" yaml:"framework_name,omitempty"`
-	Framework     string `json:"framework,omitempty" yaml:"framework,omitempty"`
-	ControlID     string `json:"control_id" yaml:"control_id"`
+	FrameworkID        string `json:"framework_id,omitempty" yaml:"framework_id,omitempty"`
+	FrameworkName      string `json:"framework_name,omitempty" yaml:"framework_name,omitempty"`
+	Framework          string `json:"framework,omitempty" yaml:"framework,omitempty"`
+	ControlID          string `json:"control_id" yaml:"control_id"`
+	Relationship       string `json:"relationship,omitempty" yaml:"relationship,omitempty"`
+	MatchingRationale  string `json:"matching_rationale,omitempty" yaml:"matching_rationale,omitempty"`
+	MappingDescription string `json:"mapping_description,omitempty" yaml:"mapping_description,omitempty"`
+	MappingAuthority   string `json:"mapping_authority,omitempty" yaml:"mapping_authority,omitempty"`
+	MappingSource      string `json:"mapping_source,omitempty" yaml:"mapping_source,omitempty"`
+	ReviewStatus       string `json:"review_status,omitempty" yaml:"review_status,omitempty"`
+	ReviewedAt         string `json:"reviewed_at,omitempty" yaml:"reviewed_at,omitempty"`
+	MappingVersion     string `json:"mapping_version,omitempty" yaml:"mapping_version,omitempty"`
 }
 
 type ResolvedControl struct {
@@ -390,6 +424,14 @@ func NormalizeControlRef(ref ControlRef) ControlRef {
 	ref.FrameworkName = strings.TrimSpace(ref.FrameworkName)
 	ref.Framework = strings.TrimSpace(ref.Framework)
 	ref.ControlID = strings.TrimSpace(ref.ControlID)
+	ref.Relationship = strings.TrimSpace(ref.Relationship)
+	ref.MatchingRationale = strings.TrimSpace(ref.MatchingRationale)
+	ref.MappingDescription = strings.TrimSpace(ref.MappingDescription)
+	ref.MappingAuthority = strings.TrimSpace(ref.MappingAuthority)
+	ref.MappingSource = strings.TrimSpace(ref.MappingSource)
+	ref.ReviewStatus = strings.TrimSpace(ref.ReviewStatus)
+	ref.ReviewedAt = strings.TrimSpace(ref.ReviewedAt)
+	ref.MappingVersion = strings.TrimSpace(ref.MappingVersion)
 	if ref.FrameworkName == "" && ref.Framework != "" {
 		ref.FrameworkName = ref.Framework
 	}
@@ -447,8 +489,101 @@ func validateControl(path string, control Control) []ValidationIssue {
 		if ref.ControlID == "" {
 			issues = append(issues, ValidationIssue{Message: refPath + ".control_id is required"})
 		}
+		issues = append(issues, validateControlMappingMetadata(refPath, ref)...)
 	}
 	return issues
+}
+
+func validateControlMappingMetadata(path string, ref ControlRef) []ValidationIssue {
+	var issues []ValidationIssue
+	if ref.Relationship != "" && !controlMappingRelationshipAllowed(ref.Relationship) {
+		issues = append(issues, ValidationIssue{Message: path + ".relationship must be one of equal-to, equivalent-to, subset-of, superset-of, intersects-with, no-relationship"})
+	}
+	if ref.MatchingRationale != "" && !controlMappingRationaleAllowed(ref.MatchingRationale) {
+		issues = append(issues, ValidationIssue{Message: path + ".matching_rationale must be one of syntactic, semantic, functional"})
+	}
+	if (ref.Relationship == "") != (ref.MatchingRationale == "") {
+		issues = append(issues, ValidationIssue{Message: path + ".relationship and matching_rationale must be provided together"})
+	}
+	if ref.Relationship != "" && ref.MappingDescription == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".mapping_description is required when relationship is set"})
+	}
+	if ref.Relationship != "" && ref.ReviewStatus == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".review_status is required when relationship is set"})
+	}
+	if ref.ReviewStatus != "" && !controlMappingReviewStatusAllowed(ref.ReviewStatus) {
+		issues = append(issues, ValidationIssue{Message: path + ".review_status must be one of complete, not-complete, draft, deprecated, superseded"})
+	}
+	if ref.ReviewedAt != "" && !validControlMappingReviewTime(ref.ReviewedAt) {
+		issues = append(issues, ValidationIssue{Message: path + ".reviewed_at must be an ISO 8601 date or RFC 3339 timestamp"})
+	}
+	if ref.MappingSource != "" && !absoluteControlMappingSource(ref.MappingSource) {
+		issues = append(issues, ValidationIssue{Message: path + ".mapping_source must be an absolute URI"})
+	}
+	if ref.ReviewStatus == ControlMappingReviewStatusComplete {
+		if ref.MappingAuthority == "" {
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_authority is required when review_status is complete"})
+		}
+		if ref.MappingSource == "" {
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_source is required when review_status is complete"})
+		}
+		if ref.ReviewedAt == "" {
+			issues = append(issues, ValidationIssue{Message: path + ".reviewed_at is required when review_status is complete"})
+		}
+		if ref.MappingVersion == "" {
+			issues = append(issues, ValidationIssue{Message: path + ".mapping_version is required when review_status is complete"})
+		}
+	}
+	return issues
+}
+
+func controlMappingRelationshipAllowed(value string) bool {
+	switch value {
+	case ControlMappingRelationshipEqualTo,
+		ControlMappingRelationshipEquivalentTo,
+		ControlMappingRelationshipSubsetOf,
+		ControlMappingRelationshipSupersetOf,
+		ControlMappingRelationshipIntersectsWith,
+		ControlMappingRelationshipNoRelationship:
+		return true
+	default:
+		return false
+	}
+}
+
+func controlMappingRationaleAllowed(value string) bool {
+	switch value {
+	case ControlMappingRationaleSyntactic, ControlMappingRationaleSemantic, ControlMappingRationaleFunctional:
+		return true
+	default:
+		return false
+	}
+}
+
+func controlMappingReviewStatusAllowed(value string) bool {
+	switch value {
+	case ControlMappingReviewStatusComplete,
+		ControlMappingReviewStatusNotComplete,
+		ControlMappingReviewStatusDraft,
+		ControlMappingReviewStatusDeprecated,
+		ControlMappingReviewStatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+func validControlMappingReviewTime(value string) bool {
+	if _, err := time.Parse("2006-01-02", value); err == nil {
+		return true
+	}
+	_, err := time.Parse(time.RFC3339, value)
+	return err == nil
+}
+
+func absoluteControlMappingSource(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.IsAbs()
 }
 
 func normalizeFrameworkLifecycle(value string) string {
@@ -515,11 +650,12 @@ func normalizeMappedControlRefs(index *CatalogIndex) {
 				if !ok {
 					continue
 				}
-				control.Control.MapsTo[idx] = ControlRef{
-					FrameworkID:   target.FrameworkID,
-					FrameworkName: target.FrameworkName,
-					ControlID:     target.Control.ID,
-				}
+				ref = NormalizeControlRef(ref)
+				ref.FrameworkID = target.FrameworkID
+				ref.FrameworkName = target.FrameworkName
+				ref.Framework = ""
+				ref.ControlID = target.Control.ID
+				control.Control.MapsTo[idx] = ref
 			}
 		}
 	}

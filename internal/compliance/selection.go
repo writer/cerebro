@@ -162,6 +162,9 @@ func ResolveRuleCoverage(resolution SelectionResolution, rules []RuleControlMapp
 			if mappedRef.ControlID == "" || (mappedRef.FrameworkID == "" && mappedRef.FrameworkName == "") {
 				continue
 			}
+			if !ControlMappingCreditsCoverage(mappedRef) {
+				continue
+			}
 			mappedKey := ControlKey(mappedRef)
 			aliases[mappedKey] = appendUniqueString(aliases[mappedKey], selectedKey)
 		}
@@ -215,6 +218,26 @@ func ResolveRuleCoverage(resolution SelectionResolution, rules []RuleControlMapp
 		})
 	}
 	return coverage
+}
+
+// ControlMappingCreditsCoverage reports whether satisfying the source
+// control supports the full target control. Empty preserves the legacy maps_to
+// behavior until a mapping has been reviewed and assigned typed semantics.
+func ControlMappingCreditsCoverage(ref ControlRef) bool {
+	if strings.TrimSpace(ref.Relationship) == ControlMappingRelationshipUnspecified {
+		return true
+	}
+	if strings.TrimSpace(ref.ReviewStatus) != ControlMappingReviewStatusComplete {
+		return false
+	}
+	switch strings.TrimSpace(ref.Relationship) {
+	case ControlMappingRelationshipEqualTo,
+		ControlMappingRelationshipEquivalentTo,
+		ControlMappingRelationshipSupersetOf:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveFrameworkSelection(index *CatalogIndex, idx int, selection FrameworkSelection) ([]ResolvedControl, []ValidationIssue) {

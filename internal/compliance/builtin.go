@@ -11,6 +11,9 @@ var builtinControlProfilesYAML []byte
 //go:embed control_coverage_index.yaml
 var builtinControlCoverageIndexYAML []byte
 
+//go:embed finding_profile_index.json.gz
+var builtinFindingProfileIndexJSONGZ []byte
+
 //go:embed control_archetypes.yaml
 var builtinControlArchetypesYAML []byte
 
@@ -27,6 +30,10 @@ func LoadBuiltinControlProfileSet() (ControlProfileSet, error) {
 
 func LoadBuiltinControlCoverageIndex() (ControlCoverageIndex, error) {
 	return LoadControlCoverageIndex(builtinControlCoverageIndexYAML)
+}
+
+func LoadBuiltinFindingProfileIndex() (FindingProfileIndex, error) {
+	return LoadCompressedFindingProfileIndex(builtinFindingProfileIndexJSONGZ)
 }
 
 func LoadBuiltinControlArchetypeSet() (ControlArchetypeSet, error) {

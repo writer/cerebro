@@ -27,7 +27,6 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -66,18 +65,9 @@ type grcControlRef = grcfindings.ControlRef
 type grcControlItem = grcfindings.ControlItem
 type grcEvidenceItem = grcfindings.EvidenceItem
 
-type grcConnector struct {
-	RuntimeID           string     `json:"runtime_id"`
-	SourceID            string     `json:"source_id,omitempty"`
-	TenantID            string     `json:"tenant_id,omitempty"`
-	Status              string     `json:"status"`
-	Freshness           string     `json:"freshness"`
-	SyncLagSeconds      *int64     `json:"sync_lag_seconds,omitempty"`
-	CheckpointWatermark *time.Time `json:"checkpoint_watermark,omitempty"`
-	WatermarkLagSeconds *int64     `json:"watermark_lag_seconds,omitempty"`
-	WatermarkFreshness  string     `json:"watermark_freshness,omitempty"`
-	LastSyncedAt        *time.Time `json:"last_synced_at,omitempty"`
-}
+type grcFindingItemsPage = grcfindings.ProfilePage
+type grcFindingProfileSummary = grcfindings.ProfileSummary
+type grcConnector = grcfindings.ConnectorItem
 
 type grcEntityImpactResponse struct {
 	EntityURN   string                    `json:"entity_urn"`
@@ -235,7 +225,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Findings:           grcLimitFindings(findingItems, 25),
 		Controls:           grcLimitControls(controls, 25),
 		Evidence:           grcLimitEvidence(evidenceItems, 25),
-		Connectors:         grcConnectorItems(runtimes),
+		Connectors:         grcfindings.ConnectorItems(runtimes),
 		SourceSummaries:    sourceSummaries,
 		CoverageBlindSpots: coverageBlindSpots,
 		CoverageSummaries:  sourcecoverage.Summaries(coverage),
@@ -352,33 +342,53 @@ func (a *App) grcFindingTrends(r *http.Request, runtimes []*cerebrov1.SourceRunt
 	})
 }
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
-	items, limit, err := a.grcFindingItemsFromRequest(r, 0)
+	page, err := a.grcFindingItemsFromRequest(r, 0)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"findings":     items,
-		"meta":         map[string]any{"limit": limit, "returned": len(items), "truncated": limit > 0 && len(items) >= int(limit)},
+	payload := map[string]any{
+		"findings":     page.Items,
+		"meta":         map[string]any{"limit": page.Limit, "returned": len(page.Items), "truncated": page.Truncated},
 		"generated_at": time.Now().UTC(),
-	})
+	}
+	if page.ProfileSummary != nil {
+		payload["profile_summary"] = page.ProfileSummary
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 // grcFindingItemsFromRequest gathers risk-inbox finding items for a request,
 // shared by the JSON list handler and the CSV export. A non-zero limitOverride
 // replaces the request's scope limit (the export pulls the full dataset).
-func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) ([]grcFindingItem, uint32, error) {
+func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) (grcFindingItemsPage, error) {
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
-		return nil, 0, err
-	}
-	runtimes, err := a.grcListRuntimes(r, scope)
-	if err != nil {
-		return nil, 0, err
+		return grcFindingItemsPage{}, err
 	}
 	limit := scope.Limit
 	if limitOverride > 0 {
 		limit = limitOverride
+	}
+	profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
+	var selectedProfile grcfindings.ProfileRef
+	if profileID != "" {
+		var ok bool
+		selectedProfile, ok, err = grcfindings.BuiltinFindingProfile(profileID)
+		if err != nil {
+			return grcFindingItemsPage{}, err
+		}
+		if !ok {
+			return grcFindingItemsPage{}, fmt.Errorf("%w: unknown profile_id %q", errInvalidHTTPRequest, profileID)
+		}
+	}
+	runtimeScope := scope
+	if profileID != "" {
+		runtimeScope.Limit = grcMaxLimit
+	}
+	runtimes, err := a.grcListRuntimes(r, runtimeScope)
+	if err != nil {
+		return grcFindingItemsPage{}, err
 	}
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	if status == "" {
@@ -388,7 +398,15 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 	}
 	drilldown, err := grctrends.ParseDrilldownFilters(r.URL.Query())
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+		return grcFindingItemsPage{}, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	fetchLimit := limit
+	if profileID != "" {
+		// Profile membership is derived from the immutable compliance index, not
+		// persisted finding columns. Evaluate a bounded superset before applying
+		// the caller's page limit so a non-match at the top of the risk ordering
+		// cannot hide a later matching finding.
+		fetchLimit = grcMaxLimit
 	}
 	filter := grcFindingFilter{
 		FindingID:           strings.TrimSpace(r.URL.Query().Get("finding_id")),
@@ -406,26 +424,34 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 		MinAgeDays:          drilldown.MinAgeDays,
 		MaxAgeDays:          drilldown.MaxAgeDays,
 		SLAStatus:           drilldown.SLAStatus,
-		Limit:               limit,
+		Limit:               fetchLimit,
 	}
 	findings, err := a.grcListFindingRecords(r, runtimes, filter)
 	if err != nil {
-		return nil, 0, err
+		return grcFindingItemsPage{}, err
 	}
 	evidenceCounts, counted, err := a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
 	if err != nil {
-		return nil, 0, err
+		return grcFindingItemsPage{}, err
 	}
 	if !counted {
-		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: limit})
+		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: fetchLimit})
 		if err != nil {
-			return nil, 0, err
+			return grcFindingItemsPage{}, err
 		}
 		evidenceCounts = grcEvidenceCounts(evidence)
 	}
 	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
 	grcApplyFindingDispositions(items, a.grcFindingDispositions(r, findings))
-	return items, limit, nil
+	page := grcFindingItemsPage{
+		Items:     items,
+		Limit:     limit,
+		Truncated: limit > 0 && len(items) >= int(limit),
+	}
+	if profileID == "" {
+		return page, nil
+	}
+	return grcfindings.PageForProfile(selectedProfile, items, len(findings), fetchLimit, limit), nil
 }
 func (a *App) handleGRCControls(w http.ResponseWriter, r *http.Request) {
 	controls, err := a.grcControlItemsFromRequest(r, 0)
@@ -1339,30 +1365,6 @@ func grcControlItems(findings []grcFindingItem, evidence []grcEvidenceItem) []gr
 	return grcfindings.ControlItems(findings, evidence)
 }
 
-func grcConnectorItems(runtimes []*cerebrov1.SourceRuntime) []grcConnector {
-	items := make([]grcConnector, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		lastSyncedAt := timestampPtr(runtime.GetLastSyncedAt())
-		checkpointWatermark := grcRuntimeCheckpointWatermark(runtime)
-		items = append(items, grcConnector{
-			RuntimeID:           runtime.GetId(),
-			SourceID:            runtime.GetSourceId(),
-			TenantID:            runtime.GetTenantId(),
-			Status:              connectorStatus(lastSyncedAt),
-			Freshness:           connectorFreshness(lastSyncedAt),
-			SyncLagSeconds:      timestampLagSeconds(lastSyncedAt),
-			CheckpointWatermark: checkpointWatermark,
-			WatermarkLagSeconds: timestampLagSeconds(checkpointWatermark),
-			WatermarkFreshness:  connectorFreshness(checkpointWatermark),
-			LastSyncedAt:        lastSyncedAt,
-		})
-	}
-	return items
-}
-
 func grcBuildSummary(findings []grcFindingItem, controls []grcControlItem, evidence []grcEvidenceItem, runtimes []*cerebrov1.SourceRuntime, findingSummary *ports.FindingSummary, evidenceCount *int) grcSummary {
 	return grcfindings.BuildSummary(findings, controls, evidence, runtimes, findingSummary, evidenceCount)
 }
@@ -1383,33 +1385,6 @@ func grcRecommendedAction(finding grcFindingItem) string {
 	return grcfindings.RecommendedAction(finding)
 }
 
-func connectorStatus(lastSyncedAt *time.Time) string {
-	return grcfindings.ConnectorStatus(lastSyncedAt)
-}
-
-func connectorFreshness(lastSyncedAt *time.Time) string {
-	return grcfindings.ConnectorFreshness(lastSyncedAt)
-}
-
-func grcRuntimeCheckpointWatermark(runtime *cerebrov1.SourceRuntime) *time.Time {
-	if runtime == nil {
-		return nil
-	}
-	return timestampPtr(runtime.GetCheckpoint().GetWatermark())
-}
-
-func timestampLagSeconds(value *time.Time) *int64 {
-	if value == nil {
-		return nil
-	}
-	lag := time.Since(*value)
-	if lag < 0 {
-		lag = 0
-	}
-	seconds := int64(lag.Seconds())
-	return &seconds
-}
-
 func severityRank(severity string) int {
 	return grcfindings.SeverityRank(severity)
 }
@@ -1421,21 +1396,6 @@ func fallbackString(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func timePtr(value time.Time) *time.Time {
-	if value.IsZero() {
-		return nil
-	}
-	utc := value.UTC()
-	return &utc
-}
-
-func timestampPtr(value *timestamppb.Timestamp) *time.Time {
-	if value == nil {
-		return nil
-	}
-	return timePtr(value.AsTime())
 }
 
 func writeGRCError(w http.ResponseWriter, err error) {

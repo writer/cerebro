@@ -104,12 +104,13 @@ func (a *App) handleGRCCustomControlEvidencePacket(w http.ResponseWriter, r *htt
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"profile":      result.Profile,
-		"packet":       result.Packet,
-		"controls":     result.Controls,
-		"preview":      result.Preview,
-		"metadata":     result.Metadata,
-		"generated_at": result.Packet.GeneratedAt,
+		"profile":                 result.Profile,
+		"packet":                  result.Packet,
+		"controls":                result.Controls,
+		"profile_finding_matches": result.ProfileFindingMatches,
+		"preview":                 result.Preview,
+		"metadata":                result.Metadata,
+		"generated_at":            result.Packet.GeneratedAt,
 	})
 }
 
@@ -125,12 +126,13 @@ func (a *App) handleGRCCustomControlEvidencePacketExport(w http.ResponseWriter, 
 	}
 	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"profile":      result.Profile,
-			"packet":       result.Packet,
-			"controls":     result.Controls,
-			"preview":      result.Preview,
-			"metadata":     result.Metadata,
-			"generated_at": result.Packet.GeneratedAt,
+			"profile":                 result.Profile,
+			"packet":                  result.Packet,
+			"controls":                result.Controls,
+			"profile_finding_matches": result.ProfileFindingMatches,
+			"preview":                 result.Preview,
+			"metadata":                result.Metadata,
+			"generated_at":            result.Packet.GeneratedAt,
 		})
 		return
 	}

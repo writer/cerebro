@@ -75,9 +75,28 @@ type ControlRef struct {
 }
 
 type ProfileRef struct {
-	ID              string       `json:"id"`
-	Name            string       `json:"name"`
-	MatchedControls []ControlRef `json:"matched_controls,omitempty"`
+	ID                     string               `json:"id"`
+	Name                   string               `json:"name"`
+	CoverageIndexVersion   string               `json:"coverage_index_version"`
+	MappingBasis           string               `json:"mapping_basis"`
+	MatchedControls        []ControlRef         `json:"matched_controls,omitempty"`
+	DirectControls         []ControlRef         `json:"direct_controls,omitempty"`
+	CatalogMappedControls  []ControlRef         `json:"catalog_mapped_controls,omitempty"`
+	MatchedFindingControls []ControlRef         `json:"matched_finding_controls,omitempty"`
+	MappingPaths           []ProfileMappingPath `json:"mapping_paths,omitempty"`
+}
+
+type ProfileMappingPath struct {
+	Source             ControlRef `json:"source"`
+	Target             ControlRef `json:"target"`
+	Relationship       string     `json:"relationship,omitempty"`
+	MatchingRationale  string     `json:"matching_rationale,omitempty"`
+	MappingDescription string     `json:"mapping_description,omitempty"`
+	MappingAuthority   string     `json:"mapping_authority,omitempty"`
+	MappingSource      string     `json:"mapping_source,omitempty"`
+	ReviewStatus       string     `json:"review_status,omitempty"`
+	ReviewedAt         string     `json:"reviewed_at,omitempty"`
+	MappingVersion     string     `json:"mapping_version,omitempty"`
 }
 
 type ControlItem struct {
