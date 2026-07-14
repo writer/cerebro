@@ -297,6 +297,138 @@ func TestRecordAppendLogDeadLetterUpsertOnlyUpdatesPendingRows(t *testing.T) {
 	}
 }
 
+func TestRecordAppendLogDeadLetterRejectsConcurrentTerminalTransition(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store := tombstoneStoreFromEnv(t)
+	if err := store.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		t.Fatalf("ensure dead letter tables: %v", err)
+	}
+	nonce := time.Now().UnixNano()
+	id := fmt.Sprintf("apdl-record-transition-%d", nonce)
+	const lockClass = int32(0x6170646c)
+	lockObject := int32(nonce & 0x3fffffff)
+	if lockObject == 0 {
+		lockObject = 1
+	}
+	cleanupCtx := context.WithoutCancel(ctx)
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(cleanupCtx, `DELETE FROM append_log_dead_letter_audit WHERE dead_letter_id = $1`, id)
+		_, _ = store.db.ExecContext(cleanupCtx, `DELETE FROM append_log_dead_letters WHERE id = $1`, id)
+	})
+	insertDeadLetterForcePurgeFixture(t, ctx, store, id, ports.AppendLogDeadLetterStatusPending, "", time.Time{})
+	installAppendLogDeadLetterRecordBlock(t, ctx, store, id, lockClass, lockObject)
+
+	blocker, err := store.db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("open advisory lock connection: %v", err)
+	}
+	lockHeld := true
+	t.Cleanup(func() {
+		if lockHeld {
+			_, _ = blocker.ExecContext(cleanupCtx, `SELECT pg_advisory_unlock($1, $2)`, lockClass, lockObject)
+		}
+		_ = blocker.Close()
+	})
+	if _, err := blocker.ExecContext(ctx, `SELECT pg_advisory_lock($1, $2)`, lockClass, lockObject); err != nil {
+		t.Fatalf("acquire advisory lock: %v", err)
+	}
+
+	recordDone := make(chan error, 1)
+	go func() {
+		recordDone <- store.RecordAppendLogDeadLetter(ctx, ports.AppendLogDeadLetter{
+			ID: id, Subject: "sec.findings.v1.recorded", EventID: "event-" + id, EventKind: "finding.recorded",
+			TenantID: "tenant-force-purge", ErrorCategory: "publish_failed", ErrorMessage: "retry budget exhausted",
+			RetryCount: 3, MaxAttempts: 3, PayloadHash: "replacement-hash", PayloadBytes: 84,
+			Event: &cerebrov1.EventEnvelope{Id: "event-" + id},
+		})
+	}()
+
+	for {
+		var waiting bool
+		if err := store.db.QueryRowContext(ctx, `SELECT EXISTS (
+  SELECT 1
+  FROM pg_locks
+  WHERE locktype = 'advisory'
+    AND NOT granted
+    AND classid::bigint = $1
+    AND objid::bigint = $2
+)`, lockClass, lockObject).Scan(&waiting); err != nil {
+			t.Fatalf("read advisory lock waiter: %v", err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-recordDone:
+			t.Fatalf("RecordAppendLogDeadLetter() completed before transition: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("wait for blocked record: %v", ctx.Err())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	if err := store.DiscardAppendLogDeadLetter(ctx, id, "operator@example.test", "superseded after delivery review"); err != nil {
+		t.Fatalf("DiscardAppendLogDeadLetter() error = %v", err)
+	}
+	var unlocked bool
+	if err := blocker.QueryRowContext(ctx, `SELECT pg_advisory_unlock($1, $2)`, lockClass, lockObject).Scan(&unlocked); err != nil {
+		t.Fatalf("release advisory lock: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("release advisory lock = false")
+	}
+	lockHeld = false
+
+	select {
+	case err := <-recordDone:
+		if !errors.Is(err, ports.ErrAppendLogDeadLetterNotPending) {
+			t.Fatalf("RecordAppendLogDeadLetter() error = %v, want ErrAppendLogDeadLetterNotPending", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("wait for record result: %v", ctx.Err())
+	}
+	var status, discardReason, payloadHash string
+	if err := store.db.QueryRowContext(ctx, `SELECT status, discard_reason, payload_hash FROM append_log_dead_letters WHERE id = $1`, id).Scan(&status, &discardReason, &payloadHash); err != nil {
+		t.Fatalf("read transitioned dead letter: %v", err)
+	}
+	if status != ports.AppendLogDeadLetterStatusDiscarded || discardReason != "superseded after delivery review" || payloadHash != "fixture-hash" {
+		t.Fatalf("transitioned dead letter = status %q reason %q payload_hash %q", status, discardReason, payloadHash)
+	}
+}
+
+func installAppendLogDeadLetterRecordBlock(t *testing.T, ctx context.Context, store *Store, id string, lockClass, lockObject int32) {
+	t.Helper()
+	nonce := time.Now().UnixNano()
+	functionName := fmt.Sprintf("test_apdl_record_block_fn_%d", nonce)
+	triggerName := fmt.Sprintf("test_apdl_record_block_trg_%d", nonce)
+	idLiteral := strings.ReplaceAll(id, "'", "''")
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id = '%s' THEN
+        PERFORM pg_advisory_xact_lock(%d, %d);
+    END IF;
+    RETURN NEW;
+END;
+$$`, functionName, idLiteral, lockClass, lockObject)); err != nil {
+		t.Fatalf("create record block function: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.WithoutCancel(ctx), fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, functionName))
+	})
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE TRIGGER %s
+BEFORE INSERT ON append_log_dead_letters
+FOR EACH ROW
+EXECUTE FUNCTION %s()`, triggerName, functionName)); err != nil {
+		t.Fatalf("create record block trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.WithoutCancel(ctx), fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON append_log_dead_letters`, triggerName))
+	})
+}
+
 func TestAppendLogDeadLetterTransitionConflictAlreadyReplayed(t *testing.T) {
 	err := appendLogDeadLetterTransitionConflictError("apdl_1", ports.AppendLogDeadLetterStatusReplayed, ports.AppendLogDeadLetterStatusReplayed)
 	if !errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {

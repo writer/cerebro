@@ -158,7 +158,7 @@ func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.Appe
 		telemetry.IncrementMain(ctx, "append_log.dead_letter.hard_limit_rejection.count", 1)
 		return fmt.Errorf("%w: pending_records=%d hard_records=%d pending_bytes=%d hard_bytes=%d", ports.ErrAppendLogDeadLetterBacklogHardLimit, projected.PendingRecords, policy.DeadLetterHardRecords, projected.PendingPayloadBytes, policy.DeadLetterHardBytes)
 	}
-	_, err = tx.ExecContext(ctx, recordAppendLogDeadLetterSQL,
+	result, err := tx.ExecContext(ctx, recordAppendLogDeadLetterSQL,
 		record.ID,
 		record.Status,
 		record.Subject,
@@ -179,6 +179,13 @@ func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.Appe
 	)
 	if err != nil {
 		return fmt.Errorf("record append log dead letter %q: %w", record.ID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("record append log dead letter %q rows affected: %w", record.ID, err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: append log dead letter %q changed state while recording", ports.ErrAppendLogDeadLetterNotPending, record.ID)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit append log dead letter %q: %w", record.ID, err)
