@@ -87,6 +87,8 @@ func HashDir(dir string, extensions []string) (string, error) {
 // HashReader computes a SHA-256 hash of an io.Reader.
 func HashReader(r io.Reader) (string, error) {
 	h := sha256.New()
+	// The input is generator content used for deterministic staleness checks, not a password or authentication secret.
+	// codeql[go/weak-sensitive-data-hashing]
 	if _, err := io.Copy(h, r); err != nil {
 		return "", err
 	}
