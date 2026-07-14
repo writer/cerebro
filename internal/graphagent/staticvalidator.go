@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 	"time"
@@ -57,7 +58,7 @@ var (
 
 func runStaticValidator(ctx context.Context, query string, maxRows int) (staticValidation, error) {
 	staticValidatorOnce.Do(func() {
-		initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		config := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).WithMemoryLimitPages(128)
 		staticValidatorShared.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
@@ -91,14 +92,14 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 		}
 	})
 	if staticValidatorShared.err != nil {
-		return staticValidation{}, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, staticValidatorShared.err)
+		return staticValidation{}, fmt.Errorf("%w: %w", ErrRuntimeUnavailable, staticValidatorShared.err)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	module, err := staticValidatorShared.runtime.InstantiateModule(callCtx, staticValidatorShared.compiled, staticValidatorModuleConfig())
 	if err != nil {
-		return staticValidation{}, fmt.Errorf("%w: instantiate static validator: %v", ErrRuntimeUnavailable, err)
+		return staticValidation{}, fmt.Errorf("%w: instantiate static validator: %w", ErrRuntimeUnavailable, err)
 	}
 	defer module.Close(callCtx) //nolint:errcheck // The validation result is already complete.
 
@@ -107,22 +108,36 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 	if alloc == nil || validate == nil || module.Memory() == nil {
 		return staticValidation{}, fmt.Errorf("%w: embedded validator exports are incomplete", ErrRuntimeUnavailable)
 	}
-	queryAllocation, err := alloc.Call(callCtx, uint64(len(query)))
-	if err != nil || len(queryAllocation) != 1 {
-		return staticValidation{}, fmt.Errorf("%w: allocate validator query: %v", ErrRuntimeUnavailable, err)
+	queryLength := uint64(len(query)) // #nosec G115 -- string lengths are non-negative and widened for the Wasm ABI.
+	queryAllocation, err := alloc.Call(callCtx, queryLength)
+	if err != nil {
+		return staticValidation{}, fmt.Errorf("%w: allocate validator query: %w", ErrRuntimeUnavailable, err)
+	}
+	if len(queryAllocation) != 1 {
+		return staticValidation{}, fmt.Errorf("%w: allocate validator query returned %d results", ErrRuntimeUnavailable, len(queryAllocation))
 	}
 	resultAllocation, err := alloc.Call(callCtx, staticValidatorResultSize)
-	if err != nil || len(resultAllocation) != 1 {
-		return staticValidation{}, fmt.Errorf("%w: allocate validator result: %v", ErrRuntimeUnavailable, err)
+	if err != nil {
+		return staticValidation{}, fmt.Errorf("%w: allocate validator result: %w", ErrRuntimeUnavailable, err)
 	}
-	queryPointer := uint32(queryAllocation[0])
-	resultPointer := uint32(resultAllocation[0])
+	if len(resultAllocation) != 1 {
+		return staticValidation{}, fmt.Errorf("%w: allocate validator result returned %d results", ErrRuntimeUnavailable, len(resultAllocation))
+	}
+	queryPointer, err := staticValidatorPointer(queryAllocation[0])
+	if err != nil {
+		return staticValidation{}, fmt.Errorf("%w: validator query allocation: %w", ErrRuntimeUnavailable, err)
+	}
+	resultPointer, err := staticValidatorPointer(resultAllocation[0])
+	if err != nil {
+		return staticValidation{}, fmt.Errorf("%w: validator result allocation: %w", ErrRuntimeUnavailable, err)
+	}
 	if !module.Memory().Write(queryPointer, []byte(query)) {
 		return staticValidation{}, fmt.Errorf("%w: write validator query memory", ErrRuntimeUnavailable)
 	}
-	status, err := validate.Call(callCtx, uint64(queryPointer), uint64(len(query)), uint64(maxRows), uint64(resultPointer))
+	maxRowCount := uint64(maxRows) // #nosec G115 -- NewValidator normalizes MaxRows to a positive value.
+	status, err := validate.Call(callCtx, uint64(queryPointer), queryLength, maxRowCount, uint64(resultPointer))
 	if err != nil {
-		return staticValidation{}, fmt.Errorf("%w: execute static validator: %v", ErrRuntimeUnavailable, err)
+		return staticValidation{}, fmt.Errorf("%w: execute static validator: %w", ErrRuntimeUnavailable, err)
 	}
 	if len(status) != 1 || status[0] != 0 {
 		return staticValidation{}, fmt.Errorf("%w: static validator status = %v", ErrRuntimeUnavailable, status)
@@ -143,6 +158,13 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 		return staticValidation{}, fmt.Errorf("%w: unknown static validator decision %d", ErrRuntimeUnavailable, validation.decision)
 	}
 	return validation, nil
+}
+
+func staticValidatorPointer(value uint64) (uint32, error) {
+	if value > math.MaxUint32 {
+		return 0, fmt.Errorf("pointer %d exceeds the Wasm32 address space", value)
+	}
+	return uint32(value), nil // #nosec G115 -- value is bounded to MaxUint32 above.
 }
 
 func staticValidatorModuleConfig() wazero.ModuleConfig {
