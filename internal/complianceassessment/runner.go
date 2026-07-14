@@ -110,7 +110,6 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 			return "", err
 		}
 		_, _ = fullHash.Write(payload)
-		chunkHash := sha256.Sum256(append([]byte(previous+"\n"), payload...))
 		chunkCount, err := boundedChunkCount(len(chunkResults))
 		if err != nil {
 			return "", err
@@ -119,7 +118,7 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 			RunID: run.ID, Sequence: uint32(start/resultChunkSize + 1),
 			FirstResultID: chunkResults[0].ID, LastResultID: chunkResults[len(chunkResults)-1].ID,
 			Count: chunkCount, PreviousDigest: previous,
-			Digest: "sha256:" + hex.EncodeToString(chunkHash[:]), Results: chunkResults,
+			Digest: digestResultChunkPayload(previous, payload), Results: chunkResults,
 		}
 		encoded, err := json.Marshal(chunk)
 		if err != nil {
@@ -144,6 +143,11 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 		previous = chunk.Digest
 	}
 	return "sha256:" + hex.EncodeToString(fullHash.Sum(nil)), nil
+}
+
+func digestResultChunkPayload(previous string, payload []byte) string {
+	digest := sha256.Sum256(append([]byte(previous+"\n"), payload...))
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func boundedChunkCount(value int) (uint32, error) {

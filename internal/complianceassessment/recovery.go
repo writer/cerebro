@@ -145,6 +145,9 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 		if strings.TrimSpace(record.AggregateType) != "assessment_result_chunk" || strings.TrimSpace(record.TenantID) == "" || strings.TrimSpace(record.AggregateID) != strings.TrimSpace(chunk.RunID) || record.AggregateVersion != int64(chunk.Sequence) {
 			return false, errors.New("assessment result chunk envelope does not match payload")
 		}
+		if err := validateRecoveredResultChunk(chunk); err != nil {
+			return false, err
+		}
 		if strings.TrimSpace(record.ContentDigest) != strings.TrimSpace(chunk.Digest) {
 			return false, errors.New("assessment result chunk digest does not match envelope")
 		}
@@ -152,6 +155,32 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 	default:
 		return false, nil
 	}
+}
+
+func validateRecoveredResultChunk(chunk ResultChunk) error {
+	if strings.TrimSpace(chunk.RunID) == "" || chunk.Sequence == 0 || len(chunk.Results) == 0 {
+		return errors.New("assessment result chunk identity and results are required")
+	}
+	if (chunk.Sequence == 1) != (strings.TrimSpace(chunk.PreviousDigest) == "") {
+		return errors.New("assessment result chunk predecessor does not match its sequence")
+	}
+	count, err := boundedChunkCount(len(chunk.Results))
+	if err != nil || chunk.Count != count || chunk.FirstResultID != chunk.Results[0].ID || chunk.LastResultID != chunk.Results[len(chunk.Results)-1].ID {
+		return errors.New("assessment result chunk boundaries do not match its results")
+	}
+	for _, result := range chunk.Results {
+		if err := ValidateObjectiveResult(result); err != nil {
+			return fmt.Errorf("validate recovered assessment result: %w", err)
+		}
+	}
+	payload, err := canonicalBytes(chunk.Results)
+	if err != nil {
+		return fmt.Errorf("encode recovered assessment results: %w", err)
+	}
+	if strings.TrimSpace(chunk.Digest) != digestResultChunkPayload(chunk.PreviousDigest, payload) {
+		return errors.New("assessment result chunk digest does not bind its results")
+	}
+	return nil
 }
 
 func validateRecoveredAggregate(record *workflowevents.ComplianceAggregateRecorded, aggregateType, tenantID, aggregateID, revisionID string, version uint64) error {
