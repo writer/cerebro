@@ -130,6 +130,12 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 	if got := path.Edges[1].Attributes["assignment_id"]; got != "asg-1" {
 		t.Fatalf("assignment attribute = %q, want asg-1", got)
 	}
+	if !path.Lineage.Qualified || path.Lineage.CompleteEdgeCount != 4 || path.Lineage.ProofDigest == "" {
+		t.Fatalf("lineage = %#v, want four qualified edges", path.Lineage)
+	}
+	if result.Counts.LineageQualifiedPaths != 1 || result.Counts.LineageIncompletePaths != 0 {
+		t.Fatalf("lineage counts = %#v", result.Counts)
+	}
 }
 
 func TestEffectiveAccessPathsFromRowsDropsIncompleteProofs(t *testing.T) {
@@ -167,6 +173,37 @@ func TestEffectiveAccessPathCountsSplitRoleAssignments(t *testing.T) {
 	})
 	if counts.DirectAssignments != 1 || counts.GroupMediatedPaths != 1 || counts.RolePaths != 1 || counts.AdminRolePaths != 1 || counts.CapabilitiesReturned != 3 {
 		t.Fatalf("counts = %#v", counts)
+	}
+}
+
+func TestEffectiveAccessPathLineageFailsClosedWhenAnEventIsMissing(t *testing.T) {
+	path := effectiveAccessTestPath()
+	first := path.QualifyLineage()
+	second := path.QualifyLineage()
+	if !first.Qualified || first.ProofDigest == "" || first.ProofDigest != second.ProofDigest {
+		t.Fatalf("qualified lineage is not deterministic: first=%#v second=%#v", first, second)
+	}
+
+	path.Edges[1].EventID = ""
+	incomplete := path.QualifyLineage()
+	if incomplete.Qualified || incomplete.ProofDigest != "" || incomplete.CompleteEdgeCount != 3 {
+		t.Fatalf("incomplete lineage = %#v", incomplete)
+	}
+	if len(incomplete.Gaps) != 1 || incomplete.Gaps[0].EdgeIndex != 1 || strings.Join(incomplete.Gaps[0].Fields, ",") != "event_id" {
+		t.Fatalf("lineage gaps = %#v", incomplete.Gaps)
+	}
+}
+
+func TestEffectiveAccessPathLineageReportsStructuralGaps(t *testing.T) {
+	path := effectiveAccessTestPath()
+	path.Principal.URN = "urn:cerebro:writer:okta_user:different"
+	qualification := path.QualifyLineage()
+	if qualification.Qualified || qualification.ProofDigest != "" {
+		t.Fatalf("structurally invalid lineage = %#v", qualification)
+	}
+	last := qualification.Gaps[len(qualification.Gaps)-1]
+	if last.EdgeIndex != -1 || strings.Join(last.Fields, ",") != "principal" {
+		t.Fatalf("structural gaps = %#v", qualification.Gaps)
 	}
 }
 
@@ -276,4 +313,25 @@ func effectiveAccessPathTestEdges() []any {
 			"attributes_json":  `{"event_id":"evt-capability","at":"2026-06-10T18:00:00Z"}`,
 		},
 	}
+}
+
+func effectiveAccessTestPath() EffectiveAccessPath {
+	mediator := GraphEntityRef{URN: "urn:cerebro:writer:okta_group:grp-security", EntityType: "okta.group", Label: "Security Engineering"}
+	path := EffectiveAccessPath{
+		Identity:       GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com", EntityType: "identity.email", Label: "alice@example.com"},
+		Principal:      GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1", EntityType: "okta.user", Label: "alice@example.com"},
+		Mediator:       &mediator,
+		AccessTarget:   GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin", EntityType: "okta.application", Label: "AWS Admin Console"},
+		Entitlement:    GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess", EntityType: "okta.entitlement", Label: "AdministratorAccess"},
+		Capability:     GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin", EntityType: "privileged.capability", Label: "Cloud administrator"},
+		AssignmentKind: "group_app_assignment",
+		RelationChain:  []string{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
+		Edges: []EffectiveAccessPathEdge{
+			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1"}, Relation: "member_of", To: mediator, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-member", At: "2026-06-10T17:00:00Z"},
+			{From: mediator, Relation: "assigned_to", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-assign", At: "2026-06-10T18:00:00Z"},
+			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin"}, Relation: "grants_entitlement", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-entitlement", At: "2026-06-10T18:00:00Z"},
+			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess"}, Relation: "confers_capability", To: GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-capability", At: "2026-06-10T18:00:00Z"},
+		},
+	}
+	return path
 }
