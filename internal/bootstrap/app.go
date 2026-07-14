@@ -1345,8 +1345,9 @@ func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(statusCode)
-	_, _ = w.Write(payload)
+	_, _ = w.Write(payload) //nolint:gosec // protojson escapes message fields; the response is JSON with content sniffing disabled.
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {
