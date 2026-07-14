@@ -54,6 +54,41 @@ func TestSourceProjectionRelationConstantsUseFabricContract(t *testing.T) {
 	}
 }
 
+func TestWorkflowRelationConstantsUseFabricContract(t *testing.T) {
+	root := repoRoot(t)
+	for _, relativePath := range []string{
+		filepath.Join("internal", "knowledge", "service.go"),
+		filepath.Join("internal", "workflowprojection", "projector.go"),
+	} {
+		path := filepath.Join(root, relativePath)
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			decl, ok := node.(*ast.GenDecl)
+			if !ok || decl.Tok != token.CONST {
+				return true
+			}
+			for _, spec := range decl.Specs {
+				valueSpec, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, name := range valueSpec.Names {
+					if !strings.HasPrefix(name.Name, "relation") {
+						continue
+					}
+					if i >= len(valueSpec.Values) || !selectorFromPackage(valueSpec.Values[i], "fabriccontract") {
+						t.Fatalf("%s defines %s without aliasing internal/fabriccontract", path, name.Name)
+					}
+				}
+			}
+			return true
+		})
+	}
+}
+
 func selectorFromPackage(expr ast.Expr, packageName string) bool {
 	selector, ok := expr.(*ast.SelectorExpr)
 	if !ok {
