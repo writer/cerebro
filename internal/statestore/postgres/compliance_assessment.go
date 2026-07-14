@@ -278,6 +278,7 @@ func (s *Store) ApplyResultChunk(ctx context.Context, eventID, tenantID string, 
 		return err
 	}
 	digest := assessmentJSONDigest(recordJSON)
+	tenantID = strings.TrimSpace(tenantID)
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("begin assessment result chunk projection: %w", err)
@@ -290,13 +291,13 @@ func (s *Store) ApplyResultChunk(ctx context.Context, eventID, tenantID string, 
 	if applied {
 		return tx.Commit()
 	}
-	result, err := tx.ExecContext(ctx, insertComplianceAssessmentResultChunk, strings.TrimSpace(tenantID), chunk.RunID, chunk.Sequence, chunk.FirstResultID, chunk.LastResultID, chunk.Count, chunk.PreviousDigest, chunk.Digest, string(recordJSON))
+	result, err := tx.ExecContext(ctx, insertComplianceAssessmentResultChunk, tenantID, chunk.RunID, chunk.Sequence, chunk.FirstResultID, chunk.LastResultID, chunk.Count, chunk.PreviousDigest, chunk.Digest, string(recordJSON))
 	if err != nil {
 		return fmt.Errorf("project assessment result chunk: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		var existingJSON []byte
-		if err := tx.QueryRowContext(ctx, `SELECT record_json FROM compliance_assessment_result_chunks WHERE tenant_id=$1 AND run_id=$2 AND sequence=$3`, strings.TrimSpace(tenantID), chunk.RunID, chunk.Sequence).Scan(&existingJSON); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT record_json FROM compliance_assessment_result_chunks WHERE tenant_id=$1 AND run_id=$2 AND sequence=$3`, tenantID, chunk.RunID, chunk.Sequence).Scan(&existingJSON); err != nil {
 			return fmt.Errorf("read existing assessment result chunk: %w", err)
 		}
 		if !assessmentResultChunkPayloadMatches(existingJSON, digest) {
