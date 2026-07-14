@@ -2,9 +2,11 @@ package complianceassessment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,33 @@ func TestValidateRecoveredAggregateRejectsOverflowVersion(t *testing.T) {
 	}
 	if err := validateRecoveredAggregate(record, "assessment_run", "tenant-1", "run-1", "", uint64(math.MaxInt64)+1); err == nil {
 		t.Fatal("validateRecoveredAggregate() error = nil, want overflow rejection")
+	}
+}
+
+func TestProjectEventRejectsResultChunkDigestThatDoesNotBindResults(t *testing.T) {
+	now := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+	results := validResults(now, 1)
+	chunk := ResultChunk{
+		RunID: "run-1", Sequence: 1, FirstResultID: results[0].ID, LastResultID: results[0].ID,
+		Count: 1, Digest: "sha256:" + strings.Repeat("a", 64), Results: results,
+	}
+	payload, err := json.Marshal(chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := workflowevents.NewComplianceAggregateEvent(workflowevents.ComplianceAggregateRecorded{
+		Kind: workflowevents.EventKindComplianceResultChunkRecorded, TenantID: "tenant-1",
+		AggregateType: "assessment_result_chunk", AggregateID: chunk.RunID,
+		AggregateVersion: int64(chunk.Sequence), Operation: "result_chunk_recorded",
+		ContentDigest: chunk.Digest, PayloadJSON: string(payload), ActorID: "assessor-1",
+		RecordedAt: now.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewAssessmentService(newRunStore(), &runLog{}, nil, nil)
+	if projected, err := service.ProjectEvent(context.Background(), event); err == nil || projected {
+		t.Fatalf("ProjectEvent() = (%v, %v), want digest rejection", projected, err)
 	}
 }
 
