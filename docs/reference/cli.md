@@ -73,6 +73,11 @@ Replay one record after the append-log path is healthy, or discard it after inve
 ./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
 ```
 
+`replay` claims the record before publishing. `list` reports the claim owner,
+lease expiry, attempt count, and last bounded replay error category without
+exposing the claim token. A second operator cannot replay or discard the record
+until the active claim completes or expires.
+
 Dead-letter IDs are deterministic for the subject, event ID, and payload. A
 replayed or discarded record stays terminal if the same event exhausts again.
 

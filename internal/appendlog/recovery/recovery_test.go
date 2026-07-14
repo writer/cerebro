@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -178,7 +179,19 @@ func (s *recordingStore) GetAppendLogDeadLetter(context.Context, string) (ports.
 	return ports.AppendLogDeadLetter{}, nil
 }
 
-func (s *recordingStore) MarkAppendLogDeadLetterReplayed(context.Context, string) error {
+func (s *recordingStore) ClaimAppendLogDeadLetterReplay(context.Context, string, string, string, time.Duration) (ports.AppendLogDeadLetter, error) {
+	return ports.AppendLogDeadLetter{}, nil
+}
+
+func (s *recordingStore) RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (s *recordingStore) CompleteAppendLogDeadLetterReplay(context.Context, string, string) error {
+	return nil
+}
+
+func (s *recordingStore) ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error {
 	return nil
 }
 

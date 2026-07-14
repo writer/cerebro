@@ -128,6 +128,12 @@ After JetStream publish health is restored, replay one record:
 ./bin/cerebro append-log dead-letters replay <dead-letter-id>
 ```
 
+Replay first claims the pending record with a two-minute ownership lease. A
+concurrent operator receives `replay is already claimed`; wait for the lease
+expiry reported by `list` before retrying. Failed publication releases the
+claim and records the bounded `append_failed` category. A process that exits
+while holding a claim leaves the record recoverable after lease expiry.
+
 Discard a record only after confirming the event should not be replayed:
 
 ```bash

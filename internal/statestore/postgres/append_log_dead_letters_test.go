@@ -19,6 +19,13 @@ func TestAppendLogDeadLetterSchemaShape(t *testing.T) {
 		"runtime_id TEXT NOT NULL DEFAULT ''",
 		"job_id TEXT NOT NULL DEFAULT ''",
 		"event_json JSONB NOT NULL",
+		"replay_owner TEXT NOT NULL DEFAULT ''",
+		"replay_token TEXT NOT NULL DEFAULT ''",
+		"replay_lease_expires_at TIMESTAMPTZ",
+		"replay_attempt_count INTEGER NOT NULL DEFAULT 0",
+		"last_replay_started_at TIMESTAMPTZ",
+		"last_replay_finished_at TIMESTAMPTZ",
+		"last_replay_error_category TEXT NOT NULL DEFAULT ''",
 		"append_log_dead_letters_status_updated_idx",
 		"append_log_dead_letters_subject_status_idx",
 		"append_log_dead_letters_runtime_status_idx",
@@ -26,6 +33,20 @@ func TestAppendLogDeadLetterSchemaShape(t *testing.T) {
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("append log dead letter schema missing %q:\n%s", fragment, joined)
+		}
+	}
+}
+
+func TestClaimAppendLogDeadLetterReplayUsesAtomicLease(t *testing.T) {
+	query := claimAppendLogDeadLetterReplaySQL()
+	for _, fragment := range []string{
+		"replay_attempt_count = replay_attempt_count + 1",
+		"status = 'pending'",
+		"replay_token = '' OR replay_lease_expires_at IS NULL OR replay_lease_expires_at <= NOW()",
+		"RETURNING id, status",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("claimAppendLogDeadLetterReplaySQL() missing %q:\n%s", fragment, query)
 		}
 	}
 }

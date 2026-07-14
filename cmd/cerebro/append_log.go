@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/bootstrap"
 	appconfig "github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
@@ -96,26 +100,73 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 	if deps.AppendLog == nil {
 		return errors.New("append log is not configured")
 	}
-	record, err := store.GetAppendLogDeadLetter(ctx, id)
+	owner, token, err := newAppendLogDeadLetterReplayClaim()
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(record.Status) != ports.AppendLogDeadLetterStatusPending {
-		return fmt.Errorf("append log dead letter %q has status %q", id, record.Status)
+	record, err := store.ClaimAppendLogDeadLetterReplay(ctx, id, owner, token, 2*time.Minute)
+	if err != nil {
+		if errors.Is(err, ports.ErrAppendLogDeadLetterReplayClaimed) {
+			return fmt.Errorf("append log dead letter %q replay is already claimed", id)
+		}
+		return err
 	}
 	if record.Event == nil {
+		_ = store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "missing_event")
 		return fmt.Errorf("append log dead letter %q has no replay event", id)
 	}
-	if err := deps.AppendLog.Append(ctx, record.Event); err != nil {
+	if err := appendWithDeadLetterReplayLease(ctx, deps.AppendLog, store, id, token, record.Event); err != nil {
+		if releaseErr := store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "append_failed"); releaseErr != nil {
+			return fmt.Errorf("replay append log dead letter %q: %w (release claim: %v)", id, err, releaseErr)
+		}
 		return fmt.Errorf("replay append log dead letter %q: %w", id, err)
 	}
-	if err := store.MarkAppendLogDeadLetterReplayed(ctx, id); err != nil {
+	if err := store.CompleteAppendLogDeadLetterReplay(ctx, id, token); err != nil {
 		if errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
 			return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
 		}
 		return err
 	}
 	return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
+}
+
+func appendWithDeadLetterReplayLease(ctx context.Context, appendLog ports.AppendLog, store ports.AppendLogDeadLetterStore, id string, token string, event *cerebrov1.EventEnvelope) error {
+	appendCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	renewed := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-appendCtx.Done():
+				renewed <- nil
+				return
+			case <-ticker.C:
+				if err := store.RenewAppendLogDeadLetterReplay(appendCtx, id, token, 2*time.Minute); err != nil {
+					renewed <- err
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	appendErr := appendLog.Append(appendCtx, event)
+	cancel()
+	renewErr := <-renewed
+	if renewErr != nil {
+		return fmt.Errorf("renew replay claim: %w", renewErr)
+	}
+	return appendErr
+}
+
+func newAppendLogDeadLetterReplayClaim() (string, string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", "", fmt.Errorf("generate append log dead letter replay claim: %w", err)
+	}
+	token := hex.EncodeToString(raw[:])
+	return "cerebro-cli:" + token[:16], token, nil
 }
 
 func runAppendLogDeadLetterDiscard(ctx context.Context, cfg appconfig.Config, args []string) error {
@@ -225,23 +276,28 @@ func parseAppendLogDeadLetterDiscardArgs(args []string) (string, string, error) 
 }
 
 type appendLogDeadLetterSummary struct {
-	ID            string `json:"id"`
-	Status        string `json:"status"`
-	Subject       string `json:"subject"`
-	Operation     string `json:"operation"`
-	EventID       string `json:"event_id"`
-	EventKind     string `json:"event_kind"`
-	TenantID      string `json:"tenant_id,omitempty"`
-	SourceID      string `json:"source_id,omitempty"`
-	RuntimeID     string `json:"runtime_id,omitempty"`
-	JobID         string `json:"job_id,omitempty"`
-	ErrorCategory string `json:"error_category,omitempty"`
-	RetryCount    int    `json:"retry_count,omitempty"`
-	MaxAttempts   int    `json:"max_attempts,omitempty"`
-	PayloadHash   string `json:"payload_hash,omitempty"`
-	PayloadBytes  int    `json:"payload_bytes,omitempty"`
-	CreatedAt     string `json:"created_at,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
+	ID                      string `json:"id"`
+	Status                  string `json:"status"`
+	Subject                 string `json:"subject"`
+	Operation               string `json:"operation"`
+	EventID                 string `json:"event_id"`
+	EventKind               string `json:"event_kind"`
+	TenantID                string `json:"tenant_id,omitempty"`
+	SourceID                string `json:"source_id,omitempty"`
+	RuntimeID               string `json:"runtime_id,omitempty"`
+	JobID                   string `json:"job_id,omitempty"`
+	ErrorCategory           string `json:"error_category,omitempty"`
+	RetryCount              int    `json:"retry_count,omitempty"`
+	MaxAttempts             int    `json:"max_attempts,omitempty"`
+	PayloadHash             string `json:"payload_hash,omitempty"`
+	PayloadBytes            int    `json:"payload_bytes,omitempty"`
+	CreatedAt               string `json:"created_at,omitempty"`
+	UpdatedAt               string `json:"updated_at,omitempty"`
+	ReplayClaimed           bool   `json:"replay_claimed,omitempty"`
+	ReplayOwner             string `json:"replay_owner,omitempty"`
+	ReplayLeaseExpiresAt    string `json:"replay_lease_expires_at,omitempty"`
+	ReplayAttemptCount      int    `json:"replay_attempt_count,omitempty"`
+	LastReplayErrorCategory string `json:"last_replay_error_category,omitempty"`
 }
 
 type appendLogDeadLetterListOutput struct {
@@ -266,27 +322,34 @@ func appendLogDeadLetterListResponse(records []ports.AppendLogDeadLetter) append
 
 func appendLogDeadLetterSummaryFor(record ports.AppendLogDeadLetter) appendLogDeadLetterSummary {
 	summary := appendLogDeadLetterSummary{
-		ID:            record.ID,
-		Status:        record.Status,
-		Subject:       record.Subject,
-		Operation:     record.Operation,
-		EventID:       record.EventID,
-		EventKind:     record.EventKind,
-		TenantID:      record.TenantID,
-		SourceID:      record.SourceID,
-		RuntimeID:     record.RuntimeID,
-		JobID:         record.JobID,
-		ErrorCategory: record.ErrorCategory,
-		RetryCount:    record.RetryCount,
-		MaxAttempts:   record.MaxAttempts,
-		PayloadHash:   record.PayloadHash,
-		PayloadBytes:  record.PayloadBytes,
+		ID:                      record.ID,
+		Status:                  record.Status,
+		Subject:                 record.Subject,
+		Operation:               record.Operation,
+		EventID:                 record.EventID,
+		EventKind:               record.EventKind,
+		TenantID:                record.TenantID,
+		SourceID:                record.SourceID,
+		RuntimeID:               record.RuntimeID,
+		JobID:                   record.JobID,
+		ErrorCategory:           record.ErrorCategory,
+		RetryCount:              record.RetryCount,
+		MaxAttempts:             record.MaxAttempts,
+		PayloadHash:             record.PayloadHash,
+		PayloadBytes:            record.PayloadBytes,
+		ReplayClaimed:           strings.TrimSpace(record.Replay.Token) != "" && record.Replay.LeaseExpiresAt.After(time.Now()),
+		ReplayOwner:             record.Replay.Owner,
+		ReplayAttemptCount:      record.Replay.AttemptCount,
+		LastReplayErrorCategory: record.Replay.LastErrorCategory,
 	}
 	if !record.CreatedAt.IsZero() {
 		summary.CreatedAt = record.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
 	}
 	if !record.UpdatedAt.IsZero() {
 		summary.UpdatedAt = record.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	if !record.Replay.LeaseExpiresAt.IsZero() {
+		summary.ReplayLeaseExpiresAt = record.Replay.LeaseExpiresAt.UTC().Format(time.RFC3339)
 	}
 	return summary
 }

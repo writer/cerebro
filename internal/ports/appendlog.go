@@ -15,6 +15,8 @@ const EventAttributeJobID = "job_id"
 
 var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
 var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter already replayed")
+var ErrAppendLogDeadLetterReplayClaimed = errors.New("append log dead letter replay already claimed")
+var ErrAppendLogDeadLetterReplayClaimInvalid = errors.New("append log dead letter replay claim is invalid or expired")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"
@@ -89,6 +91,19 @@ type AppendLogDeadLetter struct {
 	ReplayedAt    time.Time
 	DiscardedAt   time.Time
 	DiscardReason string
+	Replay        AppendLogDeadLetterReplayState
+}
+
+// AppendLogDeadLetterReplayState records bounded recovery ownership without
+// turning the transient lease into the dead-letter status of record.
+type AppendLogDeadLetterReplayState struct {
+	Owner             string
+	Token             string
+	LeaseExpiresAt    time.Time
+	AttemptCount      int
+	LastStartedAt     time.Time
+	LastFinishedAt    time.Time
+	LastErrorCategory string
 }
 
 // AppendLogDeadLetterFilter scopes operator reads over persisted publish
@@ -108,7 +123,10 @@ type AppendLogDeadLetterStore interface {
 	RecordAppendLogDeadLetter(context.Context, AppendLogDeadLetter) error
 	ListAppendLogDeadLetters(context.Context, AppendLogDeadLetterFilter) ([]AppendLogDeadLetter, error)
 	GetAppendLogDeadLetter(context.Context, string) (AppendLogDeadLetter, error)
-	MarkAppendLogDeadLetterReplayed(context.Context, string) error
+	ClaimAppendLogDeadLetterReplay(context.Context, string, string, string, time.Duration) (AppendLogDeadLetter, error)
+	RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error
+	CompleteAppendLogDeadLetterReplay(context.Context, string, string) error
+	ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error
 	DiscardAppendLogDeadLetter(context.Context, string, string) error
 }
 
