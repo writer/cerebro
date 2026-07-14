@@ -1095,6 +1095,63 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	}
 }
 
+func TestReplayPageTraversesBeyondPerRequestLimit(t *testing.T) {
+	const eventCount = 1205
+	messages := make(map[uint64]*natsjetstream.RawStreamMsg, eventCount)
+	for i := 1; i <= eventCount; i++ {
+		id := fmt.Sprintf("evt-%04d", i)
+		messages[uint64(i)] = rawReplayMsg(t, "events.github.audit", replayEvent(id, "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{{
+			Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+			State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: eventCount, Msgs: eventCount},
+		}},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": messages},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	first, err := log.ReplayPage(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 1000})
+	if err != nil {
+		t.Fatalf("ReplayPage(first) error = %v", err)
+	}
+	if len(first.Events) != 1000 || first.Complete || first.NextCursor != "evt-0206" {
+		t.Fatalf("first page count=%d complete=%v cursor=%q", len(first.Events), first.Complete, first.NextCursor)
+	}
+	if first.Events[0].GetId() != "evt-0206" || first.Events[len(first.Events)-1].GetId() != "evt-1205" {
+		t.Fatalf("first page range = %q..%q", first.Events[0].GetId(), first.Events[len(first.Events)-1].GetId())
+	}
+
+	second, err := log.ReplayPage(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 1000, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatalf("ReplayPage(second) error = %v", err)
+	}
+	if len(second.Events) != 205 || !second.Complete || second.NextCursor != "" {
+		t.Fatalf("second page count=%d complete=%v cursor=%q", len(second.Events), second.Complete, second.NextCursor)
+	}
+	if second.Events[0].GetId() != "evt-0001" || second.Events[len(second.Events)-1].GetId() != "evt-0205" {
+		t.Fatalf("second page range = %q..%q", second.Events[0].GetId(), second.Events[len(second.Events)-1].GetId())
+	}
+}
+
+func TestReplayPageRejectsMissingCursor(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{{
+			Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+			State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1, Msgs: 1},
+		}},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-0001", "github.audit", "writer-github"))},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	_, err := log.ReplayPage(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 100, Cursor: "evt-missing"})
+	if !errors.Is(err, ports.ErrReplayCursorNotFound) {
+		t.Fatalf("ReplayPage() error = %v, want ErrReplayCursorNotFound", err)
+	}
+}
+
 func TestReplayExactKindFiltersUseSubjectIndex(t *testing.T) {
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{

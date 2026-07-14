@@ -41,6 +41,7 @@ func TestScanReportSchedule(t *testing.T) {
 			`{"tenant_id":"local","runtime_ids":"rt-1"}`,
 			int64(3600), true, next,
 			sql.NullTime{Time: last, Valid: true},
+			"", sql.NullTime{},
 			created, created,
 		}}
 		schedule, err := scanReportSchedule(scanner)
@@ -67,6 +68,7 @@ func TestScanReportSchedule(t *testing.T) {
 			"",
 			int64(7200), false, next,
 			sql.NullTime{},
+			"", sql.NullTime{},
 			created, created,
 		}}
 		schedule, err := scanReportSchedule(scanner)
