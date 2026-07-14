@@ -2,6 +2,7 @@
 members = [
     "internal/graphagent/staticvalidator",
     "internal/sourcecoverage/evaluator",
+    "internal/sourceprojection/panopticonresources",
     "tools/graphactiongen",
 ]
 resolver = "2"
