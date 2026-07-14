@@ -63,6 +63,21 @@ func (a *App) newJobService() *platformjobs.Service {
 	return service
 }
 
+// RecoverPlatformJobs resumes queued work and jobs whose worker lease expired.
+// Claiming is owner-checked, so every server replica may call this at startup.
+func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
+	if _, ok := a.deps.StateStore.(ports.JobLeaseStore); !ok {
+		return 0, nil
+	}
+	return a.jobService().Recover(ctx, 0)
+}
+
+// StartPlatformJobRecovery continuously makes expired leases runnable. The
+// returned channel closes after cancellation and is included in shutdown waits.
+func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
+	return a.jobService().StartRecovery(ctx, logf)
+}
+
 func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var request createJobHTTPRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes)).Decode(&request); err != nil {
@@ -430,6 +445,8 @@ func writeJobError(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, ports.ErrJobNotFound):
 		status = http.StatusNotFound
+	case errors.Is(err, ports.ErrJobIdempotencyConflict), errors.Is(err, ports.ErrJobUpdateConflict), errors.Is(err, ports.ErrJobLeaseConflict):
+		status = http.StatusConflict
 	case errors.Is(err, platformjobs.ErrRuntimeUnavailable):
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, errTenantForbidden):
