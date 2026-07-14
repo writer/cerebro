@@ -3,6 +3,7 @@ package complianceassessment
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -17,10 +18,13 @@ var errTestProjectionUnavailable = errors.New("projection unavailable")
 
 func TestValidateRecoveredAggregateRejectsOverflowVersion(t *testing.T) {
 	record := &workflowevents.ComplianceAggregateRecorded{
-		AggregateType: "assessment_run", TenantID: "tenant-a", AggregateID: "run-a", AggregateVersion: 1,
+		AggregateType:    "assessment_run",
+		TenantID:         "tenant-1",
+		AggregateID:      "run-1",
+		AggregateVersion: math.MaxInt64,
 	}
-	if err := validateRecoveredAggregate(record, "assessment_run", "tenant-a", "run-a", "", ^uint64(0)); err == nil {
-		t.Fatal("validateRecoveredAggregate() accepted a version larger than int64")
+	if err := validateRecoveredAggregate(record, "assessment_run", "tenant-1", "run-1", "", uint64(math.MaxInt64)+1); err == nil {
+		t.Fatal("validateRecoveredAggregate() error = nil, want overflow rejection")
 	}
 }
 
