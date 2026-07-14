@@ -11,11 +11,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/connectordefinitions/openapigen"
+	"github.com/writer/cerebro/internal/providercontractlock"
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
@@ -38,11 +40,21 @@ type OnboardResult struct {
 	GenerationManifest string                          `json:"generation_manifest,omitempty"`
 	ProofBundle        string                          `json:"proof_bundle,omitempty"`
 	ChangePlan         *sourcegen.ChangePlan           `json:"change_plan,omitempty"`
+	ProviderContract   ProviderContractResult          `json:"provider_contract"`
 	WiredFiles         []string                        `json:"wired_files,omitempty"`
 	Definition         connectordefinitions.Definition `json:"definition"`
 	NextSteps          []string                        `json:"next_steps"`
 	CatalogPath        string                          `json:"catalog_path,omitempty"`
 	DryRun             bool                            `json:"dry_run"`
+}
+
+// ProviderContractResult reports the lock and drift decision used by this run.
+type ProviderContractResult struct {
+	LockPath string                     `json:"lock_path"`
+	Lock     providercontractlock.Lock  `json:"lock"`
+	Drift    providercontractlock.Drift `json:"drift"`
+	Accepted bool                       `json:"accepted"`
+	Written  bool                       `json:"written"`
 }
 
 func main() {
@@ -59,8 +71,11 @@ func main() {
 	var allFamilies bool
 	var outputDir string
 	var catalogOut string
+	var contractLock string
+	var contractLockOut string
 	var dryRun bool
 	var wire bool
+	var acceptContractChange bool
 	flag.StringVar(&specPath, "spec", "", "OpenAPI document path (required)")
 	flag.StringVar(&sourceID, "source-id", "", "connector source id; inferred from spec title when empty")
 	flag.StringVar(&tenantID, "tenant-id", "builtin_catalog", "tenant id for the catalog entry")
@@ -74,8 +89,11 @@ func main() {
 	flag.BoolVar(&allFamilies, "all-families", false, "select every endpoint")
 	flag.StringVar(&outputDir, "output-dir", ".", "output directory for sourcegen files")
 	flag.StringVar(&catalogOut, "catalog-out", "", "write catalog entry YAML to this path")
+	flag.StringVar(&contractLock, "contract-lock", "", "reviewed provider contract lock to compare")
+	flag.StringVar(&contractLockOut, "contract-lock-out", "", "provider contract lock output path; defaults to the generated source directory")
 	flag.BoolVar(&dryRun, "dry-run", true, "dry-run mode (default true); set -dry-run=false to write files")
 	flag.BoolVar(&wire, "wire", true, "wire generated source, projection, and documentation entries when writing")
+	flag.BoolVar(&acceptContractChange, "accept-contract-change", false, "record reviewed selected-operation or auth changes in the provider contract lock")
 	flag.Parse()
 
 	if strings.TrimSpace(specPath) == "" {
@@ -108,6 +126,31 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "onboard: generated definition for %s (%d endpoints selected, %d skipped)\n",
 		definition.SourceID, len(report.Selected), len(report.Skipped))
+	currentLock, err := providercontractlock.Build(doc, definition.SourceID, contractSelections(report.Selected))
+	if err != nil {
+		fail(fmt.Errorf("build provider contract lock: %w", err))
+	}
+	lockOutputPath := providerContractOutputPath(outputDir, definition.SourceID, contractLock, contractLockOut)
+	comparePath := strings.TrimSpace(contractLock)
+	if comparePath == "" {
+		comparePath = lockOutputPath
+	}
+	previousLock, err := readProviderContractLock(comparePath)
+	if err != nil {
+		fail(err)
+	}
+	contractDrift := providercontractlock.Compare(previousLock, currentLock)
+	contractBlocked := contractChangeNeedsReview(contractDrift) && !acceptContractChange
+	contractDigest, err := providercontractlock.Digest(currentLock)
+	if err != nil {
+		fail(fmt.Errorf("hash provider contract lock: %w", err))
+	}
+	contractReviewAccepted := acceptContractChange && contractDrift.Status != providercontractlock.DriftUnchanged
+	contractReviewed := previousLock != nil && (contractDrift.Status == providercontractlock.DriftUnchanged || contractDrift.Status == providercontractlock.DriftAdditive)
+	if contractReviewAccepted {
+		contractReviewed = true
+	}
+	fmt.Fprintf(os.Stderr, "onboard: provider contract: %s\n", contractDrift.Status)
 
 	// Step 3: Classify against the grammar.
 	grammar := connectordefinitions.DefaultGrammar()
@@ -132,12 +175,26 @@ func main() {
 		MissingFeatures:  supportReport.MissingFeatures,
 		Definition:       definition,
 		DryRun:           dryRun,
+		ProviderContract: ProviderContractResult{
+			LockPath: lockOutputPath,
+			Lock:     currentLock,
+			Drift:    contractDrift,
+			Accepted: contractReviewAccepted,
+		},
 	}
-	if supportReport.Verdict == connectordefinitions.SupportVerdictSupported {
+	if contractBlocked {
+		result.SourcegenError = "Provider contract changes require review before source generation."
+	}
+	if supportReport.Verdict == connectordefinitions.SupportVerdictSupported && !contractBlocked {
 		genResult, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
 			Definition: definition,
-			OutputDir:  outputDir,
-			DryRun:     dryRun,
+			ProviderContract: &sourcegen.ProviderContractEvidence{
+				LockDigest:  contractDigest,
+				DriftStatus: contractDrift.Status,
+				Reviewed:    contractReviewed,
+			},
+			OutputDir: outputDir,
+			DryRun:    dryRun,
 		})
 		if err != nil {
 			result.SourcegenError = err.Error()
@@ -163,12 +220,19 @@ func main() {
 			}
 		}
 	}
+	if result.Generateable && !dryRun {
+		if err := providercontractlock.Write(lockOutputPath, currentLock); err != nil {
+			fail(fmt.Errorf("write provider contract lock: %w", err))
+		}
+		result.ProviderContract.Written = true
+		fmt.Fprintf(os.Stderr, "onboard: wrote provider contract lock to %s\n", lockOutputPath)
+	}
 
 	// Step 5: Build next steps.
 	result.NextSteps = buildNextSteps(result)
 
 	// Step 6: Write catalog entry if requested.
-	if strings.TrimSpace(catalogOut) != "" && !dryRun {
+	if strings.TrimSpace(catalogOut) != "" && !dryRun && !contractBlocked {
 		if err := writeCatalogEntry(catalogOut, definition, supportReport.Verdict); err != nil {
 			fail(fmt.Errorf("write catalog entry: %w", err))
 		}
@@ -186,6 +250,18 @@ func main() {
 
 func buildNextSteps(result OnboardResult) []string {
 	var steps []string
+	if contractChangeNeedsReview(result.ProviderContract.Drift) && !result.ProviderContract.Accepted {
+		return []string{
+			fmt.Sprintf("Review provider contract changes: %s", strings.Join(result.ProviderContract.Drift.Changes, ", ")),
+			"Re-run with -accept-contract-change after reviewing the selected operations and auth contract.",
+		}
+	}
+	if result.ProviderContract.Drift.Status == providercontractlock.DriftNew && !result.ProviderContract.Accepted {
+		steps = append(steps,
+			fmt.Sprintf("Review the provider contract lock at %s.", result.ProviderContract.LockPath),
+			"Re-run with -accept-contract-change to record the initial contract review in the proof bundle.",
+		)
+	}
 	switch result.Verdict {
 	case connectordefinitions.SupportVerdictSupported:
 		if result.Generateable {
@@ -223,6 +299,44 @@ func buildNextSteps(result OnboardResult) []string {
 		)
 	}
 	return steps
+}
+
+func contractSelections(endpoints []openapigen.Endpoint) []providercontractlock.Selection {
+	selections := make([]providercontractlock.Selection, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		selections = append(selections, providercontractlock.Selection{
+			FamilyID:    endpoint.FamilyID,
+			Method:      endpoint.Method,
+			Path:        endpoint.Path,
+			OperationID: endpoint.OperationID,
+		})
+	}
+	return selections
+}
+
+func providerContractOutputPath(outputDir string, sourceID string, inputPath string, outputPath string) string {
+	if path := strings.TrimSpace(outputPath); path != "" {
+		return path
+	}
+	if path := strings.TrimSpace(inputPath); path != "" {
+		return path
+	}
+	return filepath.Join(outputDir, "sources", sourceID, ".provider-contract-lock.json")
+}
+
+func readProviderContractLock(path string) (*providercontractlock.Lock, error) {
+	lock, err := providercontractlock.Read(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read provider contract lock: %w", err)
+	}
+	return &lock, nil
+}
+
+func contractChangeNeedsReview(drift providercontractlock.Drift) bool {
+	return drift.Status == providercontractlock.DriftBehavioralReview || drift.Status == providercontractlock.DriftBreaking
 }
 
 func writeCatalogEntry(path string, definition connectordefinitions.Definition, verdict string) error {

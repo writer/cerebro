@@ -19,13 +19,14 @@ const (
 // ProofBundle records the deterministic inputs, outputs, ownership, capability
 // claims, and remaining obligations for one sourcegen run.
 type ProofBundle struct {
-	SchemaVersion    string            `json:"schema_version"`
-	GeneratorVersion string            `json:"generator_version"`
-	SourceID         string            `json:"source_id"`
-	InputDigest      string            `json:"input_digest"`
-	GrammarFeatures  []string          `json:"grammar_features"`
-	Outputs          []ProofOutput     `json:"outputs"`
-	Obligations      []ProofObligation `json:"obligations"`
+	SchemaVersion    string                    `json:"schema_version"`
+	GeneratorVersion string                    `json:"generator_version"`
+	SourceID         string                    `json:"source_id"`
+	InputDigest      string                    `json:"input_digest"`
+	GrammarFeatures  []string                  `json:"grammar_features"`
+	ProviderContract *ProviderContractEvidence `json:"provider_contract,omitempty"`
+	Outputs          []ProofOutput             `json:"outputs"`
+	Obligations      []ProofObligation         `json:"obligations"`
 }
 
 // ProofOutput identifies one sourcegen-owned artifact by content digest.
@@ -59,6 +60,17 @@ func buildProofBundle(request normalizedRequest, manifest generationManifest) Pr
 		providerDetail = "Provider API metadata is recorded, but no reviewed contract lock is attached."
 		providerAction = "Generate and review a provider contract lock before promotion."
 	}
+	if request.ProviderContract != nil && request.ProviderContract.LockDigest != "" {
+		providerDetail = "The proof bundle is bound to the current provider contract lock."
+		providerAction = ""
+		if request.ProviderContract.Reviewed {
+			providerStatus = ProofStatusPassed
+		} else {
+			providerStatus = ProofStatusPending
+			providerDetail = "The proof bundle is bound to a new provider contract lock that still needs review."
+			providerAction = "Review the selected operations and auth contract before promotion."
+		}
+	}
 
 	return ProofBundle{
 		SchemaVersion:    ProofBundleSchemaVersion,
@@ -66,6 +78,7 @@ func buildProofBundle(request normalizedRequest, manifest generationManifest) Pr
 		SourceID:         manifest.SourceID,
 		InputDigest:      manifest.InputDigest,
 		GrammarFeatures:  grammarFeatures(request),
+		ProviderContract: cloneProviderContractEvidence(request.ProviderContract),
 		Outputs:          outputs,
 		Obligations: []ProofObligation{
 			{ID: "sourcegen.input_digest", Status: ProofStatusPassed, Detail: "Normalized generator inputs have a deterministic content digest."},

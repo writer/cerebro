@@ -69,11 +69,20 @@ type Request struct {
 // DefinitionRequest describes a generated integration backed by a connector definition.
 type DefinitionRequest struct {
 	Definition           connectordefinitions.Definition
+	ProviderContract     *ProviderContractEvidence
 	FreshnessExpectation string
 	HealthPath           string
 	OutputDir            string
 	DryRun               bool
 	Force                bool
+}
+
+// ProviderContractEvidence binds a reviewed provider contract lock to a
+// sourcegen proof bundle.
+type ProviderContractEvidence struct {
+	LockDigest  string `json:"lock_digest"`
+	DriftStatus string `json:"drift_status"`
+	Reviewed    bool   `json:"reviewed"`
 }
 
 // Result describes the files and operator receipt produced by the generator.
@@ -103,6 +112,7 @@ type normalizedRequest struct {
 	OAuthTokenParams  map[string]string
 	OAuthTokenMethod  string
 	ProviderAPI       *connectordefinitions.ProviderAPISpec
+	ProviderContract  *ProviderContractEvidence
 	EnvPrefix         string
 	PackageName       string
 	DefaultFamily     string
@@ -331,6 +341,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		OAuthTokenParams:  cloneStringMap(definition.Auth.TokenParams),
 		OAuthTokenMethod:  strings.TrimSpace(definition.Auth.TokenRequestAuthMethod),
 		ProviderAPI:       cloneProviderAPI(definition.ProviderAPI),
+		ProviderContract:  cloneProviderContractEvidence(request.ProviderContract),
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 		BaseURLTemplate:   transportBaseURL(definition.Transport),
@@ -352,6 +363,16 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 	normalized.DefaultFamily = normalized.Families[0].Name
 	normalized.DefaultPath = normalized.Families[0].Path
 	return normalized, nil
+}
+
+func cloneProviderContractEvidence(evidence *ProviderContractEvidence) *ProviderContractEvidence {
+	if evidence == nil {
+		return nil
+	}
+	cloned := *evidence
+	cloned.LockDigest = strings.TrimSpace(cloned.LockDigest)
+	cloned.DriftStatus = strings.TrimSpace(cloned.DriftStatus)
+	return &cloned
 }
 
 func normalizeRequest(request Request) (normalizedRequest, error) {

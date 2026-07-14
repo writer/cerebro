@@ -238,7 +238,7 @@ finding-rule-scaffold-test: ## Run finding rule scaffold generator tests.
 	go test ./cmd/cerebro -run 'Test(ParseFindingRuleNewArgs|ScaffoldFindingRule|FindingRuleScaffold|RenderFindingRuleGo)' -count=1 -v
 
 sourcegen-test: ## Run source generator and generated runtime projection tests.
-	go test ./internal/sourcegen ./internal/sourcegen/grammarproof ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen ./tools/sourcegrammarcheck -count=1
+	go test ./internal/sourcegen ./internal/sourcegen/grammarproof ./internal/providercontractlock ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen ./tools/sourcegrammarcheck -count=1
 
 sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
 	go run ./tools/sourcegrammarcheck
