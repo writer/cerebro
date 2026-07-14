@@ -18,6 +18,7 @@ var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter a
 var ErrAppendLogDeadLetterReplayClaimed = errors.New("append log dead letter replay already claimed")
 var ErrAppendLogDeadLetterReplayClaimInvalid = errors.New("append log dead letter replay claim is invalid or expired")
 var ErrAppendLogDeadLetterBacklogHardLimit = errors.New("append log dead letter backlog hard limit reached")
+var ErrAppendLogDeadLetterNotPending = errors.New("append log dead letter is not pending")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"
@@ -146,6 +147,21 @@ type AppendLogDeadLetterCleanupResult struct {
 	DeletedIDs  []string
 	NextAfterID string
 	HasMore     bool
+}
+
+// AppendLogDeadLetterForcePurgeRequest identifies one pending recovery record
+// that an authenticated administrator has explicitly chosen to delete.
+type AppendLogDeadLetterForcePurgeRequest struct {
+	ID       string
+	TenantID string
+	Actor    string
+	Reason   string
+}
+
+// AppendLogDeadLetterForcePurgeStore is the destructive admin-only capability.
+// It is separate from operator replay and cleanup so CLI callers do not gain it.
+type AppendLogDeadLetterForcePurgeStore interface {
+	ForcePurgeAppendLogDeadLetter(context.Context, AppendLogDeadLetterForcePurgeRequest) error
 }
 
 // AppendLogDeadLetterStore persists and manages exhausted publish recovery

@@ -23,6 +23,16 @@ const appendLogDeadLetterCleanupMaxLimit = 500
 const appendLogDeadLetterCapacityLockID = int64(0x6170646c)
 const appendLogDeadLetterCapacityLockSQL = `SELECT pg_advisory_xact_lock($1)`
 const appendLogDeadLetterAuditInsertSQL = `INSERT INTO append_log_dead_letter_audit (dead_letter_id, action, actor, reason) VALUES ($1, $2, $3, $4)`
+const appendLogDeadLetterForcePurgeSelectSQL = `SELECT status,
+       replay_token <> '' AND replay_lease_expires_at IS NOT NULL AND replay_lease_expires_at > NOW()
+FROM append_log_dead_letters
+WHERE id = $1 AND tenant_id = $2
+FOR UPDATE`
+const appendLogDeadLetterForcePurgeDeleteSQL = `DELETE FROM append_log_dead_letters
+WHERE id = $1
+  AND tenant_id = $2
+  AND status = 'pending'
+  AND (replay_token = '' OR replay_lease_expires_at IS NULL OR replay_lease_expires_at <= NOW())`
 
 var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS append_log_dead_letters (
   id TEXT PRIMARY KEY,
@@ -530,6 +540,14 @@ var appendLogDeadLetterMetricKeys = [...]string{
 	"append_log.dead_letter.discard.completed.count",
 }
 
+var appendLogDeadLetterForcePurgeMetricKeys = map[string]string{
+	"deleted":      "append_log.dead_letter.force_purge.deleted.count",
+	"not_found":    "append_log.dead_letter.force_purge.not_found.count",
+	"not_pending":  "append_log.dead_letter.force_purge.not_pending.count",
+	"active_claim": "append_log.dead_letter.force_purge.active_claim.count",
+	"failed":       "append_log.dead_letter.force_purge.failed.count",
+}
+
 func annotateAppendLogDeadLetterBacklog(ctx context.Context, backlog ports.AppendLogDeadLetterBacklog, policy config.StateStoreConfig, outcome string) {
 	telemetry.MaxMain(ctx, appendLogDeadLetterMetricKeys[0], backlog.PendingRecords)
 	telemetry.MaxMain(ctx, appendLogDeadLetterMetricKeys[1], backlog.PendingPayloadBytes)
@@ -653,6 +671,89 @@ WHERE status IN ('replayed', 'discarded')
 ORDER BY id ASC
 LIMIT $3
 FOR UPDATE SKIP LOCKED`
+}
+
+// ForcePurgeAppendLogDeadLetter deletes one explicitly identified pending
+// recovery record. The audit write and payload deletion commit together.
+func (s *Store) ForcePurgeAppendLogDeadLetter(ctx context.Context, request ports.AppendLogDeadLetterForcePurgeRequest) error {
+	err := s.forcePurgeAppendLogDeadLetter(ctx, request)
+	outcome := appendLogDeadLetterForcePurgeOutcome(err)
+	telemetry.IncrementMain(ctx, appendLogDeadLetterForcePurgeMetricKeys[outcome], 1)
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "append_log.dead_letter.last_force_purge_outcome", Value: outcome},
+	))
+	return err
+}
+
+func (s *Store) forcePurgeAppendLogDeadLetter(ctx context.Context, request ports.AppendLogDeadLetterForcePurgeRequest) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		return err
+	}
+	request.ID = strings.TrimSpace(request.ID)
+	request.TenantID = strings.TrimSpace(request.TenantID)
+	request.Actor = strings.TrimSpace(request.Actor)
+	request.Reason = strings.TrimSpace(request.Reason)
+	if request.ID == "" || request.TenantID == "" || request.Actor == "" || request.Reason == "" {
+		return errors.New("dead letter id, tenant id, authenticated actor, and reason are required")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin append log dead letter forced purge: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	var activeClaim bool
+	err = tx.QueryRowContext(ctx, appendLogDeadLetterForcePurgeSelectSQL, request.ID, request.TenantID).Scan(&status, &activeClaim)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ports.ErrAppendLogDeadLetterNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock append log dead letter forced purge target: %w", err)
+	}
+	if strings.TrimSpace(status) != ports.AppendLogDeadLetterStatusPending {
+		return ports.ErrAppendLogDeadLetterNotPending
+	}
+	if activeClaim {
+		return ports.ErrAppendLogDeadLetterReplayClaimed
+	}
+	if _, err := tx.ExecContext(ctx, appendLogDeadLetterAuditInsertSQL, request.ID, "forced_pending_purge", request.Actor, request.Reason); err != nil {
+		return fmt.Errorf("audit append log dead letter forced purge: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, appendLogDeadLetterForcePurgeDeleteSQL, request.ID, request.TenantID)
+	if err != nil {
+		return fmt.Errorf("delete append log dead letter forced purge target: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read append log dead letter forced purge result: %w", err)
+	}
+	if deleted != 1 {
+		return fmt.Errorf("append log dead letter forced purge deleted %d records, want 1", deleted)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit append log dead letter forced purge: %w", err)
+	}
+	return nil
+}
+
+func appendLogDeadLetterForcePurgeOutcome(err error) string {
+	switch {
+	case err == nil:
+		return "deleted"
+	case errors.Is(err, ports.ErrAppendLogDeadLetterNotFound):
+		return "not_found"
+	case errors.Is(err, ports.ErrAppendLogDeadLetterNotPending):
+		return "not_pending"
+	case errors.Is(err, ports.ErrAppendLogDeadLetterReplayClaimed):
+		return "active_claim"
+	default:
+		return "failed"
+	}
 }
 
 func (s *Store) appendLogDeadLetterStatusConflict(ctx context.Context, id string, targetStatus string) error {
@@ -873,3 +974,4 @@ func (s *Store) ensureAppendLogDeadLetterTables(ctx context.Context) error {
 }
 
 var _ ports.AppendLogDeadLetterStore = (*Store)(nil)
+var _ ports.AppendLogDeadLetterForcePurgeStore = (*Store)(nil)

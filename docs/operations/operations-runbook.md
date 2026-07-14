@@ -158,6 +158,23 @@ Each committed deletion has an audit row with the actor and reason. Cleanup
 never selects pending records. Continue only when `has_more` is true, using the
 returned `next_after_id` as `after_id`.
 
+If retaining one pending recovery payload creates a greater incident risk than
+losing that event, use an authenticated admin credential allowed for the
+record's tenant:
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${CEREBRO_ADMIN_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "${CEREBRO_URL}/platform/append-log/dead-letters/<dead-letter-id>/force-purge" \
+  -d '{"tenant_id":"<tenant-id>","reason":"INC-1234 recovery payload removal"}'
+```
+
+The route deletes exactly one pending record. It rejects terminal records and
+active replay claims. The authenticated credential supplies the audit actor;
+the request cannot supply one. The local CLI does not provide forced pending
+purge.
+
 See [Append-log dead-letter data policy](append-log-dead-letter-policy.md) for
 payload classification, retention, capacity limits, and emergency purge rules.
 

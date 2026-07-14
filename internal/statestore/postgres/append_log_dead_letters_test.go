@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
@@ -96,7 +99,11 @@ func TestAppendLogDeadLetterWritesSerializeCapacityAndAuditActions(t *testing.T)
 
 func TestAppendLogDeadLetterMetricKeysHaveBoundedCardinality(t *testing.T) {
 	seen := map[string]struct{}{}
-	for _, key := range appendLogDeadLetterMetricKeys {
+	keys := append([]string(nil), appendLogDeadLetterMetricKeys[:]...)
+	for _, key := range appendLogDeadLetterForcePurgeMetricKeys {
+		keys = append(keys, key)
+	}
+	for _, key := range keys {
 		if _, ok := seen[key]; ok {
 			t.Fatalf("duplicate dead-letter metric key %q", key)
 		}
@@ -106,6 +113,145 @@ func TestAppendLogDeadLetterMetricKeysHaveBoundedCardinality(t *testing.T) {
 				t.Fatalf("dead-letter metric key %q contains unbounded dimension %q", key, forbidden)
 			}
 		}
+	}
+}
+
+func TestAppendLogDeadLetterForcePurgeSQLProtectsTenantStateLeaseAndPayload(t *testing.T) {
+	for _, fragment := range []string{
+		"WHERE id = $1 AND tenant_id = $2",
+		"FOR UPDATE",
+		"replay_lease_expires_at > NOW()",
+	} {
+		if !strings.Contains(appendLogDeadLetterForcePurgeSelectSQL, fragment) {
+			t.Fatalf("force purge select missing %q:\n%s", fragment, appendLogDeadLetterForcePurgeSelectSQL)
+		}
+	}
+	for _, fragment := range []string{
+		"WHERE id = $1",
+		"tenant_id = $2",
+		"status = 'pending'",
+		"replay_token = '' OR replay_lease_expires_at IS NULL OR replay_lease_expires_at <= NOW()",
+	} {
+		if !strings.Contains(appendLogDeadLetterForcePurgeDeleteSQL, fragment) {
+			t.Fatalf("force purge delete missing %q:\n%s", fragment, appendLogDeadLetterForcePurgeDeleteSQL)
+		}
+	}
+	joined := appendLogDeadLetterForcePurgeSelectSQL + appendLogDeadLetterForcePurgeDeleteSQL
+	if strings.Contains(joined, "event_json") {
+		t.Fatalf("force purge SQL must not select or return the event envelope:\n%s", joined)
+	}
+}
+
+func TestAppendLogDeadLetterForcePurgeOutcomeIsBounded(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want string
+	}{
+		{err: nil, want: "deleted"},
+		{err: ports.ErrAppendLogDeadLetterNotFound, want: "not_found"},
+		{err: ports.ErrAppendLogDeadLetterNotPending, want: "not_pending"},
+		{err: ports.ErrAppendLogDeadLetterReplayClaimed, want: "active_claim"},
+		{err: errors.New("database unavailable"), want: "failed"},
+	} {
+		if got := appendLogDeadLetterForcePurgeOutcome(test.err); got != test.want {
+			t.Fatalf("outcome(%v) = %q, want %q", test.err, got, test.want)
+		}
+		if appendLogDeadLetterForcePurgeMetricKeys[test.want] == "" {
+			t.Fatalf("outcome %q has no fixed metric key", test.want)
+		}
+	}
+}
+
+func TestAppendLogDeadLetterForcePurgeCommitsAuditAndDeleteAtomically(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	if err := store.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		t.Fatalf("ensure dead letter tables: %v", err)
+	}
+	id := fmt.Sprintf("apdl-force-purge-%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(ctx, `DELETE FROM append_log_dead_letter_audit WHERE dead_letter_id = $1`, id)
+		_, _ = store.db.ExecContext(ctx, `DELETE FROM append_log_dead_letters WHERE id = $1`, id)
+	})
+	insertDeadLetterForcePurgeFixture(t, ctx, store, id, ports.AppendLogDeadLetterStatusPending, "", time.Time{})
+	request := ports.AppendLogDeadLetterForcePurgeRequest{
+		ID:       id,
+		TenantID: "tenant-force-purge",
+		Actor:    "admin@example.test",
+		Reason:   "INC-1234 publication recovery",
+	}
+	if err := store.forcePurgeAppendLogDeadLetter(ctx, request); err != nil {
+		t.Fatalf("force purge: %v", err)
+	}
+	var recordCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM append_log_dead_letters WHERE id = $1`, id).Scan(&recordCount); err != nil {
+		t.Fatalf("count deleted record: %v", err)
+	}
+	var action, actor, reason string
+	if err := store.db.QueryRowContext(ctx, `SELECT action, actor, reason FROM append_log_dead_letter_audit WHERE dead_letter_id = $1`, id).Scan(&action, &actor, &reason); err != nil {
+		t.Fatalf("read durable purge audit: %v", err)
+	}
+	if recordCount != 0 || action != "forced_pending_purge" || actor != request.Actor || reason != request.Reason {
+		t.Fatalf("record_count=%d audit=(%q,%q,%q)", recordCount, action, actor, reason)
+	}
+}
+
+func TestAppendLogDeadLetterForcePurgeProtectsTerminalAndActiveClaimRecords(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	if err := store.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		t.Fatalf("ensure dead letter tables: %v", err)
+	}
+	for _, test := range []struct {
+		name    string
+		status  string
+		token   string
+		lease   time.Time
+		wantErr error
+	}{
+		{name: "terminal", status: ports.AppendLogDeadLetterStatusReplayed, wantErr: ports.ErrAppendLogDeadLetterNotPending},
+		{name: "active claim", status: ports.AppendLogDeadLetterStatusPending, token: "opaque-claim", lease: time.Now().Add(time.Hour), wantErr: ports.ErrAppendLogDeadLetterReplayClaimed}, // #nosec G101 -- synthetic claim fixture, not a credential.
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			id := fmt.Sprintf("apdl-force-purge-protected-%s-%d", strings.ReplaceAll(test.name, " ", "-"), time.Now().UnixNano())
+			t.Cleanup(func() {
+				_, _ = store.db.ExecContext(ctx, `DELETE FROM append_log_dead_letter_audit WHERE dead_letter_id = $1`, id)
+				_, _ = store.db.ExecContext(ctx, `DELETE FROM append_log_dead_letters WHERE id = $1`, id)
+			})
+			insertDeadLetterForcePurgeFixture(t, ctx, store, id, test.status, test.token, test.lease)
+			err := store.forcePurgeAppendLogDeadLetter(ctx, ports.AppendLogDeadLetterForcePurgeRequest{
+				ID: id, TenantID: "tenant-force-purge", Actor: "admin@example.test", Reason: "INC-1234",
+			})
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("force purge error = %v, want %v", err, test.wantErr)
+			}
+			var recordCount, auditCount int
+			if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM append_log_dead_letters WHERE id = $1`, id).Scan(&recordCount); err != nil {
+				t.Fatalf("count protected record: %v", err)
+			}
+			if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM append_log_dead_letter_audit WHERE dead_letter_id = $1`, id).Scan(&auditCount); err != nil {
+				t.Fatalf("count protected audit: %v", err)
+			}
+			if recordCount != 1 || auditCount != 0 {
+				t.Fatalf("record_count=%d audit_count=%d, want protected record and no audit", recordCount, auditCount)
+			}
+		})
+	}
+}
+
+func insertDeadLetterForcePurgeFixture(t *testing.T, ctx context.Context, store *Store, id string, status string, token string, lease time.Time) {
+	t.Helper()
+	var leaseValue any
+	if !lease.IsZero() {
+		leaseValue = lease
+	}
+	_, err := store.db.ExecContext(ctx, `INSERT INTO append_log_dead_letters (
+  id, status, subject, operation, event_id, event_kind, tenant_id,
+  payload_hash, payload_bytes, event_json, replay_token, replay_lease_expires_at
+) VALUES ($1, $2, 'sec.findings.v1.recorded', 'append', $3, 'finding.recorded', $4,
+          'fixture-hash', 42, '{}'::jsonb, $5, $6)`, id, status, "event-"+id, "tenant-force-purge", token, leaseValue)
+	if err != nil {
+		t.Fatalf("insert dead letter fixture: %v", err)
 	}
 }
 

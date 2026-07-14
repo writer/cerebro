@@ -47,14 +47,16 @@ Replay and discard record the operator-supplied actor, action, reason, record ID
 and timestamp in the same transaction as the state transition. Claim tokens and
 event envelopes are excluded from audit payloads.
 
-Cerebro does not currently expose forced pending purge. The available CLI does
-not carry a verified principal, so accepting its `actor` value for destructive
-pending deletion would not satisfy the authenticated-actor requirement. Add
-forced pending purge only through an admin-gated API or maintenance job that
-derives the actor from the authenticated request context and commits one audit
-row per deleted record. Until that path exists, resolve hard-limit incidents by
-restoring publication, replaying or discarding pending records, and cleaning up
-terminal records.
+Forced pending purge is available only through
+`POST /platform/append-log/dead-letters/{deadLetterID}/force-purge`. Send the
+record's `tenant_id` and a concrete `reason`. The route requires an authenticated
+admin credential allowed for that tenant and records the credential principal
+as the actor. It deletes one pending record and commits the audit row in the
+same transaction. Terminal records and records with an active replay claim are
+rejected. The response and telemetry exclude the event envelope.
+
+The local CLI does not expose forced pending purge because its operator-supplied
+`actor` value is not a verified principal.
 
 ## Recovery Procedure
 
@@ -64,4 +66,4 @@ terminal records.
 4. Replay one record at a time. Wait for an active ownership lease to expire before retrying an abandoned claim.
 5. Discard only when the event must not be published, and provide the reason required by the command.
 6. Delete expired terminal records with `cleanup`. Pass an actor and change or incident reference as the reason. If `has_more` is true, pass `next_after_id` as `after_id` in the next batch.
-7. Use forced pending purge only when retention of the recovery payload creates a greater incident risk than event loss. Record the incident or change reference in the reason.
+7. Use forced pending purge only when retention of the recovery payload creates a greater incident risk than event loss. Send the exact record ID and tenant ID to the admin API and record the incident or change reference in the reason.
