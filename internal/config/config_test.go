@@ -78,6 +78,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
+	t.Setenv("CEREBRO_SOURCE_MIN_CERTIFICATION_TIER", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
@@ -260,6 +261,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "internal_source")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "aws,auth0")
+	t.Setenv("CEREBRO_SOURCE_MIN_CERTIFICATION_TIER", "contract_tested")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "limited preview")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "https://access.example.com/request?source={source_id}&tenant={tenant_id}")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "Request in Access Hub")
@@ -417,6 +419,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if got := cfg.ConnectorAccess.RestrictedSources; len(got) != 2 || got[0] != "auth0" || got[1] != "aws" {
 		t.Fatalf("ConnectorAccess.RestrictedSources = %#v, want auth0/aws", got)
+	}
+	if cfg.ConnectorAccess.MinCertificationTier != "contract_tested" {
+		t.Fatalf("ConnectorAccess.MinCertificationTier = %q, want contract_tested", cfg.ConnectorAccess.MinCertificationTier)
 	}
 	if cfg.ConnectorAccess.RestrictionReason != "limited preview" {
 		t.Fatalf("ConnectorAccess.RestrictionReason = %q, want limited preview", cfg.ConnectorAccess.RestrictionReason)
@@ -685,6 +690,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
+	t.Setenv("CEREBRO_SOURCE_MIN_CERTIFICATION_TIER", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")

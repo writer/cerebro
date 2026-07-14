@@ -17,6 +17,7 @@ var (
 	catalogCoverageContracts  sync.Map
 	catalogLifecycleContracts sync.Map
 	catalogProviderAPIs       sync.Map
+	catalogCertifications     sync.Map
 )
 
 type catalogFile struct {
@@ -29,6 +30,7 @@ type catalogFile struct {
 	Families            []CatalogFamily            `yaml:"families"`
 	ProviderAPI         CatalogProviderAPI         `yaml:"provider_api"`
 	ProviderAPIDisproof CatalogProviderAPIDisproof `yaml:"provider_api_disproof"`
+	Certification       CatalogCertification       `yaml:"certification"`
 	EventContracts      []EventContract            `yaml:"event_contracts"`
 	Coverage            CoverageContract           `yaml:"coverage_contract"`
 }
@@ -41,6 +43,7 @@ type SourceCatalog struct {
 	EventContracts    []EventContract
 	CoverageContract  *CoverageContract
 	LifecycleContract *LifecycleContract
+	Certification     *CatalogCertification
 }
 
 // CatalogFamily declares optional per-family source catalog capabilities.
@@ -141,6 +144,10 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	runtimeFamilies := normalizeCatalogRuntimeFamilies(catalog.RuntimeFamilies, families)
 	providerAPI := normalizeCatalogProviderAPI(catalog.ProviderAPI)
 	providerAPIDisproof := normalizeCatalogProviderAPIDisproof(catalog.ProviderAPIDisproof)
+	certification, err := normalizeCatalogCertification(catalog.Certification)
+	if err != nil {
+		return nil, err
+	}
 	if providerAPI == nil && providerAPIDisproof != nil {
 		providerAPI = &CatalogProviderAPI{}
 	}
@@ -159,6 +166,7 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	registerCatalogCoverageContract(catalog.ID, coverageContract)
 	registerCatalogLifecycleContract(catalog.ID, lifecycleContract)
 	registerCatalogProviderAPI(catalog.ID, providerAPI, runtimeFamilies)
+	registerCatalogCertification(catalog.ID, certification)
 	var coverage *CoverageContract
 	if len(coverageContract.Dimensions) > 0 {
 		cloned := cloneCoverageContract(coverageContract)
@@ -179,7 +187,7 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 		Name:         catalog.Name,
 		Description:  catalog.Description,
 		EmittedKinds: emittedKinds,
-	}, RuntimeFamilies: runtimeFamilies, Families: families, ProviderAPI: api, EventContracts: eventContracts, CoverageContract: coverage, LifecycleContract: lifecycle}, nil
+	}, RuntimeFamilies: runtimeFamilies, Families: families, ProviderAPI: api, EventContracts: eventContracts, CoverageContract: coverage, LifecycleContract: lifecycle, Certification: cloneCatalogCertificationPtr(certification)}, nil
 }
 
 func registerCatalogEventContracts(sourceID string, contracts []EventContract) {
