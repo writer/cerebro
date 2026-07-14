@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
+	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
@@ -117,6 +119,7 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 }
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	dashboards := customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
+	auditPackets := grcauditpackethttp.NewHTTPHandler(app.deps.StateStore, app.deps.AppendLog, app.buildGRCAuditPreview, tenantAllowedByContext, func(err error) error { return errors.Join(errInvalidHTTPRequest, err) }, writeGRCError)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
 	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
 	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)
@@ -191,8 +194,10 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports/{reportID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset_report", time.Minute, grcCacheScopeInventory), app.handleGetGRCInventoryAssetReport))
 	registerHTTPRoute(mux, "PATCH /grc/inventory/asset-reports/{reportID}/triage", routeSurfacePlatformHTTP, app.handleUpdateGRCInventoryAssetReportTriage)
 	registerHTTPRoute(mux, "GET /grc/entities/{entityID}/impact", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("entity.impact", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCEntityImpact))
-	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("audit.packet", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCAuditPacket))
-	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}/export", routeSurfacePlatformHTTP, app.handleGRCAuditPacketExport)
+	registerHTTPRoute(mux, "GET /grc/findings/{findingID}/audit-preview", routeSurfacePlatformHTTP, auditPackets.Preview)
+	registerHTTPRoute(mux, "POST /grc/audit-packets", routeSurfacePlatformHTTP, auditPackets.Create)
+	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, auditPackets.Get)
+	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}/export", routeSurfacePlatformHTTP, auditPackets.Export)
 }
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /finding-rules", routeSurfacePlatformHTTP, app.handleListFindingRules)

@@ -111,6 +111,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodDelete, Exact: "/grc/risk-scoring-config", Scope: scopeRiskScoringWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/control-packets", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/control-packets/export", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/audit-packets", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/grc/control-packs", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/grc/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/questionnaire-runs", Scope: scopeGRCInventoryWrite, Static: true},
