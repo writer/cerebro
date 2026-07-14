@@ -10,6 +10,7 @@ npm ci
 ```
 
 The package is ESM and exports the base client plus the Jira posture helper entrypoint.
+Source-runtime and platform-job methods use the types generated from `openapi.yaml`; `make openapi-ts-check` verifies that contract before SDK checks run.
 
 ## Client Basics
 
