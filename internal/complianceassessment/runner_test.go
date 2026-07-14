@@ -604,6 +604,7 @@ func (s *runJobStore) RecoverJobs(_ context.Context, request ports.JobRecoveryRe
 		limit = 100
 	}
 	result := make([]*ports.Job, 0, limit)
+	var collected uint32
 	for _, job := range s.jobs {
 		if job.Status == ports.JobStatusRunning && !job.LeaseExpiresAt.After(request.Now) {
 			job.Status = ports.JobStatusQueued
@@ -613,7 +614,8 @@ func (s *runJobStore) RecoverJobs(_ context.Context, request ports.JobRecoveryRe
 		}
 		if job.Status == ports.JobStatusQueued && !job.CancelRequested {
 			result = append(result, cloneRunJob(job))
-			if uint32(len(result)) == limit {
+			collected++
+			if collected == limit {
 				break
 			}
 		}
