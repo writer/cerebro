@@ -114,12 +114,17 @@ Boundaries:
 GRC-facing rows for risk-inbox, dashboard, control-posture, audit-packet, CSV,
 and inventory-detail surfaces. It owns finding status normalization, SLA state,
 control grouping, evidence row mapping, summary counts, recommended finding
-actions, and connector freshness labels used by GRC views.
+actions, connector freshness labels, and the serving projection that joins
+findings to built-in compliance profiles.
 
 Key exports:
 
 - `FindingItems`, `EvidenceItems`, `ControlItems` — transform persisted records
   into bounded GRC response rows
+- `BuiltinFindingProfile`, `BuiltinFindingProfilePredicate` — resolve profile
+  identity and the exact rule/control selector applied before finding pagination
+- `PageForProfile` — returns a bounded profile page with separate match and scan
+  boundary states
 - `BuildSummary` — builds dashboard-level counts from row previews or aggregate
   store summaries
 - `SLAStatus`, `NormalizedFindingStatus`, `RecommendedAction` — common
@@ -129,11 +134,20 @@ Boundaries:
 
 - Does not list findings, evidence, runtimes, or graph records; bootstrap and
   stores still own tenant-scoped data access
+- Finding page size never limits runtime scope. GRC reads enumerate up to 500
+  runtimes independently and reject a larger scope with an action to select a
+  source or explicit runtime IDs.
+- Does not persist profile membership. `internal/compliance` generates the
+  immutable serving index; `grcfindings` validates it at startup and interprets
+  it for response rows.
+- Match traversal and catalog assertion direction remain explicit. A finding
+  control can be traversed to a selected profile control while the declared
+  catalog relationship points from the selected control to the mapped control.
 - Does not own finding lifecycle, rule evaluation, or workflow persistence
 - Does not define control catalog semantics; control coverage and packet
   readiness stay in `internal/compliance` and `internal/grccontrol`
 
-Dependencies: `ports`
+Dependencies: `compliance`, `ports`
 
 ### grcinventory — Inventory Posture
 
@@ -318,10 +332,16 @@ Dependencies: `ports`
 3. `grccontrol` builds control evidence packets from findings, evidence, and runtime context using compliance control definitions.
 4. `grcprogram` consumes control packets to score readiness and generate work items.
 5. `grctrends` queries persisted findings for time-bucketed trend analysis.
-6. `grcfindings` builds GRC-facing finding, control, evidence, and summary rows.
-7. `grcinventory` applies scope and accountability posture to graph inventory assets and builds inventory detail sections.
-8. `grcvendor` reads vendor graph facts, overlays local discovery decisions, and bootstrap enriches vendors with open findings and evidence counts.
-9. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
+6. `compliance` generates a versioned finding-profile serving index from control
+   coverage and rule mappings. Startup rejects missing, stale, or empty profile
+   associations.
+7. Profile-filtered finding reads derive an exact rule/control predicate from
+   that index, apply it in the finding store before ordering and pagination,
+   then use `grcfindings` to verify and explain each returned association.
+8. `grcfindings` builds GRC-facing finding, control, evidence, and summary rows.
+9. `grcinventory` applies scope and accountability posture to graph inventory assets and builds inventory detail sections.
+10. `grcvendor` reads vendor graph facts, overlays local discovery decisions, and bootstrap enriches vendors with open findings and evidence counts.
+11. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
 
 ## RBAC Ownership
 

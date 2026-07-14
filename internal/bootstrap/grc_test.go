@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
@@ -404,7 +405,7 @@ func TestGRCConnectorHealthUsesLastSyncedAtSeparatelyFromWatermark(t *testing.T)
 		},
 	}
 
-	connectors := grcConnectorItems(runtimes)
+	connectors := grcfindings.ConnectorItems(runtimes)
 	byID := map[string]grcConnector{}
 	for _, connector := range connectors {
 		byID[connector.RuntimeID] = connector
@@ -803,8 +804,117 @@ func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
 	if store.groupedCountRequest.Limit != 0 {
 		t.Fatalf("grouped count limit = %d, want unpaginated 0", store.groupedCountRequest.Limit)
 	}
-	if len(store.groupedCountRequest.FindingIDs) != 1 || store.groupedCountRequest.FindingIDs[0] != "finding-1" {
-		t.Fatalf("grouped count finding ids = %#v, want finding-1", store.groupedCountRequest.FindingIDs)
+	if len(store.groupedCountRequest.FindingIDs) != 2 {
+		t.Fatalf("grouped count finding ids = %#v, want the returned row plus one boundary row", store.groupedCountRequest.FindingIDs)
+	}
+}
+
+func TestGRCFindingsProfileFilterEvaluatesBeforePageLimit(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	matchingRuntimeID := "runtime-beta"
+	tenantID := "tenant"
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID:         {Id: runtimeID, SourceId: "okta", TenantId: tenantID},
+			matchingRuntimeID: {Id: matchingRuntimeID, SourceId: "github", TenantId: tenantID},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"higher-risk-non-match": {
+				ID:             "higher-risk-non-match",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Higher risk finding outside the selected profile",
+				Severity:       "CRITICAL",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 99},
+				LastObservedAt: now,
+			},
+			"lower-risk-match": {
+				ID:          "lower-risk-match",
+				TenantID:    tenantID,
+				RuntimeID:   matchingRuntimeID,
+				Title:       "Finding mapped to the selected profile",
+				Severity:    "HIGH",
+				Status:      "open",
+				FindingRisk: ports.FindingRisk{RiskScore: 50},
+				ControlRefs: []ports.FindingControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
+				LastObservedAt: now.Add(-time.Hour),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=" + tenantID + "&profile_id=soc2-security-core&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/findings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Findings       []grcFindingItem         `json:"findings"`
+		ProfileSummary grcFindingProfileSummary `json:"profile_summary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/findings: %v", err)
+	}
+	if len(payload.Findings) != 1 || payload.Findings[0].ID != "lower-risk-match" {
+		t.Fatalf("findings = %#v, want lower-risk-match", payload.Findings)
+	}
+	if store.sourceRuntimeListFilter.Limit != grcRuntimeScopeFetchLimit {
+		t.Fatalf("runtime scope limit = %d, want independent GRC boundary limit %d", store.sourceRuntimeListFilter.Limit, grcRuntimeScopeFetchLimit)
+	}
+	if payload.ProfileSummary.ProfileID != "soc2-security-core" || payload.ProfileSummary.MatchedFindings != 1 {
+		t.Fatalf("profile summary = %#v, want one SOC 2 match", payload.ProfileSummary)
+	}
+	if payload.ProfileSummary.EvaluatedFindings != 1 || payload.ProfileSummary.EvaluationLimit != 2 || payload.ProfileSummary.ScanTruncated || payload.ProfileSummary.EvaluationTruncated {
+		t.Fatalf("profile evaluation = %#v, want the exact profile predicate applied before the two-row boundary", payload.ProfileSummary)
+	}
+	profile := payload.Findings[0].Profiles[0]
+	if profile.CoverageIndexVersion == "" || profile.CoverageIndexRevision == "" || len(profile.MappingBasis) == 0 || len(profile.MatchedFindingControls) == 0 {
+		t.Fatalf("profile provenance = %#v, want version, basis, and matched finding controls", profile)
+	}
+}
+
+func TestGRCFindingsRejectsUnknownProfileFilter(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=tenant&profile_id=not-a-profile")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /grc/findings status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestGRCFindingsRejectsOversizedRuntimeScope(t *testing.T) {
+	runtimes := make(map[string]*cerebrov1.SourceRuntime, grcRuntimeScopeFetchLimit)
+	for idx := 0; idx < int(grcRuntimeScopeFetchLimit); idx++ {
+		id := fmt.Sprintf("runtime-%03d", idx)
+		runtimes[id] = &cerebrov1.SourceRuntime{Id: id, SourceId: "source", TenantId: "tenant"}
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{runtimes: runtimes}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=tenant&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /grc/findings status = %d, want explicit oversized-scope rejection", resp.StatusCode)
 	}
 }
 

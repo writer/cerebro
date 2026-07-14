@@ -829,9 +829,10 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 	}
 	sort.Strings(ids)
 	var runtimes []*cerebrov1.SourceRuntime
+	allowedRuntimeIDs := normalizedTestStrings(append(filter.RuntimeIDs, filter.RuntimeID))
 	for _, id := range ids {
 		runtime := s.runtimes[id]
-		if filter.RuntimeID != "" && runtime.GetId() != filter.RuntimeID {
+		if len(allowedRuntimeIDs) != 0 && !containsTrimmed(allowedRuntimeIDs, runtime.GetId()) {
 			continue
 		}
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
@@ -841,6 +842,9 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 			continue
 		}
 		runtimes = append(runtimes, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
+	}
+	if filter.Limit != 0 && len(runtimes) > int(filter.Limit) {
+		runtimes = runtimes[:filter.Limit]
 	}
 	return runtimes, nil
 }
@@ -8254,6 +8258,20 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	}
 	if request.RuleID != "" && strings.TrimSpace(finding.RuleID) != strings.TrimSpace(request.RuleID) {
 		return false
+	}
+	if len(request.ProfilePredicate.RuleIDs) != 0 || len(request.ProfilePredicate.ControlRefs) != 0 {
+		profileMatch := containsTrimmed(request.ProfilePredicate.RuleIDs, finding.RuleID)
+		for _, wanted := range request.ProfilePredicate.ControlRefs {
+			for _, actual := range finding.ControlRefs {
+				if strings.EqualFold(strings.TrimSpace(actual.FrameworkName), strings.TrimSpace(wanted.FrameworkName)) &&
+					strings.EqualFold(strings.TrimSpace(actual.ControlID), strings.TrimSpace(wanted.ControlID)) {
+					profileMatch = true
+				}
+			}
+		}
+		if !profileMatch {
+			return false
+		}
 	}
 	if request.Severity != "" && strings.TrimSpace(finding.Severity) != strings.TrimSpace(request.Severity) {
 		return false

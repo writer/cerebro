@@ -39,6 +39,12 @@ func TestValidateWidgetQueryRejectsUnknownParameter(t *testing.T) {
 	}
 }
 
+func TestFindingsSourceAcceptsComplianceProfile(t *testing.T) {
+	if err := ValidateWidgetQuery(WidgetQuery{SourceID: "findings", Params: map[string]string{"profile_id": "soc2-security-core"}}); err != nil {
+		t.Fatalf("ValidateWidgetQuery(profile_id) error = %v", err)
+	}
+}
+
 func TestValidateWidgetQueryEnforcesEnum(t *testing.T) {
 	if err := ValidateWidgetQuery(WidgetQuery{SourceID: "trends", Params: map[string]string{"interval": "fortnight"}}); !errors.Is(err, ErrInvalidQuery) {
 		t.Fatalf("bad interval error = %v, want ErrInvalidQuery", err)
