@@ -455,36 +455,46 @@ jobs:
             return 1
           }
 
-          tag_at_least() {
-            local current="$1"
-            local target="$2"
-            [ "$(printf '%s\n%s\n' "${current}" "${target}" | sort -V | head -n 1)" = "${target}" ]
-          }
-
           wait_for_sec_dev_release() {
-            local sec_dev_tag=""
+            local deadline=$((SECONDS + 5400))
+            local sec_dev_branch="automation/cerebro-image-sec-dev-${safe_tag}"
+            local sec_dev_pr=""
+            local sec_dev_pr_url=""
             local sec_dev_sha=""
             local run=""
             local status=""
             local conclusion=""
             local run_url=""
 
-            git fetch origin main:refs/remotes/origin/main
-            sec_dev_tag="$(git show origin/main:infra/aws/Pulumi.sec-dev.yaml | awk '$1 == "cerebro:imageTag:" { print $2; exit }')"
-            if ! tag_at_least "${sec_dev_tag}" "${IMAGE_TAG}"; then
-              echo "::notice::sec-dev is still on ${sec_dev_tag}; leaving ${IMAGE_TAG} go-prod PR open until sec-dev catches up."
-              return 1
-            fi
+            while [ "${SECONDS}" -lt "${deadline}" ]; do
+              if [ -z "${sec_dev_sha}" ]; then
+                sec_dev_pr="$(
+                  gh pr list \
+                    --repo "${GITHUB_REPOSITORY}" \
+                    --state merged \
+                    --head "${sec_dev_branch}" \
+                    --limit 1 \
+                    --json mergeCommit,url \
+                    --jq '.[0] | [(.mergeCommit.oid // ""), (.url // "")] | @tsv'
+                )"
+                if [ -n "${sec_dev_pr}" ]; then
+                  IFS=$'\t' read -r sec_dev_sha sec_dev_pr_url <<< "${sec_dev_pr}"
+                fi
+                if [ -z "${sec_dev_sha}" ]; then
+                  echo "::notice::Waiting for the sec-dev ${IMAGE_TAG} promotion PR to merge."
+                  sleep 10
+                  continue
+                fi
+                echo "sec-dev ${IMAGE_TAG} promotion merged: ${sec_dev_pr_url}"
+              fi
 
-            sec_dev_sha="$(git rev-parse origin/main)"
-            for _ in {1..60}; do
               run="$(
                 gh run list \
                   --repo "${GITHUB_REPOSITORY}" \
                   --workflow infra-deploy.yml \
                   --event push \
                   --branch main \
-                  --limit 50 \
+                  --limit 100 \
                   --json headSha,status,conclusion,url \
                   --jq ".[] | select(.headSha == \"${sec_dev_sha}\") | [.status, (.conclusion // \"\"), .url] | @tsv" \
                   | head -n 1
@@ -492,18 +502,18 @@ jobs:
               if [ -n "${run}" ]; then
                 IFS=$'\t' read -r status conclusion run_url <<< "${run}"
                 if [ "${status}" = "completed" ] && [ "${conclusion}" = "success" ]; then
-                  echo "sec-dev deploy for ${sec_dev_tag} succeeded: ${run_url}"
+                  echo "sec-dev deploy for ${IMAGE_TAG} succeeded: ${run_url}"
                   return 0
                 fi
                 if [ "${status}" = "completed" ]; then
-                  echo "::notice::sec-dev deploy for ${sec_dev_tag} completed with ${conclusion}; leaving go-prod PR open."
+                  echo "::notice::sec-dev deploy for ${IMAGE_TAG} completed with ${conclusion}; leaving go-prod PR open."
                   return 1
                 fi
               fi
               sleep 10
             done
 
-            echo "::notice::Timed out waiting for sec-dev deploy success for ${sec_dev_tag}; leaving go-prod PR open."
+            echo "::notice::Timed out after 90 minutes waiting for the sec-dev ${IMAGE_TAG} promotion and deployment; leaving the go-prod PR open."
             return 1
           }
 

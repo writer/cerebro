@@ -199,6 +199,23 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
             auto_merge_block.index("wait_for_sec_dev_release"),
         )
 
+    def test_go_prod_waits_for_exact_sec_dev_promotion_deploy(self) -> None:
+        apply_step = self._apply_step()
+        wait_block = apply_step.split("wait_for_sec_dev_release() {", 1)[1].split(
+            "refresh_from_main_and_apply_update",
+            1,
+        )[0]
+
+        self.assertIn('local deadline=$((SECONDS + 5400))', wait_block)
+        self.assertIn('local sec_dev_branch="automation/cerebro-image-sec-dev-${safe_tag}"', wait_block)
+        self.assertIn('--state merged', wait_block)
+        self.assertIn('--head "${sec_dev_branch}"', wait_block)
+        self.assertIn('--json mergeCommit,url', wait_block)
+        self.assertIn('select(.headSha == \\"${sec_dev_sha}\\")', wait_block)
+        self.assertIn('sec-dev deploy for ${IMAGE_TAG} succeeded', wait_block)
+        self.assertNotIn('git rev-parse origin/main', wait_block)
+        self.assertNotIn('sec-dev is still on', wait_block)
+
     def test_pulumi_preview_jobs_have_timeout(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         for job_name in ("Preview sec-dev", "Preview go-prod", "Preview gcp-dev", "Preview gcp-prod"):
