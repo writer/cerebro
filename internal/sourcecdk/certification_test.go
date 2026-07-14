@@ -6,7 +6,7 @@ import (
 )
 
 func TestLoadSourceCatalogCertification(t *testing.T) {
-	catalog, err := LoadSourceCatalog([]byte(certificationCatalogYAML("provider_spec", "reference: https://provider.example/spec")))
+	catalog, err := LoadSourceCatalog([]byte(certificationCatalogYAML()))
 	if err != nil {
 		t.Fatalf("LoadSourceCatalog() error = %v", err)
 	}
@@ -26,10 +26,10 @@ func TestLoadSourceCatalogCertification(t *testing.T) {
 
 func TestLoadSourceCatalogCertificationRejectsInvalidProof(t *testing.T) {
 	tests := map[string]string{
-		"unknown evidence":      strings.Replace(certificationCatalogYAML("provider_spec", "reference: https://provider.example/spec"), "provider_spec", "trusted", 1),
-		"invalid digest":        strings.Replace(certificationCatalogYAML("provider_spec", "reference: https://provider.example/spec"), strings.Repeat("0", 64), "bad", 1),
-		"expired before review": strings.Replace(certificationCatalogYAML("provider_spec", "reference: https://provider.example/spec"), "2026-10-14", "2026-06-14", 1),
-		"live state":            strings.Replace(certificationCatalogYAML("provider_spec", "reference: https://provider.example/spec"), "  evidence:", "  production_observed: true\n  evidence:", 1),
+		"unknown evidence":      strings.Replace(certificationCatalogYAML(), "provider_spec", "trusted", 1),
+		"invalid digest":        strings.Replace(certificationCatalogYAML(), strings.Repeat("0", 64), "bad", 1),
+		"expired before review": strings.Replace(certificationCatalogYAML(), "2026-10-14", "2026-06-14", 1),
+		"live state":            strings.Replace(certificationCatalogYAML(), "  evidence:", "  production_observed: true\n  evidence:", 1),
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -40,8 +40,8 @@ func TestLoadSourceCatalogCertificationRejectsInvalidProof(t *testing.T) {
 	}
 }
 
-func certificationCatalogYAML(kind, locator string) string {
+func certificationCatalogYAML() string {
 	return "id: certification-test\nname: Certification Test\ndescription: test\nemitted_kinds: [test.asset]\n" +
 		"certification:\n  owner: source-runtime\n  reviewed_at: 2026-07-14T00:00:00Z\n  expires_at: 2026-10-14T00:00:00Z\n" +
-		"  evidence:\n    - kind: " + kind + "\n      " + locator + "\n      digest: sha256:" + strings.Repeat("0", 64) + "\n      families: [assets]\n"
+		"  evidence:\n    - kind: provider_spec\n      reference: https://provider.example/spec\n      digest: sha256:" + strings.Repeat("0", 64) + "\n      families: [assets]\n"
 }
