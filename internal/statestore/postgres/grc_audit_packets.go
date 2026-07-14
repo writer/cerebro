@@ -22,22 +22,23 @@ CREATE TABLE IF NOT EXISTS grc_audit_packets (
 CREATE INDEX IF NOT EXISTS grc_audit_packets_tenant_created_idx
 ON grc_audit_packets (tenant_id, created_at DESC)`}
 
-// PutGRCAuditPacket inserts one immutable packet receipt. The insert has no
-// conflict-update path: an existing packet ID can never be rewritten.
-func (s *Store) PutGRCAuditPacket(ctx context.Context, receipt *ports.GRCAuditPacketReceipt) error {
+type grcAuditPacketExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+// insertGRCAuditPacket is called only by the audit event projector. It has no
+// conflict-update path: a replay can rebuild a receipt but never rewrite it.
+func insertGRCAuditPacket(ctx context.Context, execer grcAuditPacketExecer, receipt *ports.GRCAuditPacketReceipt) error {
 	if receipt == nil {
 		return errors.New("GRC audit packet receipt is required")
 	}
 	if strings.TrimSpace(receipt.ID) == "" || strings.TrimSpace(receipt.TenantID) == "" || strings.TrimSpace(receipt.FindingID) == "" || strings.TrimSpace(receipt.Digest) == "" || len(receipt.Payload) == 0 || receipt.CreatedAt.IsZero() {
 		return errors.New("GRC audit packet receipt is incomplete")
 	}
-	if s == nil || s.db == nil {
-		return errors.New("postgres is not configured")
+	if execer == nil {
+		return errors.New("GRC audit packet projection store is required")
 	}
-	if err := s.ensureGRCAuditPacketTable(ctx); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := execer.ExecContext(ctx, `
 INSERT INTO grc_audit_packets (id, tenant_id, finding_id, digest, packet_json, created_at)
 VALUES ($1, $2, $3, $4, $5::jsonb, $6)`, receipt.ID, receipt.TenantID, receipt.FindingID, receipt.Digest, string(receipt.Payload), receipt.CreatedAt.UTC()); err != nil {
 		return fmt.Errorf("insert GRC audit packet %q: %w", receipt.ID, err)

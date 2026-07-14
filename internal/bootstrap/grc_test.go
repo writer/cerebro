@@ -17,11 +17,13 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcaudit"
 	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
 	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
+	"github.com/writer/cerebro/internal/workflowevents"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1003,18 +1005,21 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	rootURN := "urn:cerebro:writer:okta_user:00u1"
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer", LastSyncedAt: timestamppb.New(now), Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)}},
 		},
 		findings: map[string]*ports.FindingRecord{
 			"finding-high": {
-				ID:             "finding-high",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
-				Title:          "Identity API token created",
-				Severity:       "HIGH",
-				Status:         "open",
-				ResourceURNs:   []string{rootURN},
-				LastObservedAt: now,
+				ID:              "finding-high",
+				Fingerprint:     "fingerprint-high",
+				TenantID:        "writer",
+				RuntimeID:       "writer-okta-audit",
+				Title:           "Identity API token created",
+				Severity:        "HIGH",
+				Status:          "open",
+				ResourceURNs:    []string{rootURN},
+				LastObservedAt:  now,
+				ControlRefs:     []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+				FindingWorkflow: ports.FindingWorkflow{StatusUpdatedAt: now},
 			},
 		},
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
@@ -1027,6 +1032,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 				EventIds:      []string{"event-1"},
 				GraphRootUrns: []string{rootURN},
 				GraphPathUrns: []string{"urn:cerebro:writer:graph-path:path-1"},
+				GraphRows:     []*cerebrov1.GraphEvidenceRow{{Attributes: map[string]string{"fact_id": "fact-1"}}},
 				Observations: []*cerebrov1.FindingEvidenceObservation{{
 					RunId: "observation-run-1", ObservedAt: timestamppb.New(now),
 				}},
@@ -1053,7 +1059,8 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 			}},
 		},
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore}, nil)
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -1113,8 +1120,21 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if created.Graph != nil || len(created.GraphReferences.RootURNs) != 1 {
 		t.Fatalf("created graph state = graph %#v refs %#v, want references only", created.Graph, created.GraphReferences)
 	}
+	if !containsTrimmed(created.GraphReferences.FactRefs, "fact-1") || len(created.ControlReferences) != 1 {
+		t.Fatalf("created exact references = graph %#v controls %#v", created.GraphReferences, created.ControlReferences)
+	}
 	if len(created.EvidenceReferences) != 1 || !containsTrimmed(created.EvidenceReferences[0].EvaluationRunIDs, "evaluation-run-1") || !containsTrimmed(created.EvidenceReferences[0].ObservationRunIDs, "observation-run-1") {
 		t.Fatalf("created evidence references = %#v, want exact evaluation and observation runs", created.EvidenceReferences)
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("appended audit packet events = %d, want 1", len(appendLog.events))
+	}
+	recorded, err := workflowevents.DecodeComplianceAggregate(appendLog.events[0])
+	if err != nil {
+		t.Fatalf("decode appended audit packet event: %v", err)
+	}
+	if recorded.AggregateType != grcaudit.AuditAggregatePacketReceipt || recorded.AggregateID != created.ID || recorded.ContentDigest != created.Digest {
+		t.Fatalf("appended audit packet event = %#v", recorded)
 	}
 
 	// Current finding and graph mutations after creation must not affect the packet.
@@ -1166,7 +1186,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		t.Fatalf("read packet export: %v", err)
 	}
 	markdown := string(body)
-	for _, want := range []string{"# Finding Audit Packet", "Recommended Action", "Readiness"} {
+	for _, want := range []string{"# Finding Audit Packet", "Recommended Action", "Readiness", created.ID, created.Digest, "Review state: unreviewed", "Export state: ready"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("finding export missing %q:\n%s", want, markdown)
 		}
@@ -1218,7 +1238,7 @@ func TestGRCAuditPacketRecordsGraphGapWhenProjectionUnavailable(t *testing.T) {
 		runtimes: map[string]*cerebrov1.SourceRuntime{"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "okta"}},
 		findings: map[string]*ports.FindingRecord{"finding-1": {ID: "finding-1", TenantID: "writer", RuntimeID: "runtime-1", Status: "open", LastObservedAt: now}},
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, AppendLog: &recordingAppendLog{}}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 	response, err := server.Client().Post(server.URL+"/grc/audit-packets", "application/json", bytes.NewBufferString(`{"finding_id":"finding-1"}`))
@@ -1235,6 +1255,36 @@ func TestGRCAuditPacketRecordsGraphGapWhenProjectionUnavailable(t *testing.T) {
 	}
 	if !hasGRCAuditPacketGap(packet.Gaps, "graph_context_unavailable") || !hasGRCAuditPacketGap(packet.Gaps, "evidence_unavailable") {
 		t.Fatalf("gaps = %#v, want graph and evidence gaps", packet.Gaps)
+	}
+	if !hasGRCAuditPacketGap(packet.Gaps, "finding_fingerprint_unavailable") || !hasGRCAuditPacketGap(packet.Gaps, "source_checkpoint_unavailable") {
+		t.Fatalf("gaps = %#v, want missing finding and runtime references", packet.Gaps)
+	}
+	if len(packet.SourceRuntimes) != 1 || packet.SourceRuntimes[0].CompletenessState != "unknown" {
+		t.Fatalf("runtime references = %#v, want unknown completeness without a checkpoint", packet.SourceRuntimes)
+	}
+}
+
+func TestGRCAuditPacketDoesNotProjectWhenAppendFails(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "okta"}},
+		findings: map[string]*ports.FindingRecord{"finding-1": {ID: "finding-1", TenantID: "writer", RuntimeID: "runtime-1", Status: "open", LastObservedAt: now}},
+	}
+	appendLog := &recordingAppendLog{err: errors.New("append unavailable")}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, err := server.Client().Post(server.URL+"/grc/audit-packets", "application/json", bytes.NewBufferString(`{"finding_id":"finding-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /grc/audit-packets status = %d, want %d", response.StatusCode, http.StatusServiceUnavailable)
+	}
+	if len(store.grcAuditPackets) != 0 {
+		t.Fatalf("projected audit packets = %d, want 0 after append failure", len(store.grcAuditPackets))
 	}
 }
 

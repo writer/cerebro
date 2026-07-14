@@ -14,9 +14,11 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/grcaudit"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 const SchemaVersion = "grc.audit-packet.v1"
@@ -29,6 +31,7 @@ type Packet struct {
 	TenantID           string                       `json:"tenant_id,omitempty"`
 	FindingReference   FindingReference             `json:"finding_reference,omitempty"`
 	EvidenceReferences []EvidenceReference          `json:"evidence_references,omitempty"`
+	ControlReferences  []ControlReference           `json:"control_references,omitempty"`
 	GraphReferences    GraphReferences              `json:"graph_references,omitempty"`
 	SourceRuntimes     []SourceRuntimeReference     `json:"source_runtimes,omitempty"`
 	Gaps               []Gap                        `json:"gaps"`
@@ -64,9 +67,18 @@ type EvidenceReference struct {
 	GraphPathURNs     []string `json:"graph_path_urns,omitempty"`
 }
 
+type ControlReference struct {
+	FrameworkID      string `json:"framework_id"`
+	ControlID        string `json:"control_id"`
+	FrameworkVersion string `json:"framework_version,omitempty"`
+	ProfileID        string `json:"profile_id,omitempty"`
+	ProfileVersion   string `json:"profile_version,omitempty"`
+}
+
 type GraphReferences struct {
 	RootURNs             []string  `json:"root_urns"`
 	PathURNs             []string  `json:"path_urns"`
+	FactRefs             []string  `json:"fact_refs"`
 	ObservationWatermark time.Time `json:"observation_watermark,omitempty"`
 }
 
@@ -104,6 +116,7 @@ func Freeze(ctx context.Context, store ports.GRCAuditPacketStore, preview Packet
 	packet.TenantID = preview.FindingRecord.TenantID
 	packet.FindingReference = findingReference(preview.FindingRecord)
 	packet.EvidenceReferences, packet.GraphReferences = evidenceReferences(preview.EvidenceRecords, preview.FindingRecord.LastObservedAt)
+	packet.ControlReferences = controlReferences(packet.Controls, packet.Metadata)
 	packet.SourceRuntimes = sourceRuntimeReferences(preview.RuntimeRecords)
 	packet.Graph = nil
 	packet.Gaps = gaps(preview, packet)
@@ -113,15 +126,39 @@ func Freeze(ctx context.Context, store ports.GRCAuditPacketStore, preview Packet
 	if err != nil {
 		return Packet{}, err
 	}
+	return packet, nil
+}
+
+// RecordedEvent returns the append-first compliance event used to rebuild the
+// immutable receipt projection in Postgres.
+func RecordedEvent(packet Packet) (*cerebrov1.EventEnvelope, error) {
+	if err := Verify(packet); err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(packet)
 	if err != nil {
-		return Packet{}, fmt.Errorf("marshal GRC audit packet: %w", err)
+		return nil, fmt.Errorf("marshal GRC audit packet event: %w", err)
 	}
-	err = store.PutGRCAuditPacket(ctx, &ports.GRCAuditPacketReceipt{
-		ID: packet.ID, TenantID: packet.TenantID, FindingID: packet.FindingReference.ID,
-		Digest: packet.Digest, Payload: payload, CreatedAt: packet.GeneratedAt,
+	return workflowevents.NewComplianceAggregateEvent(workflowevents.ComplianceAggregateRecorded{
+		Kind: workflowevents.EventKindComplianceAuditPackageRecorded, TenantID: packet.TenantID,
+		AggregateType: grcaudit.AuditAggregatePacketReceipt, AggregateID: packet.ID,
+		AggregateVersion: 1, Operation: "recorded", ContentDigest: packet.Digest,
+		PayloadJSON: string(payload), RecordedAt: packet.GeneratedAt.UTC().Format(time.RFC3339Nano),
 	})
-	return packet, err
+}
+
+func Verify(packet Packet) error {
+	if packet.ID == "" || packet.TenantID == "" || packet.FindingReference.ID == "" || packet.SchemaVersion != SchemaVersion || packet.ResourceState != "immutable" || packet.GeneratedAt.IsZero() {
+		return fmt.Errorf("invalid GRC audit packet receipt")
+	}
+	digest, err := Digest(packet)
+	if err != nil {
+		return err
+	}
+	if packet.Digest == "" || packet.Digest != digest {
+		return fmt.Errorf("GRC audit packet digest verification failed")
+	}
+	return nil
 }
 
 func Load(ctx context.Context, store ports.GRCAuditPacketStore, packetID string, tenantAllowed func(string) bool) (Packet, error) {
@@ -139,9 +176,8 @@ func Load(ctx context.Context, store ports.GRCAuditPacketStore, packetID string,
 	if packet.ID != receipt.ID || packet.TenantID != receipt.TenantID || packet.Digest != receipt.Digest {
 		return Packet{}, fmt.Errorf("GRC audit packet %q envelope does not match stored payload", packetID)
 	}
-	digest, err := Digest(packet)
-	if err != nil || digest != packet.Digest {
-		return Packet{}, fmt.Errorf("GRC audit packet %q digest verification failed", packetID)
+	if err := Verify(packet); err != nil {
+		return Packet{}, fmt.Errorf("GRC audit packet %q: %w", packetID, err)
 	}
 	return packet, nil
 }
@@ -174,7 +210,7 @@ func findingReference(finding *ports.FindingRecord) FindingReference {
 
 func evidenceReferences(evidence []*cerebrov1.FindingEvidence, findingWatermark time.Time) ([]EvidenceReference, GraphReferences) {
 	refs := make([]EvidenceReference, 0, len(evidence))
-	graph := GraphReferences{RootURNs: []string{}, PathURNs: []string{}, ObservationWatermark: findingWatermark.UTC()}
+	graph := GraphReferences{RootURNs: []string{}, PathURNs: []string{}, FactRefs: []string{}, ObservationWatermark: findingWatermark.UTC()}
 	for _, item := range evidence {
 		if item == nil {
 			continue
@@ -190,6 +226,18 @@ func evidenceReferences(evidence []*cerebrov1.FindingEvidence, findingWatermark 
 			graph.ObservationWatermark = at.AsTime().UTC()
 		}
 		roots, paths := NormalizeStrings(item.GetGraphRootUrns()), NormalizeStrings(item.GetGraphPathUrns())
+		for _, row := range item.GetGraphRows() {
+			if ref := graphFactRef(row); ref != "" {
+				graph.FactRefs = append(graph.FactRefs, ref)
+			}
+		}
+		for _, observation := range item.GetObservations() {
+			for _, row := range observation.GetGraphRows() {
+				if ref := graphFactRef(row); ref != "" {
+					graph.FactRefs = append(graph.FactRefs, ref)
+				}
+			}
+		}
 		refs = append(refs, EvidenceReference{
 			ID: item.GetId(), EvaluationRunIDs: NormalizeStrings(append([]string{item.GetRunId()}, item.GetRunIds()...)), ObservationRunIDs: NormalizeStrings(observationRuns),
 			ClaimIDs: NormalizeStrings(item.GetClaimIds()), EventIDs: NormalizeStrings(item.GetEventIds()), GraphRootURNs: roots, GraphPathURNs: paths,
@@ -197,8 +245,40 @@ func evidenceReferences(evidence []*cerebrov1.FindingEvidence, findingWatermark 
 		graph.RootURNs, graph.PathURNs = append(graph.RootURNs, roots...), append(graph.PathURNs, paths...)
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].ID < refs[j].ID })
-	graph.RootURNs, graph.PathURNs = NormalizeStrings(graph.RootURNs), NormalizeStrings(graph.PathURNs)
+	graph.RootURNs, graph.PathURNs, graph.FactRefs = NormalizeStrings(graph.RootURNs), NormalizeStrings(graph.PathURNs), NormalizeStrings(graph.FactRefs)
 	return refs, graph
+}
+
+func graphFactRef(row *cerebrov1.GraphEvidenceRow) string {
+	if row == nil {
+		return ""
+	}
+	if factID := strings.TrimSpace(row.GetAttributes()["fact_id"]); factID != "" {
+		return factID
+	}
+	payload, err := json.Marshal(row)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return "graph-row:sha256:" + hex.EncodeToString(sum[:])
+}
+
+func controlReferences(controls []grcfindings.ControlRef, metadata grccontrol.ReportMetadata) []ControlReference {
+	refs := make([]ControlReference, 0, len(controls))
+	for _, control := range controls {
+		refs = append(refs, ControlReference{
+			FrameworkID: control.FrameworkName, ControlID: control.ControlID,
+			ProfileID: metadata.Provenance.ProfileID, ProfileVersion: metadata.Provenance.PacketVersion,
+		})
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		if refs[i].FrameworkID == refs[j].FrameworkID {
+			return refs[i].ControlID < refs[j].ControlID
+		}
+		return refs[i].FrameworkID < refs[j].FrameworkID
+	})
+	return refs
 }
 
 func sourceRuntimeReferences(runtimes []*cerebrov1.SourceRuntime) []SourceRuntimeReference {
@@ -207,12 +287,13 @@ func sourceRuntimeReferences(runtimes []*cerebrov1.SourceRuntime) []SourceRuntim
 		if runtime == nil {
 			continue
 		}
-		ref := SourceRuntimeReference{ID: runtime.GetId(), SourceID: runtime.GetSourceId(), FreshnessState: "never_synced", CompletenessState: "complete"}
+		ref := SourceRuntimeReference{ID: runtime.GetId(), SourceID: runtime.GetSourceId(), FreshnessState: "never_synced", CompletenessState: "unknown"}
 		if at := runtime.GetLastSyncedAt(); at != nil {
 			ref.LastSyncedAt, ref.FreshnessState = at.AsTime().UTC(), "observed"
 		}
 		if checkpoint := runtime.GetCheckpoint(); checkpoint != nil && checkpoint.GetWatermark() != nil {
 			ref.CheckpointWatermark = checkpoint.GetWatermark().AsTime().UTC()
+			ref.CompletenessState = "complete"
 		}
 		if cursor := runtime.GetNextCursor(); cursor != nil && strings.TrimSpace(cursor.GetOpaque()) != "" {
 			ref.CompletenessState = "partial"
@@ -225,14 +306,44 @@ func sourceRuntimeReferences(runtimes []*cerebrov1.SourceRuntime) []SourceRuntim
 
 func gaps(preview Packet, packet Packet) []Gap {
 	result := []Gap{}
+	if strings.TrimSpace(packet.FindingReference.Fingerprint) == "" {
+		result = append(result, Gap{Code: "finding_fingerprint_unavailable", Message: "The finding had no durable fingerprint when this packet was created."})
+	}
+	if packet.FindingReference.StatusRevision.IsZero() {
+		result = append(result, Gap{Code: "finding_status_revision_unavailable", Message: "The finding had no status revision timestamp when this packet was created."})
+	}
 	if preview.Graph == nil {
 		result = append(result, Gap{Code: "graph_context_unavailable", Message: "No graph neighborhood was available when this packet was created; the receipt contains only cited graph roots and paths."})
 	}
-	if len(packet.Controls) != 0 && packet.Metadata.Provenance.PacketVersion == "" {
-		result = append(result, Gap{Code: "control_version_unavailable", Message: "The finding carried control identifiers without a versioned control profile."})
+	for _, control := range packet.ControlReferences {
+		if control.FrameworkVersion == "" {
+			result = append(result, Gap{Code: "framework_version_unavailable", Message: "Framework " + control.FrameworkID + " had no version reference when this packet was created."})
+		}
+		if control.ProfileVersion == "" {
+			result = append(result, Gap{Code: "profile_version_unavailable", Message: "Control " + control.ControlID + " had no profile version when this packet was created."})
+		}
 	}
 	if len(packet.EvidenceReferences) == 0 {
 		result = append(result, Gap{Code: "evidence_unavailable", Message: "No evidence records were available when this packet was created."})
+	}
+	for _, evidence := range packet.EvidenceReferences {
+		if len(evidence.EvaluationRunIDs) == 0 {
+			result = append(result, Gap{Code: "evaluation_run_unavailable", Message: "Evidence " + evidence.ID + " had no evaluation run reference."})
+		}
+		if len(evidence.ObservationRunIDs) == 0 {
+			result = append(result, Gap{Code: "observation_run_unavailable", Message: "Evidence " + evidence.ID + " had no observation run reference."})
+		}
+	}
+	if packet.GraphReferences.ObservationWatermark.IsZero() {
+		result = append(result, Gap{Code: "graph_observation_watermark_unavailable", Message: "No graph observation watermark was available when this packet was created."})
+	}
+	if len(packet.GraphReferences.FactRefs) == 0 && (len(packet.GraphReferences.RootURNs) != 0 || len(packet.GraphReferences.PathURNs) != 0) {
+		result = append(result, Gap{Code: "graph_fact_refs_unavailable", Message: "Graph roots or paths were captured without graph fact references."})
+	}
+	for _, runtime := range packet.SourceRuntimes {
+		if runtime.CheckpointWatermark.IsZero() {
+			result = append(result, Gap{Code: "source_checkpoint_unavailable", Message: "Source runtime " + runtime.ID + " had no checkpoint watermark when this packet was created."})
+		}
 	}
 	return result
 }

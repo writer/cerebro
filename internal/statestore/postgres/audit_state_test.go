@@ -15,6 +15,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/grcaudit"
+	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -28,12 +29,38 @@ func TestAuditStateSchemaCoversTenantScopedAuditObjects(t *testing.T) {
 		"grc_audit_evidence_request_revisions", "grc_audit_evidence_submissions",
 		"grc_audit_sample_revisions", "grc_audit_package_manifests",
 		"grc_audit_package_manifest_entries", "grc_audit_capability_state",
+		"grc_audit_packets", "grc_audit_packets_tenant_created_idx",
 		"grc_audit_access_grants", "grc_audit_event_application_receipts",
 		"PRIMARY KEY (tenant_id, event_id)",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("audit state schema missing %q", fragment)
 		}
+	}
+}
+
+func TestAuditPacketReceiptUsesReplayableAuditProjectionEvent(t *testing.T) {
+	t.Parallel()
+	packet := grcauditpacket.Packet{
+		ID: "audit-packet-one", SchemaVersion: grcauditpacket.SchemaVersion, ResourceState: "immutable",
+		TenantID: "tenant-one", FindingReference: grcauditpacket.FindingReference{ID: "finding-one", Status: "open", StatusRevision: testAuditTime()},
+		Gaps: []grcauditpacket.Gap{}, Supersedes: []string{}, GeneratedAt: testAuditTime(),
+	}
+	digest, err := grcauditpacket.Digest(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Digest = digest
+	event, err := grcauditpacket.RecordedEvent(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeAuditProjectionEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.aggregateType != grcaudit.AuditAggregatePacketReceipt || decoded.aggregateID != packet.ID || decoded.contentDigest != packet.Digest {
+		t.Fatalf("decoded packet event = %#v", decoded)
 	}
 }
 
@@ -410,6 +437,7 @@ func cleanupAuditTenant(t *testing.T, ctx context.Context, store *Store, tenantI
 	t.Helper()
 	for _, statement := range []string{
 		`DELETE FROM grc_audit_event_application_receipts WHERE tenant_id = $1`,
+		`DELETE FROM grc_audit_packets WHERE tenant_id = $1`,
 		`DELETE FROM grc_audit_access_grants WHERE tenant_id = $1`,
 		`DELETE FROM grc_audit_capability_state WHERE tenant_id = $1`,
 		`DELETE FROM grc_audit_package_manifest_entries WHERE tenant_id = $1`,

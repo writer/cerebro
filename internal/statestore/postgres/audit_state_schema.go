@@ -3,6 +3,11 @@ package postgres
 import "context"
 
 var ensureAuditStateStatements = []string{
+	`CREATE TABLE IF NOT EXISTS grc_audit_packets (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, finding_id TEXT NOT NULL,
+  digest TEXT NOT NULL, packet_json JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL
+)`,
+	`CREATE INDEX IF NOT EXISTS grc_audit_packets_tenant_created_idx ON grc_audit_packets (tenant_id, created_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS grc_audit_engagements (
   tenant_id TEXT NOT NULL, engagement_id TEXT NOT NULL, aggregate_version BIGINT NOT NULL,
   current_revision BIGINT NOT NULL, current_revision_id TEXT NOT NULL, status TEXT NOT NULL,

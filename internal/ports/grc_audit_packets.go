@@ -24,6 +24,5 @@ type GRCAuditPacketReceipt struct {
 // GRCAuditPacketStore owns immutable audit packet receipts in current state.
 type GRCAuditPacketStore interface {
 	StateStore
-	PutGRCAuditPacket(context.Context, *GRCAuditPacketReceipt) error
 	GetGRCAuditPacket(context.Context, string) (*GRCAuditPacketReceipt, error)
 }

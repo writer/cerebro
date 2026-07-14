@@ -119,7 +119,7 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 }
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	dashboards := customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
-	auditPackets := grcauditpackethttp.NewHTTPHandler(app.deps.StateStore, app.buildGRCAuditPreview, tenantAllowedByContext, func(err error) error { return errors.Join(errInvalidHTTPRequest, err) }, writeGRCError)
+	auditPackets := grcauditpackethttp.NewHTTPHandler(app.deps.StateStore, app.deps.AppendLog, app.buildGRCAuditPreview, tenantAllowedByContext, func(err error) error { return errors.Join(errInvalidHTTPRequest, err) }, writeGRCError)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
 	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
 	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)

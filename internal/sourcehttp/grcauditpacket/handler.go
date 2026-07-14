@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/grccontrol"
@@ -19,14 +20,20 @@ type PreviewBuilder func(*http.Request, string) (grcauditpacket.Packet, error)
 
 type HTTPHandler struct {
 	stateStore    ports.StateStore
+	appendLog     ports.AppendLog
 	preview       PreviewBuilder
 	tenantAllowed func(context.Context, string) bool
 	invalid       func(error) error
 	writeError    func(http.ResponseWriter, error)
 }
 
-func NewHTTPHandler(stateStore ports.StateStore, preview PreviewBuilder, tenantAllowed func(context.Context, string) bool, invalid func(error) error, writeError func(http.ResponseWriter, error)) *HTTPHandler {
-	return &HTTPHandler{stateStore: stateStore, preview: preview, tenantAllowed: tenantAllowed, invalid: invalid, writeError: writeError}
+type auditPacketProjectionStore interface {
+	ports.GRCAuditPacketStore
+	ApplyAuditProjectionEvent(context.Context, *cerebrov1.EventEnvelope) (bool, error)
+}
+
+func NewHTTPHandler(stateStore ports.StateStore, appendLog ports.AppendLog, preview PreviewBuilder, tenantAllowed func(context.Context, string) bool, invalid func(error) error, writeError func(http.ResponseWriter, error)) *HTTPHandler {
+	return &HTTPHandler{stateStore: stateStore, appendLog: appendLog, preview: preview, tenantAllowed: tenantAllowed, invalid: invalid, writeError: writeError}
 }
 
 func (h *HTTPHandler) Preview(w http.ResponseWriter, r *http.Request) {
@@ -45,14 +52,28 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, h.invalid(fmt.Errorf("decode audit packet request: %w", err)))
 		return
 	}
-	store, ok := h.stateStore.(ports.GRCAuditPacketStore)
-	if !ok {
+	store, ok := h.stateStore.(auditPacketProjectionStore)
+	if !ok || h.appendLog == nil {
 		h.writeError(w, findings.ErrRuntimeUnavailable)
 		return
 	}
 	preview, err := h.preview(r, request.FindingID)
 	if err == nil {
 		preview, err = grcauditpacket.Freeze(r.Context(), store, preview, request.Supersedes, func(tenantID string) bool { return h.tenantAllowed(r.Context(), tenantID) })
+	}
+	var event *cerebrov1.EventEnvelope
+	if err == nil {
+		event, err = grcauditpacket.RecordedEvent(preview)
+	}
+	if err == nil {
+		if appendErr := h.appendLog.Append(r.Context(), event); appendErr != nil {
+			err = fmt.Errorf("%w: append audit packet receipt", findings.ErrRuntimeUnavailable)
+		}
+	}
+	if err == nil {
+		if _, projectionErr := store.ApplyAuditProjectionEvent(r.Context(), event); projectionErr != nil {
+			err = fmt.Errorf("%w: project audit packet receipt", findings.ErrRuntimeUnavailable)
+		}
 	}
 	if err != nil {
 		h.writeError(w, err)
@@ -80,7 +101,12 @@ func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="finding-audit-packet.md"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(grccontrol.RenderFindingAuditPacketMarkdown(markdownInput(packet))))
+	markdown := grccontrol.RenderFindingAuditPacketMarkdown(markdownInput(packet))
+	markdown += fmt.Sprintf("\n## Receipt\n\n- Packet ID: `%s`\n- Canonical digest: `%s`\n- Review state: %s\n- Export state: %s\n", packet.ID, packet.Digest, packet.ReviewState, packet.ExportState)
+	for _, gap := range packet.Gaps {
+		markdown += fmt.Sprintf("- Gap `%s`: %s\n", gap.Code, gap.Message)
+	}
+	_, _ = w.Write([]byte(markdown))
 }
 
 func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {

@@ -12,13 +12,14 @@ var (
 )
 
 const (
-	AuditAggregateEngagement = "audit_engagement"
-	AuditAggregateRequest    = "audit_evidence_request"
-	AuditAggregateSubmission = "audit_evidence_submission"
-	AuditAggregateSample     = "audit_sample"
-	AuditAggregatePackage    = "audit_package"
-	AuditAggregateCapability = "audit_capability"
-	AuditAggregateGrant      = "audit_access_grant"
+	AuditAggregateEngagement    = "audit_engagement"
+	AuditAggregateRequest       = "audit_evidence_request"
+	AuditAggregateSubmission    = "audit_evidence_submission"
+	AuditAggregateSample        = "audit_sample"
+	AuditAggregatePackage       = "audit_package"
+	AuditAggregatePacketReceipt = "audit_packet_receipt"
+	AuditAggregateCapability    = "audit_capability"
+	AuditAggregateGrant         = "audit_access_grant"
 )
 
 type EngagementRecordedPayload struct {

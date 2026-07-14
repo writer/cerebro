@@ -13,6 +13,8 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/grcaudit"
+	"github.com/writer/cerebro/internal/grcauditpacket"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -171,6 +173,8 @@ func applyAuditProjectionPayload(ctx context.Context, tx *sql.Tx, event auditPro
 		return applyAuditSample(ctx, tx, event)
 	case grcaudit.AuditAggregatePackage:
 		return applyAuditPackage(ctx, tx, event)
+	case grcaudit.AuditAggregatePacketReceipt:
+		return applyAuditPacketReceipt(ctx, tx, event)
 	case grcaudit.AuditAggregateCapability:
 		return applyAuditCapability(ctx, tx, event)
 	case grcaudit.AuditAggregateGrant:
@@ -178,6 +182,30 @@ func applyAuditProjectionPayload(ctx context.Context, tx *sql.Tx, event auditPro
 	default:
 		return grcaudit.ErrInvalidRequest
 	}
+}
+
+func applyAuditPacketReceipt(ctx context.Context, tx *sql.Tx, event auditProjectionEvent) error {
+	if event.aggregateVersion != 1 || event.operation != "recorded" {
+		return grcaudit.ErrVersionConflict
+	}
+	var packet grcauditpacket.Packet
+	if err := decodeAuditPayload(event, &packet); err != nil {
+		return err
+	}
+	if packet.ID != event.aggregateID || packet.TenantID != event.tenantID || packet.Digest != event.contentDigest {
+		return grcaudit.ErrInvalidRequest
+	}
+	if err := grcauditpacket.Verify(packet); err != nil {
+		return grcaudit.ErrInvalidRequest
+	}
+	payload, err := json.Marshal(packet)
+	if err != nil {
+		return fmt.Errorf("encode audit packet receipt: %w", err)
+	}
+	return insertGRCAuditPacket(ctx, tx, &ports.GRCAuditPacketReceipt{
+		ID: packet.ID, TenantID: packet.TenantID, FindingID: packet.FindingReference.ID,
+		Digest: packet.Digest, Payload: payload, CreatedAt: packet.GeneratedAt,
+	})
 }
 
 func applyAuditEngagement(ctx context.Context, tx *sql.Tx, event auditProjectionEvent) error {
@@ -712,6 +740,8 @@ func auditEventKindMatchesAggregate(kind string, aggregateType string) bool {
 	case grcaudit.AuditAggregateSample:
 		return kind == workflowevents.EventKindComplianceSampleRecorded
 	case grcaudit.AuditAggregatePackage:
+		return kind == workflowevents.EventKindComplianceAuditPackageRecorded
+	case grcaudit.AuditAggregatePacketReceipt:
 		return kind == workflowevents.EventKindComplianceAuditPackageRecorded
 	default:
 		return false
