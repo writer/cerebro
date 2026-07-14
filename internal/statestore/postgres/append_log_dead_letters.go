@@ -16,7 +16,8 @@ import (
 
 const appendLogDeadLetterDefaultLimit = uint32(50)
 const appendLogDeadLetterMaxLimit = uint32(500)
-const appendLogDeadLetterCleanupDefaultLimit = uint32(100)
+const appendLogDeadLetterCleanupDefaultLimit = 100
+const appendLogDeadLetterCleanupMaxLimit = 500
 
 var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS append_log_dead_letters (
   id TEXT PRIMARY KEY,
@@ -374,22 +375,25 @@ func (s *Store) CleanupAppendLogDeadLetters(ctx context.Context, request ports.A
 	if request.Actor == "" || request.Reason == "" {
 		return ports.AppendLogDeadLetterCleanupResult{}, errors.New("cleanup actor and reason are required")
 	}
-	if request.Limit == 0 {
-		request.Limit = appendLogDeadLetterCleanupDefaultLimit
-	}
-	if request.Limit > appendLogDeadLetterMaxLimit {
-		request.Limit = appendLogDeadLetterMaxLimit
+	limit := appendLogDeadLetterCleanupDefaultLimit
+	if request.Limit > 0 {
+		if request.Limit > uint32(appendLogDeadLetterCleanupMaxLimit) {
+			limit = appendLogDeadLetterCleanupMaxLimit
+		} else {
+			limit = int(request.Limit)
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("begin append log dead letter cleanup: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, appendLogDeadLetterCleanupSelectSQL(), request.TerminalBefore.UTC(), request.AfterID, int64(request.Limit)+1)
+	rows, err := tx.QueryContext(ctx, appendLogDeadLetterCleanupSelectSQL(), request.TerminalBefore.UTC(), request.AfterID, int64(limit)+1)
 	if err != nil {
 		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("select append log dead letter cleanup batch: %w", err)
 	}
-	ids := make([]string, 0, request.Limit+1)
+	defer func() { _ = rows.Close() }()
+	ids := make([]string, 0, limit+1)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
@@ -405,9 +409,9 @@ func (s *Store) CleanupAppendLogDeadLetters(ctx context.Context, request ports.A
 	if err := rows.Close(); err != nil {
 		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("close append log dead letter cleanup batch: %w", err)
 	}
-	hasMore := len(ids) > int(request.Limit)
-	if len(ids) > int(request.Limit) {
-		ids = ids[:request.Limit]
+	hasMore := len(ids) > limit
+	if len(ids) > limit {
+		ids = ids[:limit]
 	}
 	result := ports.AppendLogDeadLetterCleanupResult{DeletedIDs: make([]string, 0, len(ids))}
 	for _, id := range ids {
