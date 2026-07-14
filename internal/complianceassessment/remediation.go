@@ -235,6 +235,9 @@ func VerifyRemediationMilestone(current RemediationPlan, expectedVersion uint64,
 	if current.Version != expectedVersion {
 		return RemediationPlan{}, versionConflict(expectedVersion, current.Version)
 	}
+	if current.State != RemediationActive && current.State != RemediationReopened && current.State != RemediationVerificationPending {
+		return RemediationPlan{}, fmt.Errorf("%w: plan state %q cannot verify milestones", ErrInvalidTransition, current.State)
+	}
 	next := cloneRemediationPlan(current)
 	index, err := milestoneIndex(next.Milestones, milestoneID)
 	if err != nil {

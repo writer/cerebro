@@ -2,6 +2,7 @@ package complianceassessment
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -217,6 +218,39 @@ func TestRemediationDependenciesIndependentVerificationAndReopen(t *testing.T) {
 		if milestone.State != MilestoneCompleted || milestone.VerifiedBy != "" || len(milestone.VerificationEvidenceIDs) != 0 {
 			t.Fatalf("reopen did not invalidate milestone verification: %+v", milestone)
 		}
+	}
+}
+
+func TestClosedRemediationPlanRejectsMilestoneVerification(t *testing.T) {
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	plan, err := NewRemediationPlan(RemediationPlanInput{
+		ID: "plan-a", TenantID: "tenant-a", ProgramID: "program-a", ScopeRevisionID: "scope-r1", RiskID: "risk-a", WorkItemID: "work-a",
+		Treatment: RiskTreatmentMitigate, OwnerID: "plan-owner", TargetAt: now.Add(30 * 24 * time.Hour),
+		Milestones: []RemediationMilestoneInput{
+			{ID: "milestone-a", Title: "Deploy change", OwnerID: "implementer-a", TargetAt: now.Add(7 * 24 * time.Hour), PlannedAction: "Deploy the control change."},
+		},
+		CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("NewRemediationPlan() error = %v", err)
+	}
+	active, err := ActivateRemediationPlan(plan, plan.Version, "plan-owner", now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ActivateRemediationPlan() error = %v", err)
+	}
+	active = mustStartMilestone(t, active, "milestone-a", "implementer-a", now.Add(2*time.Hour))
+	active = mustCompleteMilestone(t, active, "milestone-a", "implementer-a", now.Add(3*time.Hour))
+	closed, err := CloseRemediationPlan(active, active.Version, nil, "", now.Add(4*time.Hour))
+	if err != nil {
+		t.Fatalf("CloseRemediationPlan() error = %v", err)
+	}
+	before := cloneRemediationPlan(closed)
+
+	if _, err := VerifyRemediationMilestone(closed, closed.Version, "milestone-a", []string{"verify-a"}, "reviewer-a", now.Add(5*time.Hour)); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("VerifyRemediationMilestone(closed) error = %v, want ErrInvalidTransition", err)
+	}
+	if !reflect.DeepEqual(closed, before) {
+		t.Fatalf("closed remediation plan mutated: got %+v, want %+v", closed, before)
 	}
 }
 
