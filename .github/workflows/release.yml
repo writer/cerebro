@@ -78,7 +78,7 @@ jobs:
           - name: catalog
             command: make catalog-check detection-catalog-check
           - name: graph-actions
-            command: make graph-action-check graphagent-static-validator-check sourcecoverage-evaluator-check panopticon-resource-extractor-check
+            command: make graph-action-check rust-wasm-check
           - name: finding-dsl
             command: make finding-dsl-check
           - name: policy-rule
