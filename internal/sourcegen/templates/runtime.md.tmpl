@@ -1,0 +1,28 @@
+# {{.Name}}
+
+Generated Source Runtime SDK scaffold for `{{.SourceID}}`.
+
+## Runtime input
+
+- Source type: `{{.SourceType}}`
+- Auth model: `{{.AuthModel}}`
+- Freshness expectation: `{{.FreshnessExpectation}}`
+- Failure modes: `{{join .FailureModes ","}}`
+
+## Runtime output
+
+- Adapter package: `sources/{{.SourceID}}`
+- Health endpoint: `/source-runtimes/{{.SourceID}}/health`
+- Source health receipt: `sources/{{.SourceID}}/source_health_receipt.json`
+- EvidenceCAS reference kind: `{{.SourceID}}.evidence_cas_reference`
+
+## Families
+{{range .Families}}
+- `{{.Name}}`, emits `{{.EventKind}}`, reads `{{.Path}}`
+{{end}}
+
+## Tests
+
+- Fixture pairs: `sources/{{.SourceID}}/testdata/discover_<family>.json` and `sources/{{.SourceID}}/testdata/read_<family>.json` for every generated family
+- `go test ./sources/{{.SourceID}} ./internal/sourceprojection -count=1`
+- `make catalog-check`

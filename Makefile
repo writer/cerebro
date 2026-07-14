@@ -452,7 +452,7 @@ openapi-ts-check: ## Verify generated TypeScript types are current.
 
 connector-onboard: ## Onboard a connector from an OpenAPI spec (SPEC=path/to/spec.yaml SOURCE_ID=name).
 	@test -n "$(SPEC)" || (echo "SPEC is required, e.g. make connector-onboard SPEC=spec.yaml SOURCE_ID=example" && exit 1)
-	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" $(if $(DRY_RUN),-dry-run,)
+	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" -output-dir="$(if $(OUTPUT_DIR),$(OUTPUT_DIR),.)" -catalog-out="$(CATALOG_OUT)" -dry-run="$(if $(DRY_RUN),$(DRY_RUN),true)" -wire="$(if $(WIRE),$(WIRE),true)"
 
 codegen-status: ## Show unified codegen status across all generators.
 	go run ./tools/codegenstatus

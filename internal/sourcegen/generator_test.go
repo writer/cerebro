@@ -2201,6 +2201,71 @@ func TestGeneratePreflightsExistingFilesBeforeWriting(t *testing.T) {
 	}
 }
 
+func TestGenerateRegeneratesUnmodifiedOutputsWithoutForce(t *testing.T) {
+	outputDir := t.TempDir()
+	request := Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host", "server"},
+		Name:         "Demo Source",
+		OutputDir:    outputDir,
+	}
+	first, err := Generate(request)
+	if err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	if _, err := os.Stat(first.GenerationManifest); err != nil {
+		t.Fatalf("generation manifest stat: %v", err)
+	}
+
+	request.Name = "Renamed Demo Source"
+	request.AssetSchemas = []string{"host"}
+	second, err := Generate(request)
+	if err != nil {
+		t.Fatalf("second Generate() error = %v", err)
+	}
+	if second.GenerationManifest != first.GenerationManifest {
+		t.Fatalf("manifest path changed from %q to %q", first.GenerationManifest, second.GenerationManifest)
+	}
+	if source := readGeneratedFile(t, outputDir, "sources/demo_source/catalog.yaml"); !strings.Contains(source, "Renamed Demo Source") {
+		t.Fatalf("regenerated catalog missing updated name:\n%s", source)
+	}
+	for _, stale := range []string{
+		"sources/demo_source/testdata/discover_asset_server.json",
+		"sources/demo_source/testdata/read_asset_server.json",
+	} {
+		if _, err := os.Stat(filepath.Join(outputDir, stale)); !os.IsNotExist(err) {
+			t.Fatalf("stale output %s still exists, err=%v", stale, err)
+		}
+	}
+}
+
+func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
+	outputDir := t.TempDir()
+	request := Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host"},
+		OutputDir:    outputDir,
+	}
+	if _, err := Generate(request); err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	sourcePath := filepath.Join(outputDir, "sources", "demo_source", "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package demosource\n\n// operator change\n"), 0o600); err != nil {
+		t.Fatalf("write operator change: %v", err)
+	}
+	request.Name = "Changed Input"
+	if _, err := Generate(request); !errors.Is(err, ErrGeneratedOutputModified) {
+		t.Fatalf("second Generate() error = %v, want ownership error", err)
+	}
+	current, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read operator change: %v", err)
+	}
+	if !strings.Contains(string(current), "operator change") {
+		t.Fatalf("operator change was overwritten:\n%s", current)
+	}
+}
+
 func TestGenerateFindingOnlyScaffold(t *testing.T) {
 	outputDir := t.TempDir()
 	if _, err := Generate(Request{

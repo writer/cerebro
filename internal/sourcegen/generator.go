@@ -1,6 +1,7 @@
 package sourcegen
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"unicode"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcegen/projectionspec"
+	"github.com/writer/cerebro/internal/sourcegen/templateengine"
 )
 
 const (
@@ -40,6 +43,9 @@ const (
 var errMissingSchemas = errors.New("at least one asset_schemas or finding_schemas entry is required")
 var errGeneratedNameCollision = errors.New("generated source names collide")
 var errUnsupportedDefinition = errors.New("connector definition is not executable by sourcegen")
+
+//go:embed templates/*.tmpl
+var sourcegenTemplates embed.FS
 
 // Request describes a generated Source Runtime SDK integration.
 type Request struct {
@@ -78,6 +84,7 @@ type Result struct {
 	Files               []string `json:"files"`
 	HealthEndpoint      string   `json:"health_endpoint"`
 	SourceHealthReceipt string   `json:"source_health_receipt"`
+	GenerationManifest  string   `json:"generation_manifest"`
 	PRBody              string   `json:"pr_body"`
 	NextSteps           []string `json:"next_steps"`
 }
@@ -184,10 +191,15 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	plan, err := planGeneration(normalized, files)
+	if err != nil {
+		return nil, err
+	}
 	paths := make([]string, 0, len(files))
 	for _, file := range files {
 		paths = append(paths, file.Path)
 	}
+	paths = append(paths, plan.ManifestPath)
 	result := &Result{
 		SourceID:            normalized.SourceID,
 		SourceType:          normalized.SourceType,
@@ -196,6 +208,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		Files:               paths,
 		HealthEndpoint:      healthEndpoint(normalized.SourceID),
 		SourceHealthReceipt: filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "source_health_receipt.json"),
+		GenerationManifest:  plan.ManifestPath,
 		PRBody:              filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "PR_BODY.md"),
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
@@ -208,7 +221,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	if normalized.DryRun {
 		return result, nil
 	}
-	if err := ensureWritable(files, normalized.Force); err != nil {
+	if err := preflightGeneration(normalized, files, plan); err != nil {
 		return nil, err
 	}
 	for _, file := range files {
@@ -218,6 +231,9 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		if err := os.WriteFile(file.Path, []byte(file.Content), 0o600); err != nil {
 			return nil, err
 		}
+	}
+	if err := commitGeneration(plan); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -417,20 +433,6 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 	normalized.DefaultFamily = normalized.Families[0].Name
 	normalized.DefaultPath = normalized.Families[0].Path
 	return normalized, nil
-}
-
-func ensureWritable(files []generatedFile, force bool) error {
-	if force {
-		return nil
-	}
-	for _, file := range files {
-		if _, err := os.Stat(file.Path); err == nil {
-			return fmt.Errorf("%s already exists; pass force=true to overwrite", file.Path)
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return nil
 }
 
 func authModelConfig(authModel string) (string, string, error) {
@@ -684,10 +686,11 @@ func familiesForRequest(request normalizedRequest) []familyData {
 func familiesForDefinition(request normalizedRequest, definition connectordefinitions.Definition) ([]familyData, error) {
 	families := make([]familyData, 0, len(definition.ResourceFamilies))
 	for _, resource := range definition.ResourceFamilies {
-		class, err := executableProjectionClass(resource)
+		projectionTemplate, err := executableProjectionTemplate(resource)
 		if err != nil {
 			return nil, err
 		}
+		class := projectionTemplate.Class
 		name := strings.TrimSpace(resource.ID)
 		eventKind := strings.TrimSpace(resource.Event.Kind)
 		if eventKind == "" {
@@ -703,7 +706,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 		}
 		requiredAttributes := resource.Event.RequiredAttributes
 		if len(requiredAttributes) == 0 {
-			requiredAttributes = requiredAttributesForClass(class)
+			requiredAttributes = append([]string(nil), projectionTemplate.RequiredAttributes...)
 		}
 		requiredPayloadFields := resource.Event.RequiredPayloadFields
 		if len(requiredPayloadFields) == 0 {
@@ -906,59 +909,23 @@ func uniqueStrings(values []string) []string {
 	return out
 }
 
-func executableProjectionClass(resource connectordefinitions.ResourceFamily) (string, error) {
+func executableProjectionTemplate(resource connectordefinitions.ResourceFamily) (projectionspec.Template, error) {
 	template := ""
 	if resource.Projection != nil {
 		template = strings.TrimSpace(resource.Projection.Template)
 	}
 	if template == "" {
-		return "", fmt.Errorf("%w: family %q needs a projection template before sourcegen can emit executable code", errUnsupportedDefinition, resource.ID)
+		return projectionspec.Template{}, fmt.Errorf("%w: family %q needs a projection template before sourcegen can emit executable code", errUnsupportedDefinition, resource.ID)
 	}
-	switch template {
-	case "asset", "cloud_resource", "endpoint_device", "repository":
-		return "asset", nil
-	case "finding", "vulnerability":
-		return "finding", nil
-	case "secret":
-		return "secret", nil
-	case "policy", "compliance_control":
-		return "policy", nil
-	case "deployment":
-		return "deployment", nil
-	case "alert":
-		return "alert", nil
-	case "identity_user", "identity_group", "group_membership", "audit_event", "evidence_cas_reference":
-		return template, nil
-	default:
-		return "", fmt.Errorf("%w: projection template %q is not executable by sourcegen yet", errUnsupportedDefinition, template)
+	registry, err := projectionspec.Load()
+	if err != nil {
+		return projectionspec.Template{}, fmt.Errorf("load projection templates: %w", err)
 	}
-}
-
-func requiredAttributesForClass(class string) []string {
-	switch class {
-	case "finding":
-		return []string{"tenant_id", "source_event_id", "finding_id", "resource_urn", "severity", "status"}
-	case "identity_user":
-		return []string{"tenant_id", "source_event_id", "user_id"}
-	case "identity_group":
-		return []string{"tenant_id", "source_event_id", "group_id"}
-	case "group_membership":
-		return []string{"tenant_id", "source_event_id", "group_id", "member_id"}
-	case "audit_event":
-		return []string{"tenant_id", "source_event_id", "event_type", "actor_id"}
-	case "evidence_cas_reference":
-		return []string{"tenant_id", "source_event_id", "evidence_id", "evidence_type", "evidence_cas_uri", "evidence_cas_digest"}
-	case "secret":
-		return []string{"tenant_id", "source_event_id", "secret_id", "secret_name"}
-	case "policy":
-		return []string{"tenant_id", "source_event_id", "policy_id", "policy_name"}
-	case "deployment":
-		return []string{"tenant_id", "source_event_id", "deployment_id", "deployment_name"}
-	case "alert":
-		return []string{"tenant_id", "source_event_id", "alert_id", "alert_severity"}
-	default:
-		return []string{"tenant_id", "source_event_id", "resource_urn", "resource_type", "resource_id"}
+	projectionTemplate, ok := registry.Get(template)
+	if !ok {
+		return projectionspec.Template{}, fmt.Errorf("%w: projection template %q is not executable by sourcegen yet", errUnsupportedDefinition, template)
 	}
+	return projectionTemplate, nil
 }
 
 func schemaNameFromRef(schemaRef string, fallback string) string {
@@ -990,6 +957,10 @@ func validateGeneratedFamilies(families []familyData) error {
 
 func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 	sourceRoot := filepath.Join(request.OutputDir, "sources", request.SourceID)
+	runtimeDocs, err := renderRuntimeDocs(request)
+	if err != nil {
+		return nil, err
+	}
 	files := []generatedFile{
 		{Path: filepath.Join(sourceRoot, "catalog.yaml"), Content: renderCatalog(request)},
 		{Path: filepath.Join(sourceRoot, "deploy.yaml"), Content: renderDeploy(request)},
@@ -997,7 +968,7 @@ func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 		{Path: filepath.Join(sourceRoot, "fixture.go"), Content: renderFixtureGo(request)},
 		{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
 		{Path: filepath.Join(sourceRoot, "source_health_receipt.json"), Content: renderSourceHealthReceipt(request)},
-		{Path: filepath.Join(sourceRoot, "SOURCE_RUNTIME.md"), Content: renderRuntimeDocs(request)},
+		{Path: filepath.Join(sourceRoot, "SOURCE_RUNTIME.md"), Content: runtimeDocs},
 		{Path: filepath.Join(sourceRoot, "PR_BODY.md"), Content: renderPRBody(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+".go"), Content: renderProjectionGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+"_test.go"), Content: renderProjectionTestGo(request)},
@@ -2456,29 +2427,16 @@ func renderSourceHealthReceipt(request normalizedRequest) string {
 	return string(append(payload, '\n'))
 }
 
-func renderRuntimeDocs(request normalizedRequest) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", request.Name)
-	fmt.Fprintf(&b, "Generated Source Runtime SDK scaffold for `%s`.\n\n", request.SourceID)
-	fmt.Fprintf(&b, "## Runtime input\n\n")
-	fmt.Fprintf(&b, "- Source type: `%s`\n", request.SourceType)
-	fmt.Fprintf(&b, "- Auth model: `%s`\n", request.AuthModel)
-	fmt.Fprintf(&b, "- Freshness expectation: `%s`\n", request.FreshnessExpectation)
-	fmt.Fprintf(&b, "- Failure modes: `%s`\n\n", strings.Join(request.FailureModes, ","))
-	fmt.Fprintf(&b, "## Runtime output\n\n")
-	fmt.Fprintf(&b, "- Adapter package: `sources/%s`\n", request.SourceID)
-	fmt.Fprintf(&b, "- Health endpoint: `%s`\n", healthEndpoint(request.SourceID))
-	fmt.Fprintf(&b, "- Source health receipt: `sources/%s/source_health_receipt.json`\n", request.SourceID)
-	fmt.Fprintf(&b, "- EvidenceCAS reference kind: `%s.evidence_cas_reference`\n\n", request.SourceID)
-	fmt.Fprintf(&b, "## Families\n\n")
-	for _, family := range request.Families {
-		fmt.Fprintf(&b, "- `%s`, emits `%s`, reads `%s`\n", family.Name, family.EventKind, family.Path)
+func renderRuntimeDocs(request normalizedRequest) (string, error) {
+	engine, err := templateengine.New(sourcegenTemplates, "templates", nil)
+	if err != nil {
+		return "", fmt.Errorf("load sourcegen templates: %w", err)
 	}
-	fmt.Fprintf(&b, "\n## Tests\n\n")
-	fmt.Fprintf(&b, "- Fixture pairs: `sources/%s/testdata/discover_<family>.json` and `sources/%s/testdata/read_<family>.json` for every generated family\n", request.SourceID, request.SourceID)
-	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
-	fmt.Fprintf(&b, "- `make catalog-check`\n")
-	return b.String()
+	document, err := engine.RenderString("runtime.md", request)
+	if err != nil {
+		return "", fmt.Errorf("render runtime documentation: %w", err)
+	}
+	return document, nil
 }
 
 func renderPRBody(request normalizedRequest) string {
