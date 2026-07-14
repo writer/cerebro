@@ -495,8 +495,9 @@ func boundedConflictCategory(value string) string {
 	}
 }
 
-// ProjectRecords converts one event into base projection records without
-// context-aware enrichments or writes.
+// ProjectRecords converts one event into base projection records without context-aware
+// enrichments or writes. Projectors that require caller cancellation return
+// ErrProjectionContextRequired; use ProjectRecordsContext for those event kinds.
 func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 		return registry.Project(event)
