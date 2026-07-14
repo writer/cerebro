@@ -10,6 +10,8 @@ STATIC_VALIDATOR_WASM := internal/graphagent/staticvalidator.wasm
 STATIC_VALIDATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_graphagent_staticvalidator.wasm
 SOURCECOVERAGE_EVALUATOR_WASM := internal/sourcecoverage/evaluator.wasm
 SOURCECOVERAGE_EVALUATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_sourcecoverage_evaluator.wasm
+SOURCECOVERAGE_CANONICAL_PLATFORM := Linux-x86_64
+HOST_PLATFORM := $(shell uname -s)-$(shell uname -m)
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -434,6 +436,7 @@ graphagent-static-validator-check: rust-fmt-check rust-clippy rust-test ## Verif
 	cmp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
 
 sourcecoverage-evaluator-generate: ## Rebuild the embedded source coverage evaluator.
+	@test "$(HOST_PLATFORM)" = "$(SOURCECOVERAGE_CANONICAL_PLATFORM)" || (echo "source coverage artifact generation requires $(SOURCECOVERAGE_CANONICAL_PLATFORM); current platform is $(HOST_PLATFORM)" && exit 1)
 	RUSTFLAGS="--remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
 	cp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"
 	chmod 0644 "$(SOURCECOVERAGE_EVALUATOR_WASM)"
@@ -441,7 +444,7 @@ sourcecoverage-evaluator-generate: ## Rebuild the embedded source coverage evalu
 sourcecoverage-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded source coverage evaluator is current.
 	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator -- -D warnings
 	RUSTFLAGS="--remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
-	cmp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"
+	@if [ "$(HOST_PLATFORM)" = "$(SOURCECOVERAGE_CANONICAL_PLATFORM)" ]; then cmp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"; else echo "source coverage artifact byte comparison runs on $(SOURCECOVERAGE_CANONICAL_PLATFORM); current platform is $(HOST_PLATFORM)"; fi
 
 finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DSL YAML.
 	go run ./tools/findingdsl --migrate-policies --write
