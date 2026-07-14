@@ -27,7 +27,7 @@ func sortResults(results []ObjectiveResult) {
 }
 
 func (s *Service) Runner() platformjobs.Runner {
-	return func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+	return func(ctx context.Context, job *ports.Job, jobs *platformjobs.Service) (map[string]any, map[string]string, error) {
 		if job == nil {
 			return nil, nil, ErrRunNotFound
 		}
@@ -36,9 +36,25 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err != nil {
 			return nil, nil, err
 		}
+		result := map[string]any{"run_id": run.ID, "state": run.State}
+		refs := map[string]string{"assessment_run": run.ID}
 		switch run.State {
-		case RunComplete, RunFailed, RunCancelled, RunSuperseded:
-			return map[string]any{"run_id": run.ID, "state": run.State}, map[string]string{"assessment_run": run.ID}, nil
+		case RunComplete:
+			return result, refs, nil
+		case RunFailed:
+			failureCode := strings.TrimSpace(run.FailureCode)
+			if failureCode == "" {
+				failureCode = "unspecified"
+			}
+			return result, refs, fmt.Errorf("assessment run %q is failed: %s", run.ID, failureCode)
+		case RunCancelled, RunSuperseded:
+			if jobs == nil {
+				return result, refs, errors.New("assessment job runtime is unavailable for terminal reconciliation")
+			}
+			if _, err := jobs.Cancel(context.WithoutCancel(ctx), job.ID); err != nil {
+				return result, refs, fmt.Errorf("reconcile terminal assessment job: %w", err)
+			}
+			return result, refs, nil
 		}
 		if s.collector == nil {
 			return nil, nil, s.failRun(ctx, run, "collector_unavailable")
