@@ -192,7 +192,7 @@ jobs:
           echo "FACTORY_API_KEY=${FACTORY_API_KEY}" >> "$GITHUB_ENV"
       - name: Run Droid Exec
         if: steps.target.outputs.should_run == 'true'
-        uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
+        uses: Factory-AI/droid-action@aaa1cd31dfe2c4fc1756af9ec386390cf4b8a56a # main
         with:
           factory_api_key: ${{ env.FACTORY_API_KEY }}
           # Keep manual @droid reviews as the escalation path after the fast
