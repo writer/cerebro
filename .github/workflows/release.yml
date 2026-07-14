@@ -79,6 +79,7 @@ jobs:
             command: make catalog-check detection-catalog-check
           - name: graph-actions
             command: make graph-action-check rust-wasm-check
+            setup_rust: true
           - name: finding-dsl
             command: make finding-dsl-check
           - name: policy-rule
@@ -109,7 +110,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Set up Rust
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Run ${{ matrix.name }}
