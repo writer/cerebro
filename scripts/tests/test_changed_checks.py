@@ -47,7 +47,14 @@ class ChangedChecksTests(unittest.TestCase):
                 self.assertIn("graph-action-check", self.command_names([path]))
 
     def test_shared_embedded_wasm_paths_select_aggregate_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "scripts/embedded_wasm.py"):
+        for path in (
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "scripts/embedded_wasm.py",
+            "internal/wasmguest/Cargo.toml",
+            "internal/wasmguest/src/lib.rs",
+        ):
             with self.subTest(path=path):
                 names = self.command_names([path])
                 self.assertIn("rust-wasm-check", names)
