@@ -49,23 +49,11 @@ frameworks:
             maps_to:
               - framework_name: SOC 2
                 control_id: CC6.1
-                relationship: equivalent-to
-                matching_rationale: functional
-                mapping_description: Both controls require MFA before privileged access is granted.
-                mapping_authority: Compliance Engineering
-                mapping_source: https://example.com/crosswalks/identity
-                review_status: complete
-                reviewed_at: 2026-07-14
-                mapping_version: "1.0"
 ```
 
 Required fields are intentionally small for compatibility: catalog `version`, framework `name`, family `id` and `name`, and control `id`. Rich controls should add `title`, `objective`, `intent`, `assessment_methods`, `implementation_guidance`, `audit_procedure`, `failure_modes`, `remediation_guidance`, `evidence_expectations`, and `maps_to` as soon as they are known.
 
 Assessment methods are limited to `examine`, `interview`, and `test`. Evidence expectations require `id` and `type` when present. `maps_to` entries must reference controls that exist in the merged catalog.
-
-Typed `maps_to` relationships use `equal-to`, `equivalent-to`, `subset-of`, `superset-of`, `intersects-with`, or `no-relationship`. Set `matching_rationale` to `syntactic`, `semantic`, or `functional`, explain the assertion in `mapping_description`, and record its `review_status`. `relationship` and `matching_rationale` must be provided together. Existing entries without those fields remain valid and retain the legacy untyped behavior; an omitted relationship does not claim equivalence.
-
-Use `mapping_authority`, `mapping_source`, `review_status`, `reviewed_at`, and `mapping_version` to make the assertion reproducible. `review_status` accepts `complete`, `not-complete`, `draft`, `deprecated`, or `superseded`. A completed review requires all four provenance fields. `mapping_source` must be an absolute URI, and `reviewed_at` must be an ISO 8601 date or RFC 3339 timestamp.
 
 Source coverage contracts can point back into this catalog with per-dimension `control_refs`. Use those refs when a source family directly supplies evidence for a control, and keep the dimension's `evidence_types` aligned with the control's `evidence_expectations.type` values. `catalogcheck` validates explicit source coverage refs against the built-in merged catalog so typos do not become silent compliance gaps.
 
@@ -83,7 +71,7 @@ catalog, err := compliance.LoadControlCatalogFiles(
 index, issues := compliance.BuildCatalogIndex(catalog)
 ```
 
-Use `maps_to` to connect custom controls to controls already covered by generated policy rules. Rule coverage resolution credits the selected source control for untyped legacy mappings and completed `equal-to`, `equivalent-to`, or `superset-of` relationships. Draft, incomplete, deprecated, superseded, partial, and negative assertions remain in the generated coverage index without establishing full target-control coverage.
+Use `maps_to` to connect custom controls to controls already covered by generated policy rules. Rule coverage resolution credits the selected custom control when a rule maps to any equivalent control in `maps_to`.
 
 ## Control Extension Packs
 
@@ -248,10 +236,6 @@ Coverage is resolved in two steps:
 The result reports selected control count, mapped rule IDs, controls without rule coverage, rules by control, and controls by rule. This is the foundation for later control posture and auditor evidence packets.
 
 `BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, coverage status, audit-readiness counts, per-control readiness scores, rule counts, mapped rules, mapped equivalent controls, evidence expectations, unmapped controls, and per-profile coverage summaries.
-
-The same generation step writes `internal/compliance/finding_profile_index.json.gz`, a compressed serving projection keyed by finding rule and control reference. `/grc/findings` loads and validates this projection during startup instead of parsing the full audit document on the first request. The serving projection retains mapping basis, source-to-target paths, typed relationship metadata, review provenance, and the coverage-index version.
-
-Built-in profile IDs can be used with `GET /grc/findings?profile_id=<id>`. Custom control-packet requests build the same profile association index from the request-scoped extension coverage and return `profile_finding_matches`. Request-scoped custom profiles are not stored as durable program revisions.
 
 Regenerate and verify the index with:
 

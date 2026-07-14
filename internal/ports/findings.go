@@ -14,13 +14,6 @@ type FindingControlRef struct {
 	ControlID     string `json:"control_id"`
 }
 
-// FindingProfilePredicate scopes persisted findings to the union of profile
-// rule IDs and profile control references.
-type FindingProfilePredicate struct {
-	RuleIDs     []string
-	ControlRefs []FindingControlRef
-}
-
 // FindingNote captures one analyst note attached to one finding.
 type FindingNote struct {
 	ID        string    `json:"id"`
@@ -130,7 +123,6 @@ type ListFindingsRequest struct {
 	RuntimeIDs          []string
 	FindingID           string
 	RuleID              string
-	ProfilePredicate    FindingProfilePredicate
 	Severity            string
 	Status              string
 	ResourceURN         string

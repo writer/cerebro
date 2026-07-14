@@ -37,7 +37,6 @@ type FindingItem struct {
 	PolicyID     string       `json:"policy_id,omitempty"`
 	PolicyName   string       `json:"policy_name,omitempty"`
 	Controls     []ControlRef `json:"controls,omitempty"`
-	Profiles     []ProfileRef `json:"compliance_profiles,omitempty"`
 	GRCFindingRisk
 	GRCFindingWorkflowMetadata
 	EvidenceCount   int        `json:"evidence_count"`
@@ -72,36 +71,6 @@ type GRCFindingRisk struct {
 type ControlRef struct {
 	FrameworkName string `json:"framework_name"`
 	ControlID     string `json:"control_id"`
-}
-
-type ProfileRef struct {
-	ID                     string               `json:"id"`
-	Name                   string               `json:"name"`
-	CoverageIndexVersion   string               `json:"coverage_index_version"`
-	CoverageIndexRevision  string               `json:"coverage_index_revision"`
-	MappingBasis           string               `json:"mapping_basis"`
-	MatchedControls        []ControlRef         `json:"matched_controls,omitempty"`
-	DirectControls         []ControlRef         `json:"direct_controls,omitempty"`
-	CatalogMappedControls  []ControlRef         `json:"catalog_mapped_controls,omitempty"`
-	MatchedFindingControls []ControlRef         `json:"matched_finding_controls,omitempty"`
-	MappingPaths           []ProfileMappingPath `json:"mapping_paths,omitempty"`
-}
-
-type ProfileMappingPath struct {
-	Source             ControlRef `json:"source"`
-	Target             ControlRef `json:"target"`
-	MatchDirection     string     `json:"match_direction"`
-	DeclaredSource     ControlRef `json:"declared_source"`
-	DeclaredTarget     ControlRef `json:"declared_target"`
-	CoverageCredit     string     `json:"coverage_credit"`
-	Relationship       string     `json:"relationship,omitempty"`
-	MatchingRationale  string     `json:"matching_rationale,omitempty"`
-	MappingDescription string     `json:"mapping_description,omitempty"`
-	MappingAuthority   string     `json:"mapping_authority,omitempty"`
-	MappingSource      string     `json:"mapping_source,omitempty"`
-	ReviewStatus       string     `json:"review_status,omitempty"`
-	ReviewedAt         string     `json:"reviewed_at,omitempty"`
-	MappingVersion     string     `json:"mapping_version,omitempty"`
 }
 
 type ControlItem struct {
@@ -149,7 +118,6 @@ func FindingItems(findings []*ports.FindingRecord, sourceIDs map[string]string, 
 			PolicyID:     finding.PolicyID,
 			PolicyName:   finding.PolicyName,
 			Controls:     ControlRefs(finding.ControlRefs),
-			Profiles:     builtinFindingProfiles(finding.RuleID, finding.ControlRefs),
 			GRCFindingRisk: GRCFindingRisk{
 				RiskScore:       finding.RiskScore,
 				LikelihoodScore: finding.LikelihoodScore,

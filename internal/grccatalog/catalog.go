@@ -227,7 +227,6 @@ func buildCatalog() []Source {
 				Param{ID: "event_id", Type: ParamString, Description: "Restrict to findings from one event."},
 				Param{ID: "policy_id", Type: ParamString, Description: "Restrict to findings from one policy."},
 				Param{ID: "framework", Type: ParamString, Description: "Restrict to findings mapped to one framework."},
-				Param{ID: "profile_id", Type: ParamString, Description: "Restrict to findings linked to one built-in compliance profile."},
 				Param{ID: "age_min_days", Type: ParamInt, Description: "Minimum finding age in days."},
 				Param{ID: "age_max_days", Type: ParamInt, Description: "Maximum finding age in days."},
 				Param{ID: "sla_status", Type: ParamString, Description: "SLA posture filter (e.g. overdue)."},

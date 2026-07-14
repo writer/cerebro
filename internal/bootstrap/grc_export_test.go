@@ -157,9 +157,6 @@ func TestGRCFindingsExportReturnsCSV(t *testing.T) {
 	if disposition := resp.Header.Get("Content-Disposition"); !strings.Contains(disposition, "cerebro-findings-") {
 		t.Fatalf("content-disposition = %q, want cerebro-findings filename", disposition)
 	}
-	if resp.Header.Get("X-Cerebro-Result-Limit") != "500" || resp.Header.Get("X-Cerebro-Result-Truncated") != "false" {
-		t.Fatalf("export boundary headers = limit %q truncated %q", resp.Header.Get("X-Cerebro-Result-Limit"), resp.Header.Get("X-Cerebro-Result-Truncated"))
-	}
 	records := parseCSVResponse(t, resp)
 	if len(records) != 3 {
 		t.Fatalf("records = %d, want header + 2 findings", len(records))
@@ -183,43 +180,11 @@ func TestGRCFindingsExportReturnsCSV(t *testing.T) {
 	if finding1["controls"] != "SOC 2 CC6.1" {
 		t.Fatalf("finding-1 controls = %q, want SOC 2 CC6.1", finding1["controls"])
 	}
-	if !strings.Contains(finding1["compliance_profile_ids"], "soc2-security-core") || finding1["coverage_index_versions"] == "" || finding1["coverage_index_revisions"] == "" || finding1["mapping_bases"] == "" {
-		t.Fatalf("finding-1 compliance columns = %#v, want profile, revision, and mapping basis", finding1)
-	}
-	if !strings.Contains(finding1["matched_finding_controls"], "SOC 2 CC6.1") {
-		t.Fatalf("finding-1 matched finding controls = %q", finding1["matched_finding_controls"])
-	}
 	if finding1["title"] != "Risky, finding" {
 		t.Fatalf("finding-1 title = %q, want comma-safe title", finding1["title"])
 	}
 	if rows["finding-2"]["evidence_count"] != "1" {
 		t.Fatalf("finding-2 evidence_count = %q, want 1", rows["finding-2"]["evidence_count"])
-	}
-}
-
-func TestGRCFindingsExportAcceptsProfileFilterAndExplainsRows(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Second)
-	tenantID, runtimeID := "tenant", "runtime-alpha"
-	store := grcExportTestStore(tenantID, runtimeID, now)
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
-	server := httptest.NewServer(app.Handler())
-	defer server.Close()
-
-	resp, err := server.Client().Get(server.URL + "/grc/findings/export?tenant_id=" + tenantID + "&profile_id=soc2-security-core")
-	if err != nil {
-		t.Fatalf("GET profile findings export error = %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	records := parseCSVResponse(t, resp)
-	if len(records) != 2 {
-		t.Fatalf("records = %d, want header + one profile finding", len(records))
-	}
-	if resp.Header.Get("X-Cerebro-Profile-ID") != "soc2-security-core" {
-		t.Fatalf("X-Cerebro-Profile-ID = %q", resp.Header.Get("X-Cerebro-Profile-ID"))
-	}
-	row := indexCSVByColumn(records, "id")["finding-1"]
-	if row["compliance_profile_ids"] == "" || row["matched_profile_controls"] == "" || row["matched_finding_controls"] == "" {
-		t.Fatalf("profile export row = %#v, want link explanation columns", row)
 	}
 }
 
