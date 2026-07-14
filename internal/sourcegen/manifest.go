@@ -2,6 +2,7 @@ package sourcegen
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +14,10 @@ import (
 	"github.com/writer/cerebro/internal/sourcegen/stampfile"
 )
 
-var ErrGeneratedOutputModified = errors.New("generated output contains changes not owned by sourcegen")
+var (
+	ErrGeneratedOutputModified       = errors.New("generated output contains changes not owned by sourcegen")
+	ErrInvalidGenerationManifestPath = errors.New("generation manifest output path is invalid")
+)
 
 const (
 	generatorVersion = "sourcegen/v2"
@@ -28,6 +32,7 @@ type generationManifest struct {
 }
 
 type generationPlan struct {
+	OutputDir    string
 	ManifestPath string
 	Manifest     generationManifest
 	StalePaths   []string
@@ -35,7 +40,7 @@ type generationPlan struct {
 
 func planGeneration(request normalizedRequest, files []generatedFile) (generationPlan, error) {
 	manifestPath := filepath.Join(request.OutputDir, "sources", request.SourceID, manifestName)
-	previous, err := loadGenerationManifest(manifestPath)
+	previous, err := loadGenerationManifest(request.OutputDir, manifestPath)
 	if err != nil {
 		return generationPlan{}, err
 	}
@@ -68,26 +73,34 @@ func planGeneration(request normalizedRequest, files []generatedFile) (generatio
 		}
 		next.Outputs[relativePath] = digest
 	}
-	plan := generationPlan{ManifestPath: manifestPath, Manifest: next}
+	plan := generationPlan{OutputDir: request.OutputDir, ManifestPath: manifestPath, Manifest: next}
 	if previous == nil {
 		return plan, nil
 	}
 	for previousPath := range previous.Outputs {
 		if _, retained := next.Outputs[previousPath]; !retained {
-			plan.StalePaths = append(plan.StalePaths, filepath.Join(request.OutputDir, filepath.FromSlash(previousPath)))
+			stalePath, err := manifestOutputPath(request.OutputDir, previousPath)
+			if err != nil {
+				return generationPlan{}, err
+			}
+			plan.StalePaths = append(plan.StalePaths, stalePath)
 		}
 	}
 	sort.Strings(plan.StalePaths)
 	return plan, nil
 }
 
-func preflightGeneration(request normalizedRequest, files []generatedFile, plan generationPlan) error {
-	previous, err := loadGenerationManifest(plan.ManifestPath)
+func preflightGeneration(root *os.Root, request normalizedRequest, files []generatedFile, plan generationPlan) error {
+	previous, err := loadGenerationManifest(plan.OutputDir, plan.ManifestPath)
 	if err != nil {
 		return err
 	}
 	for _, file := range files {
-		current, err := os.ReadFile(file.Path) // #nosec G304 -- generated path is constrained to OutputDir.
+		relativePath, err := manifestRelativePath(request.OutputDir, file.Path)
+		if err != nil {
+			return err
+		}
+		current, err := root.ReadFile(filepath.FromSlash(relativePath))
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -97,24 +110,20 @@ func preflightGeneration(request normalizedRequest, files []generatedFile, plan 
 		if bytes.Equal(current, []byte(file.Content)) || request.Force {
 			continue
 		}
-		relativePath, err := manifestRelativePath(request.OutputDir, file.Path)
-		if err != nil {
-			return err
-		}
 		if previous != nil && digestMatches(current, previous.Outputs[relativePath]) {
 			continue
 		}
 		return fmt.Errorf("%w: %s; preserve the changes in an override file or pass force=true", ErrGeneratedOutputModified, file.Path)
 	}
 	for _, stalePath := range plan.StalePaths {
-		current, err := os.ReadFile(stalePath) // #nosec G304 -- path came from a prior constrained manifest.
-		if os.IsNotExist(err) {
-			continue
-		}
+		relativePath, err := manifestRelativePath(request.OutputDir, stalePath)
 		if err != nil {
 			return err
 		}
-		relativePath, err := manifestRelativePath(request.OutputDir, stalePath)
+		current, err := root.ReadFile(filepath.FromSlash(relativePath))
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -125,9 +134,13 @@ func preflightGeneration(request normalizedRequest, files []generatedFile, plan 
 	return nil
 }
 
-func commitGeneration(plan generationPlan) error {
+func commitGeneration(root *os.Root, plan generationPlan) error {
 	for _, stalePath := range plan.StalePaths {
-		if err := os.Remove(stalePath); err != nil && !os.IsNotExist(err) {
+		relativePath, err := manifestRelativePath(plan.OutputDir, stalePath)
+		if err != nil {
+			return err
+		}
+		if err := root.Remove(filepath.FromSlash(relativePath)); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove stale generated output %s: %w", stalePath, err)
 		}
 	}
@@ -136,19 +149,21 @@ func commitGeneration(plan generationPlan) error {
 		return err
 	}
 	payload = append(payload, '\n')
-	if err := os.MkdirAll(filepath.Dir(plan.ManifestPath), 0o750); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(plan.ManifestPath), ".sourcegen-manifest-*.tmp")
+	manifestPath, err := manifestRelativePath(plan.OutputDir, plan.ManifestPath)
 	if err != nil {
 		return err
 	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
+	manifestPath = filepath.FromSlash(manifestPath)
+	manifestDir := filepath.Dir(manifestPath)
+	if err := root.MkdirAll(manifestDir, 0o750); err != nil {
 		return err
 	}
+	temporaryPath := filepath.Join(manifestDir, ".sourcegen-manifest-"+rand.Text()+".tmp")
+	temporary, err := root.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Remove(temporaryPath) }()
 	if _, err := temporary.Write(payload); err != nil {
 		_ = temporary.Close()
 		return err
@@ -156,11 +171,23 @@ func commitGeneration(plan generationPlan) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, plan.ManifestPath)
+	return root.Rename(temporaryPath, manifestPath)
 }
 
-func loadGenerationManifest(path string) (*generationManifest, error) {
-	payload, err := os.ReadFile(path) // #nosec G304 -- generated path is constrained to OutputDir.
+func loadGenerationManifest(outputDir string, path string) (*generationManifest, error) {
+	relativePath, err := manifestRelativePath(outputDir, path)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(outputDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	payload, err := root.ReadFile(filepath.FromSlash(relativePath))
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -175,6 +202,15 @@ func loadGenerationManifest(path string) (*generationManifest, error) {
 		return nil, fmt.Errorf("sourcegen manifest %s is incomplete", path)
 	}
 	return &manifest, nil
+}
+
+func manifestOutputPath(outputDir string, manifestPath string) (string, error) {
+	path := filepath.Join(outputDir, filepath.FromSlash(manifestPath))
+	relativePath, err := manifestRelativePath(outputDir, path)
+	if err != nil || relativePath != manifestPath || relativePath == "." {
+		return "", fmt.Errorf("%w: %q", ErrInvalidGenerationManifestPath, manifestPath)
+	}
+	return path, nil
 }
 
 func manifestRelativePath(outputDir string, path string) (string, error) {
