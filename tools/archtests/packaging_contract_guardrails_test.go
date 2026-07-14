@@ -133,8 +133,8 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	orgSecretsIndex := strings.Index(release, "name: Fetch org-level secrets from Infisical")
 	repoSecretsIndex := strings.Index(release, "name: Fetch repo-level secrets from Infisical")
 	bootstrapIndex := strings.Index(release, "name: Check Infisical bootstrap")
-	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex {
-		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials")
+	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex || repoSecretsIndex > dispatchIndex {
+		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials and dispatching the release")
 	}
 	for name, section := range map[string]string{
 		"org":  release[orgSecretsIndex:repoSecretsIndex],
