@@ -356,8 +356,12 @@ func assessmentEventApplied(ctx context.Context, tx *sql.Tx, eventID, digest str
 	return false, err
 }
 
-func insertAssessmentReceipt(ctx context.Context, tx *sql.Tx, eventID, tenantID, aggregateType, aggregateID string, version uint64, digest string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO compliance_assessment_event_receipts (event_id,tenant_id,aggregate_type,aggregate_id,aggregate_version,payload_digest) VALUES ($1,$2,$3,$4,$5,$6)`, eventID, tenantID, aggregateType, aggregateID, version, digest)
+type assessmentReceiptExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertAssessmentReceipt(ctx context.Context, tx assessmentReceiptExecutor, eventID, tenantID, aggregateType, aggregateID string, version uint64, digest string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO compliance_assessment_event_receipts (event_id,tenant_id,aggregate_type,aggregate_id,aggregate_version,payload_digest) VALUES ($1,$2,$3,$4,$5,$6)`, eventID, strings.TrimSpace(tenantID), aggregateType, aggregateID, version, digest)
 	return err
 }
 
