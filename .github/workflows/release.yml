@@ -217,7 +217,31 @@ jobs:
           - target_environment: go-prod
             apply_mode: pull_request
     steps:
+      - name: Check Infisical bootstrap
+        id: infisical
+        shell: bash
+        env:
+          INFISICAL_ORG_IDENTITY_UUID: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          INFISICAL_ORG_PROJECT_SLUG: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          INFISICAL_REPO_IDENTITY_UUID: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          INFISICAL_REPO_PROJECT_SLUG: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in INFISICAL_ORG_IDENTITY_UUID INFISICAL_ORG_PROJECT_SLUG INFISICAL_REPO_IDENTITY_UUID INFISICAL_REPO_PROJECT_SLUG; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment credential bootstrap is incomplete; using the repository fallback."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Fetch organization release credentials
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
@@ -227,6 +251,7 @@ jobs:
           env-slug: prod
           export-type: env
       - name: Fetch repository release credentials
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc

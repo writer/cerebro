@@ -91,6 +91,8 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"apply_mode: direct_push",
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
+		"name: Check Infisical bootstrap",
+		`echo "configured=false" >> "$GITHUB_OUTPUT"`,
 		"Dispatch stable deployment request",
 		"for target in sec-dev go-prod; do",
 		`cerebro-runtime-contract-${target}.json`,
@@ -118,6 +120,20 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	matrixIndex := strings.Index(release, "target_environment: sec-dev")
 	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
 		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
+	}
+	orgSecretsIndex := strings.Index(release, "name: Fetch organization release credentials")
+	repoSecretsIndex := strings.Index(release, "name: Fetch repository release credentials")
+	bootstrapIndex := strings.Index(release, "name: Check Infisical bootstrap")
+	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex || repoSecretsIndex > dispatchIndex {
+		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials and dispatching the release")
+	}
+	for name, section := range map[string]string{
+		"organization": release[orgSecretsIndex:repoSecretsIndex],
+		"repository":   release[repoSecretsIndex:dispatchIndex],
+	} {
+		if !strings.Contains(section, "if: steps.infisical.outputs.configured == 'true'") {
+			t.Fatalf("release workflow must guard %s secret fetch behind the bootstrap check", name)
+		}
 	}
 
 	candidateBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "cut-release.yml"))
