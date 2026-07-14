@@ -62,6 +62,27 @@ func TestBuildEvidenceDebtLedgerIsDeterministicAcrossInputOrder(t *testing.T) {
 	}
 }
 
+func TestBuildEvidenceDebtLedgerRepresentsVerifiedZeroDebt(t *testing.T) {
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ledger, err := BuildEvidenceDebtLedger(EvidenceDebtLedgerInput{
+		TenantID:    "tenant-a",
+		WindowStart: windowStart,
+		AsOf:        windowStart.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("BuildEvidenceDebtLedger() error = %v", err)
+	}
+	if ledger.Metrics != (EvidenceDebtMetrics{}) {
+		t.Fatalf("metrics = %#v, want zero debt", ledger.Metrics)
+	}
+	if len(ledger.OpenDebt) != 0 || len(ledger.Breakdowns) != 0 {
+		t.Fatalf("open debt = %#v, breakdowns = %#v", ledger.OpenDebt, ledger.Breakdowns)
+	}
+	if ledger.LedgerDigest == "" {
+		t.Fatal("ledger digest is empty")
+	}
+}
+
 func TestBuildEvidenceDebtLedgerRejectsCrossTenantAndUnknownDebt(t *testing.T) {
 	input := debtLedgerFixture()
 	input.Entries[0].TenantID = "tenant-b"

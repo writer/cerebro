@@ -115,8 +115,8 @@ func BuildEvidenceDebtLedger(input EvidenceDebtLedgerInput) (EvidenceDebtLedger,
 	input.TenantID = strings.TrimSpace(input.TenantID)
 	input.WindowStart = complianceassessment.CanonicalTime(input.WindowStart)
 	input.AsOf = complianceassessment.CanonicalTime(input.AsOf)
-	if input.TenantID == "" || input.WindowStart.IsZero() || input.AsOf.IsZero() || !input.AsOf.After(input.WindowStart) || len(input.Entries) == 0 {
-		return EvidenceDebtLedger{}, fmt.Errorf("%w: tenant, ordered window, and debt entries are required", ErrInvalidReliabilityInput)
+	if input.TenantID == "" || input.WindowStart.IsZero() || input.AsOf.IsZero() || !input.AsOf.After(input.WindowStart) {
+		return EvidenceDebtLedger{}, fmt.Errorf("%w: tenant and ordered window are required", ErrInvalidReliabilityInput)
 	}
 	entries := append([]EvidenceDebtEntry(nil), input.Entries...)
 	for index := range entries {
