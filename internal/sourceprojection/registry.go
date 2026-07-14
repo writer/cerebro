@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,11 @@ type ProjectionHandler interface {
 // ProjectFunc converts one source event into graph projection records.
 type ProjectFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
+// ContextProjectFunc converts one source event into graph projection records while preserving caller cancellation.
+type ContextProjectFunc func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+
+type contextProjectInvoker func(ContextProjectFunc, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+
 // EventProjector binds one event kind to one projector.
 type EventProjector struct {
 	Kind    string
@@ -34,6 +40,7 @@ type EventProjector struct {
 type Registry struct {
 	mu                              sync.RWMutex
 	projectors                      map[string]ProjectFunc
+	contextProjectors               map[string]ContextProjectFunc
 	handlers                        map[string]ProjectionHandler
 	connectorDefinitionFingerprints map[string]string
 	connectorDefinitionKinds        map[string]map[string]struct{}
@@ -45,6 +52,7 @@ type Registry struct {
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 	registry := &Registry{
 		projectors:                      make(map[string]ProjectFunc, len(projectors)),
+		contextProjectors:               make(map[string]ContextProjectFunc),
 		handlers:                        make(map[string]ProjectionHandler),
 		connectorDefinitionFingerprints: map[string]string{},
 		connectorDefinitionKinds:        map[string]map[string]struct{}{},
@@ -601,8 +609,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"okta.authenticator":                            oktaAuthenticatorProjections,
 	"okta.threat_insight":                           oktaThreatInsightProjections,
 	"okta.trusted_origin":                           oktaTrustedOriginProjections,
-	"panopticon.alert":                              panopticonAlertProjections,
-	"panopticon.case":                               panopticonCaseProjections,
 	"panopticon.ioc":                                panopticonIOCProjections,
 	"google_workspace.user":                         googleWorkspaceUserProjections,
 	"google_workspace.group":                        googleWorkspaceGroupProjections,
@@ -6251,6 +6257,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"zylo.users":        zyloUsersProjections,
 
 	// awscollectorgen:projector (insert new kind projectors above this line)
+}, contextProjectors: map[string]ContextProjectFunc{
+	"panopticon.alert": panopticonAlertProjections,
+	"panopticon.case":  panopticonCaseProjections,
 }}
 
 func init() {
@@ -6303,8 +6312,11 @@ func (r *Registry) Kinds() []string {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.projectors))
+	kinds := make([]string, 0, len(r.projectors)+len(r.contextProjectors))
 	for kind := range r.projectors {
+		kinds = append(kinds, kind)
+	}
+	for kind := range r.contextProjectors {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
@@ -6313,6 +6325,17 @@ func (r *Registry) Kinds() []string {
 
 // Project applies the registered projector for an event.
 func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return r.project(event, nil)
+}
+
+// ProjectContext applies the registered projector while preserving caller cancellation.
+func (r *Registry) ProjectContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return r.project(event, func(project ContextProjectFunc, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return project(ctx, event)
+	})
+}
+
+func (r *Registry) project(event *cerebrov1.EventEnvelope, invokeContextProject contextProjectInvoker) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	if event == nil {
 		return nil, nil, fmt.Errorf("event is required")
 	}
@@ -6321,11 +6344,23 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	project, ok := r.projectors[strings.TrimSpace(event.GetKind())]
-	if !ok {
+	kind := strings.TrimSpace(event.GetKind())
+	project, ok := r.projectors[kind]
+	contextProject, contextOK := r.contextProjectors[kind]
+	if !ok && !contextOK {
 		return nil, nil, nil
 	}
-	entities, links, err := project(event)
+	var entities []*ports.ProjectedEntity
+	var links []*ports.ProjectedLink
+	var err error
+	if contextOK {
+		if invokeContextProject == nil {
+			return nil, nil, fmt.Errorf("projector %q requires caller context", kind)
+		}
+		entities, links, err = invokeContextProject(contextProject, event)
+	} else {
+		entities, links, err = project(event)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -6338,4 +6373,9 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 // ProjectEvent projects one event through the built-in registry without stores.
 func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().Project(event)
+}
+
+// ProjectEventContext projects one event through the built-in registry while preserving caller cancellation.
+func ProjectEventContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return BuiltinRegistry().ProjectContext(ctx, event)
 }

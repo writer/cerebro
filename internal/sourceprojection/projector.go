@@ -137,7 +137,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if s == nil || (s.state == nil && s.graph == nil) {
 		return ports.ProjectionResult{}, nil
 	}
-	entities, links, err := s.ProjectRecords(event)
+	entities, links, err := s.ProjectRecordsContext(ctx, event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -499,13 +499,26 @@ func boundedConflictCategory(value string) string {
 // writing them. Graph ingest uses this to coalesce repeated records before
 // touching Neo4j.
 func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return registry.Project(event)
+	})
+}
+
+// ProjectRecordsContext converts one event into normalized projection records while preserving caller cancellation.
+func (s *Service) ProjectRecordsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return registry.ProjectContext(ctx, event)
+	})
+}
+
+func (s *Service) projectRecords(event *cerebrov1.EventEnvelope, project func(*Registry, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	if event == nil {
 		return nil, nil, fmt.Errorf("event is required")
 	}
 	if s == nil || s.registry == nil {
 		return nil, nil, nil
 	}
-	entities, links, err := s.registry.Project(event)
+	entities, links, err := project(s.registry, event)
 	if err != nil {
 		return nil, nil, err
 	}
