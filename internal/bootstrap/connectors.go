@@ -569,7 +569,7 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := connectorpresentation.ParseLibraryView(r.URL.Query().Get("view"))
 	if err != nil {
-		writeConnectorError(w, fmt.Errorf("%w: %v", connectorcredentials.ErrInvalidRequest, err))
+		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
 		return
 	}
 	pagination, err := connectorLibraryPaginationFromRequest(r)
@@ -579,7 +579,7 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 	}
 	policy, err := sourcecertification.ParseAvailabilityPolicy(a.cfg.ConnectorAccess.MinCertificationTier, r.URL.Query().Get("min_certification_tier"), r.URL.Query().Get("include_preview"))
 	if err != nil {
-		writeConnectorError(w, fmt.Errorf("%w: %v", connectorcredentials.ErrInvalidRequest, err))
+		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
 		return
 	}
 	response := a.connectorLibraryWithPolicy(r, tenantID, policy)

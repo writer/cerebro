@@ -648,7 +648,7 @@ func (app *App) mcpListConnectors(r *http.Request, args map[string]any) (any, er
 	}
 	policy, err := sourcecertification.ParseAvailabilityPolicy(app.cfg.ConnectorAccess.MinCertificationTier, mcpStringArg(args, "min_certification_tier"), preview)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errInvalidHTTPRequest, err)
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 	}
 	return app.connectorLibraryWithPolicy(r, tenantID, policy), nil
 }
