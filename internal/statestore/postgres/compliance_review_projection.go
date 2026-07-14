@@ -133,6 +133,23 @@ func (p *ComplianceReviewProjector) ProjectWorkAction(ctx context.Context, metad
 	})
 }
 
+// ProjectWorkReopen persists an invalidated work item while binding the event
+// receipt to its immutable reopen reason.
+func (p *ComplianceReviewProjector) ProjectWorkReopen(ctx context.Context, metadata ComplianceProjectionMetadata, item complianceassessment.WorkItem, reopen complianceassessment.WorkReopenRecord) (ComplianceProjectionReceipt, error) {
+	tenantID := strings.TrimSpace(item.Basis.TenantID)
+	if tenantID == "" || strings.TrimSpace(item.ID) == "" || reopen.WorkItemID != item.ID || strings.TrimSpace(reopen.ID) == "" {
+		return ComplianceProjectionReceipt{}, fmt.Errorf("%w: work item and reopen reason scope differ", ErrComplianceProjectionInvalid)
+	}
+	payload := struct {
+		Item   complianceassessment.WorkItem         `json:"item"`
+		Reopen complianceassessment.WorkReopenRecord `json:"reopen"`
+	}{Item: item, Reopen: reopen}
+	event := complianceProjectionEvent{metadata: metadata, tenantID: tenantID, kind: "work_reopen", aggregateID: item.ID, version: item.Version}
+	return p.project(ctx, event, payload, func(tx *sql.Tx) error {
+		return upsertComplianceCurrent(ctx, tx, "compliance_work_items", tenantID, item.ID, metadata.ExpectedVersion, item.Version, item)
+	})
+}
+
 // ProjectRemediationPlan persists a plan and its current milestone projections.
 func (p *ComplianceReviewProjector) ProjectRemediationPlan(ctx context.Context, metadata ComplianceProjectionMetadata, plan complianceassessment.RemediationPlan) (ComplianceProjectionReceipt, error) {
 	if strings.TrimSpace(plan.TenantID) == "" || strings.TrimSpace(plan.ID) == "" || len(plan.Milestones) == 0 {
@@ -140,6 +157,30 @@ func (p *ComplianceReviewProjector) ProjectRemediationPlan(ctx context.Context, 
 	}
 	event := complianceProjectionEvent{metadata: metadata, tenantID: plan.TenantID, kind: "remediation_plan", aggregateID: plan.ID, version: plan.Version}
 	return p.project(ctx, event, plan, func(tx *sql.Tx) error {
+		if err := upsertComplianceCurrent(ctx, tx, "compliance_remediation_plans", plan.TenantID, plan.ID, metadata.ExpectedVersion, plan.Version, plan); err != nil {
+			return err
+		}
+		for _, milestone := range plan.Milestones {
+			if err := upsertComplianceMilestone(ctx, tx, plan.TenantID, plan.ID, plan.Version, milestone); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// ProjectRemediationReopen persists an invalidated plan while binding the event
+// receipt to its immutable reopen reason.
+func (p *ComplianceReviewProjector) ProjectRemediationReopen(ctx context.Context, metadata ComplianceProjectionMetadata, plan complianceassessment.RemediationPlan, reopen complianceassessment.RemediationReopenRecord) (ComplianceProjectionReceipt, error) {
+	if strings.TrimSpace(plan.TenantID) == "" || strings.TrimSpace(plan.ID) == "" || reopen.PlanID != plan.ID || strings.TrimSpace(reopen.ID) == "" || len(plan.Milestones) == 0 {
+		return ComplianceProjectionReceipt{}, fmt.Errorf("%w: remediation plan and reopen reason scope differ", ErrComplianceProjectionInvalid)
+	}
+	payload := struct {
+		Plan   complianceassessment.RemediationPlan         `json:"plan"`
+		Reopen complianceassessment.RemediationReopenRecord `json:"reopen"`
+	}{Plan: plan, Reopen: reopen}
+	event := complianceProjectionEvent{metadata: metadata, tenantID: plan.TenantID, kind: "remediation_reopen", aggregateID: plan.ID, version: plan.Version}
+	return p.project(ctx, event, payload, func(tx *sql.Tx) error {
 		if err := upsertComplianceCurrent(ctx, tx, "compliance_remediation_plans", plan.TenantID, plan.ID, metadata.ExpectedVersion, plan.Version, plan); err != nil {
 			return err
 		}

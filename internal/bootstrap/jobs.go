@@ -66,6 +66,11 @@ func (a *App) newJobService() *platformjobs.Service {
 // RecoverPlatformJobs resumes queued work and jobs whose worker lease expired.
 // Claiming is owner-checked, so every server replica may call this at startup.
 func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
+	if a != nil && a.services.remediation != nil {
+		if _, err := a.services.remediation.RecoverProjections(ctx, 0); err != nil {
+			return 0, fmt.Errorf("recover remediation projections: %w", err)
+		}
+	}
 	if _, ok := a.deps.StateStore.(ports.JobLeaseStore); !ok {
 		return 0, nil
 	}

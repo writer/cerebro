@@ -76,12 +76,12 @@ type RemediationPlan struct {
 
 // RemediationMilestoneInput creates one pending milestone.
 type RemediationMilestoneInput struct {
-	ID            string
-	Title         string
-	OwnerID       string
-	TargetAt      time.Time
-	DependsOnIDs  []string
-	PlannedAction string
+	ID            string    `json:"id"`
+	Title         string    `json:"title"`
+	OwnerID       string    `json:"owner_id"`
+	TargetAt      time.Time `json:"target_at"`
+	DependsOnIDs  []string  `json:"depends_on_ids,omitempty"`
+	PlannedAction string    `json:"planned_action"`
 }
 
 // RemediationPlanInput creates a draft remediation plan.
