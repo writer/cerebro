@@ -38,6 +38,9 @@ jobs:
             command: make openapi-check openapi-lint
           - name: graph-actions
             command: make graph-action-check graphagent-static-validator-check
+          - name: codegen
+            command: make codegen-check
+            checkout_fetch_depth: '0'
           - name: docs-drift
             command: make docs-drift-check
           - name: readme

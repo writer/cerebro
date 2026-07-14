@@ -1,0 +1,121 @@
+{
+  "version": "compliance-assessment-conformance/v1",
+  "base_input": {
+    "result_id": "assessment-result-00000000000000000000000000000001",
+    "objective_id": "objective-1",
+    "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"},
+    "scope_state": "in_scope",
+    "requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "satisfied", "evidence_ids": ["evidence-1"]}],
+    "coverage_state": "complete",
+    "source_state": "supported",
+    "source_runtime_ids": ["runtime-1"],
+    "evaluator_revision": "evaluator-v1",
+    "now": "2026-07-11T12:00:00.123456789Z"
+  },
+  "base_expected": {
+    "scope_state": "in_scope",
+    "automated_outcome": "satisfied",
+    "design_state": "effective",
+    "operating_effectiveness_state": "effective",
+    "evidence_state": "sufficient",
+    "disposition_state": "none",
+    "assurance": "high",
+    "auditor_state": "not_reviewed",
+    "reason_codes": ["assessment_satisfied"],
+    "next_actions": ["none"],
+    "legacy_status": "passing"
+  },
+  "cases": [
+    {"name": "pass", "input": {}, "expected": {}, "expected_digest": "sha256:aa8a2d895d281a61d20b63c855fd2fa37aba64a65446ced6f8955acacd8c2992"},
+    {
+      "name": "active_finding",
+      "input": {"finding_ids": ["finding-1"]},
+      "expected": {"automated_outcome": "not_satisfied", "design_state": "ineffective", "operating_effectiveness_state": "ineffective", "reason_codes": ["active_finding"], "next_actions": ["remediate"], "legacy_status": "failing"},
+      "expected_digest": "sha256:198812615976bf6380f497efd52c8f54841f326469d4a01614ab3ecdf4ea4168"
+    },
+    {
+      "name": "missing_evidence",
+      "input": {"requirement_assessments": []},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "missing", "assurance": "none", "reason_codes": ["evidence_missing"], "next_actions": ["collect_evidence"], "legacy_status": "missing_evidence"},
+      "expected_digest": "sha256:54264f10f4f4efab1705634b27510ffc958a80645f18d93598c893b77f2d9f35"
+    },
+    {
+      "name": "invalid_evidence",
+      "input": {"invalid_evidence": true},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "untrusted", "assurance": "none", "reason_codes": ["evidence_invalid"], "next_actions": ["review"], "legacy_status": "manual_review"},
+      "expected_digest": "sha256:e2722f0ddfccb8c114cdb33a35bfd0aad9afd42004b50b0ef0bd4f9e3620150a"
+    },
+    {
+      "name": "stale_evidence",
+      "input": {"requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "stale", "evidence_ids": ["evidence-1"]}]},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "stale", "assurance": "low", "reason_codes": ["evidence_stale"], "next_actions": ["refresh_evidence"], "legacy_status": "stale_evidence"},
+      "expected_digest": "sha256:06e1ea29fa9a5ba7e5119e2c89a1006bbe2dbd61315da9bc52579475b7cf261c"
+    },
+    {
+      "name": "conflicting_evidence",
+      "input": {"conflicting_evidence": true},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "conflicting", "assurance": "none", "reason_codes": ["evidence_conflicting"], "next_actions": ["review"], "legacy_status": "manual_review"},
+      "expected_digest": "sha256:b7e40a786e56bfb861b13f5c41ff1340c1bb664bbf8862f2f31a226e0bce9742"
+    },
+    {
+      "name": "insufficient_coverage",
+      "input": {"coverage_state": "partial"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "incomplete", "assurance": "none", "reason_codes": ["coverage_incomplete"], "next_actions": ["collect_evidence"], "legacy_status": "missing_evidence"},
+      "expected_digest": "sha256:39a2db74de27785831955518f8bf0d53186a04f5b4e86a17e1f4bcc79cd5672f"
+    },
+    {
+      "name": "untrusted_source",
+      "input": {"source_state": "unverified"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "untrusted", "assurance": "none", "reason_codes": ["source_untrusted"], "next_actions": ["review"], "legacy_status": "manual_review"},
+      "expected_digest": "sha256:4461d5e7adffda425a8109667d44c95a9f3dc52b1334900a593ec42105bbf764"
+    },
+    {
+      "name": "unknown_source_trust",
+      "input": {"source_state": "unknown"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "incomplete", "assurance": "none", "reason_codes": ["source_trust_unknown"], "next_actions": ["restore_source"], "legacy_status": "missing_evidence"},
+      "expected_digest": "sha256:433f8d418ccd407220aabaede7acf6e24051e6235f7cf4a6742b3726df40a694"
+    },
+    {
+      "name": "manual_evidence",
+      "input": {"requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "manual_review", "evidence_ids": ["evidence-1"]}]},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "manual_review", "assurance": "low", "reason_codes": ["manual_evidence_review"], "next_actions": ["review"], "legacy_status": "manual_review"},
+      "expected_digest": "sha256:a447dfee1c8cf7373aea662d94c746cfe49d97a97b280fee29c161d060eab786"
+    },
+    {
+      "name": "accepted_exception",
+      "input": {"requirement_assessments": [], "disposition_state": "accepted_exception"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "missing", "disposition_state": "accepted_exception", "assurance": "none", "reason_codes": ["accepted_exception", "evidence_missing"], "next_actions": ["collect_evidence", "retest"], "legacy_status": "exception"},
+      "expected_digest": "sha256:e6fcb3ebbe4e87e16280bb0dfd733e111bfecc7019731d1a499e9f0e0139ffec"
+    },
+    {
+      "name": "not_applicable",
+      "input": {"scope_state": "not_applicable", "requirement_assessments": [], "coverage_state": "unknown", "source_state": "unknown"},
+      "expected": {"scope_state": "not_applicable", "automated_outcome": "not_assessed", "design_state": "not_assessed", "operating_effectiveness_state": "not_tested", "evidence_state": "sufficient", "assurance": "none", "reason_codes": ["not_applicable"], "next_actions": ["none"], "legacy_status": "not_applicable"},
+      "expected_digest": "sha256:ae8ae1b84fac40ac390cbad3296b2c7e7e5de2e4f7854098b844e4b7ef33fbb7"
+    },
+    {
+      "name": "inherited_responsibility",
+      "input": {"inherited": true},
+      "expected": {"assurance": "medium", "reason_codes": ["assessment_satisfied", "inherited_responsibility"]},
+      "expected_digest": "sha256:667aafa34b03e54d6614bf72d615472b84021498c53c32db11d135cbaba20646"
+    },
+    {
+      "name": "sampled_testing",
+      "input": {"sampled": true},
+      "expected": {"assurance": "medium", "reason_codes": ["assessment_satisfied", "sampled_testing"]},
+      "expected_digest": "sha256:04f8705f2effaf18c64b323ae3820aec1156e250df6a4a75eafb4eb9b289be92"
+    },
+    {
+      "name": "no_configured_source",
+      "input": {"source_state": "unconfigured"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "incomplete", "assurance": "none", "reason_codes": ["source_unconfigured"], "next_actions": ["restore_source"], "legacy_status": "missing_evidence"},
+      "expected_digest": "sha256:9ec2b209ed153bae1d18fc647ea6699f36a91c1cdd53ffed418d242416dad3a7"
+    },
+    {
+      "name": "empty_population_with_satisfied_evidence",
+      "input": {"coverage_state": "empty"},
+      "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "incomplete", "assurance": "none", "reason_codes": ["population_empty"], "next_actions": ["collect_evidence"], "legacy_status": "missing_evidence"},
+      "expected_digest": "sha256:992703e2b87bdee82adecf50d8c791bb2c6774f88c6548871292408834affc1d"
+    }
+  ]
+}

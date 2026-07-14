@@ -15,6 +15,7 @@ const EventAttributeJobID = "job_id"
 
 var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
 var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter already replayed")
+var ErrReplayCursorNotFound = errors.New("append log replay cursor not found")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"
@@ -122,11 +123,26 @@ type ReplayRequest struct {
 	TenantID            string
 	AttributeEquals     map[string]string
 	Limit               uint32
+	Cursor              string
 }
 
 // EventReplayer replays stored event envelopes from the append log.
 type EventReplayer interface {
 	Replay(context.Context, ReplayRequest) ([]*cerebrov1.EventEnvelope, error)
+}
+
+// ReplayPage is one bounded replay page. NextCursor is opaque to callers and
+// resumes strictly before the oldest event returned in this page.
+type ReplayPage struct {
+	Events     []*cerebrov1.EventEnvelope
+	NextCursor string
+	Complete   bool
+}
+
+// EventReplayPager traverses arbitrarily large filtered event sets without
+// increasing the per-request replay bound.
+type EventReplayPager interface {
+	ReplayPage(context.Context, ReplayRequest) (ReplayPage, error)
 }
 
 // RuntimeIndexEntry is one append-log message indexed by source runtime and stream sequence.
