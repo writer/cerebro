@@ -102,6 +102,9 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 	if err != nil {
 		return false, err
 	}
+	if strings.TrimSpace(event.GetTenantId()) != strings.TrimSpace(record.TenantID) {
+		return false, errors.New("remediation event tenant does not match payload")
+	}
 	if record.Kind != workflowevents.EventKindComplianceWorkItemUpdated && record.Kind != workflowevents.EventKindComplianceRemediationMilestoneUpdated {
 		return false, nil
 	}

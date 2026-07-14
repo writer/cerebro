@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/complianceassessment"
@@ -23,6 +25,28 @@ func TestEncodeAggregateVersionRejectsInvalidRange(t *testing.T) {
 	}
 	if got, err := encodeAggregateVersion(math.MaxInt64); err != nil || got != math.MaxInt64 {
 		t.Fatalf("encodeAggregateVersion(MaxInt64) = (%d, %v)", got, err)
+	}
+}
+
+func TestProjectEventRejectsEnvelopeTenantMismatch(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	runtime := newMemoryRuntime()
+	service := New(runtime, runtime, runtime, runtime)
+	if _, err := service.DeriveWork(context.Background(), failedResultInput(now), "assessor-a"); err != nil {
+		t.Fatalf("DeriveWork() error = %v", err)
+	}
+	if len(runtime.events) != 1 {
+		t.Fatalf("appended events = %d, want 1", len(runtime.events))
+	}
+	event := proto.Clone(runtime.events[0]).(*cerebrov1.EventEnvelope)
+	event.TenantId = "tenant-b"
+	runtime.resetProjections()
+	projected, err := service.ProjectEvent(context.Background(), event)
+	if err == nil || projected {
+		t.Fatalf("ProjectEvent(tenant mismatch) = %v, %v, want rejection", projected, err)
+	}
+	if len(runtime.work) != 0 {
+		t.Fatalf("tenant-mismatched event projected %d work items", len(runtime.work))
 	}
 }
 
