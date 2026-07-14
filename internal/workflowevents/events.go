@@ -27,6 +27,7 @@ const (
 	EventAttributeWorkflowKind = "workflow_kind"
 	EventAttributeDecisionID   = "decision_id"
 	EventAttributeActionID     = "action_id"
+	EventAttributeObservation  = "observation_digest"
 	EventAttributeOutcomeID    = "outcome_id"
 	EventAttributeFindingID    = "finding_id"
 	EventAttributeSourceEvent  = "source_event_id"
@@ -217,9 +218,25 @@ func NewDecisionRecordedEvent(payload DecisionRecorded) (*cerebrov1.EventEnvelop
 
 // NewActionRecordedEvent builds the durable event envelope for one recorded action.
 func NewActionRecordedEvent(payload ActionRecorded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(registryActionRecorded(payload), SchemaKnowledgeActionRecorded, payload.TenantID, payload.SourceSystem, payload.ActionID, payload.ObservedAt, map[string]string{
+	return newActionRecordedEvent(payload, payload.ActionID, "")
+}
+
+// NewActionRecordedObservationEvent builds an immutable lifecycle observation for one stable action.
+// Reusing the same observation digest is idempotent while a material provider transition receives a
+// distinct event identity. The action entity remains addressed by payload.ActionID.
+func NewActionRecordedObservationEvent(payload ActionRecorded, observationDigest string) (*cerebrov1.EventEnvelope, error) {
+	observationDigest = strings.TrimSpace(observationDigest)
+	if observationDigest == "" {
+		return nil, fmt.Errorf("workflow action observation digest is required")
+	}
+	return newActionRecordedEvent(payload, payload.ActionID+"\x00"+observationDigest, observationDigest)
+}
+
+func newActionRecordedEvent(payload ActionRecorded, eventIdentity string, observationDigest string) (*cerebrov1.EventEnvelope, error) {
+	return newEvent(registryActionRecorded(payload), SchemaKnowledgeActionRecorded, payload.TenantID, payload.SourceSystem, eventIdentity, payload.ObservedAt, map[string]string{
 		EventAttributeWorkflowKind: "knowledge_action",
 		EventAttributeActionID:     payload.ActionID,
+		EventAttributeObservation:  observationDigest,
 		EventAttributeDecisionID:   payload.DecisionID,
 		EventAttributeSourceEvent:  payload.SourceEventID,
 	})

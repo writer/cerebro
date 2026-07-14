@@ -47,4 +47,7 @@ func init() {
 	registerKind(EventKindFindingNoteAdded, SchemaFindingNoteAdded)
 	registerKind(EventKindFindingTicketLinked, SchemaFindingTicketLinked)
 	registerKind(EventKindFindingStatusChanged, SchemaFindingStatusChanged)
+	for _, kind := range registeredComplianceKinds() {
+		registerKind(kind, SchemaComplianceAggregate)
+	}
 }
