@@ -118,6 +118,7 @@ Relevant variable:
 If publish retries exhaust, check the recovery table before advancing runtime work:
 
 ```bash
+./bin/cerebro append-log dead-letters stats
 ./bin/cerebro append-log dead-letters list status=pending limit=20
 ./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
 ```
@@ -144,6 +145,17 @@ Dead-letter IDs are deterministic for the subject, event ID, and payload. If the
 same event exhausts again after an operator has replayed or discarded that
 record, Cerebro preserves the terminal record and does not move it back to
 `pending`.
+
+Delete replayed or discarded records after the retention window:
+
+```bash
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 after_id=<next-after-id> limit=100
+```
+
+Each committed deletion has an audit row with the actor and reason. Cleanup
+never selects pending records. Continue only when `has_more` is true, using the
+returned `next_after_id` as `after_id`.
 
 See [Append-log dead-letter data policy](append-log-dead-letter-policy.md) for
 payload classification, retention, capacity limits, and emergency purge rules.

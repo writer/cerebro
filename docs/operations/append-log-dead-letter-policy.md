@@ -24,7 +24,7 @@ The replayable envelope remains in Postgres. Production deployments must provide
 - Pending records older than 7 days require an operator alert and disposition.
 - Replayed and discarded records have a default retention period of 30 days.
 - Forced deletion of a pending record requires an authenticated actor, a concrete reason, and a durable audit record for every deleted ID.
-- Cleanup runs operate in bounded batches of at most 500 rows and persist their cursor so interruption resumes after the last committed batch.
+- Terminal cleanup runs operate in bounded batches of at most 500 rows and return the last committed ID so an interrupted run can resume from that cursor.
 
 ## Capacity Limits
 
@@ -41,8 +41,10 @@ Replay, discard, forced pending purge, and retention-policy changes record the a
 
 ## Recovery Procedure
 
-1. Restore JetStream publication health.
-2. List pending records and review subject, event kind, age, attempts, and claim state.
-3. Replay one record at a time. Wait for an active ownership lease to expire before retrying an abandoned claim.
-4. Discard only when the event must not be published, and provide the reason required by the command.
-5. Use forced pending purge only when retention of the recovery payload creates a greater incident risk than event loss. Record the incident or change reference in the reason.
+1. Run `append-log dead-letters stats` and compare pending records, pending bytes, and oldest pending time with the capacity limits.
+2. Restore JetStream publication health.
+3. List pending records and review subject, event kind, age, attempts, and claim state.
+4. Replay one record at a time. Wait for an active ownership lease to expire before retrying an abandoned claim.
+5. Discard only when the event must not be published, and provide the reason required by the command.
+6. Delete expired terminal records with `cleanup`. Pass an actor and change or incident reference as the reason. If `has_more` is true, pass `next_after_id` as `after_id` in the next batch.
+7. Use forced pending purge only when retention of the recovery payload creates a greater incident risk than event loss. Record the incident or change reference in the reason.

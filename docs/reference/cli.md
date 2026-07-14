@@ -62,6 +62,7 @@ See [Source runtime guide](../domains/source-runtime-guide.md) for store setup, 
 Exhausted JetStream publishes are recorded in Postgres when the state store is configured. List pending records without requiring JetStream to be healthy:
 
 ```bash
+./bin/cerebro append-log dead-letters stats
 ./bin/cerebro append-log dead-letters list
 ./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
 ```
@@ -80,6 +81,15 @@ until the active claim completes or expires.
 
 Dead-letter IDs are deterministic for the subject, event ID, and payload. A
 replayed or discarded record stays terminal if the same event exhausts again.
+
+Delete terminal records before a retention cutoff in audited, resumable batches:
+
+```bash
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
+```
+
+`cleanup` only deletes replayed or discarded records. When `has_more` is true,
+run the command again with the returned `next_after_id` as `after_id`.
 
 ## Finding Rules
 

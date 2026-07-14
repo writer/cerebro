@@ -16,6 +16,7 @@ import (
 
 const appendLogDeadLetterDefaultLimit = uint32(50)
 const appendLogDeadLetterMaxLimit = uint32(500)
+const appendLogDeadLetterCleanupDefaultLimit = uint32(100)
 
 var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS append_log_dead_letters (
   id TEXT PRIMARY KEY,
@@ -59,6 +60,15 @@ var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS a
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS append_log_dead_letters_subject_status_idx ON append_log_dead_letters (subject, status, updated_at ASC)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS append_log_dead_letters_runtime_status_idx ON append_log_dead_letters (runtime_id, status, updated_at ASC)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS append_log_dead_letters_source_status_idx ON append_log_dead_letters (source_id, status, updated_at ASC)`,
+	`CREATE TABLE IF NOT EXISTS append_log_dead_letter_audit (
+  id BIGSERIAL PRIMARY KEY,
+  dead_letter_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS append_log_dead_letter_audit_record_created_idx ON append_log_dead_letter_audit (dead_letter_id, created_at DESC)`,
 }
 
 const recordAppendLogDeadLetterSQL = `
@@ -317,6 +327,125 @@ func (s *Store) DiscardAppendLogDeadLetter(ctx context.Context, id string, reaso
 		return errors.New("discard reason is required")
 	}
 	return s.updateAppendLogDeadLetterStatus(ctx, id, ports.AppendLogDeadLetterStatusDiscarded, reason)
+}
+
+func (s *Store) GetAppendLogDeadLetterBacklog(ctx context.Context) (ports.AppendLogDeadLetterBacklog, error) {
+	if s == nil || s.db == nil {
+		return ports.AppendLogDeadLetterBacklog{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		return ports.AppendLogDeadLetterBacklog{}, err
+	}
+	var backlog ports.AppendLogDeadLetterBacklog
+	var oldest sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT
+  COUNT(*) FILTER (WHERE status = 'pending'),
+  COUNT(*) FILTER (WHERE status IN ('replayed', 'discarded')),
+  COALESCE(SUM(payload_bytes) FILTER (WHERE status = 'pending'), 0),
+  MIN(created_at) FILTER (WHERE status = 'pending')
+FROM append_log_dead_letters`).Scan(
+		&backlog.PendingRecords,
+		&backlog.TerminalRecords,
+		&backlog.PendingPayloadBytes,
+		&oldest,
+	)
+	if err != nil {
+		return ports.AppendLogDeadLetterBacklog{}, fmt.Errorf("get append log dead letter backlog: %w", err)
+	}
+	if oldest.Valid {
+		backlog.OldestPendingAt = oldest.Time
+	}
+	return backlog, nil
+}
+
+func (s *Store) CleanupAppendLogDeadLetters(ctx context.Context, request ports.AppendLogDeadLetterCleanupRequest) (ports.AppendLogDeadLetterCleanupResult, error) {
+	if s == nil || s.db == nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureAppendLogDeadLetterTables(ctx); err != nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, err
+	}
+	request.Actor = strings.TrimSpace(request.Actor)
+	request.Reason = strings.TrimSpace(request.Reason)
+	request.AfterID = strings.TrimSpace(request.AfterID)
+	if request.TerminalBefore.IsZero() {
+		return ports.AppendLogDeadLetterCleanupResult{}, errors.New("terminal retention cutoff is required")
+	}
+	if request.Actor == "" || request.Reason == "" {
+		return ports.AppendLogDeadLetterCleanupResult{}, errors.New("cleanup actor and reason are required")
+	}
+	if request.Limit == 0 {
+		request.Limit = appendLogDeadLetterCleanupDefaultLimit
+	}
+	if request.Limit > appendLogDeadLetterMaxLimit {
+		request.Limit = appendLogDeadLetterMaxLimit
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("begin append log dead letter cleanup: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, appendLogDeadLetterCleanupSelectSQL(), request.TerminalBefore.UTC(), request.AfterID, int64(request.Limit)+1)
+	if err != nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("select append log dead letter cleanup batch: %w", err)
+	}
+	ids := make([]string, 0, request.Limit+1)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("scan append log dead letter cleanup batch: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("iterate append log dead letter cleanup batch: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("close append log dead letter cleanup batch: %w", err)
+	}
+	hasMore := len(ids) > int(request.Limit)
+	if len(ids) > int(request.Limit) {
+		ids = ids[:request.Limit]
+	}
+	result := ports.AppendLogDeadLetterCleanupResult{DeletedIDs: make([]string, 0, len(ids))}
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO append_log_dead_letter_audit (dead_letter_id, action, actor, reason) VALUES ($1, 'retention_purge', $2, $3)`, id, request.Actor, request.Reason); err != nil {
+			return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("audit append log dead letter %q cleanup: %w", id, err)
+		}
+		deleteResult, err := tx.ExecContext(ctx, `DELETE FROM append_log_dead_letters WHERE id = $1 AND status IN ('replayed', 'discarded') AND updated_at < $2`, id, request.TerminalBefore.UTC())
+		if err != nil {
+			return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("delete append log dead letter %q: %w", id, err)
+		}
+		deleted, err := deleteResult.RowsAffected()
+		if err != nil {
+			return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("delete append log dead letter %q rows affected: %w", id, err)
+		}
+		if deleted != 1 {
+			return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("append log dead letter %q changed during cleanup", id)
+		}
+		result.DeletedIDs = append(result.DeletedIDs, id)
+	}
+	if len(result.DeletedIDs) > 0 {
+		result.NextAfterID = result.DeletedIDs[len(result.DeletedIDs)-1]
+	}
+	result.HasMore = hasMore
+	if err := tx.Commit(); err != nil {
+		return ports.AppendLogDeadLetterCleanupResult{}, fmt.Errorf("commit append log dead letter cleanup: %w", err)
+	}
+	return result, nil
+}
+
+func appendLogDeadLetterCleanupSelectSQL() string {
+	return `SELECT id
+FROM append_log_dead_letters
+WHERE status IN ('replayed', 'discarded')
+  AND updated_at < $1
+  AND id > $2
+ORDER BY id ASC
+LIMIT $3
+FOR UPDATE SKIP LOCKED`
 }
 
 func (s *Store) updateAppendLogDeadLetterStatus(ctx context.Context, id string, status string, reason string) error {

@@ -30,10 +30,34 @@ func TestAppendLogDeadLetterSchemaShape(t *testing.T) {
 		"append_log_dead_letters_subject_status_idx",
 		"append_log_dead_letters_runtime_status_idx",
 		"append_log_dead_letters_source_status_idx",
+		"CREATE TABLE IF NOT EXISTS append_log_dead_letter_audit",
+		"dead_letter_id TEXT NOT NULL",
+		"actor TEXT NOT NULL",
+		"reason TEXT NOT NULL",
+		"append_log_dead_letter_audit_record_created_idx",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("append log dead letter schema missing %q:\n%s", fragment, joined)
 		}
+	}
+}
+
+func TestAppendLogDeadLetterCleanupSelectsOnlyTerminalRowsInBoundedLockingBatch(t *testing.T) {
+	query := appendLogDeadLetterCleanupSelectSQL()
+	for _, fragment := range []string{
+		"status IN ('replayed', 'discarded')",
+		"updated_at < $1",
+		"id > $2",
+		"ORDER BY id ASC",
+		"LIMIT $3",
+		"FOR UPDATE SKIP LOCKED",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("appendLogDeadLetterCleanupSelectSQL() missing %q:\n%s", fragment, query)
+		}
+	}
+	if strings.Contains(query, "'pending'") {
+		t.Fatalf("appendLogDeadLetterCleanupSelectSQL() may not select pending rows:\n%s", query)
 	}
 }
 

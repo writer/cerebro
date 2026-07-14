@@ -216,3 +216,11 @@ func (s *recordingStore) ReleaseAppendLogDeadLetterReplay(context.Context, strin
 func (s *recordingStore) DiscardAppendLogDeadLetter(context.Context, string, string) error {
 	return nil
 }
+
+func (s *recordingStore) GetAppendLogDeadLetterBacklog(context.Context) (ports.AppendLogDeadLetterBacklog, error) {
+	return ports.AppendLogDeadLetterBacklog{}, nil
+}
+
+func (s *recordingStore) CleanupAppendLogDeadLetters(context.Context, ports.AppendLogDeadLetterCleanupRequest) (ports.AppendLogDeadLetterCleanupResult, error) {
+	return ports.AppendLogDeadLetterCleanupResult{}, nil
+}

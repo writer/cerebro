@@ -20,19 +20,19 @@ import (
 
 func runAppendLog(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s append-log dead-letters [list|replay|discard] ...", os.Args[0]))
+		return appendLogDeadLetterUsageError()
 	}
 	switch args[0] {
 	case "dead-letters":
 		return runAppendLogDeadLetters(args[1:])
 	default:
-		return usageError(fmt.Sprintf("usage: %s append-log dead-letters [list|replay|discard] ...", os.Args[0]))
+		return appendLogDeadLetterUsageError()
 	}
 }
 
 func runAppendLogDeadLetters(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s append-log dead-letters [list|replay|discard] ...", os.Args[0]))
+		return appendLogDeadLetterUsageError()
 	}
 	cfg, err := appconfig.Load()
 	if err != nil {
@@ -53,9 +53,17 @@ func runAppendLogDeadLetters(args []string) error {
 		return runAppendLogDeadLetterReplay(ctx, cfg, args[1:])
 	case "discard":
 		return runAppendLogDeadLetterDiscard(ctx, cfg, args[1:])
+	case "stats":
+		return runAppendLogDeadLetterStats(ctx, cfg, args[1:])
+	case "cleanup":
+		return runAppendLogDeadLetterCleanup(ctx, cfg, args[1:])
 	default:
-		return usageError(fmt.Sprintf("usage: %s append-log dead-letters [list|replay|discard] ...", os.Args[0]))
+		return appendLogDeadLetterUsageError()
 	}
+}
+
+func appendLogDeadLetterUsageError() error {
+	return usageError(fmt.Sprintf("usage: %s append-log dead-letters [list|replay|discard|stats|cleanup] ...", os.Args[0]))
 }
 
 func runAppendLogDeadLetterList(ctx context.Context, cfg appconfig.Config, args []string) error {
@@ -196,6 +204,47 @@ func runAppendLogDeadLetterDiscard(ctx context.Context, cfg appconfig.Config, ar
 	return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusDiscarded))
 }
 
+func runAppendLogDeadLetterStats(ctx context.Context, cfg appconfig.Config, args []string) error {
+	if len(args) != 0 {
+		return usageError(fmt.Sprintf("usage: %s append-log dead-letters stats", os.Args[0]))
+	}
+	store, closeDeps, err := openAppendLogDeadLetterStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := closeDeps(); err != nil {
+			log.Printf("close dependencies: %v", err)
+		}
+	}()
+	backlog, err := store.GetAppendLogDeadLetterBacklog(ctx)
+	if err != nil {
+		return err
+	}
+	return printJSON(appendLogDeadLetterBacklogResponse(backlog))
+}
+
+func runAppendLogDeadLetterCleanup(ctx context.Context, cfg appconfig.Config, args []string) error {
+	request, err := parseAppendLogDeadLetterCleanupArgs(args)
+	if err != nil {
+		return err
+	}
+	store, closeDeps, err := openAppendLogDeadLetterStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := closeDeps(); err != nil {
+			log.Printf("close dependencies: %v", err)
+		}
+	}()
+	result, err := store.CleanupAppendLogDeadLetters(ctx, request)
+	if err != nil {
+		return err
+	}
+	return printJSON(appendLogDeadLetterCleanupResponse(result))
+}
+
 func openAppendLogDeadLetterStore(ctx context.Context, cfg appconfig.Config) (ports.AppendLogDeadLetterStore, func() error, error) {
 	deps, closeDeps, err := bootstrap.OpenSourceRuntimeBootstrapDependencies(ctx, cfg)
 	if err != nil {
@@ -275,6 +324,44 @@ func parseAppendLogDeadLetterDiscardArgs(args []string) (string, string, error) 
 	return id, reason, nil
 }
 
+func parseAppendLogDeadLetterCleanupArgs(args []string) (ports.AppendLogDeadLetterCleanupRequest, error) {
+	request := ports.AppendLogDeadLetterCleanupRequest{}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return ports.AppendLogDeadLetterCleanupRequest{}, fmt.Errorf("invalid append log dead-letter cleanup argument %q; want key=value", arg)
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		switch key {
+		case "terminal_before":
+			cutoff, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				return ports.AppendLogDeadLetterCleanupRequest{}, fmt.Errorf("parse terminal_before as RFC3339: %w", err)
+			}
+			request.TerminalBefore = cutoff
+		case "after_id":
+			request.AfterID = value
+		case "actor":
+			request.Actor = value
+		case "reason":
+			request.Reason = value
+		case "limit":
+			parsed, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return ports.AppendLogDeadLetterCleanupRequest{}, fmt.Errorf("parse limit: %w", err)
+			}
+			request.Limit = uint32(parsed)
+		default:
+			return ports.AppendLogDeadLetterCleanupRequest{}, fmt.Errorf("unsupported append log dead-letter cleanup argument %q", key)
+		}
+	}
+	if request.TerminalBefore.IsZero() || strings.TrimSpace(request.Actor) == "" || strings.TrimSpace(request.Reason) == "" {
+		return ports.AppendLogDeadLetterCleanupRequest{}, usageError(fmt.Sprintf("usage: %s append-log dead-letters cleanup terminal_before=<RFC3339> actor=<actor> reason=<reason> [after_id=<dead-letter-id>] [limit=<count>]", os.Args[0]))
+	}
+	return request, nil
+}
+
 type appendLogDeadLetterSummary struct {
 	ID                      string `json:"id"`
 	Status                  string `json:"status"`
@@ -310,6 +397,20 @@ type appendLogDeadLetterActionOutput struct {
 	Status  string `json:"status"`
 	EventID string `json:"event_id"`
 	Subject string `json:"subject"`
+}
+
+type appendLogDeadLetterBacklogOutput struct {
+	PendingRecords      int64  `json:"pending_records"`
+	TerminalRecords     int64  `json:"terminal_records"`
+	PendingPayloadBytes int64  `json:"pending_payload_bytes"`
+	OldestPendingAt     string `json:"oldest_pending_at,omitempty"`
+}
+
+type appendLogDeadLetterCleanupOutput struct {
+	DeletedIDs   []string `json:"deleted_ids"`
+	DeletedCount int      `json:"deleted_count"`
+	NextAfterID  string   `json:"next_after_id,omitempty"`
+	HasMore      bool     `json:"has_more"`
 }
 
 func appendLogDeadLetterListResponse(records []ports.AppendLogDeadLetter) appendLogDeadLetterListOutput {
@@ -360,5 +461,26 @@ func appendLogDeadLetterActionResponse(record ports.AppendLogDeadLetter, status 
 		Status:  status,
 		EventID: record.EventID,
 		Subject: record.Subject,
+	}
+}
+
+func appendLogDeadLetterBacklogResponse(backlog ports.AppendLogDeadLetterBacklog) appendLogDeadLetterBacklogOutput {
+	response := appendLogDeadLetterBacklogOutput{
+		PendingRecords:      backlog.PendingRecords,
+		TerminalRecords:     backlog.TerminalRecords,
+		PendingPayloadBytes: backlog.PendingPayloadBytes,
+	}
+	if !backlog.OldestPendingAt.IsZero() {
+		response.OldestPendingAt = backlog.OldestPendingAt.UTC().Format(time.RFC3339)
+	}
+	return response
+}
+
+func appendLogDeadLetterCleanupResponse(result ports.AppendLogDeadLetterCleanupResult) appendLogDeadLetterCleanupOutput {
+	return appendLogDeadLetterCleanupOutput{
+		DeletedIDs:   result.DeletedIDs,
+		DeletedCount: len(result.DeletedIDs),
+		NextAfterID:  result.NextAfterID,
+		HasMore:      result.HasMore,
 	}
 }

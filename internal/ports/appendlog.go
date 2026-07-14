@@ -116,6 +116,31 @@ type AppendLogDeadLetterFilter struct {
 	Limit     uint32
 }
 
+// AppendLogDeadLetterBacklog summarizes recovery capacity without returning
+// replayable event envelopes.
+type AppendLogDeadLetterBacklog struct {
+	PendingRecords      int64
+	TerminalRecords     int64
+	PendingPayloadBytes int64
+	OldestPendingAt     time.Time
+}
+
+// AppendLogDeadLetterCleanupRequest scopes one resumable terminal-record purge.
+type AppendLogDeadLetterCleanupRequest struct {
+	TerminalBefore time.Time
+	AfterID        string
+	Actor          string
+	Reason         string
+	Limit          uint32
+}
+
+// AppendLogDeadLetterCleanupResult reports one committed cleanup batch.
+type AppendLogDeadLetterCleanupResult struct {
+	DeletedIDs  []string
+	NextAfterID string
+	HasMore     bool
+}
+
 // AppendLogDeadLetterStore persists and manages exhausted publish recovery
 // records outside JetStream so broker degradation does not recursively depend
 // on the same append path.
@@ -128,6 +153,8 @@ type AppendLogDeadLetterStore interface {
 	CompleteAppendLogDeadLetterReplay(context.Context, string, string) error
 	ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error
 	DiscardAppendLogDeadLetter(context.Context, string, string) error
+	GetAppendLogDeadLetterBacklog(context.Context) (AppendLogDeadLetterBacklog, error)
+	CleanupAppendLogDeadLetters(context.Context, AppendLogDeadLetterCleanupRequest) (AppendLogDeadLetterCleanupResult, error)
 }
 
 // ReplayRequest scopes a bounded event replay from the append log.
