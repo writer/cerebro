@@ -1186,6 +1186,54 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionSupportsNoAuth(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "builtin-public_api",
+			TenantID:    "builtin",
+			SourceID:    "public_api",
+			DisplayName: "Public API",
+			Auth:        connectordefinitions.AuthSpec{Model: AuthModelNone},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL:      "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{Path: "/health"},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "resources",
+				Path:           "/v1/resources",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "public_api.resources",
+					SchemaRef: "public_api/resources/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+				Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.AuthModel != AuthModelNone {
+		t.Fatalf("AuthModel = %q, want %q", result.AuthModel, AuthModelNone)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/public_api/source.go")
+	if !strings.Contains(source, `AuthModel:       "none"`) {
+		t.Fatalf("source.go missing no-auth runtime configuration:\n%s", source)
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/public_api/deploy.yaml")
+	if strings.Contains(deploy, "PUBLIC_API_TOKEN") || strings.Contains(deploy, "token: env:") {
+		t.Fatalf("deploy.yaml contains an auth secret for a public API:\n%s", deploy)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/public_api/source_test.go")
+	if strings.Contains(sourceTest, `"token": "test-token"`) || strings.Contains(sourceTest, `Authorization mismatch`) {
+		t.Fatalf("source_test.go asserts credentials for a public API:\n%s", sourceTest)
+	}
+}
+
 func TestGenerateDefinitionCatalogUsesProjectionCoverageDimensions(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{

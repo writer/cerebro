@@ -23,6 +23,7 @@ import (
 const (
 	SourceTypeJSONAPI = "json_api"
 
+	AuthModelNone                   = "none"
 	AuthModelBearerToken            = "bearer_token"
 	AuthModelAPIToken               = "api_token"
 	AuthModelAPIKey                 = "api_key"
@@ -442,6 +443,8 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 
 func authModelConfig(authModel string) (string, string, error) {
 	switch authModel {
+	case AuthModelNone:
+		return "", "", nil
 	case AuthModelBearerToken, "bearer":
 		return "Bearer", "token", nil
 	case AuthModelAPIToken, AuthModelAPIKey:
@@ -465,6 +468,8 @@ func authModelConfig(authModel string) (string, string, error) {
 
 func executableAuthModel(authModel string) (string, error) {
 	switch strings.TrimSpace(authModel) {
+	case AuthModelNone:
+		return AuthModelNone, nil
 	case AuthModelBearerToken, "bearer":
 		return AuthModelBearerToken, nil
 	case AuthModelAPIToken, AuthModelAPIKey:
@@ -1319,6 +1324,9 @@ func coverageControlDomains(dimensionType string) []string {
 
 func deployAuthConfigKeys(request normalizedRequest) []string {
 	keys := []string{}
+	if request.AuthModel == AuthModelNone {
+		return keys
+	}
 	if request.OAuth != nil {
 		keys = append(keys, request.CredentialKeys...)
 	} else if request.AuthModel == AuthModelAWSSigV4 {
@@ -1969,6 +1977,9 @@ func sourceTestExpectedAuthHeader(request normalizedRequest, family familyData) 
 }
 
 func generatedTestAuthAssertion(request normalizedRequest) string {
+	if request.AuthModel == AuthModelNone {
+		return ""
+	}
 	if usesDuoHMACAuth(request) {
 		defaultFamily := familyData{}
 		if len(request.Families) != 0 {
