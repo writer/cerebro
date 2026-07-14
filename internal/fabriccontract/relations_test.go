@@ -1,64 +1,92 @@
 package fabriccontract
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestRelationsAreSortedAndKnown(t *testing.T) {
 	relations := Relations()
 	if len(relations) == 0 {
-		t.Fatal("Relations() empty")
+		t.Fatal("Relations() returned no relations")
 	}
-	for i := 1; i < len(relations); i++ {
-		if relations[i-1] > relations[i] {
-			t.Fatalf("Relations() not sorted: %q before %q", relations[i-1], relations[i])
-		}
-	}
-	for _, relation := range []string{RelationBelongsTo, RelationDependsOn, RelationHasFinding, RelationRepresentsIdentity} {
+	for i, relation := range relations {
 		if !IsRelation(relation) {
-			t.Fatalf("IsRelation(%q) = false", relation)
+			t.Fatalf("Relations()[%d] = %q is not known", i, relation)
+		}
+		if i > 0 && relations[i-1] >= relation {
+			t.Fatalf("relations not strictly sorted: %q before %q", relations[i-1], relation)
 		}
 	}
-	if IsRelation("BELONGS_TO") || IsRelation("not_a_relation") {
-		t.Fatal("IsRelation accepted non-canonical relation")
+	if IsRelation("not_registered") {
+		t.Fatal("IsRelation accepted unknown relation")
 	}
 }
 
-func TestFindingRelationDefinitionsConstrainResourceKinds(t *testing.T) {
+func TestRelationDefinitionsHaveStableSemantics(t *testing.T) {
+	definitions := RelationDefinitions()
+	if len(definitions) != len(Relations()) {
+		t.Fatalf("definitions = %d, relations = %d", len(definitions), len(Relations()))
+	}
+	for i, definition := range definitions {
+		if definition.Name == "" || definition.Class == "" || definition.DefaultDirection == "" {
+			t.Fatalf("definition %d incomplete: %#v", i, definition)
+		}
+		if i > 0 && definitions[i-1].Name >= definition.Name {
+			t.Fatalf("definitions not strictly sorted: %q before %q", definitions[i-1].Name, definition.Name)
+		}
+		for _, kind := range append(append([]ResourceKind(nil), definition.SourceKinds...), definition.TargetKinds...) {
+			if !IsResourceKind(string(kind)) {
+				t.Fatalf("definition %q uses unknown kind %q", definition.Name, kind)
+			}
+		}
+		if definition.Inverse == "" {
+			continue
+		}
+		inverse, ok := RelationDefinitionFor(definition.Inverse)
+		if !ok || inverse.Inverse != definition.Name {
+			t.Fatalf("definition %q inverse is not reciprocal: %#v", definition.Name, inverse)
+		}
+	}
+}
+
+func TestRelationDefinitionsAreCopiedAndEnforceKinds(t *testing.T) {
+	definition, ok := RelationDefinitionFor(RelationApprovedBy)
+	if !ok {
+		t.Fatalf("RelationDefinitionFor(%q) missing", RelationApprovedBy)
+	}
+	if !definition.Allows(ResourceKindActionProposal, ResourceKindApprovalReceipt) {
+		t.Fatal("approved_by rejected action proposal to approval receipt")
+	}
+	if definition.Allows(ResourceKindApprovalReceipt, ResourceKindActionProposal) {
+		t.Fatal("approved_by accepted inverse kind direction")
+	}
+	wantSources := append([]ResourceKind(nil), definition.SourceKinds...)
+	definition.SourceKinds[0] = ResourceKindJob
+	fresh, _ := RelationDefinitionFor(RelationApprovedBy)
+	if !reflect.DeepEqual(fresh.SourceKinds, wantSources) {
+		t.Fatalf("registry mutated through returned definition: %v", fresh.SourceKinds)
+	}
+}
+
+func TestFindingLinkRelationsUseCanonicalResourceKinds(t *testing.T) {
 	tests := []struct {
 		relation string
-		target   string
+		target   ResourceKind
 	}{
-		{relation: RelationSelf, target: "finding"},
-		{relation: RelationHasContext, target: "finding_investigation"},
-		{relation: RelationHasEvidence, target: "finding_evidence_collection"},
-		{relation: RelationObservedOn, target: "source_runtime"},
-		{relation: RelationAffects, target: "graph_entity"},
+		{relation: RelationSelf, target: ResourceKindFinding},
+		{relation: RelationHasContext, target: ResourceKindFindingInvestigation},
+		{relation: RelationHasEvidence, target: ResourceKindFindingEvidenceCollection},
+		{relation: RelationObservedOn, target: ResourceKindSourceRuntime},
+		{relation: RelationAffects, target: ResourceKindGraphEntity},
 	}
 	for _, test := range tests {
-		definition, ok := LookupRelation(test.relation)
+		definition, ok := RelationDefinitionFor(test.relation)
 		if !ok {
-			t.Fatalf("LookupRelation(%q) missing", test.relation)
+			t.Fatalf("RelationDefinitionFor(%q) missing", test.relation)
 		}
-		if definition.Class != RelationClassStructural {
-			t.Fatalf("LookupRelation(%q).Class = %q, want structural", test.relation, definition.Class)
+		if !definition.Allows(ResourceKindFinding, test.target) {
+			t.Fatalf("relation %q rejected finding -> %s", test.relation, test.target)
 		}
-		if len(definition.SourceKinds) != 1 || definition.SourceKinds[0] != "finding" {
-			t.Fatalf("LookupRelation(%q).SourceKinds = %v, want [finding]", test.relation, definition.SourceKinds)
-		}
-		if len(definition.TargetKinds) != 1 || definition.TargetKinds[0] != test.target {
-			t.Fatalf("LookupRelation(%q).TargetKinds = %v, want [%s]", test.relation, definition.TargetKinds, test.target)
-		}
-	}
-}
-
-func TestLookupRelationReturnsCopy(t *testing.T) {
-	definition, ok := LookupRelation(RelationSelf)
-	if !ok {
-		t.Fatal("LookupRelation(self) missing")
-	}
-	definition.SourceKinds[0] = "changed"
-
-	got, _ := LookupRelation(RelationSelf)
-	if got.SourceKinds[0] != "finding" {
-		t.Fatalf("LookupRelation(self).SourceKinds = %v after caller mutation", got.SourceKinds)
 	}
 }

@@ -36,7 +36,7 @@ func linkMessages(links []resourcelinks.ResourceLink) []*cerebrov1.ResourceLink 
 			Rel: link.Relation,
 			Target: &cerebrov1.ResourceRef{
 				Kind:     string(link.Target.Kind),
-				Id:       link.Target.ID,
+				Id:       link.Target.Identifier(),
 				Revision: link.Target.Revision,
 				ApiPath:  link.Target.APIPath,
 				McpUri:   link.Target.MCPURI,

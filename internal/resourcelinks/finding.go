@@ -2,7 +2,6 @@ package resourcelinks
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 
@@ -34,77 +33,47 @@ func FindingLinks(input FindingInput) ([]ResourceLink, error) {
 		return nil, err
 	}
 
-	references := []struct {
+	type linkInput struct {
 		relation  string
 		target    ResourceRef
 		authority Authority
-	}{
-		{
-			relation: fabriccontract.RelationSelf,
-			target: ResourceRef{
-				Kind:    KindFinding,
-				ID:      findingID,
-				APIPath: "/findings/" + url.PathEscape(findingID),
-				MCPURI:  "cerebro://finding/" + url.PathEscape(findingID),
-				State:   StateCurrent,
-			},
-			authority: AuthorityCanonicalRecord,
-		},
-		{
-			relation: fabriccontract.RelationHasContext,
-			target: ResourceRef{
-				Kind:   KindFindingInvestigation,
-				ID:     findingID,
-				MCPURI: "cerebro://investigation/finding/" + url.PathEscape(findingID),
-				State:  StateCurrent,
-			},
-			authority: AuthorityDerivedRecord,
-		},
-		{
-			relation: fabriccontract.RelationHasEvidence,
-			target: ResourceRef{
-				Kind:    KindFindingEvidenceCollection,
-				ID:      findingID,
-				APIPath: evidenceCollectionPath(runtimeID, findingID),
-				State:   StateCurrent,
-			},
-			authority: AuthorityDerivedRecord,
-		},
-		{
-			relation: fabriccontract.RelationObservedOn,
-			target: ResourceRef{
-				Kind:    KindSourceRuntime,
-				ID:      runtimeID,
-				APIPath: "/source-runtimes/" + url.PathEscape(runtimeID),
-				MCPURI:  "cerebro://runtime/" + url.PathEscape(runtimeID),
-				State:   StateCurrent,
-			},
-			authority: AuthorityDerivedRecord,
-		},
 	}
-
+	references := make([]linkInput, 0, 4+len(resourceURNs))
+	appendID := func(relation string, kind fabriccontract.ResourceKind, id string, authority Authority) error {
+		target, buildErr := NewID(kind, id)
+		if buildErr != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidLink, buildErr)
+		}
+		references = append(references, linkInput{relation: relation, target: target, authority: authority})
+		return nil
+	}
+	if err := appendID(fabriccontract.RelationSelf, fabriccontract.ResourceKindFinding, findingID, AuthorityCanonicalRecord); err != nil {
+		return nil, err
+	}
+	if err := appendID(fabriccontract.RelationHasContext, fabriccontract.ResourceKindFindingInvestigation, findingID, AuthorityDerivedRecord); err != nil {
+		return nil, err
+	}
+	if err := appendID(fabriccontract.RelationHasEvidence, fabriccontract.ResourceKindFindingEvidenceCollection, findingID, AuthorityDerivedRecord); err != nil {
+		return nil, err
+	}
+	if err := appendID(fabriccontract.RelationObservedOn, fabriccontract.ResourceKindSourceRuntime, runtimeID, AuthorityDerivedRecord); err != nil {
+		return nil, err
+	}
 	for _, resourceURN := range resourceURNs {
-		query := url.Values{"root_urn": []string{resourceURN}}
-		references = append(references, struct {
-			relation  string
-			target    ResourceRef
-			authority Authority
-		}{
-			relation: fabriccontract.RelationAffects,
-			target: ResourceRef{
-				Kind:    KindGraphEntity,
-				ID:      resourceURN,
-				APIPath: "/platform/graph/neighborhood?" + query.Encode(),
-				MCPURI:  "cerebro://asset/" + url.PathEscape(resourceURN),
-				State:   StateCurrent,
-			},
+		target, buildErr := NewURN(fabriccontract.ResourceKindGraphEntity, resourceURN)
+		if buildErr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidLink, buildErr)
+		}
+		references = append(references, linkInput{
+			relation:  fabriccontract.RelationAffects,
+			target:    target,
 			authority: AuthorityDerivedRecord,
 		})
 	}
 
 	links := make([]ResourceLink, 0, len(references))
 	for _, reference := range references {
-		link, err := NewLink(KindFinding, reference.relation, reference.target, reference.authority, CompletenessComplete)
+		link, err := NewLink(fabriccontract.ResourceKindFinding, reference.relation, reference.target, reference.authority, CompletenessComplete)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +86,7 @@ func FindingLinks(input FindingInput) ([]ResourceLink, error) {
 		if links[i].Target.Kind != links[j].Target.Kind {
 			return links[i].Target.Kind < links[j].Target.Kind
 		}
-		return links[i].Target.ID < links[j].Target.ID
+		return links[i].Target.Identifier() < links[j].Target.Identifier()
 	})
 	return links, nil
 }
@@ -141,9 +110,4 @@ func normalizedGraphURNs(tenantID string, values []string) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
-}
-
-func evidenceCollectionPath(runtimeID, findingID string) string {
-	query := url.Values{"finding_id": []string{findingID}}
-	return "/source-runtimes/" + url.PathEscape(runtimeID) + "/finding-evidence?" + query.Encode()
 }
