@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -154,7 +155,7 @@ type panopticonAssetStitchTarget struct {
 	matchValue string
 }
 
-func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonAlertProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -165,7 +166,7 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if alertID == "" {
 		return nil, nil, nil
 	}
-	resourceObjects, err := panopticonResourceObjectsWasm(event.GetPayload())
+	resourceObjects, err := panopticonResourceObjectsWasm(ctx, event.GetPayload())
 	if err != nil {
 		return nil, nil, fmt.Errorf("extract Panopticon alert resources: %w", err)
 	}
@@ -199,7 +200,7 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	return projectedEntities, projectedLinks, nil
 }
 
-func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonCaseProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -210,7 +211,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	if caseID == "" {
 		return nil, nil, nil
 	}
-	resourceObjects, err := panopticonResourceObjectsWasm(event.GetPayload())
+	resourceObjects, err := panopticonResourceObjectsWasm(ctx, event.GetPayload())
 	if err != nil {
 		return nil, nil, fmt.Errorf("extract Panopticon case resources: %w", err)
 	}

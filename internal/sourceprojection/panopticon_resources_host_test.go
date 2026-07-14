@@ -1,7 +1,9 @@
 package sourceprojection
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -25,7 +27,7 @@ func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	got, err := panopticonResourceObjectsWasm(raw)
+	got, err := panopticonResourceObjectsWasm(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("panopticonResourceObjectsWasm() error = %v", err)
 	}
@@ -37,7 +39,7 @@ func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
 
 func TestPanopticonResourceObjectsWasmHandlesAliasesAndMalformedPayload(t *testing.T) {
 	t.Parallel()
-	got, err := panopticonResourceObjectsWasm([]byte(`{"alerts":[{"resourceResults":[{"ResourceID":"resource-1"}]}],"affectedResources":["arn:aws:s3:::audit"]}`))
+	got, err := panopticonResourceObjectsWasm(context.Background(), []byte(`{"alerts":[{"resourceResults":[{"ResourceID":"resource-1"}]}],"affectedResources":["arn:aws:s3:::audit"]}`))
 	if err != nil {
 		t.Fatalf("panopticonResourceObjectsWasm() error = %v", err)
 	}
@@ -51,7 +53,7 @@ func TestPanopticonResourceObjectsWasmHandlesAliasesAndMalformedPayload(t *testi
 		t.Fatalf("nested alias resource = %#v", got[1])
 	}
 
-	got, err = panopticonResourceObjectsWasm([]byte(`not-json`))
+	got, err = panopticonResourceObjectsWasm(context.Background(), []byte(`not-json`))
 	if err != nil {
 		t.Fatalf("malformed payload error = %v", err)
 	}
@@ -70,7 +72,7 @@ func TestPanopticonResourceObjectsWasmMatchesGoNumericScalarFormatting(t *testin
 			if err := json.Unmarshal(raw, &payload); err != nil {
 				t.Fatalf("unmarshal reference payload: %v", err)
 			}
-			got, err := panopticonResourceObjectsWasm(raw)
+			got, err := panopticonResourceObjectsWasm(context.Background(), raw)
 			if err != nil {
 				t.Fatalf("panopticonResourceObjectsWasm() error = %v", err)
 			}
@@ -89,7 +91,7 @@ func TestPanopticonResourceObjectsWasmMatchesGoDerivedNameAliases(t *testing.T) 
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatalf("unmarshal reference payload: %v", err)
 	}
-	got, err := panopticonResourceObjectsWasm(raw)
+	got, err := panopticonResourceObjectsWasm(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("panopticonResourceObjectsWasm() error = %v", err)
 	}
@@ -101,14 +103,24 @@ func TestPanopticonResourceObjectsWasmMatchesGoDerivedNameAliases(t *testing.T) 
 
 func TestPanopticonResourceObjectsWasmBoundsInputWithoutEchoingPayload(t *testing.T) {
 	t.Parallel()
-	marker := "payload-marker-that-must-not-be-logged"
-	payload := []byte(`{"resources":["` + marker + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
-	_, err := panopticonResourceObjectsWasm(payload)
+	payload := []byte(`{"resources":["` + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
+	_, err := panopticonResourceObjectsWasm(context.Background(), payload)
 	if err == nil {
 		t.Fatal("oversized payload error = nil")
 	}
-	if strings.Contains(err.Error(), marker) {
-		t.Fatalf("oversized payload error exposed payload contents: %v", err)
+	if !errors.Is(err, errPanopticonResourcesPayloadTooLarge) {
+		t.Fatalf("oversized payload error = %v, want %v", err, errPanopticonResourcesPayloadTooLarge)
+	}
+}
+
+func TestPanopticonResourceObjectsWasmHonorsCanceledContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := panopticonResourceObjectsWasm(ctx, []byte(`{"resources":["resource-1"]}`))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled extraction error = %v, want %v", err, context.Canceled)
 	}
 }
 

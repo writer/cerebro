@@ -37,23 +37,26 @@ type panopticonResourcesEngine struct {
 }
 
 var (
-	panopticonResourcesOnce   sync.Once
-	panopticonResourcesShared panopticonResourcesEngine
+	panopticonResourcesOnce               sync.Once
+	panopticonResourcesShared             panopticonResourcesEngine
+	errPanopticonResourcesPayloadTooLarge = errors.New("panopticon resource payload exceeds maximum")
 )
 
-func panopticonResourceObjectsWasm(payload []byte) ([]map[string]any, error) {
+func panopticonResourceObjectsWasm(ctx context.Context, payload []byte) ([]map[string]any, error) {
 	if len(payload) == 0 {
 		return nil, nil
 	}
 	if len(payload) > panopticonResourcesMaxInputBytes {
-		return nil, fmt.Errorf("panopticon resource payload is %d bytes; maximum is %d", len(payload), panopticonResourcesMaxInputBytes)
+		return nil, fmt.Errorf("%w: payload is %d bytes; maximum is %d", errPanopticonResourcesPayloadTooLarge, len(payload), panopticonResourcesMaxInputBytes)
 	}
-	panopticonResourcesOnce.Do(initializePanopticonResourcesEngine)
+	panopticonResourcesOnce.Do(func() {
+		initializePanopticonResourcesEngine(ctx)
+	})
 	if panopticonResourcesShared.err != nil {
 		return nil, panopticonResourcesShared.err
 	}
 
-	callCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	module, err := panopticonResourcesShared.runtime.InstantiateModule(callCtx, panopticonResourcesShared.compiled, panopticonResourcesModuleConfig())
 	if err != nil {
@@ -121,8 +124,8 @@ func panopticonResourceObjectsWasm(payload []byte) ([]map[string]any, error) {
 	return resources, nil
 }
 
-func initializePanopticonResourcesEngine() {
-	initCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func initializePanopticonResourcesEngine(ctx context.Context) {
+	initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	config := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).WithMemoryLimitPages(panopticonResourcesMemoryLimitPage)
 	panopticonResourcesShared.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
@@ -196,5 +199,5 @@ func panopticonResourcesPointer(results []uint64, operation string) (uint32, err
 	if results[0] > math.MaxUint32 {
 		return 0, fmt.Errorf("embedded panopticon resource %s pointer overflows uint32", operation)
 	}
-	return uint32(results[0]), nil
+	return uint32(results[0]), nil // #nosec G115 -- the value is bounded above by math.MaxUint32.
 }
