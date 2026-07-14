@@ -77,6 +77,37 @@ func TestCanonicalResultRejectsUnsupportedPass(t *testing.T) {
 	}
 }
 
+func TestEvaluateObjectiveRejectsSyntheticSatisfiedAssessment(t *testing.T) {
+	input := validEvaluateInput()
+	input.RequirementAssessments = []compliance.ControlEvidenceRequirementAssessment{{
+		Status: compliance.ControlEvidenceRequirementSatisfied,
+	}}
+	if _, err := EvaluateObjective(input); !errors.Is(err, ErrInvalidResult) {
+		t.Fatalf("EvaluateObjective() error = %v, want ErrInvalidResult", err)
+	}
+}
+
+func TestInputManifestRequiresCompleteCursorChain(t *testing.T) {
+	manifest := validManifest()
+	manifest.Receipts[1].Cursor = "disconnected"
+	if err := ValidateInputManifest(manifest); !errors.Is(err, ErrInvalidManifest) {
+		t.Fatalf("ValidateInputManifest() error = %v, want ErrInvalidManifest", err)
+	}
+}
+
+func TestInputManifestAcceptsEmptyCompletePopulationWithoutWatermark(t *testing.T) {
+	manifest := validManifest()
+	zero := uint64(0)
+	manifest.Receipts = []CollectionReceipt{{
+		Kind: "findings", RuntimeID: "runtime-1", QueryDigest: manifest.RequestedScopeDigest,
+		ExpectedTotal: &zero, Cutoff: manifest.CollectionCutoff, Completeness: CollectionComplete,
+		PageDigest: manifest.MappingSetDigest,
+	}}
+	if err := ValidateInputManifest(manifest); err != nil {
+		t.Fatalf("ValidateInputManifest() error = %v", err)
+	}
+}
+
 func validManifest() InputManifest {
 	digestA := "sha256:" + strings.Repeat("a", 64)
 	digestB := "sha256:" + strings.Repeat("b", 64)
@@ -115,8 +146,11 @@ func validEvaluateInput() EvaluateInput {
 	return EvaluateInput{
 		ResultID: "assessment-result-00000000000000000000000000000001", ObjectiveID: "objective-1",
 		Control: compliance.ControlRef{FrameworkName: "Example Framework", ControlID: "CC-1"}, ScopeState: ScopeInScope,
-		RequirementAssessments: []compliance.ControlEvidenceRequirementAssessment{{Status: compliance.ControlEvidenceRequirementSatisfied, EvidenceIDs: []string{"evidence-1"}}},
-		CoverageState:          CoverageComplete, SourceState: SourceSupported, EvaluatorRevision: "evaluator-v1",
+		RequirementAssessments: []compliance.ControlEvidenceRequirementAssessment{{
+			RequirementKey: "requirement-1", ControlRef: compliance.ControlRef{FrameworkName: "Example Framework", ControlID: "CC-1"},
+			SourceID: "source-1", EntityType: "resource", Status: compliance.ControlEvidenceRequirementSatisfied, EvidenceIDs: []string{"evidence-1"},
+		}},
+		CoverageState: CoverageComplete, SourceState: SourceSupported, EvaluatorRevision: "evaluator-v1",
 		Now: time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC),
 	}
 }

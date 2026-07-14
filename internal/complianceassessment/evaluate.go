@@ -167,6 +167,15 @@ func ValidateEvaluateInput(input EvaluateInput) error {
 		return fmt.Errorf("%w: evaluation input contains an unknown required state", ErrInvalidResult)
 	}
 	for _, assessment := range input.RequirementAssessments {
+		if strings.TrimSpace(assessment.RequirementKey) == "" ||
+			strings.TrimSpace(assessment.ControlRef.ControlID) == "" ||
+			strings.TrimSpace(assessment.SourceID) == "" ||
+			strings.TrimSpace(assessment.EntityType) == "" {
+			return fmt.Errorf("%w: evidence requirement assessment identity and source binding are required", ErrInvalidResult)
+		}
+		if compliance.NormalizeControlRef(assessment.ControlRef) != input.Control {
+			return fmt.Errorf("%w: evidence requirement assessment control does not match the objective control", ErrInvalidResult)
+		}
 		switch assessment.Status {
 		case compliance.ControlEvidenceRequirementSatisfied,
 			compliance.ControlEvidenceRequirementManualReview,
@@ -175,6 +184,9 @@ func ValidateEvaluateInput(input EvaluateInput) error {
 			compliance.ControlEvidenceRequirementStale:
 		default:
 			return fmt.Errorf("%w: evaluation input contains unknown evidence requirement status %q", ErrInvalidResult, assessment.Status)
+		}
+		if assessment.Status == compliance.ControlEvidenceRequirementSatisfied && len(normalizedStrings(assessment.EvidenceIDs)) == 0 {
+			return fmt.Errorf("%w: satisfied evidence requirement assessment has no evidence", ErrInvalidResult)
 		}
 	}
 	return nil

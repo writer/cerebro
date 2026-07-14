@@ -5,7 +5,7 @@
     "objective_id": "objective-1",
     "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"},
     "scope_state": "in_scope",
-    "requirement_assessments": [{"status": "satisfied", "evidence_ids": ["evidence-1"]}],
+    "requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "satisfied", "evidence_ids": ["evidence-1"]}],
     "coverage_state": "complete",
     "source_state": "supported",
     "source_runtime_ids": ["runtime-1"],
@@ -47,7 +47,7 @@
     },
     {
       "name": "stale_evidence",
-      "input": {"requirement_assessments": [{"status": "stale", "evidence_ids": ["evidence-1"]}]},
+      "input": {"requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "stale", "evidence_ids": ["evidence-1"]}]},
       "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "stale", "assurance": "low", "reason_codes": ["evidence_stale"], "next_actions": ["refresh_evidence"], "legacy_status": "stale_evidence"},
       "expected_digest": "sha256:06e1ea29fa9a5ba7e5119e2c89a1006bbe2dbd61315da9bc52579475b7cf261c"
     },
@@ -77,7 +77,7 @@
     },
     {
       "name": "manual_evidence",
-      "input": {"requirement_assessments": [{"status": "manual_review", "evidence_ids": ["evidence-1"]}]},
+      "input": {"requirement_assessments": [{"requirement_key": "requirement-1", "control_ref": {"framework_name": "Example Framework", "control_id": "CC-1"}, "source_id": "source-1", "entity_type": "resource", "status": "manual_review", "evidence_ids": ["evidence-1"]}]},
       "expected": {"automated_outcome": "indeterminate", "design_state": "unknown", "operating_effectiveness_state": "unknown", "evidence_state": "manual_review", "assurance": "low", "reason_codes": ["manual_evidence_review"], "next_actions": ["review"], "legacy_status": "manual_review"},
       "expected_digest": "sha256:a447dfee1c8cf7373aea662d94c746cfe49d97a97b280fee29c161d060eab786"
     },
