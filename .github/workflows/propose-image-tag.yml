@@ -18,15 +18,17 @@ on:
           - sec-dev
           - go-prod
       image_tag:
-        description: Optional explicit image tag. When empty, use the latest stable GHCR tag.
+        description: Optional explicit image tag. When empty, use the latest published stable Cerebro release.
         required: false
         type: string
 
 permissions:
   actions: write
+  checks: read
   contents: write
   packages: read
   pull-requests: write
+  statuses: read
 
 concurrency:
   group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
@@ -71,6 +73,7 @@ jobs:
         id: image
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ env.INPUT_TAG }}
           EXPECTED_DIGEST: ${{ github.event.client_payload.image_digest || '' }}
         run: |
@@ -79,9 +82,7 @@ jobs:
           if [ -n "${INPUT_TAG}" ]; then
             tag="${INPUT_TAG}"
           else
-            token="$(curl -fsSL "https://ghcr.io/token?scope=repository:writer/cerebro:pull" | jq -r '.token')"
-            tags_json="$(curl -fsSL -H "Authorization: Bearer ${token}" "https://ghcr.io/v2/writer/cerebro/tags/list?n=1000")"
-            tag="$(jq -r '.tags[]?' <<<"${tags_json}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+            tag="$(gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name')"
           fi
 
           if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
@@ -150,13 +151,10 @@ jobs:
         run: |
           set -euo pipefail
           latest_tag="$(
-            gh api "repos/writer/cerebro/releases?per_page=100" \
-              --jq '.[] | select(.draft == false and .prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name' \
-              | sort -V \
-              | tail -n 1
+            gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name'
           )"
-          if [ -z "${latest_tag}" ]; then
-            echo "Could not resolve latest stable writer/cerebro release" >&2
+          if ! [[ "${latest_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not resolve latest stable writer/cerebro release; got ${latest_tag}" >&2
             exit 1
           fi
 
@@ -164,6 +162,10 @@ jobs:
           if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "${IMAGE_TAG}" != "${latest_tag}" ]; then
             superseded=true
             echo "::notice::Superseding ${IMAGE_TAG}; latest stable writer/cerebro release is ${latest_tag}."
+          fi
+          if [ "${EVENT_NAME}" = "schedule" ] && [ "${IMAGE_TAG}" != "${latest_tag}" ]; then
+            echo "Scheduled release scan resolved ${IMAGE_TAG}, but latest stable writer/cerebro release is ${latest_tag}." >&2
+            exit 1
           fi
 
           echo "tag=${latest_tag}" >> "$GITHUB_OUTPUT"
@@ -250,6 +252,7 @@ jobs:
           STACK_NAME: ${{ env.STACK_NAME }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           CONTRACT_PATH: ${{ steps.contract.outputs.path }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -257,7 +260,11 @@ jobs:
           changed_paths=("${target_config}")
           current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
           echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
-          uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
+          target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}")
+          if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
+            target_tag_args+=(--ensure-at-least)
+          fi
+          uv run --project infra python infra/scripts/set_image_tag.py "${target_tag_args[@]}"
           if [ "${STACK_NAME}" = "go-prod" ]; then
             sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
             changed_paths+=("${sec_dev_config}")
@@ -324,6 +331,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
+          CHECKS_TOKEN: ${{ github.token }}
           DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
           STACK_NAME: ${{ env.STACK_NAME }}
           APPLY_MODE: ${{ github.event.client_payload.apply_mode || 'pull_request' }}
@@ -385,7 +393,11 @@ jobs:
             refreshed_current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
             echo "Refreshed ${branch} from origin/main; ${STACK_NAME} was ${refreshed_current_tag}, target is ${IMAGE_TAG}."
 
-            uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
+            target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}")
+            if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
+              target_tag_args+=(--ensure-at-least)
+            fi
+            uv run --project infra python infra/scripts/set_image_tag.py "${target_tag_args[@]}"
             if [ "${STACK_NAME}" = "go-prod" ]; then
               changed_paths+=("${sec_dev_config}")
               uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
@@ -419,10 +431,7 @@ jobs:
           }
 
           resolve_latest_stable_tag() {
-            gh api "repos/writer/cerebro/releases?per_page=100" \
-              --jq '.[] | select(.draft == false and .prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name' \
-              | sort -V \
-              | tail -n 1
+            gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name'
           }
 
           release_is_still_latest() {
@@ -632,7 +641,10 @@ jobs:
             stable_complete_count=0
             last_check_count=0
             for _ in {1..90}; do
-              check_rollup="$(gh pr view "${pr_url}" --json statusCheckRollup --jq '.statusCheckRollup' 2>/dev/null || echo '[]')"
+              if ! check_rollup="$(GH_TOKEN="${CHECKS_TOKEN}" gh pr view "${pr_url}" --json statusCheckRollup --jq '.statusCheckRollup')"; then
+                echo "Could not read the PR check rollup for ${pr_url}." >&2
+                return 1
+              fi
               check_count="$(jq 'length' <<<"${check_rollup}")"
               pending_count="$(jq '[.[] | select((has("status") and .status != "COMPLETED") or ((has("status") | not) and ((.state // "") != "SUCCESS" and (.state // "") != "FAILURE" and (.state // "") != "ERROR")))] | length' <<<"${check_rollup}")"
               failed_count="$(jq '[.[] | select(((.conclusion // .state // "") | ascii_downcase) as $s | $s == "failure" or $s == "failed" or $s == "error" or $s == "timed_out" or $s == "cancelled" or $s == "action_required")] | length' <<<"${check_rollup}")"

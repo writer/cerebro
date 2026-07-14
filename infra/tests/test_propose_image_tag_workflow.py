@@ -45,8 +45,10 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
 
         self.assertIn("- name: Resolve release automation auth", workflow)
         self.assertIn("actions: write", workflow)
+        self.assertIn("checks: read", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("pull-requests: write", workflow)
+        self.assertIn("statuses: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
         self.assertIn("mode=deploy_app", workflow)
@@ -83,6 +85,19 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("if: steps.latest.outputs.superseded != 'true'", workflow)
         self.assertIn("- name: Report superseded release", workflow)
 
+    def test_scheduled_release_scan_uses_canonical_latest_release(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        resolve_step = workflow.split("- name: Resolve image tag", 1)[1].split("\n      - name:", 1)[0]
+        latest_step = workflow.split("- name: Resolve latest stable release", 1)[1].split("\n      - name:", 1)[0]
+
+        self.assertIn("GH_TOKEN: ${{ github.token }}", resolve_step)
+        self.assertIn('gh api "repos/writer/cerebro/releases/latest"', resolve_step)
+        self.assertNotIn("ghcr.io/v2/writer/cerebro/tags/list", resolve_step)
+        self.assertNotIn("tags/list?n=1000", resolve_step)
+        self.assertIn('gh api "repos/writer/cerebro/releases/latest"', latest_step)
+        self.assertIn('[ "${EVENT_NAME}" = "schedule" ]', latest_step)
+        self.assertIn("Scheduled release scan resolved", latest_step)
+
     def test_release_reads_use_authenticated_github_api(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         for step_name in (
@@ -97,7 +112,27 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 self.assertIn('gh api "repos/writer/cerebro/releases', step)
 
         apply_step = self._apply_step()
-        self.assertIn('gh api "repos/writer/cerebro/releases?per_page=100"', apply_step)
+        self.assertIn('gh api "repos/writer/cerebro/releases/latest"', apply_step)
+        self.assertNotIn('gh api "repos/writer/cerebro/releases?per_page=100"', apply_step)
+
+    def test_automated_image_promotions_do_not_downgrade_stacks(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        update_step = workflow.split("- name: Update stack config", 1)[1].split("\n      - name:", 1)[0]
+        apply_step = self._apply_step()
+
+        for step in (update_step, apply_step):
+            with self.subTest(step=step[:40]):
+                self.assertIn('EVENT_NAME: ${{ github.event_name }}', step)
+                self.assertIn('[ "${EVENT_NAME}" != "workflow_dispatch" ]', step)
+                self.assertIn("target_tag_args+=(--ensure-at-least)", step)
+
+    def test_auto_merge_reads_checks_with_workflow_token_and_surfaces_errors(self) -> None:
+        apply_step = self._apply_step()
+
+        self.assertIn("CHECKS_TOKEN: ${{ github.token }}", apply_step)
+        self.assertIn('GH_TOKEN="${CHECKS_TOKEN}" gh pr view', apply_step)
+        self.assertIn("Could not read the PR check rollup", apply_step)
+        self.assertNotIn("2>/dev/null || echo '[]'", apply_step)
 
     def test_release_pr_body_surfaces_runtime_contract_evidence(self) -> None:
         apply_step = self._apply_step()
