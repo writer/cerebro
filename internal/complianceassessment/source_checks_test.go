@@ -111,7 +111,7 @@ func TestLowerCertificationCannotPassButEvidenceRemainsVisible(t *testing.T) {
 	requirement := ObjectiveSourceRequirement{ObjectiveID: "objective-a", Sources: []SourceCheckRequirement{{
 		SourceID: "source-a", DimensionID: "dimension-a", MinimumCertification: sourcecoverage.CertificationFixtureValidated,
 	}}}
-	result, assessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-a"), requirement, []SourceCheckSnapshot{snapshot})
+	result, assessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-a", "source-a"), requirement, []SourceCheckSnapshot{snapshot})
 	if err != nil {
 		t.Fatalf("EvaluateObjectiveWithSourceChecks() error = %v", err)
 	}
@@ -139,13 +139,13 @@ func TestFailedSourceOnlyLimitsAffectedObjective(t *testing.T) {
 		t.Fatalf("BuildSourceCheckSnapshot(healthy) error = %v", err)
 	}
 	snapshots := []SourceCheckSnapshot{failed, healthy}
-	failedResult, failedAssessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-a"), ObjectiveSourceRequirement{
+	failedResult, failedAssessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-a", "source-a"), ObjectiveSourceRequirement{
 		ObjectiveID: "objective-a", Sources: []SourceCheckRequirement{{SourceID: "source-a", DimensionID: "dimension-a", MinimumCertification: sourcecoverage.CertificationFixtureValidated}},
 	}, snapshots)
 	if err != nil {
 		t.Fatalf("EvaluateObjectiveWithSourceChecks(failed) error = %v", err)
 	}
-	healthyResult, healthyAssessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-b"), ObjectiveSourceRequirement{
+	healthyResult, healthyAssessment, err := EvaluateObjectiveWithSourceChecks(validSourceEvaluateInput(now, "objective-b", "source-b"), ObjectiveSourceRequirement{
 		ObjectiveID: "objective-b", Sources: []SourceCheckRequirement{{SourceID: "source-b", DimensionID: "dimension-a", MinimumCertification: sourcecoverage.CertificationFixtureValidated}},
 	}, snapshots)
 	if err != nil {
@@ -199,11 +199,15 @@ func validSourceCheckInput(now time.Time, sourceID, objectiveID string) SourceCh
 	}
 }
 
-func validSourceEvaluateInput(now time.Time, objectiveID string) EvaluateInput {
+func validSourceEvaluateInput(now time.Time, objectiveID, sourceID string) EvaluateInput {
+	control := compliance.ControlRef{FrameworkName: "Example Framework", ControlID: "CC-1"}
 	return EvaluateInput{
 		ResultID: "result-" + objectiveID, ObjectiveID: objectiveID,
-		Control: compliance.ControlRef{FrameworkName: "Example Framework", ControlID: "CC-1"}, ScopeState: ScopeInScope,
-		RequirementAssessments: []compliance.ControlEvidenceRequirementAssessment{{Status: compliance.ControlEvidenceRequirementSatisfied, EvidenceIDs: []string{"source-evidence-a"}}},
-		CoverageState:          CoverageComplete, EvaluatorRevision: "evaluator-v1", Now: now,
+		Control: control, ScopeState: ScopeInScope,
+		RequirementAssessments: []compliance.ControlEvidenceRequirementAssessment{{
+			RequirementKey: "requirement-1", ControlRef: control, SourceID: sourceID, EntityType: "asset",
+			Status: compliance.ControlEvidenceRequirementSatisfied, EvidenceIDs: []string{"source-evidence-a"},
+		}},
+		CoverageState: CoverageComplete, EvaluatorRevision: "evaluator-v1", Now: now,
 	}
 }
