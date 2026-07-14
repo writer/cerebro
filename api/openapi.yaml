@@ -4132,9 +4132,51 @@ paths:
       responses:
         '200':
           description: Markdown or JSON export for the generated control evidence packet.
+  /grc/findings/{findingID}/audit-preview:
+    get:
+      operationId: previewGRCAuditPacket
+      summary: Preview the current audit evidence for one finding
+      tags:
+        - GRC
+      parameters:
+        - name: findingID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Live finding, evidence, controls, graph context, and recommended next action. This response is not an immutable audit packet.
+  /grc/audit-packets:
+    post:
+      operationId: createGRCAuditPacket
+      summary: Create an immutable audit packet from current finding evidence
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - finding_id
+              properties:
+                finding_id:
+                  type: string
+                  description: Finding to snapshot after tenant authorization.
+                supersedes:
+                  type: array
+                  items:
+                    type: string
+                  description: Earlier immutable packet IDs replaced by this packet.
+      responses:
+        '201':
+          description: Immutable audit packet with an independent packet ID and deterministic digest.
   /grc/audit-packets/{packetID}:
     get:
-      summary: GRC audit packet for one finding
+      operationId: getGRCAuditPacket
+      summary: Read one immutable GRC audit packet
       tags:
         - GRC
       parameters:
@@ -4145,7 +4187,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Finding, evidence, controls, graph context, and recommended next action.
+          description: Exact stored packet receipt. The read does not resolve current finding, evidence, runtime, or graph state.
   /platform/knowledge/decisions:
     post:
       summary: Record platform decision
@@ -5270,7 +5312,7 @@ paths:
   /grc/audit-packets/{packetID}/export:
     get:
       operationId: exportGRCAuditPacket
-      summary: Export a GRC audit packet
+      summary: Export one immutable GRC audit packet
       tags:
         - GRC
       parameters:
@@ -5289,7 +5331,7 @@ paths:
           description: Optional export format. Defaults to markdown.
       responses:
         '200':
-          description: Exported audit packet content.
+          description: Exported content derived from the exact stored packet receipt.
           content:
             text/markdown:
               schema:
