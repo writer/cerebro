@@ -86,6 +86,10 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	if got := receipt["health_endpoint"]; got != "/source-runtimes/health?source_id=demo_source" {
 		t.Fatalf("health_endpoint = %#v", got)
 	}
+	runtimeDoc := readGeneratedFile(t, outputDir, "sources/demo_source/SOURCE_RUNTIME.md")
+	if !strings.Contains(runtimeDoc, "- Health endpoint: `/source-runtimes/health?source_id=demo_source`") {
+		t.Fatalf("generated runtime documentation has the wrong health endpoint:\n%s", runtimeDoc)
+	}
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
 	}
