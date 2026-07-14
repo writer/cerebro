@@ -24,6 +24,7 @@ type findingIntelReady struct {
 	candidate         bool
 	memory            bool
 	riskScoringConfig bool
+	remediation       bool
 }
 
 // askTablesReady tracks lazy schema creation for the ask-domain auxiliary
