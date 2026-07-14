@@ -35,6 +35,7 @@ func (h *HTTPHandler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	request := struct {
 		FindingID  string   `json:"finding_id"`
 		Supersedes []string `json:"supersedes,omitempty"`
@@ -52,7 +53,7 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	preview, err := h.preview(r, request.FindingID)
 	if err == nil {
-		preview, err = grcauditpacket.Freeze(r.Context(), store, preview, request.Supersedes, func(tenantID string) bool { return h.tenantAllowed(r.Context(), tenantID) })
+		preview, err = grcauditpacket.Freeze(ctx, store, preview, request.Supersedes, func(tenantID string) bool { return h.tenantAllowed(ctx, tenantID) })
 	}
 	if err != nil {
 		h.writeError(w, err)
@@ -63,12 +64,12 @@ func (h *HTTPHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) Get(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	h.write(w, http.StatusOK, packet, err)
 }
 
 func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
-	packet, err := h.load(r)
+	packet, err := h.load(r.Context(), r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -80,10 +81,11 @@ func (h *HTTPHandler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="finding-audit-packet.md"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// #nosec G705 -- markdownValue and markdownCell escape active markup; the response is also an attachment with nosniff.
 	_, _ = w.Write([]byte(grccontrol.RenderFindingAuditPacketMarkdown(markdownInput(packet))))
 }
 
-func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {
+func (h *HTTPHandler) load(ctx context.Context, r *http.Request) (grcauditpacket.Packet, error) {
 	packetID := strings.TrimSpace(r.PathValue("packetID"))
 	if packetID == "" {
 		return grcauditpacket.Packet{}, h.invalid(fmt.Errorf("packet id is required"))
@@ -92,7 +94,7 @@ func (h *HTTPHandler) load(r *http.Request) (grcauditpacket.Packet, error) {
 	if !ok {
 		return grcauditpacket.Packet{}, findings.ErrRuntimeUnavailable
 	}
-	return grcauditpacket.Load(r.Context(), store, packetID, func(tenantID string) bool { return h.tenantAllowed(r.Context(), tenantID) })
+	return grcauditpacket.Load(ctx, store, packetID, func(tenantID string) bool { return h.tenantAllowed(ctx, tenantID) })
 }
 
 func (h *HTTPHandler) write(w http.ResponseWriter, status int, packet grcauditpacket.Packet, err error) {
