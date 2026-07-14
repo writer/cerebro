@@ -211,6 +211,8 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('--state merged', wait_block)
         self.assertIn('--head "${sec_dev_branch}"', wait_block)
         self.assertIn('--json mergeCommit,url', wait_block)
+        self.assertIn('GH_TOKEN="${CHECKS_TOKEN}" gh pr list', wait_block)
+        self.assertIn('GH_TOKEN="${CHECKS_TOKEN}" gh run list', wait_block)
         self.assertIn('select(.headSha == \\"${sec_dev_sha}\\")', wait_block)
         self.assertIn('sec-dev deploy for ${IMAGE_TAG} succeeded', wait_block)
         self.assertNotIn('git rev-parse origin/main', wait_block)
