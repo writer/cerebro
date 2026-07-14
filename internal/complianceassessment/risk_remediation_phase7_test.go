@@ -62,6 +62,89 @@ func TestApprovedExceptionRequiresLinkedRiskApprovalAndExpiry(t *testing.T) {
 	}
 }
 
+func TestExpiredRiskRequiresFreshApprovalBeforeAcceptance(t *testing.T) {
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	risk, err := NewRisk(validRiskInput(now))
+	if err != nil {
+		t.Fatalf("NewRisk() error = %v", err)
+	}
+	assessing, err := TransitionRisk(risk, risk.Version, RiskTransitionInput{To: RiskAssessing, At: now.Add(time.Hour)})
+	if err != nil {
+		t.Fatalf("TransitionRisk(assessing) error = %v", err)
+	}
+	accepted, err := TransitionRisk(assessing, assessing.Version, RiskTransitionInput{
+		To: RiskAccepted, Treatment: RiskTreatmentAccept, Rationale: "Temporary business dependency.",
+		CompensatingControls: []string{"daily review"}, Approval: &Approval{ID: "approval-a", ApprovedBy: "approver-a", ApprovedAt: now.Add(time.Hour)},
+		ExpiresAt: now.Add(30 * 24 * time.Hour), At: now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("TransitionRisk(accepted) error = %v", err)
+	}
+	expired, err := ExpireAcceptedRisk(accepted, accepted.Version, accepted.ExpiresAt)
+	if err != nil {
+		t.Fatalf("ExpireAcceptedRisk() error = %v", err)
+	}
+	reassessingAt := expired.ExpiresAt.Add(time.Hour)
+	reassessing, err := TransitionRisk(expired, expired.Version, RiskTransitionInput{To: RiskAssessing, At: reassessingAt})
+	if err != nil {
+		t.Fatalf("TransitionRisk(reassessing) error = %v", err)
+	}
+	reacceptAt := reassessingAt.Add(time.Hour)
+	renewal := RiskTransitionInput{To: RiskAccepted, ExpiresAt: reacceptAt.Add(30 * 24 * time.Hour), At: reacceptAt}
+	if _, err := TransitionRisk(reassessing, reassessing.Version, renewal); !errors.Is(err, ErrInvalidRisk) {
+		t.Fatalf("TransitionRisk(reused approval) error = %v, want ErrInvalidRisk", err)
+	}
+	renewal.Approval = &Approval{ID: "approval-b", ApprovedBy: "approver-b", ApprovedAt: accepted.Approval.ApprovedAt}
+	if _, err := TransitionRisk(reassessing, reassessing.Version, renewal); !errors.Is(err, ErrInvalidRisk) {
+		t.Fatalf("TransitionRisk(stale approval) error = %v, want ErrInvalidRisk", err)
+	}
+	renewal.Approval = &Approval{ID: "approval-c", ApprovedBy: "approver-c", ApprovedAt: reassessingAt}
+	if renewed, err := TransitionRisk(reassessing, reassessing.Version, renewal); err != nil || renewed.State != RiskAccepted {
+		t.Fatalf("TransitionRisk(fresh approval) = %+v, %v", renewed, err)
+	}
+}
+
+func TestExpiredExceptionRequiresFreshApprovalBeforeApproval(t *testing.T) {
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	exception, err := NewException(ExceptionInput{
+		ID: "exception-a", TenantID: "tenant-a", ProgramID: "program-a", ScopeRevisionID: "scope-r1",
+		ObjectiveID: "objective-a", SubjectID: "subject-a", VerificationRequired: true, CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("NewException() error = %v", err)
+	}
+	approved, err := TransitionException(exception, exception.Version, ExceptionTransitionInput{
+		To: ExceptionApproved, RiskID: "risk-a", OwnerID: "owner-a", Rationale: "Migration window.",
+		CompensatingControls: []string{"daily review"}, Approval: &Approval{ID: "approval-a", ApprovedBy: "approver-a", ApprovedAt: now},
+		ExpiresAt: now.Add(7 * 24 * time.Hour), At: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("TransitionException(approved) error = %v", err)
+	}
+	expired, err := ExpireException(approved, approved.Version, approved.ExpiresAt)
+	if err != nil {
+		t.Fatalf("ExpireException() error = %v", err)
+	}
+	proposedAt := expired.ExpiresAt.Add(time.Hour)
+	proposed, err := TransitionException(expired, expired.Version, ExceptionTransitionInput{To: ExceptionProposed, At: proposedAt})
+	if err != nil {
+		t.Fatalf("TransitionException(proposed) error = %v", err)
+	}
+	reapproveAt := proposedAt.Add(time.Hour)
+	renewal := ExceptionTransitionInput{To: ExceptionApproved, ExpiresAt: reapproveAt.Add(7 * 24 * time.Hour), At: reapproveAt}
+	if _, err := TransitionException(proposed, proposed.Version, renewal); !errors.Is(err, ErrInvalidException) {
+		t.Fatalf("TransitionException(reused approval) error = %v, want ErrInvalidException", err)
+	}
+	renewal.Approval = &Approval{ID: approved.Approval.ID, ApprovedBy: "approver-b", ApprovedAt: proposedAt}
+	if _, err := TransitionException(proposed, proposed.Version, renewal); !errors.Is(err, ErrInvalidException) {
+		t.Fatalf("TransitionException(reused approval id) error = %v, want ErrInvalidException", err)
+	}
+	renewal.Approval = &Approval{ID: "approval-b", ApprovedBy: "approver-b", ApprovedAt: proposedAt}
+	if renewed, err := TransitionException(proposed, proposed.Version, renewal); err != nil || renewed.State != ExceptionApproved {
+		t.Fatalf("TransitionException(fresh approval) = %+v, %v", renewed, err)
+	}
+}
+
 func TestRiskClosureRequiresIndependentVerification(t *testing.T) {
 	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
 	risk, err := NewRisk(validRiskInput(now))
