@@ -162,6 +162,9 @@ func TestAssuranceCanariesAreDetectedAndCannotAuthorizeProductionUse(t *testing.
 			if !containsQualificationReason(result.Reasons, testCase.reason) {
 				t.Fatalf("reasons = %v, want %q", result.Reasons, testCase.reason)
 			}
+			if containsQualificationReason(result.Reasons, QualificationLimitationsUndeclared) {
+				t.Fatalf("declared empty limitations were lost while cloning: %v", result.Reasons)
+			}
 			if !errors.Is(result.AuthorizeAuditPacket(), ErrCanaryProductionUse) || !errors.Is(result.AuthorizeAction(), ErrCanaryProductionUse) {
 				t.Fatal("canary authorized a production packet or action")
 			}
