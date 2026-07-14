@@ -85,7 +85,6 @@ func TestComplianceAggregateIdentityIncludesAggregateType(t *testing.T) {
 		t.Fatalf("aggregate types produced the same event id %q", first.GetId())
 	}
 }
-
 func TestComplianceAggregateRejectsUnsafePayload(t *testing.T) {
 	t.Parallel()
 	base := ComplianceAggregateRecorded{
