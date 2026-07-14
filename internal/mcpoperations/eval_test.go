@@ -55,3 +55,27 @@ func TestEvidencePacketRequestRejectsExecution(t *testing.T) {
 		t.Fatalf("EvidencePacketRequest() = %#v", request)
 	}
 }
+
+func TestEvidencePacketRequestTreatsNumericZeroAsFalse(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []json.Number{"0", "0.0", "0.00", "0e0", "-0"} {
+		request, err := EvidencePacketRequest(StructuredContent{"question": "collect evidence", "allow_preview": value})
+		if err != nil {
+			t.Fatalf("EvidencePacketRequest(%q) error = %v", value, err)
+		}
+		if request.AllowPreview {
+			t.Fatalf("EvidencePacketRequest(%q).AllowPreview = true, want false", value)
+		}
+	}
+
+	for _, value := range []json.Number{"1", "1.5", "-2"} {
+		request, err := EvidencePacketRequest(StructuredContent{"question": "collect evidence", "allow_preview": value})
+		if err != nil {
+			t.Fatalf("EvidencePacketRequest(%q) error = %v", value, err)
+		}
+		if !request.AllowPreview {
+			t.Fatalf("EvidencePacketRequest(%q).AllowPreview = false, want true", value)
+		}
+	}
+}

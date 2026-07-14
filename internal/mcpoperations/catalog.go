@@ -217,10 +217,7 @@ func ToolsetForName(name string) string {
 func ToolFamily(name string) string {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
 	family, _, _ := strings.Cut(name, ".")
-	if len(family) > 64 {
-		family = family[:64]
-	}
-	return family
+	return SanitizeTelemetryValue(family, 64)
 }
 
 type TelemetryMetadata struct {

@@ -57,3 +57,11 @@ func TestToolsetProfilesPreserveDomainAndFullSelection(t *testing.T) {
 		t.Fatalf("full and all must preserve the default unfiltered profile")
 	}
 }
+
+func TestToolFamilySanitizesTelemetryValue(t *testing.T) {
+	t.Parallel()
+
+	if got := ToolFamily("cerebro.bad\nfamily.tool"); got != "bad family" {
+		t.Fatalf("ToolFamily() = %q, want %q", got, "bad family")
+	}
+}
