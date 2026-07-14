@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/observability"
 )
 
@@ -64,6 +66,73 @@ func TestVerifyDeterministicReplayUsesOnlyPinnedHistory(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("replayer calls = %d, want 2", calls)
+	}
+}
+
+func TestVerifyDeterministicReplayAcceptsStoredMultiChunkHashAcrossOrderPermutations(t *testing.T) {
+	history, manifestHash, _, _ := validReplayFixture(t)
+	manifest := history.manifests[manifestHash]
+	now := time.Date(2026, 7, 11, 19, 0, 0, 0, time.UTC)
+	results := validResults(now, 501)
+	for index := range results {
+		results[index].ID = "result-" + results[len(results)-index-1].ObjectiveID
+	}
+
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: manifest, results: results})
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "replay-multi-chunk", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.InputHash != manifestHash || completed.ResultCount != uint64(len(results)) {
+		t.Fatalf("completed run = %#v", completed)
+	}
+	chunks, err := store.ListResultChunks(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("chunk count = %d, want 3", len(chunks))
+	}
+	storedResults := make([]ObjectiveResult, 0, len(results))
+	for _, chunk := range chunks {
+		storedResults = append(storedResults, chunk.Results...)
+	}
+	history.results = map[string][]ObjectiveResult{completed.AutomatedResultHash: storedResults}
+	replayed := append([]ObjectiveResult(nil), storedResults...)
+	for left, right := 0, len(replayed)-1; left < right; left, right = left+1, right-1 {
+		replayed[left], replayed[right] = replayed[right], replayed[left]
+	}
+	calls := 0
+	receipt, err := VerifyDeterministicReplay(context.Background(), ReplayVerificationInput{
+		ExpectedManifestHash: completed.InputHash,
+		ExpectedResultHash:   completed.AutomatedResultHash,
+		History:              history,
+		Replayer:             staticPinnedReplayer{results: replayed, calls: &calls},
+	})
+	if err != nil {
+		t.Fatalf("VerifyDeterministicReplay() error = %v", err)
+	}
+	if receipt.Status != ReplayVerified || receipt.ReplayedResultHash != completed.AutomatedResultHash {
+		t.Fatalf("receipt = %#v", receipt)
+	}
+	if calls != 1 {
+		t.Fatalf("replayer calls = %d, want 1", calls)
 	}
 }
 
