@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -316,9 +317,13 @@ func (s *Service) append(ctx context.Context, kind, aggregateType, aggregateID s
 	}
 	digest := sha256.Sum256(body)
 	tenantID := tenantIDForPayload(payload)
+	encodedVersion, err := encodeAggregateVersion(version)
+	if err != nil {
+		return ProjectionMetadata{}, nil, err
+	}
 	event, err := workflowevents.NewComplianceAggregateEvent(workflowevents.ComplianceAggregateRecorded{
 		Kind: kind, TenantID: tenantID, AggregateType: aggregateType, AggregateID: aggregateID,
-		AggregateVersion: int64(version), Operation: operation,
+		AggregateVersion: encodedVersion, Operation: operation,
 		ContentDigest: "sha256:" + hex.EncodeToString(digest[:]), PayloadJSON: string(body),
 		ActorID: strings.TrimSpace(actorID), RecordedAt: at.UTC().Format(time.RFC3339Nano),
 	})
@@ -329,6 +334,13 @@ func (s *Service) append(ctx context.Context, kind, aggregateType, aggregateID s
 		return ProjectionMetadata{}, nil, err
 	}
 	return ProjectionMetadata{EventID: event.GetId(), ExpectedVersion: version - 1, OccurredAt: at.UTC()}, event, nil
+}
+
+func encodeAggregateVersion(version uint64) (int64, error) {
+	if version == 0 || version > math.MaxInt64 {
+		return 0, fmt.Errorf("%w: aggregate version is out of range", ErrInvalidRequest)
+	}
+	return int64(version), nil
 }
 
 func (s *Service) ready() error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,17 @@ import (
 	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+func TestEncodeAggregateVersionRejectsInvalidRange(t *testing.T) {
+	for _, version := range []uint64{0, uint64(math.MaxInt64) + 1} {
+		if _, err := encodeAggregateVersion(version); !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("encodeAggregateVersion(%d) error = %v, want ErrInvalidRequest", version, err)
+		}
+	}
+	if got, err := encodeAggregateVersion(math.MaxInt64); err != nil || got != math.MaxInt64 {
+		t.Fatalf("encodeAggregateVersion(MaxInt64) = (%d, %v)", got, err)
+	}
+}
 
 func TestFailedResultWorkReplaysOldestFirstAndReopensAfterInvalidation(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)

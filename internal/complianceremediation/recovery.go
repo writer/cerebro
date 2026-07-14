@@ -148,7 +148,7 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 		if err := json.Unmarshal([]byte(record.PayloadJSON), &payload); err != nil {
 			return false, fmt.Errorf("decode remediation plan event: %w", err)
 		}
-		if strings.TrimSpace(record.TenantID) != strings.TrimSpace(payload.Plan.TenantID) || strings.TrimSpace(record.AggregateID) != strings.TrimSpace(payload.Plan.ID) || record.AggregateVersion != int64(payload.Plan.Version) {
+		if strings.TrimSpace(record.TenantID) != strings.TrimSpace(payload.Plan.TenantID) || strings.TrimSpace(record.AggregateID) != strings.TrimSpace(payload.Plan.ID) || !aggregateVersionMatches(record.AggregateVersion, payload.Plan.Version) {
 			return false, errors.New("remediation plan envelope does not match payload")
 		}
 		if payload.Reopen != nil && (payload.Reopen.PlanID != payload.Plan.ID || payload.Reopen.Trigger != payload.Plan.LastReopenTrigger) {
@@ -187,8 +187,13 @@ func validatePayloadDigest(record *workflowevents.ComplianceAggregateRecorded) e
 func validateWorkEnvelope(record *workflowevents.ComplianceAggregateRecorded, item complianceassessment.WorkItem) error {
 	if strings.TrimSpace(record.TenantID) != strings.TrimSpace(item.Basis.TenantID) ||
 		strings.TrimSpace(record.AggregateID) != strings.TrimSpace(item.ID) ||
-		record.AggregateVersion != int64(item.Version) || item.Version == 0 {
+		!aggregateVersionMatches(record.AggregateVersion, item.Version) {
 		return errors.New("work item envelope does not match payload")
 	}
 	return nil
+}
+
+func aggregateVersionMatches(recordVersion int64, payloadVersion uint64) bool {
+	encodedVersion, err := encodeAggregateVersion(payloadVersion)
+	return err == nil && recordVersion == encodedVersion
 }
