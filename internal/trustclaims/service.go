@@ -21,6 +21,7 @@ var (
 	ErrReceiptNotFound           = errors.New("trust claim receipt not found")
 	ErrObligationNotFound        = errors.New("trust obligation not found")
 	ErrHumanConfirmationRequired = errors.New("human confirmation is required")
+	ErrMalformedReference        = errors.New("malformed trust claim reference")
 )
 
 func IssueReceipt(input ReceiptInput) (ClaimReceipt, error) {
@@ -72,12 +73,12 @@ func IssueReceipt(input ReceiptInput) (ClaimReceipt, error) {
 func validateReceiptReferenceInput(input ReceiptInput) error {
 	for _, ref := range append(append([]VersionedRef(nil), input.Controls...), input.Policies...) {
 		if strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.Version) == "" {
-			return fmt.Errorf("%w: control and policy refs require exact versions", ErrInvalidReceipt)
+			return fmt.Errorf("%w: %w: control and policy refs require exact versions", ErrInvalidReceipt, ErrMalformedReference)
 		}
 	}
 	for _, ref := range input.ResourceRefs {
 		if strings.TrimSpace(ref.URN) == "" || strings.TrimSpace(ref.Revision) == "" {
-			return fmt.Errorf("%w: resource refs require urn and revision", ErrInvalidReceipt)
+			return fmt.Errorf("%w: %w: resource refs require urn and revision", ErrInvalidReceipt, ErrMalformedReference)
 		}
 	}
 	return nil
