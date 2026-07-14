@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -114,4 +117,73 @@ func TestAppendLogDeadLetterBacklogResponseDoesNotContainPayload(t *testing.T) {
 	if response.PendingRetentionSeconds != int64((7*24*time.Hour).Seconds()) || response.TerminalRetentionSeconds != int64((30*24*time.Hour).Seconds()) {
 		t.Fatalf("retention seconds = %d/%d", response.PendingRetentionSeconds, response.TerminalRetentionSeconds)
 	}
+}
+
+func TestAppendWithDeadLetterReplayLeasePreservesSuccessfulAppend(t *testing.T) {
+	renewErr := errors.New("renewal canceled")
+	store := &replayLeaseTestStore{renewErr: renewErr}
+	appendLog := &replayLeaseTestAppendLog{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := appendWithDeadLetterReplayLeaseInterval(ctx, appendLog, store, "dead-letter-1", "token-1", &cerebrov1.EventEnvelope{}, time.Millisecond)
+	if err != nil {
+		t.Fatalf("appendWithDeadLetterReplayLeaseInterval() error = %v, want successful append", err)
+	}
+	if store.renewCalls != 1 {
+		t.Fatalf("renew calls = %d, want 1", store.renewCalls)
+	}
+}
+
+func TestAppendWithDeadLetterReplayLeaseJoinsAppendAndRenewalFailures(t *testing.T) {
+	appendErr := errors.New("append failed")
+	renewErr := errors.New("renewal canceled")
+	store := &replayLeaseTestStore{renewErr: renewErr}
+	appendLog := &replayLeaseTestAppendLog{err: appendErr}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := appendWithDeadLetterReplayLeaseInterval(ctx, appendLog, store, "dead-letter-1", "token-1", &cerebrov1.EventEnvelope{}, time.Millisecond)
+	if !errors.Is(err, appendErr) || !errors.Is(err, renewErr) {
+		t.Fatalf("appendWithDeadLetterReplayLeaseInterval() error = %v, want append and renewal failures", err)
+	}
+}
+
+func TestAppendLogDeadLetterBacklogResponseHardLimitUsesEnforcementBoundary(t *testing.T) {
+	atLimit := appendLogDeadLetterBacklogResponse(ports.AppendLogDeadLetterBacklog{
+		PendingRecords: 10, HardRecords: 10,
+		PendingPayloadBytes: 100, HardBytes: 100,
+	})
+	if atLimit.HardLimitReached {
+		t.Fatal("HardLimitReached = true at the configured limit")
+	}
+
+	aboveLimit := appendLogDeadLetterBacklogResponse(ports.AppendLogDeadLetterBacklog{
+		PendingRecords: 11, HardRecords: 10,
+		PendingPayloadBytes: 100, HardBytes: 100,
+	})
+	if !aboveLimit.HardLimitReached {
+		t.Fatal("HardLimitReached = false above the configured limit")
+	}
+}
+
+type replayLeaseTestAppendLog struct {
+	ports.AppendLog
+	err error
+}
+
+func (l *replayLeaseTestAppendLog) Append(ctx context.Context, _ *cerebrov1.EventEnvelope) error {
+	<-ctx.Done()
+	return l.err
+}
+
+type replayLeaseTestStore struct {
+	ports.AppendLogDeadLetterStore
+	renewErr   error
+	renewCalls int
+}
+
+func (s *replayLeaseTestStore) RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error {
+	s.renewCalls++
+	return s.renewErr
 }

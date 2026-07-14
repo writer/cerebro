@@ -139,11 +139,15 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 }
 
 func appendWithDeadLetterReplayLease(ctx context.Context, appendLog ports.AppendLog, store ports.AppendLogDeadLetterStore, id string, token string, event *cerebrov1.EventEnvelope) error {
+	return appendWithDeadLetterReplayLeaseInterval(ctx, appendLog, store, id, token, event, 30*time.Second)
+}
+
+func appendWithDeadLetterReplayLeaseInterval(ctx context.Context, appendLog ports.AppendLog, store ports.AppendLogDeadLetterStore, id string, token string, event *cerebrov1.EventEnvelope, renewInterval time.Duration) error {
 	appendCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	renewed := make(chan error, 1)
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(renewInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -162,8 +166,11 @@ func appendWithDeadLetterReplayLease(ctx context.Context, appendLog ports.Append
 	appendErr := appendLog.Append(appendCtx, event)
 	cancel()
 	renewErr := <-renewed
+	if appendErr == nil {
+		return nil
+	}
 	if renewErr != nil {
-		return fmt.Errorf("renew replay claim: %w", renewErr)
+		return errors.Join(appendErr, fmt.Errorf("renew replay claim: %w", renewErr))
 	}
 	return appendErr
 }
@@ -491,7 +498,7 @@ func appendLogDeadLetterBacklogResponse(backlog ports.AppendLogDeadLetterBacklog
 		WarningBytes:             backlog.WarningBytes,
 		HardBytes:                backlog.HardBytes,
 		WarningLimitReached:      backlog.PendingRecords >= backlog.WarningRecords || backlog.PendingPayloadBytes >= backlog.WarningBytes,
-		HardLimitReached:         backlog.PendingRecords >= backlog.HardRecords || backlog.PendingPayloadBytes >= backlog.HardBytes,
+		HardLimitReached:         backlog.PendingRecords > backlog.HardRecords || backlog.PendingPayloadBytes > backlog.HardBytes,
 	}
 	if !backlog.OldestPendingAt.IsZero() {
 		response.OldestPendingAt = backlog.OldestPendingAt.UTC().Format(time.RFC3339)
