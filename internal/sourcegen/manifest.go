@@ -164,7 +164,7 @@ func preflightGeneration(request normalizedRequest, files []generatedFile, plan 
 		}
 	}
 	// The proof path is generated beneath the operator-selected OutputDir and cannot escape it.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	currentProof, err := os.ReadFile(plan.ProofPath) // #nosec G304 -- proof path is constrained to OutputDir.
 	if err == nil && !bytes.Equal(currentProof, plan.ProofPayload) && !request.Force {
 		if previous == nil || !digestMatches(currentProof, previous.ProofDigest) {
@@ -202,12 +202,12 @@ func marshalGenerationManifest(manifest generationManifest) ([]byte, error) {
 
 func writeGeneratedMetadata(path string, payload []byte, pattern string) error {
 	// Metadata paths are generated beneath the operator-selected OutputDir.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	// Temporary metadata is created beside its constrained destination.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	temporary, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
@@ -226,7 +226,7 @@ func writeGeneratedMetadata(path string, payload []byte, pattern string) error {
 		return err
 	}
 	// Both rename paths are temporary or generated metadata paths beneath OutputDir.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	return os.Rename(temporaryPath, path)
 }
 
@@ -256,7 +256,7 @@ func buildChangePlan(request normalizedRequest, files []generatedFile, plan gene
 			return ChangePlan{}, err
 		}
 		// Stale paths came from a manifest path previously constrained to OutputDir.
-		// codeql[go/uncontrolled-data-used-in-path-expression]
+		// codeql[go/path-injection]
 		current, err := os.ReadFile(stalePath) // #nosec G304 -- stale path came from a constrained manifest.
 		if os.IsNotExist(err) {
 			continue
@@ -312,7 +312,7 @@ func buildChangePlan(request normalizedRequest, files []generatedFile, plan gene
 
 func plannedFileAction(path string, expected []byte, previousDigest string, force bool) (string, string, error) {
 	// Generated paths are validated with manifestRelativePath before this call.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	current, err := os.ReadFile(path) // #nosec G304 -- generated path is constrained to OutputDir.
 	if os.IsNotExist(err) {
 		return ChangeActionCreate, "sourcegen", nil
@@ -331,7 +331,7 @@ func plannedFileAction(path string, expected []byte, previousDigest string, forc
 
 func metadataAction(path string, expected []byte) (string, error) {
 	// Metadata paths are generated beneath the operator-selected OutputDir.
-	// codeql[go/uncontrolled-data-used-in-path-expression]
+	// codeql[go/path-injection]
 	current, err := os.ReadFile(path) // #nosec G304 -- metadata path is constrained to OutputDir.
 	if os.IsNotExist(err) {
 		return ChangeActionCreate, nil
