@@ -16,6 +16,8 @@ import (
 
 var (
 	ErrInvalidReceipt            = errors.New("invalid trust claim receipt")
+	ErrInvalidVersionedReference = errors.New("control and policy refs require exact versions")
+	ErrInvalidResourceReference  = errors.New("resource refs require urn and revision")
 	ErrNotShareable              = errors.New("trust claim is not shareable")
 	ErrTenantMismatch            = errors.New("tenant mismatch")
 	ErrReceiptNotFound           = errors.New("trust claim receipt not found")
@@ -72,12 +74,12 @@ func IssueReceipt(input ReceiptInput) (ClaimReceipt, error) {
 func validateReceiptReferenceInput(input ReceiptInput) error {
 	for _, ref := range append(append([]VersionedRef(nil), input.Controls...), input.Policies...) {
 		if strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.Version) == "" {
-			return fmt.Errorf("%w: control and policy refs require exact versions", ErrInvalidReceipt)
+			return fmt.Errorf("%w: %w", ErrInvalidReceipt, ErrInvalidVersionedReference)
 		}
 	}
 	for _, ref := range input.ResourceRefs {
 		if strings.TrimSpace(ref.URN) == "" || strings.TrimSpace(ref.Revision) == "" {
-			return fmt.Errorf("%w: resource refs require urn and revision", ErrInvalidReceipt)
+			return fmt.Errorf("%w: %w", ErrInvalidReceipt, ErrInvalidResourceReference)
 		}
 	}
 	return nil

@@ -2,7 +2,6 @@ package trustclaims
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -134,30 +133,30 @@ func TestEvidenceInvalidationKeepsWithdrawnClaimWithdrawn(t *testing.T) {
 func TestIssueReceiptRejectsMalformedReferencesBeforeNormalization(t *testing.T) {
 	now := fixedTime()
 	tests := []struct {
-		name    string
-		mutate  func(*ReceiptInput)
-		message string
+		name   string
+		mutate func(*ReceiptInput)
+		target error
 	}{
 		{name: "control version", mutate: func(input *ReceiptInput) {
 			input.Controls = append(input.Controls, VersionedRef{ID: "control-other", Version: " "})
-		}, message: "control and policy refs require exact versions"},
+		}, target: ErrInvalidVersionedReference},
 		{name: "policy id", mutate: func(input *ReceiptInput) {
 			input.Policies = append(input.Policies, VersionedRef{ID: " ", Version: "2"})
-		}, message: "control and policy refs require exact versions"},
+		}, target: ErrInvalidVersionedReference},
 		{name: "resource urn", mutate: func(input *ReceiptInput) {
 			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: " ", Revision: "2"})
-		}, message: "resource refs require urn and revision"},
+		}, target: ErrInvalidResourceReference},
 		{name: "resource revision", mutate: func(input *ReceiptInput) {
 			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: "urn:resource:other", Revision: " "})
-		}, message: "resource refs require urn and revision"},
+		}, target: ErrInvalidResourceReference},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validReceiptInput(now, ClaimStatusDraft, DisclosureInternal)
 			test.mutate(&input)
 			_, err := IssueReceipt(input)
-			if !errors.Is(err, ErrInvalidReceipt) || !strings.Contains(err.Error(), test.message) {
-				t.Fatalf("IssueReceipt() error = %v, want %q", err, test.message)
+			if !errors.Is(err, ErrInvalidReceipt) || !errors.Is(err, test.target) {
+				t.Fatalf("IssueReceipt() error = %v, want ErrInvalidReceipt and %v", err, test.target)
 			}
 		})
 	}
