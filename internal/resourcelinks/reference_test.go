@@ -68,6 +68,18 @@ func TestResourceRefRoundTripsURNWithOneEscapingPass(t *testing.T) {
 	}
 }
 
+func TestResourceRefUnmarshalPreservesJSONDecodeError(t *testing.T) {
+	var reference ResourceRef
+	err := reference.UnmarshalJSON([]byte(`{"kind":`))
+	if !errors.Is(err, ErrInvalidResourceRef) {
+		t.Fatalf("UnmarshalJSON() error = %v, want ErrInvalidResourceRef", err)
+	}
+	var syntaxError *json.SyntaxError
+	if !errors.As(err, &syntaxError) {
+		t.Fatalf("UnmarshalJSON() error = %v, want json.SyntaxError", err)
+	}
+}
+
 func TestNormalizeResourceRefHistoricalState(t *testing.T) {
 	reference, err := Normalize(ResourceRef{
 		Kind:     fabriccontract.ResourceKindEvidencePacket,

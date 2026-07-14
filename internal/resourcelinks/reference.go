@@ -156,7 +156,7 @@ func (reference *ResourceRef) UnmarshalJSON(data []byte) error {
 	type resourceRefWire ResourceRef
 	var decoded resourceRefWire
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return fmt.Errorf("%w: decode json: %v", ErrInvalidResourceRef, err)
+		return fmt.Errorf("%w: decode json: %w", ErrInvalidResourceRef, err)
 	}
 	normalized, err := Normalize(ResourceRef(decoded))
 	if err != nil {
