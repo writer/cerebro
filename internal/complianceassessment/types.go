@@ -458,6 +458,65 @@ func CanonicalResultDigest(value ObjectiveResult) (string, error) {
 	return digestBytes(data), nil
 }
 
+// CanonicalResultSetDigest preserves the assessment runtime's result-set hash
+// contract: normalized results are ordered by their assessment identity, split
+// at the persisted chunk boundary, and each canonical chunk payload is written
+// into one SHA-256 stream.
+func CanonicalResultSetDigest(values []ObjectiveResult) (string, error) {
+	values, err := canonicalResultSet(values)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	for start := 0; start < len(values); start += resultChunkSize {
+		end := start + resultChunkSize
+		if end > len(values) {
+			end = len(values)
+		}
+		payload, err := canonicalBytes(values[start:end])
+		if err != nil {
+			return "", err
+		}
+		_, _ = hash.Write(payload)
+	}
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func canonicalResultSet(values []ObjectiveResult) ([]ObjectiveResult, error) {
+	type sortableResult struct {
+		value   ObjectiveResult
+		key     string
+		encoded string
+	}
+	results := make([]sortableResult, len(values))
+	for index := range values {
+		value := NormalizeResult(values[index])
+		if err := ValidateObjectiveResult(value); err != nil {
+			return nil, fmt.Errorf("results[%d]: %w", index, err)
+		}
+		encoded, err := canonicalBytes(value)
+		if err != nil {
+			return nil, fmt.Errorf("results[%d]: %w", index, err)
+		}
+		results[index] = sortableResult{
+			value:   value,
+			key:     value.ControlRef.FrameworkID + "\x00" + value.ControlRef.ControlID + "\x00" + value.ObjectiveID + "\x00" + value.ID,
+			encoded: string(encoded),
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].key != results[j].key {
+			return results[i].key < results[j].key
+		}
+		return results[i].encoded < results[j].encoded
+	})
+	canonical := make([]ObjectiveResult, len(results))
+	for index := range results {
+		canonical[index] = results[index].value
+	}
+	return canonical, nil
+}
+
 func digestBytes(data []byte) string {
 	digest := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(digest[:])

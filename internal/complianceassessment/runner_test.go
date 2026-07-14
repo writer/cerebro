@@ -2,6 +2,8 @@ package complianceassessment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -23,7 +25,13 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	log := &runLog{}
 	jobStore := newRunJobStore(now)
 	jobs := platformjobs.New(jobStore)
-	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1205)}
+	results := validResults(now, 1205)
+	for index := range results {
+		// Keep result identity order intentionally different from objective order.
+		// Replay hashing must use the runtime's canonical assessment identity.
+		results[index].ID = fmt.Sprintf("result-%04d", len(results)-index)
+	}
+	collector := &testCollector{manifest: completeManifest(now), results: results}
 	service := NewAssessmentService(store, log, jobs, collector)
 	service.now = func() time.Time { return now }
 	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
@@ -61,6 +69,37 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 		if index > 0 && chunk.PreviousDigest != chunks[index-1].Digest {
 			t.Fatalf("chunk %d previous digest mismatch", chunk.Sequence)
 		}
+	}
+	storedResults := make([]ObjectiveResult, 0, completed.ResultCount)
+	storedHash := sha256.New()
+	for _, chunk := range chunks {
+		storedResults = append(storedResults, chunk.Results...)
+		payload, encodeErr := canonicalBytes(chunk.Results)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		_, _ = storedHash.Write(payload)
+	}
+	chunkDigest := "sha256:" + hex.EncodeToString(storedHash.Sum(nil))
+	if chunkDigest != completed.AutomatedResultHash {
+		t.Fatalf("persisted chunk digest = %q, want %q", chunkDigest, completed.AutomatedResultHash)
+	}
+	storedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedDigest != completed.AutomatedResultHash {
+		t.Fatalf("stored result digest = %q, want %q", storedDigest, completed.AutomatedResultHash)
+	}
+	for left, right := 0, len(storedResults)-1; left < right; left, right = left+1, right-1 {
+		storedResults[left], storedResults[right] = storedResults[right], storedResults[left]
+	}
+	permutedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permutedDigest != completed.AutomatedResultHash {
+		t.Fatalf("permuted result digest = %q, want %q", permutedDigest, completed.AutomatedResultHash)
 	}
 }
 
