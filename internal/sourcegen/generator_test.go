@@ -2257,7 +2257,7 @@ func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
 	if _, err := Generate(request); !errors.Is(err, ErrGeneratedOutputModified) {
 		t.Fatalf("second Generate() error = %v, want ownership error", err)
 	}
-	current, err := os.ReadFile(sourcePath)
+	current, err := os.ReadFile(sourcePath) // #nosec G304 -- sourcePath is inside the test-owned temporary directory.
 	if err != nil {
 		t.Fatalf("read operator change: %v", err)
 	}
