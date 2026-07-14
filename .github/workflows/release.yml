@@ -1,316 +1,210 @@
-name: Release
+name: Stable Release
 
 on:
   workflow_dispatch:
     inputs:
+      candidate_run_id:
+        description: Successful Candidate Build run ID
+        required: true
+        type: string
       release_tag:
-        description: 'Release tag (e.g. v1.2.3). Must start with v.'
+        description: Stable tag in vMAJOR.MINOR.PATCH form
+        required: true
+        type: string
+      release_notes:
+        description: Completed release notes with every required section
+        required: true
+        type: string
+      smoke_receipt_url:
+        description: Successful canary or production smoke receipt URL
         required: true
         type: string
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
-  attestations: write
+  contents: read
 
 concurrency:
-  group: release-${{ inputs.release_tag }}
+  group: stable-release
   cancel-in-progress: false
 
 jobs:
-  resolve-tag:
+  verify-candidate:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
-      is_stable_release: ${{ steps.resolve.outputs.is_stable_release }}
+      sha: ${{ steps.run.outputs.sha }}
+      image: ${{ steps.receipt.outputs.image }}
+      digest: ${{ steps.receipt.outputs.digest }}
     steps:
-      - name: Resolve release tag
-        id: resolve
+      - name: Validate release tag and candidate run
+        id: run
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          tag="${RELEASE_TAG}"
-          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "ERROR: tag '${tag}' must match vMAJOR.MINOR.PATCH[-PRERELEASE]"
+          set -euo pipefail
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: release_tag must match vMAJOR.MINOR.PATCH" >&2
             exit 1
           fi
-          if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            is_stable_release=true
-          else
-            is_stable_release=false
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "ERROR: release tag ${RELEASE_TAG} already exists" >&2
+            exit 1
           fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "is_stable_release=${is_stable_release}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release tag: ${tag} (stable=${is_stable_release})"
+          run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")"
+          workflow_path="$(jq -r .path <<< "${run}")"
+          conclusion="$(jq -r .conclusion <<< "${run}")"
+          event="$(jq -r .event <<< "${run}")"
+          sha="$(jq -r .head_sha <<< "${run}")"
+          if [ "${workflow_path}" != ".github/workflows/cut-release.yml" ] || [ "${conclusion}" != success ]; then
+            echo "ERROR: run ${CANDIDATE_RUN_ID} is not a successful Candidate Build" >&2
+            exit 1
+          fi
+          if [ "${event}" != push ] && [ "${event}" != workflow_dispatch ]; then
+            echo "ERROR: candidate run event ${event} is not allowed" >&2
+            exit 1
+          fi
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
 
-  release-verify:
-    name: Verify release (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    needs: [resolve-tag]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: build
-            command: make build
-          - name: test
-            command: make test
-          - name: race
-            command: make test-race
-          - name: coverage
-            command: make cover
-          - name: sdk
-            command: make sdk-test
-          - name: sdk-dependency-audit
-            command: make sdk-dependency-audit
-          - name: script-test
-            command: make script-test
-          - name: mcp
-            command: make mcp-contract-check mcp-sdk-compat
-          - name: lint
-            command: make lint
-          - name: proto
-            command: make proto-lint proto-generate-check proto-breaking
-          - name: openapi
-            command: make openapi-check openapi-lint
-          - name: catalog
-            command: make catalog-check detection-catalog-check
-          - name: graph-actions
-            command: make graph-action-check
-          - name: finding-dsl
-            command: make finding-dsl-check
-          - name: policy-rule
-            command: make policy-rule-check
-          - name: docs-drift
-            command: make docs-drift-check
-          - name: readme
-            command: make readme-check
-          - name: oss-audit
-            command: make oss-audit
-          - name: govulncheck
-            command: make govulncheck
-          - name: release-smoke
-            command: make release-smoke
-          - name: docker-smoke
-            command: make docker-smoke
-          - name: structural
-            command: make check-structural check-structural-test check-arch
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          fetch-depth: 0
-          ref: ${{ needs.resolve-tag.outputs.tag }}
+          name: cerebro-candidate-${{ steps.run.outputs.sha }}
+          path: candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
 
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Run ${{ matrix.name }}
-        run: ${{ matrix.command }}
-
-  goreleaser:
-    runs-on: ubuntu-latest
-    needs: [resolve-tag, release-verify]
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.resolve-tag.outputs.tag }}
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          version: v2.16.0
-          args: release --clean --parallelism 1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  runtime-binaries:
-    runs-on: ubuntu-latest
-    needs: [resolve-tag, release-verify]
-    env:
-      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve-tag.outputs.tag }}
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Build linux runtime binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${RELEASE_TAG#v}"
-          commit="$(git rev-parse HEAD)"
-          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ldflags="-s -w -X github.com/writer/cerebro/internal/buildinfo.Version=${version} -X github.com/writer/cerebro/internal/buildinfo.Commit=${commit} -X github.com/writer/cerebro/internal/buildinfo.BuildDate=${build_date}"
-          for arch in amd64 arm64; do
-            mkdir -p ".dist/linux-${arch}"
-            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" go build -trimpath -ldflags "${ldflags}" -o ".dist/linux-${arch}/cerebro" ./cmd/cerebro
-          done
-
-      - name: Attest runtime binaries
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-path: |
-            .dist/linux-amd64/cerebro
-            .dist/linux-arm64/cerebro
-
-      - name: Upload linux/amd64 runtime binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cerebro-linux-amd64
-          path: .dist/linux-amd64/cerebro
-          if-no-files-found: error
-
-      - name: Upload linux/arm64 runtime binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cerebro-linux-arm64
-          path: .dist/linux-arm64/cerebro
-          if-no-files-found: error
-
-  ghcr-build:
-    name: Build runtime image (${{ matrix.platform }})
-    runs-on: ubuntu-latest
-    needs: [resolve-tag, runtime-binaries]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goarch: amd64
-            platform: linux/amd64
-            artifact: cerebro-linux-amd64
-          - goarch: arm64
-            platform: linux/arm64
-            artifact: cerebro-linux-arm64
-    env:
-      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve-tag.outputs.tag }}
-
-      - name: Download release binary
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ${{ matrix.artifact }}
-          path: .dist
-
-      - name: Prepare release binary
-        shell: bash
-        run: chmod +x .dist/cerebro
-
-      - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
-      - name: Build and push runtime image
+      - name: Verify candidate receipt and bundle
+        id: receipt
         shell: bash
         env:
-          IMAGE_BASE: ghcr.io/${{ github.repository }}
-          GOARCH: ${{ matrix.goarch }}
-          PLATFORM: ${{ matrix.platform }}
+          EXPECTED_SHA: ${{ steps.run.outputs.sha }}
+          EXPECTED_RUN_ID: ${{ inputs.candidate_run_id }}
         run: |
           set -euo pipefail
-          docker buildx build --platform "${PLATFORM}" \
-            -f Dockerfile.runtime \
-            -t "${IMAGE_BASE}:${RELEASE_TAG}-${GOARCH}" \
-            --provenance=mode=max \
-            --sbom=true \
-            --push .
+          test "$(jq -r .schema_version candidate/candidate-receipt.json)" = "cerebro.release-candidate/v1"
+          test "$(jq -r .commit candidate/candidate-receipt.json)" = "${EXPECTED_SHA}"
+          test "$(jq -r .run_id candidate/candidate-receipt.json)" = "${EXPECTED_RUN_ID}"
+          (cd candidate && sha256sum -c bundle-checksums.txt)
+          image="$(jq -r .image candidate/candidate-receipt.json)"
+          digest="$(jq -r .image_digest candidate/candidate-receipt.json)"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
 
-  ghcr-publish:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.run.outputs.sha }}
+
+      - name: Validate release notes and stable checks
+        shell: bash
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          SMOKE_RECEIPT_URL: ${{ inputs.smoke_receipt_url }}
+        run: |
+          printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
+          scripts/release/validate_release_notes.sh release-notes.md
+          grep -Fq "${SMOKE_RECEIPT_URL}" release-notes.md || {
+            echo "ERROR: release notes do not contain smoke_receipt_url" >&2
+            exit 1
+          }
+          make release-smoke docs-drift-check readme-check oss-audit
+
+  promote:
     runs-on: ubuntu-latest
-    needs: [resolve-tag, ghcr-build]
+    needs: verify-candidate
+    environment: stable-release
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
     outputs:
-      digest: ${{ steps.manifest.outputs.digest }}
-    env:
-      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+      digest: ${{ needs.verify-candidate.outputs.digest }}
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.verify-candidate.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cerebro-candidate-${{ needs.verify-candidate.outputs.sha }}
+          path: candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
       - name: Log in to GHCR
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
-      - name: Create and push multi-arch manifests
-        id: manifest
-        shell: bash
-        env:
-          IMAGE_BASE: ghcr.io/${{ github.repository }}
-        run: |
-          set -euo pipefail
-          docker buildx imagetools create -t "${IMAGE_BASE}:${RELEASE_TAG}" \
-            "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
-            "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
-
-          if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then
-            docker buildx imagetools create -t "${IMAGE_BASE}:latest" \
-              "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
-              "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
-          else
-            echo "Skipping latest tag for prerelease ${RELEASE_TAG}"
-          fi
-
-          digest="$(docker buildx imagetools inspect "${IMAGE_BASE}:${RELEASE_TAG}" --format '{{.Manifest.Digest}}')"
-          if [ -z "${digest}" ]; then
-            echo "ERROR: failed to resolve manifest digest for ${IMAGE_BASE}:${RELEASE_TAG}" >&2
-            exit 1
-          fi
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-          echo "Published ${IMAGE_BASE}:${RELEASE_TAG}@${digest}"
-
-      - name: Set up cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v2.6.1
-
-      - name: Keyless sign release images
+      - name: Verify and promote candidate image
         shell: bash
         env:
-          IMAGE_BASE: ghcr.io/${{ github.repository }}
-          DIGEST: ${{ steps.manifest.outputs.digest }}
-          COSIGN_EXPERIMENTAL: "true"
+          CANDIDATE_IMAGE: ${{ needs.verify-candidate.outputs.image }}
+          IMAGE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
-
-      - name: Attest release image provenance
+          image_base="ghcr.io/${GITHUB_REPOSITORY}"
+          cosign verify "${image_base}@${IMAGE_DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$"
+          resolved="$(docker buildx imagetools inspect "${CANDIDATE_IMAGE}" --format '{{.Manifest.Digest}}')"
+          test "${resolved}" = "${IMAGE_DIGEST}"
+          docker buildx imagetools create -t "${image_base}:${RELEASE_TAG}" "${image_base}@${IMAGE_DIGEST}"
+          docker buildx imagetools create -t "${image_base}:latest" "${image_base}@${IMAGE_DIGEST}"
+          cosign sign --yes "${image_base}@${IMAGE_DIGEST}"
+      - name: Attest promoted image provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          subject-digest: ${{ needs.verify-candidate.outputs.digest }}
           push-to-registry: true
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Render and sign stable runtime contracts
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          for target in sec-dev go-prod; do
+            go run ./cmd/sourcedeploy -env "${target}" -tenant writer -format contract-json \
+              -image-tag "${RELEASE_TAG}" -out "candidate/cerebro-runtime-contract-${target}.json"
+            cosign sign-blob --yes \
+              --output-signature "candidate/cerebro-runtime-contract-${target}.json.sig" \
+              --output-certificate "candidate/cerebro-runtime-contract-${target}.json.pem" \
+              "candidate/cerebro-runtime-contract-${target}.json"
+          done
+      - name: Create and publish stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          CANDIDATE_SHA: ${{ needs.verify-candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
+          mapfile -t files < <(find candidate -type f \( -name '*.tar.gz' -o -name 'checksums.txt' \
+            -o -name 'candidate-receipt.json' -o -name 'go-module-inventory.ndjson' \
+            -o -name 'cerebro-runtime-contract-*' \) | sort)
+          gh release create "${RELEASE_TAG}" "${files[@]}" --target "${CANDIDATE_SHA}" \
+            --title "Cerebro ${RELEASE_TAG}" --notes-file release-notes.md --draft
+          gh release edit "${RELEASE_TAG}" --draft=false
 
-  notify-infra-release:
+  notify-infra:
     runs-on: ubuntu-latest
-    needs: [resolve-tag, ghcr-publish, runtime-contract-upload]
+    needs: [verify-candidate, promote]
     permissions:
       contents: read
       id-token: write
@@ -323,7 +217,7 @@ jobs:
           - target_environment: go-prod
             apply_mode: pull_request
     steps:
-      - name: Fetch org-level secrets from Infisical
+      - name: Fetch organization release credentials
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
@@ -332,7 +226,7 @@ jobs:
           project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
           env-slug: prod
           export-type: env
-      - name: Fetch repo-level secrets from Infisical
+      - name: Fetch repository release credentials
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
@@ -341,208 +235,41 @@ jobs:
           project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
           env-slug: prod
           export-type: env
-      - name: Dispatch release deployment request
+      - name: Dispatch stable deployment request
         shell: bash
         env:
           GITHUB_CEREBRO_INFRA_PROMOTION_TOKEN: ${{ secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
           GITHUB_CEREBRO_INFRA_REPOSITORY: ${{ secrets.CEREBRO_INFRA_REPOSITORY }}
-          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-          IMAGE_DIGEST: ${{ needs.ghcr-publish.outputs.digest }}
-          SOURCE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          IMAGE_DIGEST: ${{ needs.promote.outputs.digest }}
           TARGET_ENVIRONMENT: ${{ matrix.target_environment }}
           APPLY_MODE: ${{ matrix.apply_mode }}
         run: |
           set -euo pipefail
           GH_TOKEN="${CEREBRO_INFRA_PROMOTION_TOKEN:-${GITHUB_CEREBRO_INFRA_PROMOTION_TOKEN:-}}"
-          INFRA_REPOSITORY="${CEREBRO_INFRA_REPOSITORY:-${GITHUB_CEREBRO_INFRA_REPOSITORY:-}}"
+          infra_repository="${CEREBRO_INFRA_REPOSITORY:-${GITHUB_CEREBRO_INFRA_REPOSITORY:-}}"
           export GH_TOKEN
           if [ -z "${GH_TOKEN}" ]; then
-            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping ${TARGET_ENVIRONMENT} deploy dispatch for ${RELEASE_TAG}"
+            echo "CEREBRO_INFRA_PROMOTION_TOKEN is not configured; no ${TARGET_ENVIRONMENT} dispatch was sent"
             exit 0
           fi
-          if ! [[ "${INFRA_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-            echo "ERROR: CEREBRO_INFRA_REPOSITORY must be configured as owner/repo for deploy dispatches" >&2
+          if ! [[ "${infra_repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "ERROR: CEREBRO_INFRA_REPOSITORY must be owner/repository" >&2
             exit 1
           fi
-
           handler="$(mktemp)"
-          gh api "repos/${INFRA_REPOSITORY}/contents/.github/workflows/propose-image-tag.yml?ref=main" --jq .content \
+          gh api "repos/${infra_repository}/contents/.github/workflows/propose-image-tag.yml?ref=main" --jq .content \
             | base64 -d > "${handler}"
-          if ! grep -Eq '^[[:space:]]*repository_dispatch:' "${handler}" || ! grep -Eq 'cerebro-release-published' "${handler}"; then
-            echo "ERROR: configured deploy repository does not have the cerebro-release-published repository_dispatch handler installed" >&2
-            echo "Merge the deploy handler before dispatching releases." >&2
-            exit 1
-          fi
-          if ! grep -Eq 'client_payload\.request_id' "${handler}"; then
-            echo "ERROR: configured deploy repository does not expose request_id in workflow run names" >&2
-            echo "Merge the request-id run-name handler before dispatching releases." >&2
-            exit 1
-          fi
+          grep -Eq '^[[:space:]]*repository_dispatch:' "${handler}"
+          grep -Eq 'cerebro-release-published' "${handler}"
+          grep -Eq 'client_payload\.request_id' "${handler}"
 
-          dispatch_target() {
-            local requested_at
-            local request_id
-            local deadline
-            local run_id
-            local run_url
-
-            requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            request_id="cerebro-${TARGET_ENVIRONMENT}-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-
-            payload="$(
-              jq -n \
-              --arg tag "${RELEASE_TAG}" \
-              --arg digest "${IMAGE_DIGEST}" \
-              --arg release_url "https://github.com/${SOURCE_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
-              --arg source_repository "${SOURCE_REPOSITORY}" \
-              --arg source_ref "refs/tags/${RELEASE_TAG}" \
-              --arg request_id "${request_id}" \
-              --arg target_environment "${TARGET_ENVIRONMENT}" \
-              --arg apply_mode "${APPLY_MODE}" \
-              '{
-                event_type: "cerebro-release-published",
-                client_payload: {
-                  image_tag: $tag,
-                  image_digest: $digest,
-                  release_url: $release_url,
-                  source_repository: $source_repository,
-                  source_ref: $source_ref,
-                  request_id: $request_id,
-                  target_environment: $target_environment,
-                  apply_mode: $apply_mode
-                }
-              }'
-            )"
-            payload_keys="$(jq '.client_payload | length' <<<"${payload}")"
-            if [ "${payload_keys}" -gt 10 ]; then
-              echo "ERROR: repository_dispatch client_payload has ${payload_keys} keys; GitHub allows at most 10" >&2
-              exit 1
-            fi
-            gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"
-
-            deadline=$((SECONDS + 120))
-            while [ "${SECONDS}" -lt "${deadline}" ]; do
-              run_id="$(
-                gh run list \
-                  --repo "${INFRA_REPOSITORY}" \
-                  --workflow propose-image-tag.yml \
-                  --event repository_dispatch \
-                  --json databaseId,createdAt,displayTitle,url \
-                  --limit 20 \
-                  | jq -r --arg requested_at "${requested_at}" --arg request_id "${request_id}" '.[] | select(.createdAt >= $requested_at and ((.displayTitle // "") | contains($request_id))) | .databaseId' \
-                  | head -n 1
-              )"
-              if [ -n "${run_id}" ]; then
-                run_url="$(
-                  gh run list \
-                    --repo "${INFRA_REPOSITORY}" \
-                    --workflow propose-image-tag.yml \
-                    --event repository_dispatch \
-                    --json databaseId,url \
-                    --limit 20 \
-                    --jq ".[] | select(.databaseId == ${run_id}) | .url" \
-                    | head -n 1
-                )"
-                echo "Dispatched ${TARGET_ENVIRONMENT} ${APPLY_MODE} deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
-                return 0
-              fi
-              sleep 5
-            done
-
-            echo "ERROR: repository_dispatch was accepted, but no matching propose-image-tag.yml run appeared for ${TARGET_ENVIRONMENT} ${RELEASE_TAG}" >&2
-            echo "This usually means the downstream handler is absent or disabled; failing closed to avoid silent deploy loss." >&2
-            exit 1
-          }
-
-          dispatch_target
-
-  runtime-contract:
-    runs-on: ubuntu-latest
-    needs: [resolve-tag, release-verify]
-    strategy:
-      fail-fast: false
-      matrix:
-        target_environment: [sec-dev, go-prod]
-    env:
-      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-      TARGET_ENVIRONMENT: ${{ matrix.target_environment }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve-tag.outputs.tag }}
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Render runtime deploy contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .dist
-          go run ./cmd/sourcedeploy \
-            -env "${TARGET_ENVIRONMENT}" \
-            -tenant writer \
-            -format contract-json \
-            -image-tag "${RELEASE_TAG}" \
-            -out ".dist/cerebro-runtime-contract-${TARGET_ENVIRONMENT}.json"
-
-      - name: Set up cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v2.6.1
-
-      - name: Keyless sign runtime deploy contract
-        shell: bash
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          set -euo pipefail
-          cosign sign-blob --yes \
-            --output-signature ".dist/cerebro-runtime-contract-${TARGET_ENVIRONMENT}.json.sig" \
-            --output-certificate ".dist/cerebro-runtime-contract-${TARGET_ENVIRONMENT}.json.pem" \
-            ".dist/cerebro-runtime-contract-${TARGET_ENVIRONMENT}.json"
-
-      - name: Upload runtime deploy contract
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cerebro-runtime-contract-${{ matrix.target_environment }}
-          path: |
-            .dist/cerebro-runtime-contract-${{ matrix.target_environment }}.json
-            .dist/cerebro-runtime-contract-${{ matrix.target_environment }}.json.sig
-            .dist/cerebro-runtime-contract-${{ matrix.target_environment }}.json.pem
-          if-no-files-found: error
-
-  runtime-contract-upload:
-    runs-on: ubuntu-latest
-    needs: [resolve-tag, goreleaser, runtime-contract]
-    env:
-      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-    steps:
-      - name: Download sec-dev runtime deploy contract
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: cerebro-runtime-contract-sec-dev
-          path: .dist
-
-      - name: Download go-prod runtime deploy contract
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: cerebro-runtime-contract-go-prod
-          path: .dist
-
-      - name: Upload runtime deploy contract to release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release upload "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
-            .dist/cerebro-runtime-contract-sec-dev.json \
-            .dist/cerebro-runtime-contract-sec-dev.json.sig \
-            .dist/cerebro-runtime-contract-sec-dev.json.pem \
-            .dist/cerebro-runtime-contract-go-prod.json \
-            .dist/cerebro-runtime-contract-go-prod.json.sig \
-            .dist/cerebro-runtime-contract-go-prod.json.pem \
-            --clobber
+          payload="$(mktemp)"
+          jq -n --arg tag "${RELEASE_TAG}" --arg digest "${IMAGE_DIGEST}" \
+            --arg release_url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
+            --arg source_repository "${GITHUB_REPOSITORY}" --arg source_ref "refs/tags/${RELEASE_TAG}" \
+            --arg request_id "cerebro-${TARGET_ENVIRONMENT}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --arg target_environment "${TARGET_ENVIRONMENT}" --arg apply_mode "${APPLY_MODE}" \
+            '{event_type:"cerebro-release-published",client_payload:{image_tag:$tag,image_digest:$digest,release_url:$release_url,source_repository:$source_repository,source_ref:$source_ref,request_id:$request_id,target_environment:$target_environment,apply_mode:$apply_mode}}' > "${payload}"
+          test "$(jq '.client_payload | length' "${payload}")" -le 10
+          gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"

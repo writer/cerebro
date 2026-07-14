@@ -72,7 +72,7 @@ func TestDockerfileCanBuildCurrentBootstrapBinary(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
+func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	root := repoRoot(t)
 	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
 	if err != nil {
@@ -80,24 +80,20 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	}
 	release := string(releaseBody)
 	for _, marker := range []string{
-		"command: make sdk-test",
-		"command: make proto-lint proto-generate-check proto-breaking",
-		"command: make docker-smoke",
-		"is_stable_release:",
-		`if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`,
-		"Skipping latest tag for prerelease",
+		"environment: stable-release",
+		"candidate_run_id:",
+		"smoke_receipt_url:",
+		"scripts/release/validate_release_notes.sh",
+		"cosign verify",
+		`docker buildx imagetools create -t "${image_base}:${RELEASE_TAG}"`,
+		`docker buildx imagetools create -t "${image_base}:latest"`,
 		"target_environment: sec-dev",
 		"apply_mode: direct_push",
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
-		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
-		`payload_keys="$(jq '.client_payload | length' <<<"${payload}")"`,
-		"GitHub allows at most 10",
-		`gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"`,
-		`target_environment: [sec-dev, go-prod]`,
-		`-env "${TARGET_ENVIRONMENT}"`,
-		"cerebro-runtime-contract-sec-dev.json",
-		"cerebro-runtime-contract-go-prod.json",
+		"Dispatch stable deployment request",
+		"for target in sec-dev go-prod; do",
+		`cerebro-runtime-contract-${target}.json`,
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
@@ -118,15 +114,35 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	if strings.Contains(release, "-env sec-dev") {
 		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")
 	}
-	latestIndex := strings.Index(release, `docker buildx imagetools create -t "${IMAGE_BASE}:latest"`)
-	stableGuardIndex := strings.Index(release, `if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`)
-	if latestIndex == -1 || stableGuardIndex == -1 || stableGuardIndex > latestIndex {
-		t.Fatal("release workflow must guard latest image publication behind stable-release check")
-	}
-	dispatchIndex := strings.Index(release, "Dispatch release deployment request")
+	dispatchIndex := strings.Index(release, "Dispatch stable deployment request")
 	matrixIndex := strings.Index(release, "target_environment: sec-dev")
 	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
 		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
+	}
+
+	candidateBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "cut-release.yml"))
+	if err != nil {
+		t.Fatalf("read candidate workflow: %v", err)
+	}
+	candidate := string(candidateBody)
+	for _, marker := range []string{
+		"name: Candidate Build",
+		"branches: [main]",
+		"Require successful CI for candidate commit",
+		"image_tag=candidate-${sha}",
+		"--provenance=mode=max --sbom=true --push",
+		"cosign sign --yes",
+		"cerebro.release-candidate/v1",
+		"bundle-checksums.txt",
+	} {
+		if !strings.Contains(candidate, marker) {
+			t.Fatalf("candidate workflow missing required marker %q", marker)
+		}
+	}
+	for _, forbidden := range []string{"git tag", "gh release create", `:${RELEASE_TAG}`, `:latest`} {
+		if strings.Contains(candidate, forbidden) {
+			t.Fatalf("candidate workflow contains stable publication marker %q", forbidden)
+		}
 	}
 
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))

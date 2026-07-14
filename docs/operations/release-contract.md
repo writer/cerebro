@@ -11,28 +11,40 @@ Use it with:
 - [`docs/domains/source-runtime-guide.md`](../domains/source-runtime-guide.md) for source runtime manifests.
 - [`tools/sourcedeploy`](../../tools/sourcedeploy) for contract rendering code.
 
-## Release tags
+## Release channels
 
-Releases are tag-driven:
+Every commit merged to `main` produces a candidate. A candidate is identified by its full commit and image digest:
 
 ```text
-vMAJOR.MINOR.PATCH[-PRERELEASE]
+candidate-<40-character-commit>
+ghcr.io/writer/cerebro@sha256:<digest>
+```
+
+The Candidate Build workflow waits for CI, builds the binary archives and multi-architecture image once, writes checksums and a dependency inventory, attaches provenance, signs the image and runtime contracts, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or deployment requests.
+
+Stable releases are promoted from a successful Candidate Build run through the `stable-release` GitHub environment. The operator supplies the candidate run ID, stable tag, completed release notes, and a successful smoke receipt URL. The workflow verifies the candidate bundle checksums, commit, run ID, image digest, and image signature before it assigns stable tags.
+
+Stable release tags use:
+
+```text
+vMAJOR.MINOR.PATCH
 ```
 
 Examples:
 
 ```text
 v1.2.3
-v1.2.3-rc.1
 ```
 
-Stable tags can publish a `latest` runtime image tag. Prerelease tags should be consumed explicitly by version.
+`latest` is updated only by the Stable Release workflow. Deployment automation receives requests only after the stable GitHub release is published. Candidate testing must pin the candidate digest; it does not use the stable deployment dispatch.
+
+Use [`release-notes-template.md`](release-notes-template.md) for the required compatibility, migration, configuration, content-pack, rollback, runtime-contract, smoke-evidence, and supported-version record.
 
 ## Public artifacts
 
 A release can include:
 
-- GoReleaser CLI archives,
+- CLI archives,
 - Linux runtime binaries,
 - multi-arch runtime image,
 - image provenance and signatures,
@@ -266,6 +278,46 @@ Suggested flow:
 6. Check source runtimes against your intended tenants and schedules.
 7. Deploy the image with matching config.
 8. Run `/livez`, `/health`, source runtime health, and graph health checks.
+
+## Stable release procedure
+
+1. Select a green Candidate Build run for a commit on `main`.
+2. Deploy `ghcr.io/writer/cerebro@sha256:<candidate-digest>` to the canary environment.
+3. Run readiness, graph, source, and version checks and save the smoke receipt at a durable URL.
+4. Complete every section in the release notes template. Name migration order, downgrade limits, configuration changes, and the rollback digest.
+5. Start the Stable Release workflow with the candidate run ID, `vMAJOR.MINOR.PATCH` tag, completed notes, and smoke receipt URL.
+6. Approve the `stable-release` environment after checking the candidate receipt, smoke receipt, and release notes.
+7. Confirm the GitHub release, semantic-version image tag, `latest` tag, signed runtime contracts, and deployment requests all use the candidate commit and digest.
+
+Stable release windows are scheduled by the release operator. A schedule controls when the operator starts and approves the workflow; it does not create an unattended tag.
+
+## Emergency release
+
+Use the same candidate and stable workflows for an emergency release. Do not build or tag an unverified working tree.
+
+1. Merge the narrow fix to `main` and wait for CI and Candidate Build to finish.
+2. Pin the candidate image digest in a canary or isolated production slice.
+3. Capture a smoke receipt covering the failing path plus readiness, graph health, source health, and `version`.
+4. Complete the release notes. State the incident scope, compatibility result, migration requirement, configuration change, and rollback digest.
+5. Start Stable Release and request the configured emergency approver for the `stable-release` environment.
+6. After promotion, confirm the deployment request selected the stable channel and the promoted digest.
+
+Emergency handling may shorten the release window. It does not bypass CI, candidate verification, checksums, signatures, provenance, runtime contracts, release-note checks, or environment approval.
+
+## Rollback
+
+Before promotion, record the previous stable image digest, semantic-version tag, configuration revision, and any reverse-migration limit in the release notes.
+
+For a stateless rollback:
+
+1. Stop the rollout.
+2. Restore the previous image by digest and the matching configuration revision.
+3. Run readiness, graph, source, and version checks.
+4. Save the rollback smoke receipt with the incident or release record.
+
+For a release with storage or event changes, follow the release-specific rollback order. Do not restore an older binary until the notes confirm that its storage and event readers accept the current state. If downgrade is unsafe, roll forward with a new candidate.
+
+Test the rollback path during a release window by deploying the candidate digest to a canary, restoring the previous stable digest and configuration, checking health, and then redeploying the candidate. The Stable Release workflow requires this result in the `Rollback` and `Smoke evidence` sections when the candidate changes storage, events, or required configuration.
 
 ## Local contract inspection
 
