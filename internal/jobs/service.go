@@ -169,10 +169,6 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 	if s == nil || job == nil {
 		return
 	}
-	runner := s.runners[job.Kind]
-	if runner == nil {
-		return
-	}
 	if ctx == nil {
 		return
 	}

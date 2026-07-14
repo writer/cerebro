@@ -366,6 +366,51 @@ func TestRecoverRestartsExpiredLeasedJob(t *testing.T) {
 	t.Fatal("recovered job did not complete")
 }
 
+func TestRecoverMarksMissingRunnerTerminalBeforeNextBatch(t *testing.T) {
+	store := &boundedRecoveryJobStore{
+		memoryJobStore: newMemoryJobStore(),
+		order:          []string{"job-orphan", "job-valid"},
+	}
+	store.jobs["job-orphan"] = &ports.Job{ID: "job-orphan", Kind: "removed_job_kind", Status: ports.JobStatusQueued}
+	store.jobs["job-valid"] = &ports.Job{ID: "job-valid", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store)
+	completed := make(chan struct{})
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		close(completed)
+		return nil, nil, nil
+	})
+
+	count, err := service.Recover(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Recover(orphan) error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Recover(orphan) count = %d, want 1", count)
+	}
+	waitForJobStatus(t, store.memoryJobStore, "job-orphan", ports.JobStatusFailed)
+	orphan, err := store.GetJob(context.Background(), "job-orphan")
+	if err != nil {
+		t.Fatalf("GetJob(orphan) error = %v", err)
+	}
+	if orphan.FailureClass != JobFailurePermanent || orphan.Error != "job runner unavailable" {
+		t.Fatalf("orphan job = %+v, want permanent runner-unavailable failure", orphan)
+	}
+
+	count, err = service.Recover(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Recover(valid) error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Recover(valid) count = %d, want 1", count)
+	}
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("valid job behind orphan did not execute")
+	}
+	waitForJobStatus(t, store.memoryJobStore, "job-valid", ports.JobStatusCompleted)
+}
+
 func TestRunClassifiesRetryableFailure(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-retryable"] = &ports.Job{ID: "job-retryable", Kind: KindReportRun, Status: ports.JobStatusQueued}
@@ -448,6 +493,32 @@ type memoryJobStore struct {
 	jobs       map[string]*ports.Job
 	events     []*ports.JobEvent
 	renewCount int
+}
+
+type boundedRecoveryJobStore struct {
+	*memoryJobStore
+	order []string
+}
+
+func (s *boundedRecoveryJobStore) RecoverJobs(_ context.Context, request ports.JobRecoveryRequest) ([]*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := request.Limit
+	if limit == 0 {
+		limit = uint32(len(s.order))
+	}
+	jobs := make([]*ports.Job, 0, limit)
+	for _, id := range s.order {
+		job := s.jobs[id]
+		if job == nil || job.Status != ports.JobStatusQueued || job.CancelRequested {
+			continue
+		}
+		jobs = append(jobs, cloneJob(job))
+		if uint32(len(jobs)) == limit {
+			break
+		}
+	}
+	return jobs, nil
 }
 
 func newMemoryJobStore() *memoryJobStore {
@@ -672,6 +743,22 @@ func cloneStringMap(values map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func waitForJobStatus(t *testing.T, store *memoryJobStore, jobID string, status string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		job, err := store.GetJob(context.Background(), jobID)
+		if err != nil {
+			t.Fatalf("GetJob(%s) error = %v", jobID, err)
+		}
+		if job.Status == status {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("job %s did not transition to %s", jobID, status)
 }
 
 func captureJobServiceStderr(t *testing.T, fn func()) string {
