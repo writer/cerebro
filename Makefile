@@ -6,17 +6,6 @@
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 CARGO ?= cargo
-STATIC_VALIDATOR_WASM := internal/graphagent/staticvalidator.wasm
-STATIC_VALIDATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_graphagent_staticvalidator.wasm
-SOURCECOVERAGE_EVALUATOR_WASM := internal/sourcecoverage/evaluator.wasm
-SOURCECOVERAGE_EVALUATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_sourcecoverage_evaluator.wasm
-PANOPTICON_RESOURCE_WASM := internal/sourceprojection/panopticonresources.wasm
-PANOPTICON_RESOURCE_BUILD := target/wasm32-unknown-unknown/release/cerebro_panopticon_resources.wasm
-MITRE_CONTEXT_WASM := internal/mitre/evaluator.wasm
-MITRE_CONTEXT_BUILD := target/wasm32-unknown-unknown/release/cerebro_mitre_evaluator.wasm
-WASM_CANONICAL_PLATFORM := Linux-x86_64
-WASM_HOST_PLATFORM := $(shell uname -s)-$(shell uname -m)
-RUST_WASM_FLAGS := --remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -431,49 +420,31 @@ graph-action-check: rust-fmt-check rust-clippy rust-test ## Verify generated gra
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
-	cp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
-	chmod 0644 "$(STATIC_VALIDATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate graphagent-static-validator
 
 graphagent-static-validator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded static Cypher validator is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
-	cmp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check graphagent-static-validator
 
 sourcecoverage-evaluator-generate: ## Rebuild the embedded source coverage evaluator.
-	@test "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" || (echo "source coverage artifact generation requires $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)" && exit 1)
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
-	cp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"
-	chmod 0644 "$(SOURCECOVERAGE_EVALUATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate sourcecoverage-evaluator
 
 sourcecoverage-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded source coverage evaluator is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
-	@if [ "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" ]; then cmp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"; else echo "source coverage artifact byte comparison runs on $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)"; fi
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check sourcecoverage-evaluator
 
 panopticon-resource-extractor-generate: ## Rebuild the embedded Panopticon resource extractor.
-	@test "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" || (echo "Panopticon resource artifact generation requires $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)" && exit 1)
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-panopticon-resources
-	cp "$(PANOPTICON_RESOURCE_BUILD)" "$(PANOPTICON_RESOURCE_WASM)"
-	chmod 0644 "$(PANOPTICON_RESOURCE_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate panopticon-resource-extractor
 
 panopticon-resource-extractor-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded Panopticon resource extractor is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-panopticon-resources -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-panopticon-resources
-	@if [ "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" ]; then cmp "$(PANOPTICON_RESOURCE_BUILD)" "$(PANOPTICON_RESOURCE_WASM)"; else echo "Panopticon resource artifact byte comparison runs on $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)"; fi
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check panopticon-resource-extractor
 
 mitre-context-evaluator-generate: ## Rebuild the embedded MITRE context evaluator.
-	@test "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" || (echo "MITRE context artifact generation requires $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)" && exit 1)
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-mitre-evaluator
-	cp "$(MITRE_CONTEXT_BUILD)" "$(MITRE_CONTEXT_WASM)"
-	chmod 0644 "$(MITRE_CONTEXT_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate mitre-context-evaluator
 
 mitre-context-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded MITRE context evaluator is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-mitre-evaluator -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-mitre-evaluator
-	@if [ "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" ]; then cmp "$(MITRE_CONTEXT_BUILD)" "$(MITRE_CONTEXT_WASM)"; else echo "MITRE context artifact byte comparison runs on $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)"; fi
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check mitre-context-evaluator
 
-rust-wasm-check: graphagent-static-validator-check sourcecoverage-evaluator-check panopticon-resource-extractor-check mitre-context-evaluator-check ## Verify every embedded Rust Wasm module.
+rust-wasm-check: rust-fmt-check rust-clippy rust-test ## Verify every embedded Rust Wasm module.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check all
 
 finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DSL YAML.
 	go run ./tools/findingdsl --migrate-policies --write

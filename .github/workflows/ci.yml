@@ -38,6 +38,7 @@ jobs:
             command: make openapi-check openapi-lint
           - name: graph-actions
             command: make graph-action-check rust-wasm-check
+            setup_rust: true
           - name: docs-drift
             command: make docs-drift-check
           - name: readme
@@ -69,7 +70,7 @@ jobs:
           cache: false
 
       - name: Set up Rust
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Cache Go build data
