@@ -508,6 +508,10 @@ type mcpToolDomainSurfaceContract struct {
 var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.health":                          {Markers: []string{"GET /health"}},
 	"cerebro.version":                         {Markers: []string{"GetVersion"}},
+	"cerebro.risk.explain":                    {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence"}},
+	"cerebro.evidence.packet":                 {Markers: []string{"POST /api/v1/agent-platform/evidence-packets"}},
+	"cerebro.sources.health":                  {Markers: []string{"GET /source-runtimes"}},
+	"cerebro.action.plan":                     {Markers: []string{"risk-action-plan", "internal/riskplan"}},
 	"cerebro.sources.list":                    {Markers: []string{"GET /sources"}},
 	"cerebro.sources.check":                   {Markers: []string{"GET /sources/{sourceID}/check"}},
 	"cerebro.sources.discover":                {Markers: []string{"GET /sources/{sourceID}/discover"}},

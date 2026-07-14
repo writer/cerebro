@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -556,6 +557,14 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 			BuildDate:   buildinfo.BuildDate,
 			ApiVersion:  buildinfo.APIVersion,
 		})
+	case "cerebro.risk.explain":
+		return app.mcpTaskRiskExplain(r, args)
+	case "cerebro.evidence.packet":
+		return app.mcpTaskEvidencePacket(r, args)
+	case "cerebro.sources.health":
+		return app.mcpTaskSourcesHealth(r, args)
+	case "cerebro.action.plan":
+		return app.mcpTaskActionPlan(r, args)
 	case "cerebro.sources.list":
 		return app.mcpListSources()
 	case "cerebro.sources.check":
@@ -2144,7 +2153,7 @@ func (app *App) mcpProposeRuntimeRefresh(r *http.Request, args map[string]any) (
 }
 
 func mcpTools() []mcpTool {
-	return []mcpTool{
+	tools := []mcpTool{
 		{
 			Name:         "cerebro.health",
 			Title:        "Cerebro Health",
@@ -2706,38 +2715,18 @@ func mcpTools() []mcpTool {
 			Annotations: mcpReadOnlyAnnotations("Propose Runtime Refresh"),
 		},
 	}
+	for _, definition := range mcpoperations.TaskToolDefinitions(mcpoperations.TaskToolLimits{Evidence: maxMCPEvidenceLimit, Assets: maxMCPAssetLimit, Actions: riskplan.MaxCandidateLimit, Findings: maxMCPRiskLimit, ResourceRoots: maxMCPRiskActionRoots, Graph: maxMCPRiskActionGraph}) {
+		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: mcpoperations.TaskOutputSchema(), Annotations: mcpReadOnlyAnnotations(definition.Title)})
+	}
+	return tools
 }
 
 func mcpObjectSchema(properties map[string]any, required []string) map[string]any {
-	if properties == nil {
-		properties = map[string]any{}
-	}
-	schema := map[string]any{
-		"type":                 "object",
-		"properties":           properties,
-		"additionalProperties": false,
-	}
-	if len(required) != 0 {
-		schema["required"] = required
-	}
-	return schema
+	return mcpoperations.ObjectSchema(mcpoperations.Properties(properties), required)
 }
 
 func mcpOutputSchema(properties map[string]any) map[string]any {
-	if properties == nil {
-		properties = map[string]any{}
-	}
-	if len(properties) != 0 {
-		if _, ok := properties["metadata"]; !ok {
-			properties = cloneMCPProperties(properties)
-			properties["metadata"] = map[string]any{"type": "object"}
-		}
-	}
-	return map[string]any{
-		"type":                 "object",
-		"properties":           properties,
-		"additionalProperties": len(properties) == 0,
-	}
+	return mcpoperations.ResponseSchema(mcpoperations.Properties(properties))
 }
 
 func mcpSourceConfigSchema() map[string]any {
@@ -2816,20 +2805,7 @@ func mcpGraphFactFreshnessSchema() map[string]any {
 }
 
 func mcpLimitSchema(max int, itemName string) map[string]any {
-	return map[string]any{
-		"type":        "integer",
-		"minimum":     1,
-		"maximum":     max,
-		"description": fmt.Sprintf("Maximum %s to return. Values above %d are clamped.", itemName, max),
-	}
-}
-
-func cloneMCPProperties(properties map[string]any) map[string]any {
-	cloned := make(map[string]any, len(properties)+1)
-	for key, value := range properties {
-		cloned[key] = value
-	}
-	return cloned
+	return mcpoperations.LimitSchema(max, itemName)
 }
 
 func mcpReadOnlyAnnotations(title string) map[string]any {
@@ -2886,10 +2862,13 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 	}
 	if tool != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool", Value: tool})
-		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpKnownTool(tool)})
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpoperations.IsKnownTool(tool)})
 		if family := mcpToolFamily(tool); family != "" {
 			attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_family", Value: family})
 		}
+	}
+	for _, field := range mcpOperationTelemetryFields(tool) {
+		attrs = attrs.WithField(field)
 	}
 	if jsonRPCErrorCode != 0 {
 		attrs = attrs.WithField(telemetry.Field{Key: "mcp.jsonrpc_error_code", Value: jsonRPCErrorCode})
@@ -2919,8 +2898,14 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 	}
 	telemetry.Event(r.Context(), "cerebro.mcp.request", attrs)
 	telemetry.IncrementMain(r.Context(), "mcp.request.count", 1)
-	if mcpTelemetryOutcomeFailed(outcome) {
+	if mcpoperations.TelemetryOutcomeFailed(outcome) {
 		telemetry.IncrementMain(r.Context(), "mcp.request.error.count", 1)
+	}
+	if mcpoperations.IsTaskTool(tool) {
+		telemetry.IncrementMain(r.Context(), "mcp.task.request.count", 1)
+		if mcpoperations.TelemetryOutcomeFailed(outcome) {
+			telemetry.IncrementMain(r.Context(), "mcp.task.request.error.count", 1)
+		}
 	}
 	mainAttrs := telemetry.Attrs(
 		telemetry.Field{Key: "mcp.status_code", Value: statusCode},
@@ -2945,10 +2930,13 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 	}
 	if tool != "" {
 		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool", Value: tool})
-		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpKnownTool(tool)})
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpoperations.IsKnownTool(tool)})
 		if family := mcpToolFamily(tool); family != "" {
 			mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_family", Value: family})
 		}
+	}
+	for _, field := range mcpOperationTelemetryFields(tool) {
+		mainAttrs = mainAttrs.WithField(field)
 	}
 	if jsonRPCErrorCode != 0 {
 		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.jsonrpc_error_code", Value: jsonRPCErrorCode})
@@ -2976,13 +2964,16 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 	telemetry.AnnotateMain(r.Context(), mainAttrs)
 }
 
-func mcpTelemetryOutcomeFailed(outcome string) bool {
-	switch strings.TrimSpace(outcome) {
-	case "ok", "notification", "client_message":
-		return false
-	default:
-		return true
+func mcpOperationTelemetryFields(tool string) []telemetry.Field {
+	operation, ok := mcpoperations.TelemetryForTool(tool)
+	if !ok {
+		return nil
 	}
+	fields := []telemetry.Field{{Key: "mcp.tool_classification", Value: operation.Classification}, {Key: "mcp.tool_behavior", Value: operation.Behavior}, {Key: "mcp.tool_owner", Value: operation.OwnerDomain}}
+	if !operation.Task {
+		return fields
+	}
+	return append(fields, telemetry.Field{Key: "mcp.task", Value: true})
 }
 
 func mcpTelemetryHTTPRoute(r *http.Request) string {
@@ -3172,19 +3163,6 @@ func mcpToolNameFromParams(method string, rawParams json.RawMessage) string {
 	return strings.TrimSpace(params.Name)
 }
 
-func mcpKnownTool(name string) bool {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return false
-	}
-	for _, tool := range mcpTools() {
-		if tool.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 	tools := mcpTools()
 	enabled := mcpRequestedToolsets(r, rawParams)
@@ -3193,7 +3171,7 @@ func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 	}
 	filtered := make([]mcpTool, 0, len(tools))
 	for _, tool := range tools {
-		if enabled[mcpToolsetForName(tool.Name)] {
+		if mcpoperations.EnabledForToolsets(tool.Name, enabled) {
 			filtered = append(filtered, tool)
 		}
 	}
@@ -3205,80 +3183,23 @@ func mcpToolAllowedForRequest(r *http.Request, name string) bool {
 	if len(enabled) == 0 {
 		return true
 	}
-	return enabled[mcpToolsetForName(name)]
+	return mcpoperations.EnabledForToolsets(name, enabled)
 }
 
-func mcpRequestedToolsets(r *http.Request, rawParams json.RawMessage) map[string]bool {
-	values := []string{}
+func mcpRequestedToolsets(r *http.Request, rawParams json.RawMessage) mcpoperations.Toolsets {
+	header := ""
 	if r != nil {
-		values = append(values, strings.Split(r.Header.Get("X-Cerebro-MCP-Toolsets"), ",")...)
+		header = r.Header.Get("X-Cerebro-MCP-Toolsets")
 	}
-	if len(rawParams) != 0 {
-		params := map[string]any{}
-		if err := decodeMCPJSON(rawParams, &params); err == nil {
-			switch raw := params["toolsets"].(type) {
-			case []any:
-				for _, item := range raw {
-					values = append(values, mcpAnyString(item))
-				}
-			case string:
-				values = append(values, strings.Split(raw, ",")...)
-			}
-		}
-	}
-	enabled := map[string]bool{}
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "" || value == "all" {
-			continue
-		}
-		enabled[value] = true
-	}
-	return enabled
-}
-
-func mcpToolsetForName(name string) string {
-	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
-	switch {
-	case strings.HasPrefix(name, "graph."):
-		return "graph"
-	case strings.HasPrefix(name, "risk."):
-		return "risk"
-	case strings.HasPrefix(name, "findings.") || strings.HasPrefix(name, "evidence.") || strings.HasPrefix(name, "investigation."):
-		return "findings"
-	case strings.HasPrefix(name, "assets."):
-		return "assets"
-	case strings.HasPrefix(name, "sources.") || strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
-		return "operations"
-	case strings.HasPrefix(name, "agent."):
-		return "agent"
-	case name == "health" || name == "version":
-		return "core"
-	default:
-		return "core"
-	}
+	return mcpoperations.ParseToolsets(header, rawParams)
 }
 
 func mcpToolFamily(name string) string {
-	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
-	if name == "" {
-		return ""
-	}
-	family, _, _ := strings.Cut(name, ".")
-	return mcpSanitizeTelemetryValue(family, 64)
+	return mcpoperations.ToolFamily(name)
 }
 
 func mcpSanitizeTelemetryValue(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
-	value = replacer.Replace(value)
-	if limit > 0 && len(value) > limit {
-		value = value[:limit]
-	}
-	return value
+	return mcpoperations.SanitizeTelemetryValue(value, limit)
 }
 
 func mcpResources() []mcpResource {
