@@ -155,7 +155,11 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 }
 
 func validateRecoveredAggregate(record *workflowevents.ComplianceAggregateRecorded, aggregateType, tenantID, aggregateID, revisionID string, version uint64) error {
-	if record == nil || strings.TrimSpace(record.AggregateType) != aggregateType || strings.TrimSpace(record.TenantID) != strings.TrimSpace(tenantID) || strings.TrimSpace(record.AggregateID) != strings.TrimSpace(aggregateID) || record.AggregateVersion != int64(version) || version == 0 {
+	encodedVersion, err := aggregateVersion(version)
+	if err != nil {
+		return errors.New("assessment event envelope does not match payload")
+	}
+	if record == nil || strings.TrimSpace(record.AggregateType) != aggregateType || strings.TrimSpace(record.TenantID) != strings.TrimSpace(tenantID) || strings.TrimSpace(record.AggregateID) != strings.TrimSpace(aggregateID) || record.AggregateVersion != encodedVersion {
 		return errors.New("assessment event envelope does not match payload")
 	}
 	if strings.TrimSpace(revisionID) != "" && strings.TrimSpace(record.RevisionID) != strings.TrimSpace(revisionID) {

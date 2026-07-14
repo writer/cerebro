@@ -3,6 +3,7 @@ package complianceassessment
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -10,9 +11,22 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 var errTestProjectionUnavailable = errors.New("projection unavailable")
+
+func TestValidateRecoveredAggregateRejectsOverflowVersion(t *testing.T) {
+	record := &workflowevents.ComplianceAggregateRecorded{
+		AggregateType:    "assessment_run",
+		TenantID:         "tenant-1",
+		AggregateID:      "run-1",
+		AggregateVersion: math.MaxInt64,
+	}
+	if err := validateRecoveredAggregate(record, "assessment_run", "tenant-1", "run-1", "", uint64(math.MaxInt64)+1); err == nil {
+		t.Fatal("validateRecoveredAggregate() error = nil, want overflow rejection")
+	}
+}
 
 func TestRecoverProjectionsRebindsAndRunsAppendedRequest(t *testing.T) {
 	now := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
