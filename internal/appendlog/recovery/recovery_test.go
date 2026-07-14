@@ -3,6 +3,7 @@ package recovery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,11 +41,28 @@ func TestAppendRecordsExhaustedPublish(t *testing.T) {
 	if record.RetryCount != 3 || record.MaxAttempts != 4 || record.ErrorCategory != "no_response" {
 		t.Fatalf("record retry fields = %#v", record)
 	}
+	if record.ErrorMessage != "append log publish exhausted; category=no_response; attempts=3/4" {
+		t.Fatalf("record error message = %q, want bounded retry diagnostic", record.ErrorMessage)
+	}
 	if record.ID == "" || record.PayloadHash == "" || record.PayloadBytes == 0 || record.Event == nil {
 		t.Fatalf("record durability fields missing: %#v", record)
 	}
 	if inner.events[0] == record.Event {
 		t.Fatal("record reused event pointer; want cloned event")
+	}
+}
+
+func TestDeadLetterDiagnosticDoesNotPersistWrappedError(t *testing.T) {
+	secret := "Bearer test-sensitive-value"
+	diagnostic := deadLetterDiagnostic(&ports.AppendLogPublishExhaustedError{
+		Subject:       "sec.findings.v1.recorded",
+		ErrorCategory: "no_response",
+		RetryCount:    3,
+		MaxAttempts:   4,
+		Err:           errors.New("authorization=" + secret + " response={unbounded-body}"),
+	})
+	if strings.Contains(diagnostic, secret) || strings.Contains(diagnostic, "authorization") || strings.Contains(diagnostic, "unbounded-body") {
+		t.Fatalf("deadLetterDiagnostic() leaked wrapped error: %q", diagnostic)
 	}
 }
 

@@ -145,6 +145,9 @@ same event exhausts again after an operator has replayed or discarded that
 record, Cerebro preserves the terminal record and does not move it back to
 `pending`.
 
+See [Append-log dead-letter data policy](append-log-dead-letter-policy.md) for
+payload classification, retention, capacity limits, and emergency purge rules.
+
 ### Neo4j or Aura
 
 Neo4j or Aura is required for graph projection, graph queries, graph health, graph ingest runs, impact queries, and graph-agent flows.
