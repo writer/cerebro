@@ -322,12 +322,20 @@ func upsertComplianceCurrent(ctx context.Context, tx *sql.Tx, table, tenantID, i
 	query := fmt.Sprintf(`
 INSERT INTO %s (tenant_id, id, version, body_json)
 VALUES ($1, $2, $3, $4::jsonb)
-ON CONFLICT (tenant_id, id)
-DO UPDATE SET version = EXCLUDED.version, body_json = EXCLUDED.body_json, updated_at = NOW()
-WHERE %s.version = $5
-RETURNING version`, table, table)
+ON CONFLICT (tenant_id, id) DO NOTHING
+RETURNING version`, table)
+	args := []any{tenantID, id, int64(version), string(body)}
+	if expectedVersion != 0 {
+		// #nosec G201 -- table is restricted by complianceCurrentTableAllowed; all values are parameterized.
+		query = fmt.Sprintf(`
+UPDATE %s
+SET version = $3, body_json = $4::jsonb, updated_at = NOW()
+WHERE tenant_id = $1 AND id = $2 AND version = $5
+RETURNING version`, table)
+		args = append(args, int64(expectedVersion))
+	}
 	var storedVersion int64
-	err = tx.QueryRowContext(ctx, query, tenantID, id, int64(version), string(body), int64(expectedVersion)).Scan(&storedVersion)
+	err = tx.QueryRowContext(ctx, query, args...).Scan(&storedVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: tenant %q aggregate %q expected %d", ErrComplianceProjectionVersionConflict, tenantID, id, expectedVersion)
 	}
