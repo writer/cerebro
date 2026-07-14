@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestFindingProfileControlRefCapacityAvoidsOverflow(t *testing.T) {
+	if got := findingProfileControlRefCapacity(2, 3); got != 5 {
+		t.Fatalf("findingProfileControlRefCapacity(2, 3) = %d, want 5", got)
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	if got := findingProfileControlRefCapacity(maxInt, 1); got != 0 {
+		t.Fatalf("findingProfileControlRefCapacity(maxInt, 1) = %d, want 0", got)
+	}
+}
+
 func TestBuildFindingProfileIndexPreservesDirectAndCatalogBasis(t *testing.T) {
 	coverage := ControlCoverageIndex{
 		Version: "2026-07-14",

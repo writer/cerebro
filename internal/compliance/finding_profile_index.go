@@ -720,7 +720,7 @@ func uniqueFindingProfileControlRefs(refs []ControlRef) []ControlRef {
 }
 
 func appendUniqueFindingProfileControlRef(refs []ControlRef, candidates ...ControlRef) []ControlRef {
-	seen := make(map[string]struct{}, len(refs)+len(candidates))
+	seen := make(map[string]struct{}, findingProfileControlRefCapacity(len(refs), len(candidates)))
 	for _, ref := range refs {
 		seen[ControlKey(ref)] = struct{}{}
 	}
@@ -737,6 +737,17 @@ func appendUniqueFindingProfileControlRef(refs []ControlRef, candidates ...Contr
 		refs = append(refs, candidate)
 	}
 	return refs
+}
+
+func findingProfileControlRefCapacity(refs, candidates int) int {
+	if refs < 0 || candidates < 0 {
+		return 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	if refs > maxInt-candidates {
+		return 0
+	}
+	return refs + candidates
 }
 
 func appendUniqueFindingProfileMappingPath(paths []FindingProfileMappingPath, candidate FindingProfileMappingPath) []FindingProfileMappingPath {
