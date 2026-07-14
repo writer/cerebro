@@ -17,6 +17,13 @@ import (
 
 const descriptorSize = 16
 
+var (
+	// ErrInvalidConfig indicates that an evaluator cannot initialize with its supplied configuration.
+	ErrInvalidConfig = errors.New("embedded JSON Wasm evaluator configuration is invalid")
+	// ErrInputTooLarge indicates that an input exceeds either the configured limit or Wasm32 address space.
+	ErrInputTooLarge = errors.New("embedded JSON Wasm evaluator input exceeds maximum")
+)
+
 // Config defines one embedded, no-import Wasm module that accepts and returns JSON bytes.
 type Config struct {
 	Name              string
@@ -171,25 +178,25 @@ func (e *Evaluator) initialize(ctx context.Context) {
 func (e *Evaluator) validateConfig() error {
 	switch {
 	case e.config.Name == "":
-		return errors.New("embedded JSON Wasm evaluator name is required")
+		return e.errorfWith(ErrInvalidConfig, "name is required")
 	case len(e.config.Module) == 0:
-		return e.errorf("module is empty")
+		return e.errorfWith(ErrInvalidConfig, "module is empty")
 	case e.config.ABIVersionExport == "":
-		return e.errorf("ABI version export is required")
+		return e.errorfWith(ErrInvalidConfig, "ABI version export is required")
 	case e.config.AllocateExport == "":
-		return e.errorf("allocation export is required")
+		return e.errorfWith(ErrInvalidConfig, "allocation export is required")
 	case e.config.EvaluateExport == "":
-		return e.errorf("evaluation export is required")
+		return e.errorfWith(ErrInvalidConfig, "evaluation export is required")
 	case e.config.MemoryLimitPages == 0:
-		return e.errorf("memory limit must be positive")
+		return e.errorfWith(ErrInvalidConfig, "memory limit must be positive")
 	case e.config.MaxInputBytes == 0:
-		return e.errorf("input limit must be positive")
+		return e.errorfWith(ErrInvalidConfig, "input limit must be positive")
 	case e.config.MaxOutputBytes == 0:
-		return e.errorf("output limit must be positive")
+		return e.errorfWith(ErrInvalidConfig, "output limit must be positive")
 	case e.config.InitializeTimeout <= 0:
-		return e.errorf("initialization timeout must be positive")
+		return e.errorfWith(ErrInvalidConfig, "initialization timeout must be positive")
 	case e.config.CallTimeout <= 0:
-		return e.errorf("call timeout must be positive")
+		return e.errorfWith(ErrInvalidConfig, "call timeout must be positive")
 	default:
 		return nil
 	}
@@ -197,10 +204,10 @@ func (e *Evaluator) validateConfig() error {
 
 func (e *Evaluator) validatePayload(payload []byte) error {
 	if uint64(len(payload)) > uint64(e.config.MaxInputBytes) {
-		return e.errorf("input is %d bytes; maximum is %d", len(payload), e.config.MaxInputBytes)
+		return e.inputTooLargeError(uint64(len(payload)), uint64(e.config.MaxInputBytes))
 	}
 	if uint64(len(payload)) > math.MaxUint32 {
-		return e.errorf("input exceeds the Wasm32 address space")
+		return e.inputTooLargeError(uint64(len(payload)), math.MaxUint32)
 	}
 	return nil
 }
@@ -260,6 +267,18 @@ func (e *Evaluator) errorf(format string, args ...any) error {
 		return errors.New(message)
 	}
 	return fmt.Errorf("%s: %s", e.config.Name, message)
+}
+
+func (e *Evaluator) errorfWith(cause error, format string, args ...any) error {
+	message := fmt.Sprintf(format, args...)
+	if e.config.Name == "" {
+		return fmt.Errorf("%w: %s", cause, message)
+	}
+	return fmt.Errorf("%s: %w: %s", e.config.Name, cause, message)
+}
+
+func (e *Evaluator) inputTooLargeError(inputBytes, maxBytes uint64) error {
+	return e.errorfWith(ErrInputTooLarge, "input is %d bytes; maximum is %d", inputBytes, maxBytes)
 }
 
 func moduleConfig() wazero.ModuleConfig {
