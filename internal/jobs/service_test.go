@@ -505,16 +505,18 @@ func (s *boundedRecoveryJobStore) RecoverJobs(_ context.Context, request ports.J
 	defer s.mu.Unlock()
 	limit := request.Limit
 	if limit == 0 {
-		limit = uint32(len(s.order))
+		limit = ^uint32(0)
 	}
-	jobs := make([]*ports.Job, 0, limit)
+	jobs := make([]*ports.Job, 0, len(s.order))
+	var recovered uint32
 	for _, id := range s.order {
 		job := s.jobs[id]
 		if job == nil || job.Status != ports.JobStatusQueued || job.CancelRequested {
 			continue
 		}
 		jobs = append(jobs, cloneJob(job))
-		if uint32(len(jobs)) == limit {
+		recovered++
+		if recovered == limit {
 			break
 		}
 	}
