@@ -192,17 +192,9 @@ func CanonicalResultSetDigest(values []ObjectiveResult) (string, error) {
 		return "", errors.New("at least one objective result is required")
 	}
 	values = append([]ObjectiveResult(nil), values...)
-	for index := range values {
-		values[index] = NormalizeResult(values[index])
-		if err := ValidateObjectiveResult(values[index]); err != nil {
-			return "", fmt.Errorf("results[%d]: %w", index, err)
-		}
+	if err := normalizeAndSortResults(values); err != nil {
+		return "", err
 	}
-	sort.Slice(values, func(i, j int) bool {
-		left := values[i].ID + "\x00" + values[i].ControlRef.FrameworkName + "\x00" + values[i].ControlRef.ControlID + "\x00" + values[i].ObjectiveID
-		right := values[j].ID + "\x00" + values[j].ControlRef.FrameworkName + "\x00" + values[j].ControlRef.ControlID + "\x00" + values[j].ObjectiveID
-		return left < right
-	})
 	data, err := canonicalBytes(values)
 	if err != nil {
 		return "", err

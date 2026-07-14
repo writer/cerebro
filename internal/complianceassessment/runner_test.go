@@ -23,7 +23,12 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	log := &runLog{}
 	jobStore := newRunJobStore(now)
 	jobs := platformjobs.New(jobStore)
-	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1205)}
+	results := validResults(now, 1205)
+	results[0].ID = "result-z"
+	results[0].ControlRef.FrameworkID = "framework-a"
+	results[1].ID = "result-a"
+	results[1].ControlRef.FrameworkID = "framework-z"
+	collector := &testCollector{manifest: completeManifest(now), results: results}
 	service := NewAssessmentService(store, log, jobs, collector)
 	service.now = func() time.Time { return now }
 	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
@@ -61,6 +66,17 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 		if index > 0 && chunk.PreviousDigest != chunks[index-1].Digest {
 			t.Fatalf("chunk %d previous digest mismatch", chunk.Sequence)
 		}
+	}
+	projectedResults := make([]ObjectiveResult, 0, completed.ResultCount)
+	for _, chunk := range chunks {
+		projectedResults = append(projectedResults, chunk.Results...)
+	}
+	expectedResultHash, err := CanonicalResultSetDigest(projectedResults)
+	if err != nil {
+		t.Fatalf("CanonicalResultSetDigest() error = %v", err)
+	}
+	if completed.AutomatedResultHash != expectedResultHash {
+		t.Fatalf("AutomatedResultHash = %q, want canonical result-set digest %q", completed.AutomatedResultHash, expectedResultHash)
 	}
 }
 

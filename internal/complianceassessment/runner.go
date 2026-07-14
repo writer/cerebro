@@ -26,6 +26,17 @@ func sortResults(results []ObjectiveResult) {
 	})
 }
 
+func normalizeAndSortResults(results []ObjectiveResult) error {
+	for index := range results {
+		results[index] = NormalizeResult(results[index])
+		if err := ValidateObjectiveResult(results[index]); err != nil {
+			return fmt.Errorf("results[%d]: %w", index, err)
+		}
+	}
+	sortResults(results)
+	return nil
+}
+
 func (s *Service) Runner() platformjobs.Runner {
 	return func(ctx context.Context, job *ports.Job, jobs *platformjobs.Service) (map[string]any, map[string]string, error) {
 		if job == nil {
@@ -89,12 +100,8 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err := s.appendRun(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "input_manifest_recorded", run, expectedVersion); err != nil {
 			return nil, nil, err
 		}
-		sortResults(results)
-		for index := range results {
-			results[index] = NormalizeResult(results[index])
-			if err := ValidateObjectiveResult(results[index]); err != nil {
-				return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_invalid")
-			}
+		if err := normalizeAndSortResults(results); err != nil {
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_invalid")
 		}
 		resultHash, err := s.appendResultChunks(ctx, run, results)
 		if err != nil {
@@ -114,8 +121,11 @@ func (s *Service) Runner() platformjobs.Runner {
 }
 
 func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, results []ObjectiveResult) (string, error) {
+	resultHash, err := CanonicalResultSetDigest(results)
+	if err != nil {
+		return "", err
+	}
 	previous := ""
-	fullHash := sha256.New()
 	for start := 0; start < len(results); start += resultChunkSize {
 		end := start + resultChunkSize
 		if end > len(results) {
@@ -126,7 +136,6 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 		if err != nil {
 			return "", err
 		}
-		_, _ = fullHash.Write(payload)
 		chunkCount, err := boundedChunkCount(len(chunkResults))
 		if err != nil {
 			return "", err
@@ -159,7 +168,7 @@ func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, res
 		}
 		previous = chunk.Digest
 	}
-	return "sha256:" + hex.EncodeToString(fullHash.Sum(nil)), nil
+	return resultHash, nil
 }
 
 func digestResultChunkPayload(previous string, payload []byte) string {
