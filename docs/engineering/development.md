@@ -4,7 +4,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 
 ## Prerequisites
 
-- Go 1.26+; the repository pins `go1.26.4` in `go.mod`.
+- Go 1.26+; the repository pins `go1.26.5` in `go.mod`.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 
