@@ -20,7 +20,11 @@ import (
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/buildinfo"
 	appconfig "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/contentpacks"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -116,10 +120,18 @@ func serve() error {
 			log.Printf("close dependencies: %v", err)
 		}
 	}()
-	sources, err := sourceregistry.Builtin()
+	selection := contentpacks.LoadRuntime(contentpacks.RuntimeConfig{
+		Root:          cfg.ContentPacks.Root,
+		AllowlistPath: cfg.ContentPacks.AllowlistPath,
+		TenantID:      cfg.ContentPacks.TenantID,
+		KernelVersion: cfg.ContentPacks.KernelVersion,
+	})
+	sources, rules, err := activateContentPacks(&selection)
 	if err != nil {
-		return fmt.Errorf("open source registry: %w", err)
+		return err
 	}
+	deps.FindingRules = rules
+	recordContentPackStartup(context.Background(), selection.State)
 
 	app, err := bootstrap.NewWithError(cfg, deps, sources)
 	if err != nil {
@@ -154,6 +166,47 @@ func serve() error {
 		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone, reportSchedulerDone)
 		return nil
 	}
+}
+
+func activateContentPacks(selection *contentpacks.RuntimeSelection) (*sourcecdk.Registry, *findings.Registry, error) {
+	sources, err := sourceregistry.BuiltinWithCatalogOverrides(selection.ConnectorCatalogs)
+	if err != nil && len(selection.ConnectorCatalogs) != 0 {
+		selection.RejectKind("connector", fmt.Sprintf("kernel parser rejected connector pack: %v", err))
+		sources, err = sourceregistry.Builtin()
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("open source registry: %w", err)
+	}
+	rules := findings.Builtin()
+	if len(selection.PolicyRules) != 0 {
+		rules, err = findings.BuiltinWithPolicyOverrides(selection.PolicyRules)
+		if err != nil {
+			selection.RejectKind("policy-control", fmt.Sprintf("kernel parser rejected policy-control pack: %v", err))
+			rules = findings.Builtin()
+		}
+	}
+	return sources, rules, nil
+}
+
+func recordContentPackStartup(ctx context.Context, state contentpacks.RuntimeState) {
+	if !state.Enabled {
+		log.Print("content packs: external selection disabled; using embedded connector and policy-control content")
+	} else {
+		log.Printf("content packs: accepted=%d rejected=%d embedded_fallback=%s", len(state.Accepted), len(state.Rejected), strings.Join(state.FallbackKinds, ","))
+		for _, pack := range state.Accepted {
+			log.Printf("content packs: accepted pack_id=%s version=%s kind=%s", sanitizeLogValue(pack.PackID), sanitizeLogValue(pack.Version), sanitizeLogValue(pack.Kind))
+		}
+		for _, rejection := range state.Rejected {
+			log.Printf("content packs: rejected candidate=%s reason=%s", sanitizeLogValue(rejection.Candidate), sanitizeLogValue(rejection.Reason))
+		}
+	}
+	for _, pack := range state.Accepted {
+		observability.RecordContentPackSelection(ctx, observability.ContentPackSelectionMetrics{Kind: pack.Kind, Status: "accepted", Count: 1})
+	}
+	for _, kind := range state.FallbackKinds {
+		observability.RecordContentPackSelection(ctx, observability.ContentPackSelectionMetrics{Kind: kind, Status: "embedded_fallback", Count: 1})
+	}
+	observability.RecordContentPackSelection(ctx, observability.ContentPackSelectionMetrics{Kind: "unknown", Status: "rejected", Count: int64(len(state.Rejected))})
 }
 
 func validateServeConfig(cfg appconfig.Config) error {

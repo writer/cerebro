@@ -32,10 +32,11 @@ Do not commit a private key. Do not reuse a manifest signature after changing th
 ## Release A Pack
 
 1. Publish the immutable directory under its pack ID, version, and manifest digest.
-2. Confirm the target kernel version is inside the signed compatibility range.
-3. Update the tenant allowlist to the new exact version and digest.
-4. Stage the pack for one tenant and inspect accepted, rejected, and embedded-fallback counters.
-5. Expand the allowlist only after the staged tenant loads the intended content IDs and contract validation passes.
+2. Mount the pack root and allowlist, then set `CEREBRO_CONTENT_PACK_ROOT`, `CEREBRO_CONTENT_PACK_ALLOWLIST_PATH`, `CEREBRO_CONTENT_PACK_TENANT_ID`, and the target `CEREBRO_CONTENT_PACK_KERNEL_VERSION`.
+3. Confirm the target kernel version is inside the signed compatibility range.
+4. Update the tenant allowlist to the new exact version and digest.
+5. Restart one instance and inspect the `content packs:` startup records plus `cerebro.content_pack.selections` accepted, rejected, and embedded-fallback states.
+6. Expand the allowlist only after the staged tenant loads the intended content IDs and contract validation passes.
 
 Pack release approval does not approve a kernel release. Kernel release approval does not approve a new pack digest.
 

@@ -25,4 +25,19 @@ Measured on 2026-07-14 from `origin/main` at `ec89d569` and the pilot worktree. 
 
 ## Interpretation
 
-The pilot proves a release boundary without changing the production binary or startup path. The operational cost is artifact validation measured in single-digit milliseconds for two small packs. The next activation change must repeat binary, startup, validation, and rollback measurements after a kernel parser consumes selected pack bytes. Repository and build-size reduction cannot be claimed until embedded duplicates are removed after that activation gate.
+The pilot proves a release boundary without changing the production binary or startup path. The operational cost is artifact validation measured in single-digit milliseconds for two small packs. Repository and build-size reduction cannot be claimed until embedded duplicates are removed after the activation gate.
+
+## Runtime activation measurement
+
+Measured on 2026-07-14 against the signed pilot commit `215d1474` and the runtime activation worktree. Both builds used the same machine and concurrent cold build caches, so the build times are a regression check rather than a throughput benchmark.
+
+| Measure | Signed pilot | Runtime activation | Result |
+| --- | ---: | ---: | --- |
+| Kernel binary bytes | 483,735,474 | 483,967,442 | +231,968 bytes (0.048%) for selection, parser, fallback, and operator-state paths |
+| Cold concurrent kernel build sample | 94.91 s | 94.90 s | No observed regression in this paired sample |
+| `version` startup sample | 6.76 s | 3.72 s | No observed regression; telemetry shutdown variance dominates this sample |
+| Two-pack signature and allowlist validation | N/A | 2 ms | Signed connector and policy-control packs both accepted |
+| Connector parser rejection | N/A | Pass | Embedded connector restored; policy selection remains independent |
+| Policy parser rejection | N/A | Pass | Embedded policy restored; connector selection remains independent |
+
+The activation links pack selection into the production `serve` path. Only the DeepSeek catalog and the AI agent tool allowlist policy can cross the boundary. Existing kernel parsers validate both payloads, compiled connector behavior and policy evaluators remain kernel-owned, and every rejection restores embedded content for the affected kind.

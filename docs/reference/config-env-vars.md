@@ -39,6 +39,10 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_POSTGRES_DSN` | unset | Postgres connection string. Setting this infers `postgres`. |
 | `CEREBRO_CONNECTOR_CREDENTIAL_KEY` | unset | High-entropy key used to seal Cerebro-managed connector credentials before storing them in Postgres. Supports `_FILE` via `CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE`. |
 | `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY` | unset | RSA private key used to decrypt browser-submitted connector credential envelopes. All replicas must share the same key. Supports `_FILE` via `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE`. |
+| `CEREBRO_CONTENT_PACK_ROOT` | unset | Directory containing signed content-pack directories. Set with the allowlist path and tenant ID to activate external declarative content. |
+| `CEREBRO_CONTENT_PACK_ALLOWLIST_PATH` | unset | JSON allowlist granting exact pack IDs, versions, digests, and signing keys. Required when a content-pack root is set. |
+| `CEREBRO_CONTENT_PACK_TENANT_ID` | unset | Tenant grant selected from the content-pack allowlist. Required when a content-pack root is set; never emitted as a metric label. |
+| `CEREBRO_CONTENT_PACK_KERNEL_VERSION` | `1.0.0` | Kernel compatibility version used for signed pack range checks. |
 | `CEREBRO_POSTGRES_MAX_OPEN_CONNS` | Go default | Optional `database/sql` maximum open connections. |
 | `CEREBRO_POSTGRES_MAX_IDLE_CONNS` | Go default | Optional `database/sql` maximum idle connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_LIFETIME` | Go default | Optional maximum lifetime for pooled Postgres connections. |

@@ -62,6 +62,7 @@ type Dependencies struct {
 	GraphStore    ports.GraphStore
 	GraphAgentLLM graphagent.LLMClient
 	QueryCache    querycache.Cache
+	FindingRules  *findings.Registry
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.

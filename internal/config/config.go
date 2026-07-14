@@ -58,10 +58,19 @@ type Config struct {
 	ConnectorCredentials  ConnectorCredentialConfig
 	ConnectorSecretStores ConnectorSecretStoreConfig
 	ConnectorAccess       ConnectorAccessConfig
+	ContentPacks          ContentPackConfig
 	GraphActions          GraphActionsConfig
 	DocumentParsing       DocumentParsingConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
+}
+
+// ContentPackConfig selects signed declarative content without changing the kernel binary.
+type ContentPackConfig struct {
+	Root          string
+	AllowlistPath string
+	TenantID      string
+	KernelVersion string
 }
 
 // RateLimitConfig controls global API rate limiting.
@@ -480,6 +489,12 @@ func Load() (Config, error) {
 			RequestAccessURL:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
 			RequestAccessAction: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
 		},
+		ContentPacks: ContentPackConfig{
+			Root:          strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_ROOT")),
+			AllowlistPath: strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_ALLOWLIST_PATH")),
+			TenantID:      strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_TENANT_ID")),
+			KernelVersion: strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_KERNEL_VERSION")),
+		},
 		GraphActions: GraphActionsConfig{
 			AccessApprovals: AccessApprovalsActionConfig{
 				BaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL")), "/"),
@@ -510,6 +525,13 @@ func Load() (Config, error) {
 				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
 			},
 		},
+	}
+	if cfg.ContentPacks.KernelVersion == "" {
+		cfg.ContentPacks.KernelVersion = "1.0.0"
+	}
+	contentPackConfigured := cfg.ContentPacks.Root != "" || cfg.ContentPacks.AllowlistPath != "" || cfg.ContentPacks.TenantID != ""
+	if contentPackConfigured && (cfg.ContentPacks.Root == "" || cfg.ContentPacks.AllowlistPath == "" || cfg.ContentPacks.TenantID == "") {
+		return Config{}, fmt.Errorf("CEREBRO_CONTENT_PACK_ROOT, CEREBRO_CONTENT_PACK_ALLOWLIST_PATH, and CEREBRO_CONTENT_PACK_TENANT_ID must be set together")
 	}
 	authEnabled, err := parseBoolEnvDefault("CEREBRO_API_AUTH_ENABLED", !cfg.DevMode)
 	if err != nil {

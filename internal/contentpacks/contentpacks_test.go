@@ -183,7 +183,7 @@ func writeTestFile(t *testing.T, path string, payload []byte) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("MkdirAll(%s) error = %v", path, err)
 	}
-	if err := os.WriteFile(path, payload, 0o600); err != nil {
+	if err := os.WriteFile(path, payload, 0o600); err != nil { // #nosec G703 -- callers use test-owned fixture paths.
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }

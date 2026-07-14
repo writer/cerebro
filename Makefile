@@ -370,7 +370,7 @@ catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/controlindex --check
 
 content-pack-check: ## Verify signed pilot content packs independently from the kernel build.
-	go test ./internal/contentpacks ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
+	go test ./internal/contentpacks ./internal/config ./internal/findingdsl ./internal/findings ./internal/observability ./internal/sourceregistry ./sources/deepseek ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
 	go run ./tools/contentpackcheck -root contentpacks/pilot -allowlist contentpacks/pilot/allowlist.json -tenant content-pack-pilot -kernel-version 1.0.0
 
 control-index-generate: ## Regenerate compliance control coverage index.

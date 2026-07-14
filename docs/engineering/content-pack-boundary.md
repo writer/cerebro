@@ -64,7 +64,7 @@ Kernel compatibility uses canonical `major.minor.patch` versions. A pack is acce
 
 A pack release does not widen its own compatibility after signing. Supporting another kernel line requires a new signed manifest and digest. Changing any payload byte also requires a new manifest digest, signature, and allowlist entry.
 
-The pilot does not change runtime registration. A later activation change must name the kernel parser for each pack kind, retain the embedded default until rollback evidence is complete, expose selection metrics, and run source and policy contract checks against the selected bytes.
+The pilot activates two narrow kernel parsers. The fixed DeepSeek runtime accepts a verified source catalog, and the finding registry accepts verified declarative values for the existing AI tool-allowlist rule. Both paths retain their compiled runtime behavior and embedded data as the fallback. Startup logs record accepted, rejected, and fallback states. `cerebro.content_pack.selections` records only bounded pack kind and status labels; tenant IDs, paths, digests, and rejection text stay out of metrics.
 
 ## Repository Boundary
 
