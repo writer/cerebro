@@ -495,9 +495,8 @@ func boundedConflictCategory(value string) string {
 	}
 }
 
-// ProjectRecords converts one event into normalized projection records without
-// writing them. Graph ingest uses this to coalesce repeated records before
-// touching Neo4j.
+// ProjectRecords converts one event into base projection records without
+// context-aware enrichments or writes.
 func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 		return registry.Project(event)
@@ -522,6 +521,10 @@ func (s *Service) projectRecords(event *cerebrov1.EventEnvelope, project func(*R
 	if err != nil {
 		return nil, nil, err
 	}
+	return finalizeProjectedRecords(event, entities, links)
+}
+
+func finalizeProjectedRecords(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
 	if err := validateProjectedFabricContract(links); err != nil {
@@ -792,6 +795,18 @@ func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[stri
 		projectedLinks = append(projectedLinks, link)
 	}
 	return projectedEntities, projectedLinks
+}
+
+func projectionMaps(entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) (map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink) {
+	entityMap := map[string]*ports.ProjectedEntity{}
+	linkMap := map[string]*ports.ProjectedLink{}
+	for _, entity := range entities {
+		addEntity(entityMap, entity)
+	}
+	for _, link := range links {
+		addLink(linkMap, link)
+	}
+	return entityMap, linkMap
 }
 
 func tenantID(event *cerebrov1.EventEnvelope) (string, error) {

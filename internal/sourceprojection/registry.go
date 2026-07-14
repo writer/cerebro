@@ -6323,16 +6323,23 @@ func (r *Registry) Kinds() []string {
 	return kinds
 }
 
-// Project applies the registered projector for an event.
+// Project applies the registered base projector for an event.
 func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return r.project(event, nil)
 }
 
-// ProjectContext applies the registered projector while preserving caller cancellation.
+// ProjectContext applies the registered projector and context-aware enrichments.
 func (r *Registry) ProjectContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return r.project(event, func(project ContextProjectFunc, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	if ctx == nil {
+		return nil, nil, fmt.Errorf("context is required")
+	}
+	entities, links, err := r.project(event, func(project ContextProjectFunc, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 		return project(ctx, event)
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return addMITREProjectionContext(ctx, event, entities, links)
 }
 
 func (r *Registry) project(event *cerebrov1.EventEnvelope, invokeContextProject contextProjectInvoker) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -6370,12 +6377,12 @@ func (r *Registry) project(event *cerebrov1.EventEnvelope, invokeContextProject 
 	return entities, links, nil
 }
 
-// ProjectEvent projects one event through the built-in registry without stores.
+// ProjectEvent projects one event through the built-in base registry without stores.
 func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().Project(event)
 }
 
-// ProjectEventContext projects one event through the built-in registry while preserving caller cancellation.
+// ProjectEventContext projects one event through the built-in registry with caller cancellation and context-aware enrichments.
 func ProjectEventContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().ProjectContext(ctx, event)
 }
