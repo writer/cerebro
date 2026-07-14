@@ -2,6 +2,7 @@ package trustclaims
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,62 @@ func TestEvidenceInvalidationWithdrawsShareableClaimWithoutRefreshingApproval(t 
 	}
 	if _, err := workflowevents.NewDecisionRecordedEvent(decision); err != nil {
 		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+}
+
+func TestEvidenceInvalidationKeepsWithdrawnClaimWithdrawn(t *testing.T) {
+	now := fixedTime()
+	input := validReceiptInput(now, ClaimStatusShareable, DisclosureCustomer)
+	input.Citations = append(input.Citations, validCitation("citation-b", now))
+	receipt := mustIssue(t, input)
+	first, err := ApplyEvidenceChange(receipt, EvidenceChange{
+		TenantID: receipt.TenantID, CitationID: "citation-a", State: CitationConflicted,
+		Reason: "Two current sources disagree.", ObservedAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ApplyEvidenceChange(first.Receipt, EvidenceChange{
+		TenantID: receipt.TenantID, CitationID: "citation-b", State: CitationRevoked,
+		Reason: "The remaining source retracted the record.", ObservedAt: now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TransitionType != TransitionClaimWithdrawn || second.Receipt.Status != ClaimStatusWithdrawn {
+		t.Fatalf("second transition = %#v, want withdrawn claim to remain withdrawn", second)
+	}
+}
+
+func TestIssueReceiptRejectsMalformedReferencesBeforeNormalization(t *testing.T) {
+	now := fixedTime()
+	tests := []struct {
+		name    string
+		mutate  func(*ReceiptInput)
+		message string
+	}{
+		{name: "control version", mutate: func(input *ReceiptInput) {
+			input.Controls = append(input.Controls, VersionedRef{ID: "control-other", Version: " "})
+		}, message: "control and policy refs require exact versions"},
+		{name: "policy id", mutate: func(input *ReceiptInput) {
+			input.Policies = append(input.Policies, VersionedRef{ID: " ", Version: "2"})
+		}, message: "control and policy refs require exact versions"},
+		{name: "resource urn", mutate: func(input *ReceiptInput) {
+			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: " ", Revision: "2"})
+		}, message: "resource refs require urn and revision"},
+		{name: "resource revision", mutate: func(input *ReceiptInput) {
+			input.ResourceRefs = append(input.ResourceRefs, ResourceRef{URN: "urn:resource:other", Revision: " "})
+		}, message: "resource refs require urn and revision"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := validReceiptInput(now, ClaimStatusDraft, DisclosureInternal)
+			test.mutate(&input)
+			_, err := IssueReceipt(input)
+			if !errors.Is(err, ErrInvalidReceipt) || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("IssueReceipt() error = %v, want %q", err, test.message)
+			}
+		})
 	}
 }
 

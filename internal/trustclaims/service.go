@@ -24,6 +24,9 @@ var (
 )
 
 func IssueReceipt(input ReceiptInput) (ClaimReceipt, error) {
+	if err := validateReceiptReferenceInput(input); err != nil {
+		return ClaimReceipt{}, err
+	}
 	normalizeReceiptInput(&input)
 	if err := validateReceiptInput(input); err != nil {
 		return ClaimReceipt{}, err
@@ -64,6 +67,20 @@ func IssueReceipt(input ReceiptInput) (ClaimReceipt, error) {
 	}
 	receipt.Digest = digest
 	return receipt, nil
+}
+
+func validateReceiptReferenceInput(input ReceiptInput) error {
+	for _, ref := range append(append([]VersionedRef(nil), input.Controls...), input.Policies...) {
+		if strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.Version) == "" {
+			return fmt.Errorf("%w: control and policy refs require exact versions", ErrInvalidReceipt)
+		}
+	}
+	for _, ref := range input.ResourceRefs {
+		if strings.TrimSpace(ref.URN) == "" || strings.TrimSpace(ref.Revision) == "" {
+			return fmt.Errorf("%w: resource refs require urn and revision", ErrInvalidReceipt)
+		}
+	}
+	return nil
 }
 
 func validateReceiptInput(input ReceiptInput) error {
@@ -110,16 +127,6 @@ func validateReceiptInput(input ReceiptInput) error {
 	}
 	if isExternalStatus(input.RequestedStatus) && input.DisclosureClass == DisclosureInternal {
 		return fmt.Errorf("%w: external status requires customer or auditor disclosure", ErrInvalidReceipt)
-	}
-	for _, ref := range append(append([]VersionedRef(nil), input.Controls...), input.Policies...) {
-		if ref.ID == "" || ref.Version == "" {
-			return fmt.Errorf("%w: control and policy refs require exact versions", ErrInvalidReceipt)
-		}
-	}
-	for _, ref := range input.ResourceRefs {
-		if ref.URN == "" || ref.Revision == "" {
-			return fmt.Errorf("%w: resource refs require urn and revision", ErrInvalidReceipt)
-		}
 	}
 	for _, citation := range input.Citations {
 		if citation.ID == "" || citation.EvidenceID == "" || citation.SourceID == "" || citation.ObservedAt.IsZero() || len(citation.SourceEventIDs) == 0 {
@@ -204,7 +211,7 @@ func ApplyEvidenceChange(receipt ClaimReceipt, change EvidenceChange) (ClaimTran
 	}
 	status := ClaimStatusReopened
 	transitionType := TransitionClaimReopened
-	if receipt.Status == ClaimStatusShareable || receipt.Status == ClaimStatusAuditorReady {
+	if receipt.Status == ClaimStatusShareable || receipt.Status == ClaimStatusAuditorReady || receipt.Status == ClaimStatusWithdrawn {
 		status = ClaimStatusWithdrawn
 		transitionType = TransitionClaimWithdrawn
 	}
