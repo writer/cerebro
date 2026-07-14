@@ -46,6 +46,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -779,7 +780,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: safeFindingMessage(finding)}), nil
+	return connect.NewResponse(linktransport.FindingResponse(safeFindingMessage(finding), finding)), nil
 }
 
 func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {

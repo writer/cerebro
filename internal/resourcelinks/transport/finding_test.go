@@ -1,0 +1,25 @@
+package transport
+
+import (
+	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+func TestFindingResponseMapsLinksAndOmitsInvalidStoredInputs(t *testing.T) {
+	message := &cerebrov1.Finding{Id: "finding-1"}
+	valid := FindingResponse(message, &ports.FindingRecord{
+		ID:           "finding-1",
+		RuntimeID:    "runtime-1",
+		ResourceURNs: []string{"urn:cerebro:asset:one"},
+	})
+	if valid.GetFinding() != message || len(valid.GetLinks()) != 5 {
+		t.Fatalf("FindingResponse(valid) = %#v, want finding and five links", valid)
+	}
+
+	invalid := FindingResponse(message, &ports.FindingRecord{ID: "finding-1"})
+	if invalid.GetFinding() != message || len(invalid.GetLinks()) != 0 {
+		t.Fatalf("FindingResponse(invalid) = %#v, want existing finding without links", invalid)
+	}
+}

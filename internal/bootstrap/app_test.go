@@ -6521,6 +6521,23 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := getFindingBody["due_at"]; got != "2026-05-02T12:00:00Z" {
 		t.Fatalf("get finding due_at = %#v, want 2026-05-02T12:00:00Z", got)
 	}
+	getFindingLinks, ok := getFindingPayload["links"].([]any)
+	if !ok || len(getFindingLinks) < 4 {
+		t.Fatalf("get finding links = %#v, want at least four authorized references", getFindingPayload["links"])
+	}
+	for _, rawLink := range getFindingLinks {
+		link, ok := rawLink.(map[string]any)
+		if !ok {
+			t.Fatalf("get finding link = %#v, want object", rawLink)
+		}
+		target, ok := link["target"].(map[string]any)
+		if !ok {
+			t.Fatalf("get finding link target = %#v, want object", link["target"])
+		}
+		if apiPath, _ := target["api_path"].(string); strings.HasPrefix(apiPath, "http://") || strings.HasPrefix(apiPath, "https://") {
+			t.Fatalf("get finding api_path = %q, want relative path", apiPath)
+		}
+	}
 	getFindingAttributes, ok := getFindingBody["attributes"].(map[string]any)
 	if !ok {
 		t.Fatalf("get finding attributes = %#v, want object", getFindingBody["attributes"])
