@@ -238,7 +238,10 @@ func supersessionClosures(ledger Ledger, query EvaluationQuery) (map[string]time
 		}
 		prior, priorOK := revisions[receipt.PriorDigest]
 		successor, successorOK := revisions[receipt.SuccessorDigest]
-		if !priorOK || !successorOK || successor.PreviousDigest != prior.Digest || !successor.RecordedTime.From.Equal(receipt.RecordedAt) {
+		if !priorOK || !successorOK || successor.PreviousDigest != prior.Digest ||
+			successor.Version != prior.Version+1 || successor.AssertionID != prior.AssertionID ||
+			!sameSubject(successor.Subject, prior.Subject) || successor.Predicate != prior.Predicate ||
+			!successor.RecordedTime.From.Equal(receipt.RecordedAt) || !receipt.RecordedAt.After(prior.RecordedTime.From) {
 			return nil, fmt.Errorf("%w: supersession receipt does not bind an exact revision transition", ErrInvalidTruthRecord)
 		}
 		if existing, ok := successors[receipt.PriorDigest]; ok && existing != receipt.SuccessorDigest {

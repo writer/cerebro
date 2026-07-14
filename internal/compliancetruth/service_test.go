@@ -80,6 +80,27 @@ func TestAsKnownAtAndEffectiveAtPreserveLateCorrectionHistory(t *testing.T) {
 	}
 }
 
+func TestEvaluationRejectsSupersessionThatChangesAssertionIdentity(t *testing.T) {
+	now := truthTime()
+	claim := validClaim(t, "claim-a", "receipt-a", "enabled", trustclaims.ClaimStatusShareable, trustclaims.CitationCurrent, now)
+	prior := mustRevision(t, revisionInput("revision-a", "enabled", claim, now))
+	successor, supersession, err := CorrectRevision(prior, revisionInput("revision-b", "disabled", claim, now.Add(time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	successor.Predicate = "password_rotation_required"
+	successor.Digest = mustDigest(t, revisionWithoutDigest(successor))
+	supersession.SuccessorDigest = successor.Digest
+	supersession.Digest = mustDigest(t, supersessionWithoutDigest(supersession))
+
+	_, err = Evaluate(Ledger{Revisions: []TruthRevision{prior, successor}, Supersessions: []SupersessionReceipt{supersession}, Claims: []trustclaims.ClaimReceipt{claim}}, EvaluationQuery{
+		TenantID: "tenant-a", AssertionID: "assertion-access", AsKnownAt: now.Add(2 * time.Hour), EffectiveAt: now,
+	})
+	if !errors.Is(err, ErrInvalidTruthRecord) {
+		t.Fatalf("Evaluate() error = %v, want ErrInvalidTruthRecord", err)
+	}
+}
+
 func TestConflictResolutionBindsReviewerExactInputsAndDecisionTime(t *testing.T) {
 	now := truthTime()
 	claimA := validClaim(t, "claim-a", "receipt-a", "enabled", trustclaims.ClaimStatusAuditorReady, trustclaims.CitationCurrent, now)
