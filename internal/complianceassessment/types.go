@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -534,7 +535,9 @@ func validateCollectionReceipt(receipt CollectionReceipt) error {
 	if !knownCompleteness(receipt.Completeness) {
 		return fmt.Errorf("unknown completeness %q", receipt.Completeness)
 	}
-	if receipt.Included+receipt.Excluded != receipt.Deduplicated || receipt.Deduplicated > receipt.RawCount {
+	if receipt.Included > receipt.Deduplicated ||
+		receipt.Excluded != receipt.Deduplicated-receipt.Included ||
+		receipt.Deduplicated > receipt.RawCount {
 		return errors.New("collection counts are inconsistent")
 	}
 	if receipt.Watermark.IsZero() && !emptyCollectionReceipt(receipt) {
@@ -561,7 +564,10 @@ func validateCollectionReceiptChains(receipts []CollectionReceipt) error {
 			if !equalExpectedTotal(receipt.ExpectedTotal, chain[0].ExpectedTotal) {
 				return fmt.Errorf("collection %q/%q changed expected total between pages", receipt.Kind, receipt.RuntimeID)
 			}
-			collected += receipt.Included + receipt.Excluded
+			if collected > math.MaxUint64-receipt.Deduplicated {
+				return fmt.Errorf("collection %q/%q record count overflows uint64", receipt.Kind, receipt.RuntimeID)
+			}
+			collected += receipt.Deduplicated
 			if index == 0 {
 				continue
 			}
