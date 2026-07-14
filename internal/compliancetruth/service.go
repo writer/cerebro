@@ -172,6 +172,10 @@ func Evaluate(ledger Ledger, query EvaluationQuery) (TruthEvaluation, error) {
 			evaluation.ResolvedConflicts = append(evaluation.ResolvedConflicts, *valueConflict)
 			evaluation.ResolutionReceipts = append(evaluation.ResolutionReceipts, resolution.Digest)
 			candidates = filterRevision(candidates, resolution.SelectedRevisionDigest)
+			blocking, err = claimConflicts(ledger.Claims, candidates, query)
+			if err != nil {
+				return TruthEvaluation{}, err
+			}
 		}
 	}
 	blocking = normalizeConflicts(blocking)

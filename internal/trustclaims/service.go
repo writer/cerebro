@@ -243,6 +243,9 @@ func ReconcileExpiry(receipt ClaimReceipt, at time.Time) (*ClaimTransition, erro
 		return nil, fmt.Errorf("%w: reconciliation time is required", ErrInvalidReceipt)
 	}
 	for _, citation := range receipt.Citations {
+		if citation.State != CitationCurrent {
+			continue
+		}
 		if citation.ExpiresAt != nil && !citation.ExpiresAt.After(at) {
 			transition, err := ApplyEvidenceChange(receipt, EvidenceChange{
 				TenantID: receipt.TenantID, CitationID: citation.ID, State: CitationStale,
@@ -252,11 +255,18 @@ func ReconcileExpiry(receipt ClaimReceipt, at time.Time) (*ClaimTransition, erro
 		}
 	}
 	if (receipt.ExpiresAt != nil && !receipt.ExpiresAt.After(at)) || (receipt.FreshUntil != nil && !receipt.FreshUntil.After(at)) {
-		if len(receipt.Citations) == 0 {
-			return nil, fmt.Errorf("%w: expiring receipt has no citation to invalidate", ErrInvalidReceipt)
+		citationID := ""
+		for _, citation := range receipt.Citations {
+			if citation.State == CitationCurrent {
+				citationID = citation.ID
+				break
+			}
+		}
+		if citationID == "" {
+			return nil, nil
 		}
 		transition, err := ApplyEvidenceChange(receipt, EvidenceChange{
-			TenantID: receipt.TenantID, CitationID: receipt.Citations[0].ID, State: CitationStale,
+			TenantID: receipt.TenantID, CitationID: citationID, State: CitationStale,
 			Reason: "Claim freshness window elapsed.", ObservedAt: at,
 		})
 		return &transition, err

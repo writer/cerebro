@@ -144,6 +144,42 @@ func TestConflictResolutionBindsReviewerExactInputsAndDecisionTime(t *testing.T)
 	}
 }
 
+func TestConflictResolutionDiscardsClaimConflictsFromRejectedRevision(t *testing.T) {
+	now := truthTime()
+	claimA := validClaim(t, "claim-a", "receipt-a", "enabled", trustclaims.ClaimStatusShareable, trustclaims.CitationCurrent, now)
+	claimB := validClaim(t, "claim-b", "receipt-b", "disabled", trustclaims.ClaimStatusWithdrawn, trustclaims.CitationCurrent, now)
+	revisionA := mustRevision(t, revisionInput("revision-a", "enabled", claimA, now))
+	revisionB := mustRevision(t, revisionInput("revision-b", "disabled", claimB, now.Add(2*time.Minute)))
+	conflict := conflictingValues([]TruthRevision{revisionA, revisionB})
+	if conflict == nil {
+		t.Fatal("conflictingValues() = nil")
+	}
+	approvedAt := now.Add(3 * time.Minute)
+	resolution, err := ResolveConflict(ResolutionInput{
+		TenantID: "tenant-a", AssertionID: "assertion-access", ConflictID: conflict.ID,
+		InputDigests: conflict.InputDigests, Decision: ResolutionAcceptRevision, SelectedRevisionDigest: revisionA.Digest,
+		Reviewer:   trustclaims.ReviewerApproval{ReviewerID: "reviewer-a", Decision: trustclaims.ApprovalApproved, ApprovedAt: approvedAt},
+		RecordedAt: approvedAt.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	evaluation, err := Evaluate(Ledger{
+		Revisions: []TruthRevision{revisionA, revisionB},
+		Claims:    []trustclaims.ClaimReceipt{claimA, claimB},
+		Resolutions: []ConflictResolutionReceipt{
+			resolution,
+		},
+	}, EvaluationQuery{TenantID: "tenant-a", AssertionID: "assertion-access", AsKnownAt: approvedAt.Add(2 * time.Minute), EffectiveAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evaluation.State != EvaluationQualified || evaluation.Value != "enabled" || len(evaluation.Conflicts) != 0 || !reflect.DeepEqual(evaluation.RevisionDigests, []string{revisionA.Digest}) {
+		t.Fatalf("resolved evaluation = %#v, want only the selected valid revision", evaluation)
+	}
+}
+
 func TestConflictedOrWithdrawnClaimRemainsExplicitAndUnresolvable(t *testing.T) {
 	now := truthTime()
 	tests := []struct {

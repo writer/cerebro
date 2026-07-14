@@ -135,6 +135,37 @@ func TestExpiryEmitsWithdrawal(t *testing.T) {
 	if transition == nil || transition.TransitionType != TransitionClaimWithdrawn || transition.Receipt.Status != ClaimStatusWithdrawn {
 		t.Fatalf("transition = %#v, want withdrawal", transition)
 	}
+	repeated, err := ReconcileExpiry(transition.Receipt, expires.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeated != nil {
+		t.Fatalf("repeated transition = %#v, want nil after citation is stale", repeated)
+	}
+}
+
+func TestReceiptExpiryStopsAfterAllCurrentCitationsAreInvalidated(t *testing.T) {
+	now := fixedTime()
+	input := validReceiptInput(now, ClaimStatusShareable, DisclosureCustomer)
+	expires := now.Add(time.Hour)
+	input.FreshUntil = &expires
+	input.ExpiresAt = &expires
+	receipt := mustIssue(t, input)
+
+	transition, err := ReconcileExpiry(receipt, expires.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transition == nil || transition.Receipt.Citations[0].State != CitationStale {
+		t.Fatalf("transition = %#v, want current citation invalidated", transition)
+	}
+	repeated, err := ReconcileExpiry(transition.Receipt, expires.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeated != nil {
+		t.Fatalf("repeated transition = %#v, want nil when no current citation remains", repeated)
+	}
 }
 
 func TestSupersededClaimCannotBePackaged(t *testing.T) {
