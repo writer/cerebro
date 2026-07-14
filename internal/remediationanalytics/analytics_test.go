@@ -57,6 +57,17 @@ func TestRealizedResultRejectsUnboundFinding(t *testing.T) {
 	}
 }
 
+func TestRealizedResultRejectsTamperedPredictionReceipt(t *testing.T) {
+	prediction := testPrediction(t)
+	prediction.TenantID = "tenant-b"
+	value := 10.0
+
+	_, err := NewRealizedResult(RealizedInput{Prediction: prediction, VerificationID: "verify-a", VerifiedClosedFindingIDs: []string{"finding-a"}, SourceHealth: SourceHealthy, RealizedRiskDelta: &value, ObservedAt: prediction.CreatedAt.Add(time.Hour)})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("error = %v, want ErrInvalidRecord", err)
+	}
+}
+
 func TestDeriveResolutionEpisodesTracksDurabilityAndRecurrence(t *testing.T) {
 	opened := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	closed := opened.Add(24 * time.Hour)

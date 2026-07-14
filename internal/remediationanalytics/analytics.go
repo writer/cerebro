@@ -90,6 +90,32 @@ func NewPredictionReceipt(input PredictionInput) (PredictionReceipt, error) {
 	return receipt, err
 }
 
+func validatePredictionReceipt(receipt PredictionReceipt) error {
+	rebuilt, err := NewPredictionReceipt(PredictionInput{
+		TenantID:                 receipt.TenantID,
+		ReportRunID:              receipt.ReportRunID,
+		CandidateID:              receipt.CandidateID,
+		PlanModelVersion:         receipt.PlanModelVersion,
+		ActionType:               receipt.ActionType,
+		TargetType:               receipt.TargetType,
+		FindingRevisions:         receipt.FindingRevisions,
+		PredictedRiskDelta:       receipt.PredictedRiskDelta,
+		PredictedAttackPathDelta: receipt.PredictedAttackPathDelta,
+		PredictedEffort:          receipt.PredictedEffort,
+		PredictedCostMicros:      receipt.PredictedCostMicros,
+		PredictedCollateralRisk:  receipt.PredictedCollateralRisk,
+		RollbackPlanDigest:       receipt.RollbackPlanDigest,
+		CreatedAt:                receipt.CreatedAt,
+	})
+	if err != nil {
+		return err
+	}
+	if rebuilt.Digest != receipt.Digest {
+		return fmt.Errorf("%w: prediction receipt does not match its digest", ErrInvalidRecord)
+	}
+	return nil
+}
+
 type SourceHealth string
 
 const (
@@ -171,9 +197,12 @@ type RealizedInput struct {
 }
 
 func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
-	if !validPredictionReceipt(input.Prediction) || input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) ||
+	if err := validatePredictionReceipt(input.Prediction); err != nil {
+		return RealizedResult{}, err
+	}
+	if input.ObservedAt.IsZero() || input.ObservedAt.Before(input.Prediction.CreatedAt) ||
 		missing(input.ExecutionID, input.ExecutorPrincipalID) || input.ActualEffort <= 0 || input.ActualCostMicros < 0 {
-		return RealizedResult{}, fmt.Errorf("%w: prediction, execution identity, effort, cost, and bounded observation time are required", ErrInvalidRecord)
+		return RealizedResult{}, fmt.Errorf("%w: execution identity, effort, cost, and bounded observation time are required", ErrInvalidRecord)
 	}
 	if input.SourceHealth != SourceHealthy && input.SourceHealth != SourceUnhealthy && input.SourceHealth != SourceUnknown {
 		return RealizedResult{}, fmt.Errorf("%w: source health is required", ErrInvalidRecord)
@@ -237,18 +266,6 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 	var err error
 	result.Digest, err = digest(result)
 	return result, err
-}
-
-func validPredictionReceipt(value PredictionReceipt) bool {
-	canonical, err := NewPredictionReceipt(PredictionInput{
-		TenantID: value.TenantID, ReportRunID: value.ReportRunID, CandidateID: value.CandidateID,
-		PlanModelVersion: value.PlanModelVersion, ActionType: value.ActionType, TargetType: value.TargetType,
-		FindingRevisions: value.FindingRevisions, PredictedRiskDelta: value.PredictedRiskDelta,
-		PredictedAttackPathDelta: value.PredictedAttackPathDelta, PredictedEffort: value.PredictedEffort,
-		PredictedCostMicros: value.PredictedCostMicros, PredictedCollateralRisk: value.PredictedCollateralRisk,
-		RollbackPlanDigest: value.RollbackPlanDigest, CreatedAt: value.CreatedAt,
-	})
-	return err == nil && canonical.Digest == value.Digest
 }
 
 type ObservationKind string
