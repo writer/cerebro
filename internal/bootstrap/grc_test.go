@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
@@ -1020,9 +1022,15 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 				Id:            "evidence-1",
 				RuntimeId:     "writer-okta-audit",
 				FindingId:     "finding-high",
+				RunId:         "evaluation-run-1",
+				RunIds:        []string{"evaluation-run-1"},
 				EventIds:      []string{"event-1"},
 				GraphRootUrns: []string{rootURN},
-				CreatedAt:     timestamppb.New(now),
+				GraphPathUrns: []string{"urn:cerebro:writer:graph-path:path-1"},
+				Observations: []*cerebrov1.FindingEvidenceObservation{{
+					RunId: "observation-run-1", ObservedAt: timestamppb.New(now),
+				}},
+				CreatedAt: timestamppb.New(now),
 			},
 		},
 	}
@@ -1068,7 +1076,53 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		t.Fatalf("impact findings = %#v, want finding-high", impact.Findings)
 	}
 
-	packetResp, err := server.Client().Get(server.URL + "/grc/audit-packets/finding-high")
+	previewResp, err := server.Client().Get(server.URL + "/grc/findings/finding-high/audit-preview")
+	if err != nil {
+		t.Fatalf("GET audit preview error = %v", err)
+	}
+	defer func() { _ = previewResp.Body.Close() }()
+	if previewResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET audit preview status = %d, want %d", previewResp.StatusCode, http.StatusOK)
+	}
+	var preview grcAuditPacketResponse
+	if err := json.NewDecoder(previewResp.Body).Decode(&preview); err != nil {
+		t.Fatalf("decode preview: %v", err)
+	}
+	if preview.ResourceState != "live_preview" || preview.Graph == nil || preview.Graph.Root == nil {
+		t.Fatalf("preview = %#v, want live graph context", preview)
+	}
+
+	createResp, err := server.Client().Post(server.URL+"/grc/audit-packets", "application/json", bytes.NewBufferString(`{"finding_id":"finding-high"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/audit-packets error = %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /grc/audit-packets status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+	var created grcAuditPacketResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created packet: %v", err)
+	}
+	if created.ID == "finding-high" || !strings.HasPrefix(created.ID, "audit-packet-") {
+		t.Fatalf("packet id = %q, want independent audit-packet id", created.ID)
+	}
+	if created.ResourceState != "immutable" || created.SchemaVersion != grcAuditPacketSchema || !strings.HasPrefix(created.Digest, "sha256:") {
+		t.Fatalf("created packet identity = %#v", created)
+	}
+	if created.Graph != nil || len(created.GraphReferences.RootURNs) != 1 {
+		t.Fatalf("created graph state = graph %#v refs %#v, want references only", created.Graph, created.GraphReferences)
+	}
+	if len(created.EvidenceReferences) != 1 || !containsTrimmed(created.EvidenceReferences[0].EvaluationRunIDs, "evaluation-run-1") || !containsTrimmed(created.EvidenceReferences[0].ObservationRunIDs, "observation-run-1") {
+		t.Fatalf("created evidence references = %#v, want exact evaluation and observation runs", created.EvidenceReferences)
+	}
+
+	// Current finding and graph mutations after creation must not affect the packet.
+	store.findings["finding-high"].Status = "resolved"
+	store.findingEvidence = map[string]*cerebrov1.FindingEvidence{}
+	graphStore.neighborhood = nil
+
+	packetResp, err := server.Client().Get(server.URL + "/grc/audit-packets/" + created.ID)
 	if err != nil {
 		t.Fatalf("GET /grc/audit-packets error = %v", err)
 	}
@@ -1086,8 +1140,8 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if len(packet.Evidence) != 1 {
 		t.Fatalf("packet evidence len = %d, want 1", len(packet.Evidence))
 	}
-	if packet.Graph == nil || packet.Graph.Root == nil {
-		t.Fatalf("packet graph missing")
+	if packet.Finding.Status == "resolved" || packet.Digest != created.Digest {
+		t.Fatalf("packet changed after current-state mutation: %#v", packet)
 	}
 	if packet.RecommendedAction == "" {
 		t.Fatalf("packet recommended action is empty")
@@ -1099,7 +1153,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		t.Fatalf("redaction metadata = %#v, want share-safe default", packet.Metadata.Redaction)
 	}
 
-	exportResp, err := server.Client().Get(server.URL + "/grc/audit-packets/finding-high/export")
+	exportResp, err := server.Client().Get(server.URL + "/grc/audit-packets/" + created.ID + "/export")
 	if err != nil {
 		t.Fatalf("GET /grc/audit-packets export error = %v", err)
 	}
@@ -1117,6 +1171,80 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 			t.Fatalf("finding export missing %q:\n%s", want, markdown)
 		}
 	}
+	jsonExportResp, err := server.Client().Get(server.URL + "/grc/audit-packets/" + created.ID + "/export?format=json")
+	if err != nil {
+		t.Fatalf("GET JSON packet export error = %v", err)
+	}
+	defer func() { _ = jsonExportResp.Body.Close() }()
+	var exported grcAuditPacketResponse
+	if err := json.NewDecoder(jsonExportResp.Body).Decode(&exported); err != nil {
+		t.Fatalf("decode JSON packet export: %v", err)
+	}
+	if exported.Digest != packet.Digest || exported.ID != packet.ID {
+		t.Fatalf("JSON export = %q/%q, read = %q/%q", exported.ID, exported.Digest, packet.ID, packet.Digest)
+	}
+}
+
+func TestGRCAuditPacketDigestIsDeterministic(t *testing.T) {
+	packet := grcAuditPacketResponse{
+		ID: "audit-packet-1", SchemaVersion: grcAuditPacketSchema, ResourceState: "immutable", TenantID: "writer",
+		FindingReference: grcAuditFindingReference{ID: "finding-1", Status: "open", StatusRevision: time.Date(2026, 7, 14, 8, 0, 0, 0, time.UTC)},
+		Gaps:             []grcAuditPacketGap{}, Supersedes: []string{}, GeneratedAt: time.Date(2026, 7, 14, 8, 1, 0, 0, time.UTC),
+	}
+	first, err := grcauditpacket.Digest(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := grcauditpacket.Digest(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("digest mismatch: %q != %q", first, second)
+	}
+	packet.FindingReference.Status = "resolved"
+	changed, err := grcauditpacket.Digest(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == first {
+		t.Fatalf("digest did not change after finding revision changed")
+	}
+}
+
+func TestGRCAuditPacketRecordsGraphGapWhenProjectionUnavailable(t *testing.T) {
+	now := time.Date(2026, 7, 14, 8, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "okta"}},
+		findings: map[string]*ports.FindingRecord{"finding-1": {ID: "finding-1", TenantID: "writer", RuntimeID: "runtime-1", Status: "open", LastObservedAt: now}},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	response, err := server.Client().Post(server.URL+"/grc/audit-packets", "application/json", bytes.NewBufferString(`{"finding_id":"finding-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusCreated)
+	}
+	packet := grcAuditPacketResponse{}
+	if err := json.NewDecoder(response.Body).Decode(&packet); err != nil {
+		t.Fatal(err)
+	}
+	if !hasGRCAuditPacketGap(packet.Gaps, "graph_context_unavailable") || !hasGRCAuditPacketGap(packet.Gaps, "evidence_unavailable") {
+		t.Fatalf("gaps = %#v, want graph and evidence gaps", packet.Gaps)
+	}
+}
+
+func hasGRCAuditPacketGap(gaps []grcAuditPacketGap, code string) bool {
+	for _, gap := range gaps {
+		if gap.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
@@ -1218,19 +1346,38 @@ func TestGRCAuditPacketNormalizesForeignFindingLookup(t *testing.T) {
 		},
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
-	request := httptest.NewRequest(http.MethodGet, "/grc/audit-packets/foreign-finding", nil)
-	request.SetPathValue("packetID", "foreign-finding")
+	request := httptest.NewRequest(http.MethodGet, "/grc/findings/foreign-finding/audit-preview", nil)
+	request.SetPathValue("findingID", "foreign-finding")
 	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
 		principal: authPrincipal{TenantID: "writer"},
 	}))
 
-	_, err := app.buildGRCAuditPacket(request)
+	_, err := app.buildGRCAuditPreview(request, "foreign-finding")
 	if !errors.Is(err, ports.ErrFindingNotFound) {
-		t.Fatalf("buildGRCAuditPacket() error = %v, want finding not found", err)
+		t.Fatalf("buildGRCAuditPreview() error = %v, want finding not found", err)
 	}
 	if got := grcHTTPStatusCode(err); got != http.StatusNotFound {
-		t.Fatalf("grcHTTPStatusCode(buildGRCAuditPacket error) = %d, want %d", got, http.StatusNotFound)
+		t.Fatalf("grcHTTPStatusCode(buildGRCAuditPreview error) = %d, want %d", got, http.StatusNotFound)
+	}
+}
+
+func TestGRCAuditPacketNormalizesForeignReceiptLookup(t *testing.T) {
+	store := &stubRuntimeStore{grcAuditPackets: map[string]*ports.GRCAuditPacketReceipt{
+		"packet-other": {ID: "packet-other", TenantID: "other", FindingID: "finding-other", Digest: "sha256:unused", Payload: []byte(`{}`), CreatedAt: time.Now()},
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/grc/audit-packets/packet-other", nil)
+	request.SetPathValue("packetID", "packet-other")
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{cfg: config.AuthConfig{}, principal: authPrincipal{TenantID: "writer"}}))
+
+	_, err := grcauditpacket.Load(request.Context(), store, "packet-other", func(tenantID string) bool {
+		return tenantAllowedByContext(request.Context(), tenantID)
+	})
+	if !errors.Is(err, ports.ErrGRCAuditPacketNotFound) {
+		t.Fatalf("getGRCAuditPacket() error = %v, want packet not found", err)
+	}
+	if got := grcHTTPStatusCode(err); got != http.StatusNotFound {
+		t.Fatalf("grcHTTPStatusCode(getGRCAuditPacket error) = %d, want %d", got, http.StatusNotFound)
 	}
 }
 

@@ -737,6 +737,7 @@ type stubRuntimeStore struct {
 	findingCandidates               map[string]*ports.FindingCandidateRecord
 	findingCandidateListRequest     ports.ListFindingCandidatesRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
+	grcAuditPackets                 map[string]*ports.GRCAuditPacketReceipt
 	runtimeIndexWatermark           uint64
 	runtimeIndexWatermarks          []uint64
 }
@@ -779,6 +780,35 @@ func (s *leaseAwareRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, _ 
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
+
+func (s *stubRuntimeStore) PutGRCAuditPacket(_ context.Context, receipt *ports.GRCAuditPacketReceipt) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.grcAuditPackets == nil {
+		s.grcAuditPackets = make(map[string]*ports.GRCAuditPacketReceipt)
+	}
+	if _, exists := s.grcAuditPackets[receipt.ID]; exists {
+		return errors.New("audit packet already exists")
+	}
+	copy := *receipt
+	copy.Payload = append([]byte(nil), receipt.Payload...)
+	s.grcAuditPackets[receipt.ID] = &copy
+	return nil
+}
+
+func (s *stubRuntimeStore) GetGRCAuditPacket(_ context.Context, packetID string) (*ports.GRCAuditPacketReceipt, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	receipt, ok := s.grcAuditPackets[packetID]
+	if !ok {
+		return nil, ports.ErrGRCAuditPacketNotFound
+	}
+	copy := *receipt
+	copy.Payload = append([]byte(nil), receipt.Payload...)
+	return &copy, nil
+}
 
 func (s *stubRuntimeStore) RuntimeIndexWatermark(context.Context) (uint64, error) {
 	if s.err != nil {
