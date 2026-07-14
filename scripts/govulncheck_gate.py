@@ -72,7 +72,7 @@ def is_reachable_finding(finding: dict[str, Any]) -> bool:
 def run_govulncheck(patterns: list[str]) -> tuple[int, str, str]:
     env = os.environ.copy()
     env["GOFLAGS"] = ""
-    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.4")
+    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.5")
     command = ["go", "run", DEFAULT_TOOL, "-format", "json", *patterns]
     completed = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False)
     return completed.returncode, completed.stdout, completed.stderr
