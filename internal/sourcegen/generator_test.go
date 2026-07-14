@@ -301,13 +301,12 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	readFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/read_users.json")
 	for _, want := range []string{
-		`"api_path": "/v1/users"`,
 		`"kind": "example_idp.user"`,
 		`"record_selector": "$.data[*]"`,
 		`"schema_ref": "example_idp/user/v1"`,
 		`"source_id": "example_idp"`,
 		`"user_id":`,
-		`source-example_idp-users-1`,
+		`example_idp-users-001`,
 	} {
 		if !strings.Contains(readFixture, want) {
 			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
@@ -315,6 +314,9 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	if strings.Contains(readFixture, "Record One") {
 		t.Fatalf("read fixture still uses generic synthetic name:\n%s", readFixture)
+	}
+	if strings.Contains(readFixture, `"api_path"`) || strings.Contains(readFixture, " Fixture") {
+		t.Fatalf("verified provider fixture still contains generator markers:\n%s", readFixture)
 	}
 	var events []struct {
 		Payload    map[string]any    `json:"payload"`
