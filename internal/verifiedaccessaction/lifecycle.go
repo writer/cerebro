@@ -248,6 +248,34 @@ func VerifyTransition(record Record, receipt TransitionReceipt) error {
 	return nil
 }
 
+// ParametersDigest returns the canonical binding digest expected by preflight
+// and execution receipts.
+func ParametersDigest(parameters map[string]string) string {
+	return digestValue(parameters)
+}
+
+// RollbackPlanDigest returns the canonical binding digest expected by a
+// preflight receipt.
+func RollbackPlanDigest(plan RollbackPlan) string {
+	return digestValue(plan)
+}
+
+// GraphActionReceiptDigest returns the canonical digest for an already
+// executed provider action receipt. It does not execute or query a provider.
+func GraphActionReceiptDigest(action graphactions.GraphAction) string {
+	return digestGraphAction(action)
+}
+
+// ProposalRecordDigest returns the original proposal digest from any valid
+// lifecycle record. This lets receipt producers bind later stages without
+// reproducing the lifecycle's private canonicalization rules.
+func ProposalRecordDigest(record Record) (string, error) {
+	if err := VerifyRecord(record); err != nil {
+		return "", err
+	}
+	return proposalDigest(record), nil
+}
+
 func proposalDigest(record Record) string {
 	copy := cloneRecord(record)
 	copy.Status, copy.Preflight, copy.Approval, copy.Execution, copy.Verification = StatusProposed, nil, nil, nil, nil

@@ -60,6 +60,37 @@ func TestLifecycleIsDeterministicAndDoesNotReachProvider(t *testing.T) {
 	}
 }
 
+func TestExportedReceiptDigestHelpersMatchLifecycleBindings(t *testing.T) {
+	t.Parallel()
+	proposed := mustPropose(t)
+	proposalDigest, err := ProposalRecordDigest(proposed.Record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposalDigest != proposed.Record.Digest {
+		t.Fatalf("ProposalRecordDigest() = %q, want %q", proposalDigest, proposed.Record.Digest)
+	}
+	preflight := preflightInput(proposed.Record)
+	if preflight.ParametersDigest != ParametersDigest(proposed.Record.Parameters) {
+		t.Fatalf("ParametersDigest() = %q, want %q", ParametersDigest(proposed.Record.Parameters), preflight.ParametersDigest)
+	}
+	if preflight.RollbackDigest != RollbackPlanDigest(proposed.Record.Rollback) {
+		t.Fatalf("RollbackPlanDigest() = %q, want %q", RollbackPlanDigest(proposed.Record.Rollback), preflight.RollbackDigest)
+	}
+	preflighted := mustPreflight(t, proposed.Record)
+	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
+	execution := executionInput(proposed.Record.Digest, approved.Record)
+	if execution.ProviderReceiptDigest != GraphActionReceiptDigest(execution.GraphAction) {
+		t.Fatalf("GraphActionReceiptDigest() = %q, want %q", GraphActionReceiptDigest(execution.GraphAction), execution.ProviderReceiptDigest)
+	}
+
+	tampered := proposed.Record
+	tampered.Reason = "changed"
+	if _, err := ProposalRecordDigest(tampered); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("tampered ProposalRecordDigest() error = %v, want ErrInvalid", err)
+	}
+}
+
 func TestProposalFailsClosedWithoutRollback(t *testing.T) {
 	t.Parallel()
 	input := proposalInput()
