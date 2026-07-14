@@ -36,7 +36,8 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err != nil {
 			return nil, nil, err
 		}
-		if run.State == RunComplete {
+		switch run.State {
+		case RunComplete, RunFailed, RunCancelled, RunSuperseded:
 			return map[string]any{"run_id": run.ID, "state": run.State}, map[string]string{"assessment_run": run.ID}, nil
 		}
 		if s.collector == nil {
@@ -81,7 +82,7 @@ func (s *Service) Runner() platformjobs.Runner {
 		}
 		resultHash, err := s.appendResultChunks(ctx, run, results)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_projection_failed")
 		}
 		expectedVersion = run.Version
 		run.State = RunComplete

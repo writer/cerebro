@@ -112,6 +112,65 @@ func TestIncompleteManifestFailsWithoutTerminalResult(t *testing.T) {
 	}
 }
 
+func TestAssessmentRunnerDoesNotReexecuteTerminalRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	for _, state := range []string{RunComplete, RunFailed, RunCancelled, RunSuperseded} {
+		state := state
+		t.Run(state, func(t *testing.T) {
+			store := newRunStore()
+			run := AssessmentRun{ID: "run-1", TenantID: "tenant-1", State: state, Version: 3}
+			store.runs[runKey(run.TenantID, run.ID)] = run
+			collector := &testCollector{err: errors.New("terminal run was re-executed")}
+			service := NewAssessmentService(store, &runLog{}, platformjobs.New(newRunJobStore(now)), collector)
+
+			result, refs, err := service.Runner()(context.Background(), &ports.Job{
+				TenantID: run.TenantID,
+				Payload:  map[string]any{"run_id": run.ID},
+			}, nil)
+			if err != nil {
+				t.Fatalf("Runner() error = %v", err)
+			}
+			if result["state"] != state || refs["assessment_run"] != run.ID {
+				t.Fatalf("Runner() = (%v, %v), want terminal state %q", result, refs, state)
+			}
+			if collector.calls != 0 {
+				t.Fatalf("collector calls = %d, want 0", collector.calls)
+			}
+		})
+	}
+}
+
+func TestAssessmentResultProjectionFailureMarksRunFailed(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	store.applyChunkErr = errors.New("result projection unavailable")
+	jobs := platformjobs.New(newRunJobStore(now))
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: completeManifest(now), results: validResults(now, 1)})
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "projection-failure", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != RunFailed || failed.FailureCode != "result_projection_failed" {
+		t.Fatalf("failed run = %#v", failed)
+	}
+}
+
 func TestRunRequestAppendFailurePreventsProjectionAndEnqueue(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
@@ -231,9 +290,11 @@ type testCollector struct {
 	manifest InputManifest
 	results  []ObjectiveResult
 	err      error
+	calls    int
 }
 
 func (c *testCollector) Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error) {
+	c.calls++
 	return c.manifest, append([]ObjectiveResult(nil), c.results...), c.err
 }
 
@@ -263,6 +324,7 @@ type runStore struct {
 	events          map[string]struct{}
 	applyRunVersion uint64
 	applyRunErr     error
+	applyChunkErr   error
 }
 
 func newRunStore() *runStore {
@@ -346,6 +408,9 @@ func (s *runStore) ListUnboundRuns(context.Context, uint32) ([]AssessmentRun, er
 func (s *runStore) ApplyResultChunk(_ context.Context, eventID, tenantID string, chunk ResultChunk) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.applyChunkErr != nil {
+		return s.applyChunkErr
+	}
 	if _, ok := s.events[eventID]; ok {
 		return nil
 	}
