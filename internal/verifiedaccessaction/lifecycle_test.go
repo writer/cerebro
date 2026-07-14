@@ -155,6 +155,25 @@ func TestExecutionReceiptRejectsTargetRevisionAndActorMismatch(t *testing.T) {
 	}
 }
 
+func TestExecutionReceiptRejectsOccurrenceTimeOutsideProviderReceipt(t *testing.T) {
+	t.Parallel()
+	proposed := mustPropose(t)
+	preflighted := mustPreflight(t, proposed.Record)
+	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
+	input := executionInput(proposed.Record.Digest, approved.Record)
+	input.GraphAction.CompletedAtUnix = approved.Record.Approval.ApprovedAt.Add(-time.Minute).Unix()
+	input.ProviderReceiptDigest = digestGraphAction(input.GraphAction)
+	input.OccurredAt = approved.Record.Approval.ApprovedAt.Add(time.Minute)
+	if _, err := IngestExecution(approved.Record, input); !errors.Is(err, ErrStale) {
+		t.Fatalf("IngestExecution() error = %v, want ErrStale for caller time outside provider receipt", err)
+	}
+	input = executionInput(proposed.Record.Digest, approved.Record)
+	input.OccurredAt = input.OccurredAt.Add(500 * time.Millisecond)
+	if _, err := IngestExecution(approved.Record, input); err != nil {
+		t.Fatalf("IngestExecution() error = %v for subsecond occurrence precision", err)
+	}
+}
+
 func TestVerificationRejectsSelfVerificationUnhealthySourceAndMismatch(t *testing.T) {
 	t.Parallel()
 	proposed := mustPropose(t)

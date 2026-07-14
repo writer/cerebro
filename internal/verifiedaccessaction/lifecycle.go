@@ -166,6 +166,9 @@ func validateGraphAction(record Record, input ExecutionInput) error {
 	if clean(action.Action) != clean(metadata.ID) || clean(action.Provider) != clean(metadata.Provider) || clean(action.Target) != clean(record.Binding.TargetID) || clean(action.IdempotencyKey) != clean(record.IdempotencyKey) || status != graphactions.ActionStatusSucceeded || clean(action.ExternalID) == "" {
 		return fmt.Errorf("%w: graph action receipt does not match the approved successful action", ErrVerificationMismatch)
 	}
+	if action.CompletedAtUnix <= 0 || input.OccurredAt.Unix() != action.CompletedAtUnix {
+		return fmt.Errorf("%w: execution occurrence time does not match provider completion", ErrStale)
+	}
 	for key, expected := range map[string]string{"tenant_id": record.TenantID, "subject_urn": record.Binding.SubjectURN, "resource_urn": record.Binding.ResourceURN, "source_runtime_id": record.Binding.SourceRuntimeID, "source_revision": record.Binding.SourceRevision, "definition_version": record.Definition.Version} {
 		if clean(action.Metadata[key]) != clean(expected) {
 			return fmt.Errorf("%w: graph action metadata %s mismatch", ErrStale, key)
