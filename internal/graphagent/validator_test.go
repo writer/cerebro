@@ -232,6 +232,7 @@ func TestValidatorStaticContract(t *testing.T) {
 		{name: "decimal limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1.0`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "negative limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT -1`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "parameter limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT $max`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "limit arithmetic expression", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 * 1000`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "signed integer overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 9223372036854775808`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 18446744073709551616`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},

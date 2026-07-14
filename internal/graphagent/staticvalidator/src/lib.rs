@@ -356,11 +356,7 @@ fn query_limit(tokens: &[Token]) -> Option<u64> {
     let mut limit = None;
     for (i, token) in tokens.iter().enumerate() {
         if keyword_token(token, "LIMIT") {
-            let value = tokens.get(i + 1)?;
-            if value.kind != TokenKind::Number {
-                return None;
-            }
-            limit = Some(u64::try_from(value.text.parse::<i64>().ok()?).ok()?);
+            limit = Some(numeric_limit_at(tokens, i)?);
         }
     }
     limit
@@ -371,14 +367,28 @@ fn oversized_limit(tokens: &[Token], max_rows: u64) -> Option<u64> {
         if !keyword_token(token, "LIMIT") {
             return None;
         }
-        let value = tokens.get(i + 1)?;
-        if value.kind != TokenKind::Number {
-            return None;
-        }
-        u64::try_from(value.text.parse::<i64>().ok()?)
-            .ok()
-            .filter(|limit| *limit > max_rows)
+        numeric_limit_at(tokens, i).filter(|limit| *limit > max_rows)
     })
+}
+
+fn numeric_limit_at(tokens: &[Token], limit_index: usize) -> Option<u64> {
+    let value = tokens.get(limit_index + 1)?;
+    if value.kind != TokenKind::Number || !limit_value_terminated(tokens, limit_index + 2) {
+        return None;
+    }
+    u64::try_from(value.text.parse::<i64>().ok()?).ok()
+}
+
+fn limit_value_terminated(tokens: &[Token], index: usize) -> bool {
+    let Some(token) = tokens.get(index) else {
+        return true;
+    };
+    token.kind == TokenKind::Symbol && matches!(token.text.as_str(), "}" | ";")
+        || token.kind == TokenKind::Identifier
+            && matches!(
+                token.text.to_ascii_uppercase().as_str(),
+                "UNION" | "MATCH" | "OPTIONAL" | "WITH" | "RETURN" | "CALL" | "ORDER" | "SKIP"
+            )
 }
 
 fn has_procedure_call(tokens: &[Token]) -> bool {
@@ -1059,6 +1069,21 @@ mod tests {
             assert_eq!(
                 validate(query, 100).decision,
                 Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn limit_arithmetic_is_not_a_numeric_row_bound() {
+        let queries = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 * 1000",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 + 1000",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::LimitRequired,
                 "{query}"
             );
         }

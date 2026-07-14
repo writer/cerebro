@@ -812,6 +812,17 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 	}
 }
 
+func TestLastNumericCypherLimitRejectsExpressions(t *testing.T) {
+	for _, query := range []string{
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 * 1000`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 + 1000`,
+	} {
+		if value, _, _, ok := lastNumericCypherLimit(query); ok {
+			t.Fatalf("lastNumericCypherLimit(%q) = (%d, true), want false", query, value)
+		}
+	}
+}
+
 func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 	for _, question := range []string{
 		"Does Okta enforce MFA for access?",

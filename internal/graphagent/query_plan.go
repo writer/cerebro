@@ -1336,12 +1336,32 @@ func lastNumericCypherLimit(query string) (int, int, int, bool) {
 		}
 		number := tokens[index+1]
 		parsed, err := strconv.Atoi(query[number.start:number.end])
-		if err != nil {
+		if err != nil || !cypherLimitValueTerminated(query, tokens, index+2) {
 			continue
 		}
 		value, valueStart, valueEnd, found = parsed, number.start, number.end, true
 	}
 	return value, valueStart, valueEnd, found
+}
+
+func cypherLimitValueTerminated(query string, tokens []cypherLimitToken, index int) bool {
+	if index >= len(tokens) {
+		return true
+	}
+	token := tokens[index]
+	value := query[token.start:token.end]
+	if token.kind == 'o' {
+		return value == "}" || value == ";"
+	}
+	if token.kind != 'i' {
+		return false
+	}
+	switch strings.ToUpper(value) {
+	case "UNION", "MATCH", "OPTIONAL", "WITH", "RETURN", "CALL", "ORDER", "SKIP":
+		return true
+	default:
+		return false
+	}
 }
 
 func lexCypherLimitTokens(query string) []cypherLimitToken {
