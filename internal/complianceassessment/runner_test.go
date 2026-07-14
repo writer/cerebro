@@ -162,7 +162,7 @@ func completeManifest(now time.Time) InputManifest {
 		PeriodStart: now.Add(-24 * time.Hour), PeriodEnd: now, CollectionCutoff: now,
 		RequestedScopeDigest: digest, ResolvedObjectiveSetDigest: digest, MappingSetDigest: digest,
 		Revisions: []ManifestRevision{{Kind: "plan", ID: "plan-1", RevisionID: "plan-revision-1", Version: 1, Digest: digest}},
-		Receipts:  []CollectionReceipt{{Kind: "findings", QueryDigest: digest, PageIndex: 1, RawCount: 1, Deduplicated: 1, Included: 1, ExpectedTotal: &total, Watermark: now, Cutoff: now, Completeness: CollectionComplete, PageDigest: digest}},
+		Receipts:  []CollectionReceipt{{Kind: "findings", QueryDigest: digest, PageIndex: 0, RawCount: 1, Deduplicated: 1, Included: 1, ExpectedTotal: &total, Watermark: now, Cutoff: now, Completeness: CollectionComplete, PageDigest: digest}},
 	}
 }
 
