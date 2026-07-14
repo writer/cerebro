@@ -363,6 +363,9 @@ func ValidateInputManifest(value InputManifest) error {
 			}
 		}
 	}
+	if err := validateCollectionReceiptChains(value.Receipts); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidManifest, err)
+	}
 	return nil
 }
 
@@ -519,8 +522,8 @@ func deduplicateCollectionReceipts(values []CollectionReceipt) []CollectionRecei
 }
 
 func validateCollectionReceipt(receipt CollectionReceipt) error {
-	if receipt.Kind == "" || receipt.QueryDigest == "" || receipt.PageDigest == "" || receipt.Watermark.IsZero() || receipt.Cutoff.IsZero() {
-		return errors.New("kind, digests, watermark, and cutoff are required")
+	if receipt.Kind == "" || receipt.QueryDigest == "" || receipt.PageDigest == "" || receipt.Cutoff.IsZero() {
+		return errors.New("kind, digests, and cutoff are required")
 	}
 	if err := compliance.ValidateContentDigest(compliance.ContentDigest(receipt.QueryDigest)); err != nil {
 		return err
@@ -534,5 +537,60 @@ func validateCollectionReceipt(receipt CollectionReceipt) error {
 	if receipt.Included+receipt.Excluded != receipt.Deduplicated || receipt.Deduplicated > receipt.RawCount {
 		return errors.New("collection counts are inconsistent")
 	}
+	if receipt.Watermark.IsZero() && !emptyCollectionReceipt(receipt) {
+		return errors.New("watermark is required for a non-empty collection")
+	}
 	return nil
+}
+
+func validateCollectionReceiptChains(receipts []CollectionReceipt) error {
+	for start := 0; start < len(receipts); {
+		end := start + 1
+		for end < len(receipts) && receipts[end].Kind == receipts[start].Kind && receipts[end].RuntimeID == receipts[start].RuntimeID {
+			end++
+		}
+		chain := receipts[start:end]
+		if chain[0].PageIndex != 0 || chain[0].Cursor != "" {
+			return fmt.Errorf("collection %q/%q must begin at page zero without a cursor", chain[0].Kind, chain[0].RuntimeID)
+		}
+		var collected uint64
+		for index, receipt := range chain {
+			if receipt.QueryDigest != chain[0].QueryDigest || receipt.Cutoff != chain[0].Cutoff || receipt.Watermark != chain[0].Watermark {
+				return fmt.Errorf("collection %q/%q changed query, cutoff, or watermark between pages", receipt.Kind, receipt.RuntimeID)
+			}
+			if !equalExpectedTotal(receipt.ExpectedTotal, chain[0].ExpectedTotal) {
+				return fmt.Errorf("collection %q/%q changed expected total between pages", receipt.Kind, receipt.RuntimeID)
+			}
+			collected += receipt.Included + receipt.Excluded
+			if index == 0 {
+				continue
+			}
+			previous := chain[index-1]
+			if receipt.PageIndex != previous.PageIndex+1 || previous.NextCursor == "" || receipt.Cursor != previous.NextCursor {
+				return fmt.Errorf("collection %q/%q has a missing or disconnected page at index %d", receipt.Kind, receipt.RuntimeID, receipt.PageIndex)
+			}
+		}
+		terminal := chain[len(chain)-1]
+		if terminal.NextCursor != "" {
+			return fmt.Errorf("collection %q/%q has no terminal page", terminal.Kind, terminal.RuntimeID)
+		}
+		if terminal.Completeness == CollectionComplete && terminal.ExpectedTotal != nil && collected != *terminal.ExpectedTotal {
+			return fmt.Errorf("collection %q/%q completed with %d records; expected %d", terminal.Kind, terminal.RuntimeID, collected, *terminal.ExpectedTotal)
+		}
+		start = end
+	}
+	return nil
+}
+
+func emptyCollectionReceipt(receipt CollectionReceipt) bool {
+	return receipt.PageIndex == 0 && receipt.Cursor == "" && receipt.NextCursor == "" &&
+		receipt.RawCount == 0 && receipt.Deduplicated == 0 && receipt.Included == 0 && receipt.Excluded == 0 &&
+		receipt.ExpectedTotal != nil && *receipt.ExpectedTotal == 0 && receipt.FirstKey == "" && receipt.LastKey == ""
+}
+
+func equalExpectedTotal(left, right *uint64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
