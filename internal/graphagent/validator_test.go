@@ -2,7 +2,11 @@ package graphagent
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -202,6 +206,81 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 	if result.Code != "limit_exceeded" {
 		t.Fatalf("code = %q, want limit_exceeded; result = %#v", result.Code, result)
+	}
+}
+
+func TestValidatorStaticContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		cypher     string
+		maxRows    int
+		wantResult ValidatorResult
+		wantLimit  int
+	}{
+		{name: "empty", cypher: " \n ", wantResult: validatorRefusal("cypher_required", "cypher is required")},
+		{name: "unsafe clause takes precedence", cypher: `CREATE (e) RETURN e`, wantResult: validatorRefusal("unsafe_clause", "write or bulk-load Cypher clauses are forbidden")},
+		{name: "forbidden apoc takes precedence", cypher: `CALL apoc.periodic.iterate('a','b',{}) LIMIT 1`, wantResult: validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden")},
+		{name: "other apoc", cypher: `RETURN apoc.convert.fromJsonMap('{}') LIMIT 1`, wantResult: validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro")},
+		{name: "procedure call", cypher: `CALL db.labels() YIELD label RETURN label LIMIT 1`, wantResult: validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden")},
+		{name: "variable relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "expansion", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) UNWIND [1] AS n RETURN e LIMIT 1`, wantResult: validatorRefusal("expansion_not_allowed", "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden")},
+		{name: "missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "decimal limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1.0`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "negative limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT -1`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "parameter limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT $max`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "signed integer overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 9223372036854775808`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 18446744073709551616`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
+		{name: "earlier union limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101 UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
+		{name: "no node pattern", cypher: `RETURN 1 LIMIT 1`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "accepted", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted zero", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 0`, wantResult: ValidatorResult{OK: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := ValidatorOptions{DisableExplain: true, MaxRows: tt.maxRows}
+			result, limit, err := NewValidator(nil, options).validate(context.Background(), tt.cypher, nil)
+			if err != nil {
+				t.Fatalf("validate() error = %v", err)
+			}
+			if !reflect.DeepEqual(result, tt.wantResult) || limit != tt.wantLimit {
+				t.Fatalf("validate() = (%#v, %d), want (%#v, %d)", result, limit, tt.wantResult, tt.wantLimit)
+			}
+		})
+	}
+}
+
+func TestValidatorStaticRuntimeIsConcurrentAndFailsClosed(t *testing.T) {
+	const query = `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`
+	validator := NewValidator(nil, ValidatorOptions{DisableExplain: true})
+	var wait sync.WaitGroup
+	errorsByWorker := make(chan error, 16)
+	for range 16 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			result, limit, err := validator.validate(context.Background(), query, nil)
+			if err != nil {
+				errorsByWorker <- err
+				return
+			}
+			if !result.OK || limit != 25 {
+				errorsByWorker <- fmt.Errorf("validate() = (%#v, %d)", result, limit)
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsByWorker)
+	for err := range errorsByWorker {
+		t.Error(err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, limit, err := validator.validate(canceled, query, nil)
+	if !errors.Is(err, ErrRuntimeUnavailable) || result.OK || limit != 0 {
+		t.Fatalf("validate(canceled) = (%#v, %d, %v), want runtime unavailable", result, limit, err)
 	}
 }
 

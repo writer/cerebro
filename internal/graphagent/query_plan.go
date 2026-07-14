@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -1307,8 +1308,7 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 			Message: fmt.Sprintf("Added LIMIT %d to LLM fallback Cypher.", limit),
 		}, true
 	}
-	valueStart, valueEnd := matches[len(matches)-1][2], matches[len(matches)-1][3]
-	current, ok := queryLimit(lexCypher(trimmed))
+	current, valueStart, valueEnd, ok := lastNumericCypherLimit(trimmed)
 	if !ok || current <= limit {
 		return cypher, ConversionDiagnostic{}, false
 	}
@@ -1317,6 +1317,126 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 		Code:    "limit_capped",
 		Message: fmt.Sprintf("Capped LLM fallback Cypher LIMIT from %d to %d.", current, limit),
 	}, true
+}
+
+type cypherLimitToken struct {
+	kind       byte
+	start, end int
+}
+
+func lastNumericCypherLimit(query string) (int, int, int, bool) {
+	tokens := lexCypherLimitTokens(query)
+	value, valueStart, valueEnd, found := 0, 0, 0, false
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") {
+			continue
+		}
+		if index+1 >= len(tokens) || tokens[index+1].kind != 'n' {
+			return 0, 0, 0, false
+		}
+		number := tokens[index+1]
+		parsed, err := strconv.Atoi(query[number.start:number.end])
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		value, valueStart, valueEnd, found = parsed, number.start, number.end, true
+	}
+	return value, valueStart, valueEnd, found
+}
+
+func lexCypherLimitTokens(query string) []cypherLimitToken {
+	tokens := make([]cypherLimitToken, 0, len(query)/8)
+	for index := 0; index < len(query); {
+		value := query[index]
+		switch {
+		case isCypherSpace(value):
+			index++
+		case value == '\'' || value == '"':
+			index = skipCypherQuotedText(query, index, value)
+		case value == '`':
+			index = skipCypherEscapedIdentifier(query, index)
+		case value == '/' && index+1 < len(query) && query[index+1] == '/':
+			index += 2
+			for index < len(query) && query[index] != '\n' && query[index] != '\r' {
+				index++
+			}
+		case value == '/' && index+1 < len(query) && query[index+1] == '*':
+			index += 2
+			for index+1 < len(query) && (query[index] != '*' || query[index+1] != '/') {
+				index++
+			}
+			if index+1 < len(query) {
+				index += 2
+			}
+		case isCypherIdentifierStart(value):
+			start := index
+			for index < len(query) && (isCypherIdentifierByte(query[index]) || query[index] == '.') {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'i', start: start, end: index})
+		case value >= '0' && value <= '9':
+			start := index
+			for index < len(query) && (query[index] >= '0' && query[index] <= '9' || query[index] == '.') {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'n', start: start, end: index})
+		case value == '$':
+			start := index
+			index++
+			for index < len(query) && isCypherIdentifierByte(query[index]) {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'o', start: start, end: index})
+		default:
+			tokens = append(tokens, cypherLimitToken{kind: 'o', start: index, end: index + 1})
+			index++
+		}
+	}
+	return tokens
+}
+
+func skipCypherQuotedText(query string, start int, quote byte) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] == '\\' && index+1 < len(query) {
+			index++
+			continue
+		}
+		if query[index] != quote {
+			continue
+		}
+		if index+1 < len(query) && query[index+1] == quote {
+			index++
+			continue
+		}
+		return index + 1
+	}
+	return len(query)
+}
+
+func skipCypherEscapedIdentifier(query string, start int) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] != '`' {
+			continue
+		}
+		if index+1 < len(query) && query[index+1] == '`' {
+			index++
+			continue
+		}
+		return index + 1
+	}
+	return len(query)
+}
+
+func isCypherSpace(value byte) bool {
+	return value == ' ' || value == '\t' || value == '\n' || value == '\r'
+}
+
+func isCypherIdentifierByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_'
+}
+
+func isCypherIdentifierStart(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value == '_'
 }
 
 func boundedLimit(limit int, maxRows int) int {

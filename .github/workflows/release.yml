@@ -78,7 +78,7 @@ jobs:
           - name: catalog
             command: make catalog-check detection-catalog-check
           - name: graph-actions
-            command: make graph-action-check
+            command: make graph-action-check graphagent-static-validator-check
           - name: finding-dsl
             command: make finding-dsl-check
           - name: policy-rule
@@ -110,7 +110,7 @@ jobs:
 
       - name: Set up Rust
         if: matrix.name == 'graph-actions'
-        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}

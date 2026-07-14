@@ -763,6 +763,49 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 	}
 }
 
+func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
+	tests := []struct {
+		name        string
+		query       string
+		wantQuery   string
+		wantChanged bool
+	}{
+		{
+			name:      "quoted limit is not a clause",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
+		},
+		{
+			name:      "commented limit does not override bounded clause",
+			query:     "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 // LIMIT 500",
+			wantQuery: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 // LIMIT 500",
+		},
+		{
+			name:        "caps real clause before trailing comment",
+			query:       "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 500 // LIMIT 900",
+			wantQuery:   "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 100 // LIMIT 900",
+			wantChanged: true,
+		},
+		{
+			name:      "block commented limit is not a clause",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query, diagnostic, changed := enforceCypherLimit(tt.query, 100)
+			if query != tt.wantQuery || changed != tt.wantChanged {
+				t.Fatalf("enforceCypherLimit() = (%q, %#v, %t), want query %q and changed %t", query, diagnostic, changed, tt.wantQuery, tt.wantChanged)
+			}
+			if tt.wantChanged && diagnostic.Code != "limit_capped" {
+				t.Fatalf("diagnostic = %#v, want limit_capped", diagnostic)
+			}
+		})
+	}
+}
+
 func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 	for _, question := range []string{
 		"Does Okta enforce MFA for access?",

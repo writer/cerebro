@@ -5,7 +5,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 ## Prerequisites
 
 - Go 1.26+; the repository pins `go1.26.4` in `go.mod`.
-- Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, and Clippy.
+- Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, Clippy, and the Wasm build target.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 

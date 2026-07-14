@@ -53,7 +53,7 @@ jobs:
           cache: true
 
       - name: Set up Rust
-        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Merge base and regenerate generated artifacts
         id: refresh

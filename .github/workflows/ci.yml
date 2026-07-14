@@ -37,7 +37,7 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check
+            command: make graph-action-check graphagent-static-validator-check
           - name: docs-drift
             command: make docs-drift-check
           - name: readme
@@ -70,7 +70,7 @@ jobs:
 
       - name: Set up Rust
         if: matrix.name == 'graph-actions'
-        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Cache Go build data
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
