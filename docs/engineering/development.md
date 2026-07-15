@@ -6,6 +6,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 
 - Go 1.26+; the repository pins `go1.26.5` in `go.mod`.
 - Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, Clippy, and the Wasm build target.
+- `cargo-deny` 0.20.2 for local Rust dependency-policy checks.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 
@@ -54,6 +55,22 @@ make docs-drift-check  # generated docs drift checks
 make oss-audit      # public repository hygiene scan
 make clean          # remove bin/ and Cargo target output
 ```
+
+Rust tooling runs on Unix hosts. Linux is the CI and release host contract;
+macOS is supported for local development. The graph action generator depends on
+Unix file-permission semantics, so Windows is not a supported host. The static
+validator guest targets `wasm32-unknown-unknown` and is built through
+`make graphagent-static-validator-check`.
+
+Run the complete Rust checks with:
+
+```bash
+make rust-deny graph-action-check rust-wasm-check
+```
+
+The checks include formatting, Clippy, tests, warning-free rustdoc, dependency
+advisories and policy, the generated graph action registry, and all embedded
+Wasm artifacts.
 
 Focused validation:
 

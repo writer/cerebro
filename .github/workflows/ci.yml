@@ -37,7 +37,7 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check rust-wasm-check
+            command: make rust-deny graph-action-check rust-wasm-check
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'
@@ -74,6 +74,30 @@ jobs:
       - name: Set up Rust
         if: matrix.name == 'graph-actions'
         run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+
+      - name: Cache Rust build data
+        if: matrix.name == 'graph-actions'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
+            ${{ runner.os }}-${{ runner.arch }}-rust-v1-
+
+      - name: Install Rust dependency policy tool
+        if: matrix.name == 'graph-actions'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
+            cargo install cargo-deny --version 0.20.2 --locked
+          fi
 
       - name: Cache Go build data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

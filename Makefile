@@ -3,11 +3,12 @@
 .PHONY: release-train-test
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
-.PHONY: rust-fmt-check rust-clippy rust-test rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check
+.PHONY: rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 CARGO ?= cargo
+CARGO_DENY ?= cargo deny
 STATIC_VALIDATOR_WASM := internal/graphagent/staticvalidator.wasm
 STATIC_VALIDATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_graphagent_staticvalidator.wasm
 SOURCECOVERAGE_EVALUATOR_WASM := internal/sourcecoverage/evaluator.wasm
@@ -440,7 +441,13 @@ rust-clippy: ## Run Rust static analysis with warnings denied.
 rust-test: ## Run Rust workspace tests.
 	$(CARGO) test --workspace --all-targets --locked
 
-graph-action-check: rust-fmt-check rust-clippy rust-test ## Verify generated graph action registry is current.
+rust-doc-check: ## Build Rust documentation with warnings denied.
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc --workspace --all-features --locked --no-deps
+
+rust-deny: ## Check Rust advisories, licenses, duplicate versions, and dependency sources.
+	$(CARGO_DENY) --all-features check
+
+graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
@@ -771,4 +778,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
