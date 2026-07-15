@@ -1041,6 +1041,29 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 	if len(templates) == 0 {
 		t.Fatalf("resourceTemplates = %#v", templates)
 	}
+	templateNames := map[string]bool{}
+	for _, raw := range templates {
+		templateNames[raw.(map[string]any)["name"].(string)] = true
+	}
+	for _, name := range []string{"compliance_assurance_decision", "compliance_assessment_snapshot", "compliance_work_item"} {
+		if !templateNames[name] {
+			t.Fatalf("resourceTemplates missing %q: %#v", name, templates)
+		}
+	}
+
+	modelResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      21,
+		"method":  "resources/read",
+		"params":  map[string]any{"uri": "cerebro://compliance/semantic-model"},
+	})
+	if modelResp["error"] != nil {
+		t.Fatalf("resources/read compliance semantic model error = %#v", modelResp["error"])
+	}
+	modelContents := modelResp["result"].(map[string]any)["contents"].([]any)
+	if len(modelContents) != 1 || !strings.Contains(modelContents[0].(map[string]any)["text"].(string), "assurance-semantic-model/v1") {
+		t.Fatalf("compliance semantic model contents = %#v", modelContents)
+	}
 
 	promptsResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",

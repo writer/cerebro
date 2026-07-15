@@ -18,6 +18,8 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/complianceassessment"
+	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingapi"
@@ -3283,6 +3285,7 @@ func mcpResources() []mcpResource {
 		{URI: "cerebro://server/version", Name: "server_version", Title: "Server Version", Description: "Cerebro service version/build metadata.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URI: "cerebro://agent/control-plane", Name: "agent_control_plane", Title: "Agent Control Plane", Description: "Security-agent control plane contract.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URI: "cerebro://agent/work-contract", Name: "agent_work_contract", Title: "Agent Work Contract", Description: "Durable agent work contract.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URI: "cerebro://compliance/semantic-model", Name: "compliance_semantic_model", Title: "Compliance Semantic Model", Description: "Stable compliance and assurance entities, joins, authorities, and freshness rules.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URI: "cerebro://risk/summary", Name: "risk_summary", Title: "Risk Summary", Description: "Tenant-scoped risk summary for the authenticated caller.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 	}
 }
@@ -3297,6 +3300,9 @@ func mcpResourceTemplates() []mcpResourceTemplate {
 		{URITemplate: "cerebro://graph/entity/{entity_urn}", Name: "graph_entity", Title: "Graph Entity", Description: "Read a bounded graph neighborhood for one URL-encoded Cerebro URN.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://runtime/{runtime_id}", Name: "runtime", Title: "Runtime", Description: "Read one source runtime status bundle.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://investigation/finding/{finding_id}", Name: "finding_investigation", Title: "Finding Investigation", Description: "Read a bounded investigation context bundle for one finding.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://compliance/assurance-decision/{decision_id}{?tenant_id}", Name: "compliance_assurance_decision", Title: "Assurance Decision", Description: "Read one immutable tenant-scoped assurance decision by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://compliance/assessment-snapshot/{snapshot_id}{?tenant_id}", Name: "compliance_assessment_snapshot", Title: "Assessment Snapshot", Description: "Read one immutable tenant-scoped assessment snapshot by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://compliance/work-item/{work_item_id}{?tenant_id}", Name: "compliance_work_item", Title: "Compliance Work Item", Description: "Read one tenant-scoped canonical compliance work item by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 	}
 }
 
@@ -3398,6 +3404,8 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 			break
 		}
 		value, err = app.mcpRiskSummary(r, args)
+	case "compliance":
+		value, err = app.mcpComplianceResource(r, pathValue, args)
 	case "finding":
 		value, err = app.mcpGetFinding(r, map[string]any{"finding_id": pathValue})
 	case "finding-evidence":
@@ -3445,6 +3453,51 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 		MimeType: mcpResourceMIMEJSON,
 		Text:     string(payload),
 	}}}, nil
+}
+
+func (app *App) mcpComplianceResource(r *http.Request, pathValue string, args map[string]any) (any, error) {
+	if pathValue == "semantic-model" {
+		return complianceassessment.SemanticModel(), nil
+	}
+	parts := strings.SplitN(pathValue, "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	switch parts[0] {
+	case "assurance-decision":
+		if app.services.assessments == nil {
+			return nil, complianceassessment.ErrAssuranceDecisionUnavailable
+		}
+		value, readErr := app.services.assessments.GetAssuranceDecision(r.Context(), tenantID, parts[1])
+		if errors.Is(readErr, complianceassessment.ErrAssuranceDecisionNotFound) {
+			return nil, ports.ErrGraphEntityNotFound
+		}
+		return value, readErr
+	case "assessment-snapshot":
+		if app.services.assessments == nil {
+			return nil, complianceassessment.ErrAssessmentSnapshotUnavailable
+		}
+		value, readErr := app.services.assessments.GetAssessmentSnapshot(r.Context(), tenantID, parts[1])
+		if errors.Is(readErr, complianceassessment.ErrAssessmentSnapshotNotFound) {
+			return nil, ports.ErrGraphEntityNotFound
+		}
+		return value, readErr
+	case "work-item":
+		if app.services.remediation == nil {
+			return nil, complianceremediation.ErrUnavailable
+		}
+		value, readErr := app.services.remediation.GetWorkItem(r.Context(), tenantID, parts[1])
+		if errors.Is(readErr, complianceremediation.ErrNotFound) {
+			return nil, ports.ErrGraphEntityNotFound
+		}
+		return value, readErr
+	default:
+		return nil, ports.ErrGraphEntityNotFound
+	}
 }
 
 func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[string]any, error) {
