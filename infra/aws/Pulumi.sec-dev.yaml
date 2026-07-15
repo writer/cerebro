@@ -780,17 +780,6 @@ config:
         - page_limit=5
         - graph_page_limit=5
         - event_limit=1000
-    - name: okta-audit-2026-04-backfill
-      scheduleExpression: rate(2 hours)
-      removeAfter: "2026-07-15T00:00:00Z"
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-okta-audit-2026-04
-        - page_limit=5
-        - graph_page_limit=5
-        - event_limit=1000
     - name: okta-audit-2026-q1-backfill
       scheduleExpression: rate(2 hours)
       removeAfter: "2026-08-15T00:00:00Z"
@@ -1545,16 +1534,6 @@ config:
         family: audit
         per_page: "200"
         since: "2026-05-01T00:00:00Z"
-        token: env:OKTA_API_TOKEN
-    - id: writer-okta-audit-2026-04
-      sourceId: okta
-      tenantId: writer
-      config:
-        domain: env:OKTA_DOMAIN
-        family: audit
-        per_page: "200"
-        since: "2026-04-01T00:00:00Z"
-        until: "2026-05-01T00:00:00Z"
         token: env:OKTA_API_TOKEN
     - id: writer-okta-audit-2026-q1
       sourceId: okta
