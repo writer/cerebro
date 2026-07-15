@@ -2628,6 +2628,8 @@ paths:
                 $ref: '#/components/schemas/AssessmentRunResponse'
         '400':
           description: The period, plan revision, or idempotency key is invalid.
+        '404':
+          description: The assessment plan revision was not found in the tenant.
         '409':
           description: The idempotency key is already bound to another request.
         '503':
