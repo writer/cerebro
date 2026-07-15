@@ -6,16 +6,17 @@ command="${1:-}"
 run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
 usage() {
-  echo "usage: $0 create <environment> <image-tag> <web-image-tag> <production-environment> | status <deployment-id> <environment> <state> <description>" >&2
+  echo "usage: $0 create <environment> <image-tag> <image-digest> <web-image-tag> <production-environment> | status <deployment-id> <environment> <state> <description>" >&2
 }
 
 case "${command}" in
   create)
     environment="${2:-}"
     image_tag="${3:-}"
-    web_image_tag="${4:-}"
-    production_environment="${5:-false}"
-    if [ -z "${environment}" ] || [ -z "${image_tag}" ]; then
+    image_digest="${4:-}"
+    web_image_tag="${5:-}"
+    production_environment="${6:-false}"
+    if [ -z "${environment}" ] || [ -z "${image_tag}" ] || [ -z "${image_digest}" ]; then
       usage
       exit 2
     fi
@@ -32,6 +33,7 @@ case "${command}" in
         --arg environment "${environment}" \
         --arg description "${description}" \
         --arg image_tag "${image_tag}" \
+        --arg image_digest "${image_digest}" \
         --arg web_image_tag "${web_image_tag}" \
         --arg run_url "${run_url}" \
         --argjson production_environment "${production_environment}" \
@@ -46,6 +48,7 @@ case "${command}" in
           description: $description,
           payload: ({
             imageTag: $image_tag,
+            imageDigest: $image_digest,
             workflowRun: $run_url
           } + (if $web_image_tag == "" then {} else {webImageTag: $web_image_tag} end))
         }'

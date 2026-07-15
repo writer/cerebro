@@ -2,11 +2,10 @@ name: Propose Cerebro Image Tag
 run-name: Cerebro image ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }} ${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || 'latest' }} ${{ github.event.client_payload.request_id || github.run_id }}
 
 on:
-  schedule:
-    - cron: '20 14 * * 1-5'
   repository_dispatch:
     types:
       - cerebro-release-published
+      - cerebro-release-reconcile
   workflow_dispatch:
     inputs:
       environment:
@@ -24,11 +23,10 @@ on:
 
 permissions:
   actions: write
-  checks: read
   contents: write
+  deployments: read
   packages: read
   pull-requests: write
-  statuses: read
 
 concurrency:
   group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
@@ -82,7 +80,13 @@ jobs:
           if [ -n "${INPUT_TAG}" ]; then
             tag="${INPUT_TAG}"
           else
-            tag="$(gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name')"
+            tag="$(
+              gh api --paginate "repos/writer/cerebro/releases?per_page=100" \
+                --jq '.[] | select((.draft | not) and (.prerelease | not)) | .tag_name' \
+              | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/' \
+              | sort -V \
+              | tail -n 1
+            )"
           fi
 
           if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
@@ -151,7 +155,11 @@ jobs:
         run: |
           set -euo pipefail
           latest_tag="$(
-            gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name'
+            gh api --paginate "repos/writer/cerebro/releases?per_page=100" \
+              --jq '.[] | select((.draft | not) and (.prerelease | not)) | .tag_name' \
+            | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/' \
+            | sort -V \
+            | tail -n 1
           )"
           if ! [[ "${latest_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Could not resolve latest stable writer/cerebro release; got ${latest_tag}" >&2
@@ -244,13 +252,38 @@ jobs:
             runtime-contract/cerebro-runtime-contract.json
           echo "path=runtime-contract/cerebro-runtime-contract.json" >> "$GITHUB_OUTPUT"
 
+      - name: Check sec-dev deployment gate
+        if: steps.latest.outputs.superseded != 'true' && env.STACK_NAME == 'go-prod'
+        id: deployment-gate
+        shell: bash
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: >-
+          python3 scripts/check_release_deployment.py
+          --repository "${GITHUB_REPOSITORY}"
+          --environment sec-dev
+          --image-tag "${IMAGE_TAG}"
+          --image-digest "${IMAGE_DIGEST}"
+          --github-output "${GITHUB_OUTPUT}"
+
+      - name: Report deferred production promotion
+        if: steps.latest.outputs.superseded != 'true' && env.STACK_NAME == 'go-prod' && steps.deployment-gate.outputs.ready != 'true'
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: echo "::notice::go-prod ${IMAGE_TAG} remains deferred until the exact sec-dev deployment succeeds."
+
       - name: Update stack config
-        if: steps.latest.outputs.superseded != 'true'
+        if: steps.latest.outputs.superseded != 'true' && (env.STACK_NAME != 'go-prod' || steps.deployment-gate.outputs.ready == 'true')
         id: update
         shell: bash
         env:
           STACK_NAME: ${{ env.STACK_NAME }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           CONTRACT_PATH: ${{ steps.contract.outputs.path }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -260,7 +293,7 @@ jobs:
           changed_paths=("${target_config}")
           current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
           echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
-          target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}")
+          target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}" --image-digest "${IMAGE_DIGEST}")
           if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
             target_tag_args+=(--ensure-at-least)
           fi
@@ -268,7 +301,7 @@ jobs:
           if [ "${STACK_NAME}" = "go-prod" ]; then
             sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
             changed_paths+=("${sec_dev_config}")
-            uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+            uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --image-digest "${IMAGE_DIGEST}" --ensure-at-least
           fi
           uv run --project infra python infra/scripts/validate_pulumi_project_config.py
           uv run --project infra python infra/scripts/validate_stack_config.py
@@ -332,7 +365,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
-          CHECKS_TOKEN: ${{ github.token }}
           DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
           STACK_NAME: ${{ env.STACK_NAME }}
           APPLY_MODE: ${{ github.event.client_payload.apply_mode || 'pull_request' }}
@@ -394,14 +426,14 @@ jobs:
             refreshed_current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
             echo "Refreshed ${branch} from origin/main; ${STACK_NAME} was ${refreshed_current_tag}, target is ${IMAGE_TAG}."
 
-            target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}")
+            target_tag_args=(--stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}" --image-digest "${IMAGE_DIGEST}")
             if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
               target_tag_args+=(--ensure-at-least)
             fi
             uv run --project infra python infra/scripts/set_image_tag.py "${target_tag_args[@]}"
             if [ "${STACK_NAME}" = "go-prod" ]; then
               changed_paths+=("${sec_dev_config}")
-              uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+              uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --image-digest "${IMAGE_DIGEST}" --ensure-at-least
             fi
 
             uv run --project infra python infra/scripts/validate_pulumi_project_config.py
@@ -432,7 +464,11 @@ jobs:
           }
 
           resolve_latest_stable_tag() {
-            gh api "repos/writer/cerebro/releases/latest" --jq '.tag_name'
+            gh api --paginate "repos/writer/cerebro/releases?per_page=100" \
+              --jq '.[] | select((.draft | not) and (.prerelease | not)) | .tag_name' \
+            | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/' \
+            | sort -V \
+            | tail -n 1
           }
 
           release_is_still_latest() {
@@ -453,68 +489,6 @@ jobs:
             if [ -n "${pr_url}" ]; then
               gh pr close "${pr_url}" --comment "Superseded by latest stable Cerebro release ${latest_tag}." --delete-branch || true
             fi
-            return 1
-          }
-
-          wait_for_sec_dev_release() {
-            local deadline=$((SECONDS + 5400))
-            local sec_dev_branch="automation/cerebro-image-sec-dev-${safe_tag}"
-            local sec_dev_pr=""
-            local sec_dev_pr_url=""
-            local sec_dev_sha=""
-            local run=""
-            local status=""
-            local conclusion=""
-            local run_url=""
-
-            while [ "${SECONDS}" -lt "${deadline}" ]; do
-              if [ -z "${sec_dev_sha}" ]; then
-                sec_dev_pr="$(
-                  GH_TOKEN="${CHECKS_TOKEN}" gh pr list \
-                    --repo "${GITHUB_REPOSITORY}" \
-                    --state merged \
-                    --head "${sec_dev_branch}" \
-                    --limit 1 \
-                    --json mergeCommit,url \
-                    --jq '.[0] | [(.mergeCommit.oid // ""), (.url // "")] | @tsv'
-                )"
-                if [ -n "${sec_dev_pr}" ]; then
-                  IFS=$'\t' read -r sec_dev_sha sec_dev_pr_url <<< "${sec_dev_pr}"
-                fi
-                if [ -z "${sec_dev_sha}" ]; then
-                  echo "::notice::Waiting for the sec-dev ${IMAGE_TAG} promotion PR to merge."
-                  sleep 10
-                  continue
-                fi
-                echo "sec-dev ${IMAGE_TAG} promotion merged: ${sec_dev_pr_url}"
-              fi
-
-              run="$(
-                GH_TOKEN="${CHECKS_TOKEN}" gh run list \
-                  --repo "${GITHUB_REPOSITORY}" \
-                  --workflow infra-deploy.yml \
-                  --event push \
-                  --branch main \
-                  --limit 100 \
-                  --json headSha,status,conclusion,url \
-                  --jq ".[] | select(.headSha == \"${sec_dev_sha}\") | [.status, (.conclusion // \"\"), .url] | @tsv" \
-                  | head -n 1
-              )"
-              if [ -n "${run}" ]; then
-                IFS=$'\t' read -r status conclusion run_url <<< "${run}"
-                if [ "${status}" = "completed" ] && [ "${conclusion}" = "success" ]; then
-                  echo "sec-dev deploy for ${IMAGE_TAG} succeeded: ${run_url}"
-                  return 0
-                fi
-                if [ "${status}" = "completed" ]; then
-                  echo "::notice::sec-dev deploy for ${IMAGE_TAG} completed with ${conclusion}; leaving go-prod PR open."
-                  return 1
-                fi
-              fi
-              sleep 10
-            done
-
-            echo "::notice::Timed out after 90 minutes waiting for the sec-dev ${IMAGE_TAG} promotion and deployment; leaving the go-prod PR open."
             return 1
           }
 
@@ -561,6 +535,8 @@ jobs:
             echo
             if [ "${promotion_mode}" = "trusted_sec_dev_release" ]; then
               echo "Trusted release promotion: this PR will auto-merge after required checks pass, then the normal main push deploy workflow will run."
+            elif [ "${STACK_NAME}" = "go-prod" ]; then
+              echo "Production promotion: the exact sec-dev image deployment succeeded. This PR will auto-merge after required checks pass."
             else
               echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
             fi
@@ -601,7 +577,6 @@ jobs:
             local expected_sec_dev_file="infra/aws/Pulumi.sec-dev.yaml"
             local expected_files=""
             local changed_files=""
-            local check_count=""
 
             trusted_auto_merge_source() {
               if [ "${EVENT_NAME}" = "repository_dispatch" ]; then
@@ -612,12 +587,7 @@ jobs:
                 return 0
               fi
 
-              if [ "${EVENT_NAME}" = "schedule" ]; then
-                echo "Scheduled release promotion resolved ${IMAGE_TAG}; treating latest stable release scan as trusted."
-                return 0
-              fi
-
-              echo "::notice::Auto-merge is limited to signed release dispatches and scheduled latest-stable scans; leaving ${pr_url} open."
+              echo "::notice::Auto-merge is limited to verified release dispatches; leaving ${pr_url} open."
               return 1
             }
 
@@ -648,47 +618,7 @@ jobs:
               exit 1
             fi
 
-            checks_passed=false
-            stable_complete_count=0
-            last_check_count=0
-            for _ in {1..90}; do
-              if ! check_rollup="$(GH_TOKEN="${CHECKS_TOKEN}" gh pr view "${pr_url}" --json statusCheckRollup --jq '.statusCheckRollup')"; then
-                echo "Could not read the PR check rollup for ${pr_url}." >&2
-                return 1
-              fi
-              check_count="$(jq 'length' <<<"${check_rollup}")"
-              pending_count="$(jq '[.[] | select((has("status") and .status != "COMPLETED") or ((has("status") | not) and ((.state // "") != "SUCCESS" and (.state // "") != "FAILURE" and (.state // "") != "ERROR")))] | length' <<<"${check_rollup}")"
-              failed_count="$(jq '[.[] | select(((.conclusion // .state // "") | ascii_downcase) as $s | $s == "failure" or $s == "failed" or $s == "error" or $s == "timed_out" or $s == "cancelled" or $s == "action_required")] | length' <<<"${check_rollup}")"
-              echo "PR check rollup for ${pr_url}: total=${check_count} pending=${pending_count} failed=${failed_count}"
-              if [ "${failed_count}" -gt 0 ]; then
-                echo "::notice::PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
-                return 0
-              fi
-              if [ "${check_count}" -gt 0 ] && [ "${pending_count}" -eq 0 ]; then
-                if [ "${check_count}" -eq "${last_check_count}" ]; then
-                  stable_complete_count=$((stable_complete_count + 1))
-                else
-                  stable_complete_count=1
-                  last_check_count="${check_count}"
-                fi
-                if [ "${stable_complete_count}" -ge 3 ]; then
-                  checks_passed=true
-                  break
-                fi
-              else
-                stable_complete_count=0
-                last_check_count="${check_count}"
-              fi
-              sleep 10
-            done
-            if [ "${checks_passed}" != "true" ]; then
-              echo "::notice::PR checks for ${pr_url} did not complete within the wait window; leaving it open for the review-gated merge."
-              return 0
-            fi
             if ! release_is_still_latest "${pr_url}"; then
-              return 0
-            fi
-            if [ "${STACK_NAME}" = "go-prod" ] && ! wait_for_sec_dev_release; then
               return 0
             fi
             echo "auto_merge_pr=${pr_url}" >> "${GITHUB_OUTPUT}"
@@ -704,16 +634,16 @@ jobs:
           client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
           private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
 
-      - name: Merge trusted promotion PR
+      - name: Enable trusted promotion PR auto-merge
         if: steps.apply.outputs.auto_merge_pr != ''
         shell: bash
         env:
           GH_TOKEN: ${{ steps.merge-app-token.outputs.token }}
-          CHECKS_TOKEN: ${{ github.token }}
+          READ_TOKEN: ${{ github.token }}
           PR_URL: ${{ steps.apply.outputs.auto_merge_pr }}
         run: |
           set -euo pipefail
-          pr_state="$(GH_TOKEN="${CHECKS_TOKEN}" gh pr view "${PR_URL}" --json state --jq .state)"
+          pr_state="$(GH_TOKEN="${READ_TOKEN}" gh pr view "${PR_URL}" --json state --jq .state)"
           if [ "${pr_state}" = "MERGED" ]; then
             echo "::notice::${PR_URL} was already merged while the deployment gate was running."
             exit 0
@@ -722,7 +652,7 @@ jobs:
             echo "::notice::${PR_URL} is ${pr_state}; no merge action is required."
             exit 0
           fi
-          gh pr merge "${PR_URL}" --merge --delete-branch
+          gh pr merge "${PR_URL}" --auto --merge --delete-branch
 
       - name: Report superseded release
         if: steps.latest.outputs.superseded == 'true'

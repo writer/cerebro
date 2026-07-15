@@ -1,0 +1,54 @@
+name: Release Promotion Gate
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - labeled
+      - unlabeled
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - Infrastructure Deploy
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: release-promotion-gate-${{ github.event.pull_request.number || 'all-open' }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh required production status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Refresh promotion status
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          args=(--repository "${GITHUB_REPOSITORY}")
+          if [ -n "${PR_NUMBER}" ]; then
+            args+=(--pr-number "${PR_NUMBER}")
+          fi
+          python3 scripts/refresh_release_promotion_gate.py "${args[@]}"

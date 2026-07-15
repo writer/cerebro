@@ -1,0 +1,71 @@
+name: Release Promotion Canary
+
+on:
+  schedule:
+    - cron: '37 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: read
+  pull-requests: read
+
+concurrency:
+  group: release-promotion-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Verify release automation access
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Create deploy GitHub App token
+        id: deploy-app-token
+        uses: ./.github/actions/deploy-app-token
+        with:
+          client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+
+      - name: Verify workflow read access
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}" >/dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" >/dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/deployments?per_page=1" >/dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=1" >/dev/null
+
+      - name: Verify repository promotion controls
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/configure_release_promotion_controls.py --repository "${GITHUB_REPOSITORY}" --verify
+
+      - name: Verify automation write access
+        id: write-canary
+        env:
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          canary_ref="refs/heads/automation/cerebro-promotion-canary-${GITHUB_RUN_ID}"
+          body="$(jq -nc --arg ref "${canary_ref}" --arg sha "${main_sha}" '{ref: $ref, sha: $sha}')"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" --input - <<<"${body}" >/dev/null
+          echo "ref=${canary_ref}" >> "$GITHUB_OUTPUT"
+          gh api "repos/${GITHUB_REPOSITORY}/git/ref/${canary_ref#refs/}" >/dev/null
+
+      - name: Remove canary branch
+        if: always() && steps.write-canary.outputs.ref != ''
+        env:
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
+          CANARY_REF: ${{ steps.write-canary.outputs.ref }}
+        run: gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/${CANARY_REF#refs/}" || true

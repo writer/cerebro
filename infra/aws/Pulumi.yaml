@@ -29,6 +29,10 @@ config:
     type: string
     default: v1.0.0
     description: Container image tag deployed to ECS
+  cerebro:imageDigest:
+    type: string
+    default: ""
+    description: Reviewed container manifest digest for the deployed image tag
   cerebro:otelEnabled:
     type: boolean
     default: false

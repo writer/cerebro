@@ -1659,6 +1659,27 @@ def validate_stack(path: Path) -> list[Finding]:
     elif _parse_image_tag(image_tag) is None:
         findings.append(_finding("error", stack, "cerebro:imageTag", f"image tag {image_tag!r} must look like vX.Y.Z"))
 
+    image_digest = str(config.get("imageDigest", "")).strip()
+    if stack in {"sec-dev", "go-prod"}:
+        if not image_digest:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:imageDigest",
+                    "reviewed image digest is required",
+                )
+            )
+        elif re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest) is None:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:imageDigest",
+                    "image digest must use sha256 with 64 lowercase hex characters",
+                )
+            )
+
     _validate_otel_config(stack, config, findings)
 
     api_max_instances = config.get("apiMaxInstances", 1)
