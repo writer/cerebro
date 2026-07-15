@@ -2,9 +2,7 @@ package bootstrap
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,26 +10,9 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/ports"
 )
-
-type failingMCPTaskPacketContext struct{ err error }
-
-func (context failingMCPTaskPacketContext) agentCoverageContext(context.Context, string) (*agentplatform.AgentCoverageContext, error) {
-	return nil, context.err
-}
-
-func TestMCPTaskEvidencePacketPropagatesCoverageContextFailure(t *testing.T) {
-	wantErr := errors.New("coverage context unavailable")
-	builder := currentAgentEvidencePacketBuilder{context: failingMCPTaskPacketContext{err: wantErr}}
-
-	_, _, err := builder.Build(context.Background(), agentplatform.EvidencePacketRequest{})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("Build() error = %v, want %v", err, wantErr)
-	}
-}
 
 func TestMCPInventoryCoversEveryToolDefinition(t *testing.T) {
 	definitions := map[string]struct{}{}

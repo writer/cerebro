@@ -64,7 +64,7 @@ func buildFindingProjectionContext(ctx context.Context, event *cerebrov1.EventEn
 	if ctx == nil {
 		return findingProjectionContext{}, errors.New("context is required")
 	}
-	entities, links, err := sourceprojection.ProjectEventContext(ctx, event)
+	entities, links, err := sourceprojection.ProjectEvent(event)
 	if err != nil {
 		return findingProjectionContext{}, err
 	}

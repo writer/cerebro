@@ -235,13 +235,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt, coverageScope)
-	if err != nil {
-		statusCode = grcHTTPStatusCode(err)
-		status, endAttrs = grcTelemetryError(endAttrs, err)
-		writeGRCError(w, err)
-		return
-	}
+	coverage := a.sourceCoverageRecordsScoped(runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt, coverageScope)
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	serializedCoverageBlindSpots := coverageBlindSpots
 	productAreas := grcproductareas.BuildCoverageViews(coverage)
@@ -781,7 +775,6 @@ func grcTelemetryErrorKind(err error) string {
 	case errors.Is(err, grcupload.ErrRemote):
 		return "parser_remote_error"
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
-		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable), errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
@@ -1451,7 +1444,6 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, ports.ErrQuestionnaireRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
-		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),

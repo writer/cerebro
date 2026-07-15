@@ -389,16 +389,13 @@ func TestSourceCoverageRecordsSurfacesBlindSpots(t *testing.T) {
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	app := &App{sources: registry}
 
-	records, err := app.sourceCoverageRecords(context.Background(), []*cerebrov1.SourceRuntime{{
+	records := app.sourceCoverageRecords([]*cerebrov1.SourceRuntime{{
 		Id:           "okta-user",
 		SourceId:     "okta",
 		TenantId:     "writer",
 		LastSyncedAt: timestamppb.New(now),
 		Config:       map[string]string{"family": "user"},
 	}}, ports.SourceRuntimeFilter{TenantID: "writer", SourceID: "okta"}, now)
-	if err != nil {
-		t.Fatalf("sourceCoverageRecords() error = %v", err)
-	}
 
 	byDimension := map[string]sourcecoverage.Record{}
 	for _, record := range records {

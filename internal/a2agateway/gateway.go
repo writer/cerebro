@@ -20,7 +20,7 @@ type ResolvedContext struct {
 }
 
 type Resolver func(context.Context, string, string, []string) (ResolvedContext, error)
-type CoverageContextFunc func(context.Context, string) (*agentplatform.AgentCoverageContext, error)
+type CoverageContextFunc func(context.Context, string) *agentplatform.AgentCoverageContext
 type EvidenceAuthorizer func(context.Context, agentplatform.EvidencePacketRequest) error
 type RequestedTenantRecorder func(context.Context, string)
 
@@ -114,10 +114,7 @@ func (h Handler) createEvidencePacketTask(ctx context.Context, params agentplatf
 	evidenceRequest.RequestedScopes = resolved.RequestedScopes
 	evidenceRequest.ScopeUnrestricted = resolved.ScopeUnrestricted
 	if h.CoverageContext != nil {
-		evidenceRequest.CoverageContext, err = h.CoverageContext(ctx, evidenceRequest.TenantID)
-		if err != nil {
-			return agentplatform.A2ATask{}, err
-		}
+		evidenceRequest.CoverageContext = h.CoverageContext(ctx, evidenceRequest.TenantID)
 	}
 	if h.AuthorizeEvidence != nil {
 		if err := h.AuthorizeEvidence(ctx, evidenceRequest); err != nil {

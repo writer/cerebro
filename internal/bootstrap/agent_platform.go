@@ -123,11 +123,7 @@ func (a *App) handleAgentPlatformPreflight(w http.ResponseWriter, r *http.Reques
 	request.ActorID = resolved.ActorID
 	request.RequestedScopes = resolved.RequestedScopes
 	request.ScopeUnrestricted = resolved.ScopeUnrestricted
-	request.CoverageContext, err = a.agentCoverageContext(r.Context(), request.TenantID)
-	if err != nil {
-		writeSourceRuntimeError(w, err)
-		return
-	}
+	request.CoverageContext = a.agentCoverageContext(r.Context(), request.TenantID)
 	if request.ScopeURN != "" {
 		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -154,11 +150,7 @@ func (a *App) handleAgentPlatformEvidencePacket(w http.ResponseWriter, r *http.R
 	request.ActorID = resolved.ActorID
 	request.RequestedScopes = resolved.RequestedScopes
 	request.ScopeUnrestricted = resolved.ScopeUnrestricted
-	request.CoverageContext, err = a.agentCoverageContext(r.Context(), request.TenantID)
-	if err != nil {
-		writeSourceRuntimeError(w, err)
-		return
-	}
+	request.CoverageContext = a.agentCoverageContext(r.Context(), request.TenantID)
 	if err := authorizeAgentPlatformPacketURNs(r.Context(), request); err != nil {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
@@ -181,11 +173,7 @@ func (a *App) handleAgentPlatformClaimVerification(w http.ResponseWriter, r *htt
 	}
 	request.TenantID = resolved.TenantID
 	request.ActorID = resolved.ActorID
-	request.CoverageContext, err = a.agentCoverageContext(r.Context(), request.TenantID)
-	if err != nil {
-		writeSourceRuntimeError(w, err)
-		return
-	}
+	request.CoverageContext = a.agentCoverageContext(r.Context(), request.TenantID)
 	if strings.TrimSpace(request.Claim) == "" {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
@@ -232,7 +220,7 @@ func authorizeAgentPlatformClaimVerificationURNs(ctx context.Context, request ag
 	return nil
 }
 
-func (a *App) agentCoverageContext(ctx context.Context, tenantID string) (*agentplatform.AgentCoverageContext, error) {
+func (a *App) agentCoverageContext(ctx context.Context, tenantID string) *agentplatform.AgentCoverageContext {
 	generatedAt := time.Now().UTC()
 	lister, _ := sourceRuntimeStore(a.deps.StateStore).(ports.SourceRuntimeListStore)
 	return agentplatformcoverage.FromRuntimeStore(ctx, a.sources, lister, tenantID, generatedAt, func(runtime *cerebrov1.SourceRuntime) string {

@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -277,10 +276,7 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
 	}
-	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), visibleRuntimes, filter, generatedAt, coverageScope)
-	if err != nil {
-		return sourceRuntimeHealthResponse{}, err
-	}
+	coverage := a.sourceCoverageRecordsScoped(visibleRuntimes, filter, generatedAt, coverageScope)
 	serializedCoverage := coverage
 	if view == responseview.Summary {
 		serializedCoverage = nil
@@ -335,13 +331,13 @@ func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFresh
 	}
 }
 
-func (a *App) sourceCoverageRecords(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) ([]sourcecoverage.Record, error) {
-	return a.sourceCoverageRecordsScoped(ctx, runtimes, filter, generatedAt, responseview.CoverageCatalog)
+func (a *App) sourceCoverageRecords(runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) []sourcecoverage.Record {
+	return a.sourceCoverageRecordsScoped(runtimes, filter, generatedAt, responseview.CoverageCatalog)
 }
 
-func (a *App) sourceCoverageRecordsScoped(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time, scope responseview.CoverageScope) ([]sourcecoverage.Record, error) {
+func (a *App) sourceCoverageRecordsScoped(runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time, scope responseview.CoverageScope) []sourcecoverage.Record {
 	if a == nil || a.sources == nil {
-		return nil, nil
+		return nil
 	}
 	contracts := sourcecoverage.ContractsFromRegistry(a.sources)
 	if scope == responseview.CoverageConfigured {
@@ -363,19 +359,15 @@ func (a *App) sourceCoverageRecordsScoped(ctx context.Context, runtimes []*cereb
 		contracts = configuredContracts
 	}
 	if len(contracts) == 0 {
-		return nil, nil
+		return nil
 	}
 	observations := sourcecoverage.ObservationsFromRuntimes(runtimes, func(runtime *cerebrov1.SourceRuntime) string {
 		return runtimeHealthStatus(runtime, generatedAt)
 	})
-	records, err := sourcecoverage.Evaluate(ctx, contracts, observations, sourcecoverage.Options{
+	return sourcecoverage.Evaluate(contracts, observations, sourcecoverage.Options{
 		TenantID: strings.TrimSpace(filter.TenantID),
 		SourceID: strings.TrimSpace(filter.SourceID),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: evaluate source coverage: %w", sourceruntime.ErrRuntimeUnavailable, err)
-	}
-	return records, nil
 }
 
 func emitSourceCoverageGateTelemetry(ctx context.Context, report sourcecoverage.Report) {

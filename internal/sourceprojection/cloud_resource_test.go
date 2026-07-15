@@ -2,12 +2,10 @@ package sourceprojection
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/mitre"
 )
 
 func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationAndRuntimeIdentity(t *testing.T) {
@@ -94,112 +92,6 @@ func TestProjectCloudResourceMetadataLinksMITREContext(t *testing.T) {
 	if entity := state.entities[techniqueURN]; entity == nil || entity.EntityType != "mitre.attack.technique" {
 		t.Fatalf("MITRE technique entity missing or wrong type: %#v", entity)
 	}
-}
-
-func TestProjectCloudResourceFailsBeforeWritesWhenMITREContextCannotBeEvaluated(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "aws-resource-oversized-mitre-context",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.s3_bucket",
-		Attributes: map[string]string{
-			"mitre_techniques":  strings.Repeat("T1190,", 200_000),
-			"resource_id":       "bucket-1",
-			"resource_provider": "aws",
-			"resource_type":     "s3_bucket",
-		},
-	})
-	if !errors.Is(err, mitre.ErrEvaluatorUnavailable) {
-		t.Fatalf("Project() error = %v, want ErrEvaluatorUnavailable", err)
-	}
-	if len(state.entities) != 0 || len(state.links) != 0 {
-		t.Fatalf("Project() wrote entities=%d links=%d after MITRE evaluation failed", len(state.entities), len(state.links))
-	}
-}
-
-func TestProjectCloudResourceMITREContextHonorsCallerCancellation(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := service.Project(ctx, &cerebrov1.EventEnvelope{
-		Id:       "aws-resource-canceled-mitre-context",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.s3_bucket",
-		Attributes: map[string]string{
-			"mitre_techniques":  "T1190",
-			"resource_id":       "bucket-1",
-			"resource_provider": "aws",
-			"resource_type":     "s3_bucket",
-		},
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Project() error = %v, want context canceled", err)
-	}
-	if len(state.entities) != 0 || len(state.links) != 0 {
-		t.Fatalf("Project() wrote entities=%d links=%d after caller cancellation", len(state.entities), len(state.links))
-	}
-}
-
-func TestProjectCloudFindingKeepsMITREContextOnPrimaryResourceWhenAffectedIDMatches(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "aws-finding-shared-resource-id",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.securityhub_finding",
-		Attributes: map[string]string{
-			"affected_resource_id":   "shared-id",
-			"affected_resource_type": "AWS::S3::Bucket",
-			"finding_id":             "shared-id",
-			"mitre_techniques":       "T1190",
-			"resource_id":            "shared-id",
-			"resource_provider":      "aws",
-			"resource_type":          "securityhub_finding",
-		},
-	}); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-
-	techniqueURN := "urn:cerebro:writer:mitre_attack_technique:T1190"
-	primaryURN := "urn:cerebro:writer:aws_securityhub_finding:shared-id"
-	findingURN := "urn:cerebro:writer:security_finding:aws:shared-id"
-	affectedURN := "urn:cerebro:writer:aws_s3_bucket:shared-id"
-	assertProjectedLink(t, state, primaryURN, relationHasContext, techniqueURN)
-	assertProjectedLink(t, state, findingURN, relationHasContext, techniqueURN)
-	if link := state.links[affectedURN+"|"+relationHasContext+"|"+techniqueURN]; link != nil {
-		t.Fatalf("affected resource received primary MITRE context link: %#v", link)
-	}
-}
-
-func TestProjectCloudResourceMITREContextUsesProjectedProvider(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "aws-resource-provider-precedence",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.s3_bucket",
-		Attributes: map[string]string{
-			"mitre_techniques":  "T1190",
-			"resource_id":       "bucket-1",
-			"resource_provider": "gcp",
-			"resource_type":     "s3_bucket",
-		},
-	}); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-	assertProjectedLink(
-		t,
-		state,
-		"urn:cerebro:writer:aws_s3_bucket:bucket-1",
-		relationHasContext,
-		"urn:cerebro:writer:mitre_attack_technique:T1190",
-	)
 }
 
 func TestProjectCloudResourceRejectsCrossTenantCerebroResourceURN(t *testing.T) {
