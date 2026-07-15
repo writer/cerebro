@@ -882,13 +882,17 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 	}
 }
 
-func TestEnforceCypherLimitTreatsBooleanKeywordsAsExpressionBoundaries(t *testing.T) {
+func TestEnforceCypherLimitTreatsKeywordsAsExpressionBoundaries(t *testing.T) {
 	queries := []string{
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit AND true RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit OR false RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IS NOT NULL RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IN [true] RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit XOR false RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE WHEN true THEN limit ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit ASC`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit DESC`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN DISTINCT limit + 1 AS value, e`,
 	}
 	for _, query := range queries {
 		limited, diagnostic, changed := enforceCypherLimit(query, 100)
@@ -901,10 +905,26 @@ func TestEnforceCypherLimitTreatsBooleanKeywordsAsExpressionBoundaries(t *testin
 		}
 	}
 
-	for _, keyword := range []string{"AND", "IN", "IS", "NOT", "OR", "XOR"} {
+	for _, keyword := range []string{"AND", "ASC", "DESC", "ELSE", "IN", "IS", "NOT", "OR", "XOR"} {
 		if !cypherLimitExpressionBoundary(strings.ToLower(keyword)) {
 			t.Fatalf("cypherLimitExpressionBoundary(%q) = false, want true", keyword)
 		}
+	}
+
+	query := `RETURN DISTINCT limit + 1`
+	tokens := lexCypherLimitTokens(query)
+	foundLimit := false
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") {
+			continue
+		}
+		foundLimit = true
+		if cypherLimitClausePosition(query, tokens, index) {
+			t.Fatal("cypherLimitClausePosition() = true after DISTINCT, want expression context")
+		}
+	}
+	if !foundLimit {
+		t.Fatal("lexCypherLimitTokens() did not return limit identifier")
 	}
 }
 
