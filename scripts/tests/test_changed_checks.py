@@ -47,7 +47,14 @@ class ChangedChecksTests(unittest.TestCase):
                 self.assertIn("graph-action-check", self.command_names([path]))
 
     def test_shared_embedded_wasm_paths_select_aggregate_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "scripts/embedded_wasm.py"):
+        for path in (
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "scripts/embedded_wasm.py",
+            "internal/wasmguest/Cargo.toml",
+            "internal/wasmguest/src/lib.rs",
+        ):
             with self.subTest(path=path):
                 names = self.command_names([path])
                 self.assertIn("rust-wasm-check", names)
@@ -63,6 +70,48 @@ class ChangedChecksTests(unittest.TestCase):
             for path in paths:
                 with self.subTest(module=module.name, path=path):
                     self.assertIn(module.check_target, self.command_names([path]))
+
+    def test_wasm_json_corpora_select_owning_go_test(self):
+        cases = (
+            (
+                "internal/mitre/testdata/wasmjson/current_metadata.json",
+                "mitre-wasm-parity-corpus",
+                ["go", "test", "./internal/mitre", "-run", "^TestContextEvaluatorCorpus$", "-count=1"],
+            ),
+            (
+                "internal/sourcecoverage/testdata/wasmjson/mixed_states.json",
+                "sourcecoverage-wasm-parity-corpus",
+                ["go", "test", "./internal/sourcecoverage", "-run", "^TestCoverageEvaluatorCorpus$", "-count=1"],
+            ),
+            (
+                "internal/sourceprojection/testdata/panopticonresources/nested_aliases.json",
+                "panopticon-wasm-parity-corpus",
+                ["go", "test", "./internal/sourceprojection", "-run", "^TestPanopticonResourceObjectsWasmCorpus$", "-count=1"],
+            ),
+        )
+        for path, command, argv in cases:
+            with self.subTest(path=path):
+                selected = [plan for plan in changed.select_commands([path], Path(".")) if plan.name == command]
+                self.assertEqual(len(selected), 1)
+                self.assertEqual(selected[0].argv, argv)
+
+    def test_shared_wasm_json_helper_selects_all_parity_corpora(self):
+        selected = changed.select_commands(["internal/wasmjson/wasmjsontest/corpus.go"], Path("."))
+        command = [plan for plan in selected if plan.name == "wasm-json-parity-corpora"]
+        self.assertEqual(len(command), 1)
+        self.assertEqual(
+            command[0].argv,
+            [
+                "go",
+                "test",
+                "./internal/mitre",
+                "./internal/sourcecoverage",
+                "./internal/sourceprojection",
+                "-run",
+                "^(TestContextEvaluatorCorpus|TestCoverageEvaluatorCorpus|TestPanopticonResourceObjectsWasmCorpus)$",
+                "-count=1",
+            ],
+        )
 
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])

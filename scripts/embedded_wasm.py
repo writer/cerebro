@@ -25,6 +25,7 @@ COMMON_CHANGED_PATHS = frozenset(
         "scripts/embedded_wasm.py",
     }
 )
+COMMON_CHANGED_PREFIXES = ("internal/wasmguest/",)
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class EmbeddedWasmModule:
     def matches_changed_path(self, path: str) -> bool:
         return (
             path in COMMON_CHANGED_PATHS
+            or any(path.startswith(prefix) for prefix in COMMON_CHANGED_PREFIXES)
             or path in self.changed_paths
             or any(path.startswith(prefix) for prefix in self.changed_prefixes)
         )

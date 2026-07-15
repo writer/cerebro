@@ -63,6 +63,9 @@ var coverageEvaluator = wasmjson.New(wasmjson.Config{
 })
 
 func evaluateCoverage(ctx context.Context, contracts []sourcecdk.CoverageContract, observations []RuntimeObservation, options Options) ([]Record, error) {
+	if contracts == nil {
+		contracts = []sourcecdk.CoverageContract{}
+	}
 	request := coverageEvaluationRequest{
 		Contracts:    contracts,
 		Options:      coverageOptions(options),
