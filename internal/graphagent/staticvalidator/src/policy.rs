@@ -499,6 +499,22 @@ mod tests {
     }
 
     #[test]
+    fn expression_local_with_aliases_do_not_escape_the_expression() {
+        let queries = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, EXISTS { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS found MATCH (x) RETURN x LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, COUNT { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS n MATCH (x) RETURN x LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, COLLECT { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS xs MATCH (x) RETURN x LIMIT 25",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
     fn relationship_bracket_matching_tracks_nested_lists_and_fails_closed() {
         let bypass = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*1..9999 {x:[1]}]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
         assert_eq!(
