@@ -45,10 +45,13 @@ type testAssessmentRunResponse struct {
 }
 
 type testAssessmentResultPageResponse struct {
-	RunID        string                             `json:"run_id"`
-	Chunks       []complianceassessment.ResultChunk `json:"chunks"`
-	NextSequence uint32                             `json:"next_sequence"`
-	HasMore      bool                               `json:"has_more"`
+	RunID               string                             `json:"run_id"`
+	State               string                             `json:"state"`
+	ResultCount         uint64                             `json:"result_count"`
+	AutomatedResultHash string                             `json:"automated_result_hash"`
+	Chunks              []complianceassessment.ResultChunk `json:"chunks"`
+	NextSequence        uint32                             `json:"next_sequence"`
+	HasMore             bool                               `json:"has_more"`
 }
 
 func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
@@ -79,8 +82,9 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 		Execution: complianceassessment.PlanExecution{
 			Methods: []string{"automated_test"}, Depth: "moderate", CoverageTarget: "complete", AssuranceTarget: "high",
 			Tasks: []complianceassessment.PlanTask{{
-				ID: "task-1", ObjectiveID: "objective-1", Kind: complianceassessment.PlanTaskKindProcedure,
+				ID: "task-1", ObjectiveID: "objective-1", Kind: complianceassessment.PlanTaskKindFindingEvaluation,
 				ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"},
+				RuleID:     "rule-1", RuntimeIDs: []string{"runtime-1"}, MaxAge: "24h", EvaluationMode: complianceassessment.EvaluationModePointInTime,
 			}},
 			OrderedTaskIDs: []string{"task-1"}, CancellationRule: "stop_after_checkpoint",
 		},
@@ -89,6 +93,10 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 			RulesOfEngagement: "Read source records only.",
 		},
 	}
+	unsupportedPlan := planInput
+	unsupportedPlan.Execution.Tasks = append([]complianceassessment.PlanTask(nil), planInput.Execution.Tasks...)
+	unsupportedPlan.Execution.Tasks[0].Kind = complianceassessment.PlanTaskKindProcedure
+	doAssessmentStatus(t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", unsupportedPlan, "", http.StatusBadRequest)
 	createResponse := doAssessmentRequest[testAssessmentPlanResponse](t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", planInput, "", http.StatusCreated)
 	if createResponse.Plan.Status != complianceassessment.PlanDraft || createResponse.Plan.Version != 1 || createResponse.Plan.ID == "" {
 		t.Fatalf("created plan = %#v", createResponse.Plan)
@@ -114,14 +122,20 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 	if replayed.Created || replayed.Run.ID != runResponse.Run.ID {
 		t.Fatalf("replayed run = %#v", replayed)
 	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	doAssessmentStatus(t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assessment-runs/"+runResponse.Run.ID+"/results?tenant_id=tenant-1&limit=1", nil, "", http.StatusConflict)
 
 	store.setChunks("tenant-1", runResponse.Run.ID, []complianceassessment.ResultChunk{
 		{RunID: runResponse.Run.ID, Sequence: 1, FirstResultID: "result-1", LastResultID: "result-1", Count: 1, Digest: "sha256:first", Results: []complianceassessment.ObjectiveResult{{ID: "result-1"}}},
 		{RunID: runResponse.Run.ID, Sequence: 2, FirstResultID: "result-2", LastResultID: "result-2", Count: 1, PreviousDigest: "sha256:first", Digest: "sha256:second", Results: []complianceassessment.ObjectiveResult{{ID: "result-2"}}},
 	})
+	store.setRunComplete("tenant-1", runResponse.Run.ID, 2, "sha256:complete-result-set")
 	firstPage := doAssessmentRequest[testAssessmentResultPageResponse](t, server.Client(), http.MethodGet,
 		server.URL+"/grc/assessment-runs/"+runResponse.Run.ID+"/results?tenant_id=tenant-1&limit=1", nil, "", http.StatusOK)
-	if len(firstPage.Chunks) != 1 || !firstPage.HasMore || firstPage.NextSequence != 1 {
+	if len(firstPage.Chunks) != 1 || !firstPage.HasMore || firstPage.NextSequence != 1 || firstPage.State != complianceassessment.RunComplete || firstPage.ResultCount != 2 || firstPage.AutomatedResultHash != "sha256:complete-result-set" {
 		t.Fatalf("first result page = %#v", firstPage)
 	}
 	secondPage := doAssessmentRequest[testAssessmentResultPageResponse](t, server.Client(), http.MethodGet,
@@ -175,6 +189,38 @@ func doAssessmentRequest[T any](t *testing.T, client *http.Client, method, url s
 		t.Fatal(err)
 	}
 	return result
+}
+
+func doAssessmentStatus(t *testing.T, client *http.Client, method, url string, body any, idempotencyKey string, wantStatus int) {
+	t.Helper()
+	var payload []byte
+	var err error
+	if body != nil {
+		payload, err = json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	request, err := http.NewRequest(method, url, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != wantStatus {
+		var errorBody bytes.Buffer
+		_, _ = errorBody.ReadFrom(response.Body)
+		t.Fatalf("%s %s status = %d, want %d: %s", method, url, response.StatusCode, wantStatus, errorBody.String())
+	}
 }
 
 type assessmentHTTPLog struct{}
@@ -311,6 +357,17 @@ func (s *assessmentHTTPStore) setChunks(tenantID, runID string, chunks []complia
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.chunks[assessmentHTTPKey(tenantID, runID)] = append([]complianceassessment.ResultChunk(nil), chunks...)
+}
+
+func (s *assessmentHTTPStore) setRunComplete(tenantID, runID string, resultCount uint64, resultHash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := assessmentHTTPKey(tenantID, runID)
+	run := s.runs[key]
+	run.State = complianceassessment.RunComplete
+	run.ResultCount = resultCount
+	run.AutomatedResultHash = resultHash
+	s.runs[key] = run
 }
 
 func (*assessmentHTTPStore) ListSourceRuntimes(context.Context, ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {

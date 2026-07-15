@@ -752,7 +752,7 @@ export type AssessmentPlanTask = {
   control_ref: AssessmentControlRef;
   evaluation_mode?: "point_in_time";
   id: string;
-  kind: "procedure" | "finding_evaluation";
+  kind: "finding_evaluation";
   max_age?: string;
   objective_id: string;
   rule_id?: string;
@@ -771,10 +771,13 @@ export type AssessmentResultChunk = {
 };
 
 export type AssessmentResultPageResponse = {
+  automated_result_hash: string;
   chunks: AssessmentResultChunk[];
   has_more: boolean;
   next_sequence?: number;
+  result_count: number;
   run_id: string;
+  state: "complete";
 };
 
 export type AssessmentRun = {

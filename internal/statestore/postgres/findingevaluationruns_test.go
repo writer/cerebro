@@ -53,11 +53,13 @@ func TestFindingEvaluationRunTimeTreatsNilAsZero(t *testing.T) {
 }
 
 func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
+	cutoff := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	query, args, err := findingEvaluationRunListQuery(ports.ListFindingEvaluationRunsRequest{
-		RuntimeID: "writer-okta-audit",
-		RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
-		Status:    "completed",
-		Limit:     25,
+		RuntimeID:          "writer-okta-audit",
+		RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
+		Status:             "completed",
+		FinishedAtOrBefore: cutoff,
+		Limit:              25,
 	})
 	if err != nil {
 		t.Fatalf("findingEvaluationRunListQuery() error = %v", err)
@@ -66,14 +68,16 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 		"runtime_id = $1",
 		"rule_id = $2",
 		"status = $3",
-		"LIMIT $4",
+		"finished_at <= $4",
+		"ORDER BY finished_at DESC, started_at DESC, id",
+		"LIMIT $5",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("findingEvaluationRunListQuery() query missing %q: %s", fragment, query)
 		}
 	}
-	if got := len(args); got != 4 {
-		t.Fatalf("len(findingEvaluationRunListQuery().args) = %d, want 4", got)
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingEvaluationRunListQuery().args) = %d, want 5", got)
 	}
 	if got := args[0]; got != "writer-okta-audit" {
 		t.Fatalf("findingEvaluationRunListQuery().args[0] = %#v, want writer-okta-audit", got)
@@ -84,7 +88,10 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 	if got := args[2]; got != "completed" {
 		t.Fatalf("findingEvaluationRunListQuery().args[2] = %#v, want completed", got)
 	}
-	if got := args[3]; got != int64(25) {
-		t.Fatalf("findingEvaluationRunListQuery().args[3] = %#v, want 25", got)
+	if got := args[3]; got != cutoff {
+		t.Fatalf("findingEvaluationRunListQuery().args[3] = %#v, want %v", got, cutoff)
+	}
+	if got := args[4]; got != int64(25) {
+		t.Fatalf("findingEvaluationRunListQuery().args[4] = %#v, want 25", got)
 	}
 }

@@ -81,10 +81,13 @@ type assessmentRunResponse struct {
 }
 
 type assessmentResultPageResponse struct {
-	RunID        string                             `json:"run_id"`
-	Chunks       []complianceassessment.ResultChunk `json:"chunks"`
-	NextSequence uint32                             `json:"next_sequence,omitempty"`
-	HasMore      bool                               `json:"has_more"`
+	RunID               string                             `json:"run_id"`
+	State               string                             `json:"state"`
+	ResultCount         uint64                             `json:"result_count"`
+	AutomatedResultHash string                             `json:"automated_result_hash"`
+	Chunks              []complianceassessment.ResultChunk `json:"chunks"`
+	NextSequence        uint32                             `json:"next_sequence,omitempty"`
+	HasMore             bool                               `json:"has_more"`
 }
 
 func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +117,10 @@ func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	plan.CreatedBy = ""
 	plan.PublishedAt = time.Time{}
 	plan.PublishedBy = ""
+	if err := validateExecutablePlan(plan); err != nil {
+		h.writeError(w, err)
+		return
+	}
 	plan, err = service.RecordPlan(r.Context(), plan, h.actorID(r.Context()), 0)
 	if err != nil {
 		h.writeError(w, err)
@@ -157,6 +164,15 @@ func (h *Handler) PublishPlan(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
+	draft, err := service.GetPlan(r.Context(), tenantID, r.PathValue("planID"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if err := validateExecutablePlan(draft); err != nil {
+		h.writeError(w, err)
+		return
+	}
 	plan, err := service.PublishPlan(r.Context(), tenantID, r.PathValue("planID"), h.actorID(r.Context()), request.ExpectedVersion)
 	if err != nil {
 		h.writeError(w, err)
@@ -184,6 +200,15 @@ func (h *Handler) RequestRun(w http.ResponseWriter, r *http.Request) {
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if idempotencyKey == "" {
 		h.writeError(w, fmt.Errorf("%w: Idempotency-Key header is required", complianceassessment.ErrInvalidResult))
+		return
+	}
+	plan, err := service.GetPlan(r.Context(), tenantID, request.PlanRevisionID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if err := validateExecutablePlan(plan); err != nil {
+		h.writeError(w, err)
 		return
 	}
 	run, created, err := service.RequestRun(r.Context(), complianceassessment.RunRequest{
@@ -234,8 +259,13 @@ func (h *Handler) ListResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("runID"))
-	if _, err := service.GetRun(r.Context(), tenantID, runID); err != nil {
+	run, err := service.GetRun(r.Context(), tenantID, runID)
+	if err != nil {
 		h.writeError(w, err)
+		return
+	}
+	if run.State != complianceassessment.RunComplete {
+		h.writeError(w, fmt.Errorf("%w: assessment results are available only when the run is complete", complianceassessment.ErrAssessmentConflict))
 		return
 	}
 	afterSequence, err := uint32QueryParam(r, "after_sequence")
@@ -254,8 +284,18 @@ func (h *Handler) ListResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, assessmentResultPageResponse{
-		RunID: runID, Chunks: page.Chunks, NextSequence: page.NextSequence, HasMore: page.HasMore,
+		RunID: runID, State: run.State, ResultCount: run.ResultCount, AutomatedResultHash: run.AutomatedResultHash,
+		Chunks: page.Chunks, NextSequence: page.NextSequence, HasMore: page.HasMore,
 	})
+}
+
+func validateExecutablePlan(plan complianceassessment.AssessmentPlanRevision) error {
+	for _, task := range plan.Execution.Tasks {
+		if task.Kind != complianceassessment.PlanTaskKindFindingEvaluation {
+			return fmt.Errorf("%w: assessment task %q uses unsupported kind %q", complianceassessment.ErrInvalidResult, task.ID, task.Kind)
+		}
+	}
+	return nil
 }
 
 func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {

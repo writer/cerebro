@@ -217,15 +217,16 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 			return ObjectiveResult{}, nil, nil, hashErr
 		}
 		runs, listErr := c.evaluations.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{
-			RuntimeID: runtimeID,
-			RuleID:    task.RuleID,
-			Status:    "completed",
-			Limit:     1,
+			RuntimeID:          runtimeID,
+			RuleID:             task.RuleID,
+			Status:             "completed",
+			FinishedAtOrBefore: CanonicalTime(assessmentRun.PeriodEnd),
+			Limit:              1,
 		})
 		if listErr != nil {
 			return ObjectiveResult{}, nil, nil, fmt.Errorf("list finding evaluations for task %q runtime %q: %w", task.ID, runtimeID, listErr)
 		}
-		receipt, collected, receiptErr := evaluationReceipt(task, runtimeID, queryDigest, runs, assessmentRun.PeriodStart, cutoff, maxAge)
+		receipt, collected, receiptErr := evaluationReceipt(task, runtimeID, queryDigest, runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge)
 		if receiptErr != nil {
 			return ObjectiveResult{}, nil, nil, receiptErr
 		}
@@ -261,22 +262,28 @@ type findingEvaluationQuery struct {
 }
 
 type findingEvaluationPage struct {
-	ID               string    `json:"id"`
-	RuntimeID        string    `json:"runtime_id"`
-	RuleID           string    `json:"rule_id"`
-	Status           string    `json:"status"`
-	EventLimit       uint32    `json:"event_limit"`
-	EventsEvaluated  uint32    `json:"events_evaluated"`
-	EventsProcessed  uint32    `json:"events_processed"`
-	FindingsUpserted uint32    `json:"findings_upserted"`
-	FindingsEmitted  uint32    `json:"findings_emitted"`
-	FindingIDs       []string  `json:"finding_ids"`
-	FinishedAt       time.Time `json:"finished_at"`
-	GraphRule        bool      `json:"graph_rule"`
-	GraphRowsRead    uint32    `json:"graph_rows_read"`
+	ID                        string    `json:"id"`
+	RuntimeID                 string    `json:"runtime_id"`
+	RuleID                    string    `json:"rule_id"`
+	Status                    string    `json:"status"`
+	EventLimit                uint32    `json:"event_limit"`
+	EventsEvaluated           uint32    `json:"events_evaluated"`
+	EventsProcessed           uint32    `json:"events_processed"`
+	FindingsUpserted          uint32    `json:"findings_upserted"`
+	FindingsEmitted           uint32    `json:"findings_emitted"`
+	FindingIDs                []string  `json:"finding_ids"`
+	StartedAt                 time.Time `json:"started_at"`
+	FinishedAt                time.Time `json:"finished_at"`
+	GraphRule                 bool      `json:"graph_rule"`
+	GraphRowsRead             uint32    `json:"graph_rows_read"`
+	GraphTruncated            bool      `json:"graph_truncated"`
+	GraphRowLimit             uint32    `json:"graph_row_limit"`
+	SourceLastSyncedAt        time.Time `json:"source_last_synced_at"`
+	SourceCheckpointWatermark time.Time `json:"source_checkpoint_watermark"`
+	SourceSnapshotComplete    bool      `json:"source_snapshot_complete"`
 }
 
-func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cerebrov1.FindingEvaluationRun, periodStart, cutoff time.Time, maxAge time.Duration) (CollectionReceipt, taskCollectionState, error) {
+func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cerebrov1.FindingEvaluationRun, periodStart, periodEnd, cutoff time.Time, maxAge time.Duration) (CollectionReceipt, taskCollectionState, error) {
 	kind := PlanTaskKindFindingEvaluation + ":" + task.ID
 	zero := uint64(0)
 	missingDigest, err := semanticHash(struct {
@@ -299,10 +306,15 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 		return CollectionReceipt{}, taskCollectionState{}, fmt.Errorf("%w: finding evaluation query for task %q returned an invalid page", ErrIncompleteInput, task.ID)
 	}
 	run := runs[0]
-	if strings.TrimSpace(run.GetId()) == "" || strings.TrimSpace(run.GetRuntimeId()) != runtimeID || strings.TrimSpace(run.GetRuleId()) != task.RuleID || strings.TrimSpace(run.GetStatus()) != "completed" || run.GetFinishedAt() == nil || run.GetFinishedAt().CheckValid() != nil {
+	if strings.TrimSpace(run.GetId()) == "" || strings.TrimSpace(run.GetRuntimeId()) != runtimeID || strings.TrimSpace(run.GetRuleId()) != task.RuleID || strings.TrimSpace(run.GetStatus()) != "completed" ||
+		run.GetStartedAt() == nil || run.GetStartedAt().CheckValid() != nil || run.GetFinishedAt() == nil || run.GetFinishedAt().CheckValid() != nil {
 		return CollectionReceipt{}, taskCollectionState{}, fmt.Errorf("%w: finding evaluation run for task %q is invalid", ErrIncompleteInput, task.ID)
 	}
+	startedAt := CanonicalTime(run.GetStartedAt().AsTime())
 	finishedAt := CanonicalTime(run.GetFinishedAt().AsTime())
+	if finishedAt.Before(startedAt) {
+		return CollectionReceipt{}, taskCollectionState{}, fmt.Errorf("%w: finding evaluation run %q has an invalid time range", ErrIncompleteInput, run.GetId())
+	}
 	findingIDs := normalizedStrings(run.GetFindingIds())
 	if len(findingIDs) != len(run.GetFindingIds()) || uint64(len(findingIDs)) != uint64(run.GetFindingsUpserted()) || run.GetFindingsEmitted() != run.GetFindingsUpserted() {
 		return CollectionReceipt{}, taskCollectionState{}, fmt.Errorf("%w: finding evaluation run %q has inconsistent finding counts", ErrIncompleteInput, run.GetId())
@@ -311,11 +323,23 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 	if err != nil {
 		return CollectionReceipt{}, taskCollectionState{}, err
 	}
+	sourceLastSyncedAt := time.Time{}
+	if value := run.GetSourceLastSyncedAt(); value != nil && value.CheckValid() == nil {
+		sourceLastSyncedAt = CanonicalTime(value.AsTime())
+	}
+	sourceCheckpointWatermark := time.Time{}
+	if value := run.GetSourceCheckpointWatermark(); value != nil && value.CheckValid() == nil {
+		sourceCheckpointWatermark = CanonicalTime(value.AsTime())
+	}
 	pageDigest, err := semanticHash(findingEvaluationPage{
 		ID: run.GetId(), RuntimeID: run.GetRuntimeId(), RuleID: run.GetRuleId(), Status: run.GetStatus(),
 		EventLimit: run.GetEventLimit(), EventsEvaluated: run.GetEventsEvaluated(), EventsProcessed: run.GetEventsProcessed(),
 		FindingsUpserted: run.GetFindingsUpserted(), FindingsEmitted: run.GetFindingsEmitted(), FindingIDs: findingIDs,
-		FinishedAt: finishedAt, GraphRule: run.GetGraphRule(), GraphRowsRead: run.GetGraphRowsRead(),
+		StartedAt: startedAt, FinishedAt: finishedAt, GraphRule: run.GetGraphRule(), GraphRowsRead: run.GetGraphRowsRead(),
+		GraphTruncated: run.GetGraphTruncated(), GraphRowLimit: run.GetGraphRowLimit(),
+		SourceLastSyncedAt:        sourceLastSyncedAt,
+		SourceCheckpointWatermark: sourceCheckpointWatermark,
+		SourceSnapshotComplete:    run.GetSourceSnapshotComplete(),
 	})
 	if err != nil {
 		return CollectionReceipt{}, taskCollectionState{}, err
@@ -331,18 +355,26 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 		findingIDs:       findingIDs,
 		evidenceState:    EvidenceSufficient,
 	}
-	if finishedAt.Before(CanonicalTime(periodStart)) || cutoff.Sub(finishedAt) > maxAge {
+	periodStart = CanonicalTime(periodStart)
+	periodEnd = CanonicalTime(periodEnd)
+	if finishedAt.Before(periodStart) || periodEnd.Sub(finishedAt) > maxAge {
 		receipt.Completeness = CollectionUnknown
 		collected.incomplete = true
 		collected.evidenceState = EvidenceStale
 		collected.reasons = []ReasonCode{ReasonEvidenceStale}
 		collected.actions = []NextAction{ActionRefreshEvidence}
-	} else if finishedAt.After(cutoff) {
+	} else if finishedAt.After(periodEnd) || finishedAt.After(cutoff) {
 		receipt.Completeness = CollectionUnknown
 		collected.incomplete = true
 		collected.evidenceState = EvidenceUntrusted
 		collected.reasons = []ReasonCode{ReasonEvidenceInvalid}
 		collected.actions = []NextAction{ActionReview}
+	} else if sourceSnapshotErr := validateEvaluationSourceSnapshot(run, startedAt, periodEnd, maxAge); sourceSnapshotErr != nil {
+		receipt.Completeness = CollectionUnknown
+		collected.incomplete = true
+		collected.evidenceState = EvidenceUntrusted
+		collected.reasons = []ReasonCode{ReasonSourceUntrusted}
+		collected.actions = []NextAction{ActionRestoreSource}
 	} else if truncated {
 		receipt.Completeness = CollectionTruncated
 		collected.incomplete = true
@@ -353,16 +385,32 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 	return receipt, collected, nil
 }
 
+func validateEvaluationSourceSnapshot(run *cerebrov1.FindingEvaluationRun, evaluationStartedAt, periodEnd time.Time, maxAge time.Duration) error {
+	if run.SourceSnapshotComplete == nil || !run.GetSourceSnapshotComplete() || run.GetSourceLastSyncedAt() == nil || run.GetSourceLastSyncedAt().CheckValid() != nil ||
+		run.GetSourceCheckpointWatermark() == nil || run.GetSourceCheckpointWatermark().CheckValid() != nil {
+		return fmt.Errorf("%w: finding evaluation run %q has no complete source snapshot", ErrIncompleteInput, run.GetId())
+	}
+	lastSyncedAt := CanonicalTime(run.GetSourceLastSyncedAt().AsTime())
+	checkpointWatermark := CanonicalTime(run.GetSourceCheckpointWatermark().AsTime())
+	if lastSyncedAt.After(evaluationStartedAt) || lastSyncedAt.After(periodEnd) || checkpointWatermark.After(periodEnd) ||
+		periodEnd.Sub(lastSyncedAt) > maxAge || periodEnd.Sub(checkpointWatermark) > maxAge {
+		return fmt.Errorf("%w: finding evaluation run %q source snapshot is outside the assessment period", ErrIncompleteInput, run.GetId())
+	}
+	return nil
+}
+
 func evaluationPopulation(run *cerebrov1.FindingEvaluationRun) (uint64, bool, error) {
 	if run.GraphRule == nil {
 		return 0, false, fmt.Errorf("%w: finding evaluation run %q does not identify its rule type", ErrIncompleteInput, run.GetId())
 	}
 	if run.GetGraphRule() {
-		if run.GraphRowsRead == nil || run.GetEventLimit() != 0 || run.GetEventsEvaluated() != 0 || run.GetEventsProcessed() != 0 {
+		if run.GraphRowsRead == nil || run.GraphTruncated == nil || run.GraphRowLimit == nil || run.GetGraphRowLimit() == 0 ||
+			run.GetEventLimit() != 0 || run.GetEventsEvaluated() != 0 || run.GetEventsProcessed() != 0 || run.GetGraphRowsRead() > run.GetGraphRowLimit() ||
+			(run.GetGraphRowsRead() >= run.GetGraphRowLimit() && !run.GetGraphTruncated()) {
 			return 0, false, fmt.Errorf("%w: graph evaluation run %q has inconsistent population metadata", ErrIncompleteInput, run.GetId())
 		}
 		population := uint64(run.GetGraphRowsRead())
-		return population, population >= uint64(ports.MaxCypherQueryRows), nil
+		return population, run.GetGraphTruncated(), nil
 	}
 	if run.GetEventLimit() == 0 || run.GetEventsEvaluated() != run.GetEventsProcessed() {
 		return 0, false, fmt.Errorf("%w: event evaluation run %q has inconsistent population metadata", ErrIncompleteInput, run.GetId())

@@ -379,6 +379,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	startedAt := time.Now().UTC()
 	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
+	bindFindingEvaluationSourceSnapshot(run, runtime)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
@@ -504,6 +505,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	for _, rule := range rules {
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
+		bindFindingEvaluationSourceSnapshot(run, runtime)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
@@ -1280,14 +1282,32 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 func newGraphFindingEvaluationRun(runtimeID string, ruleID string, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
 	normalizedStartedAt := startedAt.UTC()
 	return &cerebrov1.FindingEvaluationRun{
-		Id:            findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
-		RuntimeId:     strings.TrimSpace(runtimeID),
-		RuleId:        strings.TrimSpace(ruleID),
-		Status:        "running",
-		StartedAt:     timestamppb.New(normalizedStartedAt),
-		GraphRule:     proto.Bool(true),
-		GraphRowsRead: proto.Uint32(0),
+		Id:             findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:      strings.TrimSpace(runtimeID),
+		RuleId:         strings.TrimSpace(ruleID),
+		Status:         "running",
+		StartedAt:      timestamppb.New(normalizedStartedAt),
+		GraphRule:      proto.Bool(true),
+		GraphRowsRead:  proto.Uint32(0),
+		GraphTruncated: proto.Bool(false),
 	}
+}
+
+func bindFindingEvaluationSourceSnapshot(run *cerebrov1.FindingEvaluationRun, runtime *cerebrov1.SourceRuntime) {
+	if run == nil {
+		return
+	}
+	complete := false
+	if runtime != nil {
+		lastSyncedAt := runtime.GetLastSyncedAt()
+		checkpointWatermark := runtime.GetCheckpoint().GetWatermark()
+		if lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil && checkpointWatermark != nil && checkpointWatermark.CheckValid() == nil && strings.TrimSpace(runtime.GetNextCursor().GetOpaque()) == "" {
+			run.SourceLastSyncedAt = timestamppb.New(lastSyncedAt.AsTime().UTC())
+			run.SourceCheckpointWatermark = timestamppb.New(checkpointWatermark.AsTime().UTC())
+			complete = true
+		}
+	}
+	run.SourceSnapshotComplete = proto.Bool(complete)
 }
 
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")

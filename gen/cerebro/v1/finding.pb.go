@@ -152,8 +152,20 @@ type FindingEvaluationRun struct {
 	// returned. It is the graph-rule analog of events_evaluated and lets operators
 	// distinguish "graph rule fetched zero rows" from "graph rule never ran".
 	GraphRowsRead *uint32 `protobuf:"varint,16,opt,name=graph_rows_read,json=graphRowsRead,proto3,oneof" json:"graph_rows_read,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// graph_truncated records the producer's completeness decision, including
+	// rule-internal caps that can fire below the transport row limit.
+	GraphTruncated *bool `protobuf:"varint,17,opt,name=graph_truncated,json=graphTruncated,proto3,oneof" json:"graph_truncated,omitempty"`
+	// graph_row_limit records the effective transport cap used for this run.
+	GraphRowLimit *uint32 `protobuf:"varint,18,opt,name=graph_row_limit,json=graphRowLimit,proto3,oneof" json:"graph_row_limit,omitempty"`
+	// source_last_synced_at and source_checkpoint_watermark bind the evaluation
+	// to the source snapshot that existed when the rule ran.
+	SourceLastSyncedAt        *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=source_last_synced_at,json=sourceLastSyncedAt,proto3" json:"source_last_synced_at,omitempty"`
+	SourceCheckpointWatermark *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=source_checkpoint_watermark,json=sourceCheckpointWatermark,proto3" json:"source_checkpoint_watermark,omitempty"`
+	// source_snapshot_complete is false when the runtime had no durable source
+	// watermark or still carried a continuation cursor during evaluation.
+	SourceSnapshotComplete *bool `protobuf:"varint,21,opt,name=source_snapshot_complete,json=sourceSnapshotComplete,proto3,oneof" json:"source_snapshot_complete,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *FindingEvaluationRun) Reset() {
@@ -296,6 +308,41 @@ func (x *FindingEvaluationRun) GetGraphRowsRead() uint32 {
 		return *x.GraphRowsRead
 	}
 	return 0
+}
+
+func (x *FindingEvaluationRun) GetGraphTruncated() bool {
+	if x != nil && x.GraphTruncated != nil {
+		return *x.GraphTruncated
+	}
+	return false
+}
+
+func (x *FindingEvaluationRun) GetGraphRowLimit() uint32 {
+	if x != nil && x.GraphRowLimit != nil {
+		return *x.GraphRowLimit
+	}
+	return 0
+}
+
+func (x *FindingEvaluationRun) GetSourceLastSyncedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SourceLastSyncedAt
+	}
+	return nil
+}
+
+func (x *FindingEvaluationRun) GetSourceCheckpointWatermark() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SourceCheckpointWatermark
+	}
+	return nil
+}
+
+func (x *FindingEvaluationRun) GetSourceSnapshotComplete() bool {
+	if x != nil && x.SourceSnapshotComplete != nil {
+		return *x.SourceSnapshotComplete
+	}
+	return false
 }
 
 // GraphEvidencePath captures one supporting graph edge for a graph-backed finding.
@@ -1787,7 +1834,7 @@ var File_cerebro_v1_finding_proto protoreflect.FileDescriptor
 const file_cerebro_v1_finding_proto_rawDesc = "" +
 	"\n" +
 	"\x18cerebro/v1/finding.proto\x12\n" +
-	"cerebro.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8f\x05\n" +
+	"cerebro.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x99\b\n" +
 	"\x14FindingEvaluationRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1811,9 +1858,17 @@ const file_cerebro_v1_finding_proto_rawDesc = "" +
 	"\x10findings_emitted\x18\x0e \x01(\rR\x0ffindingsEmitted\x12\"\n" +
 	"\n" +
 	"graph_rule\x18\x0f \x01(\bH\x00R\tgraphRule\x88\x01\x01\x12+\n" +
-	"\x0fgraph_rows_read\x18\x10 \x01(\rH\x01R\rgraphRowsRead\x88\x01\x01B\r\n" +
+	"\x0fgraph_rows_read\x18\x10 \x01(\rH\x01R\rgraphRowsRead\x88\x01\x01\x12,\n" +
+	"\x0fgraph_truncated\x18\x11 \x01(\bH\x02R\x0egraphTruncated\x88\x01\x01\x12+\n" +
+	"\x0fgraph_row_limit\x18\x12 \x01(\rH\x03R\rgraphRowLimit\x88\x01\x01\x12M\n" +
+	"\x15source_last_synced_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\x12sourceLastSyncedAt\x12Z\n" +
+	"\x1bsource_checkpoint_watermark\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\x19sourceCheckpointWatermark\x12=\n" +
+	"\x18source_snapshot_complete\x18\x15 \x01(\bH\x04R\x16sourceSnapshotComplete\x88\x01\x01B\r\n" +
 	"\v_graph_ruleB\x12\n" +
-	"\x10_graph_rows_read\"\x80\x03\n" +
+	"\x10_graph_rows_readB\x12\n" +
+	"\x10_graph_truncatedB\x12\n" +
+	"\x10_graph_row_limitB\x1b\n" +
+	"\x19_source_snapshot_complete\"\x80\x03\n" +
 	"\x11GraphEvidencePath\x12\x19\n" +
 	"\bfrom_urn\x18\x01 \x01(\tR\afromUrn\x12\x1d\n" +
 	"\n" +
@@ -2062,46 +2117,48 @@ var file_cerebro_v1_finding_proto_goTypes = []any{
 var file_cerebro_v1_finding_proto_depIdxs = []int32{
 	19, // 0: cerebro.v1.FindingEvaluationRun.started_at:type_name -> google.protobuf.Timestamp
 	19, // 1: cerebro.v1.FindingEvaluationRun.finished_at:type_name -> google.protobuf.Timestamp
-	15, // 2: cerebro.v1.GraphEvidencePath.attributes:type_name -> cerebro.v1.GraphEvidencePath.AttributesEntry
-	16, // 3: cerebro.v1.GraphEvidenceRow.attributes:type_name -> cerebro.v1.GraphEvidenceRow.AttributesEntry
-	3,  // 4: cerebro.v1.GraphEvidenceRow.paths:type_name -> cerebro.v1.GraphEvidencePath
-	19, // 5: cerebro.v1.FindingRiskFactor.observed_at:type_name -> google.protobuf.Timestamp
-	19, // 6: cerebro.v1.FindingEvidenceObservation.observed_at:type_name -> google.protobuf.Timestamp
-	4,  // 7: cerebro.v1.FindingEvidenceObservation.graph_rows:type_name -> cerebro.v1.GraphEvidenceRow
-	19, // 8: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
-	4,  // 9: cerebro.v1.FindingEvidence.graph_rows:type_name -> cerebro.v1.GraphEvidenceRow
-	19, // 10: cerebro.v1.FindingEvidence.last_observed_at:type_name -> google.protobuf.Timestamp
-	17, // 11: cerebro.v1.FindingEvidence.attributes:type_name -> cerebro.v1.FindingEvidence.AttributesEntry
-	6,  // 12: cerebro.v1.FindingEvidence.observations:type_name -> cerebro.v1.FindingEvidenceObservation
-	19, // 13: cerebro.v1.FindingNote.created_at:type_name -> google.protobuf.Timestamp
-	19, // 14: cerebro.v1.FindingTicket.linked_at:type_name -> google.protobuf.Timestamp
-	19, // 15: cerebro.v1.FindingExternalRef.observed_at:type_name -> google.protobuf.Timestamp
-	0,  // 16: cerebro.v1.Finding.status:type_name -> cerebro.v1.FindingStatus
-	18, // 17: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
-	19, // 18: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 19: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 20: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
-	8,  // 21: cerebro.v1.Finding.control_refs:type_name -> cerebro.v1.FindingControlRef
-	19, // 22: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
-	9,  // 23: cerebro.v1.Finding.notes:type_name -> cerebro.v1.FindingNote
-	10, // 24: cerebro.v1.Finding.tickets:type_name -> cerebro.v1.FindingTicket
-	5,  // 25: cerebro.v1.Finding.risk_factors:type_name -> cerebro.v1.FindingRiskFactor
-	11, // 26: cerebro.v1.Finding.external_refs:type_name -> cerebro.v1.FindingExternalRef
-	19, // 27: cerebro.v1.FindingCandidateRun.started_at:type_name -> google.protobuf.Timestamp
-	19, // 28: cerebro.v1.FindingCandidateRun.finished_at:type_name -> google.protobuf.Timestamp
-	12, // 29: cerebro.v1.FindingCandidate.finding:type_name -> cerebro.v1.Finding
-	7,  // 30: cerebro.v1.FindingCandidate.evidence:type_name -> cerebro.v1.FindingEvidence
-	19, // 31: cerebro.v1.FindingCandidate.first_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 32: cerebro.v1.FindingCandidate.last_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 33: cerebro.v1.FindingCandidate.promoted_at:type_name -> google.protobuf.Timestamp
-	19, // 34: cerebro.v1.FindingCandidate.created_at:type_name -> google.protobuf.Timestamp
-	19, // 35: cerebro.v1.FindingCandidate.updated_at:type_name -> google.protobuf.Timestamp
-	19, // 36: cerebro.v1.FindingCandidate.rejected_at:type_name -> google.protobuf.Timestamp
-	37, // [37:37] is the sub-list for method output_type
-	37, // [37:37] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	19, // 2: cerebro.v1.FindingEvaluationRun.source_last_synced_at:type_name -> google.protobuf.Timestamp
+	19, // 3: cerebro.v1.FindingEvaluationRun.source_checkpoint_watermark:type_name -> google.protobuf.Timestamp
+	15, // 4: cerebro.v1.GraphEvidencePath.attributes:type_name -> cerebro.v1.GraphEvidencePath.AttributesEntry
+	16, // 5: cerebro.v1.GraphEvidenceRow.attributes:type_name -> cerebro.v1.GraphEvidenceRow.AttributesEntry
+	3,  // 6: cerebro.v1.GraphEvidenceRow.paths:type_name -> cerebro.v1.GraphEvidencePath
+	19, // 7: cerebro.v1.FindingRiskFactor.observed_at:type_name -> google.protobuf.Timestamp
+	19, // 8: cerebro.v1.FindingEvidenceObservation.observed_at:type_name -> google.protobuf.Timestamp
+	4,  // 9: cerebro.v1.FindingEvidenceObservation.graph_rows:type_name -> cerebro.v1.GraphEvidenceRow
+	19, // 10: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
+	4,  // 11: cerebro.v1.FindingEvidence.graph_rows:type_name -> cerebro.v1.GraphEvidenceRow
+	19, // 12: cerebro.v1.FindingEvidence.last_observed_at:type_name -> google.protobuf.Timestamp
+	17, // 13: cerebro.v1.FindingEvidence.attributes:type_name -> cerebro.v1.FindingEvidence.AttributesEntry
+	6,  // 14: cerebro.v1.FindingEvidence.observations:type_name -> cerebro.v1.FindingEvidenceObservation
+	19, // 15: cerebro.v1.FindingNote.created_at:type_name -> google.protobuf.Timestamp
+	19, // 16: cerebro.v1.FindingTicket.linked_at:type_name -> google.protobuf.Timestamp
+	19, // 17: cerebro.v1.FindingExternalRef.observed_at:type_name -> google.protobuf.Timestamp
+	0,  // 18: cerebro.v1.Finding.status:type_name -> cerebro.v1.FindingStatus
+	18, // 19: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
+	19, // 20: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
+	19, // 21: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
+	19, // 22: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
+	8,  // 23: cerebro.v1.Finding.control_refs:type_name -> cerebro.v1.FindingControlRef
+	19, // 24: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
+	9,  // 25: cerebro.v1.Finding.notes:type_name -> cerebro.v1.FindingNote
+	10, // 26: cerebro.v1.Finding.tickets:type_name -> cerebro.v1.FindingTicket
+	5,  // 27: cerebro.v1.Finding.risk_factors:type_name -> cerebro.v1.FindingRiskFactor
+	11, // 28: cerebro.v1.Finding.external_refs:type_name -> cerebro.v1.FindingExternalRef
+	19, // 29: cerebro.v1.FindingCandidateRun.started_at:type_name -> google.protobuf.Timestamp
+	19, // 30: cerebro.v1.FindingCandidateRun.finished_at:type_name -> google.protobuf.Timestamp
+	12, // 31: cerebro.v1.FindingCandidate.finding:type_name -> cerebro.v1.Finding
+	7,  // 32: cerebro.v1.FindingCandidate.evidence:type_name -> cerebro.v1.FindingEvidence
+	19, // 33: cerebro.v1.FindingCandidate.first_observed_at:type_name -> google.protobuf.Timestamp
+	19, // 34: cerebro.v1.FindingCandidate.last_observed_at:type_name -> google.protobuf.Timestamp
+	19, // 35: cerebro.v1.FindingCandidate.promoted_at:type_name -> google.protobuf.Timestamp
+	19, // 36: cerebro.v1.FindingCandidate.created_at:type_name -> google.protobuf.Timestamp
+	19, // 37: cerebro.v1.FindingCandidate.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 38: cerebro.v1.FindingCandidate.rejected_at:type_name -> google.protobuf.Timestamp
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_finding_proto_init() }

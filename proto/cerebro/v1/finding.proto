@@ -31,6 +31,18 @@ message FindingEvaluationRun {
   // returned. It is the graph-rule analog of events_evaluated and lets operators
   // distinguish "graph rule fetched zero rows" from "graph rule never ran".
   optional uint32 graph_rows_read = 16;
+  // graph_truncated records the producer's completeness decision, including
+  // rule-internal caps that can fire below the transport row limit.
+  optional bool graph_truncated = 17;
+  // graph_row_limit records the effective transport cap used for this run.
+  optional uint32 graph_row_limit = 18;
+  // source_last_synced_at and source_checkpoint_watermark bind the evaluation
+  // to the source snapshot that existed when the rule ran.
+  google.protobuf.Timestamp source_last_synced_at = 19;
+  google.protobuf.Timestamp source_checkpoint_watermark = 20;
+  // source_snapshot_complete is false when the runtime had no durable source
+  // watermark or still carried a continuation cursor during evaluation.
+  optional bool source_snapshot_complete = 21;
 }
 
 // GraphEvidencePath captures one supporting graph edge for a graph-backed finding.

@@ -173,11 +173,15 @@ func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsReques
 	args := []any{runtimeID}
 	addFindingEvaluationRunFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingEvaluationRunFilter(&clauses, &args, "status", request.Status)
+	if !request.FinishedAtOrBefore.IsZero() {
+		args = append(args, request.FinishedAtOrBefore.UTC())
+		clauses = append(clauses, fmt.Sprintf("finished_at <= $%d", len(args)))
+	}
 	query := `
 SELECT finding_evaluation_run_json::text
 FROM finding_evaluation_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY started_at DESC, id`
+ORDER BY finished_at DESC, started_at DESC, id`
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

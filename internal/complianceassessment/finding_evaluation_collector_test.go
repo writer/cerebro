@@ -64,6 +64,28 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			wantOutcome: OutcomeSatisfied, wantEvidence: EvidenceSufficient,
 			wantCompleteness: CollectionComplete, wantReason: ReasonSatisfied,
 		},
+		{
+			name: "internally truncated graph evaluation",
+			evaluation: func() *cerebrov1.FindingEvaluationRun {
+				run := graphEvaluationRun("evaluation-6", cutoff.Add(-30*time.Minute), 2)
+				run.GraphTruncated = boolPointer(true)
+				return run
+			}(),
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceIncomplete,
+			wantCompleteness: CollectionTruncated, wantReason: ReasonCoverageIncomplete,
+		},
+		{
+			name: "incomplete source snapshot",
+			evaluation: func() *cerebrov1.FindingEvaluationRun {
+				run := eventEvaluationRun("evaluation-7", cutoff.Add(-30*time.Minute), 100, 12)
+				run.SourceLastSyncedAt = nil
+				run.SourceCheckpointWatermark = nil
+				run.SourceSnapshotComplete = boolPointer(false)
+				return run
+			}(),
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
 	}
 	for _, test := range tests {
 		test := test
@@ -71,7 +93,7 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			t.Parallel()
 			plan := collectorTestPlan(cutoff)
 			plans := &collectorPlanReader{plan: plan}
-			runtimes := &collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{{Id: "runtime-1", TenantId: "tenant-1"}}}
+			runtimes := &collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntime(cutoff)}}
 			evaluations := &collectorEvaluationLister{}
 			if test.evaluation != nil {
 				evaluations.values = []*cerebrov1.FindingEvaluationRun{test.evaluation}
@@ -102,10 +124,35 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			if got := runtimes.filter.TenantID; got != "tenant-1" {
 				t.Fatalf("runtime tenant filter = %q, want tenant-1", got)
 			}
-			if got := evaluations.request; got.RuntimeID != "runtime-1" || got.RuleID != "rule-1" || got.Status != "completed" || got.Limit != 1 {
+			if got := evaluations.request; got.RuntimeID != "runtime-1" || got.RuleID != "rule-1" || got.Status != "completed" || !got.FinishedAtOrBefore.Equal(cutoff) || got.Limit != 1 {
 				t.Fatalf("evaluation request = %#v", got)
 			}
 		})
+	}
+}
+
+func TestFindingEvaluationCollectorRejectsPostPeriodEvidence(t *testing.T) {
+	t.Parallel()
+	cutoff := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	run := collectorTestRun(cutoff)
+	run.PeriodEnd = cutoff.Add(-time.Hour)
+	evaluation := eventEvaluationRun("evaluation-after-period", cutoff.Add(-30*time.Minute), 100, 12)
+	evaluations := &collectorEvaluationLister{values: []*cerebrov1.FindingEvaluationRun{evaluation}}
+	collector := NewFindingEvaluationCollector(
+		&collectorPlanReader{plan: collectorTestPlan(cutoff)},
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntime(cutoff)}},
+		evaluations,
+	)
+	collector.now = func() time.Time { return cutoff }
+	manifest, results, err := collector.Collect(context.Background(), run)
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if !evaluations.request.FinishedAtOrBefore.Equal(run.PeriodEnd) {
+		t.Fatalf("FinishedAtOrBefore = %v, want %v", evaluations.request.FinishedAtOrBefore, run.PeriodEnd)
+	}
+	if manifest.Receipts[0].Completeness != CollectionUnknown || results[0].AutomatedOutcome != OutcomeIndeterminate || !containsReason(results[0].ReasonCodes, ReasonEvidenceInvalid) {
+		t.Fatalf("post-period result = receipt:%#v result:%#v", manifest.Receipts[0], results[0])
 	}
 }
 
@@ -156,27 +203,44 @@ func collectorTestRun(cutoff time.Time) AssessmentRun {
 	return AssessmentRun{
 		ID: "assessment-run-1", TenantID: "tenant-1", ProgramID: "program-1",
 		ScopeRevisionID: "scope-revision-1", PlanRevisionID: "plan-revision-1",
-		PeriodStart: cutoff.Add(-24 * time.Hour), PeriodEnd: cutoff.Add(-time.Hour),
+		PeriodStart: cutoff.Add(-24 * time.Hour), PeriodEnd: cutoff,
 		RequestedAt: cutoff, RequestedBy: "assessor-1",
 	}
 }
 
 func eventEvaluationRun(id string, finishedAt time.Time, eventLimit, eventsProcessed uint32) *cerebrov1.FindingEvaluationRun {
 	graphRule := false
+	startedAt := finishedAt.Add(-time.Minute)
+	sourceAt := startedAt.Add(-time.Minute)
 	return &cerebrov1.FindingEvaluationRun{
 		Id: id, RuntimeId: "runtime-1", RuleId: "rule-1", Status: "completed",
 		EventLimit: eventLimit, EventsEvaluated: eventsProcessed, EventsProcessed: eventsProcessed,
-		GraphRule: &graphRule, FinishedAt: timestamppb.New(finishedAt),
+		GraphRule: &graphRule, StartedAt: timestamppb.New(startedAt), FinishedAt: timestamppb.New(finishedAt),
+		SourceLastSyncedAt: timestamppb.New(sourceAt), SourceCheckpointWatermark: timestamppb.New(sourceAt), SourceSnapshotComplete: boolPointer(true),
 	}
 }
 
 func graphEvaluationRun(id string, finishedAt time.Time, rows uint32) *cerebrov1.FindingEvaluationRun {
 	graphRule := true
+	startedAt := finishedAt.Add(-time.Minute)
+	sourceAt := startedAt.Add(-time.Minute)
+	rowLimit := uint32(100)
 	return &cerebrov1.FindingEvaluationRun{
 		Id: id, RuntimeId: "runtime-1", RuleId: "rule-1", Status: "completed",
-		GraphRule: &graphRule, GraphRowsRead: &rows, FinishedAt: timestamppb.New(finishedAt),
+		GraphRule: &graphRule, GraphRowsRead: &rows, GraphTruncated: boolPointer(false), GraphRowLimit: &rowLimit,
+		StartedAt: timestamppb.New(startedAt), FinishedAt: timestamppb.New(finishedAt),
+		SourceLastSyncedAt: timestamppb.New(sourceAt), SourceCheckpointWatermark: timestamppb.New(sourceAt), SourceSnapshotComplete: boolPointer(true),
 	}
 }
+
+func collectorTestRuntime(now time.Time) *cerebrov1.SourceRuntime {
+	return &cerebrov1.SourceRuntime{
+		Id: "runtime-1", TenantId: "tenant-1", LastSyncedAt: timestamppb.New(now.Add(-time.Hour)),
+		Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-time.Hour))},
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
 
 func containsReason(values []ReasonCode, want ReasonCode) bool {
 	for _, value := range values {

@@ -2668,7 +2668,7 @@ paths:
             default: 25
       responses:
         '200':
-          description: Ordered, tenant-scoped assessment result chunk page.
+          description: Ordered, tenant-scoped result chunks for a completed assessment run.
           content:
             application/json:
               schema:
@@ -2677,6 +2677,8 @@ paths:
           description: The page cursor or limit is invalid.
         '404':
           description: Assessment run was not found in the tenant.
+        '409':
+          description: The assessment run is not complete.
         '503':
           description: Assessment result paging is unavailable.
   /grc/dashboards:
@@ -5957,7 +5959,7 @@ components:
           $ref: '#/components/schemas/AssessmentControlRef'
         kind:
           type: string
-          enum: [procedure, finding_evaluation]
+          enum: [finding_evaluation]
         rule_id:
           type: string
         runtime_ids:
@@ -6205,9 +6207,17 @@ components:
             additionalProperties: true
     AssessmentResultPageResponse:
       type: object
-      required: [run_id, chunks, has_more]
+      required: [run_id, state, result_count, automated_result_hash, chunks, has_more]
       properties:
         run_id:
+          type: string
+        state:
+          type: string
+          enum: [complete]
+        result_count:
+          type: integer
+          format: uint64
+        automated_result_hash:
           type: string
         chunks:
           type: array

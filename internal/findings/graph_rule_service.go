@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
+	"google.golang.org/protobuf/proto"
 )
 
 // EvaluateGraphRulesRequest scopes one graph-rule evaluation pass over one runtime.
@@ -129,7 +130,12 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		}
 		observability.RecordGraphRuleEvaluation(ctx, metrics)
 	}()
+	queryRequest := rule.QueryFor(runtime)
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
+	bindFindingEvaluationSourceSnapshot(run, runtime)
+	if strings.TrimSpace(queryRequest.Query) != "" {
+		run.GraphRowLimit = proto.Uint32(uint32(effectiveGraphRowLimit(queryRequest)))
+	}
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
@@ -137,7 +143,6 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		Rule: spec,
 		Run:  run,
 	}
-	queryRequest := rule.QueryFor(runtime)
 	if strings.TrimSpace(queryRequest.Query) == "" {
 		if retiredGraphRule(rule) {
 			if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), nil, nil); err != nil {
@@ -164,6 +169,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	result.RowsRead = boundedUint32(len(rows))
 	rowLimitTruncated := cypherRowsTruncated(queryRequest, len(rows))
 	result.Truncated = rowLimitTruncated || cypherRowsSignalTruncated(rows)
+	run.GraphTruncated = proto.Bool(result.Truncated)
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
@@ -259,11 +265,15 @@ func retiredGraphRule(rule GraphRule) bool {
 // auto-resolution must not run in that case or we would close findings whose still-matching
 // row simply fell past the cutoff.
 func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) bool {
-	cap := request.RowLimit
-	if cap <= 0 || cap > ports.MaxCypherQueryRows {
-		cap = ports.MaxCypherQueryRows
+	return rowsReturned >= effectiveGraphRowLimit(request)
+}
+
+func effectiveGraphRowLimit(request ports.CypherQueryRequest) int {
+	limit := request.RowLimit
+	if limit <= 0 || limit > ports.MaxCypherQueryRows {
+		return ports.MaxCypherQueryRows
 	}
-	return rowsReturned >= cap
+	return limit
 }
 
 // graphRuleTruncationColumn lets a rule's Cypher signal that it dropped matching
