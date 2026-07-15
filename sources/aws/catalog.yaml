@@ -1,6 +1,14 @@
 id: aws
 name: AWS
 description: AWS IAM inventory and CloudTrail source.
+certification:
+  owner: source-runtime
+  reviewed_at: 2026-07-14T00:00:00Z
+  expires_at: 2026-10-14T00:00:00Z
+  evidence:
+    - kind: recorded_replay
+      receipt: sources/aws/testdata
+      digest: sha256:0f5af244ce0e4df261973549e35756667dff6c7216034ae65946dc23ec6bd0bb
 emitted_kinds:
   - aws.access_key
   - aws.access_analyzer

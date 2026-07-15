@@ -375,6 +375,7 @@ message GetFindingRequest {
 // GetFindingResponse returns one persisted finding view.
 message GetFindingResponse {
   Finding finding = 1;
+  repeated ResourceLink links = 2;
 }
 
 // ResolveFindingRequest marks one persisted finding as resolved.

@@ -53,6 +53,21 @@ func TestRecordSourceRuntimeSyncMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.sync.short_circuits"], "reconciliation_reason", "max_consecutive_skips")
 }
 
+func TestRecordContentPackSelectionMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordContentPackSelection(context.Background(), ContentPackSelectionMetrics{Kind: "Policy Control", Status: "Embedded Fallback", Count: 1})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	metric, ok := metrics["cerebro.content_pack.selections"]
+	if !ok {
+		t.Fatalf("content-pack metric missing from %#v", metricNames(metrics))
+	}
+	assertNoForbiddenMetricAttributes(t, metric)
+	assertMetricHasAttribute(t, metric, "pack.kind", "policy_control")
+	assertMetricHasAttribute(t, metric, "status", "embedded_fallback")
+}
+
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
 	reader, shutdown := installManualMetricReader(t)
 	RecordSourceProjection(context.Background(), SourceProjectionMetrics{

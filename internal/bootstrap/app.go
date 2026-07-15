@@ -25,6 +25,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
+	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/compliancecontract"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
@@ -47,6 +48,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -63,6 +65,7 @@ type Dependencies struct {
 	GraphStore    ports.GraphStore
 	GraphAgentLLM graphagent.LLMClient
 	QueryCache    querycache.Cache
+	FindingRules  *findings.Registry
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -100,6 +103,7 @@ type appServices struct {
 	graphIngestOps *graphingest.Service
 	workflowReplay *workflowprojection.Replayer
 	jobs           *platformjobs.Service
+	assessments    *complianceassessment.Service
 }
 
 type bootstrapService struct {
@@ -242,6 +246,10 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()
+	app.services.assessments = app.newAssessmentService(app.services.jobs)
+	if app.services.assessments != nil {
+		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
+	}
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)
@@ -774,7 +782,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: safeFindingMessage(finding)}), nil
+	return connect.NewResponse(linktransport.FindingResponse(safeFindingMessage(finding), finding)), nil
 }
 
 func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {
@@ -1339,8 +1347,9 @@ func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(statusCode)
-	_, _ = w.Write(payload)
+	_, _ = w.Write(payload) //nolint:gosec // protojson escapes message fields; the response is JSON with content sniffing disabled.
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {

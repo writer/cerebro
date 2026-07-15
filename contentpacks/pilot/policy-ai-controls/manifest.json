@@ -1,0 +1,28 @@
+{
+  "schema_version": "cerebro.content-pack/v1",
+  "pack_id": "policy-control.ai.generated",
+  "version": "1.0.0",
+  "manifest_digest": "sha256:41cfe4d30f21ae99afd6c6935efce8ce5b737ab8f409cdb85b08fca8c589b919",
+  "signing_key_id": "content-pack-pilot-2026",
+  "kind": "policy-control",
+  "load_order": 200,
+  "kernel": {
+    "min_inclusive": "1.0.0",
+    "max_exclusive": "2.0.0"
+  },
+  "contents": [
+    {
+      "id": "policy.ai-agent-tool-allowlist-required",
+      "path": "content/policy.yaml",
+      "media_type": "application/yaml",
+      "sha256": "sha256:7b889fd9056f43b2248c76607c71787c26c4eb8cd6b60433ea883cadaa9810e4",
+      "bytes": 1497
+    }
+  ],
+  "metadata": {
+    "owner": "policy-catalog",
+    "certification": "generated-pilot",
+    "generated_from": "policies/ai/ai-agent-tool-allowlist-required.yaml",
+    "rollback_boundary": "operator allowlist"
+  }
+}

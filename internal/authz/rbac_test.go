@@ -2,6 +2,15 @@ package authz
 
 import "testing"
 
+func TestPrincipalActorIDUsesFirstConcreteAuthenticatedField(t *testing.T) {
+	if got := PrincipalActorID(" ", "client-1", "device-1", "credential-1"); got != "client-1" {
+		t.Fatalf("PrincipalActorID() = %q, want client-1", got)
+	}
+	if got := PrincipalActorID("", " "); got != "" {
+		t.Fatalf("PrincipalActorID() = %q, want empty", got)
+	}
+}
+
 func TestAskQueriesWriteScopeRoleExpansion(t *testing.T) {
 	assertGRCContentWriteScopeExpansion(t, ScopeAskQueriesWrite)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
+	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
@@ -53,6 +54,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerKnowledgeRoutes(mux)
 	app.registerGraphRoutes(mux)
 	app.registerJobRoutes(mux)
+	registerHTTPRoute(mux, "POST /platform/append-log/dead-letters/{deadLetterID}/force-purge", routeSurfacePlatformHTTP, deadletteradmin.NewHandler(app.deps.StateStore, hasAuthContext, authorizeJobAdmin, authorizeTenantID, customDashboardActorID).ForcePurge)
 	app.registerRuntimeResponseRoutes(mux)
 	app.registerSourceRuntimeRoutes(mux)
 	app.registerMCPRoutes(mux)
