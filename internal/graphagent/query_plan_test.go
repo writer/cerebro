@@ -840,6 +840,23 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT +1000`,
 		},
 		{
+			name:      "parenthesized numeric limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (5)`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (5)`,
+		},
+		{
+			name:      "parenthesized limit expression remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (1 + 2)`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (1 + 2)`,
+		},
+		{
+			name:           "limit named function is not a clause",
+			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN limit(5) AS value, e`,
+			wantQuery:      "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN limit(5) AS value, e\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
 			name:           "limit variable arithmetic is not a clause",
 			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1`,
 			wantQuery:      "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1\nLIMIT 100",
@@ -1313,6 +1330,23 @@ func TestConvertDraftToQueryInjectsLimitAfterLimitNamedArithmetic(t *testing.T) 
 	validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
 	if err != nil || !validation.OK || limit != 100 {
 		t.Fatalf("validate(converted cypher) = (%#v, %d, %v), want allowed LIMIT 100", validation, limit, err)
+	}
+}
+
+func TestConvertDraftToQueryPreservesParenthesizedLimitForValidatorRefusal(t *testing.T) {
+	queries := []string{
+		`MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (5)`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (1 + 2)`,
+	}
+	for _, cypher := range queries {
+		result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{Cypher: cypher})
+		if result.Cypher != cypher || result.Corrected || containsDiagnosticCode(result.Diagnostics, "limit_injected") {
+			t.Fatalf("conversion result = %#v, want parenthesized LIMIT preserved for validation", result)
+		}
+		validation, _, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
+		if err != nil || validation.OK || validation.Code != "limit_required" {
+			t.Fatalf("validate(converted cypher) = (%#v, %v), want limit_required refusal", validation, err)
+		}
 	}
 }
 

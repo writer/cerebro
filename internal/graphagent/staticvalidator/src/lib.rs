@@ -1225,6 +1225,8 @@ mod tests {
         let queries = [
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 * 1000",
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 + 1000",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (5)",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (1 + 2)",
         ];
         for query in queries {
             assert_eq!(
