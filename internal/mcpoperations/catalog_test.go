@@ -58,6 +58,16 @@ func TestToolsetProfilesPreserveDomainAndFullSelection(t *testing.T) {
 	}
 }
 
+func TestOperationsToolsetIncludesConnectorCertification(t *testing.T) {
+	toolsets := Toolsets{"operations": true}
+	if got := ToolsetForName("cerebro.connectors.list"); got != "operations" {
+		t.Fatalf("ToolsetForName(cerebro.connectors.list) = %q, want operations", got)
+	}
+	if !EnabledForToolsets("cerebro.connectors.list", toolsets) {
+		t.Fatal("operations toolset rejected cerebro.connectors.list")
+	}
+}
+
 func TestToolFamilySanitizesTelemetryValue(t *testing.T) {
 	t.Parallel()
 

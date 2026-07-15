@@ -206,7 +206,7 @@ func ToolsetForName(name string) string {
 		return "findings"
 	case strings.HasPrefix(name, "assets."):
 		return "assets"
-	case strings.HasPrefix(name, "sources."), strings.HasPrefix(name, "source_runtimes."), strings.HasPrefix(name, "runtimes."), strings.HasPrefix(name, "connector_definitions."):
+	case strings.HasPrefix(name, "sources."), strings.HasPrefix(name, "connectors."), strings.HasPrefix(name, "source_runtimes."), strings.HasPrefix(name, "runtimes."), strings.HasPrefix(name, "connector_definitions."):
 		return "operations"
 	case strings.HasPrefix(name, "agent."):
 		return "agent"

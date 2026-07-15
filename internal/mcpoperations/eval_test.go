@@ -79,3 +79,40 @@ func TestEvidencePacketRequestTreatsNumericZeroAsFalse(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskResponsesPreserveStructuredContentPartialErrors(t *testing.T) {
+	t.Parallel()
+
+	data := StructuredContent{
+		"metadata": map[string]any{
+			"partial_errors": []any{"graph lookup failed"},
+		},
+	}
+	risk, err := RiskExplanation(data, false)
+	if err != nil {
+		t.Fatalf("RiskExplanation() error = %v", err)
+	}
+	if risk.State != TaskStatePartial || len(risk.PartialReasons) != 1 || risk.PartialReasons[0] != "graph lookup failed" {
+		t.Fatalf("RiskExplanation() = %#v, want partial state with graph error", risk)
+	}
+	graphDependencyFound := false
+	for _, dependency := range risk.Dependencies {
+		if dependency.Name == "graph_projection" && dependency.State != DependencyUnavailable {
+			t.Fatalf("RiskExplanation() graph dependency = %#v, want unavailable", dependency)
+		}
+		if dependency.Name == "graph_projection" {
+			graphDependencyFound = true
+		}
+	}
+	if !graphDependencyFound {
+		t.Fatal("RiskExplanation() omitted graph_projection dependency")
+	}
+
+	plan, err := ActionPlan(data, true)
+	if err != nil {
+		t.Fatalf("ActionPlan() error = %v", err)
+	}
+	if plan.State != TaskStatePartial || len(plan.PartialReasons) != 1 || plan.PartialReasons[0] != "graph lookup failed" {
+		t.Fatalf("ActionPlan() = %#v, want partial state with graph error", plan)
+	}
+}

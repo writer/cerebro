@@ -296,8 +296,13 @@ func coverageState(coverage *agentplatform.AgentCoverageContext) (string, []stri
 }
 
 func partialErrors(value any) []string {
-	typed, ok := value.(map[string]any)
-	if !ok {
+	var typed map[string]any
+	switch current := value.(type) {
+	case map[string]any:
+		typed = current
+	case StructuredContent:
+		typed = map[string]any(current)
+	default:
 		return nil
 	}
 	metadata, ok := typed["metadata"].(map[string]any)
