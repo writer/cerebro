@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/writer/cerebro/internal/compliance"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/sourceregistry"
 )
@@ -88,6 +89,9 @@ func generateCatalog() ([]byte, error) {
 	}
 	if errs := findinganalysis.ValidatePublicDetectionAuditDepth(catalog); len(errs) != 0 {
 		return nil, errs[0]
+	}
+	if err := compliance.ValidateBuiltinFindingProfileCoverage(catalog); err != nil {
+		return nil, err
 	}
 	content, err := json.MarshalIndent(catalog, "", "  ")
 	if err != nil {
