@@ -16,8 +16,9 @@ const (
 )
 
 var (
-	ErrImpactSchedulerUnavailable = errors.New("compliance impact scheduler unavailable")
-	ErrImpactMonitorLimit         = errors.New("compliance impact monitor limit exceeded")
+	ErrImpactSchedulerUnavailable  = errors.New("compliance impact scheduler unavailable")
+	ErrImpactMonitorLimit          = errors.New("compliance impact monitor limit exceeded")
+	ErrImpactProjectionUnavailable = errors.New("compliance impact graph projection unavailable")
 )
 
 type impactAnalyzer interface {

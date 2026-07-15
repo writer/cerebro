@@ -98,6 +98,26 @@ Monitor enumeration is paginated and stops before writing if the configured
 and monitor. The existing debounce window and per-plan lease remain responsible
 for coalescing signals and preventing overlapping assessment runs.
 
+The production composition root now builds the monitor service from the
+Postgres monitor store and append log. When the graph store implements both the
+projection and bounded query ports, it also builds the compliance impact graph
+projector, analyzer, and scheduler.
+
+Each projected impact node represents one exact immutable revision. Its URN
+includes a digest of the full exact identity, while its attributes retain the
+tenant, domain, fact kind, stable ID, revision ID, version, content digest, and
+last-modified time. A dependent points to an exact dependency through a
+`compliance_depends_on` edge carrying the domain relation. The projection writes
+identifiers and revision metadata only.
+
+Graph reads use tenant-scoped read-only Cypher. Fact reads count dependencies
+before loading them and reject more than 2,999 edges. Reverse-dependency pages
+use an exact-revision URN cursor, request one row beyond the caller limit, and
+reject unordered, cross-tenant, or revision-mismatched rows. The analyzer keeps
+its separate node, edge, depth, and page limits. Neo4j remains rebuildable; a
+missing or inconsistent exact revision fails impact analysis instead of changing
+the Postgres or JetStream authority.
+
 ## Public Event Mapping
 
 | Canonical workflow event | Public event | Public payload |

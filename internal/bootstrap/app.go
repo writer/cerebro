@@ -26,6 +26,8 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/complianceassessment"
+	"github.com/writer/cerebro/internal/complianceimpact"
+	"github.com/writer/cerebro/internal/compliancemonitor"
 	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
@@ -94,21 +96,24 @@ type App struct {
 }
 
 type appServices struct {
-	sourceOps      *sourceops.Service
-	reports        *reports.Service
-	runtimeOps     *sourceruntime.Service
-	claims         *claims.Service
-	findings       *findings.Service
-	knowledgeOps   *knowledge.Service
-	graphQueries   *graphquery.Service
-	graphFacts     *graphfacts.Service
-	graphActions   *graphactions.Service
-	graphIngestOps *graphingest.Service
-	workflowReplay *workflowprojection.Replayer
-	jobs           *platformjobs.Service
-	assessments    *complianceassessment.Service
-	evidence       *evidenceledger.Service
-	remediation    *complianceremediation.Service
+	sourceOps       *sourceops.Service
+	reports         *reports.Service
+	runtimeOps      *sourceruntime.Service
+	claims          *claims.Service
+	findings        *findings.Service
+	knowledgeOps    *knowledge.Service
+	graphQueries    *graphquery.Service
+	graphFacts      *graphfacts.Service
+	graphActions    *graphactions.Service
+	graphIngestOps  *graphingest.Service
+	workflowReplay  *workflowprojection.Replayer
+	jobs            *platformjobs.Service
+	assessments     *complianceassessment.Service
+	evidence        *evidenceledger.Service
+	monitors        *compliancemonitor.Service
+	impactProjector *complianceimpact.GraphProjector
+	impactScheduler *complianceimpact.Scheduler
+	remediation     *complianceremediation.Service
 }
 
 type bootstrapService struct {
@@ -251,6 +256,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()
+	app.services.monitors, app.services.impactProjector, app.services.impactScheduler = app.newComplianceImpactServices(app.services.jobs)
 	app.services.assessments = app.newAssessmentService(app.services.jobs)
 	if app.services.assessments != nil {
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
