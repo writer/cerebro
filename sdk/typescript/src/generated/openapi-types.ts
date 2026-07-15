@@ -1407,11 +1407,38 @@ export type FindingEvaluationRun = {
   findings_emitted?: number;
   findings_upserted?: number;
   finished_at?: string;
+  graph_row_limit?: number;
+  graph_rows_read?: number;
+  graph_rule?: boolean;
+  graph_truncated?: boolean;
   id?: string;
+  rule_applicable?: boolean;
   rule_id?: string;
   runtime_id?: string;
+  source_dependency_complete?: boolean;
+  source_snapshots?: FindingEvaluationSourceSnapshot[];
   started_at?: string;
   status?: string;
+};
+
+export type FindingEvaluationSourceSnapshot = {
+  checkpoint_watermark?: string;
+  complete?: boolean;
+  contract_probe_state?: string;
+  family?: string;
+  graph_checkpoint_id?: string;
+  graph_ingest_run_id?: string;
+  graph_ingest_status?: string;
+  graph_ingested_at?: string;
+  graph_snapshot_complete?: boolean;
+  last_synced_at?: string;
+  progress_config_hash?: string;
+  records_accepted?: number;
+  records_rejected?: number;
+  records_scanned?: number;
+  runtime_id?: string;
+  source_id?: string;
+  sync_status?: string;
 };
 
 export type FindingEvidence = {
@@ -3027,6 +3054,10 @@ export type GetEntityNeighborhoodResponse = {
   root?: GraphEntity;
 };
 
+export type GetGraphIngestRunResponse = {
+  run?: GraphIngestRun;
+};
+
 export type GetSourceRuntimeResponse = {
   runtime?: SourceRuntime;
 };
@@ -3095,6 +3126,54 @@ export type GraphEvidenceRow = {
   attributes?: Record<string, string>;
   label?: string;
   paths?: GraphEvidencePath[];
+};
+
+export type GraphIngestResult = {
+  checkpoint_already_fresh?: boolean;
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  checkpoint_persisted?: boolean;
+  checkpoint_resumed?: boolean;
+  entities_projected?: number;
+  events_read?: number;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  links_projected?: number;
+  next_cursor?: string;
+  pages_read?: number;
+  source_id?: string;
+  tenant_id?: string;
+};
+
+export type GraphIngestRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  entities_projected?: number;
+  error?: string;
+  events_read?: number;
+  finished_at?: string;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  id?: string;
+  links_projected?: number;
+  pages_read?: number;
+  runtime_id?: string;
+  source_id?: string;
+  started_at?: string;
+  status?: string;
+  tenant_id?: string;
+  trigger?: string;
+};
+
+export type GraphIngestRunResult = {
+  ingest?: GraphIngestResult;
+  run?: GraphIngestRun;
 };
 
 export type GraphRelation = {
@@ -3182,6 +3261,11 @@ export type IssueBootstrapTokenResponse = {
 
 export type ListClaimsResponse = {
   claims?: Claim[];
+};
+
+export type ListGraphIngestRunsResponse = {
+  failed_count?: number;
+  runs?: GraphIngestRun[];
 };
 
 export type NHICoverageLaneSummary = {
@@ -3396,6 +3480,10 @@ export type RiskScoringSignalThresholds = {
   epss_elevated?: number;
   epss_high?: number;
   private_network_likelihood_cap?: number;
+};
+
+export type RunGraphIngestRuntimeResponse = {
+  result?: GraphIngestRunResult;
 };
 
 export type RuntimeBlocklistEntry = {
@@ -3650,6 +3738,8 @@ export type SourceRuntimeHealthFindingEvaluation = {
 };
 
 export type SourceRuntimeHealthGraphRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
   duration_seconds?: number;
   entities_projected?: number;
   error?: string;

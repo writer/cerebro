@@ -64,10 +64,11 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	leaseCtx, releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
 	if err != nil {
 		return nil, err
 	}
+	ctx = leaseCtx
 	defer func() {
 		if releaseErr := releaseLease(); releaseErr != nil {
 			err = errors.Join(err, releaseErr)
@@ -81,6 +82,17 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if err != nil {
 		return nil, err
 	}
+	dependencyCtx, releaseDependencies, dependencyRuntimes, dependenciesTrusted, err := s.acquireGraphEvaluationDependencyLeases(ctx, runtime, candidates)
+	if err != nil {
+		return nil, err
+	}
+	ctx = dependencyCtx
+	trustedInput = trustedInput && dependenciesTrusted
+	defer func() {
+		if releaseErr := releaseDependencies(); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		}
+	}()
 	startedAt := time.Now().UTC()
 	result = &EvaluateGraphRulesResult{
 		Runtime:     runtime,
@@ -88,7 +100,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	}
 	var firstErr error
 	for _, rule := range candidates {
-		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, trustedInput)
+		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, trustedInput, dependencyRuntimes)
 		if evaluation != nil {
 			result.Evaluations = append(result.Evaluations, evaluation)
 		}
@@ -99,7 +111,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, trustedInput bool) (evaluation *GraphRuleEvaluationResult, err error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, trustedInput bool, dependencyRuntimes []*cerebrov1.SourceRuntime) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
 	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
@@ -146,7 +158,11 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	queryRequest := rule.QueryFor(runtime)
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
 	run.RuleApplicable = proto.Bool(rule.SupportsRuntime(runtime))
-	s.bindGraphEvaluationSourceSnapshots(ctx, run, runtime, rule, startedAt)
+	if dependencyRuntimes == nil {
+		s.bindGraphEvaluationSourceSnapshots(ctx, run, runtime, rule, startedAt)
+	} else {
+		s.bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx, run, runtime, rule, startedAt, dependencyRuntimes)
+	}
 	if s.requireTrustedResolution && !trustedInput {
 		run.SourceDependencyComplete = proto.Bool(false)
 	}
@@ -271,6 +287,92 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 
 const maxGraphEvaluationDependencyRuntimes = 500
 
+func (s *Service) acquireGraphEvaluationDependencyLeases(ctx context.Context, trigger *cerebrov1.SourceRuntime, rules []GraphRule) (context.Context, func() error, []*cerebrov1.SourceRuntime, bool, error) {
+	noop := func() error { return nil }
+	if s == nil || !s.requireTrustedResolution || len(rules) == 0 {
+		return ctx, noop, nil, true, nil
+	}
+	listStore, ok := s.runtimeStore.(ports.SourceRuntimeListStore)
+	if !ok || trigger == nil {
+		return ctx, noop, nil, false, fmt.Errorf("%w: source runtime list store is required for graph evaluation", ErrRuntimeUnavailable)
+	}
+	runtimes, err := listStore.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(trigger.GetTenantId()),
+		Limit:    maxGraphEvaluationDependencyRuntimes + 1,
+	})
+	if err != nil {
+		return ctx, noop, nil, false, fmt.Errorf("list graph evaluation source runtimes: %w", err)
+	}
+	if len(runtimes) > maxGraphEvaluationDependencyRuntimes {
+		return ctx, noop, nil, false, fmt.Errorf("%w: graph evaluation source runtime limit exceeded", ErrRuntimeUnavailable)
+	}
+	selectedIDs := make([]string, 0, len(runtimes))
+	for _, candidate := range runtimes {
+		if candidate == nil {
+			continue
+		}
+		for _, rule := range rules {
+			if rule != nil && rule.SupportsRuntime(candidate) {
+				selectedIDs = append(selectedIDs, strings.TrimSpace(candidate.GetId()))
+				break
+			}
+		}
+	}
+	selectedIDs = append(selectedIDs, strings.TrimSpace(trigger.GetId()))
+	selectedIDs = normalizedFindingStrings(selectedIDs)
+	triggerID := strings.TrimSpace(trigger.GetId())
+	currentCtx := ctx
+	releases := make([]func() error, 0, len(selectedIDs))
+	releaseAll := func() error {
+		var releaseErr error
+		for index := len(releases) - 1; index >= 0; index-- {
+			releaseErr = errors.Join(releaseErr, releases[index]())
+		}
+		return releaseErr
+	}
+	for _, runtimeID := range selectedIDs {
+		if runtimeID == triggerID {
+			continue
+		}
+		leaseCtx, release, trusted, leaseErr := s.acquireFindingEvaluationLease(currentCtx, runtimeID, false)
+		if leaseErr != nil {
+			return ctx, noop, nil, false, errors.Join(leaseErr, releaseAll())
+		}
+		if !trusted {
+			return ctx, noop, nil, false, errors.Join(fmt.Errorf("%w: source runtime lease store is required for graph dependencies", ErrRuntimeUnavailable), releaseAll())
+		}
+		currentCtx = leaseCtx
+		releases = append(releases, release)
+	}
+	refreshed := make([]*cerebrov1.SourceRuntime, 0, len(selectedIDs))
+	for _, runtimeID := range selectedIDs {
+		current, getErr := s.runtimeStore.GetSourceRuntime(currentCtx, runtimeID)
+		if getErr != nil {
+			return ctx, noop, nil, false, errors.Join(fmt.Errorf("reload graph evaluation source runtime %q: %w", runtimeID, getErr), releaseAll())
+		}
+		refreshed = append(refreshed, current)
+	}
+	return currentCtx, releaseAll, refreshed, true, nil
+}
+
+func normalizedFindingStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
 func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time) {
 	if run == nil {
 		return
@@ -288,6 +390,13 @@ func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *c
 	if err != nil || len(runtimes) > maxGraphEvaluationDependencyRuntimes {
 		bindFindingEvaluationSourceSnapshot(run, trigger)
 		run.SourceDependencyComplete = proto.Bool(false)
+		return
+	}
+	s.bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx, run, trigger, rule, evaluationStartedAt, runtimes)
+}
+
+func (s *Service) bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time, runtimes []*cerebrov1.SourceRuntime) {
+	if run == nil {
 		return
 	}
 	dependencies := graphRuleDependencyKeys(rule)

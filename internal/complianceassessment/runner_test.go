@@ -116,6 +116,59 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	}
 }
 
+func TestAssessmentRunCompletesFromTrustedFindingEvaluation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	evaluation := eventEvaluationRun("evaluation-trusted", now.Add(-30*time.Minute), 100, 12)
+	store := newRunStore()
+	collector := NewFindingEvaluationCollector(
+		store,
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntimeForEvaluation(evaluation, now)}},
+		&collectorEvaluationLister{values: []*cerebrov1.FindingEvaluationRun{evaluation}},
+	)
+	collector.now = func() time.Time { return now }
+	jobs := platformjobs.New(newRunJobStore(now))
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+
+	planInput := validPlan(now)
+	planInput.Execution.Tasks[0] = PlanTask{
+		ID: "task-1", ObjectiveID: "objective-1", ControlRef: planInput.Execution.Tasks[0].ControlRef,
+		Kind: PlanTaskKindFindingEvaluation, RuleID: "rule-1", RuntimeIDs: []string{"runtime-1"}, MaxAge: "2h", EvaluationMode: EvaluationModePointInTime,
+	}
+	draft, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
+	if err != nil {
+		t.Fatalf("RecordPlan() error = %v", err)
+	}
+	plan, err := service.PublishPlan(context.Background(), draft.TenantID, draft.ID, "approver-1", draft.Version)
+	if err != nil {
+		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	run, created, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID, PeriodStart: now.Add(-24 * time.Hour), PeriodEnd: now,
+		IdempotencyKey: "trusted-loop-1", RequestedBy: "assessor-1",
+	})
+	if err != nil || !created || run.JobID == "" {
+		t.Fatalf("RequestRun() = (%#v, %v, %v)", run, created, err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete || completed.ResultCount != 1 || completed.InputHash == "" || completed.AutomatedResultHash == "" {
+		t.Fatalf("completed run = (%#v, %v), want one digest-bound result", completed, err)
+	}
+	chunks, err := store.ListResultChunks(context.Background(), run.TenantID, run.ID)
+	if err != nil || len(chunks) != 1 || len(chunks[0].Results) != 1 {
+		t.Fatalf("result chunks = (%#v, %v), want one result", chunks, err)
+	}
+	result := chunks[0].Results[0]
+	if result.AutomatedOutcome != OutcomeSatisfied || result.EvidenceState != EvidenceSufficient || len(result.EvidenceIDs) != 1 || result.EvidenceIDs[0] != evaluation.GetId() {
+		t.Fatalf("assessment result = %#v, want satisfied result bound to %q", result, evaluation.GetId())
+	}
+}
+
 func TestAssessmentRunIdempotencyBindsRequestBody(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
