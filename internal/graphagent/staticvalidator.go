@@ -16,14 +16,23 @@ import (
 )
 
 const (
-	staticValidatorABIVersion = 1
-	staticValidatorResultSize = 24
+	staticValidatorABIVersion    = 2
+	staticValidatorResultSize    = 24
+	staticValidatorMaxQueryBytes = 64 * 1024
 )
 
 //go:embed staticvalidator.wasm
 var staticValidatorWasm []byte
 
 type staticValidatorDecision uint32
+
+type staticValidatorStatus uint32
+
+const (
+	staticValidatorStatusSuccess       staticValidatorStatus = 0
+	staticValidatorStatusInvalidMemory staticValidatorStatus = 1
+	staticValidatorStatusQueryTooLarge staticValidatorStatus = 2
+)
 
 const (
 	staticValidatorAllow staticValidatorDecision = iota
@@ -37,6 +46,7 @@ const (
 	staticValidatorLimitRequired
 	staticValidatorLimitExceeded
 	staticValidatorTenantScopeRequired
+	staticValidatorQueryTooLarge
 )
 
 type staticValidation struct {
@@ -57,6 +67,12 @@ var (
 )
 
 func runStaticValidator(ctx context.Context, query string, maxRows int) (staticValidation, error) {
+	if len(query) > staticValidatorMaxQueryBytes {
+		return staticValidation{
+			decision: staticValidatorQueryTooLarge,
+			detail:   uint64(len(query)), // #nosec G115 -- string lengths are non-negative and widened for the Wasm ABI.
+		}, nil
+	}
 	staticValidatorOnce.Do(func() {
 		initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
@@ -139,7 +155,7 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 	if err != nil {
 		return staticValidation{}, fmt.Errorf("%w: execute static validator: %w", ErrRuntimeUnavailable, err)
 	}
-	if len(status) != 1 || status[0] != 0 {
+	if len(status) != 1 || staticValidatorStatus(status[0]) != staticValidatorStatusSuccess {
 		return staticValidation{}, fmt.Errorf("%w: static validator status = %v", ErrRuntimeUnavailable, status)
 	}
 	result, ok := module.Memory().Read(resultPointer, staticValidatorResultSize)
@@ -154,7 +170,7 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 		limit:    binary.LittleEndian.Uint64(result[8:16]),
 		detail:   binary.LittleEndian.Uint64(result[16:24]),
 	}
-	if validation.decision > staticValidatorTenantScopeRequired {
+	if validation.decision > staticValidatorQueryTooLarge {
 		return staticValidation{}, fmt.Errorf("%w: unknown static validator decision %d", ErrRuntimeUnavailable, validation.decision)
 	}
 	return validation, nil
@@ -227,6 +243,8 @@ func staticValidationResult(validation staticValidation, maxRows int) (Validator
 		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", validation.detail, maxRows)), 0, nil
 	case staticValidatorTenantScopeRequired:
 		return validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id"), 0, nil
+	case staticValidatorQueryTooLarge:
+		return validatorRefusal("query_too_large", fmt.Sprintf("cypher exceeds the %d-byte validator limit", staticValidatorMaxQueryBytes)), 0, nil
 	default:
 		return ValidatorResult{}, 0, errors.New("unreachable static validator decision")
 	}
