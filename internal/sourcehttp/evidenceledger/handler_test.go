@@ -108,10 +108,16 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 
 	reuseInput := claimInput
 	reuseInput.Scope.RequirementID = "requirement-2"
+	spoofedCreatedAt := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+	reuseInput.CreatedAt = spoofedCreatedAt
+	reuseInput.CreatedBy = "spoofed-operator"
 	var reused evidenceClaimResponse
 	doJSON(t, server.Client(), http.MethodPost, server.URL+"/grc/evidence-claims/"+created.Claim.ID+"/reuse", reuseEvidenceClaimRequest{TenantID: "tenant-1", Claim: reuseInput}, http.StatusCreated, &reused)
 	if reused.Claim.ID == created.Claim.ID || reused.Claim.ArtifactVersionID != created.Claim.ArtifactVersionID || reused.Claim.Decision.ReviewState != ports.EvidenceReviewPending {
 		t.Fatalf("reused claim = %#v", reused.Claim)
+	}
+	if reused.Claim.CreatedBy != "operator-1" || reused.Claim.CreatedAt.Equal(spoofedCreatedAt) {
+		t.Fatalf("reused claim audit fields = created_by %q, created_at %s", reused.Claim.CreatedBy, reused.Claim.CreatedAt)
 	}
 
 	var invalidated evidenceClaimResponse

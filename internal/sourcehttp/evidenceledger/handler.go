@@ -300,6 +300,8 @@ func (h *Handler) ReuseClaim(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
+	request.Claim.CreatedAt = time.Time{}
+	request.Claim.CreatedBy = ""
 	claim, err := h.service.ReuseClaim(r.Context(), tenantID, r.PathValue("claimID"), h.actorID(r.Context()), request.Claim)
 	if err != nil {
 		h.writeError(w, err)
