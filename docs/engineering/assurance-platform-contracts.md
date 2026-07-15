@@ -55,6 +55,22 @@ returns `evidence_claim_conflicting` with `resolve_conflict`. Invalidating the
 contradictory claim removes it from current conflict evaluation without changing
 historical events or snapshots.
 
+## Change-Driven Assessment Scheduling
+
+`complianceimpact.Scheduler` connects immutable change signals to the existing
+bounded impact analyzer and compliance monitor service. It records only source
+event IDs, monitor IDs, signal kinds, timestamps, and the assessment-directive
+digest in monitor state.
+
+When impact traversal is complete, the scheduler selects enabled change monitors
+whose exact plan revision appears in the impact result. When traversal reaches a
+node, edge, depth, or consistency limit, the directive changes to
+`full_reconciliation` and selects every enabled change monitor in the tenant.
+Monitor enumeration is paginated and stops before writing if the configured
+10,000-monitor bound would be exceeded. Recording is idempotent by source event
+and monitor. The existing debounce window and per-plan lease remain responsible
+for coalescing signals and preventing overlapping assessment runs.
+
 ## Public Event Mapping
 
 | Canonical workflow event | Public event | Public payload |
