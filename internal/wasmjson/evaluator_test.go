@@ -10,15 +10,19 @@ import (
 func TestEvaluatorRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 	evaluator := New(Config{})
-	_, err := evaluator.Evaluate(context.Background(), nil)
-	if !errors.Is(err, ErrInvalidConfig) {
-		t.Fatalf("Evaluate() error = %v; want %v", err, ErrInvalidConfig)
+	for _, payload := range [][]byte{nil, []byte("x")} {
+		_, err := evaluator.Evaluate(context.Background(), payload)
+		if !errors.Is(err, ErrInvalidConfig) {
+			t.Fatalf("Evaluate(%d bytes) error = %v; want %v", len(payload), err, ErrInvalidConfig)
+		}
 	}
 }
 
 func TestEvaluatorBoundsInputWithoutExposingPayload(t *testing.T) {
 	t.Parallel()
-	evaluator := New(testConfig())
+	config := testConfig()
+	config.Module = []byte{0}
+	evaluator := New(config)
 	marker := "input-marker-that-must-not-be-logged"
 	_, err := evaluator.Evaluate(context.Background(), []byte(marker))
 	if !errors.Is(err, ErrInputTooLarge) {
@@ -31,11 +35,16 @@ func TestEvaluatorCachesInitializationError(t *testing.T) {
 	config := testConfig()
 	config.MaxInputBytes = 1
 	evaluator := New(config)
+	var cached error
 	for range 2 {
 		_, err := evaluator.Evaluate(context.Background(), nil)
 		if !errors.Is(err, ErrInvalidConfig) {
 			t.Fatalf("Evaluate() error = %v; want %v", err, ErrInvalidConfig)
 		}
+		if cached != nil && !errors.Is(err, cached) {
+			t.Fatalf("Evaluate() error = %v; want cached error %v", err, cached)
+		}
+		cached = err
 	}
 }
 

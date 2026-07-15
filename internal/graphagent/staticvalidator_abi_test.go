@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 )
 
 func TestStaticValidatorWasmMatchesABIGoldenCases(t *testing.T) {
@@ -97,11 +100,7 @@ func TestStaticValidatorWasmRejectsOversizedGuestInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	module, err := staticValidatorShared.runtime.InstantiateModule(ctx, staticValidatorShared.compiled, staticValidatorModuleConfig())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer module.Close(ctx) //nolint:errcheck // Test cleanup cannot change the assertion.
+	module := instantiateStaticValidatorForABITest(t, ctx)
 
 	allocation, err := module.ExportedFunction("cerebro_validator_alloc").Call(ctx, staticValidatorMaxQueryBytes+1)
 	if err != nil {
@@ -125,11 +124,7 @@ func TestStaticValidatorWasmRejectsOverlappingRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	module, err := staticValidatorShared.runtime.InstantiateModule(ctx, staticValidatorShared.compiled, staticValidatorModuleConfig())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer module.Close(ctx) //nolint:errcheck // Test cleanup cannot change the assertion.
+	module := instantiateStaticValidatorForABITest(t, ctx)
 
 	allocation, err := module.ExportedFunction("cerebro_validator_alloc").Call(ctx, uint64(len(query)))
 	if err != nil {
@@ -150,6 +145,25 @@ func TestStaticValidatorWasmRejectsOverlappingRanges(t *testing.T) {
 	if len(status) != 1 || status[0] != uint64(staticValidatorStatusInvalidMemory) {
 		t.Fatalf("overlapping validation status = %v, want %d", status, staticValidatorStatusInvalidMemory)
 	}
+}
+
+func instantiateStaticValidatorForABITest(t *testing.T, ctx context.Context) api.Module {
+	t.Helper()
+	runtime := wazero.NewRuntime(ctx)
+	t.Cleanup(func() {
+		if err := runtime.Close(ctx); err != nil {
+			t.Errorf("close validator ABI runtime: %v", err)
+		}
+	})
+	compiled, err := runtime.CompileModule(ctx, staticValidatorWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().WithName("").WithStartFunctions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return module
 }
 
 func BenchmarkStaticValidator(b *testing.B) {

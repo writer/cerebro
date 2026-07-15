@@ -1,0 +1,49 @@
+{
+  "contracts": [
+    {
+      "source_id": "alpha",
+      "dimensions": [
+        {
+          "id": "users",
+          "type": "entity_family",
+          "title": "Users",
+          "families": ["user"],
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "source_id": "beta",
+      "dimensions": [
+        {
+          "id": "devices",
+          "type": "entity_family",
+          "title": "Devices",
+          "runtime_families": ["endpoint"],
+          "support": "partial",
+          "high_value": true
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "runtime_id": "alpha-users",
+      "source_id": "alpha",
+      "tenant_id": "tenant-b",
+      "family": "user",
+      "status": "healthy"
+    },
+    {
+      "runtime_id": "beta-device",
+      "source_id": "beta",
+      "tenant_id": "tenant-a",
+      "family": "endpoint",
+      "status": "current"
+    }
+  ],
+  "options": {
+    "tenant_id": "tenant-a",
+    "source_id": " beta "
+  }
+}
