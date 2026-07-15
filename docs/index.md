@@ -87,6 +87,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | Persona-specific graph views | [Persona view lenses](domains/persona-view-lenses.md) |
 | GRC architecture | [GRC architecture](domains/grc-architecture.md) |
 | Compliance control coverage | [Compliance controls](domains/compliance-controls.md) |
+| Durable compliance assessments | [Continuous compliance execution plan](domains/continuous-compliance-plan.md) |
 | Policies | [Policies](domains/policies.md) |
 | Security operations | [Security operations](domains/security-operations.md) |
 | Aperio integration | [Aperio integration contract](domains/aperio-integration-contract.md) |
