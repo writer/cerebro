@@ -28,8 +28,12 @@ func Packet(packet *decisionpacket.Packet) (*cerebrov1.DecisionPacket, error) {
 	}
 	result := &cerebrov1.DecisionPacket{
 		SchemaVersion: packet.SchemaVersion, Id: packet.ID, GeneratedAt: decisionPacketTimestamp(packet.GeneratedAt),
-		Workflow:   &cerebrov1.DecisionPacketWorkflow{Id: packet.Workflow.ID, Question: packet.Workflow.Question},
-		Scope:      &cerebrov1.DecisionPacketScope{TenantId: packet.Scope.TenantID, ActorId: packet.Scope.ActorID, Urn: packet.Scope.URN},
+		Workflow: &cerebrov1.DecisionPacketWorkflow{Id: packet.Workflow.ID, Question: packet.Workflow.Question},
+		Scope:    &cerebrov1.DecisionPacketScope{TenantId: packet.Scope.TenantID, ActorId: packet.Scope.ActorID, Urn: packet.Scope.URN},
+		Inputs: &cerebrov1.DecisionPacketInputs{
+			FindingIds: packet.Inputs.FindingIDs, ClaimIds: packet.Inputs.ClaimIDs, EvidenceUrns: packet.Inputs.EvidenceURNs,
+			AuditPacketIds: packet.Inputs.AuditPacketIDs, RequiredSources: packet.Inputs.RequiredSources, RequestedAction: packet.Inputs.RequestedAction,
+		},
 		Guardrails: guardrails, Claim: claim,
 		Decision:   &cerebrov1.DecisionPacketDecision{State: packet.Decision.State, Rationale: packet.Decision.Rationale, Reasons: packet.Decision.Reasons},
 		Confidence: &cerebrov1.DecisionPacketConfidence{Level: packet.Confidence.Level, Basis: packet.Confidence.Basis},

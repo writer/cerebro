@@ -9171,7 +9171,7 @@ components:
           maximum: 3
     DecisionPacket:
       type: object
-      required: [schema_version, id, generated_at, workflow, scope, guardrails, claim, decision, confidence, freshness, evidence, contradictions, coverage_gaps, affected, controls, audit_packets, actions, provenance, limits]
+      required: [schema_version, id, generated_at, workflow, scope, inputs, guardrails, claim, decision, confidence, freshness, evidence, contradictions, coverage_gaps, affected, controls, audit_packets, actions, provenance, limits]
       properties:
         schema_version:
           type: string
@@ -9185,6 +9185,8 @@ components:
           $ref: '#/components/schemas/DecisionPacketWorkflow'
         scope:
           $ref: '#/components/schemas/DecisionPacketScope'
+        inputs:
+          $ref: '#/components/schemas/DecisionPacketInputs'
         guardrails:
           type: object
           additionalProperties: true
@@ -9236,6 +9238,32 @@ components:
         id:
           type: string
         question:
+          type: string
+    DecisionPacketInputs:
+      type: object
+      required: [finding_ids, claim_ids, evidence_urns, audit_packet_ids, required_sources]
+      properties:
+        finding_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        audit_packet_ids:
+          type: array
+          items:
+            type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        requested_action:
           type: string
     DecisionPacketScope:
       type: object

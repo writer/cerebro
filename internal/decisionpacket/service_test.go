@@ -63,7 +63,10 @@ func TestServiceBuildsSupportedContentAddressedPacket(t *testing.T) {
 		Rationale: "Current evidence supports the requested conclusion.",
 	}}
 	service := NewService(resolver, fixedClock{now: now})
-	request := Request{Workflow: "triage", Question: "Is this finding current?", ScopeURN: "urn:cerebro:tenant-1:finding:1"}
+	request := Request{
+		Workflow: "triage", Question: "Is this finding current?", ScopeURN: "urn:cerebro:tenant-1:finding:1",
+		FindingIDs: []string{"finding-1"}, ClaimIDs: []string{"claim-1"}, RequiredSources: []string{"source-1"}, RequestedAction: "notify",
+	}
 	packet, err := service.Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1", Scopes: []string{agentplatform.ScopeCosmoSecurityRead}}, request)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -76,6 +79,9 @@ func TestServiceBuildsSupportedContentAddressedPacket(t *testing.T) {
 	}
 	if !strings.HasPrefix(packet.ID, "dpr_") || packet.Claim.Verdict != agentplatform.ClaimVerdictSupported {
 		t.Fatalf("packet id = %q claim = %+v", packet.ID, packet.Claim)
+	}
+	if len(packet.Inputs.FindingIDs) != 1 || packet.Inputs.FindingIDs[0] != "finding-1" || packet.Inputs.RequestedAction != "notify" {
+		t.Fatalf("packet inputs = %+v", packet.Inputs)
 	}
 	second, err := service.Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1", Scopes: []string{agentplatform.ScopeCosmoSecurityRead}}, request)
 	if err != nil {

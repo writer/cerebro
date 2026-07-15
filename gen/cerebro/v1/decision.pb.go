@@ -312,6 +312,7 @@ type DecisionPacket struct {
 	Actions        []*DecisionPacketActionProposal       `protobuf:"bytes,17,rep,name=actions,proto3" json:"actions,omitempty"`
 	Provenance     *DecisionPacketProvenance             `protobuf:"bytes,18,opt,name=provenance,proto3" json:"provenance,omitempty"`
 	Limits         *DecisionPacketResultLimits           `protobuf:"bytes,19,opt,name=limits,proto3" json:"limits,omitempty"`
+	Inputs         *DecisionPacketInputs                 `protobuf:"bytes,20,opt,name=inputs,proto3" json:"inputs,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -479,6 +480,97 @@ func (x *DecisionPacket) GetLimits() *DecisionPacketResultLimits {
 	return nil
 }
 
+func (x *DecisionPacket) GetInputs() *DecisionPacketInputs {
+	if x != nil {
+		return x.Inputs
+	}
+	return nil
+}
+
+type DecisionPacketInputs struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	FindingIds      []string               `protobuf:"bytes,1,rep,name=finding_ids,json=findingIds,proto3" json:"finding_ids,omitempty"`
+	ClaimIds        []string               `protobuf:"bytes,2,rep,name=claim_ids,json=claimIds,proto3" json:"claim_ids,omitempty"`
+	EvidenceUrns    []string               `protobuf:"bytes,3,rep,name=evidence_urns,json=evidenceUrns,proto3" json:"evidence_urns,omitempty"`
+	AuditPacketIds  []string               `protobuf:"bytes,4,rep,name=audit_packet_ids,json=auditPacketIds,proto3" json:"audit_packet_ids,omitempty"`
+	RequiredSources []string               `protobuf:"bytes,5,rep,name=required_sources,json=requiredSources,proto3" json:"required_sources,omitempty"`
+	RequestedAction string                 `protobuf:"bytes,6,opt,name=requested_action,json=requestedAction,proto3" json:"requested_action,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DecisionPacketInputs) Reset() {
+	*x = DecisionPacketInputs{}
+	mi := &file_cerebro_v1_decision_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecisionPacketInputs) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecisionPacketInputs) ProtoMessage() {}
+
+func (x *DecisionPacketInputs) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_decision_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecisionPacketInputs.ProtoReflect.Descriptor instead.
+func (*DecisionPacketInputs) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DecisionPacketInputs) GetFindingIds() []string {
+	if x != nil {
+		return x.FindingIds
+	}
+	return nil
+}
+
+func (x *DecisionPacketInputs) GetClaimIds() []string {
+	if x != nil {
+		return x.ClaimIds
+	}
+	return nil
+}
+
+func (x *DecisionPacketInputs) GetEvidenceUrns() []string {
+	if x != nil {
+		return x.EvidenceUrns
+	}
+	return nil
+}
+
+func (x *DecisionPacketInputs) GetAuditPacketIds() []string {
+	if x != nil {
+		return x.AuditPacketIds
+	}
+	return nil
+}
+
+func (x *DecisionPacketInputs) GetRequiredSources() []string {
+	if x != nil {
+		return x.RequiredSources
+	}
+	return nil
+}
+
+func (x *DecisionPacketInputs) GetRequestedAction() string {
+	if x != nil {
+		return x.RequestedAction
+	}
+	return ""
+}
+
 type DecisionPacketWorkflow struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -489,7 +581,7 @@ type DecisionPacketWorkflow struct {
 
 func (x *DecisionPacketWorkflow) Reset() {
 	*x = DecisionPacketWorkflow{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[4]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -501,7 +593,7 @@ func (x *DecisionPacketWorkflow) String() string {
 func (*DecisionPacketWorkflow) ProtoMessage() {}
 
 func (x *DecisionPacketWorkflow) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[4]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -514,7 +606,7 @@ func (x *DecisionPacketWorkflow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketWorkflow.ProtoReflect.Descriptor instead.
 func (*DecisionPacketWorkflow) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{4}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DecisionPacketWorkflow) GetId() string {
@@ -542,7 +634,7 @@ type DecisionPacketScope struct {
 
 func (x *DecisionPacketScope) Reset() {
 	*x = DecisionPacketScope{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[5]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +646,7 @@ func (x *DecisionPacketScope) String() string {
 func (*DecisionPacketScope) ProtoMessage() {}
 
 func (x *DecisionPacketScope) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[5]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +659,7 @@ func (x *DecisionPacketScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketScope.ProtoReflect.Descriptor instead.
 func (*DecisionPacketScope) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{5}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DecisionPacketScope) GetTenantId() string {
@@ -602,7 +694,7 @@ type DecisionPacketDecision struct {
 
 func (x *DecisionPacketDecision) Reset() {
 	*x = DecisionPacketDecision{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[6]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -614,7 +706,7 @@ func (x *DecisionPacketDecision) String() string {
 func (*DecisionPacketDecision) ProtoMessage() {}
 
 func (x *DecisionPacketDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[6]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -627,7 +719,7 @@ func (x *DecisionPacketDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketDecision.ProtoReflect.Descriptor instead.
 func (*DecisionPacketDecision) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{6}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DecisionPacketDecision) GetState() string {
@@ -661,7 +753,7 @@ type DecisionPacketConfidence struct {
 
 func (x *DecisionPacketConfidence) Reset() {
 	*x = DecisionPacketConfidence{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[7]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +765,7 @@ func (x *DecisionPacketConfidence) String() string {
 func (*DecisionPacketConfidence) ProtoMessage() {}
 
 func (x *DecisionPacketConfidence) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[7]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +778,7 @@ func (x *DecisionPacketConfidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketConfidence.ProtoReflect.Descriptor instead.
 func (*DecisionPacketConfidence) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{7}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DecisionPacketConfidence) GetLevel() string {
@@ -715,7 +807,7 @@ type DecisionPacketFreshness struct {
 
 func (x *DecisionPacketFreshness) Reset() {
 	*x = DecisionPacketFreshness{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[8]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -727,7 +819,7 @@ func (x *DecisionPacketFreshness) String() string {
 func (*DecisionPacketFreshness) ProtoMessage() {}
 
 func (x *DecisionPacketFreshness) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[8]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -740,7 +832,7 @@ func (x *DecisionPacketFreshness) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketFreshness.ProtoReflect.Descriptor instead.
 func (*DecisionPacketFreshness) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{8}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DecisionPacketFreshness) GetState() string {
@@ -790,7 +882,7 @@ type DecisionPacketEvidenceReference struct {
 
 func (x *DecisionPacketEvidenceReference) Reset() {
 	*x = DecisionPacketEvidenceReference{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[9]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -802,7 +894,7 @@ func (x *DecisionPacketEvidenceReference) String() string {
 func (*DecisionPacketEvidenceReference) ProtoMessage() {}
 
 func (x *DecisionPacketEvidenceReference) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[9]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -815,7 +907,7 @@ func (x *DecisionPacketEvidenceReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketEvidenceReference.ProtoReflect.Descriptor instead.
 func (*DecisionPacketEvidenceReference) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{9}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DecisionPacketEvidenceReference) GetId() string {
@@ -910,7 +1002,7 @@ type DecisionPacketContradiction struct {
 
 func (x *DecisionPacketContradiction) Reset() {
 	*x = DecisionPacketContradiction{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[10]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -922,7 +1014,7 @@ func (x *DecisionPacketContradiction) String() string {
 func (*DecisionPacketContradiction) ProtoMessage() {}
 
 func (x *DecisionPacketContradiction) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[10]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -935,7 +1027,7 @@ func (x *DecisionPacketContradiction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketContradiction.ProtoReflect.Descriptor instead.
 func (*DecisionPacketContradiction) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{10}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DecisionPacketContradiction) GetId() string {
@@ -1002,7 +1094,7 @@ type DecisionPacketCoverageGap struct {
 
 func (x *DecisionPacketCoverageGap) Reset() {
 	*x = DecisionPacketCoverageGap{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[11]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1014,7 +1106,7 @@ func (x *DecisionPacketCoverageGap) String() string {
 func (*DecisionPacketCoverageGap) ProtoMessage() {}
 
 func (x *DecisionPacketCoverageGap) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[11]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1027,7 +1119,7 @@ func (x *DecisionPacketCoverageGap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketCoverageGap.ProtoReflect.Descriptor instead.
 func (*DecisionPacketCoverageGap) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{11}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DecisionPacketCoverageGap) GetId() string {
@@ -1090,7 +1182,7 @@ type DecisionPacketSubjectReference struct {
 
 func (x *DecisionPacketSubjectReference) Reset() {
 	*x = DecisionPacketSubjectReference{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[12]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1194,7 @@ func (x *DecisionPacketSubjectReference) String() string {
 func (*DecisionPacketSubjectReference) ProtoMessage() {}
 
 func (x *DecisionPacketSubjectReference) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[12]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1115,7 +1207,7 @@ func (x *DecisionPacketSubjectReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketSubjectReference.ProtoReflect.Descriptor instead.
 func (*DecisionPacketSubjectReference) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{12}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DecisionPacketSubjectReference) GetUrn() string {
@@ -1150,7 +1242,7 @@ type DecisionPacketControlReference struct {
 
 func (x *DecisionPacketControlReference) Reset() {
 	*x = DecisionPacketControlReference{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[13]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1162,7 +1254,7 @@ func (x *DecisionPacketControlReference) String() string {
 func (*DecisionPacketControlReference) ProtoMessage() {}
 
 func (x *DecisionPacketControlReference) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[13]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1175,7 +1267,7 @@ func (x *DecisionPacketControlReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketControlReference.ProtoReflect.Descriptor instead.
 func (*DecisionPacketControlReference) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{13}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DecisionPacketControlReference) GetId() string {
@@ -1212,7 +1304,7 @@ type DecisionPacketAuditPacketReference struct {
 
 func (x *DecisionPacketAuditPacketReference) Reset() {
 	*x = DecisionPacketAuditPacketReference{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[14]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1224,7 +1316,7 @@ func (x *DecisionPacketAuditPacketReference) String() string {
 func (*DecisionPacketAuditPacketReference) ProtoMessage() {}
 
 func (x *DecisionPacketAuditPacketReference) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[14]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1237,7 +1329,7 @@ func (x *DecisionPacketAuditPacketReference) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use DecisionPacketAuditPacketReference.ProtoReflect.Descriptor instead.
 func (*DecisionPacketAuditPacketReference) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{14}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DecisionPacketAuditPacketReference) GetId() string {
@@ -1291,7 +1383,7 @@ type DecisionPacketActionProposal struct {
 
 func (x *DecisionPacketActionProposal) Reset() {
 	*x = DecisionPacketActionProposal{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[15]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1303,7 +1395,7 @@ func (x *DecisionPacketActionProposal) String() string {
 func (*DecisionPacketActionProposal) ProtoMessage() {}
 
 func (x *DecisionPacketActionProposal) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[15]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1408,7 @@ func (x *DecisionPacketActionProposal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketActionProposal.ProtoReflect.Descriptor instead.
 func (*DecisionPacketActionProposal) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{15}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DecisionPacketActionProposal) GetId() string {
@@ -1388,7 +1480,7 @@ type DecisionPacketProvenance struct {
 
 func (x *DecisionPacketProvenance) Reset() {
 	*x = DecisionPacketProvenance{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[16]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1400,7 +1492,7 @@ func (x *DecisionPacketProvenance) String() string {
 func (*DecisionPacketProvenance) ProtoMessage() {}
 
 func (x *DecisionPacketProvenance) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[16]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1413,7 +1505,7 @@ func (x *DecisionPacketProvenance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketProvenance.ProtoReflect.Descriptor instead.
 func (*DecisionPacketProvenance) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{16}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DecisionPacketProvenance) GetTraceId() string {
@@ -1468,7 +1560,7 @@ type DecisionPacketResultLimits struct {
 
 func (x *DecisionPacketResultLimits) Reset() {
 	*x = DecisionPacketResultLimits{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[17]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1480,7 +1572,7 @@ func (x *DecisionPacketResultLimits) String() string {
 func (*DecisionPacketResultLimits) ProtoMessage() {}
 
 func (x *DecisionPacketResultLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[17]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1493,7 +1585,7 @@ func (x *DecisionPacketResultLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketResultLimits.ProtoReflect.Descriptor instead.
 func (*DecisionPacketResultLimits) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{17}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DecisionPacketResultLimits) GetEvidence() *DecisionPacketResultLimit {
@@ -1572,7 +1664,7 @@ type DecisionPacketResultLimit struct {
 
 func (x *DecisionPacketResultLimit) Reset() {
 	*x = DecisionPacketResultLimit{}
-	mi := &file_cerebro_v1_decision_proto_msgTypes[18]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1584,7 +1676,7 @@ func (x *DecisionPacketResultLimit) String() string {
 func (*DecisionPacketResultLimit) ProtoMessage() {}
 
 func (x *DecisionPacketResultLimit) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_decision_proto_msgTypes[18]
+	mi := &file_cerebro_v1_decision_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1597,7 +1689,7 @@ func (x *DecisionPacketResultLimit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionPacketResultLimit.ProtoReflect.Descriptor instead.
 func (*DecisionPacketResultLimit) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{18}
+	return file_cerebro_v1_decision_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DecisionPacketResultLimit) GetRequested() uint32 {
@@ -1667,7 +1759,7 @@ const file_cerebro_v1_decision_proto_rawDesc = "" +
 	"\abudgets\x18\n" +
 	" \x01(\v2!.cerebro.v1.DecisionPacketBudgetsR\abudgets\"Q\n" +
 	"\x1bBuildDecisionPacketResponse\x122\n" +
-	"\x06packet\x18\x01 \x01(\v2\x1a.cerebro.v1.DecisionPacketR\x06packet\"\xc3\t\n" +
+	"\x06packet\x18\x01 \x01(\v2\x1a.cerebro.v1.DecisionPacketR\x06packet\"\xfd\t\n" +
 	"\x0eDecisionPacket\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12=\n" +
@@ -1694,7 +1786,16 @@ const file_cerebro_v1_decision_proto_rawDesc = "" +
 	"\n" +
 	"provenance\x18\x12 \x01(\v2$.cerebro.v1.DecisionPacketProvenanceR\n" +
 	"provenance\x12>\n" +
-	"\x06limits\x18\x13 \x01(\v2&.cerebro.v1.DecisionPacketResultLimitsR\x06limits\"D\n" +
+	"\x06limits\x18\x13 \x01(\v2&.cerebro.v1.DecisionPacketResultLimitsR\x06limits\x128\n" +
+	"\x06inputs\x18\x14 \x01(\v2 .cerebro.v1.DecisionPacketInputsR\x06inputs\"\xf9\x01\n" +
+	"\x14DecisionPacketInputs\x12\x1f\n" +
+	"\vfinding_ids\x18\x01 \x03(\tR\n" +
+	"findingIds\x12\x1b\n" +
+	"\tclaim_ids\x18\x02 \x03(\tR\bclaimIds\x12#\n" +
+	"\revidence_urns\x18\x03 \x03(\tR\fevidenceUrns\x12(\n" +
+	"\x10audit_packet_ids\x18\x04 \x03(\tR\x0eauditPacketIds\x12)\n" +
+	"\x10required_sources\x18\x05 \x03(\tR\x0frequiredSources\x12)\n" +
+	"\x10requested_action\x18\x06 \x01(\tR\x0frequestedAction\"D\n" +
 	"\x16DecisionPacketWorkflow\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bquestion\x18\x02 \x01(\tR\bquestion\"_\n" +
@@ -1810,72 +1911,74 @@ func file_cerebro_v1_decision_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_decision_proto_rawDescData
 }
 
-var file_cerebro_v1_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_cerebro_v1_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_cerebro_v1_decision_proto_goTypes = []any{
 	(*DecisionPacketBudgets)(nil),              // 0: cerebro.v1.DecisionPacketBudgets
 	(*BuildDecisionPacketRequest)(nil),         // 1: cerebro.v1.BuildDecisionPacketRequest
 	(*BuildDecisionPacketResponse)(nil),        // 2: cerebro.v1.BuildDecisionPacketResponse
 	(*DecisionPacket)(nil),                     // 3: cerebro.v1.DecisionPacket
-	(*DecisionPacketWorkflow)(nil),             // 4: cerebro.v1.DecisionPacketWorkflow
-	(*DecisionPacketScope)(nil),                // 5: cerebro.v1.DecisionPacketScope
-	(*DecisionPacketDecision)(nil),             // 6: cerebro.v1.DecisionPacketDecision
-	(*DecisionPacketConfidence)(nil),           // 7: cerebro.v1.DecisionPacketConfidence
-	(*DecisionPacketFreshness)(nil),            // 8: cerebro.v1.DecisionPacketFreshness
-	(*DecisionPacketEvidenceReference)(nil),    // 9: cerebro.v1.DecisionPacketEvidenceReference
-	(*DecisionPacketContradiction)(nil),        // 10: cerebro.v1.DecisionPacketContradiction
-	(*DecisionPacketCoverageGap)(nil),          // 11: cerebro.v1.DecisionPacketCoverageGap
-	(*DecisionPacketSubjectReference)(nil),     // 12: cerebro.v1.DecisionPacketSubjectReference
-	(*DecisionPacketControlReference)(nil),     // 13: cerebro.v1.DecisionPacketControlReference
-	(*DecisionPacketAuditPacketReference)(nil), // 14: cerebro.v1.DecisionPacketAuditPacketReference
-	(*DecisionPacketActionProposal)(nil),       // 15: cerebro.v1.DecisionPacketActionProposal
-	(*DecisionPacketProvenance)(nil),           // 16: cerebro.v1.DecisionPacketProvenance
-	(*DecisionPacketResultLimits)(nil),         // 17: cerebro.v1.DecisionPacketResultLimits
-	(*DecisionPacketResultLimit)(nil),          // 18: cerebro.v1.DecisionPacketResultLimit
-	(*timestamppb.Timestamp)(nil),              // 19: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                    // 20: google.protobuf.Struct
+	(*DecisionPacketInputs)(nil),               // 4: cerebro.v1.DecisionPacketInputs
+	(*DecisionPacketWorkflow)(nil),             // 5: cerebro.v1.DecisionPacketWorkflow
+	(*DecisionPacketScope)(nil),                // 6: cerebro.v1.DecisionPacketScope
+	(*DecisionPacketDecision)(nil),             // 7: cerebro.v1.DecisionPacketDecision
+	(*DecisionPacketConfidence)(nil),           // 8: cerebro.v1.DecisionPacketConfidence
+	(*DecisionPacketFreshness)(nil),            // 9: cerebro.v1.DecisionPacketFreshness
+	(*DecisionPacketEvidenceReference)(nil),    // 10: cerebro.v1.DecisionPacketEvidenceReference
+	(*DecisionPacketContradiction)(nil),        // 11: cerebro.v1.DecisionPacketContradiction
+	(*DecisionPacketCoverageGap)(nil),          // 12: cerebro.v1.DecisionPacketCoverageGap
+	(*DecisionPacketSubjectReference)(nil),     // 13: cerebro.v1.DecisionPacketSubjectReference
+	(*DecisionPacketControlReference)(nil),     // 14: cerebro.v1.DecisionPacketControlReference
+	(*DecisionPacketAuditPacketReference)(nil), // 15: cerebro.v1.DecisionPacketAuditPacketReference
+	(*DecisionPacketActionProposal)(nil),       // 16: cerebro.v1.DecisionPacketActionProposal
+	(*DecisionPacketProvenance)(nil),           // 17: cerebro.v1.DecisionPacketProvenance
+	(*DecisionPacketResultLimits)(nil),         // 18: cerebro.v1.DecisionPacketResultLimits
+	(*DecisionPacketResultLimit)(nil),          // 19: cerebro.v1.DecisionPacketResultLimit
+	(*timestamppb.Timestamp)(nil),              // 20: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                    // 21: google.protobuf.Struct
 }
 var file_cerebro_v1_decision_proto_depIdxs = []int32{
 	0,  // 0: cerebro.v1.BuildDecisionPacketRequest.budgets:type_name -> cerebro.v1.DecisionPacketBudgets
 	3,  // 1: cerebro.v1.BuildDecisionPacketResponse.packet:type_name -> cerebro.v1.DecisionPacket
-	19, // 2: cerebro.v1.DecisionPacket.generated_at:type_name -> google.protobuf.Timestamp
-	4,  // 3: cerebro.v1.DecisionPacket.workflow:type_name -> cerebro.v1.DecisionPacketWorkflow
-	5,  // 4: cerebro.v1.DecisionPacket.scope:type_name -> cerebro.v1.DecisionPacketScope
-	20, // 5: cerebro.v1.DecisionPacket.guardrails:type_name -> google.protobuf.Struct
-	20, // 6: cerebro.v1.DecisionPacket.claim:type_name -> google.protobuf.Struct
-	6,  // 7: cerebro.v1.DecisionPacket.decision:type_name -> cerebro.v1.DecisionPacketDecision
-	7,  // 8: cerebro.v1.DecisionPacket.confidence:type_name -> cerebro.v1.DecisionPacketConfidence
-	8,  // 9: cerebro.v1.DecisionPacket.freshness:type_name -> cerebro.v1.DecisionPacketFreshness
-	9,  // 10: cerebro.v1.DecisionPacket.evidence:type_name -> cerebro.v1.DecisionPacketEvidenceReference
-	10, // 11: cerebro.v1.DecisionPacket.contradictions:type_name -> cerebro.v1.DecisionPacketContradiction
-	11, // 12: cerebro.v1.DecisionPacket.coverage_gaps:type_name -> cerebro.v1.DecisionPacketCoverageGap
-	12, // 13: cerebro.v1.DecisionPacket.affected:type_name -> cerebro.v1.DecisionPacketSubjectReference
-	13, // 14: cerebro.v1.DecisionPacket.controls:type_name -> cerebro.v1.DecisionPacketControlReference
-	14, // 15: cerebro.v1.DecisionPacket.audit_packets:type_name -> cerebro.v1.DecisionPacketAuditPacketReference
-	15, // 16: cerebro.v1.DecisionPacket.actions:type_name -> cerebro.v1.DecisionPacketActionProposal
-	16, // 17: cerebro.v1.DecisionPacket.provenance:type_name -> cerebro.v1.DecisionPacketProvenance
-	17, // 18: cerebro.v1.DecisionPacket.limits:type_name -> cerebro.v1.DecisionPacketResultLimits
-	19, // 19: cerebro.v1.DecisionPacketFreshness.oldest_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 20: cerebro.v1.DecisionPacketFreshness.newest_observed_at:type_name -> google.protobuf.Timestamp
-	19, // 21: cerebro.v1.DecisionPacketEvidenceReference.observed_at:type_name -> google.protobuf.Timestamp
-	19, // 22: cerebro.v1.DecisionPacketEvidenceReference.valid_from:type_name -> google.protobuf.Timestamp
-	19, // 23: cerebro.v1.DecisionPacketEvidenceReference.valid_to:type_name -> google.protobuf.Timestamp
-	9,  // 24: cerebro.v1.DecisionPacketContradiction.left:type_name -> cerebro.v1.DecisionPacketEvidenceReference
-	9,  // 25: cerebro.v1.DecisionPacketContradiction.right:type_name -> cerebro.v1.DecisionPacketEvidenceReference
-	19, // 26: cerebro.v1.DecisionPacketAuditPacketReference.generated_at:type_name -> google.protobuf.Timestamp
-	18, // 27: cerebro.v1.DecisionPacketResultLimits.evidence:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 28: cerebro.v1.DecisionPacketResultLimits.contradictions:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 29: cerebro.v1.DecisionPacketResultLimits.coverage_gaps:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 30: cerebro.v1.DecisionPacketResultLimits.affected:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 31: cerebro.v1.DecisionPacketResultLimits.controls:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 32: cerebro.v1.DecisionPacketResultLimits.audit_packets:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 33: cerebro.v1.DecisionPacketResultLimits.actions:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 34: cerebro.v1.DecisionPacketResultLimits.graph_rows:type_name -> cerebro.v1.DecisionPacketResultLimit
-	18, // 35: cerebro.v1.DecisionPacketResultLimits.graph_depth:type_name -> cerebro.v1.DecisionPacketResultLimit
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	20, // 2: cerebro.v1.DecisionPacket.generated_at:type_name -> google.protobuf.Timestamp
+	5,  // 3: cerebro.v1.DecisionPacket.workflow:type_name -> cerebro.v1.DecisionPacketWorkflow
+	6,  // 4: cerebro.v1.DecisionPacket.scope:type_name -> cerebro.v1.DecisionPacketScope
+	21, // 5: cerebro.v1.DecisionPacket.guardrails:type_name -> google.protobuf.Struct
+	21, // 6: cerebro.v1.DecisionPacket.claim:type_name -> google.protobuf.Struct
+	7,  // 7: cerebro.v1.DecisionPacket.decision:type_name -> cerebro.v1.DecisionPacketDecision
+	8,  // 8: cerebro.v1.DecisionPacket.confidence:type_name -> cerebro.v1.DecisionPacketConfidence
+	9,  // 9: cerebro.v1.DecisionPacket.freshness:type_name -> cerebro.v1.DecisionPacketFreshness
+	10, // 10: cerebro.v1.DecisionPacket.evidence:type_name -> cerebro.v1.DecisionPacketEvidenceReference
+	11, // 11: cerebro.v1.DecisionPacket.contradictions:type_name -> cerebro.v1.DecisionPacketContradiction
+	12, // 12: cerebro.v1.DecisionPacket.coverage_gaps:type_name -> cerebro.v1.DecisionPacketCoverageGap
+	13, // 13: cerebro.v1.DecisionPacket.affected:type_name -> cerebro.v1.DecisionPacketSubjectReference
+	14, // 14: cerebro.v1.DecisionPacket.controls:type_name -> cerebro.v1.DecisionPacketControlReference
+	15, // 15: cerebro.v1.DecisionPacket.audit_packets:type_name -> cerebro.v1.DecisionPacketAuditPacketReference
+	16, // 16: cerebro.v1.DecisionPacket.actions:type_name -> cerebro.v1.DecisionPacketActionProposal
+	17, // 17: cerebro.v1.DecisionPacket.provenance:type_name -> cerebro.v1.DecisionPacketProvenance
+	18, // 18: cerebro.v1.DecisionPacket.limits:type_name -> cerebro.v1.DecisionPacketResultLimits
+	4,  // 19: cerebro.v1.DecisionPacket.inputs:type_name -> cerebro.v1.DecisionPacketInputs
+	20, // 20: cerebro.v1.DecisionPacketFreshness.oldest_observed_at:type_name -> google.protobuf.Timestamp
+	20, // 21: cerebro.v1.DecisionPacketFreshness.newest_observed_at:type_name -> google.protobuf.Timestamp
+	20, // 22: cerebro.v1.DecisionPacketEvidenceReference.observed_at:type_name -> google.protobuf.Timestamp
+	20, // 23: cerebro.v1.DecisionPacketEvidenceReference.valid_from:type_name -> google.protobuf.Timestamp
+	20, // 24: cerebro.v1.DecisionPacketEvidenceReference.valid_to:type_name -> google.protobuf.Timestamp
+	10, // 25: cerebro.v1.DecisionPacketContradiction.left:type_name -> cerebro.v1.DecisionPacketEvidenceReference
+	10, // 26: cerebro.v1.DecisionPacketContradiction.right:type_name -> cerebro.v1.DecisionPacketEvidenceReference
+	20, // 27: cerebro.v1.DecisionPacketAuditPacketReference.generated_at:type_name -> google.protobuf.Timestamp
+	19, // 28: cerebro.v1.DecisionPacketResultLimits.evidence:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 29: cerebro.v1.DecisionPacketResultLimits.contradictions:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 30: cerebro.v1.DecisionPacketResultLimits.coverage_gaps:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 31: cerebro.v1.DecisionPacketResultLimits.affected:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 32: cerebro.v1.DecisionPacketResultLimits.controls:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 33: cerebro.v1.DecisionPacketResultLimits.audit_packets:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 34: cerebro.v1.DecisionPacketResultLimits.actions:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 35: cerebro.v1.DecisionPacketResultLimits.graph_rows:type_name -> cerebro.v1.DecisionPacketResultLimit
+	19, // 36: cerebro.v1.DecisionPacketResultLimits.graph_depth:type_name -> cerebro.v1.DecisionPacketResultLimit
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_decision_proto_init() }
@@ -1889,7 +1992,7 @@ func file_cerebro_v1_decision_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_decision_proto_rawDesc), len(file_cerebro_v1_decision_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

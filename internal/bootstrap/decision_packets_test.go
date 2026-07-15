@@ -60,7 +60,7 @@ func TestDecisionPacketHTTPConnectAndReceiptParity(t *testing.T) {
 	service := decisionpacket.NewPersistentService(resolver, decisionPacketTestClock{now: now}, receipts, 24*time.Hour)
 	app := &App{services: appServices{decisionPackets: service}}
 
-	body := []byte(`{"workflow":"triage","question":"Is this finding current?","scopeUrn":"urn:cerebro:tenant-1:finding:1"}`)
+	body := []byte(`{"workflow":"triage","question":"Is this finding current?","scopeUrn":"urn:cerebro:tenant-1:finding:1","findingIds":["finding-1"],"requiredSources":["source-1"]}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/platform/decision-packets", bytes.NewReader(body))
 	request.Header.Set("X-Cerebro-Tenant", "tenant-1")
 	request.Header.Set("X-Cerebro-Actor", "actor-1")
@@ -96,9 +96,13 @@ func TestDecisionPacketHTTPConnectAndReceiptParity(t *testing.T) {
 	if reopened.ID != httpPacket.ID || reopened.Provenance.EvidenceDigest != httpPacket.Provenance.EvidenceDigest {
 		t.Fatalf("reopened packet = %+v want id %q digest %q", reopened, httpPacket.ID, httpPacket.Provenance.EvidenceDigest)
 	}
+	if len(reopened.Inputs.FindingIDs) != 1 || reopened.Inputs.FindingIDs[0] != "finding-1" || len(reopened.Inputs.RequiredSources) != 1 {
+		t.Fatalf("reopened inputs = %+v", reopened.Inputs)
+	}
 
 	connectRequest := connect.NewRequest(&cerebrov1.BuildDecisionPacketRequest{
 		Workflow: "triage", Question: "Is this finding current?", ScopeUrn: "urn:cerebro:tenant-1:finding:1",
+		FindingIds: []string{"finding-1"}, RequiredSources: []string{"source-1"},
 	})
 	connectRequest.Header().Set("X-Cerebro-Tenant", "tenant-1")
 	connectRequest.Header().Set("X-Cerebro-Actor", "actor-1")

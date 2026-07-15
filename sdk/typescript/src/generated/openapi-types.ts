@@ -1254,6 +1254,7 @@ export type DecisionPacket = {
   generated_at: string;
   guardrails: Record<string, unknown>;
   id: string;
+  inputs: DecisionPacketInputs;
   limits: DecisionPacketResultLimits;
   provenance: DecisionPacketProvenance;
   schema_version: string;
@@ -1348,6 +1349,15 @@ export type DecisionPacketFreshness = {
   oldest_observed_at?: string;
   required_stale: boolean;
   state: "fresh" | "stale" | "unknown";
+};
+
+export type DecisionPacketInputs = {
+  audit_packet_ids: string[];
+  claim_ids: string[];
+  evidence_urns: string[];
+  finding_ids: string[];
+  requested_action?: string;
+  required_sources: string[];
 };
 
 export type DecisionPacketProvenance = {

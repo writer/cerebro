@@ -143,8 +143,12 @@ func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor Auth
 	}
 	packet := Packet{
 		SchemaVersion: SchemaVersion, GeneratedAt: now,
-		Workflow:   Workflow{ID: request.Workflow, Question: request.Question},
-		Scope:      Scope{TenantID: tenant.ID, ActorID: actor.ID, URN: request.ScopeURN},
+		Workflow: Workflow{ID: request.Workflow, Question: request.Question},
+		Scope:    Scope{TenantID: tenant.ID, ActorID: actor.ID, URN: request.ScopeURN},
+		Inputs: Inputs{
+			FindingIDs: request.FindingIDs, ClaimIDs: request.ClaimIDs, EvidenceURNs: request.EvidenceURNs,
+			AuditPacketIDs: request.AuditPacketIDs, RequiredSources: request.RequiredSources, RequestedAction: request.RequestedAction,
+		},
 		Guardrails: guardrails, Claim: claim, Decision: decision, Confidence: confidence,
 		Freshness: deriveFreshness(facts.Evidence, requiredStale), Evidence: facts.Evidence,
 		Contradictions: contradictions, CoverageGaps: facts.CoverageGaps, Affected: facts.Affected,

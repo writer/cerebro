@@ -56,6 +56,16 @@ message DecisionPacket {
   repeated DecisionPacketActionProposal actions = 17;
   DecisionPacketProvenance provenance = 18;
   DecisionPacketResultLimits limits = 19;
+  DecisionPacketInputs inputs = 20;
+}
+
+message DecisionPacketInputs {
+  repeated string finding_ids = 1;
+  repeated string claim_ids = 2;
+  repeated string evidence_urns = 3;
+  repeated string audit_packet_ids = 4;
+  repeated string required_sources = 5;
+  string requested_action = 6;
 }
 
 message DecisionPacketWorkflow {
