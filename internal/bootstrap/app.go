@@ -1094,10 +1094,7 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{}, req.Msg.GetTargetIds()...), append(req.Msg.GetEvidenceIds(), req.Msg.GetActionIds()...)...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteDecision(ctx, knowledge.DecisionWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteDecision(ctx, knowledge.DecisionWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionType:  req.Msg.GetDecisionType(),
 		Status:        req.Msg.GetStatus(),
@@ -1118,8 +1115,12 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteDecisionResponse{
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
+		DecisionId:              result.DecisionID,
+		TargetCount:             result.TargetCount,
+		EventId:                 result.EventID,
+		DurabilityStatus:        result.DurabilityStatus,
+		ProjectionStatus:        result.ProjectionStatus,
+		ProjectionErrorCategory: result.ProjectionErrorCategory,
 	}), nil
 }
 
@@ -1131,10 +1132,7 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...), req.Msg.GetRecommendationId())...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteAction(ctx, knowledge.ActionWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteAction(ctx, knowledge.ActionWriteRequest{
 		ID:               req.Msg.GetId(),
 		RecommendationID: req.Msg.GetRecommendationId(),
 		InsightType:      req.Msg.GetInsightType(),
@@ -1155,9 +1153,13 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteActionResponse{
-		ActionId:    result.ActionID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
+		ActionId:                result.ActionID,
+		DecisionId:              result.DecisionID,
+		TargetCount:             result.TargetCount,
+		EventId:                 result.EventID,
+		DurabilityStatus:        result.DurabilityStatus,
+		ProjectionStatus:        result.ProjectionStatus,
+		ProjectionErrorCategory: result.ProjectionErrorCategory,
 	}), nil
 }
 
@@ -1169,10 +1171,7 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionID:    req.Msg.GetDecisionId(),
 		OutcomeType:   req.Msg.GetOutcomeType(),
@@ -1191,9 +1190,13 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteOutcomeResponse{
-		OutcomeId:   result.OutcomeID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
+		OutcomeId:               result.OutcomeID,
+		DecisionId:              result.DecisionID,
+		TargetCount:             result.TargetCount,
+		EventId:                 result.EventID,
+		DurabilityStatus:        result.DurabilityStatus,
+		ProjectionStatus:        result.ProjectionStatus,
+		ProjectionErrorCategory: result.ProjectionErrorCategory,
 	}), nil
 }
 

@@ -150,7 +150,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Workflow durability is event-and-projection. Not graph-direct.
 
-- Decisions, actions, outcomes, finding notes, ticket links, and lifecycle status changes write a `workflow.v1.*` event before any graph mutation. Append failure prevents graph writes; graph failure leaves a replayable event behind. Cerebro will not write workflow nodes directly to Neo4j, swallow projection errors, or skip the event when the append log is configured.
+- Decisions, actions, outcomes, finding notes, ticket links, and lifecycle status changes write a `workflow.v1.*` event before any graph mutation. Append failure prevents graph writes; graph failure leaves a replayable event behind and returns an explicit projection status. Cerebro will not write workflow nodes directly to Neo4j, hide projection state, or skip the event in hosted durable mode.
 - Why: the graph is a projection. Workflow writes that bypass the event are unreplayable and reintroduce the silent-drift class of bugs that workflow durability was designed to remove.
 - Enforced in: `internal/workflowevents`, `internal/workflowprojection`, and graph write arch tests.
 - What would change this: only a reviewed workflow durability proposal that preserves replay filters, finding workflow events, outbox behavior, and timeline reads. [`rust-control-kernel-carve.md`](rust-control-kernel-carve.md) defines the reviewed path for optimistic mission revisions and transactional event publication without changing the graph projection boundary.

@@ -29,6 +29,12 @@ path until a claim event stream lands.
   projector.
 - Source runtime page recovery must follow [`SOURCE_SYNC_RECOVERY.md`](source-sync-recovery.md) until a transactional sync ledger or outbox exists.
 - Workflow projection must happen after the corresponding workflow event append.
+- Hosted knowledge decision, action, and outcome writes use `durable_required` mode. A missing append log fails the
+  request before projection. `legacy_projection_only` is an explicit local-development compatibility mode and reports
+  `durability_status=not_recorded`.
+- Knowledge write results report the durable event ID independently from graph projection state. A successful append
+  returns `durability_status=recorded`; projection may be `projected`, `not_configured`, or `failed` without making the
+  durable record ambiguous. A failed projection carries a bounded error category and is repaired by workflow replay.
 - SDK/runtime claim writes must persist claim rows before writing graph
   projections.
 - Any new graph-affecting write path must declare whether it is event-backed or
@@ -55,3 +61,16 @@ answer:
    a partial write?
 4. How can an operator rebuild or repair graph state without treating Neo4j as
    authoritative?
+
+## Knowledge Projection Recovery
+
+When a knowledge write returns `durability_status=recorded` with `projection_status=failed` or `not_configured`, the
+`event_id` identifies the replayable business record. Restore the graph dependency, then use the bounded workflow
+replay operation with the affected tenant and one of these workflow kinds:
+
+- `knowledge_decision`
+- `knowledge_action`
+- `knowledge_outcome`
+
+Retrying the original command uses the same canonical event identity when its normalized inputs and timestamps are
+unchanged. Operators should prefer replay for projection repair so a client retry does not create a new logical event.

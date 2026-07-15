@@ -7215,6 +7215,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := decisionPayload["target_count"]; got != float64(1) {
 		t.Fatalf("decision target_count = %#v, want 1", got)
 	}
+	if decisionPayload["event_id"] == "" || decisionPayload["durability_status"] != knowledge.DurabilityRecorded || decisionPayload["projection_status"] != knowledge.ProjectionProjected {
+		t.Fatalf("decision durability/projection = %#v", decisionPayload)
+	}
 	if _, ok := graphStore.entities["urn:cerebro:writer:evidence:finding-evidence-1"]; !ok {
 		t.Fatal("decision evidence entity missing")
 	}
@@ -7266,6 +7269,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := actionPayload["target_count"]; got != float64(1) {
 		t.Fatalf("action target_count = %#v, want 1", got)
 	}
+	if actionPayload["event_id"] == "" || actionPayload["durability_status"] != knowledge.DurabilityRecorded || actionPayload["projection_status"] != knowledge.ProjectionProjected {
+		t.Fatalf("action durability/projection = %#v", actionPayload)
+	}
 	if _, ok := graphStore.entities[actionID]; !ok {
 		t.Fatalf("action entity %q missing", actionID)
 	}
@@ -7291,6 +7297,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := outcomeResp.Msg.GetTargetCount(); got != 1 {
 		t.Fatalf("WriteOutcome().TargetCount = %d, want 1", got)
 	}
+	if outcomeResp.Msg.GetEventId() == "" || outcomeResp.Msg.GetDurabilityStatus() != knowledge.DurabilityRecorded || outcomeResp.Msg.GetProjectionStatus() != knowledge.ProjectionProjected {
+		t.Fatalf("WriteOutcome() durability/projection = %+v", outcomeResp.Msg)
+	}
 	outcomeID := outcomeResp.Msg.GetOutcomeId()
 	if outcomeID == "" {
 		t.Fatal("WriteOutcome().OutcomeId = empty, want non-empty")
@@ -7306,6 +7315,59 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	}
 	if len(appendLog.events) != 3 {
 		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	}
+}
+
+func TestPlatformKnowledgeDecisionRequiresDurableAppendLog(t *testing.T) {
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.WriteDecisionRequest{DecisionType: "finding-triage", TargetIds: []string{targetURN}})
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/platform/knowledge/decisions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST decision: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestPlatformKnowledgeDecisionReturnsDurableProjectionFailure(t *testing.T) {
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}, err: errors.New("graph unavailable")}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.WriteDecisionRequest{DecisionType: "finding-triage", TargetIds: []string{targetURN}})
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/platform/knowledge/decisions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST decision: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	payload := map[string]any{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["durability_status"] != knowledge.DurabilityRecorded || payload["projection_status"] != knowledge.ProjectionFailed || payload["projection_error_category"] != knowledge.ProjectionErrorGraph {
+		t.Fatalf("durability/projection = %#v", payload)
+	}
+	if len(appendLog.events) != 1 || payload["event_id"] != appendLog.events[0].GetId() {
+		t.Fatalf("event response/log = %#v/%+v", payload, appendLog.events)
 	}
 }
 
