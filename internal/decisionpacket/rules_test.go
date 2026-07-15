@@ -269,6 +269,33 @@ func TestCanonicalizePacketNormalizesNestedDecisionFields(t *testing.T) {
 	}
 }
 
+func TestCanonicalizePacketUsesTotalOrderingForDuplicateKeys(t *testing.T) {
+	packet := Packet{
+		GeneratedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
+		Evidence: []EvidenceReference{
+			{ID: "evidence-1", Kind: "finding", Value: "z"},
+			{ID: "evidence-1", Kind: "finding", Value: "a"},
+		},
+		Affected: []SubjectReference{
+			{URN: "urn:asset:1", Kind: "service", Name: "Zulu"},
+			{URN: "urn:asset:1", Kind: "resource", Name: "Alpha"},
+		},
+	}
+	first, firstJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(first order) error = %v", err)
+	}
+	packet.Evidence[0], packet.Evidence[1] = packet.Evidence[1], packet.Evidence[0]
+	packet.Affected[0], packet.Affected[1] = packet.Affected[1], packet.Affected[0]
+	second, secondJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(reverse order) error = %v", err)
+	}
+	if first.ID != second.ID || string(firstJSON) != string(secondJSON) {
+		t.Fatalf("duplicate-key input order changed canonical packet: first=%s second=%s", firstJSON, secondJSON)
+	}
+}
+
 func TestCanonicalizePacketTreatsNilAndEmptyResultSlicesEqually(t *testing.T) {
 	packet := Packet{GeneratedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)}
 	withNil, nilJSON, err := CanonicalizePacket(packet)

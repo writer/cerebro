@@ -152,12 +152,22 @@ func normalizePacket(packet Packet) Packet {
 	packet.Controls = nonNilSlice(packet.Controls)
 	packet.AuditPackets = nonNilSlice(packet.AuditPackets)
 	packet.Actions = nonNilSlice(packet.Actions)
-	sort.Slice(packet.Contradictions, func(i, j int) bool { return packet.Contradictions[i].ID < packet.Contradictions[j].ID })
-	sort.Slice(packet.CoverageGaps, func(i, j int) bool { return packet.CoverageGaps[i].ID < packet.CoverageGaps[j].ID })
-	sort.Slice(packet.Affected, func(i, j int) bool { return packet.Affected[i].URN < packet.Affected[j].URN })
-	sort.Slice(packet.Controls, func(i, j int) bool { return packet.Controls[i].ID < packet.Controls[j].ID })
-	sort.Slice(packet.AuditPackets, func(i, j int) bool { return packet.AuditPackets[i].ID < packet.AuditPackets[j].ID })
-	sort.Slice(packet.Actions, func(i, j int) bool { return packet.Actions[i].ID < packet.Actions[j].ID })
+	sort.Slice(packet.Contradictions, func(i, j int) bool {
+		return canonicalSortKey(packet.Contradictions[i]) < canonicalSortKey(packet.Contradictions[j])
+	})
+	sort.Slice(packet.CoverageGaps, func(i, j int) bool {
+		return canonicalSortKey(packet.CoverageGaps[i]) < canonicalSortKey(packet.CoverageGaps[j])
+	})
+	sort.Slice(packet.Affected, func(i, j int) bool {
+		return canonicalSortKey(packet.Affected[i]) < canonicalSortKey(packet.Affected[j])
+	})
+	sort.Slice(packet.Controls, func(i, j int) bool {
+		return canonicalSortKey(packet.Controls[i]) < canonicalSortKey(packet.Controls[j])
+	})
+	sort.Slice(packet.AuditPackets, func(i, j int) bool {
+		return canonicalSortKey(packet.AuditPackets[i]) < canonicalSortKey(packet.AuditPackets[j])
+	})
+	sort.Slice(packet.Actions, func(i, j int) bool { return canonicalSortKey(packet.Actions[i]) < canonicalSortKey(packet.Actions[j]) })
 	return packet
 }
 
@@ -180,7 +190,8 @@ func dedupeEvidence(values []EvidenceReference) []EvidenceReference {
 	byKey := make(map[string]EvidenceReference, len(values))
 	for _, value := range values {
 		key := value.Kind + "\x00" + value.ID
-		if _, found := byKey[key]; !found {
+		current, found := byKey[key]
+		if !found || canonicalSortKey(value) < canonicalSortKey(current) {
 			byKey[key] = value
 		}
 	}
@@ -230,6 +241,14 @@ func nonNilSlice[T any](values []T) []T {
 		return []T{}
 	}
 	return values
+}
+
+func canonicalSortKey(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%#v", value)
+	}
+	return string(raw)
 }
 
 // normalizeEmbeddedCanonicalValue keeps imported, typed agent contracts stable
@@ -297,7 +316,7 @@ func normalizeCanonicalReflectValue(value reflect.Value) {
 
 func canonicalLowercaseField(name string) bool {
 	switch name {
-	case "ActionStage", "AllowedNextStage", "Applicability", "CitationStatus", "ClaimType", "CredentialBoundary", "DimensionType", "FreshnessState", "Kind", "Level", "MCPSurface", "Mode", "OAuthSurface", "QueryMode", "Readiness", "ReasoningSurface", "RequestedActionStage", "Stage", "State", "Status", "SupportLevel", "TokenOwner", "Type", "Verdict", "WritePolicy":
+	case "ActionStage", "AllowedNextStage", "Applicability", "CitationStatus", "ClaimType", "CredentialBoundary", "DimensionType", "FreshnessState", "Kind", "Level", "MaxActionStage", "MCPSurface", "Mode", "OAuthSurface", "QueryMode", "Readiness", "ReasoningSurface", "RequestedActionStage", "Stage", "State", "Status", "SupportLevel", "TokenOwner", "Type", "Verdict", "WritePolicy":
 		return true
 	default:
 		return false
