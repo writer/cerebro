@@ -35,6 +35,18 @@ class EcrImage:
     pushed_at: str | None = None
 
 
+@dataclass(frozen=True)
+class ManifestIdentity:
+    config_digest: str
+    layer_digests: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SourceReleaseEvidence:
+    allowed_digests: frozenset[str]
+    manifest_identities: frozenset[ManifestIdentity]
+
+
 class ImageMissingError(RuntimeError):
     def __init__(self, image: RequiredImage, stderr: str) -> None:
         super().__init__(f"{image.label} image tag {image.tag} is missing from ECR")
@@ -382,24 +394,54 @@ def _missing_image_message(
     )
 
 
-def _source_release_digests(source_image: str, expected_digest: str) -> set[str]:
+def _raw_source_manifest(image_ref: str) -> dict[str, object]:
     completed = _run(
         [
             "docker",
             "buildx",
             "imagetools",
             "inspect",
-            f"{source_image}@{expected_digest}",
+            image_ref,
             "--raw",
         ]
     )
     manifest = json.loads(completed.stdout or "{}")
     if not isinstance(manifest, dict):
-        raise RuntimeError(
-            f"Could not read the locked release manifest for {source_image}"
-        )
+        raise RuntimeError(f"Could not read the image manifest for {image_ref}")
+    return manifest
+
+
+def _manifest_identity(manifest: object) -> ManifestIdentity | None:
+    if not isinstance(manifest, dict):
+        return None
+    config = manifest.get("config")
+    layers = manifest.get("layers")
+    if not isinstance(config, dict) or not isinstance(layers, list):
+        return None
+    config_digest = str(config.get("digest") or "").strip()
+    if not config_digest:
+        return None
+    layer_digests: list[str] = []
+    for layer in layers:
+        if not isinstance(layer, dict):
+            return None
+        digest = str(layer.get("digest") or "").strip()
+        if not digest:
+            return None
+        layer_digests.append(digest)
+    return ManifestIdentity(config_digest, tuple(layer_digests))
+
+
+def _source_release_evidence(
+    source_image: str, expected_digest: str
+) -> SourceReleaseEvidence:
+    release_manifest = _raw_source_manifest(f"{source_image}@{expected_digest}")
     allowed = {expected_digest}
-    for item in manifest.get("manifests") or []:
+    identities: set[ManifestIdentity] = set()
+    direct_identity = _manifest_identity(release_manifest)
+    if direct_identity is not None:
+        identities.add(direct_identity)
+    for item in release_manifest.get("manifests") or []:
         if not isinstance(item, dict):
             continue
         platform = item.get("platform") or {}
@@ -417,11 +459,63 @@ def _source_release_digests(source_image: str, expected_digest: str) -> set[str]
         digest = str(item.get("digest") or "")
         if digest:
             allowed.add(digest)
-    return allowed
+            platform_manifest = _raw_source_manifest(f"{source_image}@{digest}")
+            identity = _manifest_identity(platform_manifest)
+            if identity is None:
+                raise RuntimeError(
+                    f"Runnable source manifest {digest} does not include config and layer digests"
+                )
+            identities.add(identity)
+    return SourceReleaseEvidence(frozenset(allowed), frozenset(identities))
+
+
+def _ecr_manifest_identity(
+    image: EcrImage, *, repository_name: str, region: str
+) -> ManifestIdentity:
+    completed = _run(
+        [
+            "aws",
+            "ecr",
+            "batch-get-image",
+            "--repository-name",
+            repository_name,
+            "--image-ids",
+            f"imageDigest={image.digest}",
+            "--accepted-media-types",
+            "application/vnd.docker.distribution.manifest.v2+json",
+            "application/vnd.oci.image.manifest.v1+json",
+            "--region",
+            region,
+            "--output",
+            "json",
+        ]
+    )
+    payload = json.loads(completed.stdout or "{}")
+    images = payload.get("images") if isinstance(payload, dict) else None
+    if not isinstance(images, list) or not images or not isinstance(images[0], dict):
+        raise RuntimeError(
+            f"Could not read ECR manifest {image.digest} for {image.tag}"
+        )
+    raw_manifest = images[0].get("imageManifest")
+    if not isinstance(raw_manifest, str):
+        raise RuntimeError(
+            f"ECR manifest response for {image.tag} did not include imageManifest"
+        )
+    identity = _manifest_identity(json.loads(raw_manifest))
+    if identity is None:
+        raise RuntimeError(
+            f"ECR manifest {image.digest} for {image.tag} does not include config and layer digests"
+        )
+    return identity
 
 
 def _verify_expected_api_digest(
-    images: list[EcrImage], expected_digest: str, source_image: str
+    images: list[EcrImage],
+    expected_digest: str,
+    source_image: str,
+    *,
+    repository_name: str = DEFAULT_REPOSITORY,
+    region: str = DEFAULT_REGION,
 ) -> bool:
     if not expected_digest:
         return True
@@ -429,15 +523,25 @@ def _verify_expected_api_digest(
     if api_image is None:
         print("::error::ECR promotion did not resolve the api image.", file=sys.stderr)
         return False
-    allowed_digests = _source_release_digests(source_image, expected_digest)
-    if api_image.digest not in allowed_digests:
+    evidence = _source_release_evidence(source_image, expected_digest)
+    if api_image.digest in evidence.allowed_digests:
+        return True
+    ecr_identity = _ecr_manifest_identity(
+        api_image, repository_name=repository_name, region=region
+    )
+    if ecr_identity in evidence.manifest_identities:
         print(
-            f"::error::ECR digest {api_image.digest} for {api_image.tag} is not the locked release digest "
-            f"{expected_digest} or one of its runnable platform manifests.",
-            file=sys.stderr,
+            f"::notice::Verified ECR digest {api_image.digest} for {api_image.tag} by config and layer identity; "
+            "the registry normalized the source manifest media type.",
+            flush=True,
         )
-        return False
-    return True
+        return True
+    print(
+        f"::error::ECR image {api_image.digest} for {api_image.tag} does not match the locked release "
+        f"{expected_digest} by digest, config, or ordered layers.",
+        file=sys.stderr,
+    )
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -522,7 +626,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if not _verify_expected_api_digest(
-        found, args.expected_api_digest, args.source_image
+        found,
+        args.expected_api_digest,
+        args.source_image,
+        repository_name=args.repository_name,
+        region=args.region,
     ):
         return 1
 

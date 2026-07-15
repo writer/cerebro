@@ -138,8 +138,23 @@ class EnsureEcrPromotionTest(unittest.TestCase):
                     side_effect=lambda *_args, **_kwargs: next(responses),
                 ),
                 patch(
-                    "scripts.ensure_ecr_promotion._source_release_digests",
-                    return_value={"sha256:locked", "sha256:platform"},
+                    "scripts.ensure_ecr_promotion._source_release_evidence",
+                    return_value=ensure_ecr_promotion.SourceReleaseEvidence(
+                        frozenset({"sha256:locked", "sha256:platform"}),
+                        frozenset(
+                            {
+                                ensure_ecr_promotion.ManifestIdentity(
+                                    "sha256:source-config", ("sha256:source-layer",)
+                                )
+                            }
+                        ),
+                    ),
+                ),
+                patch(
+                    "scripts.ensure_ecr_promotion._ecr_manifest_identity",
+                    return_value=ensure_ecr_promotion.ManifestIdentity(
+                        "sha256:different-config", ("sha256:different-layer",)
+                    ),
                 ),
             ):
                 status = ensure_ecr_promotion.main(
@@ -163,18 +178,26 @@ class EnsureEcrPromotionTest(unittest.TestCase):
             digest="sha256:platform",
             image_uri="944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro:v2.1.123",
         )
-        with patch(
-            "scripts.ensure_ecr_promotion._source_release_digests",
-            return_value={"sha256:locked", "sha256:platform"},
+        with (
+            patch(
+                "scripts.ensure_ecr_promotion._source_release_evidence",
+                return_value=ensure_ecr_promotion.SourceReleaseEvidence(
+                    frozenset({"sha256:locked", "sha256:platform"}), frozenset()
+                ),
+            ),
+            patch(
+                "scripts.ensure_ecr_promotion._ecr_manifest_identity"
+            ) as ecr_identity,
         ):
             self.assertTrue(
                 ensure_ecr_promotion._verify_expected_api_digest(
                     [image], "sha256:locked", "ghcr.io/writer/cerebro"
                 )
             )
+        ecr_identity.assert_not_called()
 
-    def test_source_release_digests_exclude_attestation_manifests(self) -> None:
-        manifest = {
+    def test_source_release_evidence_excludes_attestation_manifests(self) -> None:
+        release_index = {
             "manifests": [
                 {
                     "digest": "sha256:platform",
@@ -189,14 +212,105 @@ class EnsureEcrPromotionTest(unittest.TestCase):
                 },
             ]
         }
-        completed = subprocess.CompletedProcess(
-            ["docker"], 0, stdout=json.dumps(manifest), stderr=""
+        platform_manifest = {
+            "config": {"digest": "sha256:config"},
+            "layers": [
+                {"digest": "sha256:layer-1"},
+                {"digest": "sha256:layer-2"},
+            ],
+        }
+        responses = iter(
+            [
+                subprocess.CompletedProcess(
+                    ["docker"], 0, stdout=json.dumps(release_index), stderr=""
+                ),
+                subprocess.CompletedProcess(
+                    ["docker"], 0, stdout=json.dumps(platform_manifest), stderr=""
+                ),
+            ]
         )
-        with patch("scripts.ensure_ecr_promotion._run", return_value=completed):
-            digests = ensure_ecr_promotion._source_release_digests(
+        with patch(
+            "scripts.ensure_ecr_promotion._run",
+            side_effect=lambda *_args, **_kwargs: next(responses),
+        ):
+            evidence = ensure_ecr_promotion._source_release_evidence(
                 "ghcr.io/writer/cerebro", "sha256:locked"
             )
-        self.assertEqual(digests, {"sha256:locked", "sha256:platform"})
+        self.assertEqual(
+            evidence.allowed_digests,
+            frozenset({"sha256:locked", "sha256:platform"}),
+        )
+        self.assertEqual(
+            evidence.manifest_identities,
+            frozenset(
+                {
+                    ensure_ecr_promotion.ManifestIdentity(
+                        "sha256:config", ("sha256:layer-1", "sha256:layer-2")
+                    )
+                }
+            ),
+        )
+
+    def test_accepts_registry_normalized_manifest_with_identical_blobs(self) -> None:
+        image = ensure_ecr_promotion.EcrImage(
+            label="api",
+            tag="v2.1.749",
+            digest="sha256:ecr-normalized",
+            image_uri="837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro:v2.1.749",
+        )
+        identity = ensure_ecr_promotion.ManifestIdentity(
+            "sha256:config", ("sha256:layer-1", "sha256:layer-2")
+        )
+        with (
+            patch(
+                "scripts.ensure_ecr_promotion._source_release_evidence",
+                return_value=ensure_ecr_promotion.SourceReleaseEvidence(
+                    frozenset({"sha256:locked", "sha256:platform"}),
+                    frozenset({identity}),
+                ),
+            ),
+            patch(
+                "scripts.ensure_ecr_promotion._ecr_manifest_identity",
+                return_value=identity,
+            ),
+        ):
+            self.assertTrue(
+                ensure_ecr_promotion._verify_expected_api_digest(
+                    [image],
+                    "sha256:locked",
+                    "ghcr.io/writer/cerebro",
+                    repository_name="cerebro",
+                    region="us-east-1",
+                )
+            )
+
+    def test_reads_ecr_manifest_identity_from_registry(self) -> None:
+        image = ensure_ecr_promotion.EcrImage(
+            label="api",
+            tag="v2.1.749",
+            digest="sha256:ecr-normalized",
+            image_uri="837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro:v2.1.749",
+        )
+        manifest = {
+            "schemaVersion": 2,
+            "config": {"digest": "sha256:config"},
+            "layers": [{"digest": "sha256:layer"}],
+        }
+        completed = subprocess.CompletedProcess(
+            ["aws"],
+            0,
+            stdout=json.dumps({"images": [{"imageManifest": json.dumps(manifest)}]}),
+            stderr="",
+        )
+        with patch("scripts.ensure_ecr_promotion._run", return_value=completed) as run:
+            identity = ensure_ecr_promotion._ecr_manifest_identity(
+                image, repository_name="cerebro", region="us-east-1"
+            )
+        self.assertEqual(
+            identity,
+            ensure_ecr_promotion.ManifestIdentity("sha256:config", ("sha256:layer",)),
+        )
+        self.assertIn("batch-get-image", run.call_args.args[0])
 
     def test_dispatches_ci_recovery_before_writing_receipt(self) -> None:
         image = ensure_ecr_promotion.EcrImage(
