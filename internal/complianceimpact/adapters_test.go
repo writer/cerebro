@@ -171,6 +171,20 @@ func TestCompatibilityAdapterRejectsTenantBoundaryInvalidMappingsAndLimits(t *te
 	}
 }
 
+func TestAdapterInputActionCountDoesNotWrapAtUint32Boundary(t *testing.T) {
+	count, ok := addAdapterActionCount(uint64(math.MaxUint32)-1, 1)
+	if !ok || count != uint64(math.MaxUint32) || adapterActionCountExceedsLimit(count, math.MaxUint32) {
+		t.Fatalf("count at MaxUint32 = %d, %t", count, ok)
+	}
+	count, ok = addAdapterActionCount(count, 1)
+	if !ok || count != uint64(math.MaxUint32)+1 || !adapterActionCountExceedsLimit(count, math.MaxUint32) {
+		t.Fatalf("count after MaxUint32 = %d, %t", count, ok)
+	}
+	if _, ok := addAdapterActionCount(^uint64(0), 1); ok {
+		t.Fatal("uint64 accumulator overflow was accepted")
+	}
+}
+
 func TestCompatibilityAdapterCarriesIncompleteImpactReason(t *testing.T) {
 	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
 	impact := adapterImpact(t, root)

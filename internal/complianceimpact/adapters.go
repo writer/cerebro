@@ -312,7 +312,7 @@ func validateAdapterRequest(request AdapterRequest) error {
 	if err := compliance.ValidateContentDigest(compliance.ContentDigest(strings.TrimSpace(string(request.MappingSet.ContentDigest)))); err != nil {
 		return fmt.Errorf("%w: mapping_set content_digest: %w", ErrInvalidAdapterRequest, err)
 	}
-	inputActions := 0
+	inputActions := uint64(0)
 	for index, mapping := range request.Mappings {
 		if strings.TrimSpace(mapping.TenantID) != tenantID || strings.TrimSpace(mapping.Source.TenantID) != tenantID {
 			return fmt.Errorf("%w: mapping[%d] crosses tenant boundary", ErrAdapterTenantBoundary, index)
@@ -334,12 +334,31 @@ func validateAdapterRequest(request AdapterRequest) error {
 				return fmt.Errorf("%w: mapping[%d] action_ids[%d] is invalid", ErrInvalidAdapterRequest, index, actionIndex)
 			}
 		}
-		inputActions += len(mapping.ActionIDs)
+		var ok bool
+		inputActions, ok = addAdapterActionCount(inputActions, len(mapping.ActionIDs))
+		if !ok {
+			return fmt.Errorf("%w: input actions exceed uint64 capacity", ErrAdapterLimit)
+		}
 	}
-	if uint32(inputActions) > request.Limits.MaxActions {
+	if adapterActionCountExceedsLimit(inputActions, request.Limits.MaxActions) {
 		return fmt.Errorf("%w: input actions %d exceed max_actions %d", ErrAdapterLimit, inputActions, request.Limits.MaxActions)
 	}
 	return nil
+}
+
+func addAdapterActionCount(current uint64, additional int) (uint64, bool) {
+	if additional < 0 {
+		return current, false
+	}
+	added := uint64(additional)
+	if current > ^uint64(0)-added {
+		return current, false
+	}
+	return current + added, true
+}
+
+func adapterActionCountExceedsLimit(count uint64, limit uint32) bool {
+	return count > uint64(limit)
 }
 
 func validateAdapterLimits(limits AdapterLimits) error {
