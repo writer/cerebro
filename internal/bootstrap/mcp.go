@@ -26,8 +26,10 @@ import (
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcecertification"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -558,6 +560,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		})
 	case "cerebro.sources.list":
 		return app.mcpListSources()
+	case "cerebro.connectors.list":
+		return app.mcpListConnectors(r, args)
 	case "cerebro.sources.check":
 		return app.mcpCheckSource(r, args)
 	case "cerebro.sources.discover":
@@ -632,6 +636,22 @@ func (app *App) mcpListSources() (any, error) {
 		return nil, err
 	}
 	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(len(response.GetSources()))), nil
+}
+
+func (app *App) mcpListConnectors(r *http.Request, args map[string]any) (any, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	preview := ""
+	if _, ok := args["include_preview"]; ok {
+		preview = strconv.FormatBool(mcpBoolArg(args, "include_preview"))
+	}
+	policy, err := sourcecertification.ParseAvailabilityPolicy(app.cfg.ConnectorAccess.MinCertificationTier, mcpStringArg(args, "min_certification_tier"), preview)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	return app.connectorLibraryWithPolicy(r, tenantID, policy), nil
 }
 
 func (app *App) mcpCheckSource(r *http.Request, args map[string]any) (any, error) {
@@ -926,14 +946,11 @@ func (app *App) mcpGetFinding(r *http.Request, args map[string]any) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	value, err := mcpSafeFindingValue(finding)
+	value, err := protoJSONValue(linktransport.FindingResponse(mcpSafeFindingMessage(finding), finding))
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"finding":  value,
-		"metadata": mcpResponseMetadata(0, 1, nil),
-	}, nil
+	return mcpAddResponseMetadata(value, mcpResponseMetadata(0, 1, nil)), nil
 }
 
 func (app *App) mcpSearchFindings(r *http.Request, args map[string]any) (any, error) {
@@ -2170,6 +2187,18 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("List Sources"),
 		},
 		{
+			Name:        "cerebro.connectors.list",
+			Title:       "List Connector Certification",
+			Description: "List compiled and catalog-only connectors with certification proof, current runtime observation, and availability state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":              map[string]any{"type": "string"},
+				"min_certification_tier": map[string]any{"type": "string", "enum": []string{"cataloged", "spec_verified", "contract_tested", "production_observed", "outcome_validated"}},
+				"include_preview":        map[string]any{"type": "boolean", "description": "Mark below-minimum connectors as available for evaluation without hiding catalog entries."},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"connectors": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Connector Certification"),
+		},
+		{
 			Name:        "cerebro.sources.check",
 			Title:       "Check Source",
 			Description: "Validate live source configuration without requiring durable stores or writing state.",
@@ -2285,7 +2314,7 @@ func mcpTools() []mcpTool {
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id": map[string]any{"type": "string"},
 			}, []string{"finding_id"}),
-			OutputSchema: mcpOutputSchema(map[string]any{"finding": map[string]any{"type": "object"}}),
+			OutputSchema: mcpOutputSchema(map[string]any{"finding": map[string]any{"type": "object"}, "links": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}}),
 			Annotations:  mcpReadOnlyAnnotations("Get Finding"),
 		},
 		{
@@ -3248,7 +3277,7 @@ func mcpToolsetForName(name string) string {
 		return "findings"
 	case strings.HasPrefix(name, "assets."):
 		return "assets"
-	case strings.HasPrefix(name, "sources.") || strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
+	case strings.HasPrefix(name, "sources.") || strings.HasPrefix(name, "connectors.") || strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
 		return "operations"
 	case strings.HasPrefix(name, "agent."):
 		return "agent"

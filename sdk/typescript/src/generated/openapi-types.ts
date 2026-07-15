@@ -1509,6 +1509,21 @@ export type GRCCollectionSource = {
   [key: string]: unknown;
 };
 
+export type GRCControlPackBuildRequest = {
+  archetype_ids?: string[];
+  description?: string;
+  extension_id?: string;
+  extension_name?: string;
+  framework_id?: string;
+  framework_name?: string;
+  framework_version?: string;
+  include_profiles?: string[];
+  profile_id?: string;
+  profile_name?: string;
+  tags?: string[];
+  [key: string]: unknown;
+};
+
 export type GRCControlPosture = {
   audit_summary?: string;
   control_id?: string;
@@ -1552,6 +1567,17 @@ export type GRCControlTestResult = {
   rule_id?: string;
   status?: string;
   [key: string]: unknown;
+};
+
+export type GRCCustomControlPacketResponse = {
+  controls: Record<string, unknown>[];
+  generated_at: string;
+  metadata: GRCReportMetadata;
+  packet: Record<string, unknown>;
+  preview: Record<string, unknown>;
+  profile: Record<string, unknown>;
+  profile_finding_matches: GRCProfileFindingMatch[];
+  profile_match_evaluation: GRCProfileMatchEvaluation;
 };
 
 export type GRCDashboardResponse = {
@@ -1774,6 +1800,83 @@ export type GRCExceptionAcceptance = {
   [key: string]: unknown;
 };
 
+export type GRCFindingControlRef = {
+  control_id: string;
+  framework_name: string;
+};
+
+export type GRCFindingExternalRef = {
+  external_id: string;
+  external_status: string;
+  external_status_reason: string;
+  kind: string;
+  lifecycle_owner: string;
+  observed_at: string;
+  system: string;
+  url: string;
+};
+
+export type GRCFindingNote = {
+  body: string;
+  created_at: string;
+  id: string;
+};
+
+export type GRCFindingProfileMappingPath = {
+  coverage_credit: "legacy_catalog_mapping" | "reviewed_catalog_mapping";
+  declared_source: GRCFindingControlRef;
+  declared_target: GRCFindingControlRef;
+  mapping_authority?: string;
+  mapping_description?: string;
+  mapping_source?: string;
+  mapping_version?: string;
+  match_direction: "finding_control_to_profile_control";
+  matching_rationale?: "syntactic" | "semantic" | "functional";
+  relationship?: "equal-to" | "equivalent-to" | "subset-of" | "superset-of" | "intersects-with" | "no-relationship";
+  review_status?: "complete" | "not-complete" | "draft" | "deprecated" | "superseded";
+  reviewed_at?: string | string;
+  source: GRCFindingControlRef;
+  target: GRCFindingControlRef;
+};
+
+export type GRCFindingProfileRef = {
+  catalog_mapped_controls?: GRCFindingControlRef[];
+  coverage_index_revision: string;
+  coverage_index_version: string;
+  direct_controls?: GRCFindingControlRef[];
+  id: string;
+  mapping_basis?: "direct" | "catalog_mapping" | "direct_and_catalog_mapping";
+  mapping_paths?: GRCFindingProfileMappingPath[];
+  matched_controls?: GRCFindingControlRef[];
+  matched_finding_controls?: GRCFindingControlRef[];
+  name: string;
+};
+
+export type GRCFindingProfileSummary = {
+  coverage_index_revision: string;
+  coverage_index_version: string;
+  critical_findings: number;
+  evaluated_findings: number;
+  evaluation_limit: number;
+  evaluation_truncated: boolean;
+  evidence_items: number;
+  has_more_matches: boolean;
+  high_findings: number;
+  matched_findings: number;
+  open_findings: number;
+  profile_id: string;
+  profile_name: string;
+  scan_truncated: boolean;
+  unassigned_findings: number;
+};
+
+export type GRCFindingTicket = {
+  external_id: string;
+  linked_at: string;
+  name: string;
+  url: string;
+};
+
 export type GRCFindingWorkflow = {
   check_id?: string;
   check_name?: string;
@@ -1798,6 +1901,13 @@ export type GRCFindingWorkflow = {
   status_reason?: string;
   title?: string;
   [key: string]: unknown;
+};
+
+export type GRCFindingsResponse = {
+  findings: GRCRiskInboxFinding[];
+  generated_at: string;
+  meta: GRCListMetadata;
+  profile_summary?: GRCFindingProfileSummary;
 };
 
 export type GRCFrameworkPosture = {
@@ -1837,6 +1947,12 @@ export type GRCGraphPathRecord = {
   to_type?: string;
   to_urn?: string;
   [key: string]: unknown;
+};
+
+export type GRCListMetadata = {
+  limit: number;
+  returned: number;
+  truncated: boolean;
 };
 
 export type GRCPolicyAcceptanceSummary = {
@@ -2354,6 +2470,30 @@ export type GRCProductAreaWorkflow = {
   label?: string;
 };
 
+export type GRCProfileFindingMatch = {
+  catalog_mapped_controls?: GRCFindingControlRef[];
+  coverage_index_revision: string;
+  coverage_index_version: string;
+  direct_controls?: GRCFindingControlRef[];
+  finding_id: string;
+  finding_title?: string;
+  mapping_basis: "direct" | "catalog_mapping" | "direct_and_catalog_mapping";
+  mapping_paths?: Record<string, unknown>[];
+  matched_controls?: GRCFindingControlRef[];
+  profile_id: string;
+  profile_name?: string;
+  rule_id?: string;
+  severity?: string;
+  status?: string;
+};
+
+export type GRCProfileMatchEvaluation = {
+  evaluated_findings: number;
+  evaluation_limit: number;
+  matched_findings: number;
+  scan_truncated: boolean;
+};
+
 export type GRCProgramReadinessResponse = {
   connectors?: Record<string, unknown>[];
   controls?: Record<string, unknown>[];
@@ -2766,6 +2906,45 @@ export type GRCResourceSubject = {
   last_observed_at?: string;
   urn?: string;
   [key: string]: unknown;
+};
+
+export type GRCRiskInboxFinding = {
+  assignee?: string;
+  compliance_profiles?: GRCFindingProfileRef[];
+  confidence_score?: number;
+  controls?: GRCFindingControlRef[];
+  disposition?: string;
+  due_at?: string;
+  entity?: string;
+  evidence_count: number;
+  external_refs?: GRCFindingExternalRef[];
+  first_observed_at?: string;
+  id: string;
+  impact_level?: string;
+  impact_score?: number;
+  last_observed_at?: string;
+  likelihood_level?: string;
+  likelihood_score?: number;
+  notes?: GRCFindingNote[];
+  owner: string;
+  policy_id?: string;
+  policy_name?: string;
+  resource_urns?: string[];
+  risk_model_version?: string;
+  risk_reasons?: string[];
+  risk_score?: number;
+  rule_id?: string;
+  runtime_id?: string;
+  severity: string;
+  sla_status: string;
+  source_id?: string;
+  status: string;
+  status_reason?: string;
+  status_updated_at?: string;
+  summary?: string;
+  tenant_id?: string;
+  tickets?: GRCFindingTicket[];
+  title: string;
 };
 
 export type GRCUploadEntityMatchHint = {
@@ -3193,6 +3372,22 @@ export type ReconcileGraphActionRequest = {
 export type RejectFindingCandidateRequest = {
   rationale: string;
   rejected_by: string;
+};
+
+export type ResourceLink = {
+  authority: "canonical_record" | "derived_record";
+  completeness: "complete" | "partial";
+  rel: string;
+  target: ResourceRef;
+};
+
+export type ResourceRef = {
+  api_path?: string;
+  id: string;
+  kind: string;
+  mcp_uri?: string;
+  revision?: string;
+  state: "current" | "immutable" | "unavailable";
 };
 
 export type RevokeDeviceRequest = {

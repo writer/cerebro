@@ -22,14 +22,18 @@ var ensureReportScheduleStatements = []string{
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   next_run_at TIMESTAMPTZ NOT NULL,
   last_run_at TIMESTAMPTZ,
+  claim_owner TEXT NOT NULL DEFAULT '',
+  claim_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`ALTER TABLE report_schedules ADD COLUMN IF NOT EXISTS claim_owner TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE report_schedules ADD COLUMN IF NOT EXISTS claim_expires_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS report_schedules_tenant_idx ON report_schedules (tenant_id, created_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS report_schedules_due_idx ON report_schedules (next_run_at) WHERE enabled`,
 }
 
-const reportScheduleColumns = `id, tenant_id, report_id, parameters_json::text, interval_seconds, enabled, next_run_at, last_run_at, created_at, updated_at`
+const reportScheduleColumns = `id, tenant_id, report_id, parameters_json::text, interval_seconds, enabled, next_run_at, last_run_at, claim_owner, claim_expires_at, created_at, updated_at`
 
 func (s *Store) ensureReportScheduleTable(ctx context.Context) error {
 	return s.ensureReportTables(ctx)
@@ -70,6 +74,8 @@ ON CONFLICT (id) DO UPDATE SET
   enabled = EXCLUDED.enabled,
   next_run_at = EXCLUDED.next_run_at,
   last_run_at = EXCLUDED.last_run_at,
+  claim_owner = '',
+  claim_expires_at = NULL,
   updated_at = NOW()`,
 		id, tenantID, reportID, string(parameters), schedule.IntervalSeconds, schedule.Enabled,
 		schedule.NextRunAt.UTC(), nullableTime(schedule.LastRunAt)); err != nil {
@@ -160,7 +166,7 @@ func (s *Store) DeleteReportSchedule(ctx context.Context, scheduleID string) err
 // ClaimDueReportSchedules atomically claims enabled schedules whose next run is
 // due, advancing each one full interval ahead so a single pass enqueues each due
 // schedule exactly once even across concurrent server replicas.
-func (s *Store) ClaimDueReportSchedules(ctx context.Context, now time.Time, limit uint32) ([]*ports.ReportSchedule, error) {
+func (s *Store) ClaimDueReportSchedules(ctx context.Context, now time.Time, owner string, ttl time.Duration, limit uint32) ([]*ports.ReportSchedule, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
@@ -170,21 +176,31 @@ func (s *Store) ClaimDueReportSchedules(ctx context.Context, now time.Time, limi
 	if limit == 0 {
 		limit = reportScheduleClaimLimit
 	}
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return nil, errors.New("report schedule claim owner is required")
+	}
+	if ttl <= 0 {
+		return nil, errors.New("report schedule claim ttl must be positive")
+	}
+	now = now.UTC()
 	// #nosec G201 -- column list is a fixed constant and all values remain parameterized.
 	query := fmt.Sprintf(`
 UPDATE report_schedules
-SET next_run_at = $1::timestamptz + make_interval(secs => interval_seconds),
-    last_run_at = $1::timestamptz,
+SET claim_owner = $3,
+    claim_expires_at = $1::timestamptz + $4::bigint * INTERVAL '1 millisecond',
     updated_at = NOW()
 WHERE id IN (
   SELECT id FROM report_schedules
-  WHERE enabled AND next_run_at <= $1::timestamptz
+  WHERE enabled
+    AND next_run_at <= $1::timestamptz
+    AND (claim_expires_at IS NULL OR claim_expires_at <= $1::timestamptz)
   ORDER BY next_run_at
   LIMIT $2
   FOR UPDATE SKIP LOCKED
 )
 RETURNING %s`, reportScheduleColumns)
-	rows, err := s.db.QueryContext(ctx, query, now.UTC(), limit)
+	rows, err := s.db.QueryContext(ctx, query, now, limit, owner, ttl.Milliseconds())
 	if err != nil {
 		return nil, fmt.Errorf("claim due report schedules: %w", err)
 	}
@@ -198,6 +214,63 @@ RETURNING %s`, reportScheduleColumns)
 		schedules = append(schedules, schedule)
 	}
 	return schedules, rows.Err()
+}
+
+// CompleteReportScheduleClaim advances a schedule only after its occurrence job
+// has been durably created. The owner and occurrence prevent a stale worker from
+// acknowledging a newer claim.
+func (s *Store) CompleteReportScheduleClaim(ctx context.Context, scheduleID string, owner string, occurrenceAt time.Time, completedAt time.Time) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	scheduleID = strings.TrimSpace(scheduleID)
+	owner = strings.TrimSpace(owner)
+	if scheduleID == "" || owner == "" || occurrenceAt.IsZero() || completedAt.IsZero() {
+		return errors.New("report schedule id, claim owner, occurrence, and completion time are required")
+	}
+	if err := s.ensureReportScheduleTable(ctx); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE report_schedules
+SET next_run_at = $4::timestamptz + make_interval(secs => interval_seconds),
+    last_run_at = $3::timestamptz,
+    claim_owner = '',
+    claim_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND claim_owner = $2
+  AND next_run_at = $3::timestamptz`, scheduleID, owner, occurrenceAt.UTC(), completedAt.UTC())
+	if err != nil {
+		return fmt.Errorf("complete report schedule claim %q: %w", scheduleID, err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return fmt.Errorf("report schedule claim conflict: %s", scheduleID)
+	}
+	return nil
+}
+
+// ReleaseReportScheduleClaim makes a failed enqueue eligible for the next poll.
+func (s *Store) ReleaseReportScheduleClaim(ctx context.Context, scheduleID string, owner string) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	scheduleID = strings.TrimSpace(scheduleID)
+	owner = strings.TrimSpace(owner)
+	if scheduleID == "" || owner == "" {
+		return errors.New("report schedule id and claim owner are required")
+	}
+	if err := s.ensureReportScheduleTable(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE report_schedules
+SET claim_owner = '', claim_expires_at = NULL, updated_at = NOW()
+WHERE id = $1 AND claim_owner = $2`, scheduleID, owner)
+	if err != nil {
+		return fmt.Errorf("release report schedule claim %q: %w", scheduleID, err)
+	}
+	return nil
 }
 
 const reportScheduleClaimLimit uint32 = 50
@@ -222,6 +295,7 @@ func scanReportSchedule(row scanner) (*ports.ReportSchedule, error) {
 		schedule       ports.ReportSchedule
 		parametersText string
 		lastRunAt      sql.NullTime
+		claimExpiresAt sql.NullTime
 	)
 	if err := row.Scan(
 		&schedule.ID,
@@ -232,6 +306,8 @@ func scanReportSchedule(row scanner) (*ports.ReportSchedule, error) {
 		&schedule.Enabled,
 		&schedule.NextRunAt,
 		&lastRunAt,
+		&schedule.ClaimOwner,
+		&claimExpiresAt,
 		&schedule.CreatedAt,
 		&schedule.UpdatedAt,
 	); err != nil {
@@ -246,6 +322,9 @@ func scanReportSchedule(row scanner) (*ports.ReportSchedule, error) {
 	schedule.Parameters = parameters
 	if lastRunAt.Valid {
 		schedule.LastRunAt = lastRunAt.Time
+	}
+	if claimExpiresAt.Valid {
+		schedule.ClaimExpiresAt = claimExpiresAt.Time
 	}
 	return &schedule, nil
 }

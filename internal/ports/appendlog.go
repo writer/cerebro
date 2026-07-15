@@ -15,6 +15,11 @@ const EventAttributeJobID = "job_id"
 
 var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
 var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter already replayed")
+var ErrAppendLogDeadLetterReplayClaimed = errors.New("append log dead letter replay already claimed")
+var ErrAppendLogDeadLetterReplayClaimInvalid = errors.New("append log dead letter replay claim is invalid or expired")
+var ErrAppendLogDeadLetterBacklogHardLimit = errors.New("append log dead letter backlog hard limit reached")
+var ErrAppendLogDeadLetterNotPending = errors.New("append log dead letter is not pending")
+var ErrReplayCursorNotFound = errors.New("append log replay cursor not found")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"
@@ -89,6 +94,19 @@ type AppendLogDeadLetter struct {
 	ReplayedAt    time.Time
 	DiscardedAt   time.Time
 	DiscardReason string
+	Replay        AppendLogDeadLetterReplayState
+}
+
+// AppendLogDeadLetterReplayState records bounded recovery ownership without
+// turning the transient lease into the dead-letter status of record.
+type AppendLogDeadLetterReplayState struct {
+	Owner             string
+	Token             string
+	LeaseExpiresAt    time.Time
+	AttemptCount      int
+	LastStartedAt     time.Time
+	LastFinishedAt    time.Time
+	LastErrorCategory string
 }
 
 // AppendLogDeadLetterFilter scopes operator reads over persisted publish
@@ -101,6 +119,52 @@ type AppendLogDeadLetterFilter struct {
 	Limit     uint32
 }
 
+// AppendLogDeadLetterBacklog summarizes recovery capacity without returning
+// replayable event envelopes.
+type AppendLogDeadLetterBacklog struct {
+	PendingRecords      int64
+	TerminalRecords     int64
+	PendingPayloadBytes int64
+	OldestPendingAt     time.Time
+	PendingRetention    time.Duration
+	TerminalRetention   time.Duration
+	WarningRecords      int64
+	HardRecords         int64
+	WarningBytes        int64
+	HardBytes           int64
+}
+
+// AppendLogDeadLetterCleanupRequest scopes one resumable terminal-record purge.
+type AppendLogDeadLetterCleanupRequest struct {
+	TerminalBefore time.Time
+	AfterID        string
+	Actor          string
+	Reason         string
+	Limit          uint32
+}
+
+// AppendLogDeadLetterCleanupResult reports one committed cleanup batch.
+type AppendLogDeadLetterCleanupResult struct {
+	DeletedIDs  []string
+	NextAfterID string
+	HasMore     bool
+}
+
+// AppendLogDeadLetterForcePurgeRequest identifies one pending recovery record
+// that an authenticated administrator has explicitly chosen to delete.
+type AppendLogDeadLetterForcePurgeRequest struct {
+	ID       string
+	TenantID string
+	Actor    string
+	Reason   string
+}
+
+// AppendLogDeadLetterForcePurgeStore is the destructive admin-only capability.
+// It is separate from operator replay and cleanup so CLI callers do not gain it.
+type AppendLogDeadLetterForcePurgeStore interface {
+	ForcePurgeAppendLogDeadLetter(context.Context, AppendLogDeadLetterForcePurgeRequest) error
+}
+
 // AppendLogDeadLetterStore persists and manages exhausted publish recovery
 // records outside JetStream so broker degradation does not recursively depend
 // on the same append path.
@@ -108,8 +172,13 @@ type AppendLogDeadLetterStore interface {
 	RecordAppendLogDeadLetter(context.Context, AppendLogDeadLetter) error
 	ListAppendLogDeadLetters(context.Context, AppendLogDeadLetterFilter) ([]AppendLogDeadLetter, error)
 	GetAppendLogDeadLetter(context.Context, string) (AppendLogDeadLetter, error)
-	MarkAppendLogDeadLetterReplayed(context.Context, string) error
-	DiscardAppendLogDeadLetter(context.Context, string, string) error
+	ClaimAppendLogDeadLetterReplay(context.Context, string, string, string, time.Duration) (AppendLogDeadLetter, error)
+	RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error
+	CompleteAppendLogDeadLetterReplay(context.Context, string, string, string, string) error
+	ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error
+	DiscardAppendLogDeadLetter(context.Context, string, string, string) error
+	GetAppendLogDeadLetterBacklog(context.Context) (AppendLogDeadLetterBacklog, error)
+	CleanupAppendLogDeadLetters(context.Context, AppendLogDeadLetterCleanupRequest) (AppendLogDeadLetterCleanupResult, error)
 }
 
 // ReplayRequest scopes a bounded event replay from the append log.
@@ -122,11 +191,26 @@ type ReplayRequest struct {
 	TenantID            string
 	AttributeEquals     map[string]string
 	Limit               uint32
+	Cursor              string
 }
 
 // EventReplayer replays stored event envelopes from the append log.
 type EventReplayer interface {
 	Replay(context.Context, ReplayRequest) ([]*cerebrov1.EventEnvelope, error)
+}
+
+// ReplayPage is one bounded replay page. NextCursor is opaque to callers and
+// resumes strictly before the oldest event returned in this page.
+type ReplayPage struct {
+	Events     []*cerebrov1.EventEnvelope
+	NextCursor string
+	Complete   bool
+}
+
+// EventReplayPager traverses arbitrarily large filtered event sets without
+// increasing the per-request replay bound.
+type EventReplayPager interface {
+	ReplayPage(context.Context, ReplayRequest) (ReplayPage, error)
 }
 
 // RuntimeIndexEntry is one append-log message indexed by source runtime and stream sequence.
