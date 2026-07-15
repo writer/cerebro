@@ -45,6 +45,11 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("graph-action-check", self.command_names([path]))
 
+    def test_rust_dependency_policy_paths_select_deny(self):
+        for path in ("Cargo.toml", "Cargo.lock", "deny.toml"):
+            with self.subTest(path=path):
+                self.assertIn("rust-deny", self.command_names([path]))
+
     def test_static_validator_paths_select_wasm_check(self):
         for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/graphagent/staticvalidator/src/lib.rs", "internal/graphagent/staticvalidator.go", "internal/graphagent/staticvalidator.wasm"):
             with self.subTest(path=path):
