@@ -346,6 +346,218 @@
         "coverage",
         "catalog"
       ]
+    },
+    {
+      "id": "openapi-typescript",
+      "title": "OpenAPI TypeScript Contracts",
+      "summary": "Generates TypeScript contract types from the public OpenAPI document and verifies checked-in output.",
+      "change_reason": "The public OpenAPI schema or TypeScript type generator changed",
+      "triggers": [
+        "api/openapi.yaml",
+        "tools/openapitsgen/**",
+        "sdk/typescript/src/generated/openapi-types.ts"
+      ],
+      "generator": {
+        "make_target": "openapi-ts-generate",
+        "command": [
+          "make",
+          "openapi-ts-generate"
+        ],
+        "summary": "Regenerate TypeScript contract types from api/openapi.yaml."
+      },
+      "checks": [
+        {
+          "key": "openapi-ts-check",
+          "summary": "Verify generated TypeScript contract types are current",
+          "make_target": "openapi-ts-check",
+          "command": [
+            "make",
+            "openapi-ts-check"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "sdk-typescript-check",
+          "summary": "Type-check the TypeScript SDK and generated contract consumers",
+          "make_target": "sdk-typescript-check",
+          "command": [
+            "make",
+            "sdk-typescript-check"
+          ]
+        }
+      ],
+      "outputs": [
+        "sdk/typescript/src/generated/openapi-types.ts"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "sdk"
+      ]
+    },
+    {
+      "id": "finding-dsl-schema",
+      "title": "Finding DSL Schema",
+      "summary": "Generates the JSON Schema used to validate PolicyFindingRule YAML authoring files.",
+      "change_reason": "Finding DSL types, validation, or schema generation changed",
+      "triggers": [
+        "internal/findingdsl/**",
+        "tools/findingdsl/**",
+        "schemas/policy-finding-rule.schema.json"
+      ],
+      "generator": {
+        "make_target": "finding-dsl-schema-generate",
+        "command": [
+          "make",
+          "finding-dsl-schema-generate"
+        ],
+        "summary": "Regenerate the PolicyFindingRule JSON Schema."
+      },
+      "checks": [
+        {
+          "key": "finding-dsl-schema-check",
+          "summary": "Verify the PolicyFindingRule JSON Schema is current",
+          "make_target": "finding-dsl-schema-check",
+          "command": [
+            "make",
+            "finding-dsl-schema-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "schemas/policy-finding-rule.schema.json"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "catalog"
+      ]
+    },
+    {
+      "id": "policy-rule-catalog",
+      "title": "Policy Rule Catalog",
+      "summary": "Generates domain-scoped Go policy rule catalogs from reviewed finding DSL files and extensions.",
+      "change_reason": "Policy DSL definitions, rule extensions, or catalog generation changed",
+      "triggers": [
+        "policies/**",
+        "internal/compliance/policy_rule_extensions.yaml",
+        "tools/policyrulegen/**",
+        "internal/findings/policy_rule_catalog_*_gen.go"
+      ],
+      "generator": {
+        "make_target": "policy-rule-generate",
+        "command": [
+          "make",
+          "policy-rule-generate"
+        ],
+        "summary": "Regenerate domain-scoped policy rule catalogs."
+      },
+      "checks": [
+        {
+          "key": "policy-rule-check",
+          "summary": "Verify generated policy rule catalogs are current",
+          "make_target": "policy-rule-check",
+          "command": [
+            "make",
+            "policy-rule-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "internal/findings/policy_rule_catalog_*_gen.go"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "catalog"
+      ]
+    },
+    {
+      "id": "control-index",
+      "title": "Compliance Control Index",
+      "summary": "Generates the compliance control coverage index from framework and control-family definitions.",
+      "change_reason": "Compliance framework, profile, or control coverage definitions changed",
+      "triggers": [
+        "internal/compliance/**",
+        "tools/controlindex/**",
+        "docs/reference/compliance-control-coverage.json"
+      ],
+      "generator": {
+        "make_target": "control-index-generate",
+        "command": [
+          "make",
+          "control-index-generate"
+        ],
+        "summary": "Regenerate the compliance control coverage index."
+      },
+      "checks": [
+        {
+          "key": "control-index-check",
+          "summary": "Verify the generated compliance control coverage index is current",
+          "make_target": "control-index-check",
+          "command": [
+            "make",
+            "control-index-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "docs/reference/compliance-control-coverage.json"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "catalog"
+      ]
+    },
+    {
+      "id": "connector-onboard",
+      "title": "Connector Onboarding Pipeline",
+      "summary": "Orchestrates OpenAPI definition generation, grammar classification, source generation, and catalog output.",
+      "change_reason": "Connector onboarding orchestration or any of its generator stages changed",
+      "triggers": [
+        "tools/connectoronboard/**",
+        "internal/connectordefinitions/openapigen/**",
+        "internal/sourcegen/**"
+      ],
+      "generator": {
+        "make_target": "connector-onboard",
+        "command": [
+          "make",
+          "connector-onboard",
+          "SPEC=<provider-openapi>",
+          "SOURCE_ID=<source-id>"
+        ],
+        "summary": "Run connector onboarding against an operator-provided provider OpenAPI document."
+      },
+      "checks": [
+        {
+          "key": "openapi-definition-gen-test",
+          "summary": "Validate OpenAPI definition generation and onboarding orchestration",
+          "make_target": "openapi-definition-gen-test",
+          "command": [
+            "make",
+            "openapi-definition-gen-test"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "sourcegen-test",
+          "summary": "Validate generated source runtime output",
+          "make_target": "sourcegen-test",
+          "command": [
+            "make",
+            "sourcegen-test"
+          ]
+        }
+      ],
+      "outputs": [
+        "internal/connectorcatalog/catalog/<category>/<source-id>.yaml",
+        "sources/<source-id>"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "catalog"
+      ]
     }
   ]
 }

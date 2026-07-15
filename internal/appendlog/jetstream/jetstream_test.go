@@ -23,6 +23,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -175,6 +176,14 @@ func jetstreamTelemetryPayloads(t *testing.T, stderr string, kind string, name s
 	return payloads
 }
 
+func jetstreamAttributeValues(attrs telemetry.Attributes) map[string]string {
+	values := map[string]string{}
+	for _, attr := range attrs.OTELAttributes() {
+		values[string(attr.Key)] = fmt.Sprint(attr.Value.AsInterface())
+	}
+	return values
+}
+
 func skipPublishRetryWaits(t *testing.T) {
 	t.Helper()
 	original := waitBeforePublishRetryFunc
@@ -253,6 +262,24 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 	if !proto.Equal(&decoded, event) {
 		t.Fatalf("decoded envelope = %#v, want %#v", &decoded, event)
+	}
+}
+
+func TestAppendSuccessTelemetryIsQuiet(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Id: "evt-1", Kind: "entity.upsert"}); err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	if starts := jetstreamTelemetryPayloads(t, stderr, "span_start", "jetstream.append"); len(starts) != 0 {
+		t.Fatalf("jetstream.append span_start events = %d, want 0; stderr=%s", len(starts), stderr)
+	}
+	if ends := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append"); len(ends) != 0 {
+		t.Fatalf("jetstream.append span_end events = %d, want 0; stderr=%s", len(ends), stderr)
 	}
 }
 
@@ -369,19 +396,15 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 	if len(recoveredEvents) != 1 {
 		t.Fatalf("recovered events = %d, want 1; stderr=%s", len(recoveredEvents), stderr)
 	}
-	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
-	if len(spanEnds) != 1 {
-		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	recovered := recoveredEvents[0]
+	if recovered["messaging.message.id.present"] != true {
+		t.Fatalf("message id present = %v, want true", recovered["messaging.message.id.present"])
 	}
-	end := spanEnds[0]
-	if end["messaging.message.id.present"] != true {
-		t.Fatalf("message id present = %v, want true", end["messaging.message.id.present"])
+	if hash, ok := recovered["messaging.message.id_hash"].(string); !ok || hash == "" {
+		t.Fatalf("message id hash = %v, want non-empty string", recovered["messaging.message.id_hash"])
 	}
-	if hash, ok := end["messaging.message.id_hash"].(string); !ok || hash == "" {
-		t.Fatalf("message id hash = %v, want non-empty string", end["messaging.message.id_hash"])
-	}
-	if end["messaging.jetstream.publish.retry_count"] != float64(1) {
-		t.Fatalf("span retry count = %v, want 1", end["messaging.jetstream.publish.retry_count"])
+	if recovered["messaging.jetstream.publish.retry_count"] != float64(1) {
+		t.Fatalf("recovered retry count = %v, want 1", recovered["messaging.jetstream.publish.retry_count"])
 	}
 }
 
@@ -563,68 +586,38 @@ func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
 	}
 }
 
-func TestAppendEmitsPublishBulkheadTelemetry(t *testing.T) {
-	pub := &fakePublisher{}
-	log := &Log{js: pub, subjectPrefix: "events", publishSlots: make(chan struct{}, 1)}
-
-	stderr := captureJetstreamTelemetry(t, func() {
-		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
-			Id:   "evt-bulkhead-telemetry",
-			Kind: "entity.upsert",
-		})
-		if err != nil {
-			t.Fatalf("Append() error = %v", err)
-		}
-	})
-
-	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
-	if len(spanEnds) != 1 {
-		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
-	}
-	end := spanEnds[0]
-	if end["messaging.jetstream.publish.bulkhead.enabled"] != true {
+func TestPublishTelemetryIncludesGlobalBulkhead(t *testing.T) {
+	result := publishTelemetry{}
+	result.addBulkheads([]publishBulkheadTelemetry{{Scope: publishBulkheadScopeGlobal, Limit: 1}})
+	end := jetstreamAttributeValues(result.attrs())
+	if end["messaging.jetstream.publish.bulkhead.enabled"] != "true" {
 		t.Fatalf("bulkhead enabled = %v, want true", end["messaging.jetstream.publish.bulkhead.enabled"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(1) {
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != "1" {
 		t.Fatalf("bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
 	}
 	if end["messaging.jetstream.publish.bulkhead.scopes"] != "global" {
 		t.Fatalf("bulkhead scopes = %v, want global", end["messaging.jetstream.publish.bulkhead.scopes"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != float64(1) {
+	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != "1" {
 		t.Fatalf("global bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
 	}
 }
 
-func TestAppendEmitsFindingsPublishBulkheadTelemetry(t *testing.T) {
-	pub := &fakePublisher{}
-	log := &Log{js: pub, subjectPrefix: "events", findingSlots: make(chan struct{}, 2)}
-
-	stderr := captureJetstreamTelemetry(t, func() {
-		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
-			Id:   "evt-findings-bulkhead-telemetry",
-			Kind: securityevents.FindingRecorded,
-		})
-		if err != nil {
-			t.Fatalf("Append() error = %v", err)
-		}
-	})
-
-	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
-	if len(spanEnds) != 1 {
-		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
-	}
-	end := spanEnds[0]
-	if end["messaging.jetstream.publish.bulkhead.enabled"] != true {
+func TestPublishTelemetryIncludesFindingsBulkhead(t *testing.T) {
+	result := publishTelemetry{}
+	result.addBulkheads([]publishBulkheadTelemetry{{Scope: publishBulkheadScopeFindings, Limit: 2}})
+	end := jetstreamAttributeValues(result.attrs())
+	if end["messaging.jetstream.publish.bulkhead.enabled"] != "true" {
 		t.Fatalf("bulkhead enabled = %v, want true", end["messaging.jetstream.publish.bulkhead.enabled"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(2) {
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != "2" {
 		t.Fatalf("bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
 	}
 	if end["messaging.jetstream.publish.bulkhead.scopes"] != "findings" {
 		t.Fatalf("bulkhead scopes = %v, want findings", end["messaging.jetstream.publish.bulkhead.scopes"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != float64(2) {
+	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != "2" {
 		t.Fatalf("findings bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"])
 	}
 	if _, ok := end["messaging.jetstream.publish.bulkhead.global.max_in_flight"]; ok {
@@ -632,43 +625,26 @@ func TestAppendEmitsFindingsPublishBulkheadTelemetry(t *testing.T) {
 	}
 }
 
-func TestAppendPreservesGlobalBulkheadMaxTelemetryWithFindingsBulkhead(t *testing.T) {
-	pub := &fakePublisher{}
-	log := &Log{
-		js:            pub,
-		subjectPrefix: "events",
-		publishSlots:  make(chan struct{}, 5),
-		findingSlots:  make(chan struct{}, 2),
-	}
-
-	stderr := captureJetstreamTelemetry(t, func() {
-		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
-			Id:   "evt-global-findings-bulkhead-telemetry",
-			Kind: securityevents.FindingRecorded,
-		})
-		if err != nil {
-			t.Fatalf("Append() error = %v", err)
-		}
+func TestPublishTelemetryPreservesGlobalBulkheadMaxWithFindingsBulkhead(t *testing.T) {
+	result := publishTelemetry{}
+	result.addBulkheads([]publishBulkheadTelemetry{
+		{Scope: publishBulkheadScopeGlobal, Limit: 5},
+		{Scope: publishBulkheadScopeFindings, Limit: 2},
 	})
-
-	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
-	if len(spanEnds) != 1 {
-		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
-	}
-	end := spanEnds[0]
+	end := jetstreamAttributeValues(result.attrs())
 	if end["messaging.jetstream.publish.bulkhead.scopes"] != "global,findings" {
 		t.Fatalf("bulkhead scopes = %v, want global,findings", end["messaging.jetstream.publish.bulkhead.scopes"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(5) {
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != "5" {
 		t.Fatalf("bulkhead max in flight = %v, want legacy global value 5", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"] != float64(2) {
+	if end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"] != "2" {
 		t.Fatalf("effective bulkhead max in flight = %v, want tightest value 2", end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != float64(5) {
+	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != "5" {
 		t.Fatalf("global bulkhead max in flight = %v, want 5", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
 	}
-	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != float64(2) {
+	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != "2" {
 		t.Fatalf("findings bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"])
 	}
 }

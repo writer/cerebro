@@ -5775,10 +5775,26 @@ func ReadDynamicDefinitionFixture(ctx context.Context, definition connectordefin
 
 // Builtin constructs the in-process source registry for the rewrite skeleton.
 func Builtin() (*sourcecdk.Registry, error) {
+	return BuiltinWithCatalogOverrides(nil)
+}
+
+// BuiltinWithCatalogOverrides applies verified declarative catalog bytes to fixed kernel runtimes.
+func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Registry, error) {
+	for sourceID := range overrides {
+		if sourceID != "deepseek" {
+			return nil, fmt.Errorf("connector catalog override %q is not supported", sourceID)
+		}
+	}
 	sources := make([]sourcecdk.Source, 0, len(builtinSourceLoaders))
 	registered := map[string]struct{}{}
 	for _, loader := range builtinSourceLoaders {
-		source, err := loader.load()
+		var source sourcecdk.Source
+		var err error
+		if loader.name == "deepseek" && len(overrides["deepseek"]) != 0 {
+			source, err = deepseeksource.NewWithCatalog(overrides["deepseek"])
+		} else {
+			source, err = loader.load()
+		}
 		if err != nil {
 			return nil, fmt.Errorf("load %s source: %w", loader.name, err)
 		}
