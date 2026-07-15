@@ -844,6 +844,19 @@ export type AuthErrorResponse = {
   status: number;
 };
 
+export type BuildDecisionPacketRequest = {
+  audit_packet_ids?: string[];
+  budgets?: DecisionPacketBudgets;
+  claim_ids?: string[];
+  evidence_urns?: string[];
+  finding_ids?: string[];
+  question: string;
+  requested_action?: string;
+  required_sources?: string[];
+  scope_urn?: string;
+  workflow: string;
+};
+
 export type Claim = {
   attributes?: Record<string, string>;
   claim_type?: string;
@@ -1224,6 +1237,162 @@ export type CredentialStoreUsage = {
   field_references: number;
   issues: number;
   last_updated_at?: string;
+};
+
+export type DecisionPacket = {
+  actions: DecisionPacketActionProposal[];
+  affected: DecisionPacketSubjectReference[];
+  audit_packets: DecisionPacketAuditPacketReference[];
+  claim: Record<string, unknown>;
+  confidence: DecisionPacketConfidence;
+  contradictions: DecisionPacketContradiction[];
+  controls: DecisionPacketControlReference[];
+  coverage_gaps: DecisionPacketCoverageGap[];
+  decision: DecisionPacketDecision;
+  evidence: DecisionPacketEvidenceReference[];
+  freshness: DecisionPacketFreshness;
+  generated_at: string;
+  guardrails: Record<string, unknown>;
+  id: string;
+  limits: DecisionPacketResultLimits;
+  provenance: DecisionPacketProvenance;
+  schema_version: string;
+  scope: DecisionPacketScope;
+  workflow: DecisionPacketWorkflow;
+};
+
+export type DecisionPacketActionProposal = {
+  action_id: string;
+  approval_requirements?: string[];
+  catalog_version?: string;
+  id: string;
+  proposal_digest?: string;
+  rationale: string;
+  state: "informational" | "proposal" | "approval_required";
+  target_urns: string[];
+};
+
+export type DecisionPacketAuditPacketReference = {
+  digest: string;
+  freshness: string;
+  generated_at: string;
+  id: string;
+  scope_urn?: string;
+};
+
+export type DecisionPacketBudgets = {
+  actions?: number;
+  affected?: number;
+  audit_packets?: number;
+  contradictions?: number;
+  controls?: number;
+  coverage_gaps?: number;
+  evidence?: number;
+  graph_depth?: number;
+  graph_rows?: number;
+};
+
+export type DecisionPacketConfidence = {
+  basis: string[];
+  level: "high" | "medium" | "low" | "unknown";
+};
+
+export type DecisionPacketContradiction = {
+  id: string;
+  left: DecisionPacketEvidenceReference;
+  predicate: string;
+  primary_claim: boolean;
+  resolution_state: "unresolved" | "resolved";
+  right: DecisionPacketEvidenceReference;
+  subject_urn: string;
+};
+
+export type DecisionPacketControlReference = {
+  applicability: string;
+  framework?: string;
+  id: string;
+};
+
+export type DecisionPacketCoverageGap = {
+  could_change_conclusion: boolean;
+  dimension?: string;
+  id: string;
+  reason: string;
+  required: boolean;
+  source_id?: string;
+  state: "complete" | "partial" | "stale" | "failed" | "unconfigured" | "unsupported" | "unverified";
+};
+
+export type DecisionPacketDecision = {
+  rationale?: string;
+  reasons: string[];
+  state: "supported" | "supported_with_gaps" | "blocked" | "insufficient_evidence" | "not_applicable";
+};
+
+export type DecisionPacketEvidenceReference = {
+  digest?: string;
+  id: string;
+  kind: string;
+  observed_at?: string;
+  predicate?: string;
+  source_id?: string;
+  subject_urn?: string;
+  urn?: string;
+  valid_from?: string;
+  valid_to?: string;
+  value?: string;
+};
+
+export type DecisionPacketFreshness = {
+  newest_observed_at?: string;
+  oldest_observed_at?: string;
+  required_stale: boolean;
+  state: "fresh" | "stale" | "unknown";
+};
+
+export type DecisionPacketProvenance = {
+  coverage_digest: string;
+  evidence_digest: string;
+  resolver_ids: string[];
+  source_ids: string[];
+  trace_id?: string;
+};
+
+export type DecisionPacketResultLimit = {
+  applied: number;
+  requested: number;
+  returned: number;
+  total_known?: number;
+  truncated: boolean;
+};
+
+export type DecisionPacketResultLimits = {
+  actions?: DecisionPacketResultLimit;
+  affected?: DecisionPacketResultLimit;
+  audit_packets?: DecisionPacketResultLimit;
+  contradictions?: DecisionPacketResultLimit;
+  controls?: DecisionPacketResultLimit;
+  coverage_gaps?: DecisionPacketResultLimit;
+  evidence?: DecisionPacketResultLimit;
+  graph_depth?: DecisionPacketResultLimit;
+  graph_rows?: DecisionPacketResultLimit;
+};
+
+export type DecisionPacketScope = {
+  actor_id: string;
+  tenant_id: string;
+  urn?: string;
+};
+
+export type DecisionPacketSubjectReference = {
+  kind: string;
+  name?: string;
+  urn: string;
+};
+
+export type DecisionPacketWorkflow = {
+  id: string;
+  question: string;
 };
 
 export type DeviceEnrollRequest = {

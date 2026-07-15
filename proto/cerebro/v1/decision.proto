@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+message DecisionPacketBudgets {
+  uint32 evidence = 1;
+  uint32 contradictions = 2;
+  uint32 coverage_gaps = 3;
+  uint32 affected = 4;
+  uint32 controls = 5;
+  uint32 audit_packets = 6;
+  uint32 actions = 7;
+  uint32 graph_rows = 8;
+  uint32 graph_depth = 9;
+}
+
+message BuildDecisionPacketRequest {
+  string workflow = 1;
+  string question = 2;
+  string scope_urn = 3;
+  repeated string finding_ids = 4;
+  repeated string claim_ids = 5;
+  repeated string evidence_urns = 6;
+  repeated string audit_packet_ids = 7;
+  repeated string required_sources = 8;
+  string requested_action = 9;
+  DecisionPacketBudgets budgets = 10;
+}
+
+message BuildDecisionPacketResponse {
+  DecisionPacket packet = 1;
+}
+
+message DecisionPacket {
+  string schema_version = 1;
+  string id = 2;
+  google.protobuf.Timestamp generated_at = 3;
+  DecisionPacketWorkflow workflow = 4;
+  DecisionPacketScope scope = 5;
+  google.protobuf.Struct guardrails = 6;
+  google.protobuf.Struct claim = 7;
+  DecisionPacketDecision decision = 8;
+  DecisionPacketConfidence confidence = 9;
+  DecisionPacketFreshness freshness = 10;
+  repeated DecisionPacketEvidenceReference evidence = 11;
+  repeated DecisionPacketContradiction contradictions = 12;
+  repeated DecisionPacketCoverageGap coverage_gaps = 13;
+  repeated DecisionPacketSubjectReference affected = 14;
+  repeated DecisionPacketControlReference controls = 15;
+  repeated DecisionPacketAuditPacketReference audit_packets = 16;
+  repeated DecisionPacketActionProposal actions = 17;
+  DecisionPacketProvenance provenance = 18;
+  DecisionPacketResultLimits limits = 19;
+}
+
+message DecisionPacketWorkflow {
+  string id = 1;
+  string question = 2;
+}
+
+message DecisionPacketScope {
+  string tenant_id = 1;
+  string actor_id = 2;
+  string urn = 3;
+}
+
+message DecisionPacketDecision {
+  string state = 1;
+  string rationale = 2;
+  repeated string reasons = 3;
+}
+
+message DecisionPacketConfidence {
+  string level = 1;
+  repeated string basis = 2;
+}
+
+message DecisionPacketFreshness {
+  string state = 1;
+  google.protobuf.Timestamp oldest_observed_at = 2;
+  google.protobuf.Timestamp newest_observed_at = 3;
+  bool required_stale = 4;
+}
+
+message DecisionPacketEvidenceReference {
+  string id = 1;
+  string urn = 2;
+  string kind = 3;
+  string source_id = 4;
+  string subject_urn = 5;
+  string predicate = 6;
+  string value = 7;
+  google.protobuf.Timestamp observed_at = 8;
+  google.protobuf.Timestamp valid_from = 9;
+  google.protobuf.Timestamp valid_to = 10;
+  string digest = 11;
+}
+
+message DecisionPacketContradiction {
+  string id = 1;
+  string subject_urn = 2;
+  string predicate = 3;
+  DecisionPacketEvidenceReference left = 4;
+  DecisionPacketEvidenceReference right = 5;
+  string resolution_state = 6;
+  bool primary_claim = 7;
+}
+
+message DecisionPacketCoverageGap {
+  string id = 1;
+  string source_id = 2;
+  string dimension = 3;
+  string state = 4;
+  bool required = 5;
+  bool could_change_conclusion = 6;
+  string reason = 7;
+}
+
+message DecisionPacketSubjectReference {
+  string urn = 1;
+  string kind = 2;
+  string name = 3;
+}
+
+message DecisionPacketControlReference {
+  string id = 1;
+  string framework = 2;
+  string applicability = 3;
+}
+
+message DecisionPacketAuditPacketReference {
+  string id = 1;
+  string scope_urn = 2;
+  string digest = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string freshness = 5;
+}
+
+message DecisionPacketActionProposal {
+  string id = 1;
+  string action_id = 2;
+  string state = 3;
+  repeated string target_urns = 4;
+  string rationale = 5;
+  repeated string approval_requirements = 6;
+  string catalog_version = 7;
+  string proposal_digest = 8;
+}
+
+message DecisionPacketProvenance {
+  string trace_id = 1;
+  repeated string resolver_ids = 2;
+  repeated string source_ids = 3;
+  string evidence_digest = 4;
+  string coverage_digest = 5;
+}
+
+message DecisionPacketResultLimits {
+  DecisionPacketResultLimit evidence = 1;
+  DecisionPacketResultLimit contradictions = 2;
+  DecisionPacketResultLimit coverage_gaps = 3;
+  DecisionPacketResultLimit affected = 4;
+  DecisionPacketResultLimit controls = 5;
+  DecisionPacketResultLimit audit_packets = 6;
+  DecisionPacketResultLimit actions = 7;
+  DecisionPacketResultLimit graph_rows = 8;
+  DecisionPacketResultLimit graph_depth = 9;
+}
+
+message DecisionPacketResultLimit {
+  uint32 requested = 1;
+  uint32 applied = 2;
+  uint32 returned = 3;
+  uint32 total_known = 4;
+  bool truncated = 5;
+}

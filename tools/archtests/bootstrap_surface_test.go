@@ -117,7 +117,12 @@ import (
 // bounded baseline comparison, and remediation proposal shaping stay in
 // internal/complianceassessment; schemas and tool inventory stay in
 // internal/mcpoperations.
-const bootstrapProductionGoLineBudget = 28034
+// Decision packets add HTTP and Connect request mapping, auth-derived tenant
+// and actor identity, bounded request decoding, safe transport error mapping,
+// and composition of existing read ports. Resolution, decision derivation,
+// immutable receipts, and protobuf response conversion remain behind
+// internal/decisionpacket packages.
+const bootstrapProductionGoLineBudget = 28257
 
 type bootstrapFileLineCount struct {
 	path  string

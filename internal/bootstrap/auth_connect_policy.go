@@ -57,7 +57,8 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure,
 		cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure,
 		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
-		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
+		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure,
+		cerebrov1connect.BootstrapServiceBuildDecisionPacketProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeCosmoSecurityRead}
 	case cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure,
 		cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure:

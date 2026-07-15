@@ -171,6 +171,9 @@ const (
 	// BootstrapServiceCheckGraphIngestHealthProcedure is the fully-qualified name of the
 	// BootstrapService's CheckGraphIngestHealth RPC.
 	BootstrapServiceCheckGraphIngestHealthProcedure = "/cerebro.v1.BootstrapService/CheckGraphIngestHealth"
+	// BootstrapServiceBuildDecisionPacketProcedure is the fully-qualified name of the
+	// BootstrapService's BuildDecisionPacket RPC.
+	BootstrapServiceBuildDecisionPacketProcedure = "/cerebro.v1.BootstrapService/BuildDecisionPacket"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
@@ -221,6 +224,7 @@ type BootstrapServiceClient interface {
 	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
 	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
 	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
+	BuildDecisionPacket(context.Context, *connect.Request[v1.BuildDecisionPacketRequest]) (*connect.Response[v1.BuildDecisionPacketResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -510,6 +514,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
 			connect.WithClientOptions(opts...),
 		),
+		buildDecisionPacket: connect.NewClient[v1.BuildDecisionPacketRequest, v1.BuildDecisionPacketResponse](
+			httpClient,
+			baseURL+BootstrapServiceBuildDecisionPacketProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("BuildDecisionPacket")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -561,6 +571,7 @@ type bootstrapServiceClient struct {
 	getGraphIngestRun                      *connect.Client[v1.GetGraphIngestRunRequest, v1.GetGraphIngestRunResponse]
 	listGraphIngestRuns                    *connect.Client[v1.ListGraphIngestRunsRequest, v1.ListGraphIngestRunsResponse]
 	checkGraphIngestHealth                 *connect.Client[v1.CheckGraphIngestHealthRequest, v1.CheckGraphIngestHealthResponse]
+	buildDecisionPacket                    *connect.Client[v1.BuildDecisionPacketRequest, v1.BuildDecisionPacketResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -795,6 +806,11 @@ func (c *bootstrapServiceClient) CheckGraphIngestHealth(ctx context.Context, req
 	return c.checkGraphIngestHealth.CallUnary(ctx, req)
 }
 
+// BuildDecisionPacket calls cerebro.v1.BootstrapService.BuildDecisionPacket.
+func (c *bootstrapServiceClient) BuildDecisionPacket(ctx context.Context, req *connect.Request[v1.BuildDecisionPacketRequest]) (*connect.Response[v1.BuildDecisionPacketResponse], error) {
+	return c.buildDecisionPacket.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
@@ -843,6 +859,7 @@ type BootstrapServiceHandler interface {
 	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
 	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
 	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
+	BuildDecisionPacket(context.Context, *connect.Request[v1.BuildDecisionPacketRequest]) (*connect.Response[v1.BuildDecisionPacketResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1128,6 +1145,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceBuildDecisionPacketHandler := connect.NewUnaryHandler(
+		BootstrapServiceBuildDecisionPacketProcedure,
+		svc.BuildDecisionPacket,
+		connect.WithSchema(bootstrapServiceMethods.ByName("BuildDecisionPacket")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
@@ -1222,6 +1245,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceListGraphIngestRunsHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckGraphIngestHealthProcedure:
 			bootstrapServiceCheckGraphIngestHealthHandler.ServeHTTP(w, r)
+		case BootstrapServiceBuildDecisionPacketProcedure:
+			bootstrapServiceBuildDecisionPacketHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1413,4 +1438,8 @@ func (UnimplementedBootstrapServiceHandler) ListGraphIngestRuns(context.Context,
 
 func (UnimplementedBootstrapServiceHandler) CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckGraphIngestHealth is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) BuildDecisionPacket(context.Context, *connect.Request[v1.BuildDecisionPacketRequest]) (*connect.Response[v1.BuildDecisionPacketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.BuildDecisionPacket is not implemented"))
 }
