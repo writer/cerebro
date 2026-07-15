@@ -616,31 +616,40 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 		return err
 	}
 	params := map[string]any{
-		"from_urn":   fromURN,
-		"to_urn":     toURN,
-		"relation":   relation,
-		"tenant_id":  tenantID,
-		"source_id":  sourceID,
-		"runtime_id": strings.TrimSpace(link.RuntimeID),
+		"from_urn":          fromURN,
+		"to_urn":            toURN,
+		"relation":          relation,
+		"tenant_id":         tenantID,
+		"source_id":         sourceID,
+		"runtime_id":        strings.TrimSpace(link.RuntimeID),
+		"reconciliation_id": projectedLinkReconciliationID(link.Attributes),
 	}
 	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
 		_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-			attributesJSON, version, found, err := mergeLinkAndLoadAttributes(ctx, tx, params)
+			current, found, err := mergeLinkAndLoadAttributes(ctx, tx, params)
 			if err != nil {
 				return nil, fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
 			}
 			if !found {
 				return nil, nil
 			}
-			existing, err := graphAttributesFromJSON(attributesJSON)
+			existingLogical, err := graphAttributesFromJSON(current.logicalAttributesJSON)
 			if err != nil {
-				return nil, fmt.Errorf("decode projected link attributes: %w", err)
+				return nil, fmt.Errorf("decode projected logical link attributes: %w", err)
 			}
-			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, link.Attributes))
+			existingAssertion, err := graphAttributesFromJSON(current.assertionAttributesJSON)
 			if err != nil {
-				return nil, fmt.Errorf("marshal projected link attributes: %w", err)
+				return nil, fmt.Errorf("decode projected link assertion attributes: %w", err)
 			}
-			updated, err := updateLinkAttributes(ctx, tx, fromURN, relation, toURN, version, mergedJSON)
+			logicalJSON, err := graphAttributesJSON(mergeGraphAttributes(existingLogical, link.Attributes))
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected logical link attributes: %w", err)
+			}
+			assertionJSON, err := graphAttributesJSON(mergeGraphAttributes(existingAssertion, link.Attributes))
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected link assertion attributes: %w", err)
+			}
+			updated, err := updateLinkAttributes(ctx, tx, params, current, logicalJSON, assertionJSON)
 			if err != nil {
 				return nil, err
 			}
@@ -708,23 +717,77 @@ const mergeProjectedLinksQuery = `UNWIND $rows AS row
 MATCH (src:Entity {urn: row.from_urn}), (dst:Entity {urn: row.to_urn})
 SET src.relation_lock = coalesce(src.relation_lock, 0) + 1
 MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)
-ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
-SET r.tenant_id = row.tenant_id,
-    r.source_id = row.source_id,
-    r.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(r.runtime_id, '') END
-RETURN row.from_urn AS from_urn, row.relation AS relation, row.to_urn AS to_urn, coalesce(r.attributes_json, '{}') AS attributes_json, coalesce(r.attributes_version, 0) AS attributes_version`
+ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0, r.assertion_managed = true, r.assertion_quarantined = false
+WITH src, dst, r, row,
+     coalesce(r.assertion_managed, false) AS was_assertion_managed,
+     CASE WHEN coalesce(r.tenant_id, '') <> '' THEN r.tenant_id ELSE row.tenant_id END AS legacy_tenant_id,
+     coalesce(r.source_id, '') AS legacy_source_id,
+     coalesce(r.runtime_id, '') AS legacy_runtime_id
+WITH src, dst, r, row, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+     NOT was_assertion_managed AS preserve_legacy_logical
+SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE row.tenant_id END,
+    r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE row.source_id END,
+    r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE row.runtime_id END,
+    r.assertion_managed = NOT preserve_legacy_logical,
+    r.assertion_quarantined = preserve_legacy_logical
+MERGE (src)-[a:RELATION_ASSERTION {
+    relation: row.relation,
+    tenant_id: row.tenant_id,
+    source_id: row.source_id,
+    runtime_id: row.runtime_id
+}]->(dst)
+ON CREATE SET a.attributes_json = '{}', a.attributes_version = 0
+SET a.projection_reconciliation_id = row.reconciliation_id
+RETURN row.from_urn AS from_urn,
+       row.relation AS relation,
+       row.to_urn AS to_urn,
+       row.tenant_id AS tenant_id,
+       row.source_id AS source_id,
+       row.runtime_id AS runtime_id,
+       coalesce(r.attributes_json, '{}') AS logical_attributes_json,
+       coalesce(r.attributes_version, 0) AS logical_attributes_version,
+       coalesce(a.attributes_json, '{}') AS assertion_attributes_json,
+       coalesce(a.attributes_version, 0) AS assertion_attributes_version,
+       preserve_legacy_logical AS preserve_legacy_logical`
 
 // updateProjectedLinksQuery is the batched counterpart of updateLinkAttributes.
 const updateProjectedLinksQuery = `UNWIND $rows AS row
 MATCH (:Entity {urn: row.from_urn})-[r:RELATION {relation: row.relation}]->(:Entity {urn: row.to_urn})
 WHERE coalesce(r.attributes_version, 0) = row.attributes_version
 SET r.attributes_json = row.attributes_json,
-    r.attributes_version = row.next_attributes_version
+    r.attributes_version = row.next_attributes_version,
+    r.tenant_id = row.tenant_id,
+    r.source_id = row.source_id,
+    r.runtime_id = row.runtime_id,
+    r.projection_reconciliation_id = row.reconciliation_id,
+    r.assertion_managed = true,
+    r.assertion_quarantined = false
 RETURN count(r)`
+
+const updateProjectedLinkAssertionsQuery = `UNWIND $rows AS row
+MATCH (:Entity {urn: row.from_urn})-[a:RELATION_ASSERTION {
+    relation: row.relation,
+    tenant_id: row.tenant_id,
+    source_id: row.source_id,
+    runtime_id: row.runtime_id
+}]->(:Entity {urn: row.to_urn})
+WHERE coalesce(a.attributes_version, 0) = row.attributes_version
+SET a.attributes_json = row.attributes_json,
+    a.attributes_version = row.next_attributes_version,
+    a.projection_reconciliation_id = row.reconciliation_id
+RETURN count(a)`
 
 type loadedAttributeRow struct {
 	attributesJSON string
 	version        int64
+}
+
+type loadedProjectedLinkRow struct {
+	logicalAttributesJSON   string
+	logicalVersion          int64
+	assertionAttributesJSON string
+	assertionVersion        int64
+	preserveLegacyLogical   bool
 }
 
 type preparedProjectedEntity struct {
@@ -883,50 +946,109 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 		mergeRows := make([]map[string]any, 0, len(chunk))
 		for _, link := range chunk {
 			mergeRows = append(mergeRows, map[string]any{
-				"from_urn":   link.fromURN,
-				"to_urn":     link.toURN,
-				"relation":   link.relation,
-				"tenant_id":  link.tenantID,
-				"source_id":  link.sourceID,
-				"runtime_id": link.runtimeID,
+				"from_urn":          link.fromURN,
+				"to_urn":            link.toURN,
+				"relation":          link.relation,
+				"tenant_id":         link.tenantID,
+				"source_id":         link.sourceID,
+				"runtime_id":        link.runtimeID,
+				"reconciliation_id": projectedLinkReconciliationID(link.attributes),
 			})
 		}
-		loaded, err := loadAttributeRows(ctx, tx, mergeProjectedLinksQuery, mergeRows, linkAttributeRowKey)
+		loaded, err := loadProjectedLinkRows(ctx, tx, mergeRows)
 		if err != nil {
 			return nil, fmt.Errorf("load projected link attributes: %w", err)
 		}
-		updateRows := make([]map[string]any, 0, len(loaded))
+		assertionUpdateRows := make([]map[string]any, 0, len(loaded))
+		type logicalUpdate struct {
+			link       *preparedProjectedLink
+			version    int64
+			attributes map[string]string
+			preserve   bool
+		}
+		logicalUpdates := make([]*logicalUpdate, 0, len(loaded))
+		logicalIndex := make(map[string]*logicalUpdate, len(loaded))
 		for _, link := range chunk {
-			key := projectedLinkKey(link.fromURN, link.relation, link.toURN)
+			key := projectedLinkAssertionKey(link.fromURN, link.relation, link.toURN, link.tenantID, link.sourceID, link.runtimeID)
 			current, ok := loaded[key]
 			if !ok {
 				continue
 			}
-			existing, err := graphAttributesFromJSON(current.attributesJSON)
+			existingAssertion, err := graphAttributesFromJSON(current.assertionAttributesJSON)
 			if err != nil {
-				return nil, fmt.Errorf("decode projected link %q attributes: %w", key, err)
+				return nil, fmt.Errorf("decode projected link assertion %q attributes: %w", key, err)
 			}
-			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, link.attributes))
+			assertionJSON, err := graphAttributesJSON(mergeGraphAttributes(existingAssertion, link.attributes))
 			if err != nil {
-				return nil, fmt.Errorf("marshal projected link %q attributes: %w", key, err)
+				return nil, fmt.Errorf("marshal projected link assertion %q attributes: %w", key, err)
 			}
-			updateRows = append(updateRows, map[string]any{
+			assertionUpdateRows = append(assertionUpdateRows, map[string]any{
 				"from_urn":                link.fromURN,
 				"to_urn":                  link.toURN,
 				"relation":                link.relation,
-				"attributes_version":      current.version,
-				"next_attributes_version": current.version + 1,
-				"attributes_json":         mergedJSON,
+				"tenant_id":               link.tenantID,
+				"source_id":               link.sourceID,
+				"runtime_id":              link.runtimeID,
+				"reconciliation_id":       projectedLinkReconciliationID(link.attributes),
+				"attributes_version":      current.assertionVersion,
+				"next_attributes_version": current.assertionVersion + 1,
+				"attributes_json":         assertionJSON,
 			})
+
+			logicalKey := projectedLinkKey(link.fromURN, link.relation, link.toURN)
+			logical := logicalIndex[logicalKey]
+			if logical == nil {
+				existingLogical, err := graphAttributesFromJSON(current.logicalAttributesJSON)
+				if err != nil {
+					return nil, fmt.Errorf("decode projected logical link %q attributes: %w", logicalKey, err)
+				}
+				logical = &logicalUpdate{link: link, version: current.logicalVersion, attributes: existingLogical, preserve: current.preserveLegacyLogical}
+				logicalIndex[logicalKey] = logical
+				logicalUpdates = append(logicalUpdates, logical)
+			}
+			if !logical.preserve {
+				logical.attributes = mergeGraphAttributes(logical.attributes, link.attributes)
+			}
 		}
-		if len(updateRows) == 0 {
+		if len(assertionUpdateRows) == 0 {
 			return nil, nil
 		}
-		updated, err := countQuery(ctx, tx, updateProjectedLinksQuery, map[string]any{"rows": updateRows})
+		logicalUpdateRows := make([]map[string]any, 0, len(logicalUpdates))
+		for _, logical := range logicalUpdates {
+			if logical.preserve {
+				continue
+			}
+			attributesJSON, err := graphAttributesJSON(logical.attributes)
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected logical link %q attributes: %w", projectedLinkKey(logical.link.fromURN, logical.link.relation, logical.link.toURN), err)
+			}
+			logicalUpdateRows = append(logicalUpdateRows, map[string]any{
+				"from_urn":                logical.link.fromURN,
+				"to_urn":                  logical.link.toURN,
+				"relation":                logical.link.relation,
+				"tenant_id":               logical.link.tenantID,
+				"source_id":               logical.link.sourceID,
+				"runtime_id":              logical.link.runtimeID,
+				"reconciliation_id":       projectedLinkReconciliationID(logical.link.attributes),
+				"attributes_version":      logical.version,
+				"next_attributes_version": logical.version + 1,
+				"attributes_json":         attributesJSON,
+			})
+		}
+		if len(logicalUpdateRows) != 0 {
+			updated, err := countQuery(ctx, tx, updateProjectedLinksQuery, map[string]any{"rows": logicalUpdateRows})
+			if err != nil {
+				return nil, err
+			}
+			if updated != int64(len(logicalUpdateRows)) {
+				return nil, errConcurrentAttributeMerge
+			}
+		}
+		updated, err := countQuery(ctx, tx, updateProjectedLinkAssertionsQuery, map[string]any{"rows": assertionUpdateRows})
 		if err != nil {
 			return nil, err
 		}
-		if updated != int64(len(updateRows)) {
+		if updated != int64(len(assertionUpdateRows)) {
 			return nil, errConcurrentAttributeMerge
 		}
 		return nil, nil
@@ -950,16 +1072,82 @@ func loadAttributeRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, q
 	return loaded, result.Err()
 }
 
+func loadProjectedLinkRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, rows []map[string]any) (map[string]loadedProjectedLinkRow, error) {
+	result, err := tx.Run(ctx, mergeProjectedLinksQuery, map[string]any{"rows": rows})
+	if err != nil {
+		return nil, err
+	}
+	loaded := make(map[string]loadedProjectedLinkRow, len(rows))
+	for result.Next(ctx) {
+		values := result.Record().Values
+		key := projectedLinkAssertionKey(
+			stringValue(values[0]),
+			stringValue(values[1]),
+			stringValue(values[2]),
+			stringValue(values[3]),
+			stringValue(values[4]),
+			stringValue(values[5]),
+		)
+		loaded[key] = loadedProjectedLinkRow{
+			logicalAttributesJSON:   stringValue(values[6]),
+			logicalVersion:          toInt64(values[7]),
+			assertionAttributesJSON: stringValue(values[8]),
+			assertionVersion:        toInt64(values[9]),
+			preserveLegacyLogical:   boolValue(values[10]),
+		}
+	}
+	return loaded, result.Err()
+}
+
 func entityAttributeRowKey(values []any) string {
 	return stringValue(values[0])
 }
 
-func linkAttributeRowKey(values []any) string {
-	return projectedLinkKey(stringValue(values[0]), stringValue(values[1]), stringValue(values[2]))
-}
-
 func projectedLinkKey(fromURN string, relation string, toURN string) string {
 	return fromURN + "|" + relation + "|" + toURN
+}
+
+func projectedLinkAssertionKey(fromURN string, relation string, toURN string, tenantID string, sourceID string, runtimeID string) string {
+	return projectedLinkKey(fromURN, relation, toURN) + "|" + tenantID + "|" + sourceID + "|" + runtimeID
+}
+
+func projectedLinkReconciliationID(attributes map[string]string) string {
+	return strings.TrimSpace(attributes["projection_reconciliation_id"])
+}
+
+const reconcileProjectedLogicalLinksQuery = `UNWIND $rows AS row
+MATCH (src:Entity {urn: row.from_urn})-[logical:RELATION {relation: row.relation}]->(dst:Entity {urn: row.to_urn})
+WHERE logical.tenant_id = row.tenant_id
+CALL {
+  WITH src, dst, row
+  OPTIONAL MATCH (src)-[candidate:RELATION_ASSERTION {relation: row.relation}]->(dst)
+  WHERE candidate.tenant_id = row.tenant_id
+  WITH candidate
+  ORDER BY candidate.source_id, candidate.runtime_id, candidate.attributes_json, elementId(candidate)
+  RETURN head(collect(candidate)) AS survivor
+}
+WITH logical, survivor, coalesce(logical.assertion_managed, false) AS can_rehydrate
+FOREACH (_ IN CASE WHEN survivor IS NOT NULL AND can_rehydrate THEN [1] ELSE [] END |
+  SET logical.tenant_id = survivor.tenant_id,
+      logical.source_id = survivor.source_id,
+      logical.runtime_id = survivor.runtime_id,
+      logical.attributes_json = coalesce(survivor.attributes_json, '{}'),
+      logical.attributes_version = coalesce(logical.attributes_version, 0) + 1,
+      logical.projection_reconciliation_id = coalesce(survivor.projection_reconciliation_id, ''),
+      logical.assertion_managed = true,
+      logical.assertion_quarantined = false
+)
+FOREACH (_ IN CASE WHEN survivor IS NULL AND coalesce(logical.assertion_managed, false) THEN [1] ELSE [] END |
+  DELETE logical
+)
+RETURN count(*)`
+
+func reconcileProjectedLogicalLinks(ctx context.Context, tx neo4jdriver.ManagedTransaction, rows []map[string]any) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := consume(ctx, tx, reconcileProjectedLogicalLinksQuery, map[string]any{"rows": rows})
+	return err
 }
 
 func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedProjectedEntity, error) {
@@ -1028,11 +1216,9 @@ func prepareProjectedLinks(links []*ports.ProjectedLink) ([]*preparedProjectedLi
 		if err != nil {
 			return nil, err
 		}
-		key := projectedLinkKey(fromURN, relation, toURN)
+		runtimeID := strings.TrimSpace(link.RuntimeID)
+		key := projectedLinkAssertionKey(fromURN, relation, toURN, tenantID, sourceID, runtimeID)
 		if existing, ok := index[key]; ok {
-			existing.tenantID = tenantID
-			existing.sourceID = sourceID
-			existing.runtimeID = strings.TrimSpace(link.RuntimeID)
 			existing.attributes = mergeGraphAttributes(existing.attributes, link.Attributes)
 			continue
 		}
@@ -1042,7 +1228,7 @@ func prepareProjectedLinks(links []*ports.ProjectedLink) ([]*preparedProjectedLi
 			relation:   relation,
 			tenantID:   tenantID,
 			sourceID:   sourceID,
-			runtimeID:  strings.TrimSpace(link.RuntimeID),
+			runtimeID:  runtimeID,
 			attributes: mergeGraphAttributes(nil, link.Attributes),
 		}
 		index[key] = entry
@@ -1055,7 +1241,16 @@ func prepareProjectedLinks(links []*ports.ProjectedLink) ([]*preparedProjectedLi
 		if cmp := strings.Compare(left.relation, right.relation); cmp != 0 {
 			return cmp
 		}
-		return strings.Compare(left.toURN, right.toURN)
+		if cmp := strings.Compare(left.toURN, right.toURN); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(left.tenantID, right.tenantID); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(left.sourceID, right.sourceID); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(left.runtimeID, right.runtimeID)
 	})
 	return prepared, nil
 }
@@ -1078,7 +1273,10 @@ func chunkSlice[T any](items []T, size int) [][]T {
 	return chunks
 }
 
-// DeleteProjectedLink removes one normalized link from the graph store.
+// DeleteProjectedLink retracts one source-runtime assertion when tenant and
+// source provenance are present. A blank runtime is an exact blank-runtime
+// identity, not a wildcard. Identity-less deletes are a fail-closed no-op;
+// they never remove assertions or uncovered legacy relationships.
 func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
 	fromURN, toURN, relation, err := validateProjectedLinkIdentity(link)
 	if err != nil {
@@ -1090,12 +1288,44 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureSchema(ctx); err != nil {
 		return err
 	}
+	tenantID := strings.TrimSpace(link.TenantID)
+	sourceID := strings.TrimSpace(link.SourceID)
+	runtimeID := strings.TrimSpace(link.RuntimeID)
+	if tenantID != "" {
+		if err := ports.ValidateProjectedLinkTenantScope(link); err != nil {
+			return err
+		}
+	}
 	_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		return consume(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn}) DELETE r`, map[string]any{
-			"from_urn": fromURN,
-			"to_urn":   toURN,
-			"relation": relation,
-		})
+		params := map[string]any{
+			"from_urn":   fromURN,
+			"to_urn":     toURN,
+			"relation":   relation,
+			"tenant_id":  tenantID,
+			"source_id":  sourceID,
+			"runtime_id": runtimeID,
+		}
+		if tenantID == "" || sourceID == "" {
+			return nil, nil
+		}
+		value, err := queryOneValue(ctx, tx, `MATCH (src:Entity {urn: $from_urn})-[assertion:RELATION_ASSERTION {
+    relation: $relation,
+    tenant_id: $tenant_id,
+    source_id: $source_id,
+    runtime_id: $runtime_id
+}]->(dst:Entity {urn: $to_urn})
+WITH src, dst, assertion
+DELETE assertion
+RETURN count(*)`, params)
+		if err != nil {
+			return nil, err
+		}
+		if toInt64(value) == 0 {
+			return nil, nil
+		}
+		return nil, reconcileProjectedLogicalLinks(ctx, tx, []map[string]any{{
+			"from_urn": fromURN, "relation": relation, "to_urn": toURN, "tenant_id": tenantID,
+		}})
 	})
 	if err != nil {
 		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
@@ -1103,7 +1333,9 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return nil
 }
 
-// DeleteProjectedEntity removes one normalized entity and its graph relationships.
+// DeleteProjectedEntity removes only an isolated entity. The identity-less API
+// cannot safely choose among source-runtime assertions, so shared or legacy
+// graph facts must be retracted through their scoped link APIs first.
 func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
 	normalizedURN := strings.TrimSpace(urn)
 	if normalizedURN == "" {
@@ -1116,7 +1348,10 @@ func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
 		return err
 	}
 	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		return consume(ctx, tx, `MATCH (e:Entity {urn: $urn}) DETACH DELETE e`, map[string]any{"urn": normalizedURN})
+		return consume(ctx, tx, `MATCH (e:Entity {urn: $urn})
+WHERE NOT (e)-[:RELATION]-()
+  AND NOT (e)-[:RELATION_ASSERTION]-()
+DELETE e`, map[string]any{"urn": normalizedURN})
 	})
 	if err != nil {
 		return fmt.Errorf("delete projected entity %q: %w", normalizedURN, err)
@@ -1124,7 +1359,9 @@ func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
 	return nil
 }
 
-// CleanupProjectedEntities deletes scoped isolated projection entities.
+// CleanupProjectedEntities removes only assertions in the requested
+// tenant/source/runtime scope, reconciles their logical links, and deletes an
+// entity only when no logical link or assertion still references it.
 func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
 	if err := s.requireConfigured(); err != nil {
 		return ports.ProjectionCleanupResult{}, err
@@ -1145,12 +1382,8 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 	if tenantID == "" && sourceID == "" && runtimeID == "" && findingID == "" && len(entityTypes) == 0 && len(urnPrefixes) == 0 {
 		return ports.ProjectionCleanupResult{}, errors.New("projection cleanup scope is required")
 	}
-	conditions := []string{}
-	params := map[string]any{
-		"limit":        limit,
-		"entity_types": entityTypes,
-		"urn_prefixes": urnPrefixes,
-	}
+	conditions := make([]string, 0, 8)
+	params := map[string]any{"limit": limit, "entity_types": entityTypes, "urn_prefixes": urnPrefixes}
 	if tenantID != "" {
 		conditions = append(conditions, "e.tenant_id = $tenant_id")
 		params["tenant_id"] = tenantID
@@ -1174,65 +1407,124 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 		conditions = append(conditions, "any(prefix IN $urn_prefixes WHERE e.urn STARTS WITH prefix)")
 	}
 	if request.OnlyIsolated && findingID == "" {
-		conditions = append(conditions, "NOT (e)-[:RELATION]-()")
+		conditions = append(conditions, "NOT (e)-[:RELATION]-()", "NOT (e)-[:RELATION_ASSERTION]-()")
 	}
-	query := `MATCH (e:Entity)
+	candidateQuery := `MATCH (e:Entity)
 WHERE ` + strings.Join(conditions, " AND ") + `
-WITH e LIMIT $limit
-OPTIONAL MATCH (e)-[rel:RELATION]-()
-WITH collect(DISTINCT e) AS entities, count(DISTINCT rel) AS links
-`
+RETURN e.urn
+ORDER BY e.urn
+LIMIT $limit`
+	loadCandidates := func(ctx context.Context, tx neo4jdriver.ManagedTransaction) ([]string, error) {
+		result, err := tx.Run(ctx, candidateQuery, params)
+		if err != nil {
+			return nil, err
+		}
+		var urns []string
+		for result.Next(ctx) {
+			urns = append(urns, stringValue(result.Record().Values[0]))
+		}
+		return urns, result.Err()
+	}
+	assertionScopeComplete := tenantID != "" && sourceID != ""
+	assertionParams := map[string]any{
+		"tenant_id": tenantID, "source_id": sourceID, "runtime_id": runtimeID,
+	}
+	countAssertions := func(ctx context.Context, tx neo4jdriver.ManagedTransaction, urns []string) (int64, error) {
+		if !assertionScopeComplete || len(urns) == 0 {
+			return 0, nil
+		}
+		assertionParams["urns"] = urns
+		value, err := queryOneValue(ctx, tx, `UNWIND $urns AS urn
+MATCH (candidate:Entity {urn: urn})
+MATCH (src:Entity)-[assertion:RELATION_ASSERTION]->(dst:Entity)
+WHERE (src = candidate OR dst = candidate)
+  AND assertion.tenant_id = $tenant_id
+  AND assertion.source_id = $source_id
+  AND assertion.runtime_id = $runtime_id
+RETURN count(DISTINCT assertion)`, assertionParams)
+		return toInt64(value), err
+	}
 	if request.DryRun {
-		var matchedEntities, matchedLinks int64
+		var urns []string
+		var links int64
 		if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
-			result, err := tx.Run(ctx, query+`RETURN size(entities), links`, params)
+			var err error
+			urns, err = loadCandidates(ctx, tx)
 			if err != nil {
 				return nil, err
 			}
-			record, err := result.Single(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if len(record.Values) > 0 {
-				matchedEntities = toInt64(record.Values[0])
-			}
-			if len(record.Values) > 1 {
-				matchedLinks = toInt64(record.Values[1])
-			}
-			return nil, nil
+			links, err = countAssertions(ctx, tx, urns)
+			return nil, err
 		}); err != nil {
 			return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
 		}
-		return ports.ProjectionCleanupResult{EntitiesMatched: uint32FromInt64(matchedEntities), LinksMatched: uint32FromInt64(matchedLinks)}, nil
+		return ports.ProjectionCleanupResult{
+			EntitiesMatched: uint32FromInt64(int64(len(urns))),
+			LinksMatched:    uint32FromInt64(links),
+		}, nil
 	}
-	query += `
-FOREACH (entity IN entities | DETACH DELETE entity)
-RETURN size(entities), links`
-	var deletedEntities, deletedLinks int64
+
+	var matchedEntities, deletedEntities, deletedAssertions int64
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		result, err := tx.Run(ctx, query, params)
+		urns, err := loadCandidates(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
-		record, err := result.Single(ctx)
+		matchedEntities = int64(len(urns))
+		if len(urns) == 0 {
+			return nil, nil
+		}
+		if assertionScopeComplete {
+			assertionParams["urns"] = urns
+			result, err := tx.Run(ctx, `UNWIND $urns AS urn
+MATCH (candidate:Entity {urn: urn})
+MATCH (src:Entity)-[assertion:RELATION_ASSERTION]->(dst:Entity)
+WHERE (src = candidate OR dst = candidate)
+  AND assertion.tenant_id = $tenant_id
+  AND assertion.source_id = $source_id
+  AND assertion.runtime_id = $runtime_id
+WITH DISTINCT src, dst, assertion, assertion.relation AS relation
+DELETE assertion
+RETURN src.urn, relation, dst.urn`, assertionParams)
+			if err != nil {
+				return nil, err
+			}
+			affectedRows := make([]map[string]any, 0)
+			for result.Next(ctx) {
+				values := result.Record().Values
+				deletedAssertions++
+				affectedRows = append(affectedRows, map[string]any{
+					"from_urn": stringValue(values[0]), "relation": stringValue(values[1]),
+					"to_urn": stringValue(values[2]), "tenant_id": tenantID,
+				})
+			}
+			if err := result.Err(); err != nil {
+				return nil, err
+			}
+			if err := reconcileProjectedLogicalLinks(ctx, tx, affectedRows); err != nil {
+				return nil, err
+			}
+		}
+		value, err := queryOneValue(ctx, tx, `UNWIND $urns AS urn
+MATCH (entity:Entity {urn: urn})
+WHERE NOT (entity)-[:RELATION]-()
+  AND NOT (entity)-[:RELATION_ASSERTION]-()
+WITH collect(entity) AS victims
+FOREACH (entity IN victims | DELETE entity)
+RETURN size(victims)`, map[string]any{"urns": urns})
 		if err != nil {
 			return nil, err
 		}
-		if len(record.Values) > 0 {
-			deletedEntities = toInt64(record.Values[0])
-		}
-		if len(record.Values) > 1 {
-			deletedLinks = toInt64(record.Values[1])
-		}
+		deletedEntities = toInt64(value)
 		return nil, nil
 	}); err != nil {
 		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
 	}
 	return ports.ProjectionCleanupResult{
-		EntitiesMatched: uint32FromInt64(deletedEntities),
-		LinksMatched:    uint32FromInt64(deletedLinks),
+		EntitiesMatched: uint32FromInt64(matchedEntities),
+		LinksMatched:    uint32FromInt64(deletedAssertions),
 		EntitiesDeleted: uint32FromInt64(deletedEntities),
-		LinksDeleted:    uint32FromInt64(deletedLinks),
+		LinksDeleted:    uint32FromInt64(deletedAssertions),
 	}, nil
 }
 
@@ -1265,40 +1557,295 @@ func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.P
 	}
 	var deleted int64
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		value, err := queryOneValue(ctx, tx, query, params)
+		result, err := tx.Run(ctx, query, params)
 		if err != nil {
 			return nil, err
 		}
-		deleted = toInt64(value)
-		return nil, nil
+		affectedRows := make([]map[string]any, 0)
+		for result.Next(ctx) {
+			values := result.Record().Values
+			deleted++
+			affectedRows = append(affectedRows, map[string]any{
+				"from_urn": stringValue(values[0]), "relation": stringValue(values[1]),
+				"to_urn": stringValue(values[2]), "tenant_id": stringValue(params["tenant_id"]),
+			})
+		}
+		if err := result.Err(); err != nil {
+			return nil, err
+		}
+		return nil, reconcileProjectedLogicalLinks(ctx, tx, affectedRows)
 	}); err != nil {
 		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
 	}
 	return ports.ProjectionLinkCleanupResult{LinksMatched: uint32FromInt64(deleted), LinksDeleted: uint32FromInt64(deleted)}, nil
 }
 
+// CountProjectedLinksMissingAssertions reports material logical relationships
+// that do not have assertion coverage for the same tenant, endpoints, and
+// relation. Callers can use a non-zero count as a migration coverage gate.
+func (s *Store) CountProjectedLinksMissingAssertions(ctx context.Context, tenantID string, relations []string) (uint32, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	relations = normalizeCleanupValues(relations)
+	if tenantID == "" || len(relations) == 0 {
+		return 0, errors.New("tenant_id and relations are required for projected link assertion coverage")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return 0, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return 0, err
+	}
+	var missing int64
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+		value, err := queryOneValue(ctx, tx, `MATCH (src:Entity)-[logical:RELATION]->(dst:Entity)
+WHERE logical.tenant_id = $tenant_id
+  AND logical.relation IN $relations
+  AND (
+    coalesce(logical.assertion_managed, false) = false
+    OR NOT EXISTS {
+      MATCH (src)-[assertion:RELATION_ASSERTION {relation: logical.relation}]->(dst)
+      WHERE assertion.tenant_id = $tenant_id
+    }
+  )
+RETURN count(logical)`, map[string]any{
+			"tenant_id": tenantID,
+			"relations": relations,
+		})
+		if err != nil {
+			return nil, err
+		}
+		missing = toInt64(value)
+		return nil, nil
+	}); err != nil {
+		return 0, fmt.Errorf("count projected links missing assertions: %w", err)
+	}
+	return uint32FromInt64(missing), nil
+}
+
+// MigrateProjectedLinkAssertions quarantines legacy logical relationships.
+// Their last-writer source/runtime properties cannot prove that no other
+// runtime asserted the same fact, so only a clean graph rebuild may establish
+// complete assertion coverage for them.
+func (s *Store) MigrateProjectedLinkAssertions(ctx context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	relations := normalizeCleanupValues(request.Relations)
+	if tenantID == "" || len(relations) == 0 {
+		return ports.ProjectionAssertionMigrationResult{}, errors.New("tenant_id and relations are required for projected link assertion migration")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return ports.ProjectionAssertionMigrationResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return ports.ProjectionAssertionMigrationResult{}, err
+	}
+	limit := int64(request.Limit)
+	if limit <= 0 {
+		limit = defaultProjectionCleanupLimit
+	}
+	params := map[string]any{"tenant_id": tenantID, "relations": relations, "limit": limit}
+	candidateQuery := `MATCH ()-[logical:RELATION]->()
+WHERE logical.tenant_id = $tenant_id
+  AND logical.relation IN $relations
+  AND coalesce(logical.assertion_managed, false) = false
+WITH logical
+ORDER BY elementId(logical)
+LIMIT $limit
+RETURN count(logical)`
+	if request.DryRun {
+		var quarantined int64
+		if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+			value, err := queryOneValue(ctx, tx, candidateQuery, params)
+			quarantined = toInt64(value)
+			return nil, err
+		}); err != nil {
+			return ports.ProjectionAssertionMigrationResult{}, fmt.Errorf("migrate projected link assertions: %w", err)
+		}
+		return ports.ProjectionAssertionMigrationResult{
+			LinksMatched:     uint32FromInt64(quarantined),
+			LinksQuarantined: uint32FromInt64(quarantined),
+		}, nil
+	}
+	var quarantined int64
+	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		value, err := queryOneValue(ctx, tx, `MATCH ()-[logical:RELATION]->()
+WHERE logical.tenant_id = $tenant_id
+  AND logical.relation IN $relations
+  AND coalesce(logical.assertion_managed, false) = false
+WITH logical
+ORDER BY elementId(logical)
+LIMIT $limit
+SET logical.assertion_managed = false,
+    logical.assertion_quarantined = true
+RETURN count(logical)`, params)
+		if err != nil {
+			return nil, err
+		}
+		quarantined = toInt64(value)
+		return nil, nil
+	}); err != nil {
+		return ports.ProjectionAssertionMigrationResult{}, fmt.Errorf("migrate projected link assertions: %w", err)
+	}
+	return ports.ProjectionAssertionMigrationResult{
+		LinksMatched:     uint32FromInt64(quarantined),
+		LinksQuarantined: uint32FromInt64(quarantined),
+	}, nil
+}
+
+// CleanupProjectedRuntimeLinks removes stale source-runtime assertions from one
+// authoritative projection pass. The shared logical relationship is retained
+// while any assertion remains and is removed only when its last assertion is
+// deleted. Legacy logical relationships without assertion coverage are counted
+// as matched but deliberately left untouched.
+func (s *Store) CleanupProjectedRuntimeLinks(ctx context.Context, request ports.ProjectionRuntimeLinkReconciliationRequest) (ports.ProjectionLinkCleanupResult, error) {
+	if err := s.requireConfigured(); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	sourceID := strings.TrimSpace(request.SourceID)
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	reconciliationID := strings.TrimSpace(request.ReconciliationID)
+	relations := normalizeCleanupValues(request.Relations)
+	if tenantID == "" || sourceID == "" || runtimeID == "" || reconciliationID == "" || len(relations) == 0 {
+		return ports.ProjectionLinkCleanupResult{}, errors.New("tenant_id, source_id, runtime_id, reconciliation_id, and relations are required for runtime link reconciliation")
+	}
+	limit := int64(request.Limit)
+	if limit <= 0 {
+		limit = defaultProjectionCleanupLimit
+	}
+	params := map[string]any{
+		"tenant_id":         tenantID,
+		"source_id":         sourceID,
+		"runtime_id":        runtimeID,
+		"relations":         relations,
+		"reconciliation_id": reconciliationID,
+		"limit":             limit,
+	}
+	legacyCountQuery := `MATCH (src:Entity)-[legacy:RELATION]->(dst:Entity)
+WHERE legacy.tenant_id = $tenant_id
+  AND legacy.source_id = $source_id
+  AND coalesce(legacy.runtime_id, '') = $runtime_id
+  AND legacy.relation IN $relations
+  AND coalesce(legacy.assertion_managed, false) = false
+  AND NOT EXISTS {
+    MATCH (src)-[covered:RELATION_ASSERTION {relation: legacy.relation}]->(dst)
+    WHERE covered.tenant_id = $tenant_id
+  }
+RETURN count(legacy)`
+	staleCountQuery := `MATCH ()-[stale:RELATION_ASSERTION]->()
+WHERE stale.tenant_id = $tenant_id
+  AND stale.source_id = $source_id
+  AND stale.runtime_id = $runtime_id
+  AND stale.relation IN $relations
+  AND coalesce(stale.projection_reconciliation_id, '') <> $reconciliation_id
+WITH stale
+ORDER BY elementId(stale)
+LIMIT $limit
+RETURN count(stale)`
+	countMatches := func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (int64, int64, error) {
+		legacyValue, err := queryOneValue(ctx, tx, legacyCountQuery, params)
+		if err != nil {
+			return 0, 0, err
+		}
+		staleValue, err := queryOneValue(ctx, tx, staleCountQuery, params)
+		if err != nil {
+			return 0, 0, err
+		}
+		return toInt64(legacyValue), toInt64(staleValue), nil
+	}
+	if request.DryRun {
+		var legacy, stale int64
+		if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+			var err error
+			legacy, stale, err = countMatches(ctx, tx)
+			return nil, err
+		}); err != nil {
+			return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup projected runtime links: %w", err)
+		}
+		return ports.ProjectionLinkCleanupResult{LinksMatched: uint32FromInt64(legacy + stale)}, nil
+	}
+
+	var legacy, deleted int64
+	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		legacyValue, err := queryOneValue(ctx, tx, legacyCountQuery, params)
+		if err != nil {
+			return nil, err
+		}
+		legacy = toInt64(legacyValue)
+		result, err := tx.Run(ctx, `MATCH (src:Entity)-[stale:RELATION_ASSERTION]->(dst:Entity)
+WHERE stale.tenant_id = $tenant_id
+  AND stale.source_id = $source_id
+  AND stale.runtime_id = $runtime_id
+  AND stale.relation IN $relations
+  AND coalesce(stale.projection_reconciliation_id, '') <> $reconciliation_id
+WITH src, dst, stale, stale.relation AS relation
+ORDER BY elementId(stale)
+LIMIT $limit
+DELETE stale
+RETURN src.urn, relation, dst.urn`, params)
+		if err != nil {
+			return nil, err
+		}
+		affectedRows := make([]map[string]any, 0)
+		affected := make(map[string]struct{})
+		for result.Next(ctx) {
+			values := result.Record().Values
+			fromURN := stringValue(values[0])
+			relation := stringValue(values[1])
+			toURN := stringValue(values[2])
+			deleted++
+			key := projectedLinkKey(fromURN, relation, toURN)
+			if _, ok := affected[key]; ok {
+				continue
+			}
+			affected[key] = struct{}{}
+			affectedRows = append(affectedRows, map[string]any{
+				"from_urn":  fromURN,
+				"relation":  relation,
+				"to_urn":    toURN,
+				"tenant_id": tenantID,
+			})
+		}
+		if err := result.Err(); err != nil {
+			return nil, err
+		}
+		return nil, reconcileProjectedLogicalLinks(ctx, tx, affectedRows)
+	}); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup projected runtime links: %w", err)
+	}
+	return ports.ProjectionLinkCleanupResult{
+		LinksMatched: uint32FromInt64(legacy + deleted),
+		LinksDeleted: uint32FromInt64(deleted),
+	}, nil
+}
+
 func endpointOwnerIDLinkCleanupQuery(conditions []string, dryRun bool) string {
-	query := `MATCH (e:Entity)-[stale:RELATION]->(target:Entity)
+	query := `MATCH (e:Entity)-[logical:RELATION]->(target:Entity)
 WHERE ` + strings.Join(conditions, " AND ") + `
   AND EXISTS {
     MATCH (e)-[replacement:RELATION {relation: 'has_identifier'}]->(replacementTarget:Entity)
-    WHERE replacement.tenant_id = stale.tenant_id
+    WHERE replacement.tenant_id = logical.tenant_id
       AND replacement.source_id IN $source_ids
       AND any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix
         AND any(replacementPrefix IN $replacement_prefixes WHERE replacementTarget.urn STARTS WITH replacementPrefix
           AND substring(target.urn, size(stalePrefix)) = substring(replacementTarget.urn, size(replacementPrefix))))
   }
-WITH stale, e, target
-ORDER BY e.urn, stale.relation, target.urn, elementId(stale)
+MATCH (e)-[stale:RELATION_ASSERTION {relation: logical.relation}]->(target)
+WHERE stale.tenant_id = $tenant_id
+  AND stale.source_id IN $source_ids
+  AND stale.runtime_id = $runtime_id
+WITH stale, e, target, logical.relation AS relation
+ORDER BY e.urn, relation, target.urn, elementId(stale)
 LIMIT $limit`
 	if dryRun {
 		return query + `
 RETURN count(stale)`
 	}
 	return query + `
-WITH collect(stale) AS victims
-FOREACH (link IN victims | DELETE link)
-RETURN size(victims)`
+DELETE stale
+RETURN e.urn, relation, target.urn`
 }
 
 func endpointOwnerIDLinkCleanupParams(request ports.ProjectionLinkCleanupRequest) (map[string]any, []string, error) {
@@ -1317,17 +1864,13 @@ func endpointOwnerIDLinkCleanupParams(request ports.ProjectionLinkCleanupRequest
 	}
 	conditions := []string{
 		"e.tenant_id = $tenant_id",
-		"stale.tenant_id = $tenant_id",
+		"logical.tenant_id = $tenant_id",
 		"e.source_id IN $source_ids",
-		"stale.source_id IN $source_ids",
 		"e.entity_type IN $endpoint_entity_types",
-		"stale.relation IN $stale_relations",
+		"logical.relation IN $stale_relations",
 		"any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix)",
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID != "" {
-		conditions = append(conditions, "coalesce(stale.runtime_id, '') = $runtime_id")
-	}
 	params := map[string]any{
 		"tenant_id":             tenantID,
 		"source_ids":            sourceIDs,
@@ -1335,10 +1878,8 @@ func endpointOwnerIDLinkCleanupParams(request ports.ProjectionLinkCleanupRequest
 		"stale_relations":       []string{"owned_by", "represents_identity", "has_identifier"},
 		"stale_prefixes":        stalePrefixes,
 		"replacement_prefixes":  replacementPrefixes,
+		"runtime_id":            runtimeID,
 		"limit":                 limit,
-	}
-	if runtimeID != "" {
-		params["runtime_id"] = runtimeID
 	}
 	return params, conditions, nil
 }
@@ -1742,6 +2283,11 @@ SET r.runtime_id = $runtime_id,
     r.events_read = $events_read,
     r.entities_projected = $entities_projected,
     r.links_projected = $links_projected,
+	 r.material_link_reconciliation_requested = $material_link_reconciliation_requested,
+	 r.material_link_reconciliation_supported = $material_link_reconciliation_supported,
+	 r.material_link_reconciliation_completed = $material_link_reconciliation_completed,
+	 r.projection_reconciliation_id = $projection_reconciliation_id,
+	 r.stale_material_links_deleted = $stale_material_links_deleted,
     r.graph_nodes_before = $graph_nodes_before,
     r.graph_links_before = $graph_links_before,
     r.graph_nodes_after = $graph_nodes_after,
@@ -1749,26 +2295,31 @@ SET r.runtime_id = $runtime_id,
     r.started_at = $started_at,
     r.finished_at = $finished_at,
     r.error_message = $error_message`, map[string]any{
-			"id":                  run.ID,
-			"runtime_id":          strings.TrimSpace(run.RuntimeID),
-			"source_id":           strings.TrimSpace(run.SourceID),
-			"tenant_id":           strings.TrimSpace(run.TenantID),
-			"checkpoint_id":       strings.TrimSpace(run.CheckpointID),
-			"checkpoint_cursor":   strings.TrimSpace(run.CheckpointCursor),
-			"checkpoint_complete": run.CheckpointComplete,
-			"status":              run.Status,
-			"trigger":             strings.TrimSpace(run.Trigger),
-			"pages_read":          run.PagesRead,
-			"events_read":         run.EventsRead,
-			"entities_projected":  run.EntitiesProjected,
-			"links_projected":     run.LinksProjected,
-			"graph_nodes_before":  run.GraphNodesBefore,
-			"graph_links_before":  run.GraphLinksBefore,
-			"graph_nodes_after":   run.GraphNodesAfter,
-			"graph_links_after":   run.GraphLinksAfter,
-			"started_at":          strings.TrimSpace(run.StartedAt),
-			"finished_at":         strings.TrimSpace(run.FinishedAt),
-			"error_message":       strings.TrimSpace(run.Error),
+			"id":                                     run.ID,
+			"runtime_id":                             strings.TrimSpace(run.RuntimeID),
+			"source_id":                              strings.TrimSpace(run.SourceID),
+			"tenant_id":                              strings.TrimSpace(run.TenantID),
+			"checkpoint_id":                          strings.TrimSpace(run.CheckpointID),
+			"checkpoint_cursor":                      strings.TrimSpace(run.CheckpointCursor),
+			"checkpoint_complete":                    run.CheckpointComplete,
+			"status":                                 run.Status,
+			"trigger":                                strings.TrimSpace(run.Trigger),
+			"pages_read":                             run.PagesRead,
+			"events_read":                            run.EventsRead,
+			"entities_projected":                     run.EntitiesProjected,
+			"links_projected":                        run.LinksProjected,
+			"material_link_reconciliation_requested": run.MaterialLinkReconciliationRequested,
+			"material_link_reconciliation_supported": run.MaterialLinkReconciliationSupported,
+			"material_link_reconciliation_completed": run.MaterialLinkReconciliationCompleted,
+			"projection_reconciliation_id":           strings.TrimSpace(run.ProjectionReconciliationID),
+			"stale_material_links_deleted":           run.StaleMaterialLinksDeleted,
+			"graph_nodes_before":                     run.GraphNodesBefore,
+			"graph_links_before":                     run.GraphLinksBefore,
+			"graph_nodes_after":                      run.GraphNodesAfter,
+			"graph_links_after":                      run.GraphLinksAfter,
+			"started_at":                             strings.TrimSpace(run.StartedAt),
+			"finished_at":                            strings.TrimSpace(run.FinishedAt),
+			"error_message":                          strings.TrimSpace(run.Error),
 		})
 	})
 	if err != nil {
@@ -1920,6 +2471,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE INDEX cerebro_entity_tenant_mfa_disabled IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.mfa_disabled)",
 		"CREATE INDEX cerebro_relation_tenant_runtime IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.runtime_id)",
 		"CREATE INDEX cerebro_relation_tenant_relation IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.relation)",
+		"CREATE INDEX cerebro_relation_assertion_tenant_runtime IF NOT EXISTS FOR ()-[a:RELATION_ASSERTION]-() ON (a.tenant_id, a.runtime_id)",
+		"CREATE INDEX cerebro_relation_assertion_identity IF NOT EXISTS FOR ()-[a:RELATION_ASSERTION]-() ON (a.tenant_id, a.relation, a.source_id, a.runtime_id)",
 		"CREATE FULLTEXT INDEX cerebro_entity_inventory_fulltext IF NOT EXISTS FOR (e:Entity) ON EACH [e.urn, e.label, e.entity_type, e.attributes_json]",
 	}
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -2283,38 +2836,81 @@ RETURN count(e)`, map[string]any{
 	return updated == 1, nil
 }
 
-func mergeLinkAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, bool, error) {
+func mergeLinkAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (loadedProjectedLinkRow, bool, error) {
 	result, err := tx.Run(ctx, `MATCH (src:Entity {urn: $from_urn}), (dst:Entity {urn: $to_urn})
 SET src.relation_lock = coalesce(src.relation_lock, 0) + 1
 MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
-ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
-SET r.tenant_id = $tenant_id,
-    r.source_id = $source_id,
-    r.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(r.runtime_id, '') END
-RETURN coalesce(r.attributes_json, '{}'), coalesce(r.attributes_version, 0)`, params)
+ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0, r.assertion_managed = true, r.assertion_quarantined = false
+WITH src, dst, r,
+     coalesce(r.assertion_managed, false) AS was_assertion_managed,
+     CASE WHEN coalesce(r.tenant_id, '') <> '' THEN r.tenant_id ELSE $tenant_id END AS legacy_tenant_id,
+     coalesce(r.source_id, '') AS legacy_source_id,
+     coalesce(r.runtime_id, '') AS legacy_runtime_id
+WITH src, dst, r, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+     NOT was_assertion_managed AS preserve_legacy_logical
+SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE $tenant_id END,
+	r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE $source_id END,
+	r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE $runtime_id END,
+	r.assertion_managed = NOT preserve_legacy_logical,
+	r.assertion_quarantined = preserve_legacy_logical
+MERGE (src)-[a:RELATION_ASSERTION {
+    relation: $relation,
+    tenant_id: $tenant_id,
+    source_id: $source_id,
+    runtime_id: $runtime_id
+}]->(dst)
+ON CREATE SET a.attributes_json = '{}', a.attributes_version = 0
+SET a.projection_reconciliation_id = $reconciliation_id
+RETURN coalesce(r.attributes_json, '{}'),
+       coalesce(r.attributes_version, 0),
+       coalesce(a.attributes_json, '{}'),
+       coalesce(a.attributes_version, 0),
+       preserve_legacy_logical`, params)
 	if err != nil {
-		return "", 0, false, err
+		return loadedProjectedLinkRow{}, false, err
 	}
 	if !result.Next(ctx) {
-		return "", 0, false, result.Err()
+		return loadedProjectedLinkRow{}, false, result.Err()
 	}
 	values := result.Record().Values
-	return stringValue(values[0]), toInt64(values[1]), true, result.Err()
+	return loadedProjectedLinkRow{
+		logicalAttributesJSON:   stringValue(values[0]),
+		logicalVersion:          toInt64(values[1]),
+		assertionAttributesJSON: stringValue(values[2]),
+		assertionVersion:        toInt64(values[3]),
+		preserveLegacyLogical:   boolValue(values[4]),
+	}, true, result.Err()
 }
 
-func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, fromURN string, relation string, toURN string, version int64, attributesJSON string) (bool, error) {
+func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any, current loadedProjectedLinkRow, logicalAttributesJSON string, assertionAttributesJSON string) (bool, error) {
+	params["logical_attributes_version"] = current.logicalVersion
+	params["next_logical_attributes_version"] = current.logicalVersion + 1
+	params["logical_attributes_json"] = logicalAttributesJSON
+	params["assertion_attributes_version"] = current.assertionVersion
+	params["next_assertion_attributes_version"] = current.assertionVersion + 1
+	params["assertion_attributes_json"] = assertionAttributesJSON
+	params["preserve_legacy_logical"] = current.preserveLegacyLogical
 	updated, err := countQuery(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
-WHERE coalesce(r.attributes_version, 0) = $attributes_version
-SET r.attributes_json = $attributes_json,
-    r.attributes_version = $next_attributes_version
-RETURN count(r)`, map[string]any{
-		"from_urn":                fromURN,
-		"relation":                relation,
-		"to_urn":                  toURN,
-		"attributes_version":      version,
-		"next_attributes_version": version + 1,
-		"attributes_json":         attributesJSON,
-	})
+MATCH (:Entity {urn: $from_urn})-[a:RELATION_ASSERTION {
+    relation: $relation,
+    tenant_id: $tenant_id,
+    source_id: $source_id,
+    runtime_id: $runtime_id
+}]->(:Entity {urn: $to_urn})
+WHERE coalesce(r.attributes_version, 0) = $logical_attributes_version
+  AND coalesce(a.attributes_version, 0) = $assertion_attributes_version
+SET r.attributes_json = CASE WHEN $preserve_legacy_logical THEN r.attributes_json ELSE $logical_attributes_json END,
+	r.attributes_version = CASE WHEN $preserve_legacy_logical THEN r.attributes_version ELSE $next_logical_attributes_version END,
+	r.tenant_id = CASE WHEN $preserve_legacy_logical THEN r.tenant_id ELSE $tenant_id END,
+	r.source_id = CASE WHEN $preserve_legacy_logical THEN r.source_id ELSE $source_id END,
+	r.runtime_id = CASE WHEN $preserve_legacy_logical THEN r.runtime_id ELSE $runtime_id END,
+	r.projection_reconciliation_id = CASE WHEN $preserve_legacy_logical THEN r.projection_reconciliation_id ELSE $reconciliation_id END,
+	r.assertion_managed = CASE WHEN $preserve_legacy_logical THEN false ELSE true END,
+	r.assertion_quarantined = $preserve_legacy_logical,
+	a.attributes_json = $assertion_attributes_json,
+	a.attributes_version = $next_assertion_attributes_version,
+	a.projection_reconciliation_id = $reconciliation_id
+RETURN count(a)`, params)
 	if err != nil {
 		return false, err
 	}
@@ -2628,6 +3224,11 @@ func ingestRunReturnQuery(prefix string) string {
        coalesce(r.events_read, 0),
        coalesce(r.entities_projected, 0),
        coalesce(r.links_projected, 0),
+	   coalesce(r.material_link_reconciliation_requested, false),
+	   coalesce(r.material_link_reconciliation_supported, false),
+	   coalesce(r.material_link_reconciliation_completed, false),
+	   coalesce(r.projection_reconciliation_id, ''),
+	   coalesce(r.stale_material_links_deleted, 0),
        coalesce(r.graph_nodes_before, 0),
        coalesce(r.graph_links_before, 0),
        coalesce(r.graph_nodes_after, 0),
@@ -2638,10 +3239,10 @@ func ingestRunReturnQuery(prefix string) string {
 }
 
 func scanIngestRunRecord(record *neo4jdriver.Record) (IngestRun, error) {
-	if len(record.Values) < 20 {
-		return IngestRun{}, fmt.Errorf("ingest run record has %d values, want 20", len(record.Values))
+	if len(record.Values) != 20 && len(record.Values) < 25 {
+		return IngestRun{}, fmt.Errorf("ingest run record has %d values, want 20 (legacy) or 25", len(record.Values))
 	}
-	return IngestRun{
+	run := IngestRun{
 		ID:                      stringValue(record.Values[0]),
 		RuntimeID:               stringValue(record.Values[1]),
 		SourceID:                stringValue(record.Values[2]),
@@ -2656,14 +3257,30 @@ func scanIngestRunRecord(record *neo4jdriver.Record) (IngestRun, error) {
 		EventsRead:              toInt64(record.Values[10]),
 		EntitiesProjected:       toInt64(record.Values[11]),
 		LinksProjected:          toInt64(record.Values[12]),
-		GraphNodesBefore:        toInt64(record.Values[13]),
-		GraphLinksBefore:        toInt64(record.Values[14]),
-		GraphNodesAfter:         toInt64(record.Values[15]),
-		GraphLinksAfter:         toInt64(record.Values[16]),
-		StartedAt:               stringValue(record.Values[17]),
-		FinishedAt:              stringValue(record.Values[18]),
-		Error:                   stringValue(record.Values[19]),
-	}, nil
+	}
+	if len(record.Values) == 20 {
+		run.GraphNodesBefore = toInt64(record.Values[13])
+		run.GraphLinksBefore = toInt64(record.Values[14])
+		run.GraphNodesAfter = toInt64(record.Values[15])
+		run.GraphLinksAfter = toInt64(record.Values[16])
+		run.StartedAt = stringValue(record.Values[17])
+		run.FinishedAt = stringValue(record.Values[18])
+		run.Error = stringValue(record.Values[19])
+		return run, nil
+	}
+	run.MaterialLinkReconciliationRequested = boolValue(record.Values[13])
+	run.MaterialLinkReconciliationSupported = boolValue(record.Values[14])
+	run.MaterialLinkReconciliationCompleted = boolValue(record.Values[15])
+	run.ProjectionReconciliationID = stringValue(record.Values[16])
+	run.StaleMaterialLinksDeleted = toInt64(record.Values[17])
+	run.GraphNodesBefore = toInt64(record.Values[18])
+	run.GraphLinksBefore = toInt64(record.Values[19])
+	run.GraphNodesAfter = toInt64(record.Values[20])
+	run.GraphLinksAfter = toInt64(record.Values[21])
+	run.StartedAt = stringValue(record.Values[22])
+	run.FinishedAt = stringValue(record.Values[23])
+	run.Error = stringValue(record.Values[24])
+	return run, nil
 }
 
 func validIngestRunStatus(status string) bool {
