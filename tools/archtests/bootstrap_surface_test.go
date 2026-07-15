@@ -120,7 +120,10 @@ import (
 // Assurance decision routes add only service composition and route/auth
 // registration; decision validation and persistence remain in
 // internal/complianceassessment.
-const bootstrapProductionGoLineBudget = 28037
+// Canonical compliance work adds query composition and response mapping;
+// bounded queries and assurance verification remain in the domain and
+// state-store packages.
+const bootstrapProductionGoLineBudget = 28071
 
 type bootstrapFileLineCount struct {
 	path  string
