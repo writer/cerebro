@@ -390,7 +390,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if event != nil {
 		kind = strings.TrimSpace(event.Kind)
 	}
-	ctx, span := telemetry.Start(ctx, "jetstream.append", jetstreamTelemetryAttrs("append").WithField(telemetry.Field{Key: "event.kind", Value: kind}))
+	ctx, span := telemetry.StartQuiet(ctx, "jetstream.append", jetstreamTelemetryAttrs("append").WithField(telemetry.Field{Key: "event.kind", Value: kind}))
 	if l == nil || l.js == nil {
 		err := errors.New("jetstream is not configured")
 		jetstreamTelemetryError(ctx, span, "append", err)
@@ -458,7 +458,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		telemetry.Event(ctx, "jetstream.publish.recovered", endAttrs)
 	}
 	jetstreamAnnotateMain(ctx, "append", "completed", endAttrs)
-	telemetry.End(span, "completed", endAttrs)
+	telemetry.EndQuiet(span, "completed", endAttrs)
 	return nil
 }
 

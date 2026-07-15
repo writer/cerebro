@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
@@ -23,10 +24,10 @@ const (
 	decisionEntityType      = "decision"
 	outcomeEntityType       = "outcome"
 	actionEntityType        = "action"
-	relationTargets         = "targets"
-	relationBasedOn         = "based_on"
-	relationExecutedBy      = "executed_by"
-	relationEvaluates       = "evaluates"
+	relationTargets         = fabriccontract.RelationTargets
+	relationBasedOn         = fabriccontract.RelationBasedOn
+	relationExecutedBy      = fabriccontract.RelationExecutedBy
+	relationEvaluates       = fabriccontract.RelationEvaluates
 	defaultPlatformTenant   = "platform"
 )
 
