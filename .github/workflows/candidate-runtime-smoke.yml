@@ -21,6 +21,7 @@ on:
         type: string
 
 permissions:
+  attestations: read
   contents: read
   id-token: write
 
@@ -86,6 +87,7 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           CANDIDATE_DIGEST: ${{ inputs.candidate_digest }}
           COSIGN_EXPERIMENTAL: "true"
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           candidate_tag="candidate-${CANDIDATE_SHA}"
@@ -95,8 +97,7 @@ jobs:
           "${RUNNER_TEMP}/cosign/cosign" verify "${source_image}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp '^https://github.com/writer/cerebro/.github/workflows/cut-release.yml@refs/heads/main$'
-          tree="$("${RUNNER_TEMP}/cosign/cosign" tree "${source_image}")"
-          grep -Eq 'Attestation|SBOM|Provenance' <<<"${tree}"
+          gh attestation verify "oci://${source_image}" --repo writer/cerebro
 
           raw_manifest="$(docker buildx imagetools inspect "${source_image}" --raw)"
           platform_digest="$(
