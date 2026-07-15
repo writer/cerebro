@@ -12,7 +12,7 @@ from release_promotion import gh_json
 
 RULESET_NAME = "Release promotion protection"
 REQUIRED_STATUS = "promotion/sec-dev-deployed"
-ACTIONS_INTEGRATION_ID = 15368
+DEPLOY_APP_SLUG = "writer-cerebro-deploy"
 SECURITY_TEAM_ID = 6539261
 PRODUCTION_CONFIG_ENVIRONMENT = "production-config-change"
 SECURITY_CONTROL_PATTERNS = [
@@ -28,7 +28,7 @@ SECURITY_CONTROL_PATTERNS = [
 ]
 
 
-def ruleset_payload() -> dict[str, Any]:
+def ruleset_payload(status_integration_id: int) -> dict[str, Any]:
     return {
         "name": RULESET_NAME,
         "target": "branch",
@@ -62,7 +62,7 @@ def ruleset_payload() -> dict[str, Any]:
                     "required_status_checks": [
                         {
                             "context": REQUIRED_STATUS,
-                            "integration_id": ACTIONS_INTEGRATION_ID,
+                            "integration_id": status_integration_id,
                         }
                     ],
                     "strict_required_status_checks_policy": False,
@@ -94,7 +94,9 @@ def _environment(repository: str, name: str) -> dict[str, Any]:
     return environment
 
 
-def _has_required_status(ruleset: dict[str, Any]) -> bool:
+def _has_required_status(
+    ruleset: dict[str, Any], status_integration_id: int
+) -> bool:
     rules = ruleset.get("rules") or []
     if not isinstance(rules, list):
         return False
@@ -110,10 +112,20 @@ def _has_required_status(ruleset: dict[str, Any]) -> bool:
         return any(
             isinstance(check, dict)
             and check.get("context") == REQUIRED_STATUS
-            and check.get("integration_id") == ACTIONS_INTEGRATION_ID
+            and check.get("integration_id") == status_integration_id
             for check in required
         )
     return False
+
+
+def _deploy_app_integration_id() -> int:
+    app = gh_json(["api", f"apps/{DEPLOY_APP_SLUG}"])
+    integration_id = app.get("id") if isinstance(app, dict) else None
+    if not isinstance(integration_id, int) or integration_id <= 0:
+        raise RuntimeError(
+            f"Could not resolve the {DEPLOY_APP_SLUG} GitHub App integration ID"
+        )
+    return integration_id
 
 
 def _has_pull_request_rule(ruleset: dict[str, Any]) -> bool:
@@ -209,7 +221,7 @@ def _prevents_self_review(environment: dict[str, Any]) -> bool:
     )
 
 
-def verify_controls(repository: str) -> list[str]:
+def verify_controls(repository: str, status_integration_id: int) -> list[str]:
     errors: list[str] = []
     repo = gh_json(["api", f"repos/{repository}"])
     if not isinstance(repo, dict):
@@ -242,7 +254,7 @@ def verify_controls(repository: str) -> list[str]:
             errors.append(
                 f"ruleset {RULESET_NAME!r} does not require security review for release controls"
             )
-        if not _has_required_status(ruleset):
+        if not _has_required_status(ruleset, status_integration_id):
             errors.append(
                 f"ruleset {RULESET_NAME!r} does not require {REQUIRED_STATUS}"
             )
@@ -275,7 +287,9 @@ def verify_controls(repository: str) -> list[str]:
     return errors
 
 
-def apply_controls(repository: str, reviewer_ids: list[int]) -> None:
+def apply_controls(
+    repository: str, reviewer_ids: list[int], status_integration_id: int
+) -> None:
     gh_json(
         ["api", "--method", "PATCH", f"repos/{repository}"],
         input_payload={"allow_auto_merge": True, "delete_branch_on_merge": True},
@@ -285,7 +299,7 @@ def apply_controls(repository: str, reviewer_ids: list[int]) -> None:
     if existing is None:
         gh_json(
             ["api", "--method", "POST", f"repos/{repository}/rulesets"],
-            input_payload=ruleset_payload(),
+            input_payload=ruleset_payload(status_integration_id),
         )
     else:
         ruleset_id = existing.get("id")
@@ -293,7 +307,7 @@ def apply_controls(repository: str, reviewer_ids: list[int]) -> None:
             raise RuntimeError(f"Ruleset {RULESET_NAME!r} has no numeric ID")
         gh_json(
             ["api", "--method", "PUT", f"repos/{repository}/rulesets/{ruleset_id}"],
-            input_payload=ruleset_payload(),
+            input_payload=ruleset_payload(status_integration_id),
         )
 
     branch_policy = {"protected_branches": True, "custom_branch_policies": False}
@@ -350,11 +364,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     if not args.repository:
         raise RuntimeError("GITHUB_REPOSITORY or --repository is required")
+    status_integration_id = _deploy_app_integration_id()
     if args.apply:
         if not args.rollback_reviewer_id:
             raise RuntimeError("--rollback-reviewer-id is required with --apply")
-        apply_controls(args.repository, args.rollback_reviewer_id)
-    errors = verify_controls(args.repository)
+        apply_controls(
+            args.repository, args.rollback_reviewer_id, status_integration_id
+        )
+    errors = verify_controls(args.repository, status_integration_id)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

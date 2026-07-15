@@ -32,7 +32,7 @@ class ReleasePromotionTest(unittest.TestCase):
     def test_repository_rules_require_pr_and_exact_promotion_status_without_bypass(
         self,
     ) -> None:
-        payload = configure_release_promotion_controls.ruleset_payload()
+        payload = configure_release_promotion_controls.ruleset_payload(4063010)
 
         self.assertEqual(payload["enforcement"], "active")
         self.assertEqual(payload["bypass_actors"], [])
@@ -75,7 +75,7 @@ class ReleasePromotionTest(unittest.TestCase):
             [
                 {
                     "context": "promotion/sec-dev-deployed",
-                    "integration_id": 15368,
+                    "integration_id": 4063010,
                 }
             ],
         )
@@ -113,7 +113,7 @@ class ReleasePromotionTest(unittest.TestCase):
             side_effect=[{}, [], {}, {}, {}, {}],
         ) as github:
             configure_release_promotion_controls.apply_controls(
-                "WriterInternal/cerebro", [1, 2, 3]
+                "WriterInternal/cerebro", [1, 2, 3], 4063010
             )
 
         rollback_call = next(
@@ -169,6 +169,18 @@ class ReleasePromotionTest(unittest.TestCase):
                 {"prevent_self_review": True, "protection_rules": []}
             )
         )
+
+    def test_deploy_app_integration_id_is_resolved_by_slug(self) -> None:
+        with patch(
+            "configure_release_promotion_controls.gh_json",
+            return_value={"id": 4063010, "slug": "writer-cerebro-deploy"},
+        ) as github:
+            self.assertEqual(
+                configure_release_promotion_controls._deploy_app_integration_id(),
+                4063010,
+            )
+
+        github.assert_called_once_with(["api", "apps/writer-cerebro-deploy"])
 
     def test_successful_deployment_requires_exact_digest_and_latest_success_status(
         self,

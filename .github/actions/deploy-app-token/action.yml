@@ -7,6 +7,10 @@ inputs:
   private-key:
     description: GitHub App private key.
     required: true
+  statuses-permission:
+    description: Commit status permission requested for this token.
+    required: false
+    default: read
 outputs:
   token:
     description: Short-lived installation access token.
@@ -29,7 +33,7 @@ runs:
         permission-contents: write
         permission-issues: write
         permission-pull-requests: write
-        permission-statuses: read
+        permission-statuses: ${{ inputs.statuses-permission }}
 
     - name: Preflight deploy GitHub App token
       shell: bash

@@ -33,6 +33,7 @@ jobs:
         with:
           client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
           private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+          statuses-permission: write
 
       - name: Verify workflow read access
         env:

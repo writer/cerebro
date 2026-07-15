@@ -25,7 +25,7 @@ permissions:
   contents: read
   deployments: read
   pull-requests: read
-  statuses: write
+  statuses: read
 
 concurrency:
   group: release-promotion-gate-${{ github.event.pull_request.number || 'all-open' }}
@@ -42,10 +42,18 @@ jobs:
           ref: main
           persist-credentials: false
 
+      - name: Create deployment gate GitHub App token
+        id: deploy-app-token
+        uses: ./.github/actions/deploy-app-token
+        with:
+          client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+          statuses-permission: write
+
       - name: Refresh promotion status
         working-directory: infra
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || '' }}
         run: |
           args=(--repository "${GITHUB_REPOSITORY}")

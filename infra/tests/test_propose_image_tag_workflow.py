@@ -107,7 +107,11 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("permission-contents: write", action)
         self.assertIn("permission-pull-requests: write", action)
         self.assertNotIn("permission-checks: read", action)
-        self.assertIn("permission-statuses: read", action)
+        self.assertIn("statuses-permission:", action)
+        self.assertIn("default: read", action)
+        self.assertIn(
+            "permission-statuses: ${{ inputs.statuses-permission }}", action
+        )
         self.assertNotIn("check_permission", action)
         self.assertNotIn("permission-actions: write", action)
 
@@ -324,7 +328,13 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("workflow_run:", workflow)
         self.assertIn("cron: '*/5 * * * *'", workflow)
         self.assertIn("actions: read", workflow)
-        self.assertIn("statuses: write", workflow)
+        self.assertIn("statuses: read", workflow)
+        self.assertNotIn("statuses: write", workflow)
+        self.assertIn("uses: ./.github/actions/deploy-app-token", workflow)
+        self.assertIn("statuses-permission: write", workflow)
+        self.assertIn(
+            "GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", workflow
+        )
         self.assertIn("scripts/refresh_release_promotion_gate.py", workflow)
 
     def test_deployment_receipts_include_exact_source_image_digest(self) -> None:
