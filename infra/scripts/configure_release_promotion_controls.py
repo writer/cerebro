@@ -200,7 +200,13 @@ def _has_security_team_reviewer(environment: dict[str, Any]) -> bool:
 
 
 def _prevents_self_review(environment: dict[str, Any]) -> bool:
-    return environment.get("prevent_self_review") is True
+    rules = environment.get("protection_rules") or []
+    return isinstance(rules, list) and any(
+        isinstance(rule, dict)
+        and rule.get("type") == "required_reviewers"
+        and rule.get("prevent_self_review") is True
+        for rule in rules
+    )
 
 
 def verify_controls(repository: str) -> list[str]:

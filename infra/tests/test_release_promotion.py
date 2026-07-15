@@ -148,6 +148,28 @@ class ReleasePromotionTest(unittest.TestCase):
             ],
         )
 
+    def test_control_verifier_reads_prevent_self_review_from_protection_rule(
+        self,
+    ) -> None:
+        environment = {
+            "protection_rules": [
+                {
+                    "type": "required_reviewers",
+                    "prevent_self_review": True,
+                    "reviewers": [],
+                }
+            ]
+        }
+
+        self.assertTrue(
+            configure_release_promotion_controls._prevents_self_review(environment)
+        )
+        self.assertFalse(
+            configure_release_promotion_controls._prevents_self_review(
+                {"prevent_self_review": True, "protection_rules": []}
+            )
+        )
+
     def test_successful_deployment_requires_exact_digest_and_latest_success_status(
         self,
     ) -> None:
