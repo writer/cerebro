@@ -447,7 +447,7 @@ rust-doc-check: ## Build Rust documentation with warnings denied.
 rust-deny: ## Check Rust advisories, licenses, duplicate versions, and dependency sources.
 	$(CARGO_DENY) --all-features check
 
-graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny ## Verify generated graph action registry is current.
+graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.

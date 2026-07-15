@@ -65,7 +65,7 @@ validator guest targets `wasm32-unknown-unknown` and is built through
 Run the complete Rust checks with:
 
 ```bash
-make graph-action-check graphagent-static-validator-check
+make rust-deny graph-action-check graphagent-static-validator-check
 ```
 
 The checks include formatting, Clippy, tests, warning-free rustdoc, dependency
