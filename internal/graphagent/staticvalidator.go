@@ -78,16 +78,16 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 		alloc := module.ExportedFunction("cerebro_validator_alloc")
 		validate := module.ExportedFunction("cerebro_validator_validate")
 		if alloc == nil || validate == nil || module.Memory() == nil {
-			return errors.New("embedded validator exports are incomplete")
+			return wasmhost.Diagnose(wasmhost.DiagnosticABIViolation, errors.New("embedded validator exports are incomplete"))
 		}
 		queryLength := uint64(len(query)) // #nosec G115 -- string lengths are non-negative and widened for the Wasm ABI.
 		queryAllocation, err := alloc.Call(callCtx, queryLength)
 		if err != nil {
-			return fmt.Errorf("allocate validator query: %w", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, fmt.Errorf("allocate validator query: %w", err))
 		}
 		resultAllocation, err := alloc.Call(callCtx, staticValidatorResultSize)
 		if err != nil {
-			return fmt.Errorf("allocate validator result: %w", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, fmt.Errorf("allocate validator result: %w", err))
 		}
 		queryPointer, err := wasmhost.Pointer(queryAllocation, "validator query allocation")
 		if err != nil {
@@ -98,22 +98,22 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 			return err
 		}
 		if !module.Memory().Write(queryPointer, []byte(query)) {
-			return errors.New("write validator query memory")
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, errors.New("write validator query memory"))
 		}
 		maxRowCount := uint64(maxRows) // #nosec G115 -- NewValidator normalizes MaxRows to a positive value.
 		status, err := validate.Call(callCtx, uint64(queryPointer), queryLength, maxRowCount, uint64(resultPointer))
 		if err != nil {
-			return fmt.Errorf("execute static validator: %w", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, fmt.Errorf("execute static validator: %w", err))
 		}
 		if len(status) != 1 || status[0] != uint64(staticValidatorStatusSuccess) {
-			return fmt.Errorf("static validator status = %v", status)
+			return wasmhost.Diagnose(wasmhost.DiagnosticGuestStatus, fmt.Errorf("static validator status = %v", status))
 		}
 		result, ok := module.Memory().Read(resultPointer, staticValidatorResultSize)
 		if !ok {
-			return errors.New("read validator result memory")
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, errors.New("read validator result memory"))
 		}
 		if reserved := binary.LittleEndian.Uint32(result[4:8]); reserved != 0 {
-			return fmt.Errorf("static validator reserved field = %d", reserved)
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, fmt.Errorf("static validator reserved field = %d", reserved))
 		}
 		validation = staticValidation{
 			decision: staticValidatorDecision(binary.LittleEndian.Uint32(result[0:4])),
@@ -121,7 +121,7 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 			detail:   binary.LittleEndian.Uint64(result[16:24]),
 		}
 		if validation.decision > staticValidatorQueryTooLarge {
-			return fmt.Errorf("unknown static validator decision %d", validation.decision)
+			return wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, fmt.Errorf("unknown static validator decision %d", validation.decision))
 		}
 		return nil
 	})

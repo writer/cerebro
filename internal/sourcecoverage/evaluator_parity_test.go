@@ -11,10 +11,21 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson/wasmjsontest"
 )
 
 const coverageEvaluatorFuzzMaxInput = 64 << 10
+
+func TestCoverageEvaluatorReportsCanceledDiagnostic(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runCoverageEvaluator(ctx, []byte(`{"contracts":[],"observations":[],"options":{}}`))
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, wasmhost.ErrCanceled) {
+		t.Fatalf("runCoverageEvaluator() error = %v, want cancellation diagnostic", err)
+	}
+}
 
 //go:embed testdata/wasmjson/*.json
 var coverageEvaluatorCorpus embed.FS
@@ -74,6 +85,21 @@ func TestCoverageEvaluatorSupportsConcurrentCalls(t *testing.T) {
 	close(errors)
 	for err := range errors {
 		t.Errorf("concurrent Evaluate() error = %v", err)
+	}
+}
+
+func BenchmarkCoverageEvaluator(b *testing.B) {
+	ctx := context.Background()
+	payload := []byte(`{"contracts":[{"source_id":"aws","dimensions":[{"id":"users","type":"entity_family","title":"Users","families":["user"],"support":"supported"}]}],"observations":[{"runtime_id":"runtime-a","source_id":"aws","family":"user","status":"healthy"}],"options":{}}`)
+	if _, err := runCoverageEvaluator(ctx, payload); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := runCoverageEvaluator(ctx, payload); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
