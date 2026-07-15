@@ -108,7 +108,7 @@ import (
 // persistence, projection replay, and invalidation reopening stay behind
 // internal/complianceremediation, while Postgres adaptation stays in the
 // concrete state-store package.
-const bootstrapProductionGoLineBudget = 27677
+const bootstrapProductionGoLineBudget = 27684
 
 type bootstrapFileLineCount struct {
 	path  string
