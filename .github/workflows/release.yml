@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: stable-release
+  group: stable-release-publication
   cancel-in-progress: false
 
 jobs:
