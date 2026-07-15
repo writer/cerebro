@@ -47,6 +47,7 @@ type grcTablesReady struct {
 	customDashboards     bool
 	vendorDiscovery      bool
 	questionnaireRun     bool
+	sourceTrust          bool
 	complianceExchange   bool
 	complianceMonitor    bool
 	assessmentSampling   bool
