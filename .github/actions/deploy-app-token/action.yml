@@ -30,7 +30,9 @@ runs:
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
+        permission-actions: read
         permission-contents: write
+        permission-deployments: read
         permission-issues: write
         permission-pull-requests: write
         permission-statuses: ${{ inputs.statuses-permission }}

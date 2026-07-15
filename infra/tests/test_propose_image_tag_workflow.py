@@ -105,6 +105,8 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("gh api /installation/repositories", action)
         self.assertIn("Deploy App token is scoped to ${GITHUB_REPOSITORY}.", action)
         self.assertIn("permission-contents: write", action)
+        self.assertIn("permission-actions: read", action)
+        self.assertIn("permission-deployments: read", action)
         self.assertIn("permission-pull-requests: write", action)
         self.assertNotIn("permission-checks: read", action)
         self.assertIn("statuses-permission:", action)
@@ -363,6 +365,12 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("uses: ./.github/actions/deploy-app-token", workflow)
         self.assertIn("/actions/runs?per_page=1", workflow)
         self.assertIn("/deployments?per_page=1", workflow)
+        read_step = workflow.split("- name: Verify workflow read access", 1)[1].split(
+            "- name: Verify repository promotion controls", 1
+        )[0]
+        self.assertIn(
+            "GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", read_step
+        )
         self.assertIn("scripts/configure_release_promotion_controls.py", workflow)
         self.assertIn("--method POST", workflow)
         self.assertIn("--method DELETE", workflow)

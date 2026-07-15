@@ -37,7 +37,7 @@ jobs:
 
       - name: Verify workflow read access
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
         run: |
           set -euo pipefail
           gh api "repos/${GITHUB_REPOSITORY}" >/dev/null
