@@ -2906,14 +2906,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.sync.runs\"', 'Sum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,contract_configured} MetricName=\"cerebro.source_runtime.sync.runs\"', 'Sum', 60)",
                             "label": "Sync runs by source/status",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.sync.duration\"', 'p95', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,contract_configured} MetricName=\"cerebro.source_runtime.sync.duration\"', 'p95', 60)",
                             "label": "Sync duration p95",
                             "id": "e2",
                             "yAxis": "right",
@@ -2935,14 +2935,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured,record.kind} MetricName=\"cerebro.source_runtime.records\"', 'Sum', 60)",
-                            "label": "Runtime records by kind",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,contract_configured} MetricName=\"cerebro.source_runtime.records\"', 'Sum', 60)",
+                            "label": "Runtime records by source/status",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.watermark.lag\"', 'Maximum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,contract_configured} MetricName=\"cerebro.source_runtime.watermark.lag\"', 'Maximum', 60)",
                             "label": "Watermark lag max",
                             "id": "e2",
                             "yAxis": "right",
@@ -2964,14 +2964,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status} MetricName=\"cerebro.source_projection.runs\"', 'Sum', 60)",
-                            "label": "Projection runs by source/event/status",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status} MetricName=\"cerebro.source_projection.runs\"', 'Sum', 60)",
+                            "label": "Projection runs by source/status",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status} MetricName=\"cerebro.source_projection.duration\"', 'p95', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status} MetricName=\"cerebro.source_projection.duration\"', 'p95', 60)",
                             "label": "Projection duration p95",
                             "id": "e2",
                             "yAxis": "right",
@@ -2993,8 +2993,8 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status,record.kind} MetricName=\"cerebro.source_projection.records\"', 'Sum', 60)",
-                            "label": "Projection records by kind",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status} MetricName=\"cerebro.source_projection.records\"', 'Sum', 60)",
+                            "label": "Projection records by source/status",
                             "id": "e1",
                         }
                     ],
@@ -3014,14 +3014,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated} MetricName=\"cerebro.graph_rule.evaluations\"', 'Sum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,truncated} MetricName=\"cerebro.graph_rule.evaluations\"', 'Sum', 60)",
                             "label": "Graph rule evaluations",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated} MetricName=\"cerebro.graph_rule.duration\"', 'p95', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,truncated} MetricName=\"cerebro.graph_rule.duration\"', 'p95', 60)",
                             "label": "Graph rule duration p95",
                             "id": "e2",
                             "yAxis": "right",
@@ -3043,7 +3043,7 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated,record.kind} MetricName=\"cerebro.graph_rule.records\"', 'Sum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,truncated} MetricName=\"cerebro.graph_rule.records\"', 'Sum', 60)",
                             "label": "Rows read / findings emitted",
                             "id": "e1",
                         }
@@ -3064,14 +3064,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,error_kind,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.runs\"', 'Sum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.runs\"', 'Sum', 60)",
                             "label": "Phase runs",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,error_kind,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.duration\"', 'p95', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.duration\"', 'p95', 60)",
                             "label": "Phase duration p95",
                             "id": "e2",
                             "yAxis": "right",
@@ -3093,14 +3093,14 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                 "metrics": [
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,error_kind,database_configured} MetricName=\"cerebro.neo4j.operations\"', 'Sum', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,database_configured} MetricName=\"cerebro.neo4j.operations\"', 'Sum', 60)",
                             "label": "Neo4j operations",
                             "id": "e1",
                         }
                     ],
                     [
                         {
-                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,error_kind,database_configured} MetricName=\"cerebro.neo4j.operation.duration\"', 'p95', 60)",
+                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,database_configured} MetricName=\"cerebro.neo4j.operation.duration\"', 'p95', 60)",
                             "label": "Neo4j duration p95",
                             "id": "e2",
                             "yAxis": "right",

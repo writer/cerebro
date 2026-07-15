@@ -47,9 +47,23 @@ class ProvisionOtelCollectorConfigTest(unittest.TestCase):
         self.assertEqual(config["service"]["telemetry"]["metrics"]["level"], "basic")
         self.assertEqual(config["service"]["pipelines"]["traces"]["exporters"], ["awsxray"])
         self.assertEqual(config["service"]["pipelines"]["metrics"]["receivers"], ["otlp", "prometheus/internal"])
+        transforms = config["processors"]["metricstransform/cardinality"]["transforms"]
+        self.assertEqual(len(transforms), 6)
+        self.assertEqual(
+            transforms[1]["operations"][0],
+            {
+                "action": "aggregate_labels",
+                "label_set": ["source_id", "status"],
+                "aggregation_type": "sum",
+            },
+        )
+        self.assertEqual(
+            transforms[5]["operations"][0]["label_set"],
+            ["operation", "status", "error_category", "max_attempts_exhausted"],
+        )
         self.assertEqual(
             config["service"]["pipelines"]["metrics"]["processors"],
-            ["memory_limiter", "resourcedetection", "cumulativetodelta", "batch/metrics"],
+            ["memory_limiter", "resourcedetection", "cumulativetodelta", "metricstransform/cardinality", "batch/metrics"],
         )
         self.assertEqual(config["service"]["pipelines"]["metrics"]["exporters"], ["awsemf"])
 

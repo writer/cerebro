@@ -11,7 +11,7 @@ def service_name(config: dict[str, Any], stack: str) -> str:
 
 def render_collector_config(service: str) -> str:
     metrics_log_group = f"/aws/otel/{service}/metrics"
-    return f"""extensions:
+    return fr"""extensions:
   health_check:
     endpoint: 127.0.0.1:13133
 
@@ -40,6 +40,50 @@ processors:
     timeout: 2s
     override: false
   cumulativetodelta: {{}}
+  metricstransform/cardinality:
+    transforms:
+      - include: '^cerebro\.source_runtime\.(sync\.(runs|duration)|records|watermark\.lag)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [source_id, status, contract_configured]
+            aggregation_type: sum
+      - include: '^cerebro\.source_projection\.(runs|duration|records)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [source_id, status]
+            aggregation_type: sum
+      - include: '^cerebro\.graph_rule\.(evaluations|duration|records)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [source_id, status, truncated]
+            aggregation_type: sum
+      - include: '^cerebro\.orchestrator\.phase\.(runs|duration)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [phase_key, source_id, status, timeout_exceeded]
+            aggregation_type: sum
+      - include: '^cerebro\.neo4j\.(operations|operation\.duration)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [operation, status, database_configured]
+            aggregation_type: sum
+      - include: '^cerebro\.jetstream\.publish\.(requests|retries|duration)$$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [operation, status, error_category, max_attempts_exhausted]
+            aggregation_type: sum
   batch/traces:
     timeout: 5s
     send_batch_size: 512
@@ -68,7 +112,7 @@ service:
       exporters: [awsxray]
     metrics:
       receivers: [otlp, prometheus/internal]
-      processors: [memory_limiter, resourcedetection, cumulativetodelta, batch/metrics]
+      processors: [memory_limiter, resourcedetection, cumulativetodelta, metricstransform/cardinality, batch/metrics]
       exporters: [awsemf]
 """
 

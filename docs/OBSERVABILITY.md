@@ -36,19 +36,20 @@ collector, separate from the older CloudWatch Logs metric filters:
 
 | Metric | Dashboard use |
 | --- | --- |
-| `cerebro.source_runtime.sync.runs` | Source sync success/failure rate by source and bounded error class |
+| `cerebro.source_runtime.sync.runs` | Source sync success/failure rate by source |
 | `cerebro.source_runtime.sync.duration` | Source sync latency distribution |
-| `cerebro.source_runtime.records` | Pages, scanned records, accepted/rejected events, appended events, projected entities, and projected links |
+| `cerebro.source_runtime.records` | Total runtime records by source and status |
 | `cerebro.source_runtime.watermark.lag` | Source freshness lag when a runtime checkpoint has a watermark |
-| `cerebro.source_projection.runs` | Projection success/failure rate by source, event kind, and status |
+| `cerebro.source_projection.runs` | Projection success/failure rate by source and status |
 | `cerebro.source_projection.duration` | Projection latency distribution |
 | `cerebro.source_projection.records` | Graph/current-state records projected or deleted |
 
-Those OTEL metrics intentionally use low-cardinality dimensions such as
-`source_id`, `status`, `error_kind`, `contract_configured`, `event_kind`, and
-`record.kind`. Do not add tenant IDs, runtime IDs, resource URNs, evidence IDs,
-request IDs, or trace IDs as metric dimensions; use wide events and traces for
-that drill-down.
+The collector aggregates product metrics before exporting them to CloudWatch.
+The retained dimensions are `source_id`, `status`, and bounded operational
+state such as `operation`, `phase_key`, `contract_configured`, `truncated`, and
+`timeout_exceeded`. Event kind, record kind, rule ID, subject, and error kind
+remain available in wide events and traces. Do not add tenant IDs, runtime IDs,
+resource URNs, evidence IDs, request IDs, or trace IDs as metric dimensions.
 
 When an app log group is attached to the stack dashboard, the dashboard includes
 tenant runtime drill-down widgets backed by CloudWatch Logs Insights. They query
@@ -118,6 +119,16 @@ processors:
     detectors: [env, ecs]
     timeout: 2s
     override: false
+  cumulativetodelta: {}
+  metricstransform/cardinality:
+    transforms:
+      - include: '^cerebro\.source_projection\.(runs|duration|records)$'
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [source_id, status]
+            aggregation_type: sum
   batch/traces:
     timeout: 5s
     send_batch_size: 512
@@ -136,7 +147,7 @@ service:
     logs:
       level: info
     metrics:
-      level: detailed
+      level: basic
   pipelines:
     traces:
       receivers: [otlp]
@@ -144,7 +155,7 @@ service:
       exporters: [awsxray]
     metrics:
       receivers: [otlp, prometheus/internal]
-      processors: [memory_limiter, resourcedetection, batch/metrics]
+      processors: [memory_limiter, resourcedetection, cumulativetodelta, metricstransform/cardinality, batch/metrics]
       exporters: [awsemf]
 ```
 
