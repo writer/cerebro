@@ -187,6 +187,9 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
             "Shared Wasm JSON parity helpers changed.",
         )
 
+    if any(path_matches(path, prefixes=("internal/graphagent/staticvalidator/fuzz/", "internal/graphagent/staticvalidator/tests/")) for path in files):
+        add_command(commands, seen, "rust-validator-properties", ["make", "rust-validator-properties"], "Static validator properties, fuzz harness, or regression corpus changed.")
+
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")
 

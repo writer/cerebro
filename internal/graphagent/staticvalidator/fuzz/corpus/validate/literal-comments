@@ -1,0 +1,2 @@
+100
+MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 'CREATE /* CALL */ // DELETE' AS note RETURN e LIMIT 25

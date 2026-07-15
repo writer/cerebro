@@ -1,0 +1,2 @@
+100
+MATCH (e:Entity {tenant_id:$tenant_id}) CREATE (x:Entity) RETURN e LIMIT 1

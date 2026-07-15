@@ -1,0 +1,2 @@
+100
+MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25

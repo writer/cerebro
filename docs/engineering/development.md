@@ -7,6 +7,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 - Go 1.26+; the repository pins `go1.26.5` in `go.mod`.
 - Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, Clippy, and the Wasm build target.
 - `cargo-deny` 0.20.2 for local Rust dependency-policy checks.
+- The `nightly-2026-06-09` toolchain and `cargo-fuzz` 0.13.1 only when running the static validator fuzz target locally.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 
@@ -83,6 +84,29 @@ allowed exceptions are the narrow audited Wasm ABI modules that expose guest
 functions and the shared guest-memory module that contains their documented
 pointer operations. Run `make rust-workspace-policy` after adding a workspace
 member, dependency, or lint.
+
+The static Cypher validator has deterministic security properties for parser
+stability, refusal preservation, row-limit monotonicity, and ABI values. Run
+them directly with:
+
+```bash
+make rust-validator-properties
+```
+
+Coverage-guided fuzzing is scheduled weekly and can be started manually from
+the `Rust validator fuzz` GitHub Actions workflow. It is not a pull-request
+wall-clock gate. To reproduce the bounded 10,000-input smoke locally:
+
+```bash
+rustup toolchain install nightly-2026-06-09 --profile minimal
+cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.1 --locked
+make rust-validator-fuzz-smoke
+```
+
+New fuzz crashes are written under
+`internal/graphagent/staticvalidator/fuzz/artifacts/`. Move a minimized input
+into `internal/graphagent/staticvalidator/fuzz/corpus/validate/` and add a
+deterministic regression assertion before fixing the parser.
 
 Focused validation:
 
