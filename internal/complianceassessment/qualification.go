@@ -263,9 +263,18 @@ func verificationQualifies(proof VerificationProof, asOf time.Time) bool {
 }
 
 func checkSourceProofs(input QualificationInput, manifest InputManifest, result ObjectiveResult, addReason func(QualificationReason)) {
-	proofs := make(map[string]SourceProof, len(input.SourceProofs))
+	type sourceProofAssessment struct {
+		present   bool
+		unhealthy bool
+		stale     bool
+	}
+	proofs := make(map[string]sourceProofAssessment, len(input.SourceProofs))
 	for _, proof := range normalizeSourceProofs(input.SourceProofs) {
-		proofs[proof.RuntimeID] = proof
+		assessment := proofs[proof.RuntimeID]
+		assessment.present = true
+		assessment.unhealthy = assessment.unhealthy || proof.State != SourceSupported
+		assessment.stale = assessment.stale || proof.ObservedAt.IsZero() || proof.ObservedAt.After(input.AsOf) || proof.FreshUntil.Before(input.AsOf)
+		proofs[proof.RuntimeID] = assessment
 	}
 	required := append([]string(nil), result.SourceRuntimeIDs...)
 	for _, receipt := range manifest.Receipts {
@@ -274,38 +283,47 @@ func checkSourceProofs(input QualificationInput, manifest InputManifest, result 
 		}
 	}
 	for _, runtimeID := range normalizedStrings(required) {
-		proof, ok := proofs[runtimeID]
-		if !ok {
+		assessment := proofs[runtimeID]
+		if !assessment.present {
 			addReason(QualificationSourceProofMissing)
 			continue
 		}
-		if proof.State != SourceSupported {
+		if assessment.unhealthy {
 			addReason(QualificationSourceUnhealthy)
 		}
-		if proof.ObservedAt.IsZero() || proof.ObservedAt.After(input.AsOf) || proof.FreshUntil.Before(input.AsOf) {
+		if assessment.stale {
 			addReason(QualificationSourceStale)
 		}
 	}
 }
 
 func checkEvidenceProofs(input QualificationInput, result ObjectiveResult, addReason func(QualificationReason)) {
-	proofs := make(map[string]EvidenceProof, len(input.EvidenceProofs))
+	type evidenceProofAssessment struct {
+		present     bool
+		conflicting bool
+		notCurrent  bool
+	}
+	proofs := make(map[string]evidenceProofAssessment, len(input.EvidenceProofs))
 	for _, proof := range normalizeEvidenceProofs(input.EvidenceProofs) {
-		proofs[proof.EvidenceID] = proof
+		assessment := proofs[proof.EvidenceID]
+		assessment.present = true
+		assessment.conflicting = assessment.conflicting || proof.State == EvidenceConflicting
+		assessment.notCurrent = assessment.notCurrent || proof.State != EvidenceSufficient || proof.CollectedAt.IsZero() || proof.CollectedAt.After(input.AsOf) || proof.ValidUntil.Before(input.AsOf)
+		proofs[proof.EvidenceID] = assessment
 	}
 	if len(result.EvidenceIDs) == 0 {
 		addReason(QualificationEvidenceProofMissing)
 	}
 	for _, evidenceID := range result.EvidenceIDs {
-		proof, ok := proofs[evidenceID]
-		if !ok {
+		assessment := proofs[evidenceID]
+		if !assessment.present {
 			addReason(QualificationEvidenceProofMissing)
 			continue
 		}
-		if proof.State == EvidenceConflicting {
+		if assessment.conflicting {
 			addReason(QualificationEvidenceConflicting)
 		}
-		if proof.State != EvidenceSufficient || proof.CollectedAt.IsZero() || proof.CollectedAt.After(input.AsOf) || proof.ValidUntil.Before(input.AsOf) {
+		if assessment.notCurrent {
 			addReason(QualificationEvidenceNotCurrent)
 		}
 	}

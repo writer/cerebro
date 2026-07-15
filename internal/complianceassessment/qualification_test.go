@@ -159,6 +159,38 @@ func TestQualifiedDecisionIsDeterministicAcrossProofOrder(t *testing.T) {
 	}
 }
 
+func TestQualifiedDecisionDuplicateSourceProofFailsClosedAcrossOrder(t *testing.T) {
+	input := validQualificationInput()
+	input.SourceProofs = append(input.SourceProofs, SourceProof{
+		RuntimeID: "runtime-1", State: SourceFailed,
+		ObservedAt: input.AsOf.Add(-time.Minute), FreshUntil: input.AsOf.Add(time.Hour),
+	})
+
+	first := QualifyDecision(context.Background(), input)
+	if first.Qualified || !containsQualificationReason(first.Reasons, QualificationSourceUnhealthy) {
+		t.Fatalf("decision with failed duplicate source proof = %#v", first)
+	}
+	slices.Reverse(input.SourceProofs)
+	second := QualifyDecision(context.Background(), input)
+	assertQualificationDecisionStable(t, first, second)
+}
+
+func TestQualifiedDecisionDuplicateEvidenceProofFailsClosedAcrossOrder(t *testing.T) {
+	input := validQualificationInput()
+	input.EvidenceProofs = append(input.EvidenceProofs, EvidenceProof{
+		EvidenceID: "evidence-1", State: EvidenceConflicting,
+		CollectedAt: input.AsOf.Add(-time.Minute), ValidUntil: input.AsOf.Add(time.Hour),
+	})
+
+	first := QualifyDecision(context.Background(), input)
+	if first.Qualified || !containsQualificationReason(first.Reasons, QualificationEvidenceConflicting) || !containsQualificationReason(first.Reasons, QualificationEvidenceNotCurrent) {
+		t.Fatalf("decision with conflicting duplicate evidence proof = %#v", first)
+	}
+	slices.Reverse(input.EvidenceProofs)
+	second := QualifyDecision(context.Background(), input)
+	assertQualificationDecisionStable(t, first, second)
+}
+
 func TestQualifiedDecisionIsDeterministicAcrossDuplicatePrimaryKeys(t *testing.T) {
 	input := validQualificationInput()
 	input.SourceProofs = append(input.SourceProofs, SourceProof{
@@ -189,14 +221,19 @@ func TestQualifiedDecisionIsDeterministicAcrossDuplicatePrimaryKeys(t *testing.T
 	slices.Reverse(input.Limitations)
 	slices.Reverse(input.RequiredReviews)
 	second := QualifyDecision(context.Background(), input)
+	assertQualificationDecisionStable(t, first, second)
+}
+
+func assertQualificationDecisionStable(t *testing.T, first, second QualifiedDecision) {
+	t.Helper()
 	if first.ProofDigest != second.ProofDigest {
-		t.Fatalf("proof digest changed with duplicate-key order: %s != %s", first.ProofDigest, second.ProofDigest)
+		t.Fatalf("proof digest changed with proof order: %s != %s", first.ProofDigest, second.ProofDigest)
 	}
 	if first.DecisionDigest != second.DecisionDigest {
-		t.Fatalf("decision digest changed with duplicate-key order: %s != %s", first.DecisionDigest, second.DecisionDigest)
+		t.Fatalf("decision digest changed with proof order: %s != %s", first.DecisionDigest, second.DecisionDigest)
 	}
 	if strings.Join(qualificationReasonStrings(first.Reasons), ",") != strings.Join(qualificationReasonStrings(second.Reasons), ",") {
-		t.Fatalf("reasons changed with duplicate-key order: %v != %v", first.Reasons, second.Reasons)
+		t.Fatalf("reasons changed with proof order: %v != %v", first.Reasons, second.Reasons)
 	}
 }
 
