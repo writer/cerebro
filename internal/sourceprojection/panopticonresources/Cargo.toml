@@ -10,7 +10,8 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+cerebro-wasm-guest = { version = "0.1.0", path = "../../wasmguest" }
 serde_json = { version = "1.0.149", features = ["preserve_order"] }
 
 [lints.rust]
-unsafe_code = "allow"
+unsafe_code = "deny"

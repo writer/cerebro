@@ -1,8 +1,17 @@
+#![deny(unsafe_code)]
+
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 pub const ABI_VERSION: u32 = 1;
+#[cfg(target_arch = "wasm32")]
+const MAX_INPUT_BYTES: usize = 8 << 20;
+#[cfg(target_arch = "wasm32")]
+const MAX_OUTPUT_BYTES: usize = 16 << 20;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_abi;
 
 const STATE_HEALTHY: &str = "healthy";
 const STATE_PARTIAL: &str = "partial";
@@ -17,6 +26,7 @@ const CERTIFICATION_FIXTURE_VALIDATED: &str = "fixture_validated";
 const CERTIFICATION_LIVE_VALIDATED: &str = "live_validated";
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvaluationRequest {
     #[serde(default)]
     contracts: Vec<CoverageContract>,
@@ -387,75 +397,6 @@ fn state_rank(state: &str) -> u8 {
         STATE_HEALTHY => 6,
         _ => 7,
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_sourcecoverage_abi_version() -> u32 {
-    ABI_VERSION
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_sourcecoverage_alloc(length: u32) -> u32 {
-    let mut bytes = vec![0_u8; length as usize];
-    let pointer = bytes.as_mut_ptr() as usize;
-    std::mem::forget(bytes);
-    u32::try_from(pointer).unwrap_or_default()
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_sourcecoverage_evaluate(
-    request_pointer: u32,
-    request_length: u32,
-    result_pointer: u32,
-) -> u32 {
-    const RESULT_SIZE: usize = 16;
-    let request_start = request_pointer as usize;
-    let result_start = result_pointer as usize;
-    let Some(request_end) = request_start.checked_add(request_length as usize) else {
-        return 3;
-    };
-    let Some(result_end) = result_start.checked_add(RESULT_SIZE) else {
-        return 3;
-    };
-    let memory_size = core::arch::wasm32::memory_size(0) * 65_536;
-    if request_end > memory_size || result_end > memory_size {
-        return 3;
-    }
-
-    // SAFETY: The host allocates the request range in this module and the bounds are checked above.
-    let request_bytes = unsafe {
-        std::slice::from_raw_parts(request_pointer as *const u8, request_length as usize)
-    };
-    let request: EvaluationRequest = match serde_json::from_slice(request_bytes) {
-        Ok(request) => request,
-        Err(_) => return 1,
-    };
-    let response = EvaluationResponse {
-        records: evaluate(request),
-    };
-    let mut output = match serde_json::to_vec(&response) {
-        Ok(output) => output,
-        Err(_) => return 2,
-    };
-    let Ok(output_pointer) = u32::try_from(output.as_mut_ptr() as usize) else {
-        return 2;
-    };
-    let Ok(output_length) = u32::try_from(output.len()) else {
-        return 2;
-    };
-    std::mem::forget(output);
-
-    let mut result = [0_u8; RESULT_SIZE];
-    result[4..8].copy_from_slice(&output_pointer.to_le_bytes());
-    result[8..12].copy_from_slice(&output_length.to_le_bytes());
-    // SAFETY: The result range is checked against linear memory above.
-    unsafe {
-        std::ptr::copy_nonoverlapping(result.as_ptr(), result_pointer as *mut u8, result.len())
-    };
-    0
 }
 
 #[cfg(test)]
