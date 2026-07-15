@@ -105,7 +105,13 @@ import (
 // wiring plus tenant and idempotency checks at the existing job HTTP boundary;
 // event replay, projection recovery, and run transitions stay in
 // internal/complianceassessment.
-const bootstrapProductionGoLineBudget = 27489
+// Compliance remediation adds capability-gated service composition, route/auth
+// registration, tenant and actor stamping, and request/response/error mapping;
+// work derivation, transition validation, independent verification, append-first
+// persistence, projection replay, and invalidation reopening stay behind
+// internal/complianceremediation, while Postgres adaptation stays in the
+// concrete state-store package.
+const bootstrapProductionGoLineBudget = 27731
 
 type bootstrapFileLineCount struct {
 	path  string

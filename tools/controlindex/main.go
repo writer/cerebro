@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -77,35 +79,67 @@ func main() {
 		os.Exit(1)
 	}
 	path := filepath.Join(filepath.Clean(*root), filepath.FromSlash(*output))
+	var findingProfileContent []byte
+	var findingProfilePath string
+	if isDefaultCoverageOutput(*output) && len(selectedProfiles) == 0 {
+		findingProfileContent, err = generateFindingProfileIndex(content, builtinRuleControlMappings())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "controlindex: %v\n", err)
+			os.Exit(1)
+		}
+		findingProfilePath = filepath.Join(filepath.Clean(*root), filepath.FromSlash(compliance.DefaultFindingProfileIndexPath))
+	}
 	if *write {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "controlindex: create output directory: %v\n", err)
-			os.Exit(1)
-		}
-		if err := rejectSymlink(path); err != nil {
+		if err := writeGeneratedIndex(path, content); err != nil {
 			fmt.Fprintf(os.Stderr, "controlindex: write %s: %v\n", *output, err)
 			os.Exit(1)
 		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "controlindex: write %s: %v\n", *output, err)
-			os.Exit(1)
+		if findingProfilePath != "" {
+			if err := writeGeneratedIndex(findingProfilePath, findingProfileContent); err != nil {
+				fmt.Fprintf(os.Stderr, "controlindex: write %s: %v\n", compliance.DefaultFindingProfileIndexPath, err)
+				os.Exit(1)
+			}
 		}
 	}
 	if *check {
-		if err := rejectSymlink(path); err != nil {
+		if fresh, err := generatedIndexFresh(path, content); err != nil {
 			fmt.Fprintf(os.Stderr, "controlindex: read %s: %v\n", *output, err)
 			os.Exit(1)
-		}
-		existing, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "controlindex: read %s: %v\n", *output, err)
-			os.Exit(1)
-		}
-		if !bytes.Equal(bytes.TrimSpace(existing), bytes.TrimSpace(content)) {
+		} else if !fresh {
 			fmt.Fprintf(os.Stderr, "controlindex: %s is stale; run `make control-index-generate`\n", *output)
 			os.Exit(1)
 		}
+		if findingProfilePath != "" {
+			if fresh, err := generatedIndexFresh(findingProfilePath, findingProfileContent); err != nil {
+				fmt.Fprintf(os.Stderr, "controlindex: read %s: %v\n", compliance.DefaultFindingProfileIndexPath, err)
+				os.Exit(1)
+			} else if !fresh {
+				fmt.Fprintf(os.Stderr, "controlindex: %s is stale; run `make control-index-generate`\n", compliance.DefaultFindingProfileIndexPath)
+				os.Exit(1)
+			}
+		}
 	}
+}
+
+func writeGeneratedIndex(path string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	if err := rejectSymlink(path); err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0o644)
+}
+
+func generatedIndexFresh(path string, content []byte) (bool, error) {
+	if err := rejectSymlink(path); err != nil {
+		return false, err
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(bytes.TrimSpace(existing), bytes.TrimSpace(content)), nil
 }
 
 func (p *pathList) String() string {
@@ -694,6 +728,30 @@ func generateCoverageIndex(root string, catalogPaths []string, profilePath strin
 		return nil, fmt.Errorf("encode coverage index: %w", err)
 	}
 	return content, nil
+}
+
+func generateFindingProfileIndex(coverageContent []byte, rules []compliance.RuleControlMapping) ([]byte, error) {
+	coverage, err := compliance.LoadControlCoverageIndex(coverageContent)
+	if err != nil {
+		return nil, fmt.Errorf("decode generated control coverage index: %w", err)
+	}
+	index, err := compliance.BuildFindingProfileIndex(coverage, rules)
+	if err != nil {
+		return nil, fmt.Errorf("build finding profile index: %w", err)
+	}
+	content, err := json.Marshal(index)
+	if err != nil {
+		return nil, fmt.Errorf("encode finding profile index: %w", err)
+	}
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(append(content, '\n')); err != nil {
+		return nil, fmt.Errorf("compress finding profile index: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close finding profile index compressor: %w", err)
+	}
+	return compressed.Bytes(), nil
 }
 
 func selectControlProfiles(set compliance.ControlProfileSet, profileIDs []string) (compliance.ControlProfileSet, map[string]struct{}, error) {

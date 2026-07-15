@@ -34,7 +34,7 @@ func TestRustEvaluatorMatchesGoOracle(t *testing.T) {
 	}
 	observations := []RuntimeObservation{
 		{RuntimeID: "wrong-family-failed", SourceID: "zeta", TenantID: "tenant-a", Family: "user", Status: "failed"},
-		{RuntimeID: "first-users-failed", SourceID: " zeta ", TenantID: "tenant-a", Family: "users", Status: "healthy", LastFailureCategory: "schema", LastSyncedAt: "2026-07-14T10:00:00Z"},
+		{RuntimeID: "first-users-failed", SourceID: " zeta ", TenantID: "tenant-a", Family: "users", Status: "healthy", LastFailureCategory: "schema", LastSyncedAt: "2026-07-14T10:00:00Z", CertificationTier: CertificationFixtureValidated},
 		{RuntimeID: "second-users-failed", SourceID: "zeta", TenantID: "tenant-a", Family: "users", Status: "failed"},
 		{RuntimeID: "wrong-tenant", SourceID: "zeta", TenantID: "tenant-b", Family: "application", Status: "healthy"},
 		{RuntimeID: "alpha-audit", SourceID: "alpha", TenantID: "tenant-a", Family: "audit", Status: "current"},
@@ -157,6 +157,7 @@ func oracleCoverageRecord(contract sourcecdk.CoverageContract, dimension sourcec
 		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
 		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
 		SupportedRuntimeFamilies: oracleUniqueNonEmptyStrings(dimension.Families, dimension.RuntimeFamilies),
+		CertificationTier:        CertificationUnknown,
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
 		record.State = StateUnsupported
@@ -171,6 +172,7 @@ func oracleCoverageRecord(contract sourcecdk.CoverageContract, dimension sourcec
 	record.RuntimeID = best.RuntimeID
 	record.Family = best.Family
 	record.LastSyncedAt = best.LastSyncedAt
+	record.CertificationTier = BoundedCertificationTier(best.CertificationTier)
 	record.State = oracleObservationState(best)
 	if record.State == StateHealthy && dimension.Support == sourcecdk.CoverageSupportPartial {
 		record.State = StatePartial

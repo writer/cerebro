@@ -172,6 +172,16 @@ func TestBuiltinFrameworksIncludesUpcomingFrameworks(t *testing.T) {
 	}
 }
 
+func TestBuiltinControlProfilesExposeCoverageVersion(t *testing.T) {
+	response, err := BuiltinControlProfiles(nil, time.Unix(0, 0).UTC())
+	if err != nil {
+		t.Fatalf("BuiltinControlProfiles() error = %v", err)
+	}
+	if response.Version == "" || len(response.Profiles) == 0 {
+		t.Fatalf("BuiltinControlProfiles() = %#v, want versioned profiles", response)
+	}
+}
+
 func TestBuiltinFrameworksActiveFrameworksHaveActiveLifecycle(t *testing.T) {
 	response, err := BuiltinFrameworks(time.Unix(0, 0).UTC())
 	if err != nil {
@@ -302,6 +312,232 @@ frameworks:
 	original := catalog.Frameworks[1].Families[0].Controls[0].MapsTo[0]
 	if original.FrameworkID != "soc2" || original.FrameworkName != "" {
 		t.Fatalf("original maps_to = %#v, want caller catalog left untouched", original)
+	}
+}
+
+func TestBuildCatalogIndexPreservesTypedControlMappingMetadata(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-07-14"
+frameworks:
+  - id: target
+    name: Target Framework
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+  - id: source
+    name: Source Framework
+    families:
+      - id: IAM
+        name: Identity
+        controls:
+          - id: IAM-1
+            maps_to:
+              - framework_id: target
+                control_id: AC-1
+                relationship: equivalent-to
+                matching_rationale: semantic
+                mapping_description: Both controls require approved access before an identity can reach the system.
+                mapping_authority: Compliance Engineering
+                mapping_source: https://example.com/crosswalks/access
+                review_status: complete
+                reviewed_at: 2026-07-14
+                mapping_version: "1.0"
+`)
+	index, issues := BuildCatalogIndex(catalog)
+	if len(issues) != 0 {
+		t.Fatalf("BuildCatalogIndex() issues = %#v, want none", issues)
+	}
+	control, ok := index.Control(ControlRef{FrameworkID: "source", ControlID: "IAM-1"})
+	if !ok || len(control.Control.MapsTo) != 1 {
+		t.Fatalf("Control(source IAM-1) = %#v, %t, want one mapping", control, ok)
+	}
+	mapping := control.Control.MapsTo[0]
+	if mapping.FrameworkID != "target" || mapping.FrameworkName != "Target Framework" {
+		t.Fatalf("mapping target = %#v, want normalized target identity", mapping)
+	}
+	if mapping.Relationship != ControlMappingRelationshipEquivalentTo || mapping.MatchingRationale != ControlMappingRationaleSemantic {
+		t.Fatalf("mapping semantics = %#v, want semantic equivalent-to", mapping)
+	}
+	if mapping.MappingAuthority != "Compliance Engineering" || mapping.ReviewStatus != ControlMappingReviewStatusComplete || mapping.MappingVersion != "1.0" {
+		t.Fatalf("mapping provenance = %#v, want completed versioned review", mapping)
+	}
+}
+
+func TestValidateControlMappingMetadataRequiresAtomicTypedTuples(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) {
+		ref := ControlRef{}
+		if !controlMappingIsLegacy(ref) {
+			t.Fatal("controlMappingIsLegacy() = false, want true for an untyped mapping")
+		}
+		if issues := validateControlMappingMetadata("maps_to[0]", ref); len(issues) != 0 {
+			t.Fatalf("validateControlMappingMetadata() issues = %#v, want none", issues)
+		}
+	})
+
+	t.Run("orphan provenance", func(t *testing.T) {
+		ref := ControlRef{MappingAuthority: "Compliance Engineering"}
+		if controlMappingIsLegacy(ref) {
+			t.Fatal("controlMappingIsLegacy() = true, want false when provenance is present")
+		}
+		issues := validateControlMappingMetadata("maps_to[0]", ref)
+		for _, want := range []string{
+			"relationship is required when typed mapping metadata is set",
+			"matching_rationale is required when typed mapping metadata is set",
+			"mapping_description is required when typed mapping metadata is set",
+			"review_status is required when typed mapping metadata is set",
+			"mapping_source is required when mapping provenance is set",
+			"reviewed_at is required when mapping provenance is set",
+			"mapping_version is required when mapping provenance is set",
+		} {
+			if !issueContains(issues, want) {
+				t.Errorf("issues = %#v, want %q", issues, want)
+			}
+		}
+	})
+
+	t.Run("draft semantic tuple", func(t *testing.T) {
+		ref := ControlRef{
+			Relationship:       ControlMappingRelationshipIntersectsWith,
+			MatchingRationale:  ControlMappingRationaleSemantic,
+			MappingDescription: "The controls overlap for privileged access reviews.",
+			ReviewStatus:       ControlMappingReviewStatusDraft,
+		}
+		if issues := validateControlMappingMetadata("maps_to[0]", ref); len(issues) != 0 {
+			t.Fatalf("validateControlMappingMetadata() issues = %#v, want none", issues)
+		}
+	})
+
+	t.Run("partial draft provenance", func(t *testing.T) {
+		ref := ControlRef{
+			Relationship:       ControlMappingRelationshipIntersectsWith,
+			MatchingRationale:  ControlMappingRationaleSemantic,
+			MappingDescription: "The controls overlap for privileged access reviews.",
+			MappingAuthority:   "Compliance Engineering",
+			ReviewStatus:       ControlMappingReviewStatusDraft,
+		}
+		issues := validateControlMappingMetadata("maps_to[0]", ref)
+		for _, want := range []string{
+			"mapping_source is required when mapping provenance is set",
+			"reviewed_at is required when mapping provenance is set",
+			"mapping_version is required when mapping provenance is set",
+		} {
+			if !issueContains(issues, want) {
+				t.Errorf("issues = %#v, want %q", issues, want)
+			}
+		}
+	})
+}
+
+func TestBuildCatalogIndexRejectsDuplicateNormalizedMappingTargets(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-07-14"
+frameworks:
+  - id: target
+    name: Target Framework
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+  - id: source
+    name: Source Framework
+    families:
+      - id: IAM
+        name: Identity
+        controls:
+          - id: IAM-1
+            maps_to:
+              - framework_id: target
+                control_id: AC-1
+              - framework_name: Target Framework
+                control_id: AC-1
+`)
+	_, issues := BuildCatalogIndex(catalog)
+	if !issueContains(issues, "maps_to[1] duplicates normalized target from maps_to[0]") {
+		t.Fatalf("BuildCatalogIndex() issues = %#v, want duplicate normalized target", issues)
+	}
+}
+
+func TestBuildCatalogIndexValidatesTypedControlMappingMetadata(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-07-14"
+frameworks:
+  - name: Target Framework
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+  - name: Source Framework
+    families:
+      - id: IAM
+        name: Identity
+        controls:
+          - id: IAM-1
+            maps_to:
+              - framework_name: Target Framework
+                control_id: AC-1
+                relationship: overlaps
+                matching_rationale: topical
+                review_status: approved
+                reviewed_at: July 14
+                mapping_source: crosswalks/access
+              - framework_name: Target Framework
+                control_id: AC-1
+                relationship: intersects-with
+                mapping_description: The controls overlap only for privileged identities.
+              - framework_name: Target Framework
+                control_id: AC-1
+                relationship: equivalent-to
+                matching_rationale: functional
+                mapping_description: Both controls produce the same access restriction.
+                review_status: complete
+`)
+	_, issues := BuildCatalogIndex(catalog)
+	for _, want := range []string{
+		"relationship must be one of equal-to, equivalent-to, subset-of, superset-of, intersects-with, no-relationship",
+		"matching_rationale must be one of syntactic, semantic, functional",
+		"review_status must be one of complete, not-complete, draft, deprecated, superseded",
+		"reviewed_at must be an ISO 8601 date or RFC 3339 timestamp",
+		"mapping_source must be an absolute URI",
+		"relationship and matching_rationale must be provided together",
+		"review_status is required when relationship is set",
+		"mapping_authority is required when review_status is complete",
+		"mapping_source is required when review_status is complete",
+		"reviewed_at is required when review_status is complete",
+		"mapping_version is required when review_status is complete",
+	} {
+		if !issueContains(issues, want) {
+			t.Errorf("issues = %#v, want %q", issues, want)
+		}
+	}
+}
+
+func TestBuildCatalogIndexLeavesLegacyUntypedMappingsValid(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-07-14"
+frameworks:
+  - name: Target Framework
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+  - name: Source Framework
+    families:
+      - id: IAM
+        name: Identity
+        controls:
+          - id: IAM-1
+            maps_to:
+              - framework_name: Target Framework
+                control_id: AC-1
+`)
+	_, issues := BuildCatalogIndex(catalog)
+	if len(issues) != 0 {
+		t.Fatalf("BuildCatalogIndex() issues = %#v, want legacy mapping accepted", issues)
 	}
 }
 

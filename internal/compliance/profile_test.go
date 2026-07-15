@@ -99,6 +99,13 @@ func TestBuildControlCoverageIndexCreditsMappedCustomControls(t *testing.T) {
 	if len(control.MappedControlRefs) != 1 || control.MappedControlRefs[0].FrameworkName != "SOC 2" || control.MappedControlRefs[0].ControlID != "CC6.1" {
 		t.Fatalf("MappedControlRefs = %#v, want SOC 2 CC6.1", control.MappedControlRefs)
 	}
+	mapping := control.MappedControlRefs[0]
+	if mapping.Relationship != ControlMappingRelationshipEquivalentTo || mapping.MatchingRationale != ControlMappingRationaleFunctional {
+		t.Fatalf("MappedControlRefs semantics = %#v, want functional equivalent-to", mapping)
+	}
+	if mapping.MappingAuthority != "Compliance Engineering" || mapping.ReviewStatus != ControlMappingReviewStatusComplete || mapping.MappingVersion != "0.1" {
+		t.Fatalf("MappedControlRefs provenance = %#v, want complete 0.1 review metadata", mapping)
+	}
 	if got := profile.Controls[0].MappedRules; len(got) != 1 || got[0] != "identity-mfa-required" {
 		t.Fatalf("MappedRules = %#v, want identity-mfa-required", got)
 	}
