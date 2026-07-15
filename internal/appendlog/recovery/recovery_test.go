@@ -3,7 +3,9 @@ package recovery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -39,11 +41,28 @@ func TestAppendRecordsExhaustedPublish(t *testing.T) {
 	if record.RetryCount != 3 || record.MaxAttempts != 4 || record.ErrorCategory != "no_response" {
 		t.Fatalf("record retry fields = %#v", record)
 	}
+	if record.ErrorMessage != "append log publish exhausted; category=no_response; attempts=3/4" {
+		t.Fatalf("record error message = %q, want bounded retry diagnostic", record.ErrorMessage)
+	}
 	if record.ID == "" || record.PayloadHash == "" || record.PayloadBytes == 0 || record.Event == nil {
 		t.Fatalf("record durability fields missing: %#v", record)
 	}
 	if inner.events[0] == record.Event {
 		t.Fatal("record reused event pointer; want cloned event")
+	}
+}
+
+func TestDeadLetterDiagnosticDoesNotPersistWrappedError(t *testing.T) {
+	secret := "Bearer test-sensitive-value" // #nosec G101 -- credential-shaped test data verifies diagnostic redaction.
+	diagnostic := deadLetterDiagnostic(&ports.AppendLogPublishExhaustedError{
+		Subject:       "sec.findings.v1.recorded",
+		ErrorCategory: "no_response",
+		RetryCount:    3,
+		MaxAttempts:   4,
+		Err:           errors.New("authorization=" + secret + " response={unbounded-body}"),
+	})
+	if strings.Contains(diagnostic, secret) || strings.Contains(diagnostic, "authorization") || strings.Contains(diagnostic, "unbounded-body") {
+		t.Fatalf("deadLetterDiagnostic() leaked wrapped error: %q", diagnostic)
 	}
 }
 
@@ -178,10 +197,30 @@ func (s *recordingStore) GetAppendLogDeadLetter(context.Context, string) (ports.
 	return ports.AppendLogDeadLetter{}, nil
 }
 
-func (s *recordingStore) MarkAppendLogDeadLetterReplayed(context.Context, string) error {
+func (s *recordingStore) ClaimAppendLogDeadLetterReplay(context.Context, string, string, string, time.Duration) (ports.AppendLogDeadLetter, error) {
+	return ports.AppendLogDeadLetter{}, nil
+}
+
+func (s *recordingStore) RenewAppendLogDeadLetterReplay(context.Context, string, string, time.Duration) error {
 	return nil
 }
 
-func (s *recordingStore) DiscardAppendLogDeadLetter(context.Context, string, string) error {
+func (s *recordingStore) CompleteAppendLogDeadLetterReplay(context.Context, string, string, string, string) error {
 	return nil
+}
+
+func (s *recordingStore) ReleaseAppendLogDeadLetterReplay(context.Context, string, string, string) error {
+	return nil
+}
+
+func (s *recordingStore) DiscardAppendLogDeadLetter(context.Context, string, string, string) error {
+	return nil
+}
+
+func (s *recordingStore) GetAppendLogDeadLetterBacklog(context.Context) (ports.AppendLogDeadLetterBacklog, error) {
+	return ports.AppendLogDeadLetterBacklog{}, nil
+}
+
+func (s *recordingStore) CleanupAppendLogDeadLetters(context.Context, ports.AppendLogDeadLetterCleanupRequest) (ports.AppendLogDeadLetterCleanupResult, error) {
+	return ports.AppendLogDeadLetterCleanupResult{}, nil
 }

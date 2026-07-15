@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcecertification"
@@ -945,14 +946,11 @@ func (app *App) mcpGetFinding(r *http.Request, args map[string]any) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	value, err := mcpSafeFindingValue(finding)
+	value, err := protoJSONValue(linktransport.FindingResponse(mcpSafeFindingMessage(finding), finding))
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"finding":  value,
-		"metadata": mcpResponseMetadata(0, 1, nil),
-	}, nil
+	return mcpAddResponseMetadata(value, mcpResponseMetadata(0, 1, nil)), nil
 }
 
 func (app *App) mcpSearchFindings(r *http.Request, args map[string]any) (any, error) {
@@ -2319,7 +2317,7 @@ func mcpTools() []mcpTool {
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id": map[string]any{"type": "string"},
 			}, []string{"finding_id"}),
-			OutputSchema: mcpOutputSchema(map[string]any{"finding": map[string]any{"type": "object"}}),
+			OutputSchema: mcpOutputSchema(map[string]any{"finding": map[string]any{"type": "object"}, "links": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}}),
 			Annotations:  mcpReadOnlyAnnotations("Get Finding"),
 		},
 		{
