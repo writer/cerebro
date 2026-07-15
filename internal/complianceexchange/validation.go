@@ -150,7 +150,8 @@ func validateActualFiles(result *ValidationResult, files []File, limits Limits) 
 }
 
 func validateManifestFiles(result *ValidationResult, manifest Manifest, actual map[string]actualFile, limits Limits) {
-	seen := make(map[string]string, len(manifest.Files))
+	manifestPaths := make(map[string]string, len(manifest.Files))
+	coveredActual := make(map[string]struct{}, len(manifest.Files))
 	var declaredTotal int64
 	priorPath := ""
 	for index, declared := range manifest.Files {
@@ -164,11 +165,11 @@ func validateManifestFiles(result *ValidationResult, manifest Manifest, actual m
 		}
 		priorPath = declared.Path
 		key := collisionKey(declared.Path)
-		if prior, ok := seen[key]; ok {
+		if prior, ok := manifestPaths[key]; ok {
 			result.Issues = append(result.Issues, issue(layerPaths, "duplicate_manifest_path", fieldPath+".path", fmt.Sprintf("The manifest path collides with %q.", prior), "Use unique paths that also differ when case-folded."))
 			continue
 		}
-		seen[key] = declared.Path
+		manifestPaths[key] = declared.Path
 		if strings.TrimSpace(declared.MediaType) == "" || strings.TrimSpace(declared.LogicalType) == "" {
 			result.Issues = append(result.Issues, issue(layerSchema, "file_type_required", fieldPath, "Every manifest file needs media and logical types.", "Set both media_type and logical_type."))
 		}
@@ -190,8 +191,10 @@ func validateManifestFiles(result *ValidationResult, manifest Manifest, actual m
 			continue
 		}
 		if found.file.Path != declared.Path {
+			result.Issues = append(result.Issues, issue(layerPaths, "path_case_mismatch", declared.Path, "A payload file path does not exactly match the signed manifest path.", "Use the exact path recorded in the signed manifest."))
 			continue
 		}
+		coveredActual[key] = struct{}{}
 		if int64(len(found.file.Data)) != declared.SizeBytes || sha256Hex(found.file.Data) != declared.SHA256 {
 			result.Issues = append(result.Issues, issue(layerDigest, "file_digest_mismatch", declared.Path, "A payload file does not match its signed size or digest.", "Restore the exact signed file or regenerate and re-sign the package."))
 		}
@@ -203,7 +206,7 @@ func validateManifestFiles(result *ValidationResult, manifest Manifest, actual m
 		result.Issues = append(result.Issues, issue(layerSchema, "total_bytes_mismatch", "total_bytes", "The declared total does not match the manifest file sizes.", "Regenerate the manifest from the complete payload."))
 	}
 	for key, found := range actual {
-		if _, ok := seen[key]; !ok {
+		if _, ok := coveredActual[key]; !ok {
 			result.Issues = append(result.Issues, issue(layerRefs, "unexpected_payload_file", found.file.Path, "A payload file is not covered by the signed manifest.", "Remove the file or include it in a newly signed manifest."))
 		}
 	}

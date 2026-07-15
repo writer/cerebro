@@ -112,6 +112,44 @@ func TestValidateRejectsDuplicateAndCaseCollidingPayloadPaths(t *testing.T) {
 	assertIssue(t, result, "duplicate_path")
 }
 
+func TestValidateRejectsCaseVariantPayloadDigestBypass(t *testing.T) {
+	signer, trust := newEd25519Fixture(t)
+	request := fixtureBuildRequest()
+	request.Files[0].Path = "data/file.json"
+	built, err := Build(context.Background(), request, signer)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	signed := built.Files[0]
+	tampered := signed
+	tampered.Path = "data/File.json"
+	tampered.Data = []byte(`{"state":"tampered"}`)
+
+	tests := []struct {
+		name       string
+		files      []File
+		wantIssues []string
+	}{
+		{name: "replacement", files: []File{tampered}, wantIssues: []string{"path_case_mismatch", "unexpected_payload_file"}},
+		{name: "variant before signed", files: []File{tampered, signed}, wantIssues: []string{"duplicate_path", "path_case_mismatch", "unexpected_payload_file"}},
+		{name: "signed before variant", files: []File{signed, tampered}, wantIssues: []string{"duplicate_path"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Validate(context.Background(), ValidationRequest{
+				ExpectedTenantID: "tenant-1", ManifestBytes: built.ManifestBytes,
+				Signature: built.Signature, Files: tt.files, Trust: trust,
+			})
+			if result.Status != ValidationInvalid || result.ChangePlan != nil {
+				t.Fatalf("validation = %+v, want invalid without change plan", result)
+			}
+			for _, code := range tt.wantIssues {
+				assertIssue(t, result, code)
+			}
+		})
+	}
+}
+
 func TestValidateRejectsDuplicateManifestPath(t *testing.T) {
 	fixture := buildFixture(t)
 	manifest := fixture.built.Manifest
