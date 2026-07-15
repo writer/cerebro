@@ -74,6 +74,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | Local end-to-end walkthrough | [Getting started](start/getting-started.md) |
 | Coding agent setup handoff | [Agent onboarding](start/agent-onboarding.md) |
 | Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
+| JetStream durability status and implementation order | [JetStream durability acceptance matrix](engineering/jetstream-durability-acceptance-matrix.md) |
 | Evidence-backed decision packet implementation | [Decision packet convergence](engineering/decision-packet-convergence.md) |
 | Finding-to-verified-fix implementation | [Finding-to-verified-fix reference](engineering/finding-to-verified-fix-reference.md) |
 | Cross-resource navigation and outcome learning | [Reference fabric and deep-link compounding](engineering/reference-fabric-deep-linking.md) |
