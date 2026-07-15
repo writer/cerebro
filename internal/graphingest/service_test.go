@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -16,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 type stubRunStore struct {
@@ -198,6 +200,29 @@ type graphingestRuntimeStore struct {
 	err      error
 }
 
+type graphingestLeaseRuntimeStore struct {
+	*graphingestRuntimeStore
+	available    bool
+	acquireCalls int
+	renewCalls   int
+	releaseCalls int
+}
+
+func (s *graphingestLeaseRuntimeStore) AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	s.acquireCalls++
+	return s.available, nil
+}
+
+func (s *graphingestLeaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	s.renewCalls++
+	return s.available, nil
+}
+
+func (s *graphingestLeaseRuntimeStore) ReleaseSourceRuntimeLease(context.Context, string, string) error {
+	s.releaseCalls++
+	return nil
+}
+
 func (s *graphingestRuntimeStore) Ping(context.Context) error { return s.err }
 
 func (s *graphingestRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
@@ -220,6 +245,54 @@ func (s *graphingestRuntimeStore) GetSourceRuntime(_ context.Context, id string)
 		return nil, ports.ErrSourceRuntimeNotFound
 	}
 	return runtime, nil
+}
+
+func TestRunRuntimeStopsBeforeGraphWritesWhenRuntimeLeaseIsBusy(t *testing.T) {
+	runtimeStore := &graphingestLeaseRuntimeStore{
+		graphingestRuntimeStore: &graphingestRuntimeStore{},
+		available:               false,
+	}
+	runStore := &stubRunStore{}
+	projector := recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		t.Fatal("projector called without a runtime lease")
+		return nil, nil, nil
+	})
+
+	_, err := New(nil, runtimeStore, projector, runStore).RunRuntime(context.Background(), RuntimeRequest{RuntimeID: "runtime-a"})
+	if !errors.Is(err, sourceruntime.ErrSyncInProgress) {
+		t.Fatalf("RunRuntime() error = %v, want %v", err, sourceruntime.ErrSyncInProgress)
+	}
+	if runtimeStore.acquireCalls != 1 || runtimeStore.renewCalls != 0 || runtimeStore.releaseCalls != 0 {
+		t.Fatalf("lease calls = acquire:%d renew:%d release:%d, want 1/0/0", runtimeStore.acquireCalls, runtimeStore.renewCalls, runtimeStore.releaseCalls)
+	}
+	if len(runStore.putRuns) != 0 {
+		t.Fatalf("graph ingest runs = %#v, want no graph mutation without the runtime lease", runStore.putRuns)
+	}
+	if got := graphIngestTelemetryErrorKind(err); got != "sync_in_progress" {
+		t.Fatalf("graphIngestTelemetryErrorKind() = %q, want sync_in_progress", got)
+	}
+}
+
+func TestRunRuntimeUsesCallerHeldRuntimeLease(t *testing.T) {
+	runtimeStore := &graphingestLeaseRuntimeStore{
+		graphingestRuntimeStore: &graphingestRuntimeStore{},
+		available:               false,
+	}
+	runStore := &stubRunStore{}
+	service := New(nil, runtimeStore, recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return nil, nil, nil
+	}), runStore)
+
+	_, err := service.RunRuntime(context.Background(), RuntimeRequest{RuntimeID: "missing", RuntimeLeaseHeld: true})
+	if !errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+		t.Fatalf("RunRuntime() error = %v, want runtime lookup failure after caller-held lease bypass", err)
+	}
+	if runtimeStore.acquireCalls != 0 || runtimeStore.releaseCalls != 0 {
+		t.Fatalf("lease calls = acquire:%d release:%d, want caller-held lease untouched", runtimeStore.acquireCalls, runtimeStore.releaseCalls)
+	}
+	if len(runStore.putRuns) != 2 {
+		t.Fatalf("graph ingest run updates = %d, want running and failed records", len(runStore.putRuns))
+	}
 }
 
 type singlePageSource struct {
@@ -1450,6 +1523,25 @@ func TestFinishRunClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 	if strings.Contains(finished.Error, "fake-sensitive-value") || strings.Contains(finished.Error, "credential=") {
 		t.Fatalf("finishRun leaked raw error: %q", finished.Error)
+	}
+}
+
+func TestFinishRunPreservesCheckpointTerminalState(t *testing.T) {
+	result := &IngestResult{
+		CheckpointID:        "checkpoint-1",
+		CheckpointCursor:    "page-2",
+		CheckpointPersisted: true,
+		CheckpointComplete:  false,
+	}
+	finished := finishRun(graphstore.IngestRun{ID: "run-1"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if finished.CheckpointID != result.CheckpointID || finished.CheckpointCursor != result.CheckpointCursor || finished.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want persisted partial checkpoint", finished)
+	}
+	result.CheckpointCursor = ""
+	result.CheckpointComplete = true
+	completed := finishRun(graphstore.IngestRun{ID: "run-2"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if completed.CheckpointCursor != "" || !completed.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want complete terminal checkpoint", completed)
 	}
 }
 

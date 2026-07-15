@@ -6244,27 +6244,29 @@ func (x *GetEntityNeighborhoodResponse) GetRelations() []*GraphRelation {
 
 // GraphIngestRun is the durable status record for one graph ingest attempt.
 type GraphIngestRun struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	RuntimeId         string                 `protobuf:"bytes,2,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
-	SourceId          string                 `protobuf:"bytes,3,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	TenantId          string                 `protobuf:"bytes,4,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	CheckpointId      string                 `protobuf:"bytes,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	Status            string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
-	Trigger           string                 `protobuf:"bytes,7,opt,name=trigger,proto3" json:"trigger,omitempty"`
-	PagesRead         int64                  `protobuf:"varint,8,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
-	EventsRead        int64                  `protobuf:"varint,9,opt,name=events_read,json=eventsRead,proto3" json:"events_read,omitempty"`
-	EntitiesProjected int64                  `protobuf:"varint,10,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
-	LinksProjected    int64                  `protobuf:"varint,11,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
-	GraphNodesBefore  int64                  `protobuf:"varint,12,opt,name=graph_nodes_before,json=graphNodesBefore,proto3" json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore  int64                  `protobuf:"varint,13,opt,name=graph_links_before,json=graphLinksBefore,proto3" json:"graph_links_before,omitempty"`
-	GraphNodesAfter   int64                  `protobuf:"varint,14,opt,name=graph_nodes_after,json=graphNodesAfter,proto3" json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter   int64                  `protobuf:"varint,15,opt,name=graph_links_after,json=graphLinksAfter,proto3" json:"graph_links_after,omitempty"`
-	StartedAt         string                 `protobuf:"bytes,16,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	FinishedAt        string                 `protobuf:"bytes,17,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	Error             string                 `protobuf:"bytes,18,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RuntimeId          string                 `protobuf:"bytes,2,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	SourceId           string                 `protobuf:"bytes,3,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	TenantId           string                 `protobuf:"bytes,4,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	CheckpointId       string                 `protobuf:"bytes,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	Status             string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Trigger            string                 `protobuf:"bytes,7,opt,name=trigger,proto3" json:"trigger,omitempty"`
+	PagesRead          int64                  `protobuf:"varint,8,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
+	EventsRead         int64                  `protobuf:"varint,9,opt,name=events_read,json=eventsRead,proto3" json:"events_read,omitempty"`
+	EntitiesProjected  int64                  `protobuf:"varint,10,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
+	LinksProjected     int64                  `protobuf:"varint,11,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
+	GraphNodesBefore   int64                  `protobuf:"varint,12,opt,name=graph_nodes_before,json=graphNodesBefore,proto3" json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore   int64                  `protobuf:"varint,13,opt,name=graph_links_before,json=graphLinksBefore,proto3" json:"graph_links_before,omitempty"`
+	GraphNodesAfter    int64                  `protobuf:"varint,14,opt,name=graph_nodes_after,json=graphNodesAfter,proto3" json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter    int64                  `protobuf:"varint,15,opt,name=graph_links_after,json=graphLinksAfter,proto3" json:"graph_links_after,omitempty"`
+	StartedAt          string                 `protobuf:"bytes,16,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt         string                 `protobuf:"bytes,17,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Error              string                 `protobuf:"bytes,18,opt,name=error,proto3" json:"error,omitempty"`
+	CheckpointCursor   string                 `protobuf:"bytes,19,opt,name=checkpoint_cursor,json=checkpointCursor,proto3" json:"checkpoint_cursor,omitempty"`
+	CheckpointComplete *bool                  `protobuf:"varint,20,opt,name=checkpoint_complete,json=checkpointComplete,proto3,oneof" json:"checkpoint_complete,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GraphIngestRun) Reset() {
@@ -6421,6 +6423,20 @@ func (x *GraphIngestRun) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *GraphIngestRun) GetCheckpointCursor() string {
+	if x != nil {
+		return x.CheckpointCursor
+	}
+	return ""
+}
+
+func (x *GraphIngestRun) GetCheckpointComplete() bool {
+	if x != nil && x.CheckpointComplete != nil {
+		return *x.CheckpointComplete
+	}
+	return false
 }
 
 // GraphIngestResult summarizes one runtime ingest pass.
@@ -7639,7 +7655,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x1dGetEntityNeighborhoodResponse\x12+\n" +
 	"\x04root\x18\x01 \x01(\v2\x17.cerebro.v1.GraphEntityR\x04root\x125\n" +
 	"\tneighbors\x18\x02 \x03(\v2\x17.cerebro.v1.GraphEntityR\tneighbors\x127\n" +
-	"\trelations\x18\x03 \x03(\v2\x19.cerebro.v1.GraphRelationR\trelations\"\xf2\x04\n" +
+	"\trelations\x18\x03 \x03(\v2\x19.cerebro.v1.GraphRelationR\trelations\"\xed\x05\n" +
 	"\x0eGraphIngestRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -7664,7 +7680,10 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"started_at\x18\x10 \x01(\tR\tstartedAt\x12\x1f\n" +
 	"\vfinished_at\x18\x11 \x01(\tR\n" +
 	"finishedAt\x12\x14\n" +
-	"\x05error\x18\x12 \x01(\tR\x05error\"\xd9\x05\n" +
+	"\x05error\x18\x12 \x01(\tR\x05error\x12+\n" +
+	"\x11checkpoint_cursor\x18\x13 \x01(\tR\x10checkpointCursor\x124\n" +
+	"\x13checkpoint_complete\x18\x14 \x01(\bH\x00R\x12checkpointComplete\x88\x01\x01B\x16\n" +
+	"\x14_checkpoint_complete\"\xd9\x05\n" +
 	"\x11GraphIngestResult\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1d\n" +
@@ -8143,6 +8162,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 	file_cerebro_v1_primitives_proto_init()
 	file_cerebro_v1_source_proto_init()
 	file_cerebro_v1_finding_proto_init()
+	file_cerebro_v1_bootstrap_proto_msgTypes[96].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
