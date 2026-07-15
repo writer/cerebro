@@ -3,6 +3,7 @@ package complianceassessment
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,13 @@ func TestQualifyDecisionRequiresEveryAssuranceGate(t *testing.T) {
 				input.Manifest.Receipts[0].Completeness = CollectionPartial
 			},
 			reason: QualificationPopulationIncomplete,
+		},
+		{
+			name: "scope unpinned",
+			mutate: func(input *QualificationInput) {
+				input.Manifest.ScopeRevisionID = ""
+			},
+			reason: QualificationScopeUnpinned,
 		},
 		{
 			name: "missing source proof",
@@ -149,6 +157,55 @@ func TestQualifiedDecisionIsDeterministicAcrossProofOrder(t *testing.T) {
 	if first.DecisionDigest != second.DecisionDigest {
 		t.Fatalf("decision digest changed with proof order: %s != %s", first.DecisionDigest, second.DecisionDigest)
 	}
+}
+
+func TestQualifiedDecisionIsDeterministicAcrossDuplicatePrimaryKeys(t *testing.T) {
+	input := validQualificationInput()
+	input.SourceProofs = append(input.SourceProofs, SourceProof{
+		RuntimeID: "runtime-1", State: SourceFailed,
+		ObservedAt: input.AsOf.Add(-2 * time.Hour), FreshUntil: input.AsOf.Add(-time.Hour),
+	})
+	input.EvidenceProofs = append(input.EvidenceProofs, EvidenceProof{
+		EvidenceID: "evidence-1", State: EvidenceConflicting,
+		CollectedAt: input.AsOf.Add(-2 * time.Hour), ValidUntil: input.AsOf.Add(-time.Hour),
+	})
+	input.Exceptions = []ExceptionProof{
+		{ExceptionID: "exception-1", Active: false, ValidUntil: input.AsOf.Add(time.Hour)},
+		{ExceptionID: "exception-1", Active: true, ValidUntil: input.AsOf.Add(-time.Hour)},
+	}
+	input.Limitations = []Limitation{
+		{Code: "scope_gap", Detail: "A required population is unavailable."},
+		{Code: "scope_gap", Detail: "A required population is unavailable.", Blocking: true},
+	}
+	input.RequiredReviews = []ReviewRequirement{
+		{Kind: "control_owner", Status: ReviewApproved, CompletedAt: input.AsOf.Add(-2 * time.Hour)},
+		{Kind: "control_owner", Required: true, Status: ReviewPending, CompletedAt: input.AsOf.Add(-time.Hour), ValidUntil: input.AsOf.Add(time.Hour)},
+	}
+
+	first := QualifyDecision(context.Background(), input)
+	slices.Reverse(input.SourceProofs)
+	slices.Reverse(input.EvidenceProofs)
+	slices.Reverse(input.Exceptions)
+	slices.Reverse(input.Limitations)
+	slices.Reverse(input.RequiredReviews)
+	second := QualifyDecision(context.Background(), input)
+	if first.ProofDigest != second.ProofDigest {
+		t.Fatalf("proof digest changed with duplicate-key order: %s != %s", first.ProofDigest, second.ProofDigest)
+	}
+	if first.DecisionDigest != second.DecisionDigest {
+		t.Fatalf("decision digest changed with duplicate-key order: %s != %s", first.DecisionDigest, second.DecisionDigest)
+	}
+	if strings.Join(qualificationReasonStrings(first.Reasons), ",") != strings.Join(qualificationReasonStrings(second.Reasons), ",") {
+		t.Fatalf("reasons changed with duplicate-key order: %v != %v", first.Reasons, second.Reasons)
+	}
+}
+
+func qualificationReasonStrings(values []QualificationReason) []string {
+	result := make([]string, len(values))
+	for index := range values {
+		result[index] = string(values[index])
+	}
+	return result
 }
 
 func TestAssuranceCanariesAreDetectedAndCannotAuthorizeProductionUse(t *testing.T) {

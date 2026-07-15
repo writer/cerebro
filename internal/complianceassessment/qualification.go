@@ -165,13 +165,13 @@ func evaluateQualification(input QualificationInput) QualifiedDecision {
 	}
 
 	manifest := NormalizeManifest(input.Manifest)
+	if manifest.ScopeRevisionID == "" || manifest.RequestedScopeDigest == "" || manifest.ResolvedObjectiveSetDigest == "" {
+		addReason(QualificationScopeUnpinned)
+	}
 	if err := ValidateInputManifest(manifest); err != nil {
 		addReason(QualificationManifestInvalid)
 	} else {
 		decision.ManifestHash, _ = CanonicalManifestDigest(manifest)
-		if manifest.ScopeRevisionID == "" || manifest.RequestedScopeDigest == "" || manifest.ResolvedObjectiveSetDigest == "" {
-			addReason(QualificationScopeUnpinned)
-		}
 		for _, receipt := range manifest.Receipts {
 			if receipt.Completeness != CollectionComplete {
 				addReason(QualificationPopulationIncomplete)
@@ -220,7 +220,7 @@ func evaluateQualification(input QualificationInput) QualifiedDecision {
 			addReason(QualificationReviewIncomplete)
 		}
 	}
-	for _, exception := range input.Exceptions {
+	for _, exception := range normalizeExceptionProofs(input.Exceptions) {
 		if exception.Active && (exception.ValidUntil.IsZero() || exception.ValidUntil.Before(input.AsOf)) {
 			addReason(QualificationExceptionExpired)
 		}
@@ -264,10 +264,7 @@ func verificationQualifies(proof VerificationProof, asOf time.Time) bool {
 
 func checkSourceProofs(input QualificationInput, manifest InputManifest, result ObjectiveResult, addReason func(QualificationReason)) {
 	proofs := make(map[string]SourceProof, len(input.SourceProofs))
-	for _, proof := range input.SourceProofs {
-		proof.RuntimeID = strings.TrimSpace(proof.RuntimeID)
-		proof.ObservedAt = CanonicalTime(proof.ObservedAt)
-		proof.FreshUntil = CanonicalTime(proof.FreshUntil)
+	for _, proof := range normalizeSourceProofs(input.SourceProofs) {
 		proofs[proof.RuntimeID] = proof
 	}
 	required := append([]string(nil), result.SourceRuntimeIDs...)
@@ -293,10 +290,7 @@ func checkSourceProofs(input QualificationInput, manifest InputManifest, result 
 
 func checkEvidenceProofs(input QualificationInput, result ObjectiveResult, addReason func(QualificationReason)) {
 	proofs := make(map[string]EvidenceProof, len(input.EvidenceProofs))
-	for _, proof := range input.EvidenceProofs {
-		proof.EvidenceID = strings.TrimSpace(proof.EvidenceID)
-		proof.CollectedAt = CanonicalTime(proof.CollectedAt)
-		proof.ValidUntil = CanonicalTime(proof.ValidUntil)
+	for _, proof := range normalizeEvidenceProofs(input.EvidenceProofs) {
 		proofs[proof.EvidenceID] = proof
 	}
 	if len(result.EvidenceIDs) == 0 {
@@ -332,7 +326,13 @@ func normalizeLimitations(values []Limitation) []Limitation {
 		result[index].Detail = strings.TrimSpace(result[index].Detail)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Code+"\x00"+result[i].Detail < result[j].Code+"\x00"+result[j].Detail
+		if result[i].Code != result[j].Code {
+			return result[i].Code < result[j].Code
+		}
+		if result[i].Detail != result[j].Detail {
+			return result[i].Detail < result[j].Detail
+		}
+		return !result[i].Blocking && result[j].Blocking
 	})
 	return result
 }
@@ -347,31 +347,90 @@ func normalizeReviews(values []ReviewRequirement) []ReviewRequirement {
 		result[index].CompletedAt = CanonicalTime(result[index].CompletedAt)
 		result[index].ValidUntil = CanonicalTime(result[index].ValidUntil)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Kind < result[j].Kind })
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Kind != result[j].Kind {
+			return result[i].Kind < result[j].Kind
+		}
+		if result[i].Required != result[j].Required {
+			return !result[i].Required && result[j].Required
+		}
+		if result[i].Status != result[j].Status {
+			return result[i].Status < result[j].Status
+		}
+		if !result[i].CompletedAt.Equal(result[j].CompletedAt) {
+			return result[i].CompletedAt.Before(result[j].CompletedAt)
+		}
+		return result[i].ValidUntil.Before(result[j].ValidUntil)
+	})
 	return result
 }
 
-func qualificationProofDigest(input QualificationInput) string {
-	sources := append([]SourceProof(nil), input.SourceProofs...)
+func normalizeSourceProofs(values []SourceProof) []SourceProof {
+	sources := append([]SourceProof(nil), values...)
 	for index := range sources {
 		sources[index].RuntimeID = strings.TrimSpace(sources[index].RuntimeID)
 		sources[index].ObservedAt = CanonicalTime(sources[index].ObservedAt)
 		sources[index].FreshUntil = CanonicalTime(sources[index].FreshUntil)
 	}
-	sort.Slice(sources, func(i, j int) bool { return sources[i].RuntimeID < sources[j].RuntimeID })
-	evidence := append([]EvidenceProof(nil), input.EvidenceProofs...)
+	sort.Slice(sources, func(i, j int) bool {
+		if sources[i].RuntimeID != sources[j].RuntimeID {
+			return sources[i].RuntimeID < sources[j].RuntimeID
+		}
+		if sources[i].State != sources[j].State {
+			return sources[i].State < sources[j].State
+		}
+		if !sources[i].ObservedAt.Equal(sources[j].ObservedAt) {
+			return sources[i].ObservedAt.Before(sources[j].ObservedAt)
+		}
+		return sources[i].FreshUntil.Before(sources[j].FreshUntil)
+	})
+	return sources
+}
+
+func normalizeEvidenceProofs(values []EvidenceProof) []EvidenceProof {
+	evidence := append([]EvidenceProof(nil), values...)
 	for index := range evidence {
 		evidence[index].EvidenceID = strings.TrimSpace(evidence[index].EvidenceID)
 		evidence[index].CollectedAt = CanonicalTime(evidence[index].CollectedAt)
 		evidence[index].ValidUntil = CanonicalTime(evidence[index].ValidUntil)
 	}
-	sort.Slice(evidence, func(i, j int) bool { return evidence[i].EvidenceID < evidence[j].EvidenceID })
-	exceptions := append([]ExceptionProof(nil), input.Exceptions...)
+	sort.Slice(evidence, func(i, j int) bool {
+		if evidence[i].EvidenceID != evidence[j].EvidenceID {
+			return evidence[i].EvidenceID < evidence[j].EvidenceID
+		}
+		if evidence[i].State != evidence[j].State {
+			return evidence[i].State < evidence[j].State
+		}
+		if !evidence[i].CollectedAt.Equal(evidence[j].CollectedAt) {
+			return evidence[i].CollectedAt.Before(evidence[j].CollectedAt)
+		}
+		return evidence[i].ValidUntil.Before(evidence[j].ValidUntil)
+	})
+	return evidence
+}
+
+func normalizeExceptionProofs(values []ExceptionProof) []ExceptionProof {
+	exceptions := append([]ExceptionProof(nil), values...)
 	for index := range exceptions {
 		exceptions[index].ExceptionID = strings.TrimSpace(exceptions[index].ExceptionID)
 		exceptions[index].ValidUntil = CanonicalTime(exceptions[index].ValidUntil)
 	}
-	sort.Slice(exceptions, func(i, j int) bool { return exceptions[i].ExceptionID < exceptions[j].ExceptionID })
+	sort.Slice(exceptions, func(i, j int) bool {
+		if exceptions[i].ExceptionID != exceptions[j].ExceptionID {
+			return exceptions[i].ExceptionID < exceptions[j].ExceptionID
+		}
+		if exceptions[i].Active != exceptions[j].Active {
+			return !exceptions[i].Active && exceptions[j].Active
+		}
+		return exceptions[i].ValidUntil.Before(exceptions[j].ValidUntil)
+	})
+	return exceptions
+}
+
+func qualificationProofDigest(input QualificationInput) string {
+	sources := normalizeSourceProofs(input.SourceProofs)
+	evidence := normalizeEvidenceProofs(input.EvidenceProofs)
+	exceptions := normalizeExceptionProofs(input.Exceptions)
 	verification := input.Verification
 	verification.VerifiedAt = CanonicalTime(verification.VerifiedAt)
 	verification.ValidUntil = CanonicalTime(verification.ValidUntil)
