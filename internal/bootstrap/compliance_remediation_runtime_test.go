@@ -52,6 +52,25 @@ func TestComplianceWorkReadRejectsCrossTenantBeforeStoreLookup(t *testing.T) {
 	}
 }
 
+func TestComplianceWorkListUsesCanonicalTenantAndBoundedFilters(t *testing.T) {
+	state := &bootstrapRemediationState{}
+	log := &bootstrapRemediationLog{}
+	service := complianceremediation.New(state, state, log, log)
+	app := &App{services: appServices{remediation: service}}
+	request := httptest.NewRequest(http.MethodGet, "/grc/work-items?state=open&owner_id=owner-a&limit=25", nil)
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "tenant-a"},
+	}))
+	recorder := httptest.NewRecorder()
+	app.handleListComplianceWorkItems(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if state.workLists != 1 || state.lastTenant != "tenant-a" || state.lastFilter.State != complianceassessment.WorkOpen || state.lastFilter.OwnerID != "owner-a" || state.lastFilter.Limit != 25 {
+		t.Fatalf("list call = count %d tenant %q filter %+v", state.workLists, state.lastTenant, state.lastFilter)
+	}
+}
+
 func TestComplianceRemediationRoutesUseReadAndLifecycleWriteScopes(t *testing.T) {
 	read, err := http.NewRequest(http.MethodGet, "/grc/work-items/work-a", nil)
 	if err != nil {
@@ -75,7 +94,17 @@ func TestComplianceRemediationRoutesUseReadAndLifecycleWriteScopes(t *testing.T)
 }
 
 type bootstrapRemediationState struct {
-	workReads int
+	workReads  int
+	workLists  int
+	lastTenant string
+	lastFilter complianceremediation.WorkItemListFilter
+}
+
+func (s *bootstrapRemediationState) ListWorkItems(_ context.Context, tenantID string, filter complianceremediation.WorkItemListFilter) (complianceremediation.WorkItemPage, error) {
+	s.workLists++
+	s.lastTenant = tenantID
+	s.lastFilter = filter
+	return complianceremediation.WorkItemPage{Items: []complianceassessment.WorkItem{}}, nil
 }
 
 func (s *bootstrapRemediationState) Ping(context.Context) error { return nil }

@@ -156,6 +156,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "DELETE /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handleDeleteRiskScoringConfig)
 	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("findings", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCFindings))
 	registerHTTPRoute(mux, "POST /grc/work-items", routeSurfacePlatformHTTP, app.handleDeriveComplianceWork)
+	registerHTTPRoute(mux, "GET /grc/work-items", routeSurfacePlatformHTTP, app.handleListComplianceWorkItems)
 	registerHTTPRoute(mux, "GET /grc/work-items/{workItemID}", routeSurfacePlatformHTTP, app.handleGetComplianceWorkItem)
 	registerHTTPRoute(mux, "POST /grc/work-items/{workItemID}/commands", routeSurfacePlatformHTTP, app.handleComplianceWorkCommand)
 	registerHTTPRoute(mux, "POST /grc/remediation-plans", routeSurfacePlatformHTTP, app.handleCreateComplianceRemediationPlan)

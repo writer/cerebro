@@ -1015,6 +1015,130 @@ export type Claim = {
   valid_to?: string;
 };
 
+export type ComplianceWorkActionRecord = {
+  action: "assign" | "request_evidence" | "block" | "snooze" | "accept" | "remediate" | "verify" | "verify_assurance" | "close" | "supersede";
+  action_hash: string;
+  actor_id: string;
+  created_at: string;
+  from: ComplianceWorkItemState;
+  id: string;
+  owner_id: string;
+  rationale: string;
+  to: ComplianceWorkItemState;
+  verification?: ComplianceWorkVerification;
+  work_item_id: string;
+};
+
+export type ComplianceWorkCommand = {
+  action?: "assign" | "request_evidence" | "block" | "snooze" | "accept" | "remediate" | "verify" | "verify_assurance" | "close" | "supersede";
+  assurance_decision_id?: string;
+  blocker_reason?: string;
+  due_at?: string;
+  evidence_ids?: string[];
+  expected_version: number;
+  operation: "action" | "invalidate";
+  owner_id?: string;
+  rationale?: string;
+  snooze_until?: string;
+  source_ref?: string;
+  trigger?: "exception_expired" | "evidence_stale" | "evidence_revoked" | "finding_reopened" | "source_coverage_lost" | "scope_subject_added";
+};
+
+export type ComplianceWorkFingerprint = {
+  control_id: string;
+  kind: ComplianceWorkItemKind;
+  objective_id: string;
+  program_id: string;
+  reason: string;
+  scope_revision_id: string;
+  source_id: string;
+  subject_id: string;
+  tenant_id: string;
+};
+
+export type ComplianceWorkItem = {
+  basis: ComplianceWorkFingerprint;
+  blocker_reason?: string;
+  due_at: string;
+  exception_id?: string;
+  fingerprint: string;
+  fingerprint_version: "compliance-work-fingerprint/v1";
+  id: string;
+  last_remediated_at?: string;
+  last_remediated_by?: string;
+  last_reopen_trigger?: "exception_expired" | "evidence_stale" | "evidence_revoked" | "finding_reopened" | "source_coverage_lost" | "scope_subject_added";
+  occurrences: ComplianceWorkOccurrence[];
+  owner_id: string;
+  priority: string;
+  risk_id?: string;
+  snooze_until?: string;
+  state: ComplianceWorkItemState;
+  updated_at: string;
+  verification?: ComplianceWorkVerification;
+  verification_evidence_ids?: string[];
+  verification_required: boolean;
+  verified_by?: string;
+  version: number;
+};
+
+export type ComplianceWorkItemKind =
+  | "remediate_finding"
+  | "collect_evidence"
+  | "refresh_evidence"
+  | "resolve_conflict"
+  | "review_manual_evidence"
+  | "repair_source"
+  | "assign_owner"
+  | "map_control"
+  | "renew_exception"
+  | "resolve_policy_gap"
+  | "complete_access_change"
+  | "answer_audit_request"
+  | "review_vendor";
+
+export type ComplianceWorkItemPage = {
+  items: ComplianceWorkItem[];
+  next_cursor?: string;
+};
+
+export type ComplianceWorkItemRecord = {
+  actions: ComplianceWorkActionRecord[];
+  item: ComplianceWorkItem;
+  occurrences: ComplianceWorkOccurrence[];
+};
+
+export type ComplianceWorkItemState =
+  | "open"
+  | "in_progress"
+  | "blocked"
+  | "resolved"
+  | "accepted"
+  | "snoozed"
+  | "superseded";
+
+export type ComplianceWorkOccurrence = {
+  assessment_run_id: string;
+  automated_result_hash: string;
+  evidence_ids?: string[];
+  finding_ids?: string[];
+  id: string;
+  objective_result_id: string;
+  occurred_at: string;
+  occurrence_hash: string;
+  work_item_id: string;
+};
+
+export type ComplianceWorkVerification = {
+  assessment_run_id: string;
+  assurance_decision_id: string;
+  decision_as_of: string;
+  decision_digest: string;
+  evaluated_at: string;
+  evidence_ids?: string[];
+  objective_result_id: string;
+  record_digest: string;
+};
+
 export type ConnectorCoveragePageResponse = {
   blind_spot_summaries?: SourceCoverageSummary[];
   blind_spots?: SourceCoverageRecord[];

@@ -3168,6 +3168,45 @@ paths:
         '200':
           description: GRC-friendly finding list.
   /grc/work-items:
+    get:
+      summary: List canonical compliance and security work
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/ComplianceWorkItemState'
+        - name: owner_id
+          in: query
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: A bounded page from the tenant's canonical work queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceWorkItemPage'
+        '400':
+          description: A filter or cursor is invalid.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '503':
+          description: The remediation runtime is unavailable.
     post:
       summary: Create work from a failed assessment result
       tags:
@@ -3202,11 +3241,14 @@ paths:
                 automated_result_hash:
                   type: string
                 result:
-                  type: object
-                  additionalProperties: true
+                  $ref: '#/components/schemas/AssessmentObjectiveResult'
       responses:
         '201':
           description: Stable work item with the failed-result occurrence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceWorkItemRecord'
         '400':
           description: The result is not actionable or the work basis is incomplete.
         '403':
@@ -3228,6 +3270,10 @@ paths:
       responses:
         '200':
           description: Current work item with occurrences and action history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceWorkItemRecord'
         '403':
           description: The authenticated principal cannot access the tenant.
         '404':
@@ -3251,42 +3297,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [operation, expected_version]
-              properties:
-                operation:
-                  type: string
-                  enum: [action, invalidate]
-                expected_version:
-                  type: integer
-                  format: uint64
-                action:
-                  type: string
-                  enum: [assign, request_evidence, block, snooze, accept, remediate, verify, close, supersede]
-                owner_id:
-                  type: string
-                rationale:
-                  type: string
-                blocker_reason:
-                  type: string
-                snooze_until:
-                  type: string
-                  format: date-time
-                due_at:
-                  type: string
-                  format: date-time
-                evidence_ids:
-                  type: array
-                  items:
-                    type: string
-                trigger:
-                  type: string
-                  enum: [evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost]
-                source_ref:
-                  type: string
+              $ref: '#/components/schemas/ComplianceWorkCommand'
       responses:
         '200':
           description: Updated work item and retained history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceWorkItemRecord'
         '400':
           description: The command violates the work lifecycle or independent verification rule.
         '403':
@@ -7053,6 +7071,232 @@ components:
           $ref: '#/components/schemas/AssuranceDecision'
         created:
           type: boolean
+    ComplianceWorkItemState:
+      type: string
+      enum: [open, in_progress, blocked, resolved, accepted, snoozed, superseded]
+    ComplianceWorkItemKind:
+      type: string
+      enum: [remediate_finding, collect_evidence, refresh_evidence, resolve_conflict, review_manual_evidence, repair_source, assign_owner, map_control, renew_exception, resolve_policy_gap, complete_access_change, answer_audit_request, review_vendor]
+    ComplianceWorkFingerprint:
+      type: object
+      required: [tenant_id, program_id, scope_revision_id, control_id, objective_id, kind, subject_id, reason, source_id]
+      properties:
+        tenant_id:
+          type: string
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        control_id:
+          type: string
+        objective_id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ComplianceWorkItemKind'
+        subject_id:
+          type: string
+        reason:
+          type: string
+        source_id:
+          type: string
+    ComplianceWorkOccurrence:
+      type: object
+      required: [id, work_item_id, assessment_run_id, objective_result_id, automated_result_hash, occurred_at, occurrence_hash]
+      properties:
+        id:
+          type: string
+        work_item_id:
+          type: string
+        assessment_run_id:
+          type: string
+        objective_result_id:
+          type: string
+        automated_result_hash:
+          type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        occurred_at:
+          type: string
+          format: date-time
+        occurrence_hash:
+          type: string
+    ComplianceWorkVerification:
+      type: object
+      required: [assurance_decision_id, assessment_run_id, objective_result_id, decision_digest, record_digest, evaluated_at, decision_as_of]
+      properties:
+        assurance_decision_id:
+          type: string
+        assessment_run_id:
+          type: string
+        objective_result_id:
+          type: string
+        decision_digest:
+          type: string
+        record_digest:
+          type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        evaluated_at:
+          type: string
+          format: date-time
+        decision_as_of:
+          type: string
+          format: date-time
+    ComplianceWorkItem:
+      type: object
+      required: [id, fingerprint_version, fingerprint, basis, state, owner_id, due_at, priority, verification_required, occurrences, version, updated_at]
+      properties:
+        id:
+          type: string
+        fingerprint_version:
+          type: string
+          enum: [compliance-work-fingerprint/v1]
+        fingerprint:
+          type: string
+        basis:
+          $ref: '#/components/schemas/ComplianceWorkFingerprint'
+        state:
+          $ref: '#/components/schemas/ComplianceWorkItemState'
+        owner_id:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        priority:
+          type: string
+        blocker_reason:
+          type: string
+        snooze_until:
+          type: string
+          format: date-time
+        risk_id:
+          type: string
+        exception_id:
+          type: string
+        verification_required:
+          type: boolean
+        verification_evidence_ids:
+          type: array
+          items:
+            type: string
+        verified_by:
+          type: string
+        last_remediated_by:
+          type: string
+        last_remediated_at:
+          type: string
+          format: date-time
+        verification:
+          $ref: '#/components/schemas/ComplianceWorkVerification'
+        occurrences:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceWorkOccurrence'
+        last_reopen_trigger:
+          type: string
+          enum: [exception_expired, evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost, scope_subject_added]
+        version:
+          type: integer
+          format: uint64
+        updated_at:
+          type: string
+          format: date-time
+    ComplianceWorkActionRecord:
+      type: object
+      required: [id, work_item_id, action, from, to, owner_id, rationale, actor_id, created_at, action_hash]
+      properties:
+        id:
+          type: string
+        work_item_id:
+          type: string
+        action:
+          type: string
+          enum: [assign, request_evidence, block, snooze, accept, remediate, verify, verify_assurance, close, supersede]
+        from:
+          $ref: '#/components/schemas/ComplianceWorkItemState'
+        to:
+          $ref: '#/components/schemas/ComplianceWorkItemState'
+        owner_id:
+          type: string
+        rationale:
+          type: string
+        actor_id:
+          type: string
+        verification:
+          $ref: '#/components/schemas/ComplianceWorkVerification'
+        created_at:
+          type: string
+          format: date-time
+        action_hash:
+          type: string
+    ComplianceWorkItemRecord:
+      type: object
+      required: [item, occurrences, actions]
+      properties:
+        item:
+          $ref: '#/components/schemas/ComplianceWorkItem'
+        occurrences:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceWorkOccurrence'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceWorkActionRecord'
+    ComplianceWorkItemPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceWorkItem'
+        next_cursor:
+          type: string
+    ComplianceWorkCommand:
+      type: object
+      required: [operation, expected_version]
+      properties:
+        operation:
+          type: string
+          enum: [action, invalidate]
+        expected_version:
+          type: integer
+          format: uint64
+        action:
+          type: string
+          enum: [assign, request_evidence, block, snooze, accept, remediate, verify, verify_assurance, close, supersede]
+        owner_id:
+          type: string
+        rationale:
+          type: string
+        blocker_reason:
+          type: string
+        snooze_until:
+          type: string
+          format: date-time
+        due_at:
+          type: string
+          format: date-time
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        assurance_decision_id:
+          type: string
+        trigger:
+          type: string
+          enum: [exception_expired, evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost, scope_subject_added]
+        source_ref:
+          type: string
     GRCEvidencePacketsResponse:
       type: object
       additionalProperties: true
