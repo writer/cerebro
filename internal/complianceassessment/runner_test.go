@@ -204,6 +204,11 @@ func TestAssessmentRejectsPartialObjectiveSet(t *testing.T) {
 	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
 	planInput := validPlan(now)
 	planInput.Scope.ObjectiveIDs = []string{"objective-0000", "objective-0001"}
+	planInput.Execution.Tasks = []PlanTask{
+		{ID: "task-0000", ObjectiveID: "objective-0000", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure},
+		{ID: "task-0001", ObjectiveID: "objective-0001", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure},
+	}
+	planInput.Execution.OrderedTaskIDs = []string{"task-0000", "task-0001"}
 	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -437,8 +442,15 @@ func recordPublishedPlan(t *testing.T, service *Service, now time.Time) Assessme
 	planInput := validPlan(now)
 	if collector, ok := service.collector.(*testCollector); ok && len(collector.results) != 0 {
 		planInput.Scope.ObjectiveIDs = make([]string, 0, len(collector.results))
-		for _, result := range collector.results {
+		planInput.Execution.Tasks = make([]PlanTask, 0, len(collector.results))
+		planInput.Execution.OrderedTaskIDs = make([]string, 0, len(collector.results))
+		for index, result := range collector.results {
+			taskID := fmt.Sprintf("task-%04d", index)
 			planInput.Scope.ObjectiveIDs = append(planInput.Scope.ObjectiveIDs, result.ObjectiveID)
+			planInput.Execution.Tasks = append(planInput.Execution.Tasks, PlanTask{
+				ID: taskID, ObjectiveID: result.ObjectiveID, ControlRef: result.ControlRef, Kind: PlanTaskKindProcedure,
+			})
+			planInput.Execution.OrderedTaskIDs = append(planInput.Execution.OrderedTaskIDs, taskID)
 		}
 	}
 	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
@@ -458,8 +470,14 @@ func recordPublishedPlan(t *testing.T, service *Service, now time.Time) Assessme
 func validPlan(now time.Time) AssessmentPlanRevision {
 	return AssessmentPlanRevision{
 		TenantID: "tenant-1", Name: "Annual access assessment", Status: PlanDraft,
-		Scope:      PlanScope{ProgramID: "program-1", ScopeRevisionID: "scope-revision-1", ImplementationRevisions: []string{"implementation-revision-1"}, ObjectiveIDs: []string{"objective-1"}},
-		Execution:  PlanExecution{Methods: []string{"test"}, Depth: "moderate", CoverageTarget: "complete", AssuranceTarget: "high", OrderedTaskIDs: []string{"task-1"}, CancellationRule: "stop_after_checkpoint"},
+		Scope: PlanScope{ProgramID: "program-1", ScopeRevisionID: "scope-revision-1", ImplementationRevisions: []string{"implementation-revision-1"}, ObjectiveIDs: []string{"objective-1"}},
+		Execution: PlanExecution{
+			Methods: []string{"test"}, Depth: "moderate", CoverageTarget: "complete", AssuranceTarget: "high",
+			Tasks: []PlanTask{{
+				ID: "task-1", ObjectiveID: "objective-1", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure,
+			}},
+			OrderedTaskIDs: []string{"task-1"}, CancellationRule: "stop_after_checkpoint",
+		},
 		Governance: PlanGovernance{OwnerID: "owner-1", AssessorIDs: []string{"assessor-1"}, ApproverIDs: []string{"approver-1"}, IndependenceRule: "approver_not_assessor", RulesOfEngagement: "Read-only source access."},
 		CreatedAt:  now, CreatedBy: "owner-1",
 	}

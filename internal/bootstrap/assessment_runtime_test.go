@@ -22,6 +22,9 @@ func TestNewRegistersAssessmentRuntimeWhenDurableCapabilitiesExist(t *testing.T)
 	if app.services.assessments == nil {
 		t.Fatal("assessment service = nil, want configured service")
 	}
+	if collector := assessmentCollector(store, store); collector == nil {
+		t.Fatal("assessment collector = nil, want finding evaluation collector")
+	}
 	job, created, err := app.jobService().Create(context.Background(), ports.CreateJobRequest{
 		Kind: complianceassessment.JobKindComplianceAssessment, TenantID: "tenant-1",
 		SubjectType: "assessment_run", SubjectID: "run-1", IdempotencyKey: "assessment-run:run-1",
@@ -110,5 +113,11 @@ func (s *assessmentRuntimeStore) ApplyResultChunk(context.Context, string, strin
 	return nil
 }
 func (s *assessmentRuntimeStore) ListResultChunks(context.Context, string, string) ([]complianceassessment.ResultChunk, error) {
+	return nil, nil
+}
+func (s *assessmentRuntimeStore) ListSourceRuntimes(context.Context, ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	return nil, nil
+}
+func (s *assessmentRuntimeStore) ListFindingEvaluationRuns(context.Context, ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
 	return nil, nil
 }
