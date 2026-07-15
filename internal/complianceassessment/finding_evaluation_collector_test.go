@@ -61,10 +61,10 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			wantCompleteness: CollectionUnknown, wantReason: ReasonEvidenceMissing,
 		},
 		{
-			name:        "satisfied graph evaluation",
+			name:        "legacy complete graph evaluation remains untrusted",
 			evaluation:  graphEvaluationRun("evaluation-5", cutoff.Add(-30*time.Minute), 14),
-			wantOutcome: OutcomeSatisfied, wantEvidence: EvidenceSufficient,
-			wantCompleteness: CollectionComplete, wantReason: ReasonSatisfied,
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
 		},
 		{
 			name: "internally truncated graph evaluation",
@@ -73,8 +73,8 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 				run.GraphTruncated = boolPointer(true)
 				return run
 			}(),
-			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceIncomplete,
-			wantCompleteness: CollectionTruncated, wantReason: ReasonCoverageIncomplete,
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
 		},
 		{
 			name: "incomplete source snapshot",
@@ -320,14 +320,15 @@ func TestFindingEvaluationCollectorConsumesSingleMultiSourceGraphRun(t *testing.
 	if len(evaluations.requests) != 2 {
 		t.Fatalf("evaluation queries = %d, want one lookup per planned runtime", len(evaluations.requests))
 	}
-	if len(manifest.Receipts) != 1 || manifest.Receipts[0].RuntimeID != "runtime-1" || manifest.Receipts[0].Completeness != CollectionComplete {
-		t.Fatalf("graph receipts = %#v, want one complete trigger-runtime receipt", manifest.Receipts)
+	if len(manifest.Receipts) != 1 || manifest.Receipts[0].RuntimeID != "runtime-1" || manifest.Receipts[0].Completeness != CollectionUnknown {
+		t.Fatalf("graph receipts = %#v, want one untrusted trigger-runtime receipt", manifest.Receipts)
 	}
 	if len(manifest.EvaluationRunIDs) != 1 || manifest.EvaluationRunIDs[0] != evaluation.GetId() {
 		t.Fatalf("evaluation run ids = %#v, want only %q", manifest.EvaluationRunIDs, evaluation.GetId())
 	}
-	if len(results) != 1 || results[0].AutomatedOutcome != OutcomeSatisfied || results[0].EvidenceState != EvidenceSufficient {
-		t.Fatalf("graph result = %#v, want satisfied with sufficient evidence", results)
+	if len(results) != 1 || results[0].AutomatedOutcome != OutcomeIndeterminate || results[0].EvidenceState != EvidenceUntrusted ||
+		!containsReason(results[0].ReasonCodes, ReasonSourceUntrusted) {
+		t.Fatalf("graph result = %#v, want indeterminate with untrusted evidence", results)
 	}
 }
 

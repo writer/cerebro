@@ -429,7 +429,18 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 	}
 	periodStart = CanonicalTime(periodStart)
 	periodEnd = CanonicalTime(periodEnd)
-	if finishedAt.Before(periodStart) || periodEnd.Sub(finishedAt) > maxAge {
+	// Graph evaluation envelopes do not carry a tenant-wide graph generation.
+	// Source runtime snapshots therefore cannot prove that the shared graph was
+	// stable while the rule ran. Keep legacy and new graph runs inspectable, but
+	// do not admit them as assessment evidence until that fence is persisted and
+	// verified here at the consumer boundary.
+	if run.GetGraphRule() {
+		receipt.Completeness = CollectionUnknown
+		collected.incomplete = true
+		collected.evidenceState = EvidenceUntrusted
+		collected.reasons = []ReasonCode{ReasonSourceUntrusted}
+		collected.actions = []NextAction{ActionRestoreSource}
+	} else if finishedAt.Before(periodStart) || periodEnd.Sub(finishedAt) > maxAge {
 		receipt.Completeness = CollectionUnknown
 		collected.incomplete = true
 		collected.evidenceState = EvidenceStale
