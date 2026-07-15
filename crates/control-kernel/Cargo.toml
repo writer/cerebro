@@ -1,0 +1,13 @@
+[package]
+name = "cerebro-control-kernel"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+
+[lints.rust]
+unsafe_code = "forbid"

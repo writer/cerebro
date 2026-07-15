@@ -146,21 +146,21 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - `internal/actionengine` models `Signal`, `Trigger`, `Playbook`, `Step`, `Execution`, and `Event`. It is not a DAG runtime, not a long-running scheduler, and not a generic workflow product. Cerebro will not import Argo Workflows, Temporal, or Cadence-shaped semantics into the core just because remediation and runtime response can be expressed in those.
 - Why: every workflow engine pays for itself only when DAG-level orchestration is actually needed. Cerebro's substrate is "the minimum model needed to unify remediation and runtime response" and growing it past that without evidence imports complexity that the rest of the system has to live with.
 - Enforced in: the absence of a DAG/workflow runtime dependency and the current workflow event/projection packages.
-- What would change this: a documented execution shape that genuinely requires DAG-level fan-out, conditional branching beyond per-step failure policies, or sub-workflow composition, ratified before code lands.
+- What would change this: a documented execution shape that genuinely requires DAG-level fan-out, conditional branching beyond per-step failure policies, or sub-workflow composition, ratified before code lands. The native Rust control-kernel carve is that reviewed boundary for mandate and mission orchestration; it does not expand `internal/actionengine` into a generic workflow engine.
 
-### Workflow durability is event-and-projection. Not graph-direct, not transactional outbox today, not optimistic.
+### Workflow durability is event-and-projection. Not graph-direct.
 
 - Decisions, actions, outcomes, finding notes, ticket links, and lifecycle status changes write a `workflow.v1.*` event before any graph mutation. Append failure prevents graph writes; graph failure leaves a replayable event behind. Cerebro will not write workflow nodes directly to Neo4j, swallow projection errors, or skip the event when the append log is configured.
 - Why: the graph is a projection. Workflow writes that bypass the event are unreplayable and reintroduce the silent-drift class of bugs that workflow durability was designed to remove.
 - Enforced in: `internal/workflowevents`, `internal/workflowprojection`, and graph write arch tests.
-- What would change this: only a reviewed workflow durability proposal that preserves replay filters, finding workflow events, outbox behavior, and timeline reads. Skipping ahead is out of scope.
+- What would change this: only a reviewed workflow durability proposal that preserves replay filters, finding workflow events, outbox behavior, and timeline reads. [`rust-control-kernel-carve.md`](rust-control-kernel-carve.md) defines the reviewed path for optimistic mission revisions and transactional event publication without changing the graph projection boundary.
 
-### No autonomous remediation through agents.
+### No ungoverned remediation through agents.
 
 - The Agent primitive composes Events, Streams, Views, Rules, and Actions under a policy. It does not get a private path to mutate Postgres or Neo4j. It does not author Cypher writes. It does not call Actions without going through the typed Action contract, including approval gates and trusted actuation scope where required.
-- Why: autonomous remediation is the failure mode that justifies most of the safety surface in Cerebro. Letting an Agent route around any of it would erase the reason the safety surface exists.
+- Why: ungoverned remediation is the failure mode that justifies most of the safety surface in Cerebro. Letting an Agent route around any of it would erase the reason the safety surface exists.
 - Enforced in: `internal/graphagent/validator.go`; trusted runtime-response scope derivation in `internal/bootstrap/auth.go`; and mutation gating in `internal/runtimeresponse`.
-- What would change this: nothing structural. Agent capabilities grow by adding typed Actions and Rules, not by widening Agent's direct surface.
+- What would change this: nothing allows a direct mutation path. The native control kernel may continue pre-authorized work only through typed Actions, scoped capability grants, immutable receipts, and independent verification; it cannot widen an Agent's direct surface.
 
 ## Runtime Response
 
@@ -242,7 +242,7 @@ These framings will not be adopted as Cerebro's product description:
 
 - "Security graph" as a product surface noun. Cerebro exposes a graph; one of its applications is security.
 - "AI security" as a positioning frame. Cerebro uses LLMs in narrow, validator-gated places. The substrate, not the LLM, is the product.
-- "Autonomous remediation" or "self-healing security". Cerebro performs constrained Actions with typed approval and trusted actuation scope. It does not self-direct.
+- "Autonomous remediation" or "self-healing security". Cerebro performs constrained Actions under mandates, scoped capability grants, and independent verification. It does not get an unmediated mutation path.
 - "Replacement for [vendor product]". Cerebro is the platform underneath what those products would otherwise be the only source of truth for. Replacement framing misdescribes the seam.
 
 Vocabulary creep in docs, code comments, marketing surfaces, and AI-generated artifacts is in scope for this document the same way capability creep is. Wording PRs that flatten Cerebro into a single category should cite this section and propose a more precise phrasing.
