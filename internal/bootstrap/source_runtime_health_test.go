@@ -517,10 +517,7 @@ func TestSourceCoverageConfiguredScopeExcludesUnconfiguredSources(t *testing.T) 
 	app := &App{sources: registry}
 	runtimes := []*cerebrov1.SourceRuntime{{Id: "writer-okta", SourceId: "okta", TenantId: "writer"}}
 
-	records, err := app.sourceCoverageRecordsScoped(context.Background(), runtimes, ports.SourceRuntimeFilter{TenantID: "writer"}, time.Now().UTC(), responseview.CoverageConfigured)
-	if err != nil {
-		t.Fatalf("sourceCoverageRecordsScoped() error = %v", err)
-	}
+	records := app.sourceCoverageRecordsScoped(runtimes, ports.SourceRuntimeFilter{TenantID: "writer"}, time.Now().UTC(), responseview.CoverageConfigured)
 
 	for _, record := range records {
 		if record.SourceID == "secondary" {
