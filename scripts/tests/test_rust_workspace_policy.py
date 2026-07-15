@@ -145,8 +145,14 @@ class RustWorkspacePolicyTests(unittest.TestCase):
         #[unsafe(no_mangle)] pub extern "C" fn alloc() -> u32 { 0 }
         #[unsafe(no_mangle)] pub extern "C" fn evaluate() -> u32 { 0 }
         '''
-        abi_path = "internal/mitre/evaluator/src/wasm_abi.rs"
-        self.assertEqual(rust_workspace_policy.validate_unsafe_source(abi_path, abi_source), [])
+        for abi_path in (
+            "internal/mitre/evaluator/src/wasm_abi.rs",
+            "internal/sourceruntime/recordkernel/src/wasm_abi.rs",
+        ):
+            with self.subTest(abi_path=abi_path):
+                self.assertEqual(
+                    rust_workspace_policy.validate_unsafe_source(abi_path, abi_source), []
+                )
 
         widened = abi_source + "unsafe fn extra() {}\n"
         self.assertIn(

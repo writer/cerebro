@@ -115,6 +115,13 @@ var moduleSpecs = []ModuleSpec{
 		ABIVersion:   1,
 		MaxSizeBytes: 800_000,
 	},
+	{
+		Name:         "sourceruntime-record-kernel",
+		ArtifactPath: "internal/sourceruntime/recordkernel/recordkernel.wasm",
+		SourcePath:   "internal/sourceruntime/recordkernel/src/lib.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 200_000,
+	},
 }
 
 func CanonicalBuilder() BuilderIdentity {

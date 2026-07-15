@@ -67,9 +67,9 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### The CDK is not a plugin marketplace yet.
 
-- Sources are in-process Go modules vendored in this repository. There is no first-party expectation that third parties drop binary plugins in at runtime, distribute sources via container images, or load them from a registry.
-- Why: an in-process CDK is the smallest thing that proves the contract. Out-of-process plugins are a separate operational surface (signing, sandboxing, auth, blast radius) and should land only when the in-process surface has stabilized and the operational case is concrete.
-- Enforced in: the in-process source registry in `internal/sourcecdk` and built-in source layout under `sources/`.
+- Sources are in-process Go modules vendored in this repository. There is no first-party expectation that third parties drop binary plugins in at runtime, distribute sources via container images, or load them from a registry. A vendored, first-party, zero-import Wasm helper may evaluate bounded source records behind a fixed host ABI; it does not discover sources, perform provider I/O, receive credentials, or change source lifecycle.
+- Why: an in-process CDK is the smallest thing that proves the contract. A capability-free deterministic helper narrows one computation without creating a distribution surface. Out-of-process plugins are a separate operational surface (signing, sandboxing, auth, blast radius) and should land only when the in-process surface has stabilized and the operational case is concrete.
+- Enforced in: the in-process source registry in `internal/sourcecdk`, built-in source layout under `sources/`, zero-import ABI validation in `internal/wasmjson`, and the boundary in [`rust-source-record-kernel-poc.md`](rust-source-record-kernel-poc.md).
 - What would change this: a documented operational threshold (source count, deploy blast radius, third-party authoring need) that justifies the cost of an out-of-process plugin contract, with a separate design doc covering signing, sandboxing, and lifecycle.
 
 ### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
