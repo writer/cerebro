@@ -60,6 +60,9 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.evidence.get", "findings", "finding evidence record"),
 		expertRead("cerebro.assets.search", "graph", "asset search results"),
 		expertRead("cerebro.assets.get", "graph", "asset record"),
+		expertRead("cerebro.compliance_assessments.get", "compliance", "immutable assessment snapshot and optional governed lens"),
+		expertRead("cerebro.compliance_controls.explain", "compliance", "snapshot-bound control result explanation"),
+		expertRead("cerebro.compliance_work.list", "compliance", "canonical compliance work page"),
 		expertRead("cerebro.risk.summary", "risk", "finding risk summary"),
 		expertRead("cerebro.risk.actions.list", "risk", "risk action plan"),
 		expertRead("cerebro.risk.actions.explain", "risk", "risk action explanation"),
@@ -227,6 +230,8 @@ func ToolsetForName(name string) string {
 		return "assets"
 	case strings.HasPrefix(name, "assessments."):
 		return "assessments"
+	case strings.HasPrefix(name, "compliance_"):
+		return "compliance"
 	case strings.HasPrefix(name, "sources."), strings.HasPrefix(name, "connectors."), strings.HasPrefix(name, "source_runtimes."), strings.HasPrefix(name, "runtimes."), strings.HasPrefix(name, "connector_definitions."):
 		return "operations"
 	case strings.HasPrefix(name, "agent."):

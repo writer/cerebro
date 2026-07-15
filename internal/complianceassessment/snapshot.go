@@ -154,6 +154,16 @@ type AssessmentSnapshotLens struct {
 	HasMore        bool                     `json:"has_more"`
 }
 
+// AssessmentSnapshotResultView explains one result through a governed lens and
+// retains the legacy compatibility status for callers migrating incrementally.
+type AssessmentSnapshotResultView struct {
+	SnapshotID     string                   `json:"snapshot_id"`
+	SnapshotDigest string                   `json:"snapshot_digest"`
+	Lens           AssessmentLensDefinition `json:"lens"`
+	Item           AssessmentLensItem       `json:"item"`
+	Compatibility  LegacyCompatibilityView  `json:"compatibility"`
+}
+
 func (s *Service) CreateAssessmentSnapshot(ctx context.Context, request AssessmentSnapshotRequest) (AssessmentSnapshot, bool, error) {
 	store, ok := s.assessmentSnapshotStore()
 	if !ok || s.log == nil {
@@ -281,29 +291,9 @@ func (s *Service) GetAssessmentSnapshotLens(ctx context.Context, tenantID, snaps
 	if !ok {
 		return AssessmentSnapshotLens{}, ErrAssessmentLensNotFound
 	}
-	snapshot, err := s.GetAssessmentSnapshot(ctx, tenantID, snapshotID)
+	snapshot, results, selected, err := s.loadVerifiedSnapshotState(ctx, tenantID, snapshotID)
 	if err != nil {
 		return AssessmentSnapshotLens{}, err
-	}
-	store, _ := s.assessmentSnapshotStore()
-	_, chunks, results, err := s.loadSnapshotRun(ctx, snapshot.TenantID, snapshot.RunID)
-	if err != nil || !snapshotRunMatches(snapshot, chunks, results) {
-		return AssessmentSnapshotLens{}, fmt.Errorf("%w: snapshot result commitment no longer verifies", ErrAssessmentConflict)
-	}
-	decisions, err := store.ListAssuranceDecisionsByRun(ctx, snapshot.TenantID, snapshot.RunID)
-	if err != nil {
-		return AssessmentSnapshotLens{}, err
-	}
-	refs, selected, err := snapshotDecisionSet(decisions, results, snapshot.TenantID, snapshot.RunID, snapshot.DecisionCutoff)
-	if err != nil {
-		return AssessmentSnapshotLens{}, err
-	}
-	decisionDigest, _ := semanticHash(refs)
-	evidenceIDs := snapshotEvidenceIDs(results, selected)
-	evidenceDigest, _ := semanticHash(evidenceIDs)
-	if decisionDigest != snapshot.DecisionSetDigest || uint64(len(refs)) != snapshot.DecisionCount ||
-		evidenceDigest != snapshot.EvidenceSetDigest || uint64(len(evidenceIDs)) != snapshot.EvidenceCount {
-		return AssessmentSnapshotLens{}, fmt.Errorf("%w: snapshot decision or evidence commitment no longer verifies", ErrAssessmentConflict)
 	}
 	items := assessmentLensItems(definition.Audience, results, selected)
 	summary := assessmentLensSummary(results, selected)
@@ -330,6 +320,63 @@ func (s *Service) GetAssessmentSnapshotLens(ctx context.Context, tenantID, snaps
 		view.NextCursor = encodeSnapshotLensCursor(snapshot, end)
 	}
 	return view, nil
+}
+
+// GetAssessmentSnapshotResult returns one exact result through the requested
+// governed audience lens. It verifies the snapshot commitments before reading.
+func (s *Service) GetAssessmentSnapshotResult(ctx context.Context, tenantID, snapshotID, resultID string, audience AssessmentLensAudience) (AssessmentSnapshotResultView, error) {
+	definition, ok := assessmentLensDefinition(audience)
+	if !ok {
+		return AssessmentSnapshotResultView{}, ErrAssessmentLensNotFound
+	}
+	snapshot, results, selected, err := s.loadVerifiedSnapshotState(ctx, tenantID, snapshotID)
+	if err != nil {
+		return AssessmentSnapshotResultView{}, err
+	}
+	resultID = strings.TrimSpace(resultID)
+	for _, result := range results {
+		if result.ID != resultID {
+			continue
+		}
+		items := assessmentLensItems(audience, []ObjectiveResult{result}, selected)
+		decisionID := ""
+		if decision, exists := selected[result.ID]; exists {
+			decisionID = decision.ID
+		}
+		return AssessmentSnapshotResultView{
+			SnapshotID: snapshot.ID, SnapshotDigest: snapshot.RecordDigest, Lens: definition, Item: items[0],
+			Compatibility: NewLegacyCompatibilityView(result, decisionID, snapshot.ID),
+		}, nil
+	}
+	return AssessmentSnapshotResultView{}, ErrAssessmentLensNotFound
+}
+
+func (s *Service) loadVerifiedSnapshotState(ctx context.Context, tenantID, snapshotID string) (AssessmentSnapshot, []ObjectiveResult, map[string]AssuranceDecision, error) {
+	snapshot, err := s.GetAssessmentSnapshot(ctx, tenantID, snapshotID)
+	if err != nil {
+		return AssessmentSnapshot{}, nil, nil, err
+	}
+	store, _ := s.assessmentSnapshotStore()
+	_, chunks, results, err := s.loadSnapshotRun(ctx, snapshot.TenantID, snapshot.RunID)
+	if err != nil || !snapshotRunMatches(snapshot, chunks, results) {
+		return AssessmentSnapshot{}, nil, nil, fmt.Errorf("%w: snapshot result commitment no longer verifies", ErrAssessmentConflict)
+	}
+	decisions, err := store.ListAssuranceDecisionsByRun(ctx, snapshot.TenantID, snapshot.RunID)
+	if err != nil {
+		return AssessmentSnapshot{}, nil, nil, err
+	}
+	refs, selected, err := snapshotDecisionSet(decisions, results, snapshot.TenantID, snapshot.RunID, snapshot.DecisionCutoff)
+	if err != nil {
+		return AssessmentSnapshot{}, nil, nil, err
+	}
+	decisionDigest, _ := semanticHash(refs)
+	evidenceIDs := snapshotEvidenceIDs(results, selected)
+	evidenceDigest, _ := semanticHash(evidenceIDs)
+	if decisionDigest != snapshot.DecisionSetDigest || uint64(len(refs)) != snapshot.DecisionCount ||
+		evidenceDigest != snapshot.EvidenceSetDigest || uint64(len(evidenceIDs)) != snapshot.EvidenceCount {
+		return AssessmentSnapshot{}, nil, nil, fmt.Errorf("%w: snapshot decision or evidence commitment no longer verifies", ErrAssessmentConflict)
+	}
+	return snapshot, results, selected, nil
 }
 
 func ListAssessmentLenses() []AssessmentLensDefinition {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/complianceassessment"
+	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/mcpoperations"
@@ -558,6 +561,9 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.evidence.get":                    {Markers: []string{"GET /finding-evidence/{evidenceID}"}},
 	"cerebro.assets.search":                   {Markers: []string{"GET /grc/inventory/assets"}},
 	"cerebro.assets.get":                      {Markers: []string{"GET /grc/inventory/assets/detail"}},
+	"cerebro.compliance_assessments.get":      {Markers: []string{"GET /grc/assessment-snapshots/{snapshotID}", "GET /grc/assessment-snapshots/{snapshotID}/lenses/{audience}"}},
+	"cerebro.compliance_controls.explain":     {Markers: []string{"GET /grc/assessment-snapshots/{snapshotID}/lenses/{audience}"}},
+	"cerebro.compliance_work.list":            {Markers: []string{"GET /grc/work-items"}},
 	"cerebro.risk.summary":                    {Markers: []string{"GET /grc/dashboard", "GET /source-runtimes/{runtimeID}/findings"}},
 	"cerebro.risk.actions.list":               {Markers: []string{"risk-action-plan", "internal/riskplan"}},
 	"cerebro.risk.actions.explain":            {Markers: []string{"risk-action-plan", "internal/riskplan"}},
@@ -1098,6 +1104,83 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 	text := messages[0].(map[string]any)["content"].(map[string]any)["text"].(string)
 	if !strings.Contains(text, "cerebro://investigation/finding/finding-1") || !strings.Contains(text, "never reveal redacted values") {
 		t.Fatalf("prompt messages = %#v", messages)
+	}
+}
+
+func TestMCPComplianceToolsUseSnapshotAndCanonicalWorkServices(t *testing.T) {
+	now := time.Now().UTC().Add(-5 * time.Minute)
+	assessmentStore := newAssessmentHTTPStore()
+	run, result := seedAssessmentHTTPDecisionRun(t, assessmentStore, now)
+	assessmentService := complianceassessment.NewAssessmentService(assessmentStore, &assessmentHTTPLog{}, nil, nil)
+	decisionRequest := complianceassessment.AssuranceDecisionRequest{
+		TenantID: run.TenantID, RunID: run.ID, ResultID: result.ID, IdempotencyKey: "mcp-decision", RecordedBy: "assessor-1",
+		Input: complianceassessment.QualificationInput{
+			AsOf: now.Add(time.Minute), SourceProofs: []complianceassessment.SourceProof{}, Limitations: []complianceassessment.Limitation{},
+			RequiredReviews: []complianceassessment.ReviewRequirement{}, Verification: complianceassessment.VerificationProof{State: complianceassessment.VerificationNotRequired},
+			EvidenceProofs: []complianceassessment.EvidenceProof{{
+				EvidenceID: "evidence-1", State: complianceassessment.EvidenceSufficient, CollectedAt: now, ValidUntil: now.Add(time.Hour),
+			}},
+		},
+	}
+	decision, _, err := assessmentService.RecordAssuranceDecision(context.Background(), decisionRequest)
+	if err != nil {
+		t.Fatalf("RecordAssuranceDecision() error = %v", err)
+	}
+	snapshot, _, err := assessmentService.CreateAssessmentSnapshot(context.Background(), complianceassessment.AssessmentSnapshotRequest{
+		TenantID: run.TenantID, RunID: run.ID, IdempotencyKey: "mcp-snapshot", CreatedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateAssessmentSnapshot() error = %v", err)
+	}
+	remediationStore := &bootstrapRemediationState{}
+	remediationService := complianceremediation.New(remediationStore, remediationStore, &bootstrapRemediationLog{}, &bootstrapRemediationLog{})
+	app := &App{services: appServices{assessments: assessmentService, remediation: remediationService}}
+	request := httptest.NewRequest(http.MethodPost, mcpEndpointPath, nil)
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: run.TenantID},
+	}))
+
+	assessment, err := app.mcpToolStructuredContent(request, "cerebro.compliance_assessments.get", map[string]any{
+		"snapshot_id": snapshot.ID, "audience": "audit", "limit": float64(10),
+	})
+	if err != nil {
+		t.Fatalf("compliance_assessments.get error = %v", err)
+	}
+	assessmentResult := assessment.(map[string]any)
+	if assessmentResult["snapshot"].(complianceassessment.AssessmentSnapshot).ID != snapshot.ID || assessmentResult["view"].(complianceassessment.AssessmentSnapshotLens).SnapshotID != snapshot.ID {
+		t.Fatalf("compliance assessment result = %#v", assessmentResult)
+	}
+
+	explained, err := app.mcpToolStructuredContent(request, "cerebro.compliance_controls.explain", map[string]any{
+		"snapshot_id": snapshot.ID, "result_id": result.ID, "audience": "audit",
+	})
+	if err != nil {
+		t.Fatalf("compliance_controls.explain error = %v", err)
+	}
+	explanation := explained.(map[string]any)["explanation"].(complianceassessment.AssessmentSnapshotResultView)
+	if explanation.Item.ResultID != result.ID || explanation.Item.DecisionID != decision.ID || explanation.Compatibility.Status == "" {
+		t.Fatalf("compliance control explanation = %#v", explanation)
+	}
+
+	work, err := app.mcpToolStructuredContent(request, "cerebro.compliance_work.list", map[string]any{
+		"state": "open", "owner_id": "owner-1", "limit": float64(25),
+	})
+	if err != nil {
+		t.Fatalf("compliance_work.list error = %v", err)
+	}
+	if _, ok := work.(complianceremediation.WorkItemPage); !ok || remediationStore.lastTenant != run.TenantID || remediationStore.lastFilter.Limit != 25 {
+		t.Fatalf("compliance work result = %#v; store tenant=%q filter=%+v", work, remediationStore.lastTenant, remediationStore.lastFilter)
+	}
+	workLists := remediationStore.workLists
+	_, err = app.mcpToolStructuredContent(request, "cerebro.compliance_work.list", map[string]any{"tenant_id": "another-tenant"})
+	if !errors.Is(err, errTenantForbidden) || remediationStore.workLists != workLists {
+		t.Fatalf("cross-tenant compliance work error = %v; store reads %d -> %d", err, workLists, remediationStore.workLists)
+	}
+	_, err = app.mcpToolStructuredContent(request, "cerebro.compliance_assessments.get", map[string]any{
+		"snapshot_id": snapshot.ID, "audience": "audit", "limit": float64(maxMCPComplianceLimit + 1),
+	})
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("oversized compliance assessment page error = %v", err)
 	}
 }
 

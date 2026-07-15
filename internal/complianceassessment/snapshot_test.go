@@ -65,6 +65,14 @@ func TestAssessmentSnapshotBindsResultsDecisionsAndEvidenceAtCutoff(t *testing.T
 	if len(audit.Items) != 1 || audit.Items[0].DecisionID != first.ID || len(audit.Items[0].EvidenceIDs) != 1 || len(audit.Items[0].FindingIDs) != 0 {
 		t.Fatalf("audit lens = %+v, want cutoff-bound first decision and governed fields", audit)
 	}
+	explanation, err := service.GetAssessmentSnapshotResult(context.Background(), run.TenantID, snapshot.ID, result.ID, LensAudienceAudit)
+	if err != nil {
+		t.Fatalf("GetAssessmentSnapshotResult() error = %v", err)
+	}
+	if explanation.Item.DecisionID != first.ID || explanation.Compatibility.AssuranceDecisionID != first.ID ||
+		explanation.Compatibility.AssessmentSnapshotID != snapshot.ID || len(explanation.Item.EvidenceIDs) != 1 {
+		t.Fatalf("snapshot result explanation = %+v", explanation)
+	}
 	leadership, err := service.GetAssessmentSnapshotLens(context.Background(), run.TenantID, snapshot.ID, LensAudienceLeadership, "", 10)
 	if err != nil {
 		t.Fatal(err)

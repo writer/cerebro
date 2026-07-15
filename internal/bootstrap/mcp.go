@@ -64,6 +64,7 @@ const (
 	defaultMCPRiskActionGraph   = 3
 	maxMCPRiskActionGraph       = 10
 	defaultMCPRecentRiskRows    = 10
+	maxMCPComplianceLimit       = 200
 	mcpResourceMIMEJSON         = "application/json"
 )
 
@@ -614,6 +615,12 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpSearchAssets(r, args)
 	case "cerebro.assets.get":
 		return app.mcpGetAsset(r, args)
+	case "cerebro.compliance_assessments.get":
+		return app.mcpComplianceAssessmentGet(r, args)
+	case "cerebro.compliance_controls.explain":
+		return app.mcpComplianceControlExplain(r, args)
+	case "cerebro.compliance_work.list":
+		return app.mcpComplianceWorkList(r, args)
 	case "cerebro.risk.summary":
 		return app.mcpRiskSummary(r, args)
 	case "cerebro.risk.actions.list":
@@ -2445,6 +2452,53 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Get Asset"),
 		},
 		{
+			Name:        "cerebro.compliance_assessments.get",
+			Title:       "Get Compliance Assessment",
+			Description: "Return one immutable assessment snapshot and, when requested, one governed audience lens page.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"snapshot_id": map[string]any{"type": "string"},
+				"tenant_id":   map[string]any{"type": "string"},
+				"audience":    map[string]any{"type": "string", "enum": []string{"security", "audit", "platform", "leadership"}},
+				"cursor":      map[string]any{"type": "string"},
+				"limit":       mcpLimitSchema(maxMCPComplianceLimit, "assessment results"),
+			}, []string{"snapshot_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"snapshot": map[string]any{"type": "object"},
+				"view":     map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Get Compliance Assessment"),
+		},
+		{
+			Name:        "cerebro.compliance_controls.explain",
+			Title:       "Explain Compliance Control",
+			Description: "Explain one snapshot-bound objective result through a governed audience lens and include its legacy compatibility status.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"snapshot_id": map[string]any{"type": "string"},
+				"result_id":   map[string]any{"type": "string"},
+				"tenant_id":   map[string]any{"type": "string"},
+				"audience":    map[string]any{"type": "string", "enum": []string{"security", "audit", "platform", "leadership"}},
+			}, []string{"snapshot_id", "result_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{"explanation": map[string]any{"type": "object"}}),
+			Annotations:  mcpReadOnlyAnnotations("Explain Compliance Control"),
+		},
+		{
+			Name:        "cerebro.compliance_work.list",
+			Title:       "List Compliance Work",
+			Description: "List one bounded page from the canonical compliance and security work queue.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id": map[string]any{"type": "string"},
+				"state":     map[string]any{"type": "string"},
+				"owner_id":  map[string]any{"type": "string"},
+				"cursor":    map[string]any{"type": "string"},
+				"limit":     mcpLimitSchema(maxMCPComplianceLimit, "work items"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"items":       map[string]any{"type": "array"},
+				"next_cursor": map[string]any{"type": "string"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("List Compliance Work"),
+		},
+		{
 			Name:        "cerebro.risk.summary",
 			Title:       "Risk Summary",
 			Description: "Summarize visible finding risk by severity, status, risk score, and top risk reasons.",
@@ -3498,6 +3552,123 @@ func (app *App) mcpComplianceResource(r *http.Request, pathValue string, args ma
 	default:
 		return nil, ports.ErrGraphEntityNotFound
 	}
+}
+
+func (app *App) mcpComplianceAssessmentGet(r *http.Request, args map[string]any) (any, error) {
+	snapshotID := mcpStringArg(args, "snapshot_id")
+	if snapshotID == "" {
+		return nil, fmt.Errorf("%w: snapshot_id is required", errInvalidHTTPRequest)
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	if app.services.assessments == nil {
+		return nil, complianceassessment.ErrAssessmentSnapshotUnavailable
+	}
+	snapshot, err := app.services.assessments.GetAssessmentSnapshot(r.Context(), tenantID, snapshotID)
+	if errors.Is(err, complianceassessment.ErrAssessmentSnapshotNotFound) {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{"snapshot": snapshot}
+	audienceValue := mcpStringArg(args, "audience")
+	if audienceValue == "" {
+		return result, nil
+	}
+	audience, err := mcpAssessmentAudience(audienceValue)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := mcpComplianceLimit(args)
+	if err != nil {
+		return nil, err
+	}
+	view, err := app.services.assessments.GetAssessmentSnapshotLens(r.Context(), tenantID, snapshotID, audience, mcpStringArg(args, "cursor"), limit)
+	if err != nil {
+		return nil, err
+	}
+	result["view"] = view
+	return result, nil
+}
+
+func (app *App) mcpComplianceControlExplain(r *http.Request, args map[string]any) (any, error) {
+	snapshotID, resultID := mcpStringArg(args, "snapshot_id"), mcpStringArg(args, "result_id")
+	if snapshotID == "" || resultID == "" {
+		return nil, fmt.Errorf("%w: snapshot_id and result_id are required", errInvalidHTTPRequest)
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	if app.services.assessments == nil {
+		return nil, complianceassessment.ErrAssessmentSnapshotUnavailable
+	}
+	audienceValue := mcpStringArg(args, "audience")
+	if audienceValue == "" {
+		audienceValue = string(complianceassessment.LensAudienceSecurity)
+	}
+	audience, err := mcpAssessmentAudience(audienceValue)
+	if err != nil {
+		return nil, err
+	}
+	explanation, err := app.services.assessments.GetAssessmentSnapshotResult(r.Context(), tenantID, snapshotID, resultID, audience)
+	if errors.Is(err, complianceassessment.ErrAssessmentSnapshotNotFound) || errors.Is(err, complianceassessment.ErrAssessmentLensNotFound) {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"explanation": explanation}, nil
+}
+
+func (app *App) mcpComplianceWorkList(r *http.Request, args map[string]any) (any, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	if app.services.remediation == nil {
+		return nil, complianceremediation.ErrUnavailable
+	}
+	limit, err := mcpComplianceLimit(args)
+	if err != nil {
+		return nil, err
+	}
+	page, err := app.services.remediation.ListWorkItems(r.Context(), tenantID, complianceremediation.WorkItemListFilter{
+		State: complianceassessment.WorkItemState(mcpStringArg(args, "state")), OwnerID: mcpStringArg(args, "owner_id"),
+		Cursor: mcpStringArg(args, "cursor"), Limit: limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+func mcpAssessmentAudience(value string) (complianceassessment.AssessmentLensAudience, error) {
+	audience := complianceassessment.AssessmentLensAudience(strings.TrimSpace(value))
+	switch audience {
+	case complianceassessment.LensAudienceSecurity, complianceassessment.LensAudienceAudit,
+		complianceassessment.LensAudiencePlatform, complianceassessment.LensAudienceLeadership:
+		return audience, nil
+	default:
+		return "", fmt.Errorf("%w: audience is invalid", errInvalidHTTPRequest)
+	}
+}
+
+func mcpComplianceLimit(args map[string]any) (uint32, error) {
+	limit, err := mcpUint32Arg(args, "limit")
+	if err != nil {
+		return 0, err
+	}
+	if limit == 0 {
+		return 50, nil
+	}
+	if limit > maxMCPComplianceLimit {
+		return 0, fmt.Errorf("%w: limit must not exceed %d", errInvalidHTTPRequest, maxMCPComplianceLimit)
+	}
+	return limit, nil
 }
 
 func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[string]any, error) {
@@ -4572,7 +4743,9 @@ func safeMCPToolError(err error) string {
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findingdomain.ErrInvalidRequest),
-		errors.Is(err, graphfacts.ErrInvalidRequest):
+		errors.Is(err, graphfacts.ErrInvalidRequest),
+		errors.Is(err, complianceassessment.ErrInvalidResult),
+		errors.Is(err, complianceremediation.ErrInvalidRequest):
 		return err.Error()
 	case errors.Is(err, sourceops.ErrSourceNotFound):
 		return "source not found"
@@ -4586,10 +4759,18 @@ func safeMCPToolError(err error) string {
 		return "graph entity not found"
 	case errors.Is(err, graphfacts.ErrFactNotFound):
 		return "graph fact not found"
+	case errors.Is(err, complianceassessment.ErrAssessmentSnapshotNotFound),
+		errors.Is(err, complianceassessment.ErrAssessmentLensNotFound),
+		errors.Is(err, complianceassessment.ErrAssuranceDecisionNotFound),
+		errors.Is(err, complianceremediation.ErrNotFound):
+		return "compliance record not found"
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findingdomain.ErrRuntimeUnavailable),
-		errors.Is(err, graphfacts.ErrRuntimeUnavailable):
+		errors.Is(err, graphfacts.ErrRuntimeUnavailable),
+		errors.Is(err, complianceassessment.ErrAssessmentSnapshotUnavailable),
+		errors.Is(err, complianceassessment.ErrAssuranceDecisionUnavailable),
+		errors.Is(err, complianceremediation.ErrUnavailable):
 		return "runtime unavailable"
 	default:
 		return "tool execution failed"
