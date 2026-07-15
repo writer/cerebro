@@ -3,6 +3,7 @@ package sourceprojection
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,73 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestProjectPanopticonPropagatesCallerCancellationBeforeWrites(t *testing.T) {
+	state := &projectionRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := New(state, nil).Project(ctx, &cerebrov1.EventEnvelope{
+		Id:       "panopticon-canceled-alert",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.alert",
+		Attributes: map[string]string{
+			"alert_id": "alert-canceled",
+		},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Project() error = %v, want context canceled", err)
+	}
+	if len(state.entities) != 0 || len(state.links) != 0 {
+		t.Fatalf("canceled projection wrote entities=%d links=%d", len(state.entities), len(state.links))
+	}
+}
+
+func TestProjectPanopticonRequiresContextAwareRecordAPIs(t *testing.T) {
+	for _, test := range []struct {
+		kind       string
+		identifier string
+		attributes map[string]string
+	}{
+		{kind: "panopticon.alert", identifier: "alert-context", attributes: map[string]string{"alert_id": "alert-context"}},
+		{kind: "panopticon.case", identifier: "case-context", attributes: map[string]string{"case_id": "case-context"}},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{
+				Id:         "event-" + test.identifier,
+				TenantId:   "writer",
+				SourceId:   "panopticon",
+				Kind:       test.kind,
+				Attributes: test.attributes,
+				Payload:    []byte(`{"resources":[{"resource_id":"resource-context"}]}`),
+			}
+
+			if _, _, err := ProjectEvent(event); !errors.Is(err, ErrProjectionContextRequired) {
+				t.Fatalf("ProjectEvent() error = %v, want projection context required", err)
+			}
+			service := New(nil, nil)
+			if _, _, err := service.ProjectRecords(event); !errors.Is(err, ErrProjectionContextRequired) {
+				t.Fatalf("ProjectRecords() error = %v, want projection context required", err)
+			}
+
+			entities, links, err := ProjectEventContext(context.Background(), event)
+			if err != nil {
+				t.Fatalf("ProjectEventContext() error = %v", err)
+			}
+			if len(entities) == 0 || len(links) == 0 {
+				t.Fatalf("ProjectEventContext() projected entities=%d links=%d", len(entities), len(links))
+			}
+			entities, links, err = service.ProjectRecordsContext(context.Background(), event)
+			if err != nil {
+				t.Fatalf("ProjectRecordsContext() error = %v", err)
+			}
+			if len(entities) == 0 || len(links) == 0 {
+				t.Fatalf("ProjectRecordsContext() projected entities=%d links=%d", len(entities), len(links))
+			}
+		})
+	}
+}
 
 type crossRepoPanopticonArchiveManifest struct {
 	Archives []struct {

@@ -155,7 +155,11 @@ type panopticonAssetStitchTarget struct {
 	matchValue string
 }
 
-func panopticonAlertProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, fmt.Errorf("panopticon alert: %w", ErrProjectionContextRequired)
+}
+
+func panopticonAlertProjectionsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -200,7 +204,11 @@ func panopticonAlertProjections(ctx context.Context, event *cerebrov1.EventEnvel
 	return projectedEntities, projectedLinks, nil
 }
 
-func panopticonCaseProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, fmt.Errorf("panopticon case: %w", ErrProjectionContextRequired)
+}
+
+func panopticonCaseProjectionsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err

@@ -2,6 +2,7 @@
 members = [
     "crates/control-kernel",
     "internal/graphagent/staticvalidator",
+    "internal/mitre/evaluator",
     "internal/sourcecoverage/evaluator",
     "internal/sourceprojection/panopticonresources",
     "tools/graphactiongen",

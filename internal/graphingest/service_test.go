@@ -86,6 +86,15 @@ func (f recordProjectorFunc) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*
 	return f(event)
 }
 
+type contextRecordProjector struct {
+	recordProjectorFunc
+	projectContext func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
+func (p contextRecordProjector) ProjectRecordsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return p.projectContext(ctx, event)
+}
+
 type cleanupRecordProjector struct {
 	records  func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 	cleanup  func(*cerebrov1.EventEnvelope) ([]string, error)
@@ -621,6 +630,36 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}
 	if got := link.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced link event_id = %q, want latest event-2", got)
+	}
+}
+
+func TestProjectResponseCoalescedPrefersContextAwareRecords(t *testing.T) {
+	type contextKey struct{}
+	ctx := context.WithValue(context.Background(), contextKey{}, "request-context")
+	legacyCalled := false
+	contextCalled := false
+	projector := contextRecordProjector{
+		recordProjectorFunc: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			legacyCalled = true
+			return nil, nil, nil
+		},
+		projectContext: func(callCtx context.Context, _ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			contextCalled = true
+			if got := callCtx.Value(contextKey{}); got != "request-context" {
+				t.Fatalf("projection context value = %v, want request-context", got)
+			}
+			return nil, nil, nil
+		},
+	}
+	service := &Service{graphStore: &recordingProjectionGraphStore{}}
+	_, err := service.projectResponseCoalesced(ctx, sourceRequest{TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1"}},
+	}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if !contextCalled || legacyCalled {
+		t.Fatalf("context projector called = %t, legacy projector called = %t", contextCalled, legacyCalled)
 	}
 }
 

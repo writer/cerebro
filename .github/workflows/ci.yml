@@ -38,6 +38,7 @@ jobs:
             command: make openapi-check openapi-lint
           - name: graph-actions
             command: make rust-deny graph-action-check rust-wasm-check
+            setup_rust: true
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'
@@ -72,11 +73,11 @@ jobs:
           cache: false
 
       - name: Set up Rust
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Cache Rust build data
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -91,7 +92,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-rust-v1-
 
       - name: Install Rust dependency policy tool
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         shell: bash
         run: |
           set -euo pipefail
