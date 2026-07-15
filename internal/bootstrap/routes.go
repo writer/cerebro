@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	complianceassessmenthttp "github.com/writer/cerebro/internal/sourcehttp/complianceassessment"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
@@ -122,6 +123,9 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	dashboards := customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
 	auditPackets := grcauditpackethttp.NewHTTPHandler(app.deps.StateStore, app.deps.AppendLog, app.buildGRCAuditPreview, tenantAllowedByContext, func(err error) error { return errors.Join(errInvalidHTTPRequest, err) }, writeGRCError)
+	assessments := complianceassessmenthttp.NewHandler(app.services.assessments, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
+		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
+	}, maxProtoJSONBodyBytes)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
 	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
 	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)
@@ -129,12 +133,12 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "DELETE /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Delete)
 	registerHTTPRoute(mux, "POST /grc/dashboards/{dashboardID}/clone", routeSurfacePlatformHTTP, dashboards.Clone)
 	registerHTTPRoute(mux, "GET /grc/program-readiness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("program.readiness", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCProgramReadiness))
-	registerHTTPRoute(mux, "POST /grc/assessment-plans", routeSurfacePlatformHTTP, app.handleCreateAssessmentPlan)
-	registerHTTPRoute(mux, "GET /grc/assessment-plans/{planID}", routeSurfacePlatformHTTP, app.handleGetAssessmentPlan)
-	registerHTTPRoute(mux, "POST /grc/assessment-plans/{planID}/publish", routeSurfacePlatformHTTP, app.handlePublishAssessmentPlan)
-	registerHTTPRoute(mux, "POST /grc/assessment-runs", routeSurfacePlatformHTTP, app.handleRequestAssessmentRun)
-	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}", routeSurfacePlatformHTTP, app.handleGetAssessmentRun)
-	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}/results", routeSurfacePlatformHTTP, app.handleListAssessmentResults)
+	registerHTTPRoute(mux, "POST /grc/assessment-plans", routeSurfacePlatformHTTP, assessments.CreatePlan)
+	registerHTTPRoute(mux, "GET /grc/assessment-plans/{planID}", routeSurfacePlatformHTTP, assessments.GetPlan)
+	registerHTTPRoute(mux, "POST /grc/assessment-plans/{planID}/publish", routeSurfacePlatformHTTP, assessments.PublishPlan)
+	registerHTTPRoute(mux, "POST /grc/assessment-runs", routeSurfacePlatformHTTP, assessments.RequestRun)
+	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}", routeSurfacePlatformHTTP, assessments.GetRun)
+	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}/results", routeSurfacePlatformHTTP, assessments.ListResults)
 	registerHTTPRoute(mux, "GET /grc/report-catalog", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("report.catalog", 5*time.Minute), app.handleGRCReportCatalog))
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))

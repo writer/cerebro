@@ -20,6 +20,37 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+type testAssessmentPlanResponse struct {
+	Plan complianceassessment.AssessmentPlanRevision `json:"plan"`
+}
+
+type testPublishAssessmentPlanRequest struct {
+	ExpectedVersion uint64 `json:"expected_version"`
+}
+
+type testRequestAssessmentRunRequest struct {
+	TenantID       string    `json:"tenant_id"`
+	PlanRevisionID string    `json:"plan_revision_id"`
+	PeriodStart    time.Time `json:"period_start"`
+	PeriodEnd      time.Time `json:"period_end"`
+	BaselineRunID  string    `json:"baseline_run_id,omitempty"`
+}
+
+type testAssessmentRunResponse struct {
+	Run struct {
+		ID    string `json:"id"`
+		JobID string `json:"job_id"`
+	} `json:"run"`
+	Created bool `json:"created"`
+}
+
+type testAssessmentResultPageResponse struct {
+	RunID        string                             `json:"run_id"`
+	Chunks       []complianceassessment.ResultChunk `json:"chunks"`
+	NextSequence uint32                             `json:"next_sequence"`
+	HasMore      bool                               `json:"has_more"`
+}
+
 func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 	now := time.Date(2026, 7, 14, 16, 30, 0, 0, time.UTC)
 	store := newAssessmentHTTPStore()
@@ -58,27 +89,27 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 			RulesOfEngagement: "Read source records only.",
 		},
 	}
-	createResponse := doAssessmentRequest[assessmentPlanResponse](t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", planInput, "", http.StatusCreated)
+	createResponse := doAssessmentRequest[testAssessmentPlanResponse](t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", planInput, "", http.StatusCreated)
 	if createResponse.Plan.Status != complianceassessment.PlanDraft || createResponse.Plan.Version != 1 || createResponse.Plan.ID == "" {
 		t.Fatalf("created plan = %#v", createResponse.Plan)
 	}
-	publishResponse := doAssessmentRequest[assessmentPlanResponse](t, server.Client(), http.MethodPost,
+	publishResponse := doAssessmentRequest[testAssessmentPlanResponse](t, server.Client(), http.MethodPost,
 		server.URL+"/grc/assessment-plans/"+createResponse.Plan.ID+"/publish?tenant_id=tenant-1",
-		publishAssessmentPlanRequest{ExpectedVersion: createResponse.Plan.Version}, "", http.StatusOK)
+		testPublishAssessmentPlanRequest{ExpectedVersion: createResponse.Plan.Version}, "", http.StatusOK)
 	if publishResponse.Plan.Status != complianceassessment.PlanPublished || publishResponse.Plan.Version != 2 {
 		t.Fatalf("published plan = %#v", publishResponse.Plan)
 	}
 
-	runRequest := requestAssessmentRunRequest{
+	runRequest := testRequestAssessmentRunRequest{
 		TenantID: "tenant-1", PlanRevisionID: publishResponse.Plan.RevisionID,
 		PeriodStart: now.Add(-24 * time.Hour), PeriodEnd: now,
 	}
-	runResponse := doAssessmentRequest[assessmentRunResponse](t, server.Client(), http.MethodPost,
+	runResponse := doAssessmentRequest[testAssessmentRunResponse](t, server.Client(), http.MethodPost,
 		server.URL+"/grc/assessment-runs", runRequest, "assessment-run-key-1", http.StatusAccepted)
 	if !runResponse.Created || runResponse.Run.ID == "" || runResponse.Run.JobID == "" {
 		t.Fatalf("requested run = %#v", runResponse)
 	}
-	replayed := doAssessmentRequest[assessmentRunResponse](t, server.Client(), http.MethodPost,
+	replayed := doAssessmentRequest[testAssessmentRunResponse](t, server.Client(), http.MethodPost,
 		server.URL+"/grc/assessment-runs", runRequest, "assessment-run-key-1", http.StatusOK)
 	if replayed.Created || replayed.Run.ID != runResponse.Run.ID {
 		t.Fatalf("replayed run = %#v", replayed)
@@ -88,12 +119,12 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 		{RunID: runResponse.Run.ID, Sequence: 1, FirstResultID: "result-1", LastResultID: "result-1", Count: 1, Digest: "sha256:first", Results: []complianceassessment.ObjectiveResult{{ID: "result-1"}}},
 		{RunID: runResponse.Run.ID, Sequence: 2, FirstResultID: "result-2", LastResultID: "result-2", Count: 1, PreviousDigest: "sha256:first", Digest: "sha256:second", Results: []complianceassessment.ObjectiveResult{{ID: "result-2"}}},
 	})
-	firstPage := doAssessmentRequest[assessmentResultPageResponse](t, server.Client(), http.MethodGet,
+	firstPage := doAssessmentRequest[testAssessmentResultPageResponse](t, server.Client(), http.MethodGet,
 		server.URL+"/grc/assessment-runs/"+runResponse.Run.ID+"/results?tenant_id=tenant-1&limit=1", nil, "", http.StatusOK)
 	if len(firstPage.Chunks) != 1 || !firstPage.HasMore || firstPage.NextSequence != 1 {
 		t.Fatalf("first result page = %#v", firstPage)
 	}
-	secondPage := doAssessmentRequest[assessmentResultPageResponse](t, server.Client(), http.MethodGet,
+	secondPage := doAssessmentRequest[testAssessmentResultPageResponse](t, server.Client(), http.MethodGet,
 		server.URL+"/grc/assessment-runs/"+runResponse.Run.ID+"/results?tenant_id=tenant-1&limit=1&after_sequence=1", nil, "", http.StatusOK)
 	if len(secondPage.Chunks) != 1 || secondPage.HasMore || secondPage.Chunks[0].Sequence != 2 {
 		t.Fatalf("second result page = %#v", secondPage)

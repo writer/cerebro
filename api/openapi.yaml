@@ -2493,6 +2493,188 @@ paths:
           description: Upload events were not found.
         '503':
           description: Replay dependencies are unavailable.
+  /grc/assessment-plans:
+    post:
+      operationId: createAssessmentPlan
+      summary: Create assessment plan draft
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentPlanCreateRequest'
+      responses:
+        '201':
+          description: Assessment plan draft created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentPlanResponse'
+        '400':
+          description: The plan is incomplete or exceeds assessment bounds.
+        '403':
+          description: The caller cannot write assessment plans for the tenant.
+        '503':
+          description: Assessment storage is unavailable.
+  /grc/assessment-plans/{planID}:
+    get:
+      operationId: getAssessmentPlan
+      summary: Get assessment plan revision
+      tags:
+        - GRC
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Tenant-scoped assessment plan revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentPlanResponse'
+        '404':
+          description: Assessment plan was not found in the tenant.
+  /grc/assessment-plans/{planID}/publish:
+    post:
+      operationId: publishAssessmentPlan
+      summary: Publish assessment plan
+      tags:
+        - GRC
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_version]
+              properties:
+                expected_version:
+                  type: integer
+                  format: uint64
+                  minimum: 1
+      responses:
+        '200':
+          description: Assessment plan published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentPlanResponse'
+        '404':
+          description: Assessment plan was not found in the tenant.
+        '409':
+          description: The plan changed or is not a draft.
+  /grc/assessment-runs:
+    post:
+      operationId: requestAssessmentRun
+      summary: Request assessment run
+      tags:
+        - GRC
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentRunRequest'
+      responses:
+        '200':
+          description: Existing assessment run returned for the idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentRunResponse'
+        '202':
+          description: Assessment run accepted and bound to a durable job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentRunResponse'
+        '400':
+          description: The period, plan revision, or idempotency key is invalid.
+        '409':
+          description: The idempotency key is already bound to another request.
+        '503':
+          description: Assessment execution is unavailable.
+  /grc/assessment-runs/{runID}:
+    get:
+      operationId: getAssessmentRun
+      summary: Get assessment run
+      tags:
+        - GRC
+      parameters:
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Current assessment run state and pinned input manifest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentRunResponse'
+        '404':
+          description: Assessment run was not found in the tenant.
+  /grc/assessment-runs/{runID}/results:
+    get:
+      operationId: listAssessmentRunResults
+      summary: List assessment run result chunks
+      tags:
+        - GRC
+      parameters:
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: after_sequence
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        '200':
+          description: Ordered, tenant-scoped assessment result chunk page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentResultPageResponse'
+        '400':
+          description: The page cursor or limit is invalid.
+        '404':
+          description: Assessment run was not found in the tenant.
+        '503':
+          description: Assessment result paging is unavailable.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -5747,6 +5929,291 @@ components:
       schema:
         type: string
   schemas:
+    AssessmentControlRef:
+      type: object
+      required: [control_id]
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        framework:
+          type: string
+        control_id:
+          type: string
+    AssessmentPlanTask:
+      type: object
+      required: [id, objective_id, control_ref, kind]
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        control_ref:
+          $ref: '#/components/schemas/AssessmentControlRef'
+        kind:
+          type: string
+          enum: [procedure, finding_evaluation]
+        rule_id:
+          type: string
+        runtime_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        max_age:
+          type: string
+          description: Positive Go duration such as 24h.
+        evaluation_mode:
+          type: string
+          enum: [point_in_time]
+    AssessmentPlanScope:
+      type: object
+      required: [program_id, scope_revision_id, implementation_revision_ids, objective_ids]
+      properties:
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        implementation_revision_ids:
+          type: array
+          items:
+            type: string
+        objective_ids:
+          type: array
+          items:
+            type: string
+        included_subject_ids:
+          type: array
+          items:
+            type: string
+        excluded_subject_ids:
+          type: array
+          items:
+            type: string
+    AssessmentPlanExecution:
+      type: object
+      required: [methods, coverage_target, assurance_target, tasks, ordered_task_ids, cancellation_rule]
+      properties:
+        methods:
+          type: array
+          items:
+            type: string
+        depth:
+          type: string
+        coverage_target:
+          type: string
+        assurance_target:
+          type: string
+        sampling_rule:
+          type: string
+        tasks:
+          type: array
+          maxItems: 25
+          items:
+            $ref: '#/components/schemas/AssessmentPlanTask'
+        ordered_task_ids:
+          type: array
+          items:
+            type: string
+        tool_revision_ids:
+          type: array
+          items:
+            type: string
+        cancellation_rule:
+          type: string
+    AssessmentPlanGovernance:
+      type: object
+      required: [owner_id, approver_ids, rules_of_engagement]
+      properties:
+        owner_id:
+          type: string
+        assessor_ids:
+          type: array
+          items:
+            type: string
+        approver_ids:
+          type: array
+          items:
+            type: string
+        independence_rule:
+          type: string
+        rules_of_engagement:
+          type: string
+        limitations:
+          type: array
+          items:
+            type: string
+    AssessmentPlanCreateRequest:
+      type: object
+      required: [name, scope, execution, governance]
+      properties:
+        tenant_id:
+          type: string
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/AssessmentPlanScope'
+        execution:
+          $ref: '#/components/schemas/AssessmentPlanExecution'
+        governance:
+          $ref: '#/components/schemas/AssessmentPlanGovernance'
+    AssessmentPlan:
+      allOf:
+        - $ref: '#/components/schemas/AssessmentPlanCreateRequest'
+        - type: object
+          required: [id, revision_id, version, status, content_digest, created_at, created_by]
+          properties:
+            id:
+              type: string
+            revision_id:
+              type: string
+            version:
+              type: integer
+              format: uint64
+            predecessor_id:
+              type: string
+            status:
+              type: string
+              enum: [draft, published, retired]
+            content_digest:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            created_by:
+              type: string
+            published_at:
+              type: string
+              format: date-time
+            published_by:
+              type: string
+    AssessmentPlanResponse:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          $ref: '#/components/schemas/AssessmentPlan'
+    AssessmentRunRequest:
+      type: object
+      required: [tenant_id, plan_revision_id, period_start, period_end]
+      properties:
+        tenant_id:
+          type: string
+        plan_revision_id:
+          type: string
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        baseline_run_id:
+          type: string
+    AssessmentInputManifest:
+      type: object
+      description: Immutable revisions, receipts, cutoff, and digests used by one assessment run.
+      additionalProperties: true
+    AssessmentRun:
+      type: object
+      required: [id, tenant_id, program_id, scope_revision_id, plan_revision_id, state, version, period_start, period_end, requested_at, requested_by]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        plan_revision_id:
+          type: string
+        state:
+          type: string
+          enum: [queued, collecting, evaluating, review_required, complete, failed, cancelled, superseded]
+        version:
+          type: integer
+          format: uint64
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        requested_at:
+          type: string
+          format: date-time
+        requested_by:
+          type: string
+        job_id:
+          type: string
+        baseline_run_id:
+          type: string
+        input_manifest:
+          $ref: '#/components/schemas/AssessmentInputManifest'
+        input_hash:
+          type: string
+        automated_result_hash:
+          type: string
+        result_count:
+          type: integer
+          format: uint64
+        failure_code:
+          type: string
+        collection_barrier_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    AssessmentRunResponse:
+      type: object
+      required: [run, created]
+      properties:
+        run:
+          $ref: '#/components/schemas/AssessmentRun'
+        created:
+          type: boolean
+    AssessmentResultChunk:
+      type: object
+      required: [run_id, sequence, first_result_id, last_result_id, count, digest, results]
+      properties:
+        run_id:
+          type: string
+        sequence:
+          type: integer
+          format: uint32
+        first_result_id:
+          type: string
+        last_result_id:
+          type: string
+        count:
+          type: integer
+          format: uint32
+        previous_digest:
+          type: string
+        digest:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AssessmentResultPageResponse:
+      type: object
+      required: [run_id, chunks, has_more]
+      properties:
+        run_id:
+          type: string
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentResultChunk'
+        next_sequence:
+          type: integer
+          format: uint32
+        has_more:
+          type: boolean
     GRCEvidencePacketsResponse:
       type: object
       additionalProperties: true

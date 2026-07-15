@@ -1,17 +1,40 @@
-package bootstrap
+package complianceassessmenthttp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+const defaultMaxBodyBytes = int64(1 << 20)
+
+type TenantResolver func(context.Context, string) (string, error)
+type ActorResolver func(context.Context) string
+type ForbiddenClassifier func(error) bool
+
+type Handler struct {
+	service       *complianceassessment.Service
+	resolveTenant TenantResolver
+	actorID       ActorResolver
+	isForbidden   ForbiddenClassifier
+	maxBodyBytes  int64
+}
+
+func NewHandler(service *complianceassessment.Service, resolveTenant TenantResolver, actorID ActorResolver, isForbidden ForbiddenClassifier, maxBodyBytes int64) *Handler {
+	if maxBodyBytes <= 0 {
+		maxBodyBytes = defaultMaxBodyBytes
+	}
+	return &Handler{service: service, resolveTenant: resolveTenant, actorID: actorID, isForbidden: isForbidden, maxBodyBytes: maxBodyBytes}
+}
 
 type assessmentPlanResponse struct {
 	Plan complianceassessment.AssessmentPlanRevision `json:"plan"`
@@ -64,20 +87,20 @@ type assessmentResultPageResponse struct {
 	HasMore      bool                               `json:"has_more"`
 }
 
-func (a *App) handleCreateAssessmentPlan(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
 	var plan complianceassessment.AssessmentPlanRevision
-	if err := decodeAssessmentJSON(w, r, &plan); err != nil {
-		writeAssessmentError(w, err)
+	if err := h.decodeJSON(w, r, &plan); err != nil {
+		h.writeError(w, err)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), plan.TenantID)
+	tenantID, err := h.resolveTenant(r.Context(), plan.TenantID)
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	plan.ID = ""
@@ -91,86 +114,86 @@ func (a *App) handleCreateAssessmentPlan(w http.ResponseWriter, r *http.Request)
 	plan.CreatedBy = ""
 	plan.PublishedAt = time.Time{}
 	plan.PublishedBy = ""
-	plan, err = service.RecordPlan(r.Context(), plan, customDashboardActorID(r.Context()), 0)
+	plan, err = service.RecordPlan(r.Context(), plan, h.actorID(r.Context()), 0)
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, assessmentPlanResponse{Plan: plan})
 }
 
-func (a *App) handleGetAssessmentPlan(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	plan, err := service.GetPlan(r.Context(), tenantID, r.PathValue("planID"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, assessmentPlanResponse{Plan: plan})
 }
 
-func (a *App) handlePublishAssessmentPlan(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) PublishPlan(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
 	var request publishAssessmentPlanRequest
-	if err := decodeAssessmentJSON(w, r, &request); err != nil {
-		writeAssessmentError(w, err)
+	if err := h.decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
-	plan, err := service.PublishPlan(r.Context(), tenantID, r.PathValue("planID"), customDashboardActorID(r.Context()), request.ExpectedVersion)
+	plan, err := service.PublishPlan(r.Context(), tenantID, r.PathValue("planID"), h.actorID(r.Context()), request.ExpectedVersion)
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, assessmentPlanResponse{Plan: plan})
 }
 
-func (a *App) handleRequestAssessmentRun(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) RequestRun(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
 	var request requestAssessmentRunRequest
-	if err := decodeAssessmentJSON(w, r, &request); err != nil {
-		writeAssessmentError(w, err)
+	if err := h.decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)
+	tenantID, err := h.resolveTenant(r.Context(), request.TenantID)
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if idempotencyKey == "" {
-		writeAssessmentError(w, fmt.Errorf("%w: Idempotency-Key header is required", complianceassessment.ErrInvalidResult))
+		h.writeError(w, fmt.Errorf("%w: Idempotency-Key header is required", complianceassessment.ErrInvalidResult))
 		return
 	}
 	run, created, err := service.RequestRun(r.Context(), complianceassessment.RunRequest{
 		TenantID: tenantID, PlanRevisionID: request.PlanRevisionID,
 		PeriodStart: request.PeriodStart, PeriodEnd: request.PeriodEnd,
 		BaselineRunID: request.BaselineRunID, IdempotencyKey: idempotencyKey,
-		RequestedBy: customDashboardActorID(r.Context()),
+		RequestedBy: h.actorID(r.Context()),
 	})
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	status := http.StatusAccepted
@@ -180,54 +203,54 @@ func (a *App) handleRequestAssessmentRun(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, status, assessmentRunResponse{Run: newAssessmentRunView(run), Created: created})
 }
 
-func (a *App) handleGetAssessmentRun(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) GetRun(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	run, err := service.GetRun(r.Context(), tenantID, r.PathValue("runID"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, assessmentRunResponse{Run: newAssessmentRunView(run)})
 }
 
-func (a *App) handleListAssessmentResults(w http.ResponseWriter, r *http.Request) {
-	service := a.services.assessments
+func (h *Handler) ListResults(w http.ResponseWriter, r *http.Request) {
+	service := h.service
 	if service == nil {
-		writeAssessmentError(w, complianceassessment.ErrResultPagingUnavailable)
+		h.writeError(w, complianceassessment.ErrResultPagingUnavailable)
 		return
 	}
-	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("runID"))
 	if _, err := service.GetRun(r.Context(), tenantID, runID); err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	afterSequence, err := uint32QueryParam(r, "after_sequence")
 	if err != nil {
-		writeAssessmentError(w, fmt.Errorf("%w: after_sequence must be an unsigned integer", complianceassessment.ErrInvalidResult))
+		h.writeError(w, fmt.Errorf("%w: after_sequence must be an unsigned integer", complianceassessment.ErrInvalidResult))
 		return
 	}
 	limit, err := uint32QueryParam(r, "limit")
 	if err != nil {
-		writeAssessmentError(w, fmt.Errorf("%w: limit must be an unsigned integer", complianceassessment.ErrInvalidResult))
+		h.writeError(w, fmt.Errorf("%w: limit must be an unsigned integer", complianceassessment.ErrInvalidResult))
 		return
 	}
 	page, err := service.ListResultChunksPage(r.Context(), tenantID, runID, afterSequence, limit)
 	if err != nil {
-		writeAssessmentError(w, err)
+		h.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, assessmentResultPageResponse{
@@ -235,8 +258,8 @@ func (a *App) handleListAssessmentResults(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func decodeAssessmentJSON(w http.ResponseWriter, r *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes))
+func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, h.maxBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("%w: decode assessment request: %v", complianceassessment.ErrInvalidResult, err)
@@ -245,6 +268,24 @@ func decodeAssessmentJSON(w http.ResponseWriter, r *http.Request, target any) er
 		return fmt.Errorf("%w: assessment request must contain one JSON object", complianceassessment.ErrInvalidResult)
 	}
 	return nil
+}
+
+func uint32QueryParam(r *http.Request, key string) (uint32, error) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(parsed), nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func newAssessmentRunView(run complianceassessment.AssessmentRun) assessmentRunView {
@@ -259,10 +300,10 @@ func newAssessmentRunView(run complianceassessment.AssessmentRun) assessmentRunV
 	}
 }
 
-func writeAssessmentError(w http.ResponseWriter, err error) {
+func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, errTenantForbidden), errors.Is(err, errScopeForbidden):
+	case h.isForbidden != nil && h.isForbidden(err):
 		status = http.StatusForbidden
 	case errors.Is(err, complianceassessment.ErrPlanNotFound), errors.Is(err, complianceassessment.ErrRunNotFound):
 		status = http.StatusNotFound
@@ -273,5 +314,9 @@ func writeAssessmentError(w http.ResponseWriter, err error) {
 	case errors.Is(err, complianceassessment.ErrInvalidResult), errors.Is(err, complianceassessment.ErrInvalidManifest), errors.Is(err, complianceassessment.ErrIncompleteInput):
 		status = http.StatusBadRequest
 	}
-	http.Error(w, safeHTTPErrorMessage(status, err), status)
+	message := err.Error()
+	if status >= http.StatusInternalServerError {
+		message = strings.ToLower(http.StatusText(status))
+	}
+	http.Error(w, message, status)
 }
