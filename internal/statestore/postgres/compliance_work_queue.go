@@ -32,32 +32,31 @@ func (s *Store) ListWorkItems(ctx context.Context, tenantID string, filter compl
 	if limit == 0 {
 		limit = 50
 	}
-	where := []string{"tenant_id = $1"}
-	args := []any{tenantID}
-	if filter.State != "" {
-		args = append(args, string(filter.State))
-		where = append(where, fmt.Sprintf("body_json->>'state' = $%d", len(args)))
+	if limit > 200 {
+		return complianceremediation.WorkItemPage{}, fmt.Errorf("%w: limit must be at most 200", complianceremediation.ErrInvalidRequest)
 	}
-	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
-		args = append(args, ownerID)
-		where = append(where, fmt.Sprintf("body_json->>'owner_id' = $%d", len(args)))
-	}
+	state := string(filter.State)
+	ownerID := strings.TrimSpace(filter.OwnerID)
+	var cursorUpdatedAt any
+	cursorID := ""
 	if cursorValue := strings.TrimSpace(filter.Cursor); cursorValue != "" {
 		cursor, err := decodeComplianceWorkItemCursor(cursorValue)
 		if err != nil {
 			return complianceremediation.WorkItemPage{}, err
 		}
-		args = append(args, cursor.UpdatedAt.UTC(), cursor.ID)
-		where = append(where, fmt.Sprintf("(updated_at < $%d OR (updated_at = $%d AND id > $%d))", len(args)-1, len(args)-1, len(args)))
+		cursorUpdatedAt = cursor.UpdatedAt.UTC()
+		cursorID = cursor.ID
 	}
-	args = append(args, int64(limit)+1)
-	query := fmt.Sprintf(`
+	const query = `
 SELECT id, updated_at, body_json
 FROM compliance_work_items
-WHERE %s
+WHERE tenant_id = $1
+  AND ($2 = '' OR body_json->>'state' = $2)
+  AND ($3 = '' OR body_json->>'owner_id' = $3)
+  AND ($4::timestamptz IS NULL OR (updated_at < $4 OR (updated_at = $4 AND id > $5)))
 ORDER BY updated_at DESC, id ASC
-LIMIT $%d`, strings.Join(where, " AND "), len(args))
-	rows, err := s.db.QueryContext(ctx, query, args...)
+LIMIT $6`
+	rows, err := s.db.QueryContext(ctx, query, tenantID, state, ownerID, cursorUpdatedAt, cursorID, int64(limit)+1)
 	if err != nil {
 		return complianceremediation.WorkItemPage{}, fmt.Errorf("list compliance work items: %w", err)
 	}
@@ -67,7 +66,7 @@ LIMIT $%d`, strings.Join(where, " AND "), len(args))
 		updatedAt time.Time
 		item      complianceassessment.WorkItem
 	}
-	values := make([]rowValue, 0, limit+1)
+	values := []rowValue{}
 	for rows.Next() {
 		var value rowValue
 		var body []byte
@@ -82,16 +81,19 @@ LIMIT $%d`, strings.Join(where, " AND "), len(args))
 	if err := rows.Err(); err != nil {
 		return complianceremediation.WorkItemPage{}, fmt.Errorf("iterate compliance work items: %w", err)
 	}
-	page := complianceremediation.WorkItemPage{Items: make([]complianceassessment.WorkItem, 0, min(len(values), int(limit)))}
-	for index, value := range values {
-		if index >= int(limit) {
+	page := complianceremediation.WorkItemPage{Items: []complianceassessment.WorkItem{}}
+	var lastIncluded rowValue
+	var included uint32
+	for _, value := range values {
+		if included == limit {
 			break
 		}
 		page.Items = append(page.Items, value.item)
+		lastIncluded = value
+		included++
 	}
-	if len(values) > int(limit) && len(page.Items) != 0 {
-		last := values[int(limit)-1]
-		page.NextCursor, err = encodeComplianceWorkItemCursor(complianceWorkItemCursor{UpdatedAt: last.updatedAt, ID: last.id})
+	if len(values) > len(page.Items) && len(page.Items) != 0 {
+		page.NextCursor, err = encodeComplianceWorkItemCursor(complianceWorkItemCursor{UpdatedAt: lastIncluded.updatedAt, ID: lastIncluded.id})
 		if err != nil {
 			return complianceremediation.WorkItemPage{}, err
 		}
