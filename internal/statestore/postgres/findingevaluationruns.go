@@ -174,8 +174,12 @@ func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsReques
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingEvaluationRunFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingEvaluationRunFilter(&clauses, &args, "status", request.Status)
+	if !request.FinishedAtOrBefore.IsZero() {
+		args = append(args, request.FinishedAtOrBefore.UTC())
+		clauses = append(clauses, fmt.Sprintf("finished_at <= $%d", len(args)))
+	}
 	selectClause := "SELECT finding_evaluation_run_json::text"
-	orderClause := "ORDER BY started_at DESC, id"
+	orderClause := "ORDER BY finished_at DESC NULLS LAST, started_at DESC, id"
 	if request.LatestByRuntime {
 		selectClause = "SELECT DISTINCT ON (runtime_id) finding_evaluation_run_json::text"
 		orderClause = "ORDER BY runtime_id, started_at DESC, id DESC"

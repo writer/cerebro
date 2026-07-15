@@ -371,6 +371,42 @@ func (s *Store) ListResultChunks(ctx context.Context, tenantID, runID string) ([
 	return result, rows.Err()
 }
 
+func (s *Store) ListResultChunksPage(ctx context.Context, tenantID, runID string, afterSequence, limit uint32) (complianceassessment.ResultChunkPage, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	if limit == 0 || limit > 100 {
+		return complianceassessment.ResultChunkPage{}, complianceassessment.ErrInvalidResult
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT record_json FROM compliance_assessment_result_chunks WHERE tenant_id=$1 AND run_id=$2 AND sequence>$3 ORDER BY sequence LIMIT $4`, strings.TrimSpace(tenantID), strings.TrimSpace(runID), afterSequence, limit+1)
+	if err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	defer func() { _ = rows.Close() }()
+	chunks := make([]complianceassessment.ResultChunk, 0, limit+1)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return complianceassessment.ResultChunkPage{}, err
+		}
+		var chunk complianceassessment.ResultChunk
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			return complianceassessment.ResultChunkPage{}, err
+		}
+		chunks = append(chunks, chunk)
+	}
+	if err := rows.Err(); err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	page := complianceassessment.ResultChunkPage{Chunks: chunks}
+	if len(chunks) > int(limit) {
+		page.HasMore = true
+		page.Chunks = chunks[:limit]
+		page.NextSequence = page.Chunks[len(page.Chunks)-1].Sequence
+	}
+	return page, nil
+}
+
 func (s *Store) ensureComplianceAssessmentConfigured(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
