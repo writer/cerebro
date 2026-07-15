@@ -125,37 +125,46 @@ func panopticonResourceObjectsWasm(ctx context.Context, payload []byte) ([]map[s
 }
 
 func initializePanopticonResourcesEngine(ctx context.Context) {
+	panopticonResourcesShared.initialize(ctx, panopticonResourcesWasm)
+}
+
+func (engine *panopticonResourcesEngine) initialize(ctx context.Context, wasm []byte) {
 	initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	config := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).WithMemoryLimitPages(panopticonResourcesMemoryLimitPage)
-	panopticonResourcesShared.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
-	panopticonResourcesShared.compiled, panopticonResourcesShared.err = panopticonResourcesShared.runtime.CompileModule(initCtx, panopticonResourcesWasm)
-	if panopticonResourcesShared.err != nil {
-		panopticonResourcesShared.err = fmt.Errorf("compile embedded panopticon resource extractor: %w", panopticonResourcesShared.err)
+	engine.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
+	defer func() {
+		if engine.err != nil {
+			_ = engine.runtime.Close(initCtx)
+		}
+	}()
+	engine.compiled, engine.err = engine.runtime.CompileModule(initCtx, wasm)
+	if engine.err != nil {
+		engine.err = fmt.Errorf("compile embedded panopticon resource extractor: %w", engine.err)
 		return
 	}
-	if err := validatePanopticonResourcesABI(panopticonResourcesShared.compiled); err != nil {
-		panopticonResourcesShared.err = err
+	if err := validatePanopticonResourcesABI(engine.compiled); err != nil {
+		engine.err = err
 		return
 	}
-	module, err := panopticonResourcesShared.runtime.InstantiateModule(initCtx, panopticonResourcesShared.compiled, panopticonResourcesModuleConfig())
+	module, err := engine.runtime.InstantiateModule(initCtx, engine.compiled, panopticonResourcesModuleConfig())
 	if err != nil {
-		panopticonResourcesShared.err = fmt.Errorf("instantiate embedded panopticon resource extractor for ABI check: %w", err)
+		engine.err = fmt.Errorf("instantiate embedded panopticon resource extractor for ABI check: %w", err)
 		return
 	}
 	defer module.Close(initCtx) //nolint:errcheck // ABI check cleanup cannot change initialization result.
 	version := module.ExportedFunction("cerebro_panopticon_resources_abi_version")
 	if version == nil {
-		panopticonResourcesShared.err = errors.New("embedded panopticon resource ABI version export is missing")
+		engine.err = errors.New("embedded panopticon resource ABI version export is missing")
 		return
 	}
 	results, err := version.Call(initCtx)
 	if err != nil {
-		panopticonResourcesShared.err = fmt.Errorf("read embedded panopticon resource ABI version: %w", err)
+		engine.err = fmt.Errorf("read embedded panopticon resource ABI version: %w", err)
 		return
 	}
 	if len(results) != 1 || results[0] != panopticonResourcesABIVersion {
-		panopticonResourcesShared.err = fmt.Errorf("embedded panopticon resource ABI version = %v, want %d", results, panopticonResourcesABIVersion)
+		engine.err = fmt.Errorf("embedded panopticon resource ABI version = %v, want %d", results, panopticonResourcesABIVersion)
 	}
 }
 

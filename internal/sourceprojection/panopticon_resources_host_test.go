@@ -8,6 +8,19 @@ import (
 	"testing"
 )
 
+func TestInitializePanopticonResourcesEngineClosesRuntimeOnFailure(t *testing.T) {
+	engine := panopticonResourcesEngine{}
+	engine.initialize(context.Background(), []byte("not a wasm module"))
+	if engine.err == nil {
+		t.Fatal("initialize() error = nil")
+	}
+
+	_, err := engine.runtime.CompileModule(context.Background(), panopticonResourcesWasm)
+	if err == nil || !strings.Contains(err.Error(), "runtime closed") {
+		t.Fatalf("compile after failed initialization error = %v, want closed runtime", err)
+	}
+}
+
 func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
 	t.Parallel()
 	payload := map[string]any{
