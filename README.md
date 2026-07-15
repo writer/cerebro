@@ -110,7 +110,7 @@ Plain Compose initializes the local Postgres volume with the compose-file passwo
 | MCP | Agent-readable source, policy, graph, and evidence context | `POST /api/v1/mcp`, `docs/domains/mcp-droid-setup.md` |
 | SDK helpers | Client helper packages for generated API surfaces | `sdk/python/README.md`, `sdk/typescript/README.md`, `sdk/go/cerebroapi` |
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 ## Choose A Path
 
@@ -184,7 +184,7 @@ The site entry point is [docs/index.md](docs/index.md), and `mkdocs.yml` defines
 
 | Component | Technology |
 | --- | --- |
-| Language | Go 1.26+ with `go1.26.4` toolchain |
+| Language | Go 1.26+ with `go1.26.5` toolchain |
 | HTTP server | Go `net/http` `ServeMux` |
 | RPC | Connect |
 | CLI | Standard Go CLI under `cmd/cerebro` |

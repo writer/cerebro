@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"go/format"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -246,18 +245,28 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	if normalized.DryRun {
 		return result, nil
 	}
-	if err := preflightGeneration(normalized, files, plan); err != nil {
+	root, err := openOrCreateGenerationRoot(normalized.OutputDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	if err := preflightGeneration(root, normalized, files, plan); err != nil {
 		return nil, err
 	}
 	for _, file := range files {
-		if err := os.MkdirAll(filepath.Dir(file.Path), 0o750); err != nil {
+		relativePath, err := manifestRelativePath(normalized.OutputDir, file.Path)
+		if err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(file.Path, []byte(file.Content), 0o600); err != nil {
+		relativePath = filepath.FromSlash(relativePath)
+		if err := root.MkdirAll(filepath.Dir(relativePath), 0o750); err != nil {
+			return nil, err
+		}
+		if err := root.WriteFile(relativePath, []byte(file.Content), 0o600); err != nil {
 			return nil, err
 		}
 	}
-	if err := commitGeneration(plan); err != nil {
+	if err := commitGeneration(root, plan); err != nil {
 		return nil, err
 	}
 	return result, nil

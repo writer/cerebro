@@ -45,6 +45,8 @@ type ReportSchedule struct {
 	Enabled         bool
 	NextRunAt       time.Time
 	LastRunAt       time.Time
+	ClaimOwner      string
+	ClaimExpiresAt  time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -63,5 +65,7 @@ type ReportScheduleStore interface {
 	GetReportSchedule(context.Context, string) (*ReportSchedule, error)
 	ListReportSchedules(context.Context, ReportScheduleFilter) ([]*ReportSchedule, error)
 	DeleteReportSchedule(context.Context, string) error
-	ClaimDueReportSchedules(context.Context, time.Time, uint32) ([]*ReportSchedule, error)
+	ClaimDueReportSchedules(context.Context, time.Time, string, time.Duration, uint32) ([]*ReportSchedule, error)
+	CompleteReportScheduleClaim(context.Context, string, string, time.Time, time.Time) error
+	ReleaseReportScheduleClaim(context.Context, string, string) error
 }

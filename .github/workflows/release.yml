@@ -214,17 +214,17 @@ jobs:
         run: chmod +x .dist/cerebro
 
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build and push runtime image
         shell: bash
@@ -250,14 +250,14 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Create and push multi-arch manifests
         id: manifest
@@ -323,7 +323,31 @@ jobs:
           - target_environment: go-prod
             apply_mode: pull_request
     steps:
+      - name: Check Infisical bootstrap
+        id: infisical
+        shell: bash
+        env:
+          INFISICAL_ORG_IDENTITY_UUID: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          INFISICAL_ORG_PROJECT_SLUG: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          INFISICAL_REPO_IDENTITY_UUID: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          INFISICAL_REPO_PROJECT_SLUG: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in INFISICAL_ORG_IDENTITY_UUID INFISICAL_ORG_PROJECT_SLUG INFISICAL_REPO_IDENTITY_UUID INFISICAL_REPO_PROJECT_SLUG; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment credential bootstrap is incomplete; using the repository fallback."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Fetch org-level secrets from Infisical
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
@@ -333,6 +357,7 @@ jobs:
           env-slug: prod
           export-type: env
       - name: Fetch repo-level secrets from Infisical
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc

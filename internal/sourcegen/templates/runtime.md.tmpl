@@ -12,7 +12,7 @@ Generated Source Runtime SDK scaffold for `{{.SourceID}}`.
 ## Runtime output
 
 - Adapter package: `sources/{{.SourceID}}`
-- Health endpoint: `/source-runtimes/{{.SourceID}}/health`
+- Health endpoint: `/source-runtimes/health?source_id={{.SourceID}}`
 - Source health receipt: `sources/{{.SourceID}}/source_health_receipt.json`
 - EvidenceCAS reference kind: `{{.SourceID}}.evidence_cas_reference`
 

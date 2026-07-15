@@ -65,7 +65,7 @@ func VerifyProofBundle(request ProofVerificationRequest) (*ProofVerificationResu
 	}
 	sourceDir := filepath.Join(outputDir, "sources", sourceID)
 	manifestPath := filepath.Join(sourceDir, manifestName)
-	manifest, err := loadGenerationManifest(manifestPath)
+	manifest, err := loadGenerationManifest(outputDir, manifestPath)
 	if err != nil {
 		add(failedVerification("manifest.load", manifestPath, err.Error()))
 		return finalizeProofVerification(result, nil), nil

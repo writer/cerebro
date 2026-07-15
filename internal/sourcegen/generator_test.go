@@ -1,6 +1,7 @@
 package sourcegen
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcegen/stampfile"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 )
 
@@ -83,6 +85,10 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	if got := receipt["health_endpoint"]; got != "/source-runtimes/health?source_id=demo_source" {
 		t.Fatalf("health_endpoint = %#v", got)
+	}
+	runtimeDoc := readGeneratedFile(t, outputDir, "sources/demo_source/SOURCE_RUNTIME.md")
+	if !strings.Contains(runtimeDoc, "- Health endpoint: `/source-runtimes/health?source_id=demo_source`") {
+		t.Fatalf("generated runtime documentation has the wrong health endpoint:\n%s", runtimeDoc)
 	}
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
@@ -2403,7 +2409,6 @@ func TestGenerateDryRunReportsOwnershipConflict(t *testing.T) {
 		t.Fatalf("change plan did not report source.go ownership conflict: %#v", result.ChangePlan.Changes)
 	}
 }
-
 func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
 	outputDir := t.TempDir()
 	request := Request{
@@ -2431,6 +2436,75 @@ func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectsManifestOutputOutsideRoot(t *testing.T) {
+	workspace := t.TempDir()
+	outputDir := filepath.Join(workspace, "output")
+	manifestPath := filepath.Join(outputDir, "sources", "demo_source", manifestName)
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
+		t.Fatalf("mkdir manifest fixture: %v", err)
+	}
+	outsidePath := filepath.Join(workspace, "outside.txt")
+	outsidePayload := []byte("operator-owned")
+	if err := os.WriteFile(outsidePath, outsidePayload, 0o600); err != nil {
+		t.Fatalf("write outside fixture: %v", err)
+	}
+	digest, err := stampfile.HashReader(bytes.NewReader(outsidePayload))
+	if err != nil {
+		t.Fatalf("hash outside fixture: %v", err)
+	}
+	manifestPayload, err := json.Marshal(generationManifest{
+		GeneratorVersion: generatorVersion,
+		SourceID:         "demo_source",
+		InputDigest:      "attacker-controlled",
+		Outputs:          map[string]string{"../outside.txt": digest},
+	})
+	if err != nil {
+		t.Fatalf("marshal manifest fixture: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, manifestPayload, 0o600); err != nil {
+		t.Fatalf("write manifest fixture: %v", err)
+	}
+
+	_, err = Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir})
+	if !errors.Is(err, ErrInvalidGenerationManifestPath) {
+		t.Fatalf("Generate() error = %v, want %v", err, ErrInvalidGenerationManifestPath)
+	}
+	if current, readErr := os.ReadFile(outsidePath); readErr != nil || !bytes.Equal(current, outsidePayload) { // #nosec G304 -- outsidePath is inside the test-owned temporary directory.
+		t.Fatalf("outside file changed: payload=%q err=%v", current, readErr)
+	}
+}
+
+func TestGenerateRejectsSymlinkedOutputSubdirectory(t *testing.T) {
+	workspace := t.TempDir()
+	outputDir := filepath.Join(workspace, "output")
+	outsideDir := filepath.Join(workspace, "outside")
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
+		t.Fatalf("mkdir output fixture: %v", err)
+	}
+	if err := os.MkdirAll(outsideDir, 0o750); err != nil {
+		t.Fatalf("mkdir outside fixture: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(outputDir, "sources")); err != nil {
+		t.Fatalf("symlink output fixture: %v", err)
+	}
+
+	if _, err := Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}); err == nil {
+		t.Fatal("Generate() error = nil, want symlink escape rejection")
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "demo_source")); !os.IsNotExist(err) {
+		t.Fatalf("generator wrote through output symlink, err=%v", err)
+	}
+}
+
+func TestGenerateCreatesNestedOutputRoot(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "nested", "output")
+	if _, err := Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "sources", "demo_source", "source.go")); err != nil {
+		t.Fatalf("generated source stat: %v", err)
+	}
+}
 func TestGenerateFindingOnlyScaffold(t *testing.T) {
 	outputDir := t.TempDir()
 	if _, err := Generate(Request{
