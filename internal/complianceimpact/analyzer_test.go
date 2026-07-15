@@ -186,8 +186,10 @@ func TestAnalyzerRejectsInvalidLimitsAndStalledCursor(t *testing.T) {
 	if _, err := NewAnalyzer(graph, Limits{}); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatalf("limits error = %v", err)
 	}
+	programA := impactFact(t, impactRevision(t, "tenant-a", complianceintegration.FactProgram, "program-a", 1), edge(t, root, "policy_scope"))
+	programB := impactFact(t, impactRevision(t, "tenant-a", complianceintegration.FactProgram, "program-b", 1), edge(t, root, "policy_scope"))
+	graph = newFakeGraph(impactFact(t, root), programA, programB)
 	graph.stallCursor = true
-	graph.dependents[root.ExactKey()] = []ports.ComplianceImpactRevisionRef{portRef(root)}
 	if _, err := analyze(t, graph, root, complianceintegration.ChangeUpdated, Limits{MaxNodes: 10, MaxEdges: 10, MaxDepth: 10, PageSize: 1}); !errors.Is(err, ErrInvalidGraph) {
 		t.Fatalf("cursor error = %v", err)
 	}
