@@ -1391,7 +1391,7 @@ func cypherLimitClausePosition(query string, tokens []cypherLimitToken, index in
 
 func cypherLimitExpressionBoundary(value string) bool {
 	switch strings.ToUpper(value) {
-	case "AS", "WHERE", "ORDER", "SKIP", "LIMIT", "UNION", "WITH", "RETURN", "MATCH", "OPTIONAL", "CALL":
+	case "AND", "AS", "IN", "IS", "NOT", "OR", "WHERE", "ORDER", "SKIP", "LIMIT", "UNION", "WITH", "RETURN", "MATCH", "OPTIONAL", "CALL", "XOR":
 		return true
 	default:
 		return false
