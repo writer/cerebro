@@ -667,9 +667,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             with (
                 patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)) as stream,
                 patch(
-                    "scripts.run_aws_deploy_verifications.subprocess.run",
-                    return_value=subprocess.CompletedProcess(["repair"], 0),
-                ) as run,
+                    "scripts.run_aws_deploy_verifications.subprocess.Popen",
+                    return_value=FakeProcess(0),
+                ) as popen,
             ):
                 status = run_aws_deploy_verifications.main(
                     [
@@ -685,7 +685,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(stream.call_count, 2)
-        command = run.call_args.args[0]
+        command = popen.call_args.args[0]
         self.assertIn("scripts/verify_graph_health_ecs.py", command)
         self.assertIn("--graph-command", command)
         self.assertIn("repair-open-finding-primary-links", command)
@@ -705,9 +705,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             with (
                 patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)) as stream,
                 patch(
-                    "scripts.run_aws_deploy_verifications.subprocess.run",
-                    return_value=subprocess.CompletedProcess(["backfill"], 0),
-                ) as run,
+                    "scripts.run_aws_deploy_verifications.subprocess.Popen",
+                    return_value=FakeProcess(0),
+                ) as popen,
             ):
                 status = run_aws_deploy_verifications.main(
                     [
@@ -723,7 +723,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(stream.call_count, 2)
-        command = run.call_args.args[0]
+        command = popen.call_args.args[0]
         self.assertIn("scripts/verify_graph_health_ecs.py", command)
         self.assertIn("--graph-command", command)
         self.assertIn("backfill-entity-typed-properties", command)
@@ -777,6 +777,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             stack_file=Path("aws/Pulumi.go-prod.yaml"),
             graph_health_heal_concurrency=2,
             graph_health_heal_failed_run_retry_seconds=600,
+            graph_health_heal_process_timeout_seconds=300,
             graph_health_heal_wait_timeout_seconds=900,
         )
         diagnostics = (
@@ -787,18 +788,65 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         with (
             patch("scripts.run_aws_deploy_verifications._source_id_for_runtime", return_value="aws"),
             patch(
-                "scripts.run_aws_deploy_verifications.subprocess.run",
-                return_value=subprocess.CompletedProcess(["heal"], 0),
-            ) as run,
+                "scripts.run_aws_deploy_verifications.subprocess.Popen",
+                side_effect=[FakeProcess(0), FakeProcess(0)],
+            ) as popen,
         ):
             healed = run_aws_deploy_verifications._attempt_graph_health_heal(args, diagnostics)
 
         self.assertTrue(healed)
-        self.assertEqual(run.call_count, 2)
-        for call in run.call_args_list:
+        self.assertEqual(popen.call_count, 2)
+        for call in popen.call_args_list:
             command = call.args[0]
             self.assertEqual(command[command.index("--failed-run-retry-seconds") + 1], "600")
             self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "900")
+            self.assertTrue(call.kwargs["start_new_session"])
+
+    def test_graph_heal_stops_starting_work_after_overall_deadline(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            graph_health_heal_concurrency=1,
+            graph_health_heal_failed_run_retry_seconds=600,
+            graph_health_heal_process_timeout_seconds=300,
+            graph_health_heal_wait_timeout_seconds=900,
+        )
+        diagnostics = (
+            "ERROR: latest graph ingest run failed for 1 runtime(s): "
+            "runtime-a:graph-ingest:runtime-a:20260601T000000Z:status=failed"
+        )
+        with (
+            patch("scripts.run_aws_deploy_verifications._source_id_for_runtime", return_value="aws"),
+            patch("scripts.run_aws_deploy_verifications.time.monotonic", side_effect=[0.0, 301.0]),
+            patch("scripts.run_aws_deploy_verifications.subprocess.Popen") as popen,
+        ):
+            healed = run_aws_deploy_verifications._attempt_graph_health_heal(args, diagnostics)
+
+        self.assertFalse(healed)
+        popen.assert_not_called()
+
+    def test_graph_heal_terminates_process_tree_at_overall_deadline(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            graph_health_heal_concurrency=1,
+            graph_health_heal_failed_run_retry_seconds=600,
+            graph_health_heal_process_timeout_seconds=300,
+            graph_health_heal_wait_timeout_seconds=900,
+        )
+        diagnostics = (
+            "ERROR: latest graph ingest run failed for 1 runtime(s): "
+            "runtime-a:graph-ingest:runtime-a:20260601T000000Z:status=failed"
+        )
+        process = FakeProcess(0, timeout_once=True)
+        with (
+            patch("scripts.run_aws_deploy_verifications._source_id_for_runtime", return_value="aws"),
+            patch("scripts.run_aws_deploy_verifications.time.monotonic", return_value=0.0),
+            patch("scripts.run_aws_deploy_verifications.subprocess.Popen", return_value=process),
+            patch("scripts.run_aws_deploy_verifications._terminate_process_tree") as terminate,
+        ):
+            healed = run_aws_deploy_verifications._attempt_graph_health_heal(args, diagnostics)
+
+        self.assertFalse(healed)
+        terminate.assert_called_once_with(process, timeout_seconds=10)
 
     def test_graph_degradation_can_create_followup_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

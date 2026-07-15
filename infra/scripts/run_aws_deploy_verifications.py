@@ -38,6 +38,7 @@ class GraphHealthResult:
 DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
 DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS = 600
+DEFAULT_GRAPH_HEALTH_HEAL_PROCESS_TIMEOUT_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_HEAL_WAIT_TIMEOUT_SECONDS = 900
 DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
 DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS = 900
@@ -571,25 +572,57 @@ def _graph_health_entity_typed_property_backfill_command(args: argparse.Namespac
     ]
 
 
+def _run_graph_health_heal_command(
+    command: list[str],
+    *,
+    deadline: float,
+    deadline_exhausted: threading.Event,
+    label: str,
+) -> bool:
+    remaining_seconds = deadline - time.monotonic()
+    if remaining_seconds <= 0:
+        deadline_exhausted.set()
+        print(f"WARNING: graph-health heal deadline exhausted before starting {label}", file=sys.stderr)
+        return False
+
+    print(f"Running graph-health heal command for {label}: {' '.join(command)}", file=sys.stderr, flush=True)
+    process = subprocess.Popen(command, text=True, start_new_session=True)
+    try:
+        status = process.wait(timeout=remaining_seconds)
+    except subprocess.TimeoutExpired:
+        deadline_exhausted.set()
+        _terminate_process_tree(process, timeout_seconds=10)
+        print(f"WARNING: graph-health heal deadline exhausted while running {label}", file=sys.stderr)
+        return False
+    if status != 0:
+        print(f"WARNING: graph-health heal command failed for {label} with exit code {status}", file=sys.stderr)
+        return False
+    return True
+
+
 def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bool:
     runtime_ids = _graph_health_runtime_ids(diagnostics)
     healed_any = False
+    deadline = time.monotonic() + args.graph_health_heal_process_timeout_seconds
+    deadline_exhausted = threading.Event()
     if _graph_health_needs_primary_link_repair(diagnostics):
         command = _graph_health_primary_link_repair_command(args)
-        print(f"Running graph-health primary-link repair command: {' '.join(command)}", file=sys.stderr, flush=True)
-        completed = subprocess.run(command, text=True)
-        if completed.returncode != 0:
-            print(f"WARNING: graph-health primary-link repair command failed with exit code {completed.returncode}", file=sys.stderr)
-        else:
+        if _run_graph_health_heal_command(
+            command,
+            deadline=deadline,
+            deadline_exhausted=deadline_exhausted,
+            label="primary-link repair",
+        ):
             healed_any = True
 
     if _graph_health_needs_typed_property_backfill(diagnostics):
         command = _graph_health_entity_typed_property_backfill_command(args)
-        print(f"Running graph-health entity typed-property backfill command: {' '.join(command)}", file=sys.stderr, flush=True)
-        completed = subprocess.run(command, text=True)
-        if completed.returncode != 0:
-            print(f"WARNING: graph-health entity typed-property backfill command failed with exit code {completed.returncode}", file=sys.stderr)
-        else:
+        if _run_graph_health_heal_command(
+            command,
+            deadline=deadline,
+            deadline_exhausted=deadline_exhausted,
+            label="entity typed-property backfill",
+        ):
             healed_any = True
 
     def heal_runtime(runtime_id: str) -> bool:
@@ -598,18 +631,25 @@ def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bo
             print(f"WARNING: cannot heal graph health for {runtime_id}: source runtime is not declared", file=sys.stderr)
             return False
         command = _graph_health_heal_command(args, runtime_id, source_id)
-        print(f"Running graph-health heal command: {' '.join(command)}", file=sys.stderr, flush=True)
-        completed = subprocess.run(command, text=True)
-        if completed.returncode != 0:
-            print(f"WARNING: graph-health heal command failed for {runtime_id} with exit code {completed.returncode}", file=sys.stderr)
-            return False
-        return True
+        return _run_graph_health_heal_command(
+            command,
+            deadline=deadline,
+            deadline_exhausted=deadline_exhausted,
+            label=runtime_id,
+        )
 
     with ThreadPoolExecutor(max_workers=min(args.graph_health_heal_concurrency, max(1, len(runtime_ids)))) as executor:
         futures = {executor.submit(heal_runtime, runtime_id): runtime_id for runtime_id in runtime_ids}
         for future in as_completed(futures):
             if future.result():
                 healed_any = True
+    if deadline_exhausted.is_set():
+        print(
+            f"WARNING: graph-health heal exceeded its {args.graph_health_heal_process_timeout_seconds}s overall deadline; "
+            "reporting the original graph-health result as degraded",
+            file=sys.stderr,
+        )
+        return False
     return healed_any
 
 
@@ -856,6 +896,12 @@ def main(argv: list[str] | None = None) -> int:
         type=_positive_int,
         default=DEFAULT_GRAPH_HEALTH_HEAL_WAIT_TIMEOUT_SECONDS,
         help="Bound each graph-health source-runtime heal command while still allowing retry attempts to finish.",
+    )
+    parser.add_argument(
+        "--graph-health-heal-process-timeout-seconds",
+        type=_positive_int,
+        default=DEFAULT_GRAPH_HEALTH_HEAL_PROCESS_TIMEOUT_SECONDS,
+        help="Bound all graph-health repair work so a degraded check cannot hold the deployment lock indefinitely.",
     )
     parser.add_argument("--graph-health-issue", action="store_true", help="Create a GitHub issue when graph health is degraded.")
     parser.add_argument("--graph-health-artifact-name", default="graph-health", help="Artifact name to include in graph-health follow-up issues.")
