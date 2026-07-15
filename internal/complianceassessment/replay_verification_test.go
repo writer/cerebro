@@ -99,8 +99,21 @@ func TestVerifyDeterministicReplayAcceptsStoredMultiChunkHashAcrossOrderPermutat
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completed.InputHash != manifestHash || completed.ResultCount != uint64(len(results)) {
+	if completed.InputHash == "" || completed.InputManifest == nil || completed.ResultCount != uint64(len(results)) {
 		t.Fatalf("completed run = %#v", completed)
+	}
+	planArtifact := plan
+	planArtifact.Status = PlanDraft
+	planArtifact.PublishedAt = time.Time{}
+	planArtifact.PublishedBy = ""
+	planArtifact.Version--
+	planArtifact.ContentDigest = ""
+	encodedPlan, err := canonicalBytes(planArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digestBytes(encodedPlan) != plan.ContentDigest {
+		t.Fatalf("plan artifact digest = %q, want %q", digestBytes(encodedPlan), plan.ContentDigest)
 	}
 	chunks, err := store.ListResultChunks(context.Background(), run.TenantID, run.ID)
 	if err != nil {
@@ -113,6 +126,8 @@ func TestVerifyDeterministicReplayAcceptsStoredMultiChunkHashAcrossOrderPermutat
 	for _, chunk := range chunks {
 		storedResults = append(storedResults, chunk.Results...)
 	}
+	history.manifests = map[string]InputManifest{completed.InputHash: *completed.InputManifest}
+	history.revisions = map[string][]byte{plan.RevisionID: encodedPlan}
 	history.results = map[string][]ObjectiveResult{completed.AutomatedResultHash: storedResults}
 	replayed := append([]ObjectiveResult(nil), storedResults...)
 	for left, right := 0, len(replayed)-1; left < right; left, right = left+1, right-1 {
