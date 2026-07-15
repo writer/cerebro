@@ -141,9 +141,6 @@ func serve() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if _, err := app.RecoverPlatformJobs(ctx); err != nil {
-		return fmt.Errorf("recover platform jobs: %w", err)
-	}
 	jobRecoveryDone := app.StartPlatformJobRecovery(ctx, log.Printf)
 	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
