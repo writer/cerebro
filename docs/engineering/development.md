@@ -108,6 +108,18 @@ New fuzz crashes are written under
 into `internal/graphagent/staticvalidator/fuzz/corpus/validate/` and add a
 deterministic regression assertion before fixing the parser.
 
+The source record kernel has two focused checks:
+
+```bash
+make sourceruntime-record-kernel-check
+make rust-source-kernel-evidence
+```
+
+The first compiles the native tests and the embedded `wasm32-unknown-unknown`
+guest. The second reports the guest's imports, exports, and byte size next to
+the runtime floor produced by the repository's pinned standard Go toolchain.
+The comparison is a capability-surface check, not a throughput benchmark.
+
 Focused validation:
 
 ```bash
