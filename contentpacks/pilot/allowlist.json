@@ -1,0 +1,24 @@
+{
+  "schema_version": "cerebro.content-pack-allowlist/v1",
+  "tenant_id": "content-pack-pilot",
+  "keys": [
+    {
+      "id": "content-pack-pilot-2026",
+      "public_key_base64": "dL4/k4T3fvroG8bH+CAAI2nGD64ylwrvYN6MnrP5Wkg="
+    }
+  ],
+  "packs": [
+    {
+      "pack_id": "connector.deepseek.generated",
+      "versions": ["1.0.0"],
+      "digests": ["sha256:d9638130d0a4f6a045ad39980aeeb3c04425823254697d69b920abc077aa5eeb"],
+      "key_ids": ["content-pack-pilot-2026"]
+    },
+    {
+      "pack_id": "policy-control.ai.generated",
+      "versions": ["1.0.0"],
+      "digests": ["sha256:41cfe4d30f21ae99afd6c6935efce8ce5b737ab8f409cdb85b08fca8c589b919"],
+      "key_ids": ["content-pack-pilot-2026"]
+    }
+  ]
+}
