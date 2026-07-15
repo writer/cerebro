@@ -381,6 +381,36 @@ func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
 	}
 }
 
+func TestRuntimeFreshnessFromHealthSchedulesBackfillForPartialGraphCheckpoint(t *testing.T) {
+	latestGraphRun := sourcehealthview.GraphRunFromStore(graphstore.IngestRun{
+		ID:                      "graph-run-partial",
+		Status:                  graphstore.IngestRunStatusCompleted,
+		CheckpointCursor:        "page-2",
+		CheckpointComplete:      false,
+		CheckpointCompleteKnown: true,
+	})
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-07-14T12:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{{
+			RuntimeID:      "runtime-partial",
+			SourceID:       "okta",
+			EnabledState:   "enabled",
+			Status:         "healthy",
+			LatestGraphRun: latestGraphRun,
+		}},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if latestGraphRun.CheckpointComplete == nil || *latestGraphRun.CheckpointComplete || latestGraphRun.CheckpointCursor != "page-2" {
+		t.Fatalf("latest graph run = %+v, want explicit partial checkpoint", latestGraphRun)
+	}
+	record := response.Runtimes[0]
+	if record.GraphIngestState != "behind" || record.FreshnessState != "graph_behind" || !record.BackfillEligible || record.RecommendedWorkflow != "source-runtime-backfill" {
+		t.Fatalf("partial graph freshness = %+v, want graph backfill work", record)
+	}
+}
+
 func TestRuntimeFreshnessFromHealthSchedulesBackfillForExplicitIncompleteGraphCheckpoint(t *testing.T) {
 	latestGraphRun := sourcehealthview.GraphRunFromStore(graphstore.IngestRun{
 		ID:                      "graph-run-incomplete",
