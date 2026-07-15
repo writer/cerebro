@@ -3,7 +3,6 @@
 
 # Runtime, contracts, release, and supply-chain surfaces require explicit review.
 /.github/ @writer/security
-/.goreleaser.yaml @writer/security
 /Dockerfile @writer/security
 /Dockerfile.runtime @writer/security
 /Makefile @writer/security

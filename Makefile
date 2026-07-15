@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := help
 
+.PHONY: release-train-test
+.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-fmt-check rust-clippy rust-test rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check
 
@@ -28,7 +30,6 @@ GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
-GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/goreleaser/goreleaser/v2@v2.16.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
@@ -249,7 +250,17 @@ finding-rule-scaffold-test: ## Run finding rule scaffold generator tests.
 	go test ./cmd/cerebro -run 'Test(ParseFindingRuleNewArgs|ScaffoldFindingRule|FindingRuleScaffold|RenderFindingRuleGo)' -count=1 -v
 
 sourcegen-test: ## Run source generator and generated runtime projection tests.
-	go test ./internal/sourcegen ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen -count=1
+	go test ./internal/sourcegen ./internal/sourcegen/grammarproof ./internal/sourcegen/reproproof ./internal/providercontractlock ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen ./tools/sourcegrammarcheck ./tools/sourcegenreprocheck ./tools/sourceproofcheck -count=1
+
+sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
+	go run ./tools/sourcegrammarcheck
+
+sourcegen-repro-check: ## Prove sourcegen output invariance and mutation rejection.
+	go run ./tools/sourcegenreprocheck
+
+sourcegen-proof-check: ## Verify one generated source against its proof receipt and provider contract lock.
+	@test -n "$(SOURCE_ID)" || (echo "SOURCE_ID is required" >&2; exit 2)
+	go run ./tools/sourceproofcheck -source-id "$(SOURCE_ID)"
 
 openapi-definition-gen-test: ## Run OpenAPI connector definition generator tests.
 	go test ./internal/connectordefinitions/openapigen ./tools/openapidefgen -count=1 -v
@@ -659,8 +670,10 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 	fi
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
-release-smoke: ## Validate GoReleaser configuration.
-	$(GORELEASER) check
+release-train-test: ## Validate release notes and release-train workflow contracts.
+	bash scripts/release/test_validate_release_notes.sh
+
+release-smoke: release-train-test ## Validate release-train configuration.
 
 load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
 	$(PYTHON) scripts/load_smoke.py \

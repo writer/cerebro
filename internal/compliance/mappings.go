@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-var ErrInvalidMapping = errors.New("invalid compliance mapping")
+var (
+	ErrInvalidMapping = errors.New("invalid compliance mapping")
+	ErrSelfMapping    = errors.New("source and target must differ")
+)
 
 type MappingRelationship string
 
@@ -48,6 +51,7 @@ type ControlMapping struct {
 }
 
 func (mapping ControlMapping) Validate() error {
+	mapping = NormalizeControlMapping(mapping)
 	if strings.TrimSpace(mapping.ID) == "" || strings.TrimSpace(mapping.RevisionID) == "" {
 		return fmt.Errorf("%w: id and revision_id are required", ErrInvalidMapping)
 	}
@@ -58,7 +62,7 @@ func (mapping ControlMapping) Validate() error {
 		return fmt.Errorf("%w: target: %w", ErrInvalidMapping, err)
 	}
 	if mapping.Source.ID == mapping.Target.ID && mapping.Source.RevisionID == mapping.Target.RevisionID {
-		return fmt.Errorf("%w: source and target must differ", ErrInvalidMapping)
+		return fmt.Errorf("%w: %w", ErrInvalidMapping, ErrSelfMapping)
 	}
 	switch mapping.Relationship {
 	case MappingEquivalent, MappingSubset, MappingSuperset, MappingOverlap, MappingNone:

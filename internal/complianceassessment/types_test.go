@@ -144,7 +144,6 @@ func TestInputManifestRejectsOverflowingCollectionTotal(t *testing.T) {
 		t.Fatalf("ValidateInputManifest() error = %v, want ErrInvalidManifest", err)
 	}
 }
-
 func validManifest() InputManifest {
 	digestA := "sha256:" + strings.Repeat("a", 64)
 	digestB := "sha256:" + strings.Repeat("b", 64)
