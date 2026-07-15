@@ -48,6 +48,7 @@ type grcTablesReady struct {
 	vendorDiscovery      bool
 	questionnaireRun     bool
 	evidenceLedger       bool
+	complianceAssessment bool
 	auditState           bool
 	auditPackets         bool
 }
