@@ -3067,6 +3067,277 @@ paths:
       responses:
         '200':
           description: GRC-friendly finding list.
+  /grc/work-items:
+    post:
+      summary: Create work from a failed assessment result
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, program_id, scope_revision_id, subject_id, owner_id, due_at, priority, assessment_run_id, automated_result_hash, result]
+              properties:
+                tenant_id:
+                  type: string
+                program_id:
+                  type: string
+                scope_revision_id:
+                  type: string
+                subject_id:
+                  type: string
+                source_id:
+                  type: string
+                owner_id:
+                  type: string
+                due_at:
+                  type: string
+                  format: date-time
+                priority:
+                  type: string
+                assessment_run_id:
+                  type: string
+                automated_result_hash:
+                  type: string
+                result:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Stable work item with the failed-result occurrence.
+        '400':
+          description: The result is not actionable or the work basis is incomplete.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '503':
+          description: The remediation runtime is unavailable.
+  /grc/work-items/{workItemID}:
+    get:
+      summary: Get compliance work
+      tags:
+        - GRC
+      parameters:
+        - name: workItemID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Current work item with occurrences and action history.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '404':
+          description: Work item not found in the tenant.
+        '503':
+          description: The remediation runtime is unavailable.
+  /grc/work-items/{workItemID}/commands:
+    post:
+      summary: Apply a compliance work command
+      tags:
+        - GRC
+      parameters:
+        - name: workItemID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation, expected_version]
+              properties:
+                operation:
+                  type: string
+                  enum: [action, invalidate]
+                expected_version:
+                  type: integer
+                  format: uint64
+                action:
+                  type: string
+                  enum: [assign, request_evidence, block, snooze, accept, remediate, verify, close, supersede]
+                owner_id:
+                  type: string
+                rationale:
+                  type: string
+                blocker_reason:
+                  type: string
+                snooze_until:
+                  type: string
+                  format: date-time
+                due_at:
+                  type: string
+                  format: date-time
+                evidence_ids:
+                  type: array
+                  items:
+                    type: string
+                trigger:
+                  type: string
+                  enum: [evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost]
+                source_ref:
+                  type: string
+      responses:
+        '200':
+          description: Updated work item and retained history.
+        '400':
+          description: The command violates the work lifecycle or independent verification rule.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '404':
+          description: Work item not found in the tenant.
+        '409':
+          description: The expected version is stale.
+        '503':
+          description: The remediation runtime is unavailable.
+  /grc/remediation-plans:
+    post:
+      summary: Create a remediation plan
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, tenant_id, program_id, scope_revision_id, risk_id, work_item_id, treatment, owner_id, target_at, milestones]
+              properties:
+                id:
+                  type: string
+                tenant_id:
+                  type: string
+                program_id:
+                  type: string
+                scope_revision_id:
+                  type: string
+                risk_id:
+                  type: string
+                work_item_id:
+                  type: string
+                treatment:
+                  type: string
+                owner_id:
+                  type: string
+                target_at:
+                  type: string
+                  format: date-time
+                compensating_controls:
+                  type: array
+                  items:
+                    type: string
+                retest_required:
+                  type: boolean
+                milestones:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, title, owner_id, target_at, planned_action]
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      owner_id:
+                        type: string
+                      target_at:
+                        type: string
+                        format: date-time
+                      depends_on_ids:
+                        type: array
+                        items:
+                          type: string
+                      planned_action:
+                        type: string
+      responses:
+        '201':
+          description: Draft remediation plan with independent verification required.
+        '400':
+          description: The remediation plan is incomplete.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '503':
+          description: The remediation runtime is unavailable.
+  /grc/remediation-plans/{planID}:
+    get:
+      summary: Get a remediation plan
+      tags:
+        - GRC
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Current remediation plan and milestone states.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '404':
+          description: Remediation plan not found in the tenant.
+        '503':
+          description: The remediation runtime is unavailable.
+  /grc/remediation-plans/{planID}/commands:
+    post:
+      summary: Apply a remediation plan command
+      tags:
+        - GRC
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation, expected_version]
+              properties:
+                operation:
+                  type: string
+                  enum: [activate, start_milestone, complete_milestone, verify_milestone, close, invalidate]
+                expected_version:
+                  type: integer
+                  format: uint64
+                milestone_id:
+                  type: string
+                completed_action:
+                  type: string
+                evidence_ids:
+                  type: array
+                  items:
+                    type: string
+                trigger:
+                  type: string
+                  enum: [evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost]
+                source_ref:
+                  type: string
+      responses:
+        '200':
+          description: Updated remediation plan and milestone states.
+        '400':
+          description: The command violates plan sequencing or independent verification.
+        '403':
+          description: The authenticated principal cannot access the tenant.
+        '404':
+          description: Remediation plan not found in the tenant.
+        '409':
+          description: The expected version is stale.
+        '503':
+          description: The remediation runtime is unavailable.
   /grc/findings/triage:
     post:
       summary: Bulk update finding triage dispositions
