@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,17 @@ func TestControlMappingRelationshipCoverageInvariants(t *testing.T) {
 	base.ReviewerID = ""
 	if err := base.Validate(); err == nil {
 		t.Fatal("decided mapping without reviewer was accepted")
+	}
+}
+
+func TestControlMappingRejectsWhitespaceEquivalentSelfMapping(t *testing.T) {
+	mapping := validControlMapping()
+	mapping.Source.ID = " control-a "
+	mapping.Source.RevisionID = " revision-a "
+	mapping.Target.ID = "control-a"
+	mapping.Target.RevisionID = "revision-a"
+	if err := mapping.Validate(); !errors.Is(err, ErrInvalidMapping) || !errors.Is(err, ErrSelfMapping) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidMapping and ErrSelfMapping", err)
 	}
 }
 
