@@ -311,26 +311,6 @@ func TestFindingEvaluationRunJSONSurfacesGraphDefaultsWithoutPresenceFields(t *t
 	}
 }
 
-func TestGraphIngestRunMessageIncludesCheckpointState(t *testing.T) {
-	message := graphIngestRunMessage(graphstore.IngestRun{
-		ID:                 "graph-run-1",
-		CheckpointID:       "checkpoint-1",
-		CheckpointCursor:   "page-2",
-		CheckpointComplete: false,
-	})
-	if message.GetCheckpointId() != "checkpoint-1" || message.GetCheckpointCursor() != "page-2" || message.GetCheckpointComplete() {
-		t.Fatalf("graphIngestRunMessage() checkpoint = %#v, want persisted partial checkpoint", message)
-	}
-	message = graphIngestRunMessage(graphstore.IngestRun{
-		ID:                 "graph-run-2",
-		CheckpointID:       "checkpoint-2",
-		CheckpointComplete: true,
-	})
-	if message.GetCheckpointCursor() != "" || !message.GetCheckpointComplete() {
-		t.Fatalf("graphIngestRunMessage() checkpoint = %#v, want complete terminal checkpoint", message)
-	}
-}
-
 func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))

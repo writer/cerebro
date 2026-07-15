@@ -1260,7 +1260,7 @@ func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.R
 		return nil, graphIngestConnectError(normalizeIDLookupError(err, graphingest.ErrRunNotFound))
 	}
 	return connect.NewResponse(&cerebrov1.GetGraphIngestRunResponse{
-		Run: graphIngestRunMessage(run),
+		Run: graphingest.RunMessage(run),
 	}), nil
 }
 
@@ -2734,7 +2734,7 @@ func graphIngestRunResultMessage(result *graphingest.RunResult) *cerebrov1.Graph
 		return &cerebrov1.GraphIngestRunResult{}
 	}
 	return &cerebrov1.GraphIngestRunResult{
-		Run:    graphIngestRunMessage(result.Run),
+		Run:    graphingest.RunMessage(result.Run),
 		Ingest: graphIngestResultMessage(result.Ingest),
 	}
 }
@@ -2744,7 +2744,7 @@ func graphIngestListResponse(result *graphingest.ListResult) *cerebrov1.ListGrap
 		return &cerebrov1.ListGraphIngestRunsResponse{}
 	}
 	return &cerebrov1.ListGraphIngestRunsResponse{
-		Runs:        graphIngestRunMessages(result.Runs),
+		Runs:        graphingest.RunMessages(result.Runs),
 		FailedCount: result.FailedCount,
 	}
 }
@@ -2758,40 +2758,7 @@ func graphIngestHealthResponse(result *graphingest.HealthResult) *cerebrov1.Chec
 		CheckedAt:    timestamppb.New(result.CheckedAt),
 		FailedCount:  result.FailedCount,
 		RunningCount: result.RunningCount,
-		FailedRuns:   graphIngestRunMessages(result.FailedRuns),
-	}
-}
-
-func graphIngestRunMessages(runs []graphstore.IngestRun) []*cerebrov1.GraphIngestRun {
-	messages := make([]*cerebrov1.GraphIngestRun, 0, len(runs))
-	for _, run := range runs {
-		messages = append(messages, graphIngestRunMessage(run))
-	}
-	return messages
-}
-
-func graphIngestRunMessage(run graphstore.IngestRun) *cerebrov1.GraphIngestRun {
-	return &cerebrov1.GraphIngestRun{
-		Id:                 run.ID,
-		RuntimeId:          run.RuntimeID,
-		SourceId:           run.SourceID,
-		TenantId:           run.TenantID,
-		CheckpointId:       run.CheckpointID,
-		CheckpointCursor:   run.CheckpointCursor,
-		CheckpointComplete: proto.Bool(run.CheckpointComplete),
-		Status:             run.Status,
-		Trigger:            run.Trigger,
-		PagesRead:          run.PagesRead,
-		EventsRead:         run.EventsRead,
-		EntitiesProjected:  run.EntitiesProjected,
-		LinksProjected:     run.LinksProjected,
-		GraphNodesBefore:   run.GraphNodesBefore,
-		GraphLinksBefore:   run.GraphLinksBefore,
-		GraphNodesAfter:    run.GraphNodesAfter,
-		GraphLinksAfter:    run.GraphLinksAfter,
-		StartedAt:          run.StartedAt,
-		FinishedAt:         run.FinishedAt,
-		Error:              run.Error,
+		FailedRuns:   graphingest.RunMessages(result.FailedRuns),
 	}
 }
 

@@ -442,7 +442,7 @@ func (a *App) handleGetGraphIngestRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetGraphIngestRunResponse{
-		Run: graphIngestRunMessage(run),
+		Run: graphingest.RunMessage(run),
 	})
 }
 
