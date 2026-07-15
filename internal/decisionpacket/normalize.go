@@ -64,6 +64,7 @@ func normalizePacket(packet Packet) Packet {
 	packet.Decision.Reasons = normalizeStrings(packet.Decision.Reasons)
 	packet.Confidence.Level = strings.ToLower(strings.TrimSpace(packet.Confidence.Level))
 	packet.Confidence.Basis = normalizeStrings(packet.Confidence.Basis)
+	packet.Freshness.State = strings.ToLower(strings.TrimSpace(packet.Freshness.State))
 	packet.Freshness.OldestObservedAt = packet.Freshness.OldestObservedAt.UTC()
 	packet.Freshness.NewestObservedAt = packet.Freshness.NewestObservedAt.UTC()
 	packet.Provenance.ResolverIDs = normalizeStrings(packet.Provenance.ResolverIDs)
@@ -72,6 +73,10 @@ func normalizePacket(packet Packet) Packet {
 		packet.Evidence[index] = normalizeEvidenceReference(packet.Evidence[index])
 	}
 	packet.Evidence = dedupeEvidence(packet.Evidence)
+	for index := range packet.Contradictions {
+		packet.Contradictions[index].Left = normalizeEvidenceReference(packet.Contradictions[index].Left)
+		packet.Contradictions[index].Right = normalizeEvidenceReference(packet.Contradictions[index].Right)
+	}
 	for index := range packet.Actions {
 		packet.Actions[index].TargetURNs = normalizeStrings(packet.Actions[index].TargetURNs)
 		packet.Actions[index].ApprovalRequirements = normalizeStrings(packet.Actions[index].ApprovalRequirements)

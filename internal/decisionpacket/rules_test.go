@@ -105,11 +105,15 @@ func TestDetectContradictionsRequiresOverlappingValidity(t *testing.T) {
 	}
 
 	left.ValidTo = start.Add(time.Hour)
-	right.ValidFrom = start.Add(2 * time.Hour)
+	right.ValidFrom = left.ValidTo
 	left.ObservedAt = start
 	right.ObservedAt = start.Add(2 * time.Hour)
 	if got := DetectContradictions([]ClaimObservation{left, right}); len(got) != 0 {
 		t.Fatalf("superseded observations produced contradictions: %+v", got)
+	}
+	right.SourceID = "source-2"
+	if got := DetectContradictions([]ClaimObservation{left, right}); len(got) != 1 {
+		t.Fatalf("boundary observations from different sources = %+v, want one contradiction", got)
 	}
 }
 
@@ -168,8 +172,13 @@ func TestCanonicalizePacketNormalizesFreshnessAndAuditTimesToUTC(t *testing.T) {
 		Workflow:    Workflow{ID: "triage", Question: "Review finding"},
 		Scope:       Scope{TenantID: "tenant-1", ActorID: "analyst-1"},
 		Freshness: Freshness{
-			State: "fresh", OldestObservedAt: instant.In(offset), NewestObservedAt: instant.Add(time.Hour).In(offset),
+			State: " FRESH ", OldestObservedAt: instant.In(offset), NewestObservedAt: instant.Add(time.Hour).In(offset),
 		},
+		Contradictions: []Contradiction{{
+			ID:    "conflict-1",
+			Left:  EvidenceReference{ID: "left", Kind: " Finding ", ObservedAt: instant.In(offset)},
+			Right: EvidenceReference{ID: "right", Kind: " Finding ", ObservedAt: instant.Add(time.Hour).In(offset)},
+		}},
 		AuditPackets: []AuditPacketReference{{ID: "audit-1", Digest: "sha256:test", GeneratedAt: instant.In(offset)}},
 	}
 	localPacket, localJSON, err := CanonicalizePacket(packet)
@@ -178,6 +187,12 @@ func TestCanonicalizePacketNormalizesFreshnessAndAuditTimesToUTC(t *testing.T) {
 	}
 	packet.Freshness.OldestObservedAt = instant
 	packet.Freshness.NewestObservedAt = instant.Add(time.Hour)
+	packet.Freshness.State = "fresh"
+	packet.Contradictions = []Contradiction{{
+		ID:    "conflict-1",
+		Left:  EvidenceReference{ID: "left", Kind: "finding", ObservedAt: instant},
+		Right: EvidenceReference{ID: "right", Kind: "finding", ObservedAt: instant.Add(time.Hour)},
+	}}
 	packet.AuditPackets = []AuditPacketReference{{ID: "audit-1", Digest: "sha256:test", GeneratedAt: instant}}
 	utcPacket, utcJSON, err := CanonicalizePacket(packet)
 	if err != nil {
@@ -186,7 +201,7 @@ func TestCanonicalizePacketNormalizesFreshnessAndAuditTimesToUTC(t *testing.T) {
 	if localPacket.ID != utcPacket.ID || string(localJSON) != string(utcJSON) {
 		t.Fatalf("timezone changed canonical packet: local=%s UTC=%s", localJSON, utcJSON)
 	}
-	if localPacket.Freshness.OldestObservedAt.Location() != time.UTC || localPacket.Freshness.NewestObservedAt.Location() != time.UTC || localPacket.AuditPackets[0].GeneratedAt.Location() != time.UTC {
+	if localPacket.Freshness.State != "fresh" || localPacket.Contradictions[0].Left.Kind != "finding" || localPacket.Contradictions[0].Left.ObservedAt.Location() != time.UTC || localPacket.Freshness.OldestObservedAt.Location() != time.UTC || localPacket.Freshness.NewestObservedAt.Location() != time.UTC || localPacket.AuditPackets[0].GeneratedAt.Location() != time.UTC {
 		t.Fatalf("canonical times are not UTC: freshness=%+v audit=%+v", localPacket.Freshness, localPacket.AuditPackets[0])
 	}
 }
