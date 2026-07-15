@@ -11,3 +11,12 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.93.1"
 license = "Apache-2.0"
+
+# The release artifact built by this workspace is embedded as WebAssembly.
+# Favor a small, deterministic binary over incremental release build speed.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
