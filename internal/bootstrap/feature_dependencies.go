@@ -113,6 +113,7 @@ type findingFeatureDeps struct {
 	ProjectionGraph ports.ProjectionGraphStore
 	GraphQueries    ports.GraphQueryStore
 	AppendLog       ports.AppendLog
+	Rules           *findings.Registry
 }
 
 func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
@@ -127,18 +128,12 @@ func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
 		GraphQueries:    graphQueryStore(deps.GraphStore),
 		AppendLog:       deps.AppendLog,
+		Rules:           deps.FindingRules,
 	}
 }
 
 func newFindingCoreFeatureService(deps findingFeatureDeps) *findings.Service {
-	return findings.New(
-		deps.Runtimes,
-		deps.EventReplayer,
-		deps.Findings,
-		deps.EvaluationRuns,
-		deps.Evidence,
-		deps.Claims,
-	)
+	return findings.NewWithOptionalRegistry(deps.Runtimes, deps.EventReplayer, deps.Findings, deps.EvaluationRuns, deps.Evidence, deps.Claims, deps.Rules)
 }
 
 func newFindingCandidateFeatureService(deps findingFeatureDeps) *findings.Service {

@@ -1959,7 +1959,7 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 		defer cancel()
 	}
 	started := time.Now()
-	ctx, span := telemetry.Start(ctx, "neo4j.read", attrs)
+	ctx, span := telemetry.StartQuiet(ctx, "neo4j.read", attrs)
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
 	result, err := session.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -1972,7 +1972,7 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 	}
 	recordNeo4jOperation(ctx, s.database, "read", "completed", "", time.Since(started))
 	neo4jAnnotateMain(ctx, s.database, "read", "completed")
-	telemetry.End(span, "completed", telemetry.Attrs())
+	telemetry.EndQuiet(span, "completed", telemetry.Attrs())
 	return result, nil
 }
 

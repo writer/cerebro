@@ -2,12 +2,15 @@ package graphquery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -42,24 +45,49 @@ type EffectiveAccessPathFilters struct {
 }
 
 type EffectiveAccessPathCounts struct {
-	Paths                int `json:"paths"`
-	DirectAssignments    int `json:"direct_assignments"`
-	GroupMediatedPaths   int `json:"group_mediated_paths"`
-	RolePaths            int `json:"role_paths"`
-	AdminRolePaths       int `json:"admin_role_paths"`
-	CapabilitiesReturned int `json:"capabilities_returned"`
+	Paths                  int `json:"paths"`
+	LineageQualifiedPaths  int `json:"lineage_qualified_paths"`
+	LineageIncompletePaths int `json:"lineage_incomplete_paths"`
+	DirectAssignments      int `json:"direct_assignments"`
+	GroupMediatedPaths     int `json:"group_mediated_paths"`
+	RolePaths              int `json:"role_paths"`
+	AdminRolePaths         int `json:"admin_role_paths"`
+	CapabilitiesReturned   int `json:"capabilities_returned"`
 }
 
 type EffectiveAccessPath struct {
-	Identity       GraphEntityRef            `json:"identity"`
-	Principal      GraphEntityRef            `json:"principal"`
-	Mediator       *GraphEntityRef           `json:"mediator,omitempty"`
-	AccessTarget   GraphEntityRef            `json:"access_target"`
-	Entitlement    GraphEntityRef            `json:"entitlement"`
-	Capability     GraphEntityRef            `json:"capability"`
-	AssignmentKind string                    `json:"assignment_kind"`
-	RelationChain  []string                  `json:"relation_chain"`
-	Edges          []EffectiveAccessPathEdge `json:"edges"`
+	Identity              GraphEntityRef                      `json:"identity"`
+	Principal             GraphEntityRef                      `json:"principal"`
+	Mediator              *GraphEntityRef                     `json:"mediator,omitempty"`
+	AccessTarget          GraphEntityRef                      `json:"access_target"`
+	Entitlement           GraphEntityRef                      `json:"entitlement"`
+	Capability            GraphEntityRef                      `json:"capability"`
+	AssignmentKind        string                              `json:"assignment_kind"`
+	IdentityRelationChain []string                            `json:"identity_relation_chain,omitempty"`
+	IdentityEdges         []EffectiveAccessPathEdge           `json:"identity_edges,omitempty"`
+	RelationChain         []string                            `json:"relation_chain"`
+	Edges                 []EffectiveAccessPathEdge           `json:"edges"`
+	Lineage               EffectiveAccessLineageQualification `json:"lineage"`
+}
+
+type EffectiveAccessLineageGap struct {
+	Segment   string   `json:"segment"`
+	EdgeIndex int      `json:"edge_index"`
+	Fields    []string `json:"fields"`
+}
+
+// EffectiveAccessLineageQualification describes whether every relation in an
+// access path can be traced to a source observation. An incomplete path remains
+// visible to callers, but it cannot be presented as qualified proof.
+type EffectiveAccessLineageQualification struct {
+	Qualified         bool                        `json:"qualified"`
+	EdgeCount         int                         `json:"edge_count"`
+	CompleteEdgeCount int                         `json:"complete_edge_count"`
+	SourceIDs         []string                    `json:"source_ids"`
+	RuntimeIDs        []string                    `json:"runtime_ids"`
+	EventIDs          []string                    `json:"event_ids"`
+	Gaps              []EffectiveAccessLineageGap `json:"gaps,omitempty"`
+	ProofDigest       string                      `json:"proof_digest,omitempty"`
 }
 
 type EffectiveAccessPathEdge struct {
@@ -146,6 +174,131 @@ func (p EffectiveAccessPath) AccessClassification() []string {
 
 func (p EffectiveAccessPath) SupportsOperationProof(changedDuringPeriod bool) bool {
 	return changedDuringPeriod && (p.IsPrivileged() || p.IsSensitive())
+}
+
+// QualifyLineage fails closed unless the graph path is structurally complete
+// and every edge carries source, runtime, event, and observation-time lineage.
+func (p EffectiveAccessPath) QualifyLineage() EffectiveAccessLineageQualification {
+	qualification := EffectiveAccessLineageQualification{EdgeCount: len(p.IdentityEdges) + len(p.Edges)}
+	sources, runtimes, events := []string{}, []string{}, []string{}
+	for _, segment := range []struct {
+		name  string
+		edges []EffectiveAccessPathEdge
+	}{
+		{name: "identity", edges: p.IdentityEdges},
+		{name: "access", edges: p.Edges},
+	} {
+		for index, edge := range segment.edges {
+			missing := []string{}
+			for field, value := range map[string]string{
+				"from_urn":    edge.From.URN,
+				"relation":    edge.Relation,
+				"to_urn":      edge.To.URN,
+				"source_id":   edge.SourceID,
+				"runtime_id":  edge.RuntimeID,
+				"event_id":    edge.EventID,
+				"observed_at": edge.At,
+			} {
+				if strings.TrimSpace(value) == "" {
+					missing = append(missing, field)
+				}
+			}
+			if edge.At != "" {
+				if _, err := time.Parse(time.RFC3339, edge.At); err != nil {
+					missing = append(missing, "observed_at")
+				}
+			}
+			if index > 0 && segment.edges[index-1].To.URN != edge.From.URN {
+				missing = append(missing, "edge_continuity")
+			}
+			missing = uniqueEffectiveAccessLabels(missing)
+			if len(missing) != 0 {
+				qualification.Gaps = append(qualification.Gaps, EffectiveAccessLineageGap{Segment: segment.name, EdgeIndex: index, Fields: missing})
+				continue
+			}
+			qualification.CompleteEdgeCount++
+			sources = append(sources, edge.SourceID)
+			runtimes = append(runtimes, edge.RuntimeID)
+			events = append(events, edge.EventID)
+		}
+	}
+	qualification.SourceIDs = uniqueEffectiveAccessLabels(sources)
+	qualification.RuntimeIDs = uniqueEffectiveAccessLabels(runtimes)
+	qualification.EventIDs = uniqueEffectiveAccessLabels(events)
+	identityGaps := []string{}
+	if p.Identity.URN != p.Principal.URN && len(p.IdentityEdges) == 0 {
+		identityGaps = append(identityGaps, "identity_path")
+	}
+	if len(p.IdentityEdges) != 0 {
+		if p.IdentityEdges[0].From.URN != p.Identity.URN {
+			identityGaps = append(identityGaps, "identity")
+		}
+		if p.IdentityEdges[len(p.IdentityEdges)-1].To.URN != p.Principal.URN {
+			identityGaps = append(identityGaps, "principal")
+		}
+		if !effectiveAccessPathEdgesMatch(p.IdentityRelationChain, p.IdentityEdges) {
+			identityGaps = append(identityGaps, "relation_chain")
+		}
+	}
+	if identityGaps = uniqueEffectiveAccessLabels(identityGaps); len(identityGaps) != 0 {
+		qualification.Gaps = append(qualification.Gaps, EffectiveAccessLineageGap{Segment: "identity", EdgeIndex: -1, Fields: identityGaps})
+	}
+	accessGaps := []string{}
+	if len(p.Edges) == 0 {
+		accessGaps = append(accessGaps, "edges")
+	} else {
+		if p.Edges[0].From.URN != p.Principal.URN {
+			accessGaps = append(accessGaps, "principal")
+		}
+		if p.Edges[len(p.Edges)-1].To.URN != p.Capability.URN {
+			accessGaps = append(accessGaps, "capability")
+		}
+	}
+	if !effectiveAccessPathEdgesMatch(p.RelationChain, p.Edges) {
+		accessGaps = append(accessGaps, "relation_chain")
+	}
+	if !accessPathContainsURN(p.Edges, p.AccessTarget.URN) {
+		accessGaps = append(accessGaps, "access_target")
+	}
+	if !accessPathContainsURN(p.Edges, p.Entitlement.URN) {
+		accessGaps = append(accessGaps, "entitlement")
+	}
+	if accessGaps = uniqueEffectiveAccessLabels(accessGaps); len(accessGaps) != 0 {
+		qualification.Gaps = append(qualification.Gaps, EffectiveAccessLineageGap{Segment: "access", EdgeIndex: -1, Fields: accessGaps})
+	}
+	qualification.Qualified = len(qualification.Gaps) == 0
+	if qualification.Qualified {
+		payload, err := json.Marshal(struct {
+			Identity              GraphEntityRef            `json:"identity"`
+			Principal             GraphEntityRef            `json:"principal"`
+			Mediator              *GraphEntityRef           `json:"mediator,omitempty"`
+			AccessTarget          GraphEntityRef            `json:"access_target"`
+			Entitlement           GraphEntityRef            `json:"entitlement"`
+			Capability            GraphEntityRef            `json:"capability"`
+			AssignmentKind        string                    `json:"assignment_kind"`
+			IdentityRelationChain []string                  `json:"identity_relation_chain,omitempty"`
+			IdentityEdges         []EffectiveAccessPathEdge `json:"identity_edges,omitempty"`
+			RelationChain         []string                  `json:"relation_chain"`
+			Edges                 []EffectiveAccessPathEdge `json:"edges"`
+		}{p.Identity, p.Principal, p.Mediator, p.AccessTarget, p.Entitlement, p.Capability, p.AssignmentKind, p.IdentityRelationChain, p.IdentityEdges, p.RelationChain, p.Edges})
+		if err == nil {
+			digest := sha256.Sum256(payload)
+			qualification.ProofDigest = "sha256:" + hex.EncodeToString(digest[:])
+		}
+	}
+	return qualification
+}
+
+func accessPathContainsURN(edges []EffectiveAccessPathEdge, urn string) bool {
+	if strings.TrimSpace(urn) == "" {
+		return false
+	}
+	for _, edge := range edges {
+		if edge.From.URN == urn || edge.To.URN == urn {
+			return true
+		}
+	}
+	return false
 }
 
 func EffectiveAccessPathRequestFromQuery(values url.Values) (EffectiveAccessPathRequest, error) {
@@ -289,33 +442,33 @@ ORDER BY subject.label, subject.urn
 LIMIT $sample_limit
 CALL {
   WITH subject
-  RETURN subject AS principal
+  RETURN subject AS principal, [] AS identity_rels, [subject] AS identity_nodes
   UNION
   WITH subject
   MATCH (principal:Entity {tenant_id: $tenant_id})-[identity_link:RELATION]->(subject)
   WHERE identity_link.tenant_id = $tenant_id
     AND identity_link.relation IN ['represents_identity', 'same_actor']
-  RETURN principal
+  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
   UNION
   WITH subject
   MATCH (subject)-[identity_link:RELATION]->(principal:Entity {tenant_id: $tenant_id})
   WHERE identity_link.tenant_id = $tenant_id
     AND identity_link.relation = 'same_actor'
-  RETURN principal
+  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
   UNION
   WITH subject
   MATCH (subject)-[subject_link:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
   WHERE subject_link.tenant_id = $tenant_id
     AND principal_link.tenant_id = $tenant_id
-  RETURN principal
+  RETURN principal, [subject_link, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
   UNION
   WITH subject
   MATCH (subject)-[same_actor:RELATION {relation: 'same_actor'}]-(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
   WHERE same_actor.tenant_id = $tenant_id
     AND principal_link.tenant_id = $tenant_id
-  RETURN principal
+  RETURN principal, [same_actor, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
 }
-WITH DISTINCT subject, principal
+WITH DISTINCT subject, principal, identity_rels, identity_nodes
 WHERE principal.tenant_id = $tenant_id
 CALL {
   WITH subject, principal
@@ -388,6 +541,19 @@ RETURN subject.urn AS identity_urn,
        capability.entity_type AS capability_entity_type,
        capability.label AS capability_label,
        assignment_kind AS assignment_kind,
+       [rel IN identity_rels | rel.relation] AS identity_relation_chain,
+       [idx IN range(0, size(identity_rels) - 1) | {
+         from_urn: identity_nodes[idx].urn,
+         from_entity_type: identity_nodes[idx].entity_type,
+         from_label: identity_nodes[idx].label,
+         relation: identity_rels[idx].relation,
+         to_urn: identity_nodes[idx + 1].urn,
+         to_entity_type: identity_nodes[idx + 1].entity_type,
+         to_label: identity_nodes[idx + 1].label,
+         source_id: coalesce(identity_rels[idx].source_id, ''),
+         runtime_id: coalesce(identity_rels[idx].runtime_id, ''),
+         attributes_json: coalesce(identity_rels[idx].attributes_json, '{}')
+       }] AS identity_edges,
        [rel IN rels | rel.relation] AS relation_chain,
        [idx IN range(0, size(rels) - 1) | {
          from_urn: path_nodes[idx].urn,
@@ -433,9 +599,11 @@ func effectiveAccessPathsFromRows(rows []ports.CypherRow) []EffectiveAccessPath 
 				EntityType: cypherString(row, "capability_entity_type"),
 				Label:      cypherString(row, "capability_label"),
 			},
-			AssignmentKind: strings.TrimSpace(cypherString(row, "assignment_kind")),
-			RelationChain:  cypherStringList(row.Values["relation_chain"]),
-			Edges:          effectiveAccessPathEdgesFromRow(row),
+			AssignmentKind:        strings.TrimSpace(cypherString(row, "assignment_kind")),
+			IdentityRelationChain: cypherStringList(row.Values["identity_relation_chain"]),
+			IdentityEdges:         effectiveAccessPathEdgesFromRow(row, "identity_edges"),
+			RelationChain:         cypherStringList(row.Values["relation_chain"]),
+			Edges:                 effectiveAccessPathEdgesFromRow(row, "edges"),
 		}
 		if mediator := prefixedGraphRef(row, "mediator"); mediator.URN != "" {
 			path.Mediator = &mediator
@@ -443,13 +611,14 @@ func effectiveAccessPathsFromRows(rows []ports.CypherRow) []EffectiveAccessPath 
 		if path.Identity.URN == "" || path.Principal.URN == "" || path.AccessTarget.URN == "" || path.Entitlement.URN == "" || path.Capability.URN == "" || len(path.RelationChain) == 0 || !effectiveAccessPathEdgesMatch(path.RelationChain, path.Edges) {
 			continue
 		}
+		path.Lineage = path.QualifyLineage()
 		paths = append(paths, path)
 	}
 	return paths
 }
 
-func effectiveAccessPathEdgesFromRow(row ports.CypherRow) []EffectiveAccessPathEdge {
-	items, ok := row.Values["edges"].([]any)
+func effectiveAccessPathEdgesFromRow(row ports.CypherRow, key string) []EffectiveAccessPathEdge {
+	items, ok := row.Values[key].([]any)
 	if !ok || len(items) == 0 {
 		return nil
 	}
@@ -520,6 +689,15 @@ func effectiveAccessPathCounts(paths []EffectiveAccessPath) EffectiveAccessPathC
 	counts := EffectiveAccessPathCounts{Paths: len(paths)}
 	capabilities := map[string]struct{}{}
 	for _, path := range paths {
+		lineage := path.Lineage
+		if lineage.EdgeCount == 0 {
+			lineage = path.QualifyLineage()
+		}
+		if lineage.Qualified {
+			counts.LineageQualifiedPaths++
+		} else {
+			counts.LineageIncompletePaths++
+		}
 		switch path.AssignmentKind {
 		case "direct_app_assignment":
 			counts.DirectAssignments++

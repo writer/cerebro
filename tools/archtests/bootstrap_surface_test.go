@@ -98,10 +98,16 @@ import (
 // auth discovery stays at the HTTP boundary. Agent task review hardening keeps
 // tenant-before-mutation checks and auth-challenge classification in bootstrap
 // because those depend on bootstrap auth sentinels and HTTP route policy.
+// Assessment runtime composition adds capability-gated service and job-runner
+// wiring plus tenant and idempotency checks at the existing job HTTP boundary;
+// event replay, projection recovery, and run transitions stay in
+// internal/complianceassessment.
 // Embedded source-coverage evaluation adds only explicit unavailable-error
 // propagation at HTTP, MCP, and A2A boundaries; classification remains in
 // internal/sourcecoverage and never falls back to empty coverage.
-const bootstrapProductionGoLineBudget = 27413
+// The MCP task split propagates those existing source-runtime errors through
+// its packet builder and health response boundary.
+const bootstrapProductionGoLineBudget = 27473
 
 type bootstrapFileLineCount struct {
 	path  string

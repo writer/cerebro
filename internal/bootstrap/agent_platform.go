@@ -12,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/a2agateway"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/agentplatformcoverage"
+	"github.com/writer/cerebro/internal/authz"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -297,11 +298,5 @@ func resolveAgentPlatformRequestContext(ctx context.Context, requestedTenantID s
 }
 
 func agentPlatformPrincipalActorID(principal authPrincipal, fallback string) string {
-	for _, value := range []string{principal.Name, principal.ClientID, principal.DeviceID, principal.CredentialID} {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
-		}
-	}
-	return strings.TrimSpace(fallback)
+	return authz.PrincipalActorID(principal.Name, principal.ClientID, principal.DeviceID, principal.CredentialID, fallback)
 }

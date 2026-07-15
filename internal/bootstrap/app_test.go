@@ -36,6 +36,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/primitives"
@@ -737,6 +738,7 @@ type stubRuntimeStore struct {
 	findingCandidates               map[string]*ports.FindingCandidateRecord
 	findingCandidateListRequest     ports.ListFindingCandidatesRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
+	grcAuditPackets                 map[string]*ports.GRCAuditPacketReceipt
 	runtimeIndexWatermark           uint64
 	runtimeIndexWatermarks          []uint64
 }
@@ -779,6 +781,51 @@ func (s *leaseAwareRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, _ 
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
+
+func (s *stubRuntimeStore) ApplyAuditProjectionEvent(_ context.Context, event *cerebrov1.EventEnvelope) (bool, error) {
+	if s.err != nil {
+		return false, s.err
+	}
+	recorded, err := workflowevents.DecodeComplianceAggregate(event)
+	if err != nil {
+		return false, err
+	}
+	var packet grcauditpacket.Packet
+	if err := json.Unmarshal([]byte(recorded.PayloadJSON), &packet); err != nil {
+		return false, err
+	}
+	if err := grcauditpacket.Verify(packet); err != nil {
+		return false, err
+	}
+	if s.grcAuditPackets == nil {
+		s.grcAuditPackets = make(map[string]*ports.GRCAuditPacketReceipt)
+	}
+	if _, exists := s.grcAuditPackets[packet.ID]; exists {
+		return false, nil
+	}
+	payload, err := json.Marshal(packet)
+	if err != nil {
+		return false, err
+	}
+	s.grcAuditPackets[packet.ID] = &ports.GRCAuditPacketReceipt{
+		ID: packet.ID, TenantID: packet.TenantID, FindingID: packet.FindingReference.ID,
+		Digest: packet.Digest, Payload: payload, CreatedAt: packet.GeneratedAt,
+	}
+	return true, nil
+}
+
+func (s *stubRuntimeStore) GetGRCAuditPacket(_ context.Context, packetID string) (*ports.GRCAuditPacketReceipt, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	receipt, ok := s.grcAuditPackets[packetID]
+	if !ok {
+		return nil, ports.ErrGRCAuditPacketNotFound
+	}
+	copy := *receipt
+	copy.Payload = append([]byte(nil), receipt.Payload...)
+	return &copy, nil
+}
 
 func (s *stubRuntimeStore) RuntimeIndexWatermark(context.Context) (uint64, error) {
 	if s.err != nil {
@@ -6520,6 +6567,23 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getFindingBody["due_at"]; got != "2026-05-02T12:00:00Z" {
 		t.Fatalf("get finding due_at = %#v, want 2026-05-02T12:00:00Z", got)
+	}
+	getFindingLinks, ok := getFindingPayload["links"].([]any)
+	if !ok || len(getFindingLinks) < 4 {
+		t.Fatalf("get finding links = %#v, want at least four authorized references", getFindingPayload["links"])
+	}
+	for _, rawLink := range getFindingLinks {
+		link, ok := rawLink.(map[string]any)
+		if !ok {
+			t.Fatalf("get finding link = %#v, want object", rawLink)
+		}
+		target, ok := link["target"].(map[string]any)
+		if !ok {
+			t.Fatalf("get finding link target = %#v, want object", link["target"])
+		}
+		if apiPath, _ := target["api_path"].(string); strings.HasPrefix(apiPath, "http://") || strings.HasPrefix(apiPath, "https://") {
+			t.Fatalf("get finding api_path = %q, want relative path", apiPath)
+		}
 	}
 	getFindingAttributes, ok := getFindingBody["attributes"].(map[string]any)
 	if !ok {
