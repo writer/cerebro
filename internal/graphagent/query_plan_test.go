@@ -769,11 +769,14 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 		query       string
 		wantQuery   string
 		wantChanged bool
+		wantCode    string
 	}{
 		{
-			name:      "quoted limit is not a clause",
-			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
-			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
+			name:        "quoted limit is not a clause",
+			query:       `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
+			wantQuery:   "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label\nLIMIT 100",
+			wantChanged: true,
+			wantCode:    "limit_injected",
 		},
 		{
 			name:      "commented limit does not override bounded clause",
@@ -785,17 +788,28 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 			query:       "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 500 // LIMIT 900",
 			wantQuery:   "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 100 // LIMIT 900",
 			wantChanged: true,
+			wantCode:    "limit_capped",
 		},
 		{
-			name:      "block commented limit is not a clause",
-			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
-			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
+			name:        "block commented limit is not a clause",
+			query:       `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
+			wantQuery:   "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */\nLIMIT 100",
+			wantChanged: true,
+			wantCode:    "limit_injected",
+		},
+		{
+			name:        "line commented limit is not a clause",
+			query:       `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e // LIMIT 500`,
+			wantQuery:   "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e // LIMIT 500\nLIMIT 100",
+			wantChanged: true,
+			wantCode:    "limit_injected",
 		},
 		{
 			name:        "limit variable does not hide later clause",
 			query:       `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 1000`,
 			wantQuery:   `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 100`,
 			wantChanged: true,
+			wantCode:    "limit_capped",
 		},
 	}
 
@@ -805,8 +819,8 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 			if query != tt.wantQuery || changed != tt.wantChanged {
 				t.Fatalf("enforceCypherLimit() = (%q, %#v, %t), want query %q and changed %t", query, diagnostic, changed, tt.wantQuery, tt.wantChanged)
 			}
-			if tt.wantChanged && diagnostic.Code != "limit_capped" {
-				t.Fatalf("diagnostic = %#v, want limit_capped", diagnostic)
+			if diagnostic.Code != tt.wantCode {
+				t.Fatalf("diagnostic = %#v, want code %q", diagnostic, tt.wantCode)
 			}
 		})
 	}

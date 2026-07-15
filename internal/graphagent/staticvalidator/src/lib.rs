@@ -353,6 +353,9 @@ fn has_apoc_invocation(tokens: &[Token]) -> bool {
 }
 
 fn query_limit(tokens: &[Token]) -> Option<u64> {
+    if !union_branches_have_numeric_limits(tokens) {
+        return None;
+    }
     let mut limit = None;
     for (i, token) in tokens.iter().enumerate() {
         if keyword_token(token, "LIMIT") {
@@ -360,6 +363,69 @@ fn query_limit(tokens: &[Token]) -> Option<u64> {
         }
     }
     limit
+}
+
+fn union_branches_have_numeric_limits(tokens: &[Token]) -> bool {
+    let depths = token_brace_depths(tokens);
+    for (union_index, token) in tokens.iter().enumerate() {
+        if !keyword_token(token, "UNION") {
+            continue;
+        }
+        let depth = depths[union_index];
+        let branch_start = (0..union_index)
+            .rev()
+            .find(|index| {
+                depths[*index] == depth && keyword_token(&tokens[*index], "UNION")
+                    || depth > 0
+                        && depths[*index] + 1 == depth
+                        && symbol_token_at(tokens, *index, "{")
+            })
+            .map_or(0, |index| index + 1);
+        let branch_end = (union_index + 1..tokens.len())
+            .find(|index| {
+                depths[*index] == depth
+                    && (keyword_token(&tokens[*index], "UNION")
+                        || symbol_token_at(tokens, *index, "}"))
+            })
+            .unwrap_or(tokens.len());
+        if !branch_has_numeric_limit(tokens, &depths, branch_start, union_index, depth)
+            || !branch_has_numeric_limit(tokens, &depths, union_index + 1, branch_end, depth)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn branch_has_numeric_limit(
+    tokens: &[Token],
+    depths: &[usize],
+    start: usize,
+    end: usize,
+    depth: usize,
+) -> bool {
+    (start..end).any(|index| {
+        depths[index] == depth
+            && keyword_token(&tokens[index], "LIMIT")
+            && numeric_limit_at(tokens, index).is_some()
+    })
+}
+
+fn token_brace_depths(tokens: &[Token]) -> Vec<usize> {
+    let mut depth: usize = 0;
+    let mut depths = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        depths.push(depth);
+        if token.kind != TokenKind::Symbol {
+            continue;
+        }
+        match token.text.as_str() {
+            "{" => depth += 1,
+            "}" => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    depths
 }
 
 fn oversized_limit(tokens: &[Token], max_rows: u64) -> Option<u64> {
@@ -962,7 +1028,39 @@ fn brace_depth_at(query: &str, index: usize) -> usize {
 }
 
 fn expression_local_pattern(query: &str, index: usize, call_subquery_depth: usize) -> bool {
-    square_bracket_depth_at(query, index) > 0 || brace_depth_at(query, index) > call_subquery_depth
+    square_bracket_depth_at(query, index) > 0
+        || brace_depth_at(query, index) > call_subquery_depth
+        || inside_function_parentheses_at(query, index)
+}
+
+fn inside_function_parentheses_at(query: &str, index: usize) -> bool {
+    let bytes = query.as_bytes();
+    let mut stack = Vec::new();
+    for (cursor, byte) in bytes.iter().enumerate().take(index) {
+        match byte {
+            b'(' => {
+                let inherited = stack.last().copied().unwrap_or(false);
+                stack.push(inherited || parenthesis_starts_function(query, cursor));
+            }
+            b')' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    stack.last().copied().unwrap_or(false)
+}
+
+fn parenthesis_starts_function(query: &str, index: usize) -> bool {
+    let bytes = query.as_bytes();
+    let mut end = index;
+    while end > 0 && is_whitespace(bytes[end - 1]) {
+        end -= 1;
+    }
+    if end == 0 || keyword_ends_at(query, end, "MATCH") {
+        return false;
+    }
+    is_identifier_byte(bytes[end - 1]) || bytes[end - 1] == b'`'
 }
 
 #[cfg(test)]
@@ -1087,6 +1185,43 @@ mod tests {
                 "{query}"
             );
         }
+    }
+
+    #[test]
+    fn union_branches_require_independent_limits() {
+        let rejected = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1",
+        ];
+        for query in rejected {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::LimitRequired,
+                "{query}"
+            );
+        }
+
+        let accepted = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2",
+        ];
+        for query in accepted {
+            assert_eq!(validate(query, 100).decision, Decision::Allow, "{query}");
+        }
+
+        let nested =
+            lex_cypher("CALL { RETURN 1 LIMIT 1 UNION RETURN 2 LIMIT 1 } RETURN 1 LIMIT 1");
+        assert_eq!(query_limit(&nested), Some(1));
+        let nested_missing_branch =
+            lex_cypher("CALL { RETURN 1 LIMIT 1 UNION RETURN 2 } RETURN 1 LIMIT 1");
+        assert_eq!(query_limit(&nested_missing_branch), None);
+    }
+
+    #[test]
+    fn function_pattern_variables_do_not_escape_expression_scope() {
+        let query = "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS cnt MATCH (b) RETURN b LIMIT 25";
+        assert_eq!(validate(query, 100).decision, Decision::TenantScopeRequired);
     }
 
     #[test]

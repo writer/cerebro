@@ -1309,7 +1309,14 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 		}, true
 	}
 	current, valueStart, valueEnd, ok := lastNumericCypherLimit(trimmed)
-	if !ok || current <= limit {
+	if !ok {
+		return trimmed + fmt.Sprintf("\nLIMIT %d", limit), ConversionDiagnostic{
+			Level:   "info",
+			Code:    "limit_injected",
+			Message: fmt.Sprintf("Added LIMIT %d to LLM fallback Cypher.", limit),
+		}, true
+	}
+	if current <= limit {
 		return cypher, ConversionDiagnostic{}, false
 	}
 	return trimmed[:valueStart] + fmt.Sprintf("%d", limit) + trimmed[valueEnd:], ConversionDiagnostic{
