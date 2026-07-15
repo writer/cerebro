@@ -27,6 +27,18 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestProjectionReconciliationRequiresAuthoritativeInventoryFamily(t *testing.T) {
+	source := &Source{}
+	for _, family := range []string{"", familyActivityLog, familyDirectoryAudit} {
+		if source.SupportsAuthoritativeProjectionReconciliation(sourcecdk.NewConfig(map[string]string{"family": family})) {
+			t.Fatalf("audit family %q must not reconcile current graph links", family)
+		}
+	}
+	if !source.SupportsAuthoritativeProjectionReconciliation(sourcecdk.NewConfig(map[string]string{"family": familyResourceExposure})) {
+		t.Fatal("resource exposure inventory must support current graph link reconciliation")
+	}
+}
+
 func TestCheckRequiresTenantAndToken(t *testing.T) {
 	source, err := New()
 	if err != nil {

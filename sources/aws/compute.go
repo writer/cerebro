@@ -700,7 +700,7 @@ func eksClusterEvent(settings settings, cluster ekstypes.Cluster) (*primitives.E
 		"domain":                  settings.accountID,
 		"endpoint":                awssdk.ToString(cluster.Endpoint),
 		"endpoint_private_access": strconv.FormatBool(eksEndpointPrivateAccess(cluster)),
-		"endpoint_public_access":  strconv.FormatBool(eksEndpointPublicAccess(cluster)),
+		"endpoint_public_access":  strconv.FormatBool(cluster.ResourcesVpcConfig != nil && cluster.ResourcesVpcConfig.EndpointPublicAccess),
 		"family":                  familyEKSCluster,
 		"platform_version":        awssdk.ToString(cluster.PlatformVersion),
 		"public_access_cidrs":     strings.Join(eksPublicAccessCIDRs(cluster), ","),
@@ -1474,10 +1474,6 @@ func eksClusterARN(settings settings, clusterName string) string {
 		return ""
 	}
 	return fmt.Sprintf("arn:aws:eks:%s:%s:cluster/%s", settings.region, settings.accountID, clusterName)
-}
-
-func eksEndpointPublicAccess(cluster ekstypes.Cluster) bool {
-	return cluster.ResourcesVpcConfig != nil && cluster.ResourcesVpcConfig.EndpointPublicAccess
 }
 
 func eksEndpointPrivateAccess(cluster ekstypes.Cluster) bool {
