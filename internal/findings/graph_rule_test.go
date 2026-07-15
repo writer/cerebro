@@ -7,7 +7,6 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -922,43 +921,6 @@ func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testi
 		if got := run.GetStatus(); got != "completed" {
 			t.Fatalf("Run.Status = %q, want completed", got)
 		}
-	}
-}
-
-func TestEvaluateSourceRuntimeGraphRulesTrustedSingleSegmentDependencyResolvesStaleFinding(t *testing.T) {
-	sourceAt := time.Now().UTC().Add(-2 * time.Minute)
-	runtime := trustedFindingRuntime("runtime-graph", "graph", "finding", sourceAt)
-	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
-		"stale-isolated-anchor": {
-			ID:             "stale-isolated-anchor",
-			TenantID:       runtime.GetTenantId(),
-			RuntimeID:      runtime.GetId(),
-			RuleID:         "finding-isolated-open-anchor",
-			Status:         findingStatusOpen,
-			LastObservedAt: sourceAt,
-		},
-	}}
-	rule := newFindingIsolatedOpenAnchorRule()
-	registry, err := NewRegistry(rule)
-	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
-	}
-	graphRuns := &sourceSnapshotGraphRunStore{runs: map[string]graphstore.IngestRun{
-		runtime.GetId(): completedGraphRun("graph-runtime", runtime.GetId(), "checkpoint-runtime", sourceAt.Add(time.Minute)),
-	}}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).
-		WithGraphQueryStore(&stubGraphStore{}).
-		WithGraphIngestRunStore(graphRuns).
-		WithTrustedSourceResolution()
-	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), RuntimeLeaseHeld: true})
-	if err != nil {
-		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
-	}
-	if len(result.Evaluations) != 1 || !result.Evaluations[0].Run.GetSourceDependencyComplete() || !findingEvaluationSourceSnapshotsTrusted(result.Evaluations[0].Run, true) {
-		t.Fatalf("trusted graph evaluation = %#v, want complete single-segment dependency envelope", result.Evaluations)
-	}
-	if got := store.findings["stale-isolated-anchor"].Status; got != findingStatusResolved {
-		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +57,18 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	slacksource "github.com/writer/cerebro/sources/slack"
 )
+
+func TestGraphIngestLeaseConflictMappings(t *testing.T) {
+	err := fmt.Errorf("graph writer blocked: %w", sourceruntime.ErrSyncInProgress)
+	if got := mappedHTTPStatusCode(err, graphIngestErrorMappings); got != http.StatusConflict {
+		t.Fatalf("mappedHTTPStatusCode() = %d, want %d", got, http.StatusConflict)
+	}
+	mapped := mappedConnectError(err, graphIngestErrorMappings)
+	var connectErr *connect.Error
+	if !errors.As(mapped, &connectErr) || connectErr.Code() != connect.CodeAborted {
+		t.Fatalf("mappedConnectError() = %#v, want connect Aborted", mapped)
+	}
+}
 
 func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
 	t.Helper()

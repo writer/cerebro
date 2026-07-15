@@ -166,6 +166,13 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	if s.requireTrustedResolution && !trustedInput {
 		run.SourceDependencyComplete = proto.Bool(false)
 	}
+	// Source-runtime and graph-ingest checkpoints do not yet fence every writer
+	// of the shared tenant graph. Finding lifecycle projection, connector
+	// deposits, uploads, repairs, and replay can change a query result without
+	// advancing those checkpoints. Keep graph runs inspectable, but do not let
+	// them qualify as assessment evidence or close findings until a tenant-wide
+	// graph generation fence can prove the read remained stable.
+	run.SourceDependencyComplete = proto.Bool(false)
 	if strings.TrimSpace(queryRequest.Query) != "" {
 		run.GraphRowLimit = proto.Uint32(boundedUint32(effectiveGraphRowLimit(queryRequest)))
 	}
@@ -177,7 +184,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		Run:  run,
 	}
 	if strings.TrimSpace(queryRequest.Query) == "" {
-		if retiredGraphRule(rule) {
+		if retiredGraphRule(rule) && s.canResolveFromFindingEvaluationRun(run, true) {
 			if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), nil, nil); err != nil {
 				evaluationErr := fmt.Errorf("resolve retired graph findings for rule %q: %w", spec.GetId(), err)
 				return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
@@ -312,7 +319,7 @@ func (s *Service) acquireGraphEvaluationDependencyLeases(ctx context.Context, tr
 			continue
 		}
 		for _, rule := range rules {
-			if graphRuleUsesRuntime(rule, candidate) {
+			if graphRuleDependsOnSourceRuntime(rule, candidate) {
 				selectedIDs = append(selectedIDs, strings.TrimSpace(candidate.GetId()))
 				break
 			}
@@ -373,21 +380,6 @@ func normalizedFindingStrings(values []string) []string {
 	return result
 }
 
-func graphRuleUsesRuntime(rule GraphRule, runtime *cerebrov1.SourceRuntime) bool {
-	if rule == nil || runtime == nil {
-		return false
-	}
-	if rule.SupportsRuntime(runtime) {
-		return true
-	}
-	for _, dependency := range graphRuleDependencyKeys(rule) {
-		if runtimeMatchesGraphDependency(runtime, dependency) {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time) {
 	if run == nil {
 		return
@@ -414,23 +406,13 @@ func (s *Service) bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx context.Con
 	if run == nil {
 		return
 	}
-	dependencies := graphRuleDependencyKeys(rule)
-	resolvedDependencies := make(map[string]struct{}, len(dependencies))
 	snapshots := make([]*cerebrov1.FindingEvaluationSourceSnapshot, 0, len(runtimes))
+	expectedDependencies := 0
 	for _, runtime := range runtimes {
-		if runtime == nil {
+		if !graphRuleDependsOnSourceRuntime(rule, runtime) {
 			continue
 		}
-		matchesDependency := false
-		for _, dependency := range dependencies {
-			if runtimeMatchesGraphDependency(runtime, dependency) {
-				resolvedDependencies[dependency] = struct{}{}
-				matchesDependency = true
-			}
-		}
-		if !matchesDependency && !rule.SupportsRuntime(runtime) {
-			continue
-		}
+		expectedDependencies++
 		snapshot := findingEvaluationSourceSnapshot(runtime)
 		if s.graphRunStore != nil {
 			runs, listErr := s.graphRunStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: snapshot.GetRuntimeId(), Limit: 1})
@@ -445,7 +427,7 @@ func (s *Service) bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx context.Con
 	}
 	sort.Slice(snapshots, func(i, j int) bool { return snapshots[i].GetRuntimeId() < snapshots[j].GetRuntimeId() })
 	run.SourceSnapshots = snapshots
-	run.SourceDependencyComplete = proto.Bool(len(resolvedDependencies) == len(dependencies))
+	run.SourceDependencyComplete = proto.Bool(expectedDependencies > 0 && len(snapshots) == expectedDependencies)
 }
 
 func (s *Service) verifyGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
@@ -474,55 +456,11 @@ func graphSnapshotMatchesRun(snapshot *cerebrov1.FindingEvaluationSourceSnapshot
 	return err == nil && finishedAt.UTC().Equal(snapshot.GetGraphIngestedAt().AsTime().UTC())
 }
 
-func graphRuleDependencyKeys(rule GraphRule) []string {
-	metadata, ok := ruleMetadata(rule)
-	if !ok {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	for _, eventKind := range metadata.EventKinds {
-		parts := strings.SplitN(strings.ToLower(strings.TrimSpace(eventKind)), ".", 2)
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			continue
-		}
-		seen[parts[0]+"\x00"+strings.ReplaceAll(parts[1], ".", "_")] = struct{}{}
-	}
-	keys := make([]string, 0, len(seen))
-	for key := range seen {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func runtimeMatchesGraphDependency(runtime *cerebrov1.SourceRuntime, dependency string) bool {
-	parts := strings.SplitN(dependency, "\x00", 2)
-	if runtime == nil || len(parts) != 2 {
-		return false
-	}
-	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
-	family := strings.ToLower(strings.TrimSpace(runtime.GetConfig()["family"]))
-	if sourceID == parts[0] && family == parts[1] {
-		return true
-	}
-	return runtimeMatchesAssetClassificationDependency(sourceID, family, parts[0], parts[1])
-}
-
-func runtimeMatchesAssetClassificationDependency(sourceID, family, dependencySource, dependencyFamily string) bool {
-	if dependencySource != "asset" || family != "asset_metadata" {
-		return false
-	}
-	switch dependencyFamily {
-	case "data_sensitivity", "crown_jewel":
-	default:
-		return false
-	}
-	for _, event := range builtinCloudCapabilities.events {
-		if strings.EqualFold(sourceID, event.SourceID) && strings.EqualFold(event.Kind, "asset.data_sensitivity") {
-			return true
-		}
-	}
-	return false
+func graphRuleDependsOnSourceRuntime(rule GraphRule, runtime *cerebrov1.SourceRuntime) bool {
+	// A graph query can read nodes and links projected by runtimes that do not
+	// trigger the rule. Until rules expose a complete typed dependency plan,
+	// every configured tenant runtime is part of the conservative input set.
+	return rule != nil && runtime != nil
 }
 
 func retiredGraphRule(rule GraphRule) bool {

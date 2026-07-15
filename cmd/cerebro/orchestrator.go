@@ -712,6 +712,7 @@ func runOrchestratorIteration(
 					ResetCheckpoint:          resetGraphCheckpoint,
 					ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
 					Trigger:                  "orchestrator",
+					RuntimeLeaseHeld:         true,
 				})
 			})
 			runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)

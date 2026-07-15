@@ -270,6 +270,45 @@ func TestLeaseRenewalIntervalCapsLongTTL(t *testing.T) {
 	}
 }
 
+func TestAcquireRenewableLeaseReturnsConflictWithoutRelease(t *testing.T) {
+	store := &stubLeaseStore{rejectNext: true}
+	workCtx, release, acquired, err := AcquireRenewableLease(context.Background(), store, "runtime-a", "owner-a", time.Minute)
+	if err != nil || acquired || workCtx == nil {
+		t.Fatalf("AcquireRenewableLease() = (%v, %t, %v), want context, false, nil", workCtx, acquired, err)
+	}
+	if err := release(); err != nil {
+		t.Fatalf("release() error = %v, want nil", err)
+	}
+	events := store.snapshotEvents()
+	if len(events) != 1 || events[0].verb != "acquire" || events[0].acquired {
+		t.Fatalf("events = %#v, want one rejected acquire and no release", events)
+	}
+}
+
+func TestAcquireRenewableLeaseCancelsWorkAndReleasesAfterRenewalFailure(t *testing.T) {
+	renewErr := errors.New("renew failed")
+	store := &stubLeaseStore{renewErr: renewErr}
+	workCtx, release, acquired, err := AcquireRenewableLease(context.Background(), store, "runtime-a", "owner-a", 30*time.Millisecond)
+	if err != nil || !acquired {
+		t.Fatalf("AcquireRenewableLease() = (%t, %v), want true, nil", acquired, err)
+	}
+	select {
+	case <-workCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("renewal failure did not cancel the work context")
+	}
+	if err := release(); !errors.Is(err, renewErr) {
+		t.Fatalf("release() error = %v, want renewal error %v", err, renewErr)
+	}
+	if err := release(); !errors.Is(err, renewErr) {
+		t.Fatalf("second release() error = %v, want stable renewal error %v", err, renewErr)
+	}
+	events := store.snapshotEvents()
+	if len(events) < 2 || events[0].verb != "acquire" || events[len(events)-1].verb != "release" {
+		t.Fatalf("events = %#v, want acquire followed by release", events)
+	}
+}
+
 func TestSyncWithLeaseSerializesConcurrentCallers(t *testing.T) {
 	store := &stubLeaseStore{}
 	service := New(nil, nil, nil, nil)

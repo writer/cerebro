@@ -1787,8 +1787,8 @@ var graphQueryErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(graphquery.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
-
 var graphIngestErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress), httpStatus: http.StatusConflict, code: connect.CodeAborted},
 	{match: matchesAnyError(graphingest.ErrRunNotFound, ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
 	{match: matchesAnyError(graphingest.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphingest.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},

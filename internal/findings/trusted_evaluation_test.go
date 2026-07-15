@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -203,35 +204,74 @@ func TestGraphEvaluationLeasesEverySourceDependency(t *testing.T) {
 	}
 }
 
-func TestGraphEvaluationLeasesCrossSourceAssetDependency(t *testing.T) {
+func TestGraphEvaluationLeasesRuntimeThatDoesNotTriggerRule(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()
-	trigger := trustedFindingRuntime("runtime-okta", "okta", "user", now)
-	assetMetadata := trustedFindingRuntime("runtime-aws-asset-metadata", "aws", "asset_metadata", now)
-	rule := &sourceSnapshotGraphRule{
-		multiSourceStubGraphRule: multiSourceStubGraphRule{
-			stubGraphRule: stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "cross-source-asset-rule"}}, supportedSources: []string{"okta"},
-		},
-		definition: RuleDefinition{ID: "cross-source-asset-rule", EventKinds: []string{"okta.user", "asset.data_sensitivity", "asset.crown_jewel"}},
+	okta := trustedFindingRuntime("runtime-okta", "okta", "user", now)
+	awsAsset := trustedFindingRuntime("runtime-aws-asset", "aws", "asset_metadata", now)
+	rule, ok := asGraphRule(newIdentityPrivilegedNoMFAAccessRule())
+	if !ok {
+		t.Fatal("identity privileged no-MFA rule is not a graph rule")
 	}
 	runtimeStore := &findingLeaseRuntimeStore{
-		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			trigger.GetId():       trigger,
-			assetMetadata.GetId(): assetMetadata,
-		}},
-		available:      true,
-		renewAvailable: true,
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{okta.GetId(): okta, awsAsset.GetId(): awsAsset}},
+		available:        true,
+		renewAvailable:   true,
 	}
 	service := &Service{runtimeStore: runtimeStore, requireTrustedResolution: true}
-	_, release, runtimes, trusted, err := service.acquireGraphEvaluationDependencyLeases(context.Background(), trigger, []GraphRule{rule})
+
+	_, release, runtimes, trusted, err := service.acquireGraphEvaluationDependencyLeases(context.Background(), okta, []GraphRule{rule})
 	if err != nil || !trusted || len(runtimes) != 2 {
-		t.Fatalf("dependency lease = (%d runtimes, %v, %v), want trigger and trusted asset metadata", len(runtimes), trusted, err)
+		t.Fatalf("dependency lease = (%d runtimes, %v, %v), want identity and physical asset dependencies", len(runtimes), trusted, err)
 	}
 	if err := release(); err != nil {
 		t.Fatalf("release() error = %v", err)
 	}
-	if len(runtimeStore.acquiredRuntimeIDs) != 1 || runtimeStore.acquiredRuntimeIDs[0] != assetMetadata.GetId() {
-		t.Fatalf("acquired runtime ids = %#v, want cross-source dependency %q", runtimeStore.acquiredRuntimeIDs, assetMetadata.GetId())
+	if len(runtimeStore.acquiredRuntimeIDs) != 1 || runtimeStore.acquiredRuntimeIDs[0] != awsAsset.GetId() {
+		t.Fatalf("acquired runtime ids = %#v, want physical asset dependency %q", runtimeStore.acquiredRuntimeIDs, awsAsset.GetId())
+	}
+}
+
+func TestTrustedGraphEvaluationReportsSharedProjectionAsUnfenced(t *testing.T) {
+	t.Parallel()
+	sourceAt := time.Now().UTC().Add(-10 * time.Minute)
+	runtime := trustedFindingRuntime("runtime-okta", "okta", "user", sourceAt)
+	runtimeStore := &findingLeaseRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
+		available:        true,
+		renewAvailable:   true,
+	}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1", RowLimit: 1},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{}
+	runStore := &sourceSnapshotGraphRunStore{runs: map[string]graphstore.IngestRun{
+		runtime.GetId(): completedGraphRun("graph-okta", runtime.GetId(), "checkpoint-okta", sourceAt.Add(time.Minute)),
+	}}
+	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).
+		WithGraphQueryStore(&stubGraphStore{}).
+		WithGraphIngestRunStore(runStore).
+		WithTrustedSourceResolution()
+
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", len(result.Evaluations))
+	}
+	run := result.Evaluations[0].Run
+	if run.SourceDependencyComplete == nil || run.GetSourceDependencyComplete() {
+		t.Fatalf("SourceDependencyComplete = %v, want false until every tenant graph writer joins one generation fence", run.SourceDependencyComplete)
+	}
+	if findingEvaluationSourceSnapshotsTrusted(run, true) {
+		t.Fatal("unfenced shared graph evaluation qualified as trusted assessment evidence")
 	}
 }
 
