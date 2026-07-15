@@ -2753,6 +2753,7 @@ func (x *GetFindingRequest) GetId() string {
 type GetFindingResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Finding       *Finding               `protobuf:"bytes,1,opt,name=finding,proto3" json:"finding,omitempty"`
+	Links         []*ResourceLink        `protobuf:"bytes,2,rep,name=links,proto3" json:"links,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2790,6 +2791,13 @@ func (*GetFindingResponse) Descriptor() ([]byte, []int) {
 func (x *GetFindingResponse) GetFinding() *Finding {
 	if x != nil {
 		return x.Finding
+	}
+	return nil
+}
+
+func (x *GetFindingResponse) GetLinks() []*ResourceLink {
+	if x != nil {
+		return x.Links
 	}
 	return nil
 }
@@ -7311,9 +7319,10 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x05order\x18\n" +
 	" \x01(\x0e2\x18.cerebro.v1.FindingOrderR\x05order\"#\n" +
 	"\x11GetFindingRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"C\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"s\n" +
 	"\x12GetFindingResponse\x12-\n" +
-	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"\xdb\x01\n" +
+	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\x12.\n" +
+	"\x05links\x18\x02 \x03(\v2\x18.cerebro.v1.ResourceLinkR\x05links\"\xdb\x01\n" +
 	"\x15ResolveFindingRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12'\n" +
@@ -7908,9 +7917,10 @@ var file_cerebro_v1_bootstrap_proto_goTypes = []any{
 	(FindingStatus)(0),                                     // 127: cerebro.v1.FindingStatus
 	(FindingOrder)(0),                                      // 128: cerebro.v1.FindingOrder
 	(*Finding)(nil),                                        // 129: cerebro.v1.Finding
-	(*FindingExternalRef)(nil),                             // 130: cerebro.v1.FindingExternalRef
-	(*FindingCandidate)(nil),                               // 131: cerebro.v1.FindingCandidate
-	(*FindingCandidateRun)(nil),                            // 132: cerebro.v1.FindingCandidateRun
+	(*ResourceLink)(nil),                                   // 130: cerebro.v1.ResourceLink
+	(*FindingExternalRef)(nil),                             // 131: cerebro.v1.FindingExternalRef
+	(*FindingCandidate)(nil),                               // 132: cerebro.v1.FindingCandidate
+	(*FindingCandidateRun)(nil),                            // 133: cerebro.v1.FindingCandidateRun
 }
 var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
 	116, // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
@@ -7957,171 +7967,172 @@ var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
 	127, // 41: cerebro.v1.ListFindingsRequest.status:type_name -> cerebro.v1.FindingStatus
 	128, // 42: cerebro.v1.ListFindingsRequest.order:type_name -> cerebro.v1.FindingOrder
 	129, // 43: cerebro.v1.GetFindingResponse.finding:type_name -> cerebro.v1.Finding
-	116, // 44: cerebro.v1.ResolveFindingRequest.last_observed_before:type_name -> google.protobuf.Timestamp
-	129, // 45: cerebro.v1.ResolveFindingResponse.finding:type_name -> cerebro.v1.Finding
-	116, // 46: cerebro.v1.SuppressFindingRequest.last_observed_before:type_name -> google.protobuf.Timestamp
-	129, // 47: cerebro.v1.SuppressFindingResponse.finding:type_name -> cerebro.v1.Finding
-	129, // 48: cerebro.v1.AssignFindingResponse.finding:type_name -> cerebro.v1.Finding
-	116, // 49: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
-	129, // 50: cerebro.v1.SetFindingDueDateResponse.finding:type_name -> cerebro.v1.Finding
-	129, // 51: cerebro.v1.AddFindingNoteResponse.finding:type_name -> cerebro.v1.Finding
-	129, // 52: cerebro.v1.LinkFindingTicketResponse.finding:type_name -> cerebro.v1.Finding
-	116, // 53: cerebro.v1.LinkFindingExternalRefRequest.observed_at:type_name -> google.protobuf.Timestamp
-	129, // 54: cerebro.v1.LinkFindingExternalRefResponse.finding:type_name -> cerebro.v1.Finding
-	113, // 55: cerebro.v1.ExecuteGraphActionRequest.parameters:type_name -> cerebro.v1.ExecuteGraphActionRequest.ParametersEntry
-	116, // 56: cerebro.v1.GraphAction.created_at:type_name -> google.protobuf.Timestamp
-	116, // 57: cerebro.v1.GraphAction.updated_at:type_name -> google.protobuf.Timestamp
-	116, // 58: cerebro.v1.GraphAction.completed_at:type_name -> google.protobuf.Timestamp
-	114, // 59: cerebro.v1.GraphAction.metadata:type_name -> cerebro.v1.GraphAction.MetadataEntry
-	129, // 60: cerebro.v1.ExecuteGraphActionResponse.finding:type_name -> cerebro.v1.Finding
-	63,  // 61: cerebro.v1.ExecuteGraphActionResponse.action:type_name -> cerebro.v1.GraphAction
-	130, // 62: cerebro.v1.ExecuteGraphActionResponse.external_ref:type_name -> cerebro.v1.FindingExternalRef
-	129, // 63: cerebro.v1.ReconcileGraphActionResponse.finding:type_name -> cerebro.v1.Finding
-	63,  // 64: cerebro.v1.ReconcileGraphActionResponse.action:type_name -> cerebro.v1.GraphAction
-	130, // 65: cerebro.v1.ReconcileGraphActionResponse.external_ref:type_name -> cerebro.v1.FindingExternalRef
-	129, // 66: cerebro.v1.ListFindingsResponse.findings:type_name -> cerebro.v1.Finding
-	131, // 67: cerebro.v1.ListFindingCandidatesResponse.candidates:type_name -> cerebro.v1.FindingCandidate
-	131, // 68: cerebro.v1.GetFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
-	118, // 69: cerebro.v1.FindingCandidateRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
-	132, // 70: cerebro.v1.FindingCandidateRuleEvaluation.run:type_name -> cerebro.v1.FindingCandidateRun
-	131, // 71: cerebro.v1.FindingCandidateRuleEvaluation.candidates:type_name -> cerebro.v1.FindingCandidate
-	33,  // 72: cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	72,  // 73: cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse.evaluations:type_name -> cerebro.v1.FindingCandidateRuleEvaluation
-	129, // 74: cerebro.v1.PromoteFindingCandidateResponse.finding:type_name -> cerebro.v1.Finding
-	131, // 75: cerebro.v1.PromoteFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
-	131, // 76: cerebro.v1.RejectFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
-	118, // 77: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
-	129, // 78: cerebro.v1.FindingRuleEvaluation.findings:type_name -> cerebro.v1.Finding
-	119, // 79: cerebro.v1.FindingRuleEvaluation.run:type_name -> cerebro.v1.FindingEvaluationRun
-	120, // 80: cerebro.v1.FindingRuleEvaluation.evidence:type_name -> cerebro.v1.FindingEvidence
-	33,  // 81: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	80,  // 82: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.evaluations:type_name -> cerebro.v1.FindingRuleEvaluation
-	33,  // 83: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	118, // 84: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
-	129, // 85: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.findings:type_name -> cerebro.v1.Finding
-	119, // 86: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
-	120, // 87: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.evidence:type_name -> cerebro.v1.FindingEvidence
-	116, // 88: cerebro.v1.WriteDecisionRequest.observed_at:type_name -> google.protobuf.Timestamp
-	116, // 89: cerebro.v1.WriteDecisionRequest.valid_from:type_name -> google.protobuf.Timestamp
-	116, // 90: cerebro.v1.WriteDecisionRequest.valid_to:type_name -> google.protobuf.Timestamp
-	117, // 91: cerebro.v1.WriteDecisionRequest.metadata:type_name -> google.protobuf.Struct
-	116, // 92: cerebro.v1.WriteActionRequest.observed_at:type_name -> google.protobuf.Timestamp
-	116, // 93: cerebro.v1.WriteActionRequest.valid_from:type_name -> google.protobuf.Timestamp
-	116, // 94: cerebro.v1.WriteActionRequest.valid_to:type_name -> google.protobuf.Timestamp
-	117, // 95: cerebro.v1.WriteActionRequest.metadata:type_name -> google.protobuf.Struct
-	116, // 96: cerebro.v1.WriteOutcomeRequest.observed_at:type_name -> google.protobuf.Timestamp
-	116, // 97: cerebro.v1.WriteOutcomeRequest.valid_from:type_name -> google.protobuf.Timestamp
-	116, // 98: cerebro.v1.WriteOutcomeRequest.valid_to:type_name -> google.protobuf.Timestamp
-	117, // 99: cerebro.v1.WriteOutcomeRequest.metadata:type_name -> google.protobuf.Struct
-	115, // 100: cerebro.v1.ReplayWorkflowEventsRequest.attribute_equals:type_name -> cerebro.v1.ReplayWorkflowEventsRequest.AttributeEqualsEntry
-	90,  // 101: cerebro.v1.ReplayWorkflowEventsResponse.errors:type_name -> cerebro.v1.WorkflowReplayError
-	92,  // 102: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
-	92,  // 103: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
-	93,  // 104: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
-	96,  // 105: cerebro.v1.GraphIngestRunResult.run:type_name -> cerebro.v1.GraphIngestRun
-	97,  // 106: cerebro.v1.GraphIngestRunResult.ingest:type_name -> cerebro.v1.GraphIngestResult
-	98,  // 107: cerebro.v1.RunGraphIngestRuntimeResponse.result:type_name -> cerebro.v1.GraphIngestRunResult
-	96,  // 108: cerebro.v1.GetGraphIngestRunResponse.run:type_name -> cerebro.v1.GraphIngestRun
-	96,  // 109: cerebro.v1.ListGraphIngestRunsResponse.runs:type_name -> cerebro.v1.GraphIngestRun
-	116, // 110: cerebro.v1.CheckGraphIngestHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
-	96,  // 111: cerebro.v1.CheckGraphIngestHealthResponse.failed_runs:type_name -> cerebro.v1.GraphIngestRun
-	0,   // 112: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
-	2,   // 113: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
-	8,   // 114: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
-	10,  // 115: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
-	20,  // 116: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
-	22,  // 117: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
-	24,  // 118: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
-	26,  // 119: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
-	28,  // 120: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
-	30,  // 121: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
-	34,  // 122: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
-	36,  // 123: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
-	38,  // 124: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
-	40,  // 125: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
-	42,  // 126: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
-	44,  // 127: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
-	45,  // 128: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
-	67,  // 129: cerebro.v1.BootstrapService.ListFindingCandidates:input_type -> cerebro.v1.ListFindingCandidatesRequest
-	69,  // 130: cerebro.v1.BootstrapService.GetFindingCandidate:input_type -> cerebro.v1.GetFindingCandidateRequest
-	71,  // 131: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingCandidates:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingCandidatesRequest
-	74,  // 132: cerebro.v1.BootstrapService.PromoteFindingCandidate:input_type -> cerebro.v1.PromoteFindingCandidateRequest
-	76,  // 133: cerebro.v1.BootstrapService.RejectFindingCandidate:input_type -> cerebro.v1.RejectFindingCandidateRequest
-	47,  // 134: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
-	49,  // 135: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
-	51,  // 136: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
-	53,  // 137: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
-	55,  // 138: cerebro.v1.BootstrapService.AddFindingNote:input_type -> cerebro.v1.AddFindingNoteRequest
-	57,  // 139: cerebro.v1.BootstrapService.LinkFindingTicket:input_type -> cerebro.v1.LinkFindingTicketRequest
-	59,  // 140: cerebro.v1.BootstrapService.LinkFindingExternalRef:input_type -> cerebro.v1.LinkFindingExternalRefRequest
-	61,  // 141: cerebro.v1.BootstrapService.ExecuteGraphAction:input_type -> cerebro.v1.ExecuteGraphActionRequest
-	62,  // 142: cerebro.v1.BootstrapService.ReconcileGraphAction:input_type -> cerebro.v1.ReconcileGraphActionRequest
-	12,  // 143: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
-	14,  // 144: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
-	16,  // 145: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
-	18,  // 146: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
-	79,  // 147: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
-	78,  // 148: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
-	83,  // 149: cerebro.v1.BootstrapService.WriteDecision:input_type -> cerebro.v1.WriteDecisionRequest
-	85,  // 150: cerebro.v1.BootstrapService.WriteAction:input_type -> cerebro.v1.WriteActionRequest
-	87,  // 151: cerebro.v1.BootstrapService.WriteOutcome:input_type -> cerebro.v1.WriteOutcomeRequest
-	89,  // 152: cerebro.v1.BootstrapService.ReplayWorkflowEvents:input_type -> cerebro.v1.ReplayWorkflowEventsRequest
-	94,  // 153: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
-	99,  // 154: cerebro.v1.BootstrapService.RunGraphIngestRuntime:input_type -> cerebro.v1.RunGraphIngestRuntimeRequest
-	101, // 155: cerebro.v1.BootstrapService.GetGraphIngestRun:input_type -> cerebro.v1.GetGraphIngestRunRequest
-	103, // 156: cerebro.v1.BootstrapService.ListGraphIngestRuns:input_type -> cerebro.v1.ListGraphIngestRunsRequest
-	105, // 157: cerebro.v1.BootstrapService.CheckGraphIngestHealth:input_type -> cerebro.v1.CheckGraphIngestHealthRequest
-	1,   // 158: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
-	4,   // 159: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
-	9,   // 160: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
-	11,  // 161: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
-	21,  // 162: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
-	23,  // 163: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
-	25,  // 164: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
-	27,  // 165: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
-	29,  // 166: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
-	32,  // 167: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
-	35,  // 168: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
-	37,  // 169: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
-	39,  // 170: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
-	41,  // 171: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
-	43,  // 172: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
-	66,  // 173: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
-	46,  // 174: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
-	68,  // 175: cerebro.v1.BootstrapService.ListFindingCandidates:output_type -> cerebro.v1.ListFindingCandidatesResponse
-	70,  // 176: cerebro.v1.BootstrapService.GetFindingCandidate:output_type -> cerebro.v1.GetFindingCandidateResponse
-	73,  // 177: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingCandidates:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse
-	75,  // 178: cerebro.v1.BootstrapService.PromoteFindingCandidate:output_type -> cerebro.v1.PromoteFindingCandidateResponse
-	77,  // 179: cerebro.v1.BootstrapService.RejectFindingCandidate:output_type -> cerebro.v1.RejectFindingCandidateResponse
-	48,  // 180: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
-	50,  // 181: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
-	52,  // 182: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
-	54,  // 183: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
-	56,  // 184: cerebro.v1.BootstrapService.AddFindingNote:output_type -> cerebro.v1.AddFindingNoteResponse
-	58,  // 185: cerebro.v1.BootstrapService.LinkFindingTicket:output_type -> cerebro.v1.LinkFindingTicketResponse
-	60,  // 186: cerebro.v1.BootstrapService.LinkFindingExternalRef:output_type -> cerebro.v1.LinkFindingExternalRefResponse
-	64,  // 187: cerebro.v1.BootstrapService.ExecuteGraphAction:output_type -> cerebro.v1.ExecuteGraphActionResponse
-	65,  // 188: cerebro.v1.BootstrapService.ReconcileGraphAction:output_type -> cerebro.v1.ReconcileGraphActionResponse
-	13,  // 189: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
-	15,  // 190: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
-	17,  // 191: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
-	19,  // 192: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
-	81,  // 193: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
-	82,  // 194: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
-	84,  // 195: cerebro.v1.BootstrapService.WriteDecision:output_type -> cerebro.v1.WriteDecisionResponse
-	86,  // 196: cerebro.v1.BootstrapService.WriteAction:output_type -> cerebro.v1.WriteActionResponse
-	88,  // 197: cerebro.v1.BootstrapService.WriteOutcome:output_type -> cerebro.v1.WriteOutcomeResponse
-	91,  // 198: cerebro.v1.BootstrapService.ReplayWorkflowEvents:output_type -> cerebro.v1.ReplayWorkflowEventsResponse
-	95,  // 199: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
-	100, // 200: cerebro.v1.BootstrapService.RunGraphIngestRuntime:output_type -> cerebro.v1.RunGraphIngestRuntimeResponse
-	102, // 201: cerebro.v1.BootstrapService.GetGraphIngestRun:output_type -> cerebro.v1.GetGraphIngestRunResponse
-	104, // 202: cerebro.v1.BootstrapService.ListGraphIngestRuns:output_type -> cerebro.v1.ListGraphIngestRunsResponse
-	106, // 203: cerebro.v1.BootstrapService.CheckGraphIngestHealth:output_type -> cerebro.v1.CheckGraphIngestHealthResponse
-	158, // [158:204] is the sub-list for method output_type
-	112, // [112:158] is the sub-list for method input_type
-	112, // [112:112] is the sub-list for extension type_name
-	112, // [112:112] is the sub-list for extension extendee
-	0,   // [0:112] is the sub-list for field type_name
+	130, // 44: cerebro.v1.GetFindingResponse.links:type_name -> cerebro.v1.ResourceLink
+	116, // 45: cerebro.v1.ResolveFindingRequest.last_observed_before:type_name -> google.protobuf.Timestamp
+	129, // 46: cerebro.v1.ResolveFindingResponse.finding:type_name -> cerebro.v1.Finding
+	116, // 47: cerebro.v1.SuppressFindingRequest.last_observed_before:type_name -> google.protobuf.Timestamp
+	129, // 48: cerebro.v1.SuppressFindingResponse.finding:type_name -> cerebro.v1.Finding
+	129, // 49: cerebro.v1.AssignFindingResponse.finding:type_name -> cerebro.v1.Finding
+	116, // 50: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
+	129, // 51: cerebro.v1.SetFindingDueDateResponse.finding:type_name -> cerebro.v1.Finding
+	129, // 52: cerebro.v1.AddFindingNoteResponse.finding:type_name -> cerebro.v1.Finding
+	129, // 53: cerebro.v1.LinkFindingTicketResponse.finding:type_name -> cerebro.v1.Finding
+	116, // 54: cerebro.v1.LinkFindingExternalRefRequest.observed_at:type_name -> google.protobuf.Timestamp
+	129, // 55: cerebro.v1.LinkFindingExternalRefResponse.finding:type_name -> cerebro.v1.Finding
+	113, // 56: cerebro.v1.ExecuteGraphActionRequest.parameters:type_name -> cerebro.v1.ExecuteGraphActionRequest.ParametersEntry
+	116, // 57: cerebro.v1.GraphAction.created_at:type_name -> google.protobuf.Timestamp
+	116, // 58: cerebro.v1.GraphAction.updated_at:type_name -> google.protobuf.Timestamp
+	116, // 59: cerebro.v1.GraphAction.completed_at:type_name -> google.protobuf.Timestamp
+	114, // 60: cerebro.v1.GraphAction.metadata:type_name -> cerebro.v1.GraphAction.MetadataEntry
+	129, // 61: cerebro.v1.ExecuteGraphActionResponse.finding:type_name -> cerebro.v1.Finding
+	63,  // 62: cerebro.v1.ExecuteGraphActionResponse.action:type_name -> cerebro.v1.GraphAction
+	131, // 63: cerebro.v1.ExecuteGraphActionResponse.external_ref:type_name -> cerebro.v1.FindingExternalRef
+	129, // 64: cerebro.v1.ReconcileGraphActionResponse.finding:type_name -> cerebro.v1.Finding
+	63,  // 65: cerebro.v1.ReconcileGraphActionResponse.action:type_name -> cerebro.v1.GraphAction
+	131, // 66: cerebro.v1.ReconcileGraphActionResponse.external_ref:type_name -> cerebro.v1.FindingExternalRef
+	129, // 67: cerebro.v1.ListFindingsResponse.findings:type_name -> cerebro.v1.Finding
+	132, // 68: cerebro.v1.ListFindingCandidatesResponse.candidates:type_name -> cerebro.v1.FindingCandidate
+	132, // 69: cerebro.v1.GetFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
+	118, // 70: cerebro.v1.FindingCandidateRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
+	133, // 71: cerebro.v1.FindingCandidateRuleEvaluation.run:type_name -> cerebro.v1.FindingCandidateRun
+	132, // 72: cerebro.v1.FindingCandidateRuleEvaluation.candidates:type_name -> cerebro.v1.FindingCandidate
+	33,  // 73: cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
+	72,  // 74: cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse.evaluations:type_name -> cerebro.v1.FindingCandidateRuleEvaluation
+	129, // 75: cerebro.v1.PromoteFindingCandidateResponse.finding:type_name -> cerebro.v1.Finding
+	132, // 76: cerebro.v1.PromoteFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
+	132, // 77: cerebro.v1.RejectFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
+	118, // 78: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
+	129, // 79: cerebro.v1.FindingRuleEvaluation.findings:type_name -> cerebro.v1.Finding
+	119, // 80: cerebro.v1.FindingRuleEvaluation.run:type_name -> cerebro.v1.FindingEvaluationRun
+	120, // 81: cerebro.v1.FindingRuleEvaluation.evidence:type_name -> cerebro.v1.FindingEvidence
+	33,  // 82: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
+	80,  // 83: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.evaluations:type_name -> cerebro.v1.FindingRuleEvaluation
+	33,  // 84: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.runtime:type_name -> cerebro.v1.SourceRuntime
+	118, // 85: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
+	129, // 86: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.findings:type_name -> cerebro.v1.Finding
+	119, // 87: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
+	120, // 88: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.evidence:type_name -> cerebro.v1.FindingEvidence
+	116, // 89: cerebro.v1.WriteDecisionRequest.observed_at:type_name -> google.protobuf.Timestamp
+	116, // 90: cerebro.v1.WriteDecisionRequest.valid_from:type_name -> google.protobuf.Timestamp
+	116, // 91: cerebro.v1.WriteDecisionRequest.valid_to:type_name -> google.protobuf.Timestamp
+	117, // 92: cerebro.v1.WriteDecisionRequest.metadata:type_name -> google.protobuf.Struct
+	116, // 93: cerebro.v1.WriteActionRequest.observed_at:type_name -> google.protobuf.Timestamp
+	116, // 94: cerebro.v1.WriteActionRequest.valid_from:type_name -> google.protobuf.Timestamp
+	116, // 95: cerebro.v1.WriteActionRequest.valid_to:type_name -> google.protobuf.Timestamp
+	117, // 96: cerebro.v1.WriteActionRequest.metadata:type_name -> google.protobuf.Struct
+	116, // 97: cerebro.v1.WriteOutcomeRequest.observed_at:type_name -> google.protobuf.Timestamp
+	116, // 98: cerebro.v1.WriteOutcomeRequest.valid_from:type_name -> google.protobuf.Timestamp
+	116, // 99: cerebro.v1.WriteOutcomeRequest.valid_to:type_name -> google.protobuf.Timestamp
+	117, // 100: cerebro.v1.WriteOutcomeRequest.metadata:type_name -> google.protobuf.Struct
+	115, // 101: cerebro.v1.ReplayWorkflowEventsRequest.attribute_equals:type_name -> cerebro.v1.ReplayWorkflowEventsRequest.AttributeEqualsEntry
+	90,  // 102: cerebro.v1.ReplayWorkflowEventsResponse.errors:type_name -> cerebro.v1.WorkflowReplayError
+	92,  // 103: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
+	92,  // 104: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
+	93,  // 105: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
+	96,  // 106: cerebro.v1.GraphIngestRunResult.run:type_name -> cerebro.v1.GraphIngestRun
+	97,  // 107: cerebro.v1.GraphIngestRunResult.ingest:type_name -> cerebro.v1.GraphIngestResult
+	98,  // 108: cerebro.v1.RunGraphIngestRuntimeResponse.result:type_name -> cerebro.v1.GraphIngestRunResult
+	96,  // 109: cerebro.v1.GetGraphIngestRunResponse.run:type_name -> cerebro.v1.GraphIngestRun
+	96,  // 110: cerebro.v1.ListGraphIngestRunsResponse.runs:type_name -> cerebro.v1.GraphIngestRun
+	116, // 111: cerebro.v1.CheckGraphIngestHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
+	96,  // 112: cerebro.v1.CheckGraphIngestHealthResponse.failed_runs:type_name -> cerebro.v1.GraphIngestRun
+	0,   // 113: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
+	2,   // 114: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
+	8,   // 115: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
+	10,  // 116: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
+	20,  // 117: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
+	22,  // 118: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
+	24,  // 119: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
+	26,  // 120: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
+	28,  // 121: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
+	30,  // 122: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
+	34,  // 123: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
+	36,  // 124: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
+	38,  // 125: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
+	40,  // 126: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
+	42,  // 127: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
+	44,  // 128: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
+	45,  // 129: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
+	67,  // 130: cerebro.v1.BootstrapService.ListFindingCandidates:input_type -> cerebro.v1.ListFindingCandidatesRequest
+	69,  // 131: cerebro.v1.BootstrapService.GetFindingCandidate:input_type -> cerebro.v1.GetFindingCandidateRequest
+	71,  // 132: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingCandidates:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingCandidatesRequest
+	74,  // 133: cerebro.v1.BootstrapService.PromoteFindingCandidate:input_type -> cerebro.v1.PromoteFindingCandidateRequest
+	76,  // 134: cerebro.v1.BootstrapService.RejectFindingCandidate:input_type -> cerebro.v1.RejectFindingCandidateRequest
+	47,  // 135: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
+	49,  // 136: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
+	51,  // 137: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
+	53,  // 138: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
+	55,  // 139: cerebro.v1.BootstrapService.AddFindingNote:input_type -> cerebro.v1.AddFindingNoteRequest
+	57,  // 140: cerebro.v1.BootstrapService.LinkFindingTicket:input_type -> cerebro.v1.LinkFindingTicketRequest
+	59,  // 141: cerebro.v1.BootstrapService.LinkFindingExternalRef:input_type -> cerebro.v1.LinkFindingExternalRefRequest
+	61,  // 142: cerebro.v1.BootstrapService.ExecuteGraphAction:input_type -> cerebro.v1.ExecuteGraphActionRequest
+	62,  // 143: cerebro.v1.BootstrapService.ReconcileGraphAction:input_type -> cerebro.v1.ReconcileGraphActionRequest
+	12,  // 144: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
+	14,  // 145: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
+	16,  // 146: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
+	18,  // 147: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
+	79,  // 148: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
+	78,  // 149: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
+	83,  // 150: cerebro.v1.BootstrapService.WriteDecision:input_type -> cerebro.v1.WriteDecisionRequest
+	85,  // 151: cerebro.v1.BootstrapService.WriteAction:input_type -> cerebro.v1.WriteActionRequest
+	87,  // 152: cerebro.v1.BootstrapService.WriteOutcome:input_type -> cerebro.v1.WriteOutcomeRequest
+	89,  // 153: cerebro.v1.BootstrapService.ReplayWorkflowEvents:input_type -> cerebro.v1.ReplayWorkflowEventsRequest
+	94,  // 154: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
+	99,  // 155: cerebro.v1.BootstrapService.RunGraphIngestRuntime:input_type -> cerebro.v1.RunGraphIngestRuntimeRequest
+	101, // 156: cerebro.v1.BootstrapService.GetGraphIngestRun:input_type -> cerebro.v1.GetGraphIngestRunRequest
+	103, // 157: cerebro.v1.BootstrapService.ListGraphIngestRuns:input_type -> cerebro.v1.ListGraphIngestRunsRequest
+	105, // 158: cerebro.v1.BootstrapService.CheckGraphIngestHealth:input_type -> cerebro.v1.CheckGraphIngestHealthRequest
+	1,   // 159: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
+	4,   // 160: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
+	9,   // 161: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
+	11,  // 162: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
+	21,  // 163: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
+	23,  // 164: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
+	25,  // 165: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
+	27,  // 166: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
+	29,  // 167: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
+	32,  // 168: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
+	35,  // 169: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
+	37,  // 170: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
+	39,  // 171: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
+	41,  // 172: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
+	43,  // 173: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
+	66,  // 174: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
+	46,  // 175: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
+	68,  // 176: cerebro.v1.BootstrapService.ListFindingCandidates:output_type -> cerebro.v1.ListFindingCandidatesResponse
+	70,  // 177: cerebro.v1.BootstrapService.GetFindingCandidate:output_type -> cerebro.v1.GetFindingCandidateResponse
+	73,  // 178: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingCandidates:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingCandidatesResponse
+	75,  // 179: cerebro.v1.BootstrapService.PromoteFindingCandidate:output_type -> cerebro.v1.PromoteFindingCandidateResponse
+	77,  // 180: cerebro.v1.BootstrapService.RejectFindingCandidate:output_type -> cerebro.v1.RejectFindingCandidateResponse
+	48,  // 181: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
+	50,  // 182: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
+	52,  // 183: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
+	54,  // 184: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
+	56,  // 185: cerebro.v1.BootstrapService.AddFindingNote:output_type -> cerebro.v1.AddFindingNoteResponse
+	58,  // 186: cerebro.v1.BootstrapService.LinkFindingTicket:output_type -> cerebro.v1.LinkFindingTicketResponse
+	60,  // 187: cerebro.v1.BootstrapService.LinkFindingExternalRef:output_type -> cerebro.v1.LinkFindingExternalRefResponse
+	64,  // 188: cerebro.v1.BootstrapService.ExecuteGraphAction:output_type -> cerebro.v1.ExecuteGraphActionResponse
+	65,  // 189: cerebro.v1.BootstrapService.ReconcileGraphAction:output_type -> cerebro.v1.ReconcileGraphActionResponse
+	13,  // 190: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
+	15,  // 191: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
+	17,  // 192: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
+	19,  // 193: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
+	81,  // 194: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
+	82,  // 195: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
+	84,  // 196: cerebro.v1.BootstrapService.WriteDecision:output_type -> cerebro.v1.WriteDecisionResponse
+	86,  // 197: cerebro.v1.BootstrapService.WriteAction:output_type -> cerebro.v1.WriteActionResponse
+	88,  // 198: cerebro.v1.BootstrapService.WriteOutcome:output_type -> cerebro.v1.WriteOutcomeResponse
+	91,  // 199: cerebro.v1.BootstrapService.ReplayWorkflowEvents:output_type -> cerebro.v1.ReplayWorkflowEventsResponse
+	95,  // 200: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
+	100, // 201: cerebro.v1.BootstrapService.RunGraphIngestRuntime:output_type -> cerebro.v1.RunGraphIngestRuntimeResponse
+	102, // 202: cerebro.v1.BootstrapService.GetGraphIngestRun:output_type -> cerebro.v1.GetGraphIngestRunResponse
+	104, // 203: cerebro.v1.BootstrapService.ListGraphIngestRuns:output_type -> cerebro.v1.ListGraphIngestRunsResponse
+	106, // 204: cerebro.v1.BootstrapService.CheckGraphIngestHealth:output_type -> cerebro.v1.CheckGraphIngestHealthResponse
+	159, // [159:205] is the sub-list for method output_type
+	113, // [113:159] is the sub-list for method input_type
+	113, // [113:113] is the sub-list for extension type_name
+	113, // [113:113] is the sub-list for extension extendee
+	0,   // [0:113] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_bootstrap_proto_init() }

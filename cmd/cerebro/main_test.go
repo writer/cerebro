@@ -970,10 +970,10 @@ func TestParseAppendLogDeadLetterListArgs(t *testing.T) {
 }
 
 func TestParseAppendLogDeadLetterDiscardArgsRequiresReason(t *testing.T) {
-	if _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "reason=operator replay skipped"}); err != nil {
+	if _, _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "actor=operator@example.com", "reason=operator replay skipped"}); err != nil {
 		t.Fatalf("parseAppendLogDeadLetterDiscardArgs() error = %v", err)
 	}
-	if _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "reason= "}); err == nil {
+	if _, _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "actor=operator@example.com", "reason= "}); err == nil {
 		t.Fatal("parseAppendLogDeadLetterDiscardArgs() error = nil, want missing reason error")
 	}
 }

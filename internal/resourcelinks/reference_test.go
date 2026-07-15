@@ -1,8 +1,10 @@
 package resourcelinks
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -144,4 +146,107 @@ func TestResourcePathParsersRejectAlternateOrUnsafeForms(t *testing.T) {
 			t.Fatalf("ParseMCPURI(%q) error = %v", uri, err)
 		}
 	}
+}
+
+func TestFindingLinksUseCanonicalReferencesAndStableOrder(t *testing.T) {
+	input := FindingInput{
+		ID:        "finding/a%2Fb ?#",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime/a%2Fb ?#",
+		ResourceURNs: []string{
+			"urn:cerebro:tenant-a:aws:resource/with space",
+			"urn:cerebro:tenant-a:aws:resource/with space",
+			"urn:cerebro:tenant-a:github:repo?name=a/b",
+		},
+	}
+	first, err := FindingLinks(input)
+	if err != nil {
+		t.Fatalf("FindingLinks() error = %v", err)
+	}
+	input.ResourceURNs[0], input.ResourceURNs[2] = input.ResourceURNs[2], input.ResourceURNs[0]
+	second, err := FindingLinks(input)
+	if err != nil {
+		t.Fatalf("FindingLinks(shuffled) error = %v", err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("FindingLinks() changed across input order\nfirst: %#v\nsecond: %#v", first, second)
+	}
+	if len(first) != 6 {
+		t.Fatalf("len(FindingLinks()) = %d, want 6", len(first))
+	}
+
+	self := findLink(t, first, fabriccontract.RelationSelf, fabriccontract.ResourceKindFinding)
+	if self.Target.Identifier() != "finding/a%2Fb ?#" {
+		t.Fatalf("self identifier = %q", self.Target.Identifier())
+	}
+	for _, link := range first {
+		fromPath, pathErr := ParseAPIPath(link.Target.APIPath)
+		if pathErr != nil {
+			t.Fatalf("ParseAPIPath(%q) error = %v", link.Target.APIPath, pathErr)
+		}
+		fromURI, uriErr := ParseMCPURI(link.Target.MCPURI)
+		if uriErr != nil {
+			t.Fatalf("ParseMCPURI(%q) error = %v", link.Target.MCPURI, uriErr)
+		}
+		if fromPath.Identifier() != link.Target.Identifier() || fromURI.Identifier() != link.Target.Identifier() {
+			t.Fatalf("link %q did not round trip: %#v", link.Relation, link.Target)
+		}
+		if link.Target.Kind == fabriccontract.ResourceKindGraphEntity && link.Target.URN == "" {
+			t.Fatalf("graph link did not preserve URN: %#v", link.Target)
+		}
+	}
+}
+
+func TestFindingLinksRejectCrossTenantAffectedResource(t *testing.T) {
+	_, err := FindingLinks(FindingInput{
+		ID:           "finding-1",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-1",
+		ResourceURNs: []string{"urn:cerebro:tenant-b:asset:resource-1"},
+	})
+	if !errors.Is(err, ErrInvalidLink) {
+		t.Fatalf("FindingLinks() error = %v, want %v", err, ErrInvalidLink)
+	}
+}
+
+func TestCanonicalReferenceBytesAreStable(t *testing.T) {
+	reference, err := NewID(fabriccontract.ResourceKindFinding, "finding-1")
+	if err != nil {
+		t.Fatalf("NewID() error = %v", err)
+	}
+	first, err := CanonicalReferenceBytes(reference)
+	if err != nil {
+		t.Fatalf("CanonicalReferenceBytes() error = %v", err)
+	}
+	second, err := CanonicalReferenceBytes(reference)
+	if err != nil {
+		t.Fatalf("CanonicalReferenceBytes(second) error = %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("canonical bytes differ: %q != %q", first, second)
+	}
+}
+
+func TestNewLinkEnforcesCanonicalRelationEndpoints(t *testing.T) {
+	target, err := NewID(fabriccontract.ResourceKindSourceRuntime, "runtime-1")
+	if err != nil {
+		t.Fatalf("NewID() error = %v", err)
+	}
+	if _, err := NewLink(fabriccontract.ResourceKindFinding, fabriccontract.RelationObservedOn, target, AuthorityDerivedRecord, CompletenessComplete); err != nil {
+		t.Fatalf("NewLink(valid) error = %v", err)
+	}
+	if _, err := NewLink(fabriccontract.ResourceKindControl, fabriccontract.RelationObservedOn, target, AuthorityDerivedRecord, CompletenessComplete); !errors.Is(err, ErrInvalidLink) {
+		t.Fatalf("NewLink(invalid source) error = %v, want ErrInvalidLink", err)
+	}
+}
+
+func findLink(t *testing.T, links []ResourceLink, relation string, kind fabriccontract.ResourceKind) ResourceLink {
+	t.Helper()
+	for _, link := range links {
+		if link.Relation == relation && link.Target.Kind == kind {
+			return link
+		}
+	}
+	t.Fatalf("link %s -> %s not found", relation, kind)
+	return ResourceLink{}
 }
