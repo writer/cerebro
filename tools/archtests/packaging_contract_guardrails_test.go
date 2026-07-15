@@ -121,6 +121,21 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 			t.Fatalf("release dispatch payload contains stale contract marker %q", stale)
 		}
 	}
+	verifyIndex := strings.Index(release, "  verify-candidate:")
+	promoteIndex := strings.Index(release, "  promote:")
+	if verifyIndex == -1 || promoteIndex == -1 || verifyIndex >= promoteIndex {
+		t.Fatal("release workflow must define verify-candidate before promote")
+	}
+	verifyCandidate := release[verifyIndex:promoteIndex]
+	for _, marker := range []string{
+		"fetch-depth: 0",
+		"actions/setup-go@",
+		"go-version-file: go.mod",
+	} {
+		if !strings.Contains(verifyCandidate, marker) {
+			t.Fatalf("verify-candidate job missing required marker %q", marker)
+		}
+	}
 	if strings.Contains(release, "-env sec-dev") {
 		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")
 	}
