@@ -48,6 +48,38 @@ func TestRecordKernelMapsDeterministicallyAndQuarantinesBadRows(t *testing.T) {
 	}
 }
 
+func TestRecordKernelCanonicalizesObjectKeyOrderAcrossEmbeddedCalls(t *testing.T) {
+	t.Parallel()
+	firstRequest := recordKernelTestRequest()
+	firstRequest.Page.Records = []json.RawMessage{
+		json.RawMessage(`{"id":"user-a","profile":{"z":1,"a":2}}`),
+	}
+	secondRequest := recordKernelTestRequest()
+	secondRequest.Page.Records = []json.RawMessage{
+		json.RawMessage(`{"profile":{"a":2,"z":1},"id":"user-a"}`),
+	}
+
+	first, err := EvaluateRecordMapping(context.Background(), firstRequest)
+	if err != nil {
+		t.Fatalf("EvaluateRecordMapping(first) error = %v", err)
+	}
+	second, err := EvaluateRecordMapping(context.Background(), secondRequest)
+	if err != nil {
+		t.Fatalf("EvaluateRecordMapping(second) error = %v", err)
+	}
+	firstJSON, err := json.Marshal(first)
+	if err != nil {
+		t.Fatalf("json.Marshal(first) error = %v", err)
+	}
+	secondJSON, err := json.Marshal(second)
+	if err != nil {
+		t.Fatalf("json.Marshal(second) error = %v", err)
+	}
+	if string(firstJSON) != string(secondJSON) {
+		t.Fatalf("key order changed the embedded result:\nfirst:  %s\nsecond: %s", firstJSON, secondJSON)
+	}
+}
+
 func TestRecordKernelReturnsBoundedContractRejection(t *testing.T) {
 	t.Parallel()
 	request := recordKernelTestRequest()
@@ -123,6 +155,17 @@ func TestRecordKernelRejectsOversizedInputBeforeGuestExecution(t *testing.T) {
 	t.Parallel()
 	request := recordKernelTestRequest()
 	request.Page.Records = []json.RawMessage{json.RawMessage(`{"id":"user-a","blob":"` + strings.Repeat("a", recordKernelMaxInput) + `"}`)}
+
+	_, err := EvaluateRecordMapping(context.Background(), request)
+	if !errors.Is(err, wasmjson.ErrInputTooLarge) {
+		t.Fatalf("EvaluateRecordMapping() error = %v; want %v", err, wasmjson.ErrInputTooLarge)
+	}
+}
+
+func TestRecordKernelRejectsOversizedHostFieldsBeforeEncoding(t *testing.T) {
+	t.Parallel()
+	request := recordKernelTestRequest()
+	request.AttemptID = strings.Repeat("a", recordKernelMaxInput+1)
 
 	_, err := EvaluateRecordMapping(context.Background(), request)
 	if !errors.Is(err, wasmjson.ErrInputTooLarge) {

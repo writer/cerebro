@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	recordKernelABIVersion = 1
-	recordKernelMaxInput   = 1 << 20
-	recordKernelMaxOutput  = 2 << 20
+	recordKernelABIVersion           = 1
+	recordKernelMaxInput             = 1 << 20
+	recordKernelMaxOutput            = 2 << 20
+	recordKernelMaxRecordsAtInputCap = (recordKernelMaxInput + 1) / 2
 )
 
 // ErrRecordKernelUnavailable indicates that the bounded record mapping guest could not run.
@@ -107,6 +108,9 @@ type RecordMappingReceipt struct {
 
 // EvaluateRecordMapping runs one bounded page through a fresh capability-free Wasm instance.
 func EvaluateRecordMapping(ctx context.Context, request RecordMappingRequest) (RecordMappingOutcome, error) {
+	if err := preflightRecordMappingRequest(request); err != nil {
+		return RecordMappingOutcome{}, fmt.Errorf("%w: %w", ErrRecordKernelUnavailable, err)
+	}
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return RecordMappingOutcome{}, fmt.Errorf("%w: encode request: %w", ErrRecordKernelUnavailable, err)
@@ -129,4 +133,33 @@ func EvaluateRecordMapping(ctx context.Context, request RecordMappingRequest) (R
 		return RecordMappingOutcome{}, fmt.Errorf("%w: rejected outcome has an invalid shape", ErrRecordKernelUnavailable)
 	}
 	return outcome, nil
+}
+
+// preflightRecordMappingRequest bounds host-side JSON encoding before the guest's exact byte check.
+func preflightRecordMappingRequest(request RecordMappingRequest) error {
+	// Each valid JSON record needs at least one byte, with one separator byte per additional record.
+	if len(request.Page.Records) > recordKernelMaxRecordsAtInputCap {
+		return fmt.Errorf("%w: record count cannot fit within %d bytes", wasmjson.ErrInputTooLarge, recordKernelMaxInput)
+	}
+	remaining := recordKernelMaxInput
+	fieldSizes := []int{
+		len(request.Contract.SourceID),
+		len(request.Contract.Family),
+		len(request.Contract.IDField),
+		len(request.Page.NextCursor),
+		len(request.AttemptID),
+	}
+	for _, size := range fieldSizes {
+		if size > remaining {
+			return fmt.Errorf("%w: request fields exceed %d bytes before encoding", wasmjson.ErrInputTooLarge, recordKernelMaxInput)
+		}
+		remaining -= size
+	}
+	for _, record := range request.Page.Records {
+		if len(record) > remaining {
+			return fmt.Errorf("%w: record payloads exceed %d bytes before encoding", wasmjson.ErrInputTooLarge, recordKernelMaxInput)
+		}
+		remaining -= len(record)
+	}
+	return nil
 }
