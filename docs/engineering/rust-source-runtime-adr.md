@@ -44,13 +44,29 @@ An operator should be able to add or deepen a source without waiting for a new h
 4. emits stable tenant-scoped identities and contract-valid events;
 5. projects the intended entities and relationships;
 6. reports missing scope, permission, rate-limit, and provider failures as distinct states;
-7. can be replayed and compared before it becomes authoritative.
+7. can be replayed and compared before it becomes authoritative;
+8. does not duplicate or skip current evidence when a worker crashes during publication;
+9. rejects late writes after lease loss, engine rollback, or authority transfer;
+10. keeps raw credentials out of the source-runtime protocol and limits each credential lease to one operation;
+11. records every promotion and rollback with its evidence, thresholds, reason, and actor.
 
-The visible product state is not “connector installed.” It is a source runtime with explicit family coverage, last successful observation, current checkpoint, rejected-record count, projection result, and a proof revision.
+The visible product state is not “connector installed.” It is a source runtime
+with explicit family coverage, last successful observation, current checkpoint,
+rejected-record count, projection result, proof revision, runtime revision, current engine,
+authority revision, pending promotion or rollback, and page recovery state. A
+quarantined page shows its bounded reason and the available retry, supersede,
+replay, or resync action. An `authority_transition_blocked` family shows the
+pending decision, stream capacity or reserve failure, current engine, stopped
+execution state, and `restore capacity` action. Capacity recovery automatically
+reconciles the decision before the family resumes. A
+`source_replacement_pending` runtime shows the old and requested source,
+replacement operation ID, old-generation family closure progress, and retry
+state. It exposes `Retry source replacement` with the blocked family and page,
+authority, capacity, or stream-health reason.
 
 ## Why this decision exists
 
-The repository already contains the correct beginnings of a scalable source model:
+The repository currently contains these source-model boundaries:
 
 - `internal/connectordefinitions.Definition` is a versioned connector manifest.
 - `sources/internal/catalogruntime` turns a normalized definition into an executable JSON API source.
@@ -126,7 +142,7 @@ The decision is narrower than “Rust is safer”:
 | One grant authorizes one execution | ownership makes the permit move-only | standard Go has no user-defined move-only value | consume execution authority inside Rust |
 | Internal state additions reach every handler | closed enums and exhaustive Rust matches | Go wire consumers still validate string states at runtime | use Rust enums internally; validate every cross-language state at the ABI |
 | Mapping code has no ambient capabilities | the committed Wasm guest has no imports | the pinned standard Go Wasm runtime imports WASI process services | keep agent-written mapping inside the no-import guest |
-| Provider HTTP, auth, retries, and pagination work | no unique language advantage | the existing Go hosts already implement these operations | move them only when one native worker deletes duplicated runtime ownership |
+| Provider HTTP, auth, retries, and pagination work | no language-exclusive property | the existing Go hosts already implement these operations | move them only when one native worker deletes duplicated runtime ownership |
 | A crash is isolated from the API process | separate process boundary | a separate Go process can provide the same isolation | process isolation alone does not justify a rewrite |
 
 The Rust-specific case is compile-time authority and state discipline around
@@ -152,7 +168,13 @@ stored SourceRuntime
   -> commit checkpoint, next cursor, and runtime status
 ```
 
-This ordering is load-bearing. The Rust runtime replaces only the provider-execution segment. It does not move append, projection writes, or checkpoint commit across the process boundary in the first release.
+This ordering prevents a checkpoint from advancing before accepted events are
+published and projected. The Rust runtime replaces only the provider-execution
+segment. It does not move append, projection writes, or checkpoint commit across
+the process boundary in the first release.
+The current Go path resolves credentials in-process. The Rust worker may handle
+provider traffic only after raw credentials are absent from the source-runtime
+protobuf path and one-operation credential-lease redemption is available.
 
 ## Architectural shape
 
@@ -172,7 +194,13 @@ flowchart LR
     J --> L["Neo4j projection"]
 ```
 
-The process runs as a native Linux service. There is no CGO, `dlopen`, or in-process Go/Rust FFI. Local deployments may use a Unix-domain socket. Distributed deployments may use mutually authenticated Connect or gRPC. Both modes use the same protobuf contract and require a short-lived runtime capability.
+The process runs as a native Linux service. There is no CGO, `dlopen`, or
+in-process Go/Rust FFI. The first release runs the worker on the same host as
+the compatibility plane and uses an authenticated Unix-domain socket. A
+distributed worker requires a later decision covering workload identity, the
+credential-broker location, the authenticated secret-byte channel, and failure
+semantics before Connect or gRPC transport is enabled. Both modes use the same
+versioned protobuf contract and require a short-lived runtime capability.
 
 ## Ownership boundaries
 
@@ -202,15 +230,18 @@ The worker does not know how to write JetStream, Postgres, or Neo4j. It does not
 The compatibility plane owns stateful coordination:
 
 - load a stored runtime under its tenant;
-- acquire and renew its lease;
-- resolve credential references through the existing resolver;
-- issue one bounded capability for one runtime operation;
+- load its durable runtime generation;
+- acquire and renew its lease with a monotonic fencing token;
+- load the source-family authority epoch;
+- resolve credential references through the existing resolver into a one-call credential lease;
+- issue one bounded capability for one runtime operation, lease fence, authority epoch, and canonical request intent;
 - call the worker with the current durable checkpoint and page cursor;
 - independently validate the returned envelope and receipt;
-- write the page attempt and outbox state;
+- create or resume the durable logical page attempt and ordered event outbox;
 - publish accepted events;
 - project the events;
-- atomically commit runtime progress;
+- atomically accept a worker result only when the runtime lease fence, authority epoch, and request-intent digest still match;
+- atomically commit accepted runtime progress only when the publish-claim fence, authority epoch, request-intent digest, and input progress still match;
 - preserve existing API behavior and redaction.
 
 The Go caller may retry an identical page request. The worker must return the same logical page for the same execution-plan digest, input cursor, checkpoint, scope, and provider response.
@@ -268,23 +299,30 @@ There is no `Sync` operation in the worker. Sync owns durable state and remains 
 
 - protocol and execution-plan versions;
 - plan bytes or a previously registered plan digest;
-- tenant, runtime, source, and family IDs;
-- unique page-attempt ID and idempotency key;
+- tenant, runtime, durable runtime generation, source, and family IDs;
+- stable logical page ID, page-attempt ID, and idempotency key;
 - current durable checkpoint and provider continuation cursor as separate values;
 - resolved public config values;
-- resolved secret values in a separately redacted field set;
+- an opaque, short-lived credential-lease reference; raw secret values are not protobuf fields;
 - source scope and path-parameter values;
 - request deadline and hard resource limits;
-- capability token binding the caller to the exact runtime, source, family, and operation;
+- current runtime-lease fence and source-family authority epoch;
+- canonical request-intent digest covering the plan, public configuration, scope, progress, limits, and operation;
+- capability token binding the caller to the exact runtime, source, family, operation, lease fence, authority epoch, and request-intent digest;
 - optional trace context.
 
-The capability token cannot authorize another source, family, tenant, runtime, or operation. The worker rejects an expired token before resolving a provider URL.
+The capability token cannot authorize another source, family, tenant, runtime,
+runtime generation, operation, plan revision, lease generation, authority
+generation, or request intent. The worker rejects an expired or mismatched
+token before resolving a provider URL or asking the credential broker for
+secret bytes.
 
 ### ReadPage result
 
 `ReadPageResult` carries:
 
-- the same tenant, runtime, source, family, attempt, and idempotency identities;
+- the same tenant, runtime, runtime generation, source, family, attempt, and idempotency identities;
+- the same runtime-lease fence, authority epoch, and request-intent digest;
 - execution-plan digest and worker build identity;
 - ordered event envelopes;
 - next provider cursor, when more provider pages exist;
@@ -298,6 +336,34 @@ The capability token cannot authorize another source, family, tenant, runtime, o
 - a worker receipt signed or authenticated by the process identity.
 
 The result never includes an access token, client secret, cookie, authorization header, or unredacted rejected record.
+
+## Lease, authority, and commit fencing
+
+Cancellation is not a commit guarantee. A worker may finish after its caller
+loses a lease, after an operator rolls a family back to Go, or after a newer
+attempt has acquired authority. Every state transition therefore carries and
+checks three independent values:
+
+- the runtime lease fence, a monotonically increasing token returned by lease acquisition;
+- the source-family authority epoch, incremented whenever execution authority changes or is revoked;
+- the canonical request-intent digest for the exact operation being committed.
+
+The worker echoes all three values in its result and authenticated receipt. Go
+acquires the per-runtime, per-family publication barrier and checks them against
+current durable state before accepting the result into a logical page attempt.
+The acceptance transaction also requires that no authority change is pending.
+It holds the barrier until `prepared` and its publish claim are durable. A
+mismatch or pending authority change rejects the result before its first append.
+A late result cannot regain authority through retry, and cancellation alone is
+never treated as the fence.
+
+Rollback increments the authority epoch before another engine receives a new
+capability. Lease reacquisition increments the runtime fence. Capability
+issuance and credential-lease redemption require the current runtime fence. An
+accepted page then uses the transferable publish claim defined below. Event
+publication, projection, and the final progress commit require the current
+publish-claim fence, unchanged authority epoch and request-intent digest, and
+the same unsuperseded logical page identity.
 
 ## Cursor and checkpoint rules
 
@@ -351,13 +417,33 @@ The plan compiler assigns every field one of these classes:
 
 - public runtime configuration;
 - secret reference;
-- resolved ephemeral secret;
+- credential reference permitted for one declared auth capability;
 - progress-affecting configuration;
 - scope configuration;
 - endpoint override;
 - test-only configuration.
 
-The Go plane resolves secret references and sends resolved values only for one bounded call. Rust wraps secret values in non-printing, zeroizing types. Secrets are excluded from traces, errors, receipts, panic output, and result digests. Cache keys use keyed digests, never raw credentials.
+The source-runtime protobuf never carries raw credentials. The Go plane asks a
+local credential broker for a short-lived, single-operation lease bound to the
+tenant, runtime, source, family, operation, runtime fence, authority epoch, and
+request-intent digest. The lease also binds the durable runtime generation.
+After the plan and egress target pass validation, the
+worker redeems that opaque lease over an authenticated local channel for only
+the bytes required by the declared auth capability.
+
+Credential codecs use zeroizable byte buffers instead of ordinary immutable
+strings. Broker leases have bounded lifetime and redemption count. Credential
+rotation, revocation, family rollback, and lease loss invalidate unredeemed
+leases immediately. After redemption, the trusted worker receives a
+cancellation signal, zeroizes local bytes, and evicts derived tokens; a provider
+token already sent on the network can only be revoked when that provider
+supports revocation. Short operation deadlines and token TTLs bound this
+residual exposure. Before each provider request, the egress host checks that the
+operation capability remains active. Any derived-token cache is capacity- and
+TTL-bounded, partitioned by every authorization input, and zeroizes entries on
+eviction. Production workers disable or restrict core dumps and same-host
+process inspection. Secrets are excluded from logs, traces, errors, receipts,
+panic output, request and result digests, and metric labels.
 
 Endpoint overrides remain fail-closed. The worker applies the same private-endpoint policy to verification, token, list, detail, pagination-next, and redirect URLs. A provider response cannot move the worker to an undeclared host through a `Link` header or next-URL field.
 
@@ -376,7 +462,7 @@ The host enforces:
 - bounded concurrency per runtime and provider host;
 - retry budgets driven by error class and idempotent method;
 - `Retry-After` handling with an upper bound;
-- token cache partitioning by tenant, source, auth mechanism, client identity, scope, and secret digest;
+- token cache partitioning by tenant, runtime, source, family, auth mechanism, client identity, scope, authority epoch, credential revision, and request intent;
 - explicit support for declared auth models only;
 - response content-type and JSON-depth limits;
 - telemetry labels with bounded cardinality.
@@ -404,6 +490,30 @@ Every worker failure returns a stable category plus bounded details:
 
 Raw provider bodies and secrets are never error details. The result may include a bounded field path, HTTP status, provider request ID, and contract revision when safe.
 
+`authority_transition_blocked` is a compatibility-plane state, not a worker
+error category. It identifies the affected family, pending decision ID, current
+engine, authority revision, capacity or stream-health reason, and the `restore
+capacity` action. The family remains stopped until pending-transition recovery
+durably reconciles the receipt.
+
+`source_replacement_pending` is also a compatibility-plane state. It identifies
+the runtime, old generation and source, requested source, replacement operation,
+family closure counts, blocked reason, and `Retry source replacement` action.
+Recovery resumes the same operation ID automatically after an infrastructure
+dependency recovers or when the operator selects that action. Cancellation is
+not available after the transition is stored; the operation must close the old
+generation before it can activate the new source. It never reports the
+requested source as active before all old-generation families are durably
+closed.
+
+`runtime_conflict` identifies the expected and current runtime revisions, the
+requested mutable fields, and the fields that changed concurrently. `Retry
+runtime update` is available only when every requested field remains compatible;
+it reloads the current row and reapplies the complete requested mutation without
+progress fields. Otherwise `Review runtime changes` shows each requested and
+current value and requires the operator to submit an explicit replacement
+mutation. Cerebro never silently omits a conflicting requested field.
+
 ## Determinism and idempotency
 
 The worker is not assumed to control provider consistency. It is required to make its own transformations deterministic.
@@ -419,6 +529,70 @@ For a fixed plan, input, and provider response bytes:
 - conflicting duplicates fail the page or quarantine the record according to the family contract.
 
 The page-attempt ID identifies one durable Go commit attempt. The idempotency key identifies one logical worker execution. Neither is derived from a wall-clock timestamp alone.
+
+## Durable page attempt and recovery
+
+The compatibility plane persists a recoverable page outbox before Rust receives
+authority. The logical page ID is stable across process restarts and is derived
+from durable runtime identity, progress identity, engine authority, and request
+intent, not sync start time.
+
+Beginning a logical page transaction stores:
+
+- the input checkpoint and cursor digests;
+- the target checkpoint, cursor, and result digest proposed by the accepted worker result;
+- the accepting runtime fence, current publish-claim fence, authority epoch, request-intent digest, plan digest, and worker build;
+- the ordered event outbox with stable message, event, and sequence identities;
+- each append acknowledgement's stream, stream sequence, and stable message ID;
+- one state from `prepared`, `publishing`, `committed`, `superseded`, or `quarantined`.
+
+The transaction that persists `prepared` ends provider-execution authority and
+establishes a single-owner publish claim with a monotonic fence. A non-terminal
+page blocks new provider capabilities for that runtime and family. The claim can
+transfer to a recovery worker after runtime lease loss. Claim transfer and
+authority changes use the same barrier held across each append, broker
+acknowledgement, and acknowledgement write, so the prior owner cannot begin
+another append after transfer.
+
+The append port returns a receipt containing the stream, stream sequence, and
+stable message ID. Recovery republishes an unacknowledged item with the same
+message ID, resumes projection idempotently by logical page and outbox sequence,
+and commits progress under the current publish claim. A network timeout may
+lose an acknowledgement even though JetStream accepted the message, and the
+stream duplicate window is not a correctness boundary. The raw append log is
+therefore at-least-once. A repeated raw message cannot create duplicate current
+evidence, projection effects, or progress because every consumer persists the
+stable logical page and outbox sequence. Append metadata travels in headers and
+the outbox, so the existing event-envelope contract remains unchanged. Append,
+live delivery, and replay ports return a metadata-bearing `DeliveredEvent` with
+the envelope, logical page ID, outbox sequence, stable message ID, authority
+epoch, and append receipt. JetStream decoding preserves those headers for both
+live and replay consumers. Append, replay paging, dead-letter, redrive, and
+projector ports carry `DeliveredEvent` end to end; only provider and public API
+boundaries unwrap its `EventEnvelope`. Recovery never recomputes a different
+page under the same logical identity.
+
+Authority changes acquire the same per-runtime, per-family publication barrier.
+A `prepared` attempt with no acknowledged append may become `superseded`. Once
+any outbox event is acknowledged, the authority change remains pending, blocks
+new page capabilities and provider calls, and lets recovery finish publication,
+projection, and progress commit under the prior authority epoch. Only after the
+attempt reaches a terminal state can the authority receipt advance the epoch.
+Malformed or irreconcilable attempts become `quarantined` with a bounded
+receipt, and the authority change remains pending for operator resolution. No
+Rust page becomes authoritative until crash-after-prepare, partial-publish,
+crash-after-publish, lease-loss, and rollback recovery tests pass.
+
+`prepared` and `publishing` attempts recover automatically unless an authority
+change supersedes a page before its first append. `committed` and `superseded`
+attempts require no operator action. A `quarantined` attempt keeps
+its input progress, target progress, bounded failure receipt, and outbox
+identity. The operator can retry recovery after correcting an infrastructure
+failure or mark an unappended attempt superseded. An attempt with an
+acknowledged event cannot be superseded; the operator must finish its outbox or
+use the existing replay or resync path that accounts for the appended events.
+The runtime and any pending authority change do not advance until one of those
+actions reaches a terminal state.
 
 ## Projection evolution
 
@@ -450,7 +624,21 @@ An agent can propose a declarative source, but promotion requires deterministic 
 
 A small number of providers require SDKs, multi-service discovery, request signing, or relationship traversal that the declarative engine cannot express safely.
 
-Deep sources use typed Rust extension traits compiled into the first-party worker binary. They remain repository-owned, versioned, and held to the existing Depth Contract. They do not get raw storage clients or an unrestricted network client; they call the same bounded egress, auth, pagination, event, and receipt hosts as declarative sources.
+Those deep sources remain in the existing Go runtime during the first native
+worker release. A Rust trait is an authoring contract, not an isolation
+boundary: code in the same process could still open a socket or read the local
+filesystem.
+
+A later deep Rust adapter must run in a separate sandboxed component or
+subprocess with deny-by-default network and filesystem access. Provider I/O and
+credentials are available only through the same authenticated host broker used
+by declarative plans. The production boundary must enforce this with operating
+system controls such as a network namespace and syscall sandbox, or an
+equivalent component capability model. Static build checks remain
+defense-in-depth; they are not the primary control. No deep Rust adapter becomes
+authoritative until attempts to bypass the egress broker, credential broker,
+filesystem policy, memory limits, and termination limits fail in integration
+tests.
 
 The first release does not load arbitrary native libraries or third-party images.
 
@@ -595,23 +783,42 @@ pages without changing append or checkpoint authority.
 
 ### Stage 3: live shadow
 
+- Add the same-host credential broker, one-operation leases, zeroizing codecs, and rotation and revocation handling.
 - Let Go call both engines for allowlisted runtimes.
 - Only Go output is committed.
 - Compare request intent, page digest, event digest, cursor, checkpoint, error class, and projection preview.
-- Store bounded mismatch receipts in existing current state; do not add another datastore.
+- Append bounded parity observations and mismatch receipts to the retained authority-evidence JetStream subject and project their latest state into Postgres.
+- Add stable authority-decision IDs, lost-ack tail reconciliation, an emergency transition reserve, fail-safe blocked execution, durable runtime generations, and tombstoned-subject expiry.
 
 **Exit gate:** the pilot cohort meets the parity and operational gates below for the required observation window.
 
-### Stage 4: authoritative declarative pages
+### Stage 4: durable page recovery and fencing
+
+- Add monotonic runtime lease fences and source-family authority epochs.
+- Bind capabilities, credential leases, worker receipts, and commits to the canonical request-intent digest.
+- Add stable logical page identities, ordered event outboxes, incomplete-attempt enumeration, and idempotent recovery.
+- Change the append port to return stream and message receipts; require consumer deduplication by logical page and outbox sequence.
+- Change append, live-delivery, replay paging, dead-letter, redrive, and projector ports to return the metadata-bearing event record instead of dropping outbox headers at the envelope boundary.
+- Add transferable, fenced publish claims and serialize authority changes with the page-publication barrier.
+- Treat a runtime `source_id` change as a fenced old-generation closure and new-generation replacement across API and storage paths.
+- Add monotonic runtime revisions, typed mutation ports, and architecture enforcement that removes whole-document existing-row upserts from every caller.
+- Prove stale workers cannot accept results or retain a publish claim after lease loss, rollback, or authority transfer.
+
+**Exit gate:** the crash, partial-publish, stale-worker, lease-loss, and rollback
+matrix reaches the correct terminal attempt state without duplicate current
+evidence, projection effects, or an incorrect checkpoint.
+
+### Stage 5: authoritative declarative pages
 
 - Select authority per source family, not per entire deployment.
 - Rust returns the authoritative page; Go retains append, projection, and commit.
 - Automatic rollback changes the family back to Go on parity, crash, latency, or quarantine thresholds.
 - Go shadow execution remains available for a bounded rollback window.
+- Append and durably acknowledge the immutable authority decision before updating the fenced Postgres current projection.
 
 **Exit gate:** no source-specific Go runtime loop is needed for the authoritative declarative cohort.
 
-### Stage 5: registry and generator deletion
+### Stage 6: registry and generator deletion
 
 - Stop generating Go packages for standard declarative sources.
 - Replace compile-time standard-source imports with the plan index.
@@ -620,16 +827,17 @@ pages without changing append or checkpoint authority.
 
 **Exit gate:** adding a standard source changes a definition, fixtures, proof, and plan index; it does not change a language registry.
 
-### Stage 6: projection calculation
+### Stage 7: projection calculation
 
 - Compile declarative projection plans in Rust.
 - Run projection deltas in shadow.
 - Move authoritative calculation only after differential and replay gates pass.
 - Keep all state and graph writes in Go.
 
-### Stage 7: deep Rust sources
+### Stage 8: sandboxed deep Rust sources
 
-- Define the typed deep-source extension trait.
+- Define the typed deep-source extension trait and broker protocol.
+- Run the adapter outside the declarative worker with deny-by-default OS or component capabilities.
 - Move one complete provider boundary only when it reduces shared complexity or unlocks required SDK behavior.
 - Do not translate deep sources for language-percentage goals.
 
@@ -664,7 +872,13 @@ and cancellation through that contract rather than parsing error strings.
 - First, middle, final, and empty-page behavior match.
 - Cursor and checkpoint behavior match across restarts.
 - Not-modified and forced-reconciliation behavior match.
-- Duplicate events cannot advance a checkpoint twice.
+- Repeated raw append messages cannot duplicate current evidence, projection effects, or checkpoint advancement.
+- `DeliveredEvent` identity survives append, replay paging, dead-letter, redrive, and projector round trips.
+- Stale worker results cannot enter an outbox, and stale publish-claim owners cannot begin another append or advance progress.
+- Incomplete page attempts recover to `committed`, `superseded`, or `quarantined` without recomputing a different page.
+- Authority changes supersede a page before its first append or wait for an acknowledged outbox to reach a terminal state.
+- Source replacement closes every old-generation family before the new source or generation can issue a capability.
+- Runtime updates preserve server-owned progress and cannot overwrite a newer page commit.
 - Conflicting duplicate IDs fail safely.
 - Invalid records do not enter the append log.
 - Contract drift increases quarantine and lowers source promotion state rather than silently changing identity.
@@ -672,20 +886,31 @@ and cancellation through that contract rather than parsing error strings.
 
 ### Security gates
 
-- Cross-tenant runtime, plan, cursor, and credential reuse fails closed.
+- Cross-tenant and cross-runtime-generation plan, cursor, capability, and credential reuse fails closed.
 - Expired or mismatched worker capabilities fail before egress.
+- Unredeemed credential leases fail closed when the runtime fence, authority epoch, request intent, rotation, or revocation state changes.
+- A redeemed operation rechecks active authority before each provider request and bounds already issued provider tokens by cancellation, TTL, and provider revocation when available.
 - Redirects and next URLs cannot escape declared hosts.
 - DNS rebinding and private-address policy tests pass.
 - Secrets do not appear in logs, traces, errors, receipts, crash output, or digests.
+- Raw credentials do not appear in source-runtime protobuf messages, and broker and token-cache eviction zeroize retained bytes.
 - Response and decompression limits are enforced before allocation growth.
 - Provider-controlled identifiers cannot create URN collisions.
-- Deep extensions cannot access storage or unrestricted networking.
+- Deep extensions run outside the declarative worker and cannot bypass the egress broker, credential broker, filesystem policy, or resource limits.
 
 ### Operational gates
 
 - Worker crash does not advance durable progress.
-- Lease loss cancels work and prevents commit.
-- Repeating a page attempt does not duplicate durable events.
+- Lease loss prevents new provider-result acceptance; a recovery commit requires the current fenced publish claim.
+- Repeating a page attempt does not duplicate current evidence, projection effects, or progress.
+- Recovery can enumerate and finish or supersede every non-terminal page attempt.
+- Runtime lease loss transfers the publish claim through the publication barrier; an unknown-ack append is handled as an idempotent replay of the same outbox item.
+- Authority-decision acknowledgement loss recovers an exact decision by ID and digest or quarantines a conflicting subject tail without changing authority.
+- Normal authority-stream capacity leaves a tested reserve for demotion, rollback, and tombstone events.
+- Exhausted emergency capacity blocks Rust execution until the pending safety transition is durable; it never grants Go authority without a receipt.
+- Snapshot and restore preserve active authority chains; an old runtime generation cannot purge or authorize a recreated runtime with the same caller-visible ID.
+- Source-change races with sync, authority transition, deletion, and reaping leave one closed old generation and one default-Go new generation.
+- Configuration, sync-failure, deposit-result, scope-propagation, and batch-update races with page acceptance, publication, recovery, commit, and replacement preserve the newest progress and open generation.
 - Go continues serving existing source APIs while the worker is unavailable.
 - An unavailable Rust worker produces an explicit capability state; it does not silently report success.
 - Per-family rollback does not require rewriting stored checkpoints.
@@ -694,6 +919,7 @@ and cancellation through that contract rather than parsing error strings.
   resetting it.
 - CPU, memory, latency, request, and response budgets are observable.
 - Worker version and execution-plan digest are visible in internal runtime diagnostics.
+- Authority promotion, demotion, and rollback can be rebuilt from the retained authority-evidence JetStream subject.
 
 ### Fidelity gates
 
@@ -706,17 +932,147 @@ and cancellation through that contract rather than parsing error strings.
 
 ## Rollout and rollback
 
-Authority is selected with a stored, tenant-scoped runtime flag containing the engine, plan digest, and minimum worker version. The default remains Go until a family passes live shadow.
+The compatibility plane appends each evaluation, promotion, demotion, and
+rollback receipt to a dedicated authority-evidence subject in JetStream, the
+existing log of record. An expected-last-subject-sequence precondition
+serializes decisions for one tenant, runtime, runtime generation, source, and
+family. A runtime generation is a durable monotonic identity assigned when a
+runtime ID is first created, recreated after deletion, or moved to a different
+source; it is not caller supplied. The generation is part of the subject,
+capability, credential lease, page identity, receipt, and current-state key.
+Before the append, the pending transition stores its expected prior sequence,
+deterministic decision ID, and canonical receipt digest. The decision ID is also
+the stable JetStream message ID. The durable publish acknowledgement becomes
+the authority revision. Only then does the compatibility plane update the
+Postgres current projection with compare-and-swap fencing. A crash after the
+append is repaired by the normal projector; a projection can rebuild from the
+subject without inventing a second log of record.
 
-Rollback is a state transition, not a deployment improvisation:
+An acknowledgement timeout does not create a second decision. Recovery reads
+the subject tail. An exact decision-ID and digest match recovers the durable
+stream sequence. If the tail remains at the expected prior sequence, recovery
+retries the same message ID and expected-sequence precondition. Any other tail
+quarantines the pending transition without changing the current engine or
+authority epoch. The operator sees the expected sequence, pending decision ID
+and digest, and actual tail sequence, decision ID, and digest. `Retry decision`
+is available only when the tail is still the expected prior revision.
+`Reconcile current authority` verifies a valid successor chain, rebuilds the
+Postgres projection, and marks the older pending request superseded. An invalid
+chain keeps execution stopped and exposes `Restore authority stream`, which
+uses the verified JetStream snapshot procedure; the product never offers direct
+stream editing. Pending-transition recovery is enumerable and runs before
+another decision for that subject.
 
-1. stop issuing Rust page capabilities for the affected family;
-2. preserve the last committed checkpoint, Go-compatible continuation cursor,
+The authority-evidence stream uses file storage, the production replica policy,
+snapshot and restore coverage, `LimitsPolicy`, `MaxAge=0`, and `DiscardNew`.
+Configured message and byte limits never evict an existing authority event. At
+the normal-admission ceiling, parity observations and promotions stop, leaving
+a configured emergency reserve larger than the maximum bounded in-flight writes
+for demotion, rollback, and tombstone events. Alerts fire before normal
+admission closes and again when the reserve is used. Capacity planning retains
+the full active subject chain.
+
+If JetStream or the emergency reserve cannot durably accept a demotion or
+rollback, the compatibility plane enters `authority_transition_blocked`, stops
+issuing Rust capabilities and redeeming credential leases for the affected
+runtime family, and stops source execution. It does not claim that Go is
+authoritative. Startup and capability issuance require a healthy authority
+stream and sufficient reserve. After an operator restores capacity, recovery
+appends and reconciles the pending decision before either engine can resume.
+Deletion remains pending until its tombstone is durable.
+
+After runtime deletion, a subject reaper verifies that the latest event is the
+expected tombstone and that its audit deadline has passed. It acquires the same
+publication barrier for the exact durable runtime generation and purges that
+subject only through the verified tombstone stream sequence. Recreating the
+caller-visible runtime ID receives a new generation and a different subject, so
+the old-generation purge cannot reach the new chain. Snapshot, restore,
+active-chain preservation, capacity-exhausted rollback, concurrent
+recreate-versus-reap, tombstone deadline, and bounded subject-purge tests are
+release gates. An operator cannot compact an active chain without a later ADR
+that defines a verifiable replacement snapshot.
+
+### Source replacement
+
+The current runtime update path permits `source_id` to change and resets
+progress. Under per-source authority, that update becomes a fenced replacement
+instead of an ordinary merge:
+
+1. acquire the runtime-wide publication barrier and persist `source_replacement_pending`;
+2. stop new capabilities and credential redemption for every family in the old generation;
+3. finish or supersede each old-generation page under the page recovery rules;
+4. append and acknowledge demotion and tombstone receipts for every old source family;
+5. increment the runtime generation, store the requested source with fresh progress, and default every new family to Go;
+6. admit capabilities for the new generation only after its current-state projection matches the authority log.
+
+The existing runtime `PUT` surface detects a source change and drives this
+operation. If it completes within the request budget, the response remains the
+updated runtime. Otherwise it returns the stable `source_replacement_pending`
+state and operation ID; HTTP, Connect, SDK, CLI, and MCP surfaces expose the
+same blocked reason and `Retry source replacement` action. The action resumes
+the same operation ID, and cancellation is unavailable after the transition is
+stored. Ordinary configuration updates cannot change `source_id` or the
+generation. Rust authority is blocked until the API and storage migration
+enforces this rule. Tests race source replacement with sync, pending authority
+change, lease loss, crash recovery, runtime deletion, runtime ID reuse, and
+tombstone reaping.
+
+### Runtime mutation serialization
+
+Every runtime mutation, not only source replacement, uses the runtime-wide
+publication barrier or an expected durable runtime revision. The runtime row
+stores a monotonic revision. Page acceptance, page progress commit,
+configuration update, enable or disable, source replacement, deletion, and
+recovery compare and increment that revision.
+
+Runtime progress is server-owned. A source-preserving `PUT` reloads the locked
+current row, applies only mutable operator fields, preserves the current
+checkpoint, cursor, page state, engine, authority revision, and generation, and
+commits with revision CAS. A progress-affecting configuration change performs
+its declared cursor or checkpoint invalidation inside the same barrier instead
+of copying progress from the caller or an earlier read. The compatibility plane
+may retry a non-conflicting CAS against the new row; it returns a stable
+`runtime_conflict` only when the requested mutation no longer has the same
+meaning.
+
+The storage migration replaces unconditional whole-document upsert on existing
+runtimes with typed revision-aware mutation methods. The creation port is
+insert-if-absent only. Existing-row ports are separated into configuration
+patch, progress commit, status result, source replacement, and deletion; each
+requires an expected runtime revision or the runtime-wide barrier. Batch
+operations apply the same typed mutation per runtime and cannot submit complete
+stored rows. Architecture tests reject unconditional `PutSourceRuntime` or
+batch-upsert use for an existing row.
+
+Page commit compares the input progress and runtime revision captured by the
+accepted logical page. Sync-failure recording, deposit success and failure,
+inventory-scope propagation, public runtime `PUT`, enable or disable, batch
+updates, source replacement, and deletion all move to the typed ports before
+Rust authority. Tests race each writer against page acceptance, partial
+publication, recovery, final progress commit, and source replacement. No
+runtime mutation can restore an older checkpoint or cursor or write into a
+closed generation.
+
+Each receipt contains the source and family, prior and next engine, prior and
+next authority epoch, plan digest, worker build, parity window and sample
+counts, promotion or rollback thresholds, decision and reason, actor, and
+observation time. The current projection stores the resulting stream revision.
+The default remains Go until a family passes live shadow and its promotion
+receipt is durably acknowledged.
+
+Rollback follows these durable steps:
+
+1. acquire the per-runtime, per-family publication barrier;
+2. record a pending authority change with its expected sequence, deterministic decision ID, and receipt digest; stop issuing new Rust page capabilities and invalidate outstanding credential leases for the affected family;
+3. supersede a prepared page before its first append, or recover an acknowledged outbox through progress commit under the prior authority epoch;
+4. append and reconcile acknowledgement of the rollback authority receipt with the expected prior subject sequence, then increment the family authority epoch in the fenced current-state projection;
+5. preserve the last committed checkpoint, Go-compatible continuation cursor,
    and progress metadata;
-3. validate the stored source, family, plan, engine, and cursor-schema metadata,
+6. validate the stored source, family, plan, engine, and cursor-schema metadata,
    then pass the exact Go-compatible continuation cursor to the Go adapter;
-4. keep the mismatch receipt and worker build identity;
-5. require a new plan or worker revision before Rust can regain authority.
+7. reject late Rust results before outbox acceptance through the pending authority change, stale runtime fence, or stale authority epoch;
+8. keep the mismatch receipt and worker build identity;
+9. require a new plan or worker revision before Rust can regain authority.
 
 No rollback deletes events, rewrites graph state, or resets progress unless an operator explicitly starts the existing replay or resync path.
 
@@ -803,12 +1159,17 @@ The implementation should land as reviewable ownership slices based on the nativ
 3. **Plan compiler:** Rust definition normalization and catalog grammar parity.
 4. **Fixture worker:** native process, bounded HTTP host, auth, pagination, events, receipts.
 5. **Differential harness:** Go/Rust page and projection comparison over existing fixtures.
-6. **Live shadow:** capability issuance, UDS or mTLS transport, mismatch receipts, metrics.
-7. **Control-loop receipts:** committed source revisions and typed mission wake conditions.
-8. **Family authority:** one declarative cohort with automatic rollback.
-9. **Registry deletion:** plan-index loading and removal of standard generated registration.
-10. **Projection delta:** shadow calculation and later authoritative declarative projection.
-11. **Deposit validation:** shared record validation behind the existing authenticated deposit surface.
+6. **Credential broker:** same-host UDS, opaque operation leases, authenticated redemption, zeroizing codecs, bounded token cache, rotation and revocation handling.
+7. **Authority evidence stream:** stable decision identity, expected-sequence serialization, lost-ack recovery, emergency transition reserve, blocked-execution fail-safe, durable runtime generations, fenced tombstone reaping, disaster-recovery coverage, and a fenced Postgres current-state projection.
+8. **Non-authoritative live shadow:** capability issuance, same-host transport, durable parity receipts, and metrics; only Go output reaches the page outbox.
+9. **Commit fencing:** runtime lease fences, authority epochs, request-intent digests, and stale-result rejection.
+10. **Durable page recovery and runtime mutation:** stable logical page identity, fenced publish claim, receipt-returning append port, ordered outbox, terminal states, crash recovery, fenced source replacement, typed revision-aware mutation ports, caller cutover, and architecture enforcement against whole-row updates.
+11. **Control-loop receipts:** committed source revisions and typed mission wake conditions.
+12. **Family authority:** one declarative cohort with automatic rollback.
+13. **Registry deletion:** plan-index loading and removal of standard generated registration.
+14. **Projection delta:** shadow calculation and later authoritative declarative projection.
+15. **Sandboxed deep adapter:** isolated broker-only extension execution after the declarative worker is proven.
+16. **Deposit validation:** shared record validation behind the existing authenticated deposit surface.
 
 No slice should combine process transport, authoritative provider reads, append ownership, and graph writes.
 
@@ -816,9 +1177,9 @@ No slice should combine process transport, authoritative provider reads, append 
 
 - Whether distributed deployments standardize on Connect or gRPC once the protobuf contract exists.
 - Whether plan bytes are sent on every request or registered by digest with a bounded worker cache.
-- Which keyed-digest mechanism identifies secret cache partitions.
+- Which key-wrapping mechanism the same-host credential broker uses.
 - Which small source-family cohort provides the best live-shadow coverage without expensive provider reads.
-- Whether a future first-party component model uses WIT or only the native deep-source trait.
+- Whether a future first-party sandbox uses a WIT component, a restricted subprocess, or both.
 - When declarative projection parity is strong enough to remove generated Go projectors.
 
 These choices do not change the initial ownership line: Rust performs bounded provider execution; Go owns durable commit and graph writes.
