@@ -37,8 +37,8 @@ config:
   cerebro:publicSubnetIds:
     - subnet-075aed8f036657648
     - subnet-0f3b3171121b9da7b
-  cerebro:apiCpu: 512
-  cerebro:apiMemory: 1024
+  cerebro:apiCpu: 1024
+  cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
   # Pinned to 1 because cerebro:deviceAuthEnabled is true and the secheck
   # DPoP replay cache is in-process per replica. The Pulumi __main__.py
@@ -699,11 +699,11 @@ config:
   cerebro:orchestratorMemory: 4096
   cerebro:orchestratorTaskProfiles:
     default:
+      cpu: 4096
+      memory: 8192
+    small:
       cpu: 2048
       memory: 4096
-    small:
-      cpu: 1024
-      memory: 2048
     large:
       cpu: 16384
       memory: 32768

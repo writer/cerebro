@@ -15,8 +15,8 @@ config:
   cerebro:publicSubnetIds:
     - subnet-0dee23b7f11d39069
     - subnet-06c3659db5372e941
-  cerebro:apiCpu: 512
-  cerebro:apiMemory: 1024
+  cerebro:apiCpu: 1024
+  cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
   # apiMaxInstances pinned to 1 while deviceAuthEnabled is on: the DPoP
   # replay cache is per-replica in-process (internal/deviceauth/dpop.go), so
@@ -841,11 +841,11 @@ config:
   cerebro:orchestratorMemory: 4096
   cerebro:orchestratorTaskProfiles:
     default:
+      cpu: 4096
+      memory: 8192
+    small:
       cpu: 2048
       memory: 4096
-    small:
-      cpu: 1024
-      memory: 2048
     large:
       cpu: 16384
       memory: 32768
