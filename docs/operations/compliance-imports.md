@@ -44,4 +44,3 @@ Before commit, verify:
 Commit appends canonical domain events. If projection fails after append, replay
 the events; do not rebuild the change plan against newer inputs under the same
 staging ID.
-

@@ -58,4 +58,3 @@ legacy result as authoritative by default.
 6. Resume only after replay and parity checks pass for the affected cohort.
 
 Rollback never deletes canonical history or mutates a completed run.
-
