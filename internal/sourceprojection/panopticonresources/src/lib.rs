@@ -4,6 +4,8 @@ use std::collections::HashSet;
 pub const ABI_VERSION: u32 = 2;
 const MAX_RESOURCE_OBJECTS: usize = 128;
 const MAX_CONTEXT_DEPTH: usize = 4;
+#[cfg(target_arch = "wasm32")]
+const RESULT_DESCRIPTOR_SIZE: usize = 16;
 
 const ASSET_OBJECT_KEYS: &[&str] = &["assets", "affected_assets", "hosts", "endpoints"];
 const RESOURCE_OBJECT_KEYS: &[&str] = &[
@@ -295,7 +297,10 @@ pub extern "C" fn cerebro_panopticon_resources_abi_version() -> u32 {
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 pub extern "C" fn cerebro_panopticon_resources_alloc(length: u32) -> u32 {
-    cerebro_wasm_guest::alloc(length)
+    let mut bytes = vec![0_u8; length as usize];
+    let pointer = bytes.as_mut_ptr() as usize;
+    std::mem::forget(bytes);
+    u32::try_from(pointer).unwrap_or_default()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -305,18 +310,44 @@ pub extern "C" fn cerebro_panopticon_resources_extract(
     input_length: u32,
     descriptor_pointer: u32,
 ) -> u32 {
-    cerebro_wasm_guest::with_input_and_output::<
-        _,
-        { cerebro_wasm_guest::JSON_RESULT_DESCRIPTOR_SIZE },
-    >(input_pointer, input_length, descriptor_pointer, |input| {
-        let output = serde_json::to_vec(&extract(input)).unwrap_or_else(|_| b"[]".to_vec());
-        if cerebro_wasm_guest::write_json_result(descriptor_pointer, output) {
-            0
-        } else {
-            2
-        }
-    })
-    .unwrap_or(1)
+    let input_start = input_pointer as usize;
+    let descriptor_start = descriptor_pointer as usize;
+    let Some(input_end) = input_start.checked_add(input_length as usize) else {
+        return 1;
+    };
+    let Some(descriptor_end) = descriptor_start.checked_add(RESULT_DESCRIPTOR_SIZE) else {
+        return 1;
+    };
+    let memory_size = core::arch::wasm32::memory_size(0) * 65_536;
+    if input_end > memory_size || descriptor_end > memory_size {
+        return 1;
+    }
+    // SAFETY: The host allocated input_pointer..input_pointer+input_length in this module and the
+    // range was checked against the current linear-memory size above.
+    let input =
+        unsafe { std::slice::from_raw_parts(input_pointer as *const u8, input_length as usize) };
+    let output = serde_json::to_vec(&extract(input)).unwrap_or_else(|_| b"[]".to_vec());
+    let Ok(output_length) = u32::try_from(output.len()) else {
+        return 2;
+    };
+    let mut output = output.into_boxed_slice();
+    let output_pointer = output.as_mut_ptr() as usize;
+    let Ok(output_pointer) = u32::try_from(output_pointer) else {
+        return 2;
+    };
+    std::mem::forget(output);
+    let mut descriptor = [0_u8; RESULT_DESCRIPTOR_SIZE];
+    descriptor[4..8].copy_from_slice(&output_pointer.to_le_bytes());
+    descriptor[8..12].copy_from_slice(&output_length.to_le_bytes());
+    // SAFETY: descriptor_pointer..descriptor_pointer+16 was checked against linear memory above.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            descriptor.as_ptr(),
+            descriptor_pointer as *mut u8,
+            descriptor.len(),
+        )
+    };
+    0
 }
 
 #[cfg(test)]

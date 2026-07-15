@@ -4,7 +4,6 @@ members = [
     "internal/mitre/evaluator",
     "internal/sourcecoverage/evaluator",
     "internal/sourceprojection/panopticonresources",
-    "internal/wasmguest",
     "tools/graphactiongen",
 ]
 resolver = "2"

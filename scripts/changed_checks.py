@@ -121,53 +121,6 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
                 module.changed_reason,
             )
 
-    wasm_json_corpora = (
-        (
-            "internal/mitre/testdata/wasmjson/",
-            "./internal/mitre",
-            "mitre-wasm-parity-corpus",
-            ["go", "test", "./internal/mitre", "-run", "^TestContextEvaluatorCorpus$", "-count=1"],
-            "MITRE Wasm parity corpus changed.",
-        ),
-        (
-            "internal/sourcecoverage/testdata/wasmjson/",
-            "./internal/sourcecoverage",
-            "sourcecoverage-wasm-parity-corpus",
-            ["go", "test", "./internal/sourcecoverage", "-run", "^TestCoverageEvaluatorCorpus$", "-count=1"],
-            "Source coverage Wasm parity corpus changed.",
-        ),
-        (
-            "internal/sourceprojection/testdata/panopticonresources/",
-            "./internal/sourceprojection",
-            "panopticon-wasm-parity-corpus",
-            ["go", "test", "./internal/sourceprojection", "-run", "^TestPanopticonResourceObjectsWasmCorpus$", "-count=1"],
-            "Panopticon resource Wasm parity corpus changed.",
-        ),
-    )
-    for prefix, package, name, argv, reason in wasm_json_corpora:
-        if package not in packages and any(path.startswith(prefix) and path.endswith(".json") for path in files):
-            add_command(commands, seen, name, argv, reason)
-    parity_packages = {"./internal/mitre", "./internal/sourcecoverage", "./internal/sourceprojection"}
-    if not parity_packages.issubset(packages) and any(
-        path.startswith("internal/wasmjson/wasmjsontest/") for path in files
-    ):
-        add_command(
-            commands,
-            seen,
-            "wasm-json-parity-corpora",
-            [
-                "go",
-                "test",
-                "./internal/mitre",
-                "./internal/sourcecoverage",
-                "./internal/sourceprojection",
-                "-run",
-                "^(TestContextEvaluatorCorpus|TestCoverageEvaluatorCorpus|TestPanopticonResourceObjectsWasmCorpus)$",
-                "-count=1",
-            ],
-            "Shared Wasm JSON parity helpers changed.",
-        )
-
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")
 

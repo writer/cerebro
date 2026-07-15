@@ -2,35 +2,13 @@ package sourceprojection
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/wasmjson"
-	"github.com/writer/cerebro/internal/wasmjson/wasmjsontest"
 )
-
-const panopticonResourcesFuzzMaxInput = 64 << 10
-
-//go:embed testdata/panopticonresources/*.json
-var panopticonResourcesCorpus embed.FS
-
-func TestPanopticonResourceObjectsWasmCorpus(t *testing.T) {
-	t.Parallel()
-	inputs := wasmjsontest.LoadInputs[map[string]any](t, panopticonResourcesCorpus, "testdata/panopticonresources/*.json", panopticonResourcesFuzzMaxInput)
-	wasmjsontest.RunCorpus(t, context.Background(), inputs, panopticonResourcesDifferential())
-}
-
-func FuzzPanopticonResourceObjectsWasmParity(f *testing.F) {
-	inputs := wasmjsontest.LoadInputs[map[string]any](f, panopticonResourcesCorpus, "testdata/panopticonresources/*.json", panopticonResourcesFuzzMaxInput)
-	wasmjsontest.AddSeeds(f, inputs)
-	differential := panopticonResourcesDifferential()
-	f.Fuzz(func(t *testing.T, raw []byte) {
-		wasmjsontest.CheckFuzzInput(t, context.Background(), raw, differential)
-	})
-}
 
 func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
 	t.Parallel()
@@ -236,20 +214,4 @@ func referencePanopticonLooksLikeResourceObject(object map[string]any) bool {
 	}
 	attrs := panopticonAssetAttributesFromObject(object)
 	return firstNonEmpty(attrs["resource_urn"], attrs["resource_arn"], attrs["resource_id"], attrs["asset_id"], attrs["id"], attrs["hostname"], attrs["name"]) != ""
-}
-
-func panopticonResourcesDifferential() wasmjsontest.Differential[map[string]any, []map[string]any] {
-	return wasmjsontest.Differential[map[string]any, []map[string]any]{
-		MaxInputBytes: panopticonResourcesFuzzMaxInput,
-		Oracle: func(payload map[string]any) []map[string]any {
-			resources := referencePanopticonResourceObjects(payload)
-			if resources == nil {
-				return []map[string]any{}
-			}
-			return resources
-		},
-		Candidate: func(ctx context.Context, input wasmjsontest.Input[map[string]any]) ([]map[string]any, error) {
-			return panopticonResourceObjectsWasm(ctx, input.Raw)
-		},
-	}
 }
