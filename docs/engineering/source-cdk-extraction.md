@@ -5,6 +5,8 @@ direct store writes, direct process environment reads, background contexts, or
 provider-specific retry/pagination frameworks. Shared behavior belongs in the
 Source CDK, not in one source.
 
+These limits remain in force for Go sources during the native source-runtime migration. [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md) defines the target boundary: standard declarative sources become execution plans consumed by one Rust worker, while deep sources move only when a complete provider boundary clears the Depth Contract and differential gates. The ADR does not grant existing source packages room to grow during migration.
+
 Legacy sources above the 300 LOC budget are grandfathered with exact no-growth ceilings in `tools/archtests/source_packages_test.go`. If one shrinks, lower the budget in the same PR. If one needs new shared behavior, extract the behavior into `internal/sourcecdk` or another shared source-support package before growing the source.
 
 ## Deep Source Tier
