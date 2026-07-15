@@ -2315,11 +2315,12 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
 		},
 		ConnectorAccess: config.ConnectorAccessConfig{
-			HiddenSources:       []string{"auth0", "duo"},
-			RestrictedSources:   []string{"bootstrap_token", "duo", "jumpcloud"},
-			RestrictionReason:   "limited preview",
-			RequestAccessURL:    "https://access.example.com/request?source={source_id}&tenant={tenant_id}",
-			RequestAccessAction: "Request in Access Hub",
+			HiddenSources:        []string{"auth0", "duo"},
+			RestrictedSources:    []string{"bootstrap_token", "duo", "jumpcloud"},
+			MinCertificationTier: "contract_tested",
+			RestrictionReason:    "limited preview",
+			RequestAccessURL:     "https://access.example.com/request?source={source_id}&tenant={tenant_id}",
+			RequestAccessAction:  "Request in Access Hub",
 		},
 	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
 	server := httptest.NewServer(app.Handler())
@@ -2348,7 +2349,14 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 			RequestAccessURL    string `json:"request_access_url"`
 			RequestAccessAction string `json:"request_access_action"`
 			ReadinessStage      string `json:"readiness_stage"`
-			ConnectionMethods   []struct {
+			Certification       struct {
+				EffectiveTier string `json:"effective_tier"`
+			} `json:"certification"`
+			Availability struct {
+				State        string `json:"state"`
+				Discoverable bool   `json:"discoverable"`
+			} `json:"availability"`
+			ConnectionMethods []struct {
 				ID string `json:"id"`
 			} `json:"connection_methods"`
 		} `json:"connectors"`
@@ -2366,7 +2374,14 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 		RequestAccessURL    string `json:"request_access_url"`
 		RequestAccessAction string `json:"request_access_action"`
 		ReadinessStage      string `json:"readiness_stage"`
-		ConnectionMethods   []struct {
+		Certification       struct {
+			EffectiveTier string `json:"effective_tier"`
+		} `json:"certification"`
+		Availability struct {
+			State        string `json:"state"`
+			Discoverable bool   `json:"discoverable"`
+		} `json:"availability"`
+		ConnectionMethods []struct {
 			ID string `json:"id"`
 		} `json:"connection_methods"`
 	}{}
@@ -2380,6 +2395,9 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 		t.Fatal("duo was returned despite hidden source precedence over restricted source config")
 	}
 	bootstrapToken := bySourceID["bootstrap_token"]
+	if bootstrapToken.Certification.EffectiveTier != "cataloged" || bootstrapToken.Availability.State != "below_minimum" || !bootstrapToken.Availability.Discoverable {
+		t.Fatalf("bootstrap_token certification availability = %#v", bootstrapToken)
+	}
 	if bootstrapToken.AccessStatus != connectorAccessRestricted || bootstrapToken.AccessReason != "limited preview" || bootstrapToken.SetupAllowed || !bootstrapToken.Requestable || len(bootstrapToken.ConnectionMethods) != 0 {
 		t.Fatalf("bootstrap_token access = %#v, want restricted without setup methods", bootstrapToken)
 	}
@@ -2389,6 +2407,16 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 	jumpcloud := bySourceID["jumpcloud"]
 	if jumpcloud.AccessStatus != connectorAccessRestricted || jumpcloud.AccessReason != "limited preview" || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
 		t.Fatalf("jumpcloud access = %#v, want restricted catalog metadata", jumpcloud)
+	}
+	invalidTierResp, err := server.Client().Get(server.URL + "/connectors?min_certification_tier=trusted")
+	if err != nil {
+		t.Fatalf("GET /connectors invalid tier error = %v", err)
+	}
+	if closeErr := invalidTierResp.Body.Close(); closeErr != nil {
+		t.Fatalf("close invalid tier response: %v", closeErr)
+	}
+	if invalidTierResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid certification tier status = %d, want 400", invalidTierResp.StatusCode)
 	}
 
 	preflightResp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", strings.NewReader(`{}`))

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -108,6 +109,41 @@ func TestInputManifestAcceptsEmptyCompletePopulationWithoutWatermark(t *testing.
 	}
 }
 
+func TestInputManifestRejectsOverflowingCollectionCounts(t *testing.T) {
+	manifest := validManifest()
+	zero := uint64(0)
+	manifest.Receipts = []CollectionReceipt{{
+		Kind: "findings", RuntimeID: "runtime-1", QueryDigest: manifest.RequestedScopeDigest,
+		RawCount: 0, Deduplicated: 0, Included: math.MaxUint64, Excluded: 1,
+		ExpectedTotal: &zero, Watermark: manifest.CollectionCutoff, Cutoff: manifest.CollectionCutoff,
+		Completeness: CollectionComplete, PageDigest: manifest.MappingSetDigest,
+	}}
+	if err := ValidateInputManifest(manifest); !errors.Is(err, ErrInvalidManifest) {
+		t.Fatalf("ValidateInputManifest() error = %v, want ErrInvalidManifest", err)
+	}
+}
+
+func TestInputManifestRejectsOverflowingCollectionTotal(t *testing.T) {
+	manifest := validManifest()
+	zero := uint64(0)
+	manifest.Receipts = []CollectionReceipt{
+		{
+			Kind: "findings", RuntimeID: "runtime-1", QueryDigest: manifest.RequestedScopeDigest,
+			PageIndex: 0, NextCursor: "next", RawCount: math.MaxUint64, Deduplicated: math.MaxUint64, Included: math.MaxUint64,
+			ExpectedTotal: &zero, Watermark: manifest.CollectionCutoff, Cutoff: manifest.CollectionCutoff,
+			Completeness: CollectionComplete, PageDigest: manifest.RequestedScopeDigest,
+		},
+		{
+			Kind: "findings", RuntimeID: "runtime-1", QueryDigest: manifest.RequestedScopeDigest,
+			PageIndex: 1, Cursor: "next", RawCount: 1, Deduplicated: 1, Included: 1,
+			ExpectedTotal: &zero, Watermark: manifest.CollectionCutoff, Cutoff: manifest.CollectionCutoff,
+			Completeness: CollectionComplete, PageDigest: manifest.MappingSetDigest,
+		},
+	}
+	if err := ValidateInputManifest(manifest); !errors.Is(err, ErrInvalidManifest) {
+		t.Fatalf("ValidateInputManifest() error = %v, want ErrInvalidManifest", err)
+	}
+}
 func validManifest() InputManifest {
 	digestA := "sha256:" + strings.Repeat("a", 64)
 	digestB := "sha256:" + strings.Repeat("b", 64)

@@ -118,6 +118,7 @@ Relevant variable:
 If publish retries exhaust, check the recovery table before advancing runtime work:
 
 ```bash
+./bin/cerebro append-log dead-letters stats
 ./bin/cerebro append-log dead-letters list status=pending limit=20
 ./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
 ```
@@ -125,19 +126,57 @@ If publish retries exhaust, check the recovery table before advancing runtime wo
 After JetStream publish health is restored, replay one record:
 
 ```bash
-./bin/cerebro append-log dead-letters replay <dead-letter-id>
+./bin/cerebro append-log dead-letters replay <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
+
+Replay first claims the pending record with a two-minute ownership lease. A
+concurrent operator receives `replay is already claimed`; wait for the lease
+expiry reported by `list` before retrying. Failed publication releases the
+claim and records the bounded `append_failed` category. A process that exits
+while holding a claim leaves the record recoverable after lease expiry.
 
 Discard a record only after confirming the event should not be replayed:
 
 ```bash
-./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+./bin/cerebro append-log dead-letters discard <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
 
 Dead-letter IDs are deterministic for the subject, event ID, and payload. If the
 same event exhausts again after an operator has replayed or discarded that
 record, Cerebro preserves the terminal record and does not move it back to
 `pending`.
+
+Delete replayed or discarded records after the retention window:
+
+```bash
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 after_id=<next-after-id> limit=100
+./bin/cerebro append-log dead-letters cleanup actor=oncall@example.com reason=scheduled-retention limit=100
+```
+
+Each committed deletion has an audit row with the actor and reason. Cleanup
+never selects pending records. Continue only when `has_more` is true, using the
+returned `next_after_id` as `after_id`.
+
+If retaining one pending recovery payload creates a greater incident risk than
+losing that event, use an authenticated admin credential allowed for the
+record's tenant:
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${CEREBRO_ADMIN_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "${CEREBRO_URL}/platform/append-log/dead-letters/<dead-letter-id>/force-purge" \
+  -d '{"tenant_id":"<tenant-id>","reason":"INC-1234 recovery payload removal"}'
+```
+
+The route deletes exactly one pending record. It rejects terminal records and
+active replay claims. The authenticated credential supplies the audit actor;
+the request cannot supply one. The local CLI does not provide forced pending
+purge.
+
+See [Append-log dead-letter data policy](append-log-dead-letter-policy.md) for
+payload classification, retention, capacity limits, and emergency purge rules.
 
 ### Neo4j or Aura
 
