@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/control-kernel",
     "internal/graphagent/staticvalidator",
     "internal/sourcecoverage/evaluator",
     "internal/sourceprojection/panopticonresources",
