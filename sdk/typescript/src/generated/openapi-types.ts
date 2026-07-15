@@ -678,6 +678,144 @@ export type AgentWorkflow = {
   state_check: AgentNextAction;
 };
 
+export type AssessmentControlRef = {
+  control_id: string;
+  framework?: string;
+  framework_id?: string;
+  framework_name?: string;
+};
+
+/** Immutable revisions, receipts, cutoff, and digests used by one assessment run. */
+export type AssessmentInputManifest = Record<string, unknown>;
+
+export type AssessmentPlan = {
+  content_digest: string;
+  created_at: string;
+  created_by: string;
+  execution: AssessmentPlanExecution;
+  governance: AssessmentPlanGovernance;
+  id: string;
+  name: string;
+  predecessor_id?: string;
+  published_at?: string;
+  published_by?: string;
+  revision_id: string;
+  scope: AssessmentPlanScope;
+  status: "draft" | "published" | "retired";
+  tenant_id?: string;
+  version: number;
+};
+
+export type AssessmentPlanCreateRequest = {
+  execution: AssessmentPlanExecution;
+  governance: AssessmentPlanGovernance;
+  name: string;
+  scope: AssessmentPlanScope;
+  tenant_id?: string;
+};
+
+export type AssessmentPlanExecution = {
+  assurance_target: string;
+  cancellation_rule: string;
+  coverage_target: string;
+  depth?: string;
+  methods: string[];
+  ordered_task_ids: string[];
+  sampling_rule?: string;
+  tasks: AssessmentPlanTask[];
+  tool_revision_ids?: string[];
+};
+
+export type AssessmentPlanGovernance = {
+  approver_ids: string[];
+  assessor_ids?: string[];
+  independence_rule?: string;
+  limitations?: string[];
+  owner_id: string;
+  rules_of_engagement: string;
+};
+
+export type AssessmentPlanResponse = {
+  plan: AssessmentPlan;
+};
+
+export type AssessmentPlanScope = {
+  excluded_subject_ids?: string[];
+  implementation_revision_ids: string[];
+  included_subject_ids?: string[];
+  objective_ids: string[];
+  program_id: string;
+  scope_revision_id: string;
+};
+
+export type AssessmentPlanTask = {
+  control_ref: AssessmentControlRef;
+  evaluation_mode?: "point_in_time";
+  id: string;
+  kind: "finding_evaluation";
+  max_age?: string;
+  objective_id: string;
+  rule_id?: string;
+  runtime_ids?: string[];
+};
+
+export type AssessmentResultChunk = {
+  count: number;
+  digest: string;
+  first_result_id: string;
+  last_result_id: string;
+  previous_digest?: string;
+  results: Record<string, unknown>[];
+  run_id: string;
+  sequence: number;
+};
+
+export type AssessmentResultPageResponse = {
+  automated_result_hash: string;
+  chunks: AssessmentResultChunk[];
+  has_more: boolean;
+  next_sequence?: number;
+  result_count: number;
+  run_id: string;
+  state: "complete";
+};
+
+export type AssessmentRun = {
+  automated_result_hash?: string;
+  baseline_run_id?: string;
+  collection_barrier_at?: string;
+  completed_at?: string;
+  failure_code?: string;
+  id: string;
+  input_hash?: string;
+  input_manifest?: AssessmentInputManifest;
+  job_id?: string;
+  period_end: string;
+  period_start: string;
+  plan_revision_id: string;
+  program_id: string;
+  requested_at: string;
+  requested_by: string;
+  result_count?: number;
+  scope_revision_id: string;
+  state: "queued" | "collecting" | "evaluating" | "review_required" | "complete" | "failed" | "cancelled" | "superseded";
+  tenant_id: string;
+  version: number;
+};
+
+export type AssessmentRunRequest = {
+  baseline_run_id?: string;
+  period_end: string;
+  period_start: string;
+  plan_revision_id: string;
+  tenant_id: string;
+};
+
+export type AssessmentRunResponse = {
+  created: boolean;
+  run: AssessmentRun;
+};
+
 export type AuthErrorResponse = {
   auth: AgentAuthDiscovery;
   error: string;
@@ -1284,11 +1422,38 @@ export type FindingEvaluationRun = {
   findings_emitted?: number;
   findings_upserted?: number;
   finished_at?: string;
+  graph_row_limit?: number;
+  graph_rows_read?: number;
+  graph_rule?: boolean;
+  graph_truncated?: boolean;
   id?: string;
+  rule_applicable?: boolean;
   rule_id?: string;
   runtime_id?: string;
+  source_dependency_complete?: boolean;
+  source_snapshots?: FindingEvaluationSourceSnapshot[];
   started_at?: string;
   status?: string;
+};
+
+export type FindingEvaluationSourceSnapshot = {
+  checkpoint_watermark?: string;
+  complete?: boolean;
+  contract_probe_state?: string;
+  family?: string;
+  graph_checkpoint_id?: string;
+  graph_ingest_run_id?: string;
+  graph_ingest_status?: string;
+  graph_ingested_at?: string;
+  graph_snapshot_complete?: boolean;
+  last_synced_at?: string;
+  progress_config_hash?: string;
+  records_accepted?: number;
+  records_rejected?: number;
+  records_scanned?: number;
+  runtime_id?: string;
+  source_id?: string;
+  sync_status?: string;
 };
 
 export type FindingEvidence = {
@@ -2904,6 +3069,10 @@ export type GetEntityNeighborhoodResponse = {
   root?: GraphEntity;
 };
 
+export type GetGraphIngestRunResponse = {
+  run?: GraphIngestRun;
+};
+
 export type GetSourceRuntimeResponse = {
   runtime?: SourceRuntime;
 };
@@ -2972,6 +3141,54 @@ export type GraphEvidenceRow = {
   attributes?: Record<string, string>;
   label?: string;
   paths?: GraphEvidencePath[];
+};
+
+export type GraphIngestResult = {
+  checkpoint_already_fresh?: boolean;
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  checkpoint_persisted?: boolean;
+  checkpoint_resumed?: boolean;
+  entities_projected?: number;
+  events_read?: number;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  links_projected?: number;
+  next_cursor?: string;
+  pages_read?: number;
+  source_id?: string;
+  tenant_id?: string;
+};
+
+export type GraphIngestRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  entities_projected?: number;
+  error?: string;
+  events_read?: number;
+  finished_at?: string;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  id?: string;
+  links_projected?: number;
+  pages_read?: number;
+  runtime_id?: string;
+  source_id?: string;
+  started_at?: string;
+  status?: string;
+  tenant_id?: string;
+  trigger?: string;
+};
+
+export type GraphIngestRunResult = {
+  ingest?: GraphIngestResult;
+  run?: GraphIngestRun;
 };
 
 export type GraphRelation = {
@@ -3059,6 +3276,11 @@ export type IssueBootstrapTokenResponse = {
 
 export type ListClaimsResponse = {
   claims?: Claim[];
+};
+
+export type ListGraphIngestRunsResponse = {
+  failed_count?: number;
+  runs?: GraphIngestRun[];
 };
 
 export type NHICoverageLaneSummary = {
@@ -3273,6 +3495,10 @@ export type RiskScoringSignalThresholds = {
   epss_elevated?: number;
   epss_high?: number;
   private_network_likelihood_cap?: number;
+};
+
+export type RunGraphIngestRuntimeResponse = {
+  result?: GraphIngestRunResult;
 };
 
 export type RuntimeBlocklistEntry = {
@@ -3527,6 +3753,8 @@ export type SourceRuntimeHealthFindingEvaluation = {
 };
 
 export type SourceRuntimeHealthGraphRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
   duration_seconds?: number;
   entities_projected?: number;
   error?: string;
