@@ -3,12 +3,41 @@ package sourceregistry
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
+
+func TestBuiltinWithCatalogOverridesUsesVerifiedDeepSeekCatalog(t *testing.T) {
+	path := filepath.Join("..", "..", "contentpacks", "pilot", "connector-deepseek", "content", "source-catalog.yaml")
+	payload, err := os.ReadFile(path) // #nosec G304 -- test reads a checked-in pilot fixture.
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	payload = []byte(strings.Replace(string(payload), `name: "DeepSeek"`, `name: "DeepSeek Pack"`, 1))
+	registry, err := BuiltinWithCatalogOverrides(map[string][]byte{"deepseek": payload})
+	if err != nil {
+		t.Fatalf("BuiltinWithCatalogOverrides() error = %v", err)
+	}
+	source, ok := registry.Get("deepseek")
+	if !ok {
+		t.Fatal("Get(deepseek) = false")
+	}
+	if source.Spec().Name != "DeepSeek Pack" {
+		t.Fatalf("deepseek Spec().Name = %q", source.Spec().Name)
+	}
+}
+
+func TestBuiltinWithCatalogOverridesRejectsInvalidDeepSeekCatalog(t *testing.T) {
+	if _, err := BuiltinWithCatalogOverrides(map[string][]byte{"deepseek": []byte("id: other\n")}); err == nil {
+		t.Fatal("BuiltinWithCatalogOverrides() error = nil")
+	}
+}
 
 func TestBuiltin(t *testing.T) {
 	registry, err := Builtin()

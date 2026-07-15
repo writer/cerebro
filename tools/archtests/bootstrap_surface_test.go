@@ -101,7 +101,11 @@ import (
 // Embedded source-coverage evaluation adds only explicit unavailable-error
 // propagation at HTTP, MCP, and A2A boundaries; classification remains in
 // internal/sourcecoverage and never falls back to empty coverage.
-const bootstrapProductionGoLineBudget = 27413
+// Assessment runtime composition adds capability-gated service and job-runner
+// wiring plus tenant and idempotency checks at the existing job HTTP boundary;
+// event replay, projection recovery, and run transitions stay in
+// internal/complianceassessment.
+const bootstrapProductionGoLineBudget = 27489
 
 type bootstrapFileLineCount struct {
 	path  string
