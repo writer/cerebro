@@ -13,6 +13,12 @@ type Store interface {
 	ListResultChunks(context.Context, string, string) ([]ResultChunk, error)
 }
 
+// NonterminalRunStore lists persisted runs whose bound job may need
+// reconciliation after an interrupted or failed worker attempt.
+type NonterminalRunStore interface {
+	ListNonterminalRuns(context.Context, uint32) ([]AssessmentRun, error)
+}
+
 type Collector interface {
 	Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error)
 }

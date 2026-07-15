@@ -273,6 +273,117 @@ func TestAssessmentCompletionRetriesAppendWithoutRecollecting(t *testing.T) {
 	}
 }
 
+func TestInterruptedAssessmentRequeuesThenCompletes(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "interrupted-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedJob := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+	if failedJob.FailureClass != platformjobs.JobFailureRetryable || failedJob.Attempt != 1 {
+		t.Fatalf("failed job = %#v, want retryable attempt 1", failedJob)
+	}
+	interrupted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || interrupted.State != RunEvaluating {
+		t.Fatalf("interrupted run = (%#v, %v), want evaluating", interrupted, err)
+	}
+
+	reconciled, err := service.ReconcileInterruptedRuns(context.Background(), 10)
+	if err != nil || reconciled != 1 {
+		t.Fatalf("ReconcileInterruptedRuns() = (%d, %v), want (1, nil)", reconciled, err)
+	}
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted, 2*time.Second)
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete || completed.ResultCount != 1 {
+		t.Fatalf("completed run = (%#v, %v)", completed, err)
+	}
+	if collector.calls.Load() != 2 {
+		t.Fatalf("collector calls = %d, want one initial attempt and one deterministic resume", collector.calls.Load())
+	}
+}
+
+func TestInterruptedAssessmentExhaustionBecomesTerminal(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts * maxAssessmentJobAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "exhausted-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := uint32(1); attempt <= maxAssessmentJobAttempts; attempt++ {
+		job := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+		if job.Attempt != attempt || job.FailureClass != platformjobs.JobFailureRetryable {
+			t.Fatalf("failed job = %#v, want retryable attempt %d", job, attempt)
+		}
+		if attempt < maxAssessmentJobAttempts {
+			reconciled, reconcileErr := service.ReconcileInterruptedRuns(context.Background(), 10)
+			if reconcileErr != nil || reconciled != 1 {
+				t.Fatalf("retry reconciliation %d = (%d, %v)", attempt, reconciled, reconcileErr)
+			}
+		}
+	}
+	log.mu.Lock()
+	log.remainingFailures = 0
+	log.mu.Unlock()
+	reconciled, err := service.ReconcileInterruptedRuns(context.Background(), 10)
+	if err != nil || reconciled != 1 {
+		t.Fatalf("terminal reconciliation = (%d, %v), want (1, nil)", reconciled, err)
+	}
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || failed.State != RunFailed || failed.FailureCode != "execution_retry_exhausted" {
+		t.Fatalf("failed run = (%#v, %v)", failed, err)
+	}
+	if collector.calls.Load() != int32(maxAssessmentJobAttempts) {
+		t.Fatalf("collector calls = %d, want %d", collector.calls.Load(), maxAssessmentJobAttempts)
+	}
+}
+
+func waitForRunJobStatus(t *testing.T, store *runJobStore, jobID, status string, timeout time.Duration) *ports.Job {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		job, err := store.GetJob(context.Background(), jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Status == status {
+			return job
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job %q status = %q, want %q", jobID, job.Status, status)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestAssessmentRecoveryPreservesTerminalRunJobState(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()
@@ -664,6 +775,31 @@ func (s *runStore) ListResultChunks(_ context.Context, tenantID, runID string) (
 		result = append(result, chunk)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Sequence < result[j].Sequence })
+	return result, nil
+}
+
+func (s *runStore) ListNonterminalRuns(_ context.Context, limit uint32) ([]AssessmentRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit == 0 {
+		limit = 100
+	}
+	result := make([]AssessmentRun, 0, limit)
+	for _, run := range s.runs {
+		if run.State != RunQueued && run.State != RunCollecting && run.State != RunEvaluating {
+			continue
+		}
+		result = append(result, run)
+		if uint32(len(result)) == limit {
+			break
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].RequestedAt.Equal(result[j].RequestedAt) {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].RequestedAt.Before(result[j].RequestedAt)
+	})
 	return result, nil
 }
 

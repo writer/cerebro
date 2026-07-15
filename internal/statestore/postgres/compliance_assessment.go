@@ -269,6 +269,33 @@ func (s *Store) ListUnboundRuns(ctx context.Context, limit uint32) ([]compliance
 	return result, rows.Err()
 }
 
+func (s *Store) ListNonterminalRuns(ctx context.Context, limit uint32) ([]complianceassessment.AssessmentRun, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return nil, err
+	}
+	if limit == 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT record_json FROM compliance_assessment_runs WHERE state IN ('queued','collecting','evaluating') ORDER BY requested_at,tenant_id,id LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []complianceassessment.AssessmentRun
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var run complianceassessment.AssessmentRun
+		if err := json.Unmarshal(data, &run); err != nil {
+			return nil, err
+		}
+		result = append(result, run)
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) ApplyResultChunk(ctx context.Context, eventID, tenantID string, chunk complianceassessment.ResultChunk) error {
 	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
 		return err
