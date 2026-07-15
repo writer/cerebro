@@ -18,6 +18,14 @@ func otelSourceRuntimeRuns() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelContentPackSelections() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.content_pack.selections",
+		otelmetric.WithDescription("Content packs accepted, rejected, or replaced by embedded content at startup."),
+	)
+	return instrument
+}
+
 func otelSourceRuntimeDuration() otelmetric.Float64Histogram {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
 		"cerebro.source_runtime.sync.duration",
@@ -230,6 +238,22 @@ type SourceRuntimeSyncMetrics struct {
 	HasWatermarkLag      bool
 	ShortCircuitReason   string
 	ReconciliationReason string
+}
+
+type ContentPackSelectionMetrics struct {
+	Kind   string
+	Status string
+	Count  int64
+}
+
+func RecordContentPackSelection(ctx context.Context, metrics ContentPackSelectionMetrics) {
+	if metrics.Count <= 0 {
+		return
+	}
+	otelContentPackSelections().Add(ctx, metrics.Count, otelmetric.WithAttributes(
+		attribute.String("pack.kind", boundedMetricValue(metrics.Kind, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+	))
 }
 
 // SourceProjectionMetrics is intentionally scoped to bounded event dimensions.

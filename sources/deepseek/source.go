@@ -33,7 +33,16 @@ type Source struct {
 }
 
 func New() (*Source, error) {
-	spec, err := loadSpec()
+	specBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	return NewWithCatalog(specBytes)
+}
+
+// NewWithCatalog constructs the fixed DeepSeek runtime from verified declarative catalog bytes.
+func NewWithCatalog(specBytes []byte) (*Source, error) {
+	spec, err := loadSpec(specBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -118,11 +127,7 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.inner.CheckPath(ctx, cfg, path, nil)
 }
 
-func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
+func loadSpec(specBytes []byte) (*cerebrov1.SourceSpec, error) {
 	spec, err := sourcecdk.LoadCatalog(specBytes)
 	if err != nil {
 		return nil, fmt.Errorf("load catalog: %w", err)
