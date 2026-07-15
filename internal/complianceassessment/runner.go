@@ -47,14 +47,25 @@ func (s *Service) Runner() platformjobs.Runner {
 			}
 			return result, refs, nil
 		}
+		plan, err := s.store.GetPlan(ctx, run.TenantID, run.PlanRevisionID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if plan.Status != PlanPublished || plan.RevisionID != run.PlanRevisionID {
+			return nil, nil, s.failRun(ctx, run, "plan_unavailable")
+		}
 		if s.collector == nil {
 			return nil, nil, s.failRun(ctx, run, "collector_unavailable")
 		}
-		expectedVersion := run.Version
-		run.State = RunCollecting
-		run.Version++
-		if err := s.appendRun(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "collection_started", run, expectedVersion); err != nil {
-			return nil, nil, err
+		if run.State == RunQueued {
+			expectedVersion := run.Version
+			run.State = RunCollecting
+			run.Version++
+			if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "collection_started", run, expectedVersion); err != nil {
+				return nil, nil, err
+			}
+		} else if run.State != RunCollecting && run.State != RunEvaluating {
+			return nil, nil, s.failRun(ctx, run, "invalid_run_state")
 		}
 		manifest, results, collectErr := s.collector.Collect(ctx, run)
 		if collectErr != nil {
@@ -67,22 +78,34 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err := ValidateInputManifest(manifest); err != nil || !manifestComplete(manifest) {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "collection_incomplete")
 		}
+		if err := validateCollectionBinding(plan, run, manifest); err != nil {
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "collection_mismatch")
+		}
 		inputHash, err := CanonicalManifestDigest(manifest)
 		if err != nil {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "input_hash_failed")
 		}
-		expectedVersion = run.Version
-		run.State = RunEvaluating
-		run.Version++
-		run.InputManifest = &manifest
-		run.InputHash = inputHash
-		run.CollectionBarrierAt = CanonicalTime(s.now())
-		if err := s.appendRun(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "input_manifest_recorded", run, expectedVersion); err != nil {
-			return nil, nil, err
+		if run.State == RunEvaluating {
+			if run.InputManifest == nil || run.InputHash == "" || run.InputHash != inputHash {
+				return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "collection_changed")
+			}
+		} else {
+			expectedVersion := run.Version
+			run.State = RunEvaluating
+			run.Version++
+			run.InputManifest = &manifest
+			run.InputHash = inputHash
+			run.CollectionBarrierAt = CanonicalTime(s.now())
+			if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceInputManifestRecorded, "input_manifest_recorded", run, expectedVersion); err != nil {
+				return nil, nil, err
+			}
 		}
 		results, err = canonicalResultSet(results)
 		if err != nil {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_invalid")
+		}
+		if err := validateResultCoverage(plan, results); err != nil {
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_scope_mismatch")
 		}
 		resultHash, err := CanonicalResultSetDigest(results)
 		if err != nil {
@@ -91,17 +114,92 @@ func (s *Service) Runner() platformjobs.Runner {
 		if err := s.appendResultChunks(ctx, run, results); err != nil {
 			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "result_projection_failed")
 		}
-		expectedVersion = run.Version
+		expectedVersion := run.Version
 		run.State = RunComplete
 		run.Version++
 		run.AutomatedResultHash = resultHash
 		run.ResultCount = uint64(len(results))
 		run.CompletedAt = CanonicalTime(s.now())
-		if err := s.appendRun(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_completed", run, expectedVersion); err != nil {
+		if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_completed", run, expectedVersion); err != nil {
 			return nil, nil, err
 		}
 		return map[string]any{"run_id": run.ID, "state": run.State, "result_count": run.ResultCount}, map[string]string{"assessment_run": run.ID}, nil
 	}
+}
+
+func (s *Service) appendRunDurably(ctx context.Context, kind, operation string, run AssessmentRun, expectedVersion uint64) error {
+	const retryInterval = 100 * time.Millisecond
+	wantDigest, err := semanticHash(run)
+	if err != nil {
+		return err
+	}
+	for {
+		err = s.appendRun(ctx, kind, operation, run, expectedVersion)
+		if err == nil {
+			return nil
+		}
+		if current, getErr := s.store.GetRun(ctx, run.TenantID, run.ID); getErr == nil {
+			if currentDigest, hashErr := semanticHash(current); hashErr == nil && currentDigest == wantDigest {
+				return nil
+			}
+		}
+		if errors.Is(err, ErrAssessmentConflict) {
+			return err
+		}
+		timer := time.NewTimer(retryInterval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func validateCollectionBinding(plan AssessmentPlanRevision, run AssessmentRun, manifest InputManifest) error {
+	if manifest.ProgramID != run.ProgramID || manifest.ScopeRevisionID != run.ScopeRevisionID || manifest.PlanRevisionID != run.PlanRevisionID ||
+		!manifest.PeriodStart.Equal(run.PeriodStart) || !manifest.PeriodEnd.Equal(run.PeriodEnd) {
+		return ErrInvalidManifest
+	}
+	scopeDigest, err := semanticHash(plan.Scope)
+	if err != nil || manifest.RequestedScopeDigest != scopeDigest {
+		return ErrInvalidManifest
+	}
+	objectiveDigest, err := semanticHash(plan.Scope.ObjectiveIDs)
+	if err != nil || manifest.ResolvedObjectiveSetDigest != objectiveDigest {
+		return ErrInvalidManifest
+	}
+	for _, revision := range manifest.Revisions {
+		if revision.Kind == "plan" && revision.ID == plan.ID && revision.RevisionID == plan.RevisionID && revision.Version == plan.Version && revision.Digest == plan.ContentDigest {
+			return nil
+		}
+	}
+	return ErrInvalidManifest
+}
+
+func validateResultCoverage(plan AssessmentPlanRevision, results []ObjectiveResult) error {
+	expected := normalizedStrings(plan.Scope.ObjectiveIDs)
+	actual := make([]string, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
+	for _, result := range results {
+		if _, exists := seen[result.ObjectiveID]; exists {
+			return ErrInvalidResult
+		}
+		seen[result.ObjectiveID] = struct{}{}
+		actual = append(actual, result.ObjectiveID)
+	}
+	actual = normalizedStrings(actual)
+	if len(actual) != len(expected) {
+		return ErrInvalidResult
+	}
+	for index := range expected {
+		if expected[index] != actual[index] {
+			return ErrInvalidResult
+		}
+	}
+	return nil
 }
 
 func (s *Service) appendResultChunks(ctx context.Context, run AssessmentRun, results []ObjectiveResult) error {
@@ -169,7 +267,7 @@ func (s *Service) failRun(ctx context.Context, run AssessmentRun, code string) e
 	run.Version++
 	run.FailureCode = code
 	run.CompletedAt = CanonicalTime(s.now())
-	if err := s.appendRun(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_failed", run, expectedVersion); err != nil {
+	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_failed", run, expectedVersion); err != nil {
 		return err
 	}
 	return fmt.Errorf("assessment run failed: %s", code)
@@ -181,7 +279,7 @@ func (s *Service) cancelRun(ctx context.Context, run AssessmentRun) error {
 	run.Version++
 	run.FailureCode = "cancelled"
 	run.CompletedAt = CanonicalTime(s.now())
-	if err := s.appendRun(ctx, workflowevents.EventKindComplianceAssessmentCancelled, "assessment_cancelled", run, expectedVersion); err != nil {
+	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCancelled, "assessment_cancelled", run, expectedVersion); err != nil {
 		return err
 	}
 	return context.Canceled

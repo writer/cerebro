@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
@@ -161,6 +162,114 @@ func TestIncompleteManifestFailsWithoutTerminalResult(t *testing.T) {
 	}
 	if failed.State != RunFailed || failed.FailureCode != "collection_incomplete" || failed.AutomatedResultHash != "" {
 		t.Fatalf("failed run = %#v", failed)
+	}
+}
+
+func TestAssessmentRejectsManifestForAnotherRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1), skipBinding: true}
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "mismatched-manifest", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jobs.Wait(context.Background())
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != RunFailed || failed.FailureCode != "collection_mismatch" {
+		t.Fatalf("failed run = %#v, want collection_mismatch", failed)
+	}
+}
+
+func TestAssessmentRejectsPartialObjectiveSet(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	planInput := validPlan(now)
+	planInput.Scope.ObjectiveIDs = []string{"objective-0000", "objective-0001"}
+	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector.plan = plan
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "partial-objectives", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jobs.Wait(context.Background())
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != RunFailed || failed.FailureCode != "result_scope_mismatch" {
+		t.Fatalf("failed run = %#v, want result_scope_mismatch", failed)
+	}
+}
+
+func TestAssessmentCompletionRetriesAppendWithoutRecollecting(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: 1}
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "retry-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var completed AssessmentRun
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		completed, err = store.GetRun(context.Background(), run.TenantID, run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if completed.State == RunComplete {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run state = %q, want complete", completed.State)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != RunComplete || collector.calls.Load() != 1 || log.remainingFailures != 0 {
+		t.Fatalf("completed run = %#v, collector calls = %d, remaining failures = %d", completed, collector.calls.Load(), log.remainingFailures)
 	}
 }
 
@@ -325,13 +434,23 @@ func TestReconcileUnboundRunStartsExistingQueuedJob(t *testing.T) {
 
 func recordPublishedPlan(t *testing.T, service *Service, now time.Time) AssessmentPlanRevision {
 	t.Helper()
-	plan, err := service.RecordPlan(context.Background(), validPlan(now), "owner-1", 0)
+	planInput := validPlan(now)
+	if collector, ok := service.collector.(*testCollector); ok && len(collector.results) != 0 {
+		planInput.Scope.ObjectiveIDs = make([]string, 0, len(collector.results))
+		for _, result := range collector.results {
+			planInput.Scope.ObjectiveIDs = append(planInput.Scope.ObjectiveIDs, result.ObjectiveID)
+		}
+	}
+	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
 	if err != nil {
 		t.Fatalf("RecordPlan() error = %v", err)
 	}
 	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
 	if err != nil {
 		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	if collector, ok := service.collector.(*testCollector); ok {
+		collector.plan = plan
 	}
 	return plan
 }
@@ -374,21 +493,41 @@ func validResults(now time.Time, count int) []ObjectiveResult {
 }
 
 type testCollector struct {
-	manifest InputManifest
-	results  []ObjectiveResult
-	err      error
-	calls    atomic.Int32
+	manifest    InputManifest
+	results     []ObjectiveResult
+	err         error
+	calls       atomic.Int32
+	plan        AssessmentPlanRevision
+	skipBinding bool
 }
 
-func (c *testCollector) Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error) {
+func (c *testCollector) Collect(_ context.Context, run AssessmentRun) (InputManifest, []ObjectiveResult, error) {
 	c.calls.Add(1)
-	return c.manifest, append([]ObjectiveResult(nil), c.results...), c.err
+	manifest := c.manifest
+	if !c.skipBinding && c.plan.RevisionID != "" {
+		manifest.ProgramID = run.ProgramID
+		manifest.ScopeRevisionID = run.ScopeRevisionID
+		manifest.PlanRevisionID = run.PlanRevisionID
+		manifest.PeriodStart = run.PeriodStart
+		manifest.PeriodEnd = run.PeriodEnd
+		scopeDigest, _ := semanticHash(c.plan.Scope)
+		objectiveDigest, _ := semanticHash(c.plan.Scope.ObjectiveIDs)
+		manifest.RequestedScopeDigest = scopeDigest
+		manifest.ResolvedObjectiveSetDigest = objectiveDigest
+		manifest.Revisions = []ManifestRevision{{
+			Kind: "plan", ID: c.plan.ID, RevisionID: c.plan.RevisionID,
+			Version: c.plan.Version, Digest: c.plan.ContentDigest,
+		}}
+	}
+	return manifest, append([]ObjectiveResult(nil), c.results...), c.err
 }
 
 type runLog struct {
-	mu     sync.Mutex
-	events []*cerebrov1.EventEnvelope
-	err    error
+	mu                sync.Mutex
+	events            []*cerebrov1.EventEnvelope
+	err               error
+	failKind          string
+	remainingFailures int
 }
 
 func (l *runLog) Ping(context.Context) error { return nil }
@@ -397,6 +536,10 @@ func (l *runLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error
 	defer l.mu.Unlock()
 	if l.err != nil {
 		return l.err
+	}
+	if event.GetKind() == l.failKind && l.remainingFailures > 0 {
+		l.remainingFailures--
+		return errors.New("append unavailable")
 	}
 	l.events = append(l.events, event)
 	return nil
