@@ -200,5 +200,5 @@ func validDigest(value string) bool {
 }
 
 func validCreatedAt(value time.Time) bool {
-	return !value.IsZero() && value.Location() != nil
+	return !value.IsZero()
 }
