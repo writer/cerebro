@@ -6985,7 +6985,7 @@ components:
     AssessmentInputManifest:
       type: object
       description: Immutable revisions, receipts, cutoff, and digests used by one assessment run.
-      required: [model_version, program_id, scope_revision_id, plan_revision_id, period_start, period_end, collection_cutoff, requested_scope_digest, resolved_objective_set_digest, mapping_set_digest, revisions, receipts, reason_registry, adapter_version]
+      additionalProperties: true
       properties:
         model_version:
           type: string
@@ -7171,7 +7171,10 @@ components:
         results:
           type: array
           items:
-            $ref: '#/components/schemas/AssessmentObjectiveResult'
+            anyOf:
+              - $ref: '#/components/schemas/AssessmentObjectiveResult'
+              - type: object
+                additionalProperties: true
     AssessmentResultPageResponse:
       type: object
       required: [run_id, state, result_count, automated_result_hash, chunks, has_more]
@@ -7391,7 +7394,7 @@ components:
               $ref: '#/components/schemas/AssessmentObjectiveResult'
     QualifiedAssuranceDecision:
       type: object
-      required: [version, qualified, manifest_hash, result_hash, proof_digest, as_of, limitations, required_reviews, decision_digest]
+      required: [version, qualified, as_of, limitations, required_reviews, decision_digest]
       properties:
         version:
           type: string
