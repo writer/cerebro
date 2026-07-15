@@ -1,0 +1,161 @@
+package decisionpacket
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/agentplatform"
+)
+
+func TestDecisionRuleGoldenFixtures(t *testing.T) {
+	type fixture struct {
+		Name               string `json:"name"`
+		ClaimVerdict       string `json:"claim_verdict"`
+		SupportingEvidence int    `json:"supporting_evidence"`
+		GuardrailsPassed   bool   `json:"guardrails_passed"`
+		RequiredGap        bool   `json:"required_gap"`
+		RequiredStale      bool   `json:"required_stale"`
+		UnresolvedConflict bool   `json:"unresolved_conflict"`
+		PrimaryConflict    bool   `json:"primary_conflict"`
+		DecisionState      string `json:"decision_state"`
+		ConfidenceLevel    string `json:"confidence_level"`
+	}
+	raw, err := os.ReadFile("testdata/decision_rules.golden.json")
+	if err != nil {
+		t.Fatalf("read golden fixtures: %v", err)
+	}
+	var fixtures []fixture
+	if err := json.Unmarshal(raw, &fixtures); err != nil {
+		t.Fatalf("decode golden fixtures: %v", err)
+	}
+	for _, item := range fixtures {
+		t.Run(item.Name, func(t *testing.T) {
+			decision := DeriveDecision(DecisionInputs{
+				ClaimVerdict: item.ClaimVerdict, RequiredGap: item.RequiredGap,
+				RequiredStale: item.RequiredStale, PrimaryConflict: item.PrimaryConflict,
+			})
+			confidence := DeriveConfidence(ConfidenceInputs{
+				SupportingEvidence: item.SupportingEvidence, RequiredGap: item.RequiredGap,
+				RequiredStale: item.RequiredStale, UnresolvedConflict: item.UnresolvedConflict,
+				GuardrailsPassed: item.GuardrailsPassed,
+			})
+			if decision.State != item.DecisionState || confidence.Level != item.ConfidenceLevel {
+				t.Fatalf("got decision=%q confidence=%q, want decision=%q confidence=%q", decision.State, confidence.Level, item.DecisionState, item.ConfidenceLevel)
+			}
+		})
+	}
+}
+
+func TestDeriveDecision(t *testing.T) {
+	falseValue := false
+	tests := []struct {
+		name string
+		in   DecisionInputs
+		want string
+	}{
+		{name: "supported", in: DecisionInputs{ClaimVerdict: agentplatform.ClaimVerdictSupported}, want: DecisionSupported},
+		{name: "required gap", in: DecisionInputs{ClaimVerdict: agentplatform.ClaimVerdictSupported, RequiredGap: true}, want: DecisionSupportedWithGaps},
+		{name: "contradicted", in: DecisionInputs{ClaimVerdict: agentplatform.ClaimVerdictContradicted}, want: DecisionBlocked},
+		{name: "unknown", in: DecisionInputs{ClaimVerdict: agentplatform.ClaimVerdictUnknown}, want: DecisionInsufficientEvidence},
+		{name: "explicit not applicable", in: DecisionInputs{ClaimVerdict: agentplatform.ClaimVerdictSupported, Applicable: &falseValue}, want: DecisionNotApplicable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DeriveDecision(tt.in); got.State != tt.want {
+				t.Fatalf("state = %q, want %q (%+v)", got.State, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestDeriveConfidenceCaps(t *testing.T) {
+	tests := []struct {
+		name string
+		in   ConfidenceInputs
+		want string
+	}{
+		{name: "no evidence", in: ConfidenceInputs{GuardrailsPassed: true}, want: ConfidenceUnknown},
+		{name: "complete", in: ConfidenceInputs{SupportingEvidence: 2, GuardrailsPassed: true}, want: ConfidenceHigh},
+		{name: "optional gap", in: ConfidenceInputs{SupportingEvidence: 2, GuardrailsPassed: true, OptionalGapMatters: true}, want: ConfidenceMedium},
+		{name: "required stale", in: ConfidenceInputs{SupportingEvidence: 2, GuardrailsPassed: true, RequiredStale: true}, want: ConfidenceLow},
+		{name: "required unverified", in: ConfidenceInputs{SupportingEvidence: 2, GuardrailsPassed: true, RequiredUnverified: true}, want: ConfidenceLow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DeriveConfidence(tt.in); got.Level != tt.want {
+				t.Fatalf("level = %q, want %q (%+v)", got.Level, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestDetectContradictionsRequiresOverlappingValidity(t *testing.T) {
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	common := ClaimObservation{TenantID: "tenant-1", SubjectURN: "urn:cerebro:tenant-1:asset:1", Predicate: "public", SourceID: "source-1", ValidFrom: start}
+	left := common
+	left.Value, left.Evidence = "true", EvidenceReference{ID: "evidence-1", Kind: "observation"}
+	right := common
+	right.Value, right.Evidence = "false", EvidenceReference{ID: "evidence-2", Kind: "observation"}
+	if got := DetectContradictions([]ClaimObservation{right, left}); len(got) != 1 || got[0].ResolutionState != ContradictionUnresolved {
+		t.Fatalf("contradictions = %+v, want one unresolved conflict", got)
+	}
+
+	left.ValidTo = start.Add(time.Hour)
+	right.ValidFrom = start.Add(2 * time.Hour)
+	left.ObservedAt = start
+	right.ObservedAt = start.Add(2 * time.Hour)
+	if got := DetectContradictions([]ClaimObservation{left, right}); len(got) != 0 {
+		t.Fatalf("superseded observations produced contradictions: %+v", got)
+	}
+}
+
+func TestNormalizeRequestBudgets(t *testing.T) {
+	got, err := NormalizeRequest(Request{Workflow: " Triage ", FindingIDs: []string{"b", "a", "a"}})
+	if err != nil {
+		t.Fatalf("NormalizeRequest() error = %v", err)
+	}
+	if got.Workflow != "triage" || strings.Join(got.FindingIDs, ",") != "a,b" || got.Budgets.Evidence != 50 || got.Budgets.GraphDepth != 2 {
+		t.Fatalf("normalized request = %+v", got)
+	}
+	_, err = NormalizeRequest(Request{Budgets: Budgets{Evidence: 101}})
+	if !errors.Is(err, ErrInvalidBudget) {
+		t.Fatalf("budget error = %v, want ErrInvalidBudget", err)
+	}
+}
+
+func TestCanonicalizePacketIsStableAndContentAddressed(t *testing.T) {
+	generatedAt := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	packet := Packet{
+		GeneratedAt: generatedAt, Workflow: Workflow{ID: " Triage ", Question: " Review finding "},
+		Scope:      Scope{TenantID: "tenant-1", ActorID: "analyst-1"},
+		Decision:   Decision{State: DecisionSupported, Reasons: []string{"z", "a"}},
+		Confidence: Confidence{Level: ConfidenceHigh, Basis: []string{"fresh_complete_nonconflicting_evidence"}},
+		Evidence:   []EvidenceReference{{ID: "b", Kind: "finding"}, {ID: "a", Kind: "finding"}, {ID: "a", Kind: "finding"}},
+	}
+	first, firstJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket() error = %v", err)
+	}
+	second, secondJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket() second error = %v", err)
+	}
+	if first.ID != second.ID || string(firstJSON) != string(secondJSON) {
+		t.Fatalf("canonical output changed: %q / %q", first.ID, second.ID)
+	}
+	if !strings.HasPrefix(first.ID, "dpr_") || len(first.ID) != 36 || len(first.Evidence) != 2 {
+		t.Fatalf("canonical packet = %+v", first)
+	}
+	packet.Decision.Reasons = append(packet.Decision.Reasons, "new_fact")
+	changed, _, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket() changed error = %v", err)
+	}
+	if changed.ID == first.ID {
+		t.Fatal("packet ID did not change with decision inputs")
+	}
+}
