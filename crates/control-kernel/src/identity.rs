@@ -76,6 +76,10 @@ identifier!(TenantId, "tenant id");
 identifier!(MandateId, "mandate id");
 identifier!(MissionId, "mission id");
 identifier!(ActorId, "actor id");
+identifier!(GrantId, "grant id");
+identifier!(DecisionId, "decision id");
+identifier!(VerificationId, "verification id");
+identifier!(RequestId, "request id");
 
 fn validate_identifier(value: String, kind: &'static str) -> Result<String, IdentifierError> {
     if value.is_empty() {

@@ -2,7 +2,7 @@ use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ActorId, MandateId, MissionId, TenantId};
+use crate::{ActorId, MandateId, MissionId, TenantId, VerificationReceipt};
 
 const MAX_SUBJECT_URNS: usize = 256;
 const MAX_REASON_BYTES: usize = 4_096;
@@ -62,6 +62,7 @@ pub enum MissionError {
     InvalidSubjects,
     InvalidMandateRevision,
     InvalidReason,
+    InvalidVerification,
     RevisionConflict {
         expected: u64,
         actual: u64,
@@ -81,6 +82,9 @@ impl fmt::Display for MissionError {
                 formatter.write_str("mission mandate revision must be positive")
             }
             Self::InvalidReason => formatter.write_str("mission transition reason is invalid"),
+            Self::InvalidVerification => {
+                formatter.write_str("mission verification receipt is invalid")
+            }
             Self::RevisionConflict { expected, actual } => write!(
                 formatter,
                 "mission revision conflict: expected {expected}, actual {actual}"
@@ -136,6 +140,36 @@ impl Mission {
         next.last_reason = transition.reason;
         Ok(next)
     }
+
+    pub fn verify(
+        &self,
+        expected_revision: u64,
+        receipt: &VerificationReceipt,
+        reason: String,
+    ) -> Result<Self, MissionError> {
+        if expected_revision != self.revision {
+            return Err(MissionError::RevisionConflict {
+                expected: expected_revision,
+                actual: self.revision,
+            });
+        }
+        if self.state != MissionState::Verifying {
+            return Err(MissionError::InvalidTransition {
+                from: self.state,
+                to: MissionState::Verified,
+            });
+        }
+        validate_text(&reason).map_err(|_| MissionError::InvalidReason)?;
+        if !receipt.independently_confirms_effect() {
+            return Err(MissionError::InvalidVerification);
+        }
+        let mut next = self.clone();
+        next.revision += 1;
+        next.state = MissionState::Verified;
+        next.changed_by = receipt.verifier_actor_id.clone();
+        next.last_reason = reason;
+        Ok(next)
+    }
 }
 
 fn transition_allowed(from: MissionState, to: MissionState) -> bool {
@@ -152,7 +186,7 @@ fn transition_allowed(from: MissionState, to: MissionState) -> bool {
             | (WaitingOnApproval, ReadyToAct | Planning | Blocked)
             | (ReadyToAct, Acting | Planning | Blocked)
             | (Acting, Verifying | Blocked)
-            | (Verifying, Verified | Planning | WaitingOnEvidence | Blocked)
+            | (Verifying, Planning | WaitingOnEvidence | Blocked)
             | (Verified, Closed | ResolvingScope)
             | (
                 Blocked,
@@ -219,6 +253,19 @@ mod tests {
             .unwrap()
     }
 
+    fn verification() -> VerificationReceipt {
+        VerificationReceipt {
+            verification_id: crate::VerificationId::parse("verification-1").unwrap(),
+            executor_actor_id: ActorId::parse("worker-1").unwrap(),
+            verifier_actor_id: ActorId::parse("observer-1").unwrap(),
+            previous_source_revision: "revision-1".into(),
+            observed_source_revision: "revision-2".into(),
+            effective: true,
+            evidence_urns: vec!["urn:evidence:1".into()],
+            verified_at_unix_ms: 20,
+        }
+    }
+
     #[test]
     fn mission_happy_path_requires_verification_before_closure() {
         let mission = mission();
@@ -239,7 +286,9 @@ mod tests {
             Err(MissionError::InvalidTransition { .. })
         ));
 
-        let mission = advance(&mission, MissionState::Verified);
+        let mission = mission
+            .verify(mission.revision, &verification(), "effect observed".into())
+            .unwrap();
         assert_eq!(
             advance(&mission, MissionState::Closed).state,
             MissionState::Closed
@@ -254,7 +303,9 @@ mod tests {
         let mission = advance(&mission, MissionState::ReadyToAct);
         let mission = advance(&mission, MissionState::Acting);
         let mission = advance(&mission, MissionState::Verifying);
-        let mission = advance(&mission, MissionState::Verified);
+        let mission = mission
+            .verify(mission.revision, &verification(), "effect observed".into())
+            .unwrap();
         let mission = advance(&mission, MissionState::Closed);
         let reopened = advance(&mission, MissionState::ResolvingScope);
 
