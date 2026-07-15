@@ -142,3 +142,39 @@ func TestVerificationRequiredWorkCannotBeSelfClosed(t *testing.T) {
 		t.Fatalf("ApplyWorkAction(independent verify) = %+v, %v", resolved, err)
 	}
 }
+
+func TestWorkActionsClearStateSpecificMetadata(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		state     WorkItemState
+		action    WorkAction
+		wantState WorkItemState
+	}{
+		{name: "verify blocked work", state: WorkBlocked, action: WorkActionVerify, wantState: WorkResolved},
+		{name: "close blocked work", state: WorkBlocked, action: WorkActionClose, wantState: WorkResolved},
+		{name: "accept blocked work", state: WorkBlocked, action: WorkActionAccept, wantState: WorkAccepted},
+		{name: "supersede blocked work", state: WorkBlocked, action: WorkActionSupersede, wantState: WorkSuperseded},
+		{name: "supersede snoozed work", state: WorkSnoozed, action: WorkActionSupersede, wantState: WorkSuperseded},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			current := WorkItem{
+				ID: "work-a", State: testCase.state, OwnerID: "owner-a", RiskID: "risk-a", Version: 1,
+				BlockerReason: "Waiting for source recovery.", SnoozeUntil: now.Add(time.Hour),
+			}
+			next, _, err := ApplyWorkAction(current, current.Version, WorkActionInput{
+				Action: testCase.action, Rationale: "Advance the work item.", ActorID: "reviewer-a", At: now,
+			})
+			if err != nil {
+				t.Fatalf("ApplyWorkAction(%s) error = %v", testCase.action, err)
+			}
+			if next.State != testCase.wantState || next.BlockerReason != "" || !next.SnoozeUntil.IsZero() {
+				t.Fatalf("ApplyWorkAction(%s) = %+v", testCase.action, next)
+			}
+			if current.BlockerReason == "" || current.SnoozeUntil.IsZero() {
+				t.Fatalf("ApplyWorkAction(%s) mutated current item: %+v", testCase.action, current)
+			}
+		})
+	}
+}
