@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::error::Error as StdError;
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,6 +15,7 @@ pub const MAX_GENERATED_FILE_BYTES: usize = 4 << 20;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActionCatalog {
     #[serde(default)]
     pub version: String,
@@ -21,6 +24,7 @@ pub struct ActionCatalog {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActionCatalogEntry {
     #[serde(default)]
     pub id: String,
@@ -56,22 +60,181 @@ struct StringConstant {
     value: String,
 }
 
-pub fn generate(root: &Path, catalog_path: &Path) -> Result<Vec<u8>, String> {
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug)]
+pub enum Error {
+    Io {
+        operation: &'static str,
+        path: PathBuf,
+        source: io::Error,
+    },
+    CatalogDecode {
+        path: PathBuf,
+        message: String,
+    },
+    Catalog(CatalogError),
+    Json(serde_json::Error),
+    Formatter {
+        operation: &'static str,
+        source: io::Error,
+    },
+    FormatterInputUnavailable,
+    FormatterFailed {
+        stderr: String,
+    },
+    FileTooLarge {
+        label: &'static str,
+        limit: usize,
+    },
+    SymlinkNotAllowed,
+    MissingParent(PathBuf),
+    UnsupportedPlatform,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum CatalogError {
+    UnsupportedVersion(String),
+    NoActions,
+    RequiredField {
+        index: usize,
+        field: &'static str,
+    },
+    InvalidGoIdentifier {
+        index: usize,
+        field: &'static str,
+        value: String,
+    },
+    DuplicateActionId(String),
+    DuplicateConstName(String),
+    ConflictingConstant {
+        action_id: String,
+        field: &'static str,
+        constant: String,
+        prior: String,
+        value: String,
+    },
+    UnknownReversibleAction {
+        action_id: String,
+        reversible_by: String,
+    },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io {
+                operation,
+                path,
+                source,
+            } => write!(formatter, "{operation} {}: {source}", path.display()),
+            Self::CatalogDecode { path, message } => {
+                write!(formatter, "decode catalog {}: {message}", path.display())
+            }
+            Self::Catalog(error) => error.fmt(formatter),
+            Self::Json(error) => write!(formatter, "quote Go string: {error}"),
+            Self::Formatter { operation, source } => {
+                write!(formatter, "{operation} gofmt: {source}")
+            }
+            Self::FormatterInputUnavailable => formatter.write_str("open gofmt stdin"),
+            Self::FormatterFailed { stderr } => {
+                write!(formatter, "format generated Go: {stderr}")
+            }
+            Self::FileTooLarge { label, limit } => {
+                write!(formatter, "{label} exceeds {limit} bytes")
+            }
+            Self::SymlinkNotAllowed => {
+                formatter.write_str("symlinked generated graph action files are not allowed")
+            }
+            Self::MissingParent(path) => {
+                write!(formatter, "{} has no parent directory", path.display())
+            }
+            Self::UnsupportedPlatform => {
+                formatter.write_str("graph action generation requires Unix file semantics")
+            }
+        }
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Io { source, .. } | Self::Formatter { source, .. } => Some(source),
+            Self::Json(source) => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for CatalogError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedVersion(version) => {
+                write!(formatter, "unsupported catalog version {version:?}")
+            }
+            Self::NoActions => formatter.write_str("catalog has no actions"),
+            Self::RequiredField { index, field } => {
+                write!(formatter, "actions[{index}].{field} is required")
+            }
+            Self::InvalidGoIdentifier {
+                index,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "actions[{index}].{field} = {value:?} is not a Go identifier"
+            ),
+            Self::DuplicateActionId(id) => write!(formatter, "duplicate action id {id:?}"),
+            Self::DuplicateConstName(name) => {
+                write!(formatter, "duplicate action const_name {name:?}")
+            }
+            Self::ConflictingConstant {
+                action_id,
+                field,
+                constant,
+                prior,
+                value,
+            } => write!(
+                formatter,
+                "action {action_id:?}: {field} {constant:?} maps to both {prior:?} and {value:?}"
+            ),
+            Self::UnknownReversibleAction {
+                action_id,
+                reversible_by,
+            } => write!(
+                formatter,
+                "action {action_id:?} reversible_by references unknown action {reversible_by:?}"
+            ),
+        }
+    }
+}
+
+impl StdError for CatalogError {}
+
+impl From<CatalogError> for Error {
+    fn from(error: CatalogError) -> Self {
+        Self::Catalog(error)
+    }
+}
+
+pub fn generate(root: &Path, catalog_path: &Path) -> Result<Vec<u8>> {
     let path = root.join(catalog_path);
-    let content = read_bounded_file(&path)
-        .map_err(|err| format!("read catalog {}: {err}", catalog_path.display()))?;
-    let catalog: ActionCatalog = serde_saphyr::from_slice(&content)
-        .map_err(|err| format!("decode catalog {}: {err}", catalog_path.display()))?;
+    let content = read_bounded_file(&path)?;
+    let catalog: ActionCatalog =
+        serde_saphyr::from_slice(&content).map_err(|error| Error::CatalogDecode {
+            path: catalog_path.to_path_buf(),
+            message: error.to_string(),
+        })?;
     validate_catalog(&catalog)?;
     render_catalog(&catalog)
 }
 
-pub fn validate_catalog(catalog: &ActionCatalog) -> Result<(), String> {
+pub fn validate_catalog(catalog: &ActionCatalog) -> Result<()> {
     if catalog.version.trim() != "graph-actions.cerebro/v1alpha1" {
-        return Err(format!("unsupported catalog version {:?}", catalog.version));
+        return Err(CatalogError::UnsupportedVersion(catalog.version.clone()).into());
     }
     if catalog.actions.is_empty() {
-        return Err("catalog has no actions".to_owned());
+        return Err(CatalogError::NoActions.into());
     }
 
     let mut ids = HashSet::new();
@@ -83,13 +246,10 @@ pub fn validate_catalog(catalog: &ActionCatalog) -> Result<(), String> {
     for (index, action) in catalog.actions.iter().enumerate() {
         validate_action(index, action)?;
         if !ids.insert(action.id.as_str()) {
-            return Err(format!("duplicate action id {:?}", action.id));
+            return Err(CatalogError::DuplicateActionId(action.id.clone()).into());
         }
         if !const_names.insert(action.const_name.as_str()) {
-            return Err(format!(
-                "duplicate action const_name {:?}",
-                action.const_name
-            ));
+            return Err(CatalogError::DuplicateConstName(action.const_name.clone()).into());
         }
         insert_consistent(
             &mut provider_const_values,
@@ -116,10 +276,11 @@ pub fn validate_catalog(catalog: &ActionCatalog) -> Result<(), String> {
 
     for action in &catalog.actions {
         if !action.reversible_by.is_empty() && !ids.contains(action.reversible_by.as_str()) {
-            return Err(format!(
-                "action {:?} reversible_by references unknown action {:?}",
-                action.id, action.reversible_by
-            ));
+            return Err(CatalogError::UnknownReversibleAction {
+                action_id: action.id.clone(),
+                reversible_by: action.reversible_by.clone(),
+            }
+            .into());
         }
     }
     Ok(())
@@ -130,20 +291,25 @@ fn insert_consistent<'a>(
     constant: &'a str,
     value: &'a str,
     action_id: &str,
-    field: &str,
-) -> Result<(), String> {
+    field: &'static str,
+) -> Result<()> {
     if let Some(prior) = values.get(constant)
         && *prior != value
     {
-        return Err(format!(
-            "action {action_id:?}: {field} {constant:?} maps to both {prior:?} and {value:?}"
-        ));
+        return Err(CatalogError::ConflictingConstant {
+            action_id: action_id.to_owned(),
+            field,
+            constant: constant.to_owned(),
+            prior: (*prior).to_owned(),
+            value: value.to_owned(),
+        }
+        .into());
     }
     values.insert(constant, value);
     Ok(())
 }
 
-fn validate_action(index: usize, action: &ActionCatalogEntry) -> Result<(), String> {
+fn validate_action(index: usize, action: &ActionCatalogEntry) -> Result<()> {
     let required = [
         ("id", action.id.as_str()),
         ("const_name", action.const_name.as_str()),
@@ -162,7 +328,7 @@ fn validate_action(index: usize, action: &ActionCatalogEntry) -> Result<(), Stri
     ];
     for (field, value) in required {
         if value.trim().is_empty() {
-            return Err(format!("actions[{index}].{field} is required"));
+            return Err(CatalogError::RequiredField { index, field }.into());
         }
     }
 
@@ -179,9 +345,12 @@ fn validate_action(index: usize, action: &ActionCatalogEntry) -> Result<(), Stri
     ];
     for (field, value) in identifiers {
         if !is_go_identifier(value) {
-            return Err(format!(
-                "actions[{index}].{field} = {value:?} is not a Go identifier"
-            ));
+            return Err(CatalogError::InvalidGoIdentifier {
+                index,
+                field,
+                value: value.to_owned(),
+            }
+            .into());
         }
     }
     Ok(())
@@ -196,7 +365,7 @@ fn is_go_identifier(value: &str) -> bool {
         && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
-pub fn render_catalog(catalog: &ActionCatalog) -> Result<Vec<u8>, String> {
+pub fn render_catalog(catalog: &ActionCatalog) -> Result<Vec<u8>> {
     let mut output = String::new();
     output.push_str("// Code generated by make graph-action-generate; DO NOT EDIT.\n\n");
     output.push_str("package graphactions\n\n");
@@ -288,32 +457,39 @@ var generatedActionSpecs = []ActionSpec{\n",
     gofmt(output.as_bytes())
 }
 
-fn go_quote(value: &str) -> Result<String, String> {
-    serde_json::to_string(value).map_err(|err| format!("quote Go string: {err}"))
+fn go_quote(value: &str) -> Result<String> {
+    serde_json::to_string(value).map_err(Error::Json)
 }
 
-fn gofmt(content: &[u8]) -> Result<Vec<u8>, String> {
+fn gofmt(content: &[u8]) -> Result<Vec<u8>> {
     let mut child = Command::new("gofmt")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|err| format!("start gofmt: {err}"))?;
+        .map_err(|source| Error::Formatter {
+            operation: "start",
+            source,
+        })?;
     child
         .stdin
         .take()
-        .ok_or_else(|| "open gofmt stdin".to_owned())?
+        .ok_or(Error::FormatterInputUnavailable)?
         .write_all(content)
-        .map_err(|err| format!("write gofmt input: {err}"))?;
+        .map_err(|source| Error::Formatter {
+            operation: "write input to",
+            source,
+        })?;
     let result = child
         .wait_with_output()
-        .map_err(|err| format!("wait for gofmt: {err}"))?;
+        .map_err(|source| Error::Formatter {
+            operation: "wait for",
+            source,
+        })?;
     if !result.status.success() {
-        return Err(format!(
-            "format generated Go: {}\n{}",
-            String::from_utf8_lossy(&result.stderr).trim(),
-            String::from_utf8_lossy(content)
-        ));
+        return Err(Error::FormatterFailed {
+            stderr: String::from_utf8_lossy(&result.stderr).trim().to_owned(),
+        });
     }
     Ok(result.stdout)
 }
@@ -376,66 +552,92 @@ fn write_string_slice(output: &mut String, name: &str, constants: &[StringConsta
     output.push_str("}\n\n");
 }
 
-fn read_bounded_file(path: &Path) -> Result<Vec<u8>, String> {
-    let file = File::open(path).map_err(|err| err.to_string())?;
+fn read_bounded_file(path: &Path) -> Result<Vec<u8>> {
+    let file = File::open(path).map_err(|source| Error::Io {
+        operation: "read catalog",
+        path: path.to_path_buf(),
+        source,
+    })?;
     read_limited(file, "file")
 }
 
-pub fn read_generated_file(path: &Path) -> Result<Vec<u8>, String> {
+pub fn read_generated_file(path: &Path) -> Result<Vec<u8>> {
     reject_symlink(path)?;
     let file = open_no_follow(path)?;
     read_limited(file, "generated graph action file")
 }
 
-fn read_limited(file: File, label: &str) -> Result<Vec<u8>, String> {
+fn read_limited(file: File, label: &'static str) -> Result<Vec<u8>> {
     let mut content = Vec::new();
     file.take((MAX_GENERATED_FILE_BYTES + 1) as u64)
         .read_to_end(&mut content)
-        .map_err(|err| err.to_string())?;
+        .map_err(|source| Error::Io {
+            operation: "read",
+            path: PathBuf::from(label),
+            source,
+        })?;
     if content.len() > MAX_GENERATED_FILE_BYTES {
-        return Err(format!("{label} exceeds {MAX_GENERATED_FILE_BYTES} bytes"));
+        return Err(Error::FileTooLarge {
+            label,
+            limit: MAX_GENERATED_FILE_BYTES,
+        });
     }
     Ok(content)
 }
 
 #[cfg(unix)]
-fn open_no_follow(path: &Path) -> Result<File, String> {
+fn open_no_follow(path: &Path) -> Result<File> {
     use std::os::unix::fs::OpenOptionsExt;
     OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)
-        .map_err(|err| {
-            if err.raw_os_error() == Some(libc::ELOOP) {
-                "symlinked generated graph action files are not allowed".to_owned()
+        .map_err(|source| {
+            if source.raw_os_error() == Some(libc::ELOOP) {
+                Error::SymlinkNotAllowed
             } else {
-                err.to_string()
+                Error::Io {
+                    operation: "read generated graph action file",
+                    path: path.to_path_buf(),
+                    source,
+                }
             }
         })
 }
 
 #[cfg(not(unix))]
-fn open_no_follow(path: &Path) -> Result<File, String> {
-    File::open(path).map_err(|err| err.to_string())
+fn open_no_follow(path: &Path) -> Result<File> {
+    File::open(path).map_err(|source| Error::Io {
+        operation: "read generated graph action file",
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
-fn reject_symlink(path: &Path) -> Result<(), String> {
+fn reject_symlink(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            Err("symlinked generated graph action files are not allowed".to_owned())
-        }
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(Error::SymlinkNotAllowed),
         Ok(_) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err.to_string()),
+        Err(source) => Err(Error::Io {
+            operation: "inspect generated graph action file",
+            path: path.to_path_buf(),
+            source,
+        }),
     }
 }
 
-pub fn write_generated_file(path: &Path, content: &[u8]) -> Result<(), String> {
+pub fn write_generated_file(path: &Path, content: &[u8]) -> Result<()> {
+    ensure_supported_platform()?;
     reject_symlink(path)?;
     let directory = path
         .parent()
-        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
-    fs::create_dir_all(directory).map_err(|err| err.to_string())?;
+        .ok_or_else(|| Error::MissingParent(path.to_path_buf()))?;
+    fs::create_dir_all(directory).map_err(|source| Error::Io {
+        operation: "create generated file directory",
+        path: directory.to_path_buf(),
+        source,
+    })?;
     let temp_path = temporary_path(path);
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -445,11 +647,31 @@ pub fn write_generated_file(path: &Path, content: &[u8]) -> Result<(), String> {
         options.mode(0o644);
     }
     let result = (|| {
-        let mut file = options.open(&temp_path).map_err(|err| err.to_string())?;
-        file.write_all(content).map_err(|err| err.to_string())?;
-        file.sync_all().map_err(|err| err.to_string())?;
-        fs::set_permissions(&temp_path, permissions_0644()?).map_err(|err| err.to_string())?;
-        fs::rename(&temp_path, path).map_err(|err| err.to_string())
+        let mut file = options.open(&temp_path).map_err(|source| Error::Io {
+            operation: "create generated temporary file",
+            path: temp_path.clone(),
+            source,
+        })?;
+        file.write_all(content).map_err(|source| Error::Io {
+            operation: "write generated temporary file",
+            path: temp_path.clone(),
+            source,
+        })?;
+        file.sync_all().map_err(|source| Error::Io {
+            operation: "sync generated temporary file",
+            path: temp_path.clone(),
+            source,
+        })?;
+        fs::set_permissions(&temp_path, permissions_0644()?).map_err(|source| Error::Io {
+            operation: "set generated file permissions",
+            path: temp_path.clone(),
+            source,
+        })?;
+        fs::rename(&temp_path, path).map_err(|source| Error::Io {
+            operation: "replace generated graph action file",
+            path: path.to_path_buf(),
+            source,
+        })
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temp_path);
@@ -469,7 +691,18 @@ fn temporary_path(path: &Path) -> PathBuf {
     ))
 }
 
-fn permissions_0644() -> Result<fs::Permissions, String> {
+pub fn ensure_supported_platform() -> Result<()> {
+    #[cfg(unix)]
+    {
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(Error::UnsupportedPlatform)
+    }
+}
+
+fn permissions_0644() -> Result<fs::Permissions> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -477,7 +710,7 @@ fn permissions_0644() -> Result<fs::Permissions, String> {
     }
     #[cfg(not(unix))]
     {
-        Err("graph action generation requires Unix file permissions".to_owned())
+        Err(Error::UnsupportedPlatform)
     }
 }
 
@@ -541,7 +774,7 @@ mod tests {
             actions: vec![entry],
         })
         .unwrap_err();
-        assert!(error.contains("unknown action"), "{error}");
+        assert!(error.to_string().contains("unknown action"), "{error}");
     }
 
     #[test]
@@ -564,7 +797,7 @@ mod tests {
             ],
         })
         .unwrap_err();
-        assert!(error.contains("target_kind_const"), "{error}");
+        assert!(error.to_string().contains("target_kind_const"), "{error}");
     }
 
     #[test]
@@ -588,7 +821,7 @@ mod tests {
             actions: vec![first, second],
         })
         .unwrap_err();
-        assert!(error.contains("provider_const"), "{error}");
+        assert!(error.to_string().contains("provider_const"), "{error}");
     }
 
     #[test]
@@ -612,7 +845,10 @@ mod tests {
             actions: vec![first, second],
         })
         .unwrap_err();
-        assert!(error.contains("provider_action_const"), "{error}");
+        assert!(
+            error.to_string().contains("provider_action_const"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -630,7 +866,7 @@ mod tests {
             actions: vec![first.clone(), duplicate],
         })
         .unwrap_err();
-        assert!(error.contains("duplicate action id"), "{error}");
+        assert!(error.to_string().contains("duplicate action id"), "{error}");
 
         let mut invalid = first;
         invalid.target_resolver = "not-a-go-identifier".to_owned();
@@ -639,7 +875,7 @@ mod tests {
             actions: vec![invalid],
         })
         .unwrap_err();
-        assert!(error.contains("not a Go identifier"), "{error}");
+        assert!(error.to_string().contains("not a Go identifier"), "{error}");
     }
 
     #[test]
@@ -649,7 +885,37 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, vec![b'x'; MAX_GENERATED_FILE_BYTES + 1]).unwrap();
         let error = generate(&root.0, Path::new(DEFAULT_CATALOG_PATH)).unwrap_err();
-        assert!(error.contains("exceeds"), "{error}");
+        assert!(error.to_string().contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn catalog_decode_rejects_unknown_fields() {
+        let root = TestDir::new();
+        let path = root.0.join(DEFAULT_CATALOG_PATH);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            b"version: graph-actions.cerebro/v1alpha1\nactions: []\nunknown: true\n",
+        )
+        .unwrap();
+        let error = generate(&root.0, Path::new(DEFAULT_CATALOG_PATH)).unwrap_err();
+        assert!(matches!(error, Error::CatalogDecode { .. }));
+        assert!(error.to_string().contains("unknown field"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_unix_as_a_supported_generation_platform() {
+        ensure_supported_platform().unwrap();
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn reports_non_unix_generation_as_unsupported() {
+        assert!(matches!(
+            ensure_supported_platform(),
+            Err(Error::UnsupportedPlatform)
+        ));
     }
 
     #[cfg(unix)]
@@ -663,9 +929,9 @@ mod tests {
         let link = root.0.join("registry_gen.go");
         symlink(&target, &link).unwrap();
         let write_error = write_generated_file(&link, b"package graphactions\n").unwrap_err();
-        assert!(write_error.contains("symlink"), "{write_error}");
+        assert!(write_error.to_string().contains("symlink"), "{write_error}");
         let read_error = read_generated_file(&link).unwrap_err();
-        assert!(read_error.contains("symlink"), "{read_error}");
+        assert!(read_error.to_string().contains("symlink"), "{read_error}");
     }
 
     #[cfg(unix)]
@@ -683,7 +949,7 @@ mod tests {
         );
         let leftovers = fs::read_dir(path.parent().unwrap())
             .unwrap()
-            .filter_map(Result::ok)
+            .filter_map(std::result::Result::ok)
             .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
             .count();
         assert_eq!(leftovers, 0);
