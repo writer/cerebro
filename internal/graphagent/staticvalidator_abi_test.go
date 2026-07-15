@@ -119,6 +119,39 @@ func TestStaticValidatorWasmRejectsOversizedGuestInput(t *testing.T) {
 	}
 }
 
+func TestStaticValidatorWasmRejectsOverlappingRanges(t *testing.T) {
+	const query = `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`
+	if _, err := runStaticValidator(context.Background(), query, 100); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	module, err := staticValidatorShared.runtime.InstantiateModule(ctx, staticValidatorShared.compiled, staticValidatorModuleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close(ctx) //nolint:errcheck // Test cleanup cannot change the assertion.
+
+	allocation, err := module.ExportedFunction("cerebro_validator_alloc").Call(ctx, uint64(len(query)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allocation) != 1 || allocation[0] == 0 {
+		t.Fatalf("query allocation = %v", allocation)
+	}
+	queryPointer := uint32(allocation[0]) // #nosec G115 -- Wasm32 allocator results are i32 values.
+	if !module.Memory().Write(queryPointer, []byte(query)) {
+		t.Fatal("write query memory")
+	}
+	resultPointer := uint64(queryPointer + 1)
+	status, err := module.ExportedFunction("cerebro_validator_validate").Call(ctx, uint64(queryPointer), uint64(len(query)), 100, resultPointer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || staticValidatorStatus(status[0]) != staticValidatorStatusInvalidMemory {
+		t.Fatalf("overlapping validation status = %v, want %d", status, staticValidatorStatusInvalidMemory)
+	}
+}
+
 func BenchmarkStaticValidator(b *testing.B) {
 	const query = `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`
 	ctx := context.Background()
