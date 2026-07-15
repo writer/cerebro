@@ -146,33 +146,34 @@ def _refresh_pull(repository: str, source_repository: str, number: int) -> GateR
                 )
                 print(f"PR #{number}: {result.state}: {result.description}")
                 return result
-            resolved_digest = resolve_image_digest(target_tag)
-            if resolved_digest != image_digest:
+            try:
+                resolved_digest = resolve_image_digest(target_tag)
+                if resolved_digest != image_digest:
+                    result = GateResult(
+                        "failure",
+                        f"Reviewed digest does not match published {target_tag}",
+                    )
+                else:
+                    receipt = find_successful_deployment(
+                        repository,
+                        environment="sec-dev",
+                        image_tag=target_tag,
+                        image_digest=image_digest,
+                    )
+                    result = evaluate_gate(
+                        base_tag=base_tag,
+                        target_tag=target_tag,
+                        rollback_approved=ROLLBACK_LABEL in _label_names(pull),
+                        sec_dev_receipt=receipt,
+                    )
+            except RuntimeError as error:
                 result = GateResult(
-                    "failure",
-                    f"Reviewed digest does not match published {target_tag}",
+                    "error", "Release verification unavailable; retry scheduled"
                 )
-                post_commit_status(
-                    repository,
-                    sha=head_sha,
-                    state=result.state,
-                    context=CONTEXT,
-                    description=result.description,
+                print(
+                    f"::error::PR #{number} release verification failed: {error}",
+                    file=sys.stderr,
                 )
-                print(f"PR #{number}: {result.state}: {result.description}")
-                return result
-            receipt = find_successful_deployment(
-                repository,
-                environment="sec-dev",
-                image_tag=target_tag,
-                image_digest=image_digest,
-            )
-            result = evaluate_gate(
-                base_tag=base_tag,
-                target_tag=target_tag,
-                rollback_approved=ROLLBACK_LABEL in _label_names(pull),
-                sec_dev_receipt=receipt,
-            )
 
     post_commit_status(
         repository,
@@ -201,11 +202,21 @@ def main(argv: list[str] | None = None) -> int:
     if not args.repository:
         raise RuntimeError("GITHUB_REPOSITORY or --repository is required")
     numbers = _pull_numbers(args.repository, args.pr_number)
+    had_error = False
     for number in numbers:
-        _refresh_pull(args.repository, args.source_repository, number)
+        try:
+            result = _refresh_pull(args.repository, args.source_repository, number)
+        except Exception as error:
+            had_error = True
+            print(
+                f"::error::PR #{number} promotion status refresh failed: {error}",
+                file=sys.stderr,
+            )
+            continue
+        had_error = had_error or result.state == "error"
     if not numbers:
         print("No open pull requests require a promotion status refresh")
-    return 0
+    return 1 if had_error else 0
 
 
 if __name__ == "__main__":

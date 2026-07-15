@@ -324,6 +324,74 @@ class ReleasePromotionTest(unittest.TestCase):
         )
         self.assertEqual(passed.state, "success")
 
+    def test_gate_posts_error_status_when_release_verification_is_unavailable(
+        self,
+    ) -> None:
+        digest = f"sha256:{'a' * 64}"
+        pull = {
+            "head": {"sha": "head-sha"},
+            "base": {"sha": "base-sha"},
+            "labels": [],
+        }
+        base_text = (
+            f"config:\n  cerebro:imageTag: v2.1.9\n"
+            f"  cerebro:imageDigest: {digest}\n"
+        )
+        target_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {digest}\n"
+        )
+        with (
+            patch("refresh_release_promotion_gate.gh_json", return_value=pull),
+            patch(
+                "refresh_release_promotion_gate.repository_file",
+                side_effect=[base_text, target_text],
+            ),
+            patch(
+                "refresh_release_promotion_gate._published_release", return_value=True
+            ),
+            patch(
+                "refresh_release_promotion_gate.resolve_image_digest",
+                side_effect=RuntimeError("registry unavailable"),
+            ),
+            patch("refresh_release_promotion_gate.post_commit_status") as post_status,
+        ):
+            result = refresh_release_promotion_gate._refresh_pull(
+                "WriterInternal/cerebro", "writer/cerebro", 42
+            )
+
+        self.assertEqual(result.state, "error")
+        post_status.assert_called_once_with(
+            "WriterInternal/cerebro",
+            sha="head-sha",
+            state="error",
+            context=refresh_release_promotion_gate.CONTEXT,
+            description="Release verification unavailable; retry scheduled",
+            target_url="",
+        )
+
+    def test_gate_refresh_continues_after_a_pull_request_failure(self) -> None:
+        with (
+            patch(
+                "refresh_release_promotion_gate._pull_numbers", return_value=[41, 42]
+            ),
+            patch(
+                "refresh_release_promotion_gate._refresh_pull",
+                side_effect=[
+                    RuntimeError("GitHub unavailable"),
+                    refresh_release_promotion_gate.GateResult(
+                        "success", "No production image change"
+                    ),
+                ],
+            ) as refresh_pull,
+        ):
+            status = refresh_release_promotion_gate.main(
+                ["--repository", "WriterInternal/cerebro"]
+            )
+
+        self.assertEqual(status, 1)
+        self.assertEqual(refresh_pull.call_count, 2)
+
     def test_go_prod_rollback_requires_sec_dev_receipt_before_dispatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             stack = Path(directory) / "Pulumi.go-prod.yaml"
