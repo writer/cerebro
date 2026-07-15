@@ -37,7 +37,7 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check graphagent-static-validator-check
+            command: make graph-action-check rust-wasm-check
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'

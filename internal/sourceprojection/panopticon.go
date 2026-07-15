@@ -1,6 +1,8 @@
 package sourceprojection
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -100,58 +102,6 @@ var panopticonAssetAttributeKeys = []string{
 	"zone",
 }
 
-var panopticonAssetObjectKeys = []string{
-	"assets",
-	"affected_assets",
-	"hosts",
-	"endpoints",
-}
-
-var panopticonResourceObjectKeys = []string{
-	"resources",
-	"affected_resources",
-	"affected_resource",
-	"impacted_resources",
-	"matched_resources",
-	"failed_resources",
-	"violating_resources",
-	"policy_resources",
-	"resource_results",
-	"target_resources",
-	"targets",
-	"entities",
-	"resource",
-	"target",
-	"entity",
-}
-
-var panopticonResourceContextKeys = []string{
-	"alert",
-	"alerts",
-	"linked_alerts",
-	"source_alerts",
-	"upstream_alerts",
-	"related_alerts",
-	"alert_context",
-	"p_alert_context",
-	"panther_alert_context",
-	"event",
-	"events",
-	"finding",
-	"findings",
-	"log",
-	"logs",
-	"policy",
-	"policy_scan",
-	"detail",
-	"details",
-	"context",
-	"metadata",
-	"data",
-	"result",
-	"results",
-}
-
 var panopticonAlertProjectionKeys = []string{
 	"alert_id",
 	"severity",
@@ -205,7 +155,7 @@ type panopticonAssetStitchTarget struct {
 	matchValue string
 }
 
-func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonAlertProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -215,6 +165,10 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	alertID := firstAttribute(attrs, "alert_id")
 	if alertID == "" {
 		return nil, nil, nil
+	}
+	resourceObjects, err := panopticonResourceObjectsWasm(ctx, event.GetPayload())
+	if err != nil {
+		return nil, nil, fmt.Errorf("extract Panopticon alert resources: %w", err)
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -232,7 +186,7 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	for _, iocURN := range panopticonAddIOCs(entities, tenantID, event.GetSourceId(), event.GetId(), attrs, payload) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, iocURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_alert_ioc")))
 	}
-	for _, assetURN := range panopticonAddAssets(entities, tenantID, event.GetSourceId(), event.GetId(), attrs, payload) {
+	for _, assetURN := range panopticonAddAssets(entities, tenantID, event.GetSourceId(), event.GetId(), attrs, resourceObjects) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, assetURN, relationTargeted, panopticonLinkAttributes(event, "panopticon_alert_asset")))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), assetURN, alertURN, relationAffectedBy, panopticonLinkAttributes(event, "panopticon_asset_alert")))
 	}
@@ -241,12 +195,12 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, alertURN, relationObservedOn, panopticonLinkAttributes(event, "panopticon_evidence_cas_alert")))
 	}
 	panopticonAddIOCContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
-	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
+	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, resourceObjects)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
-func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func panopticonCaseProjections(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -256,6 +210,10 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	caseID := firstAttribute(attrs, "case_id")
 	if caseID == "" {
 		return nil, nil, nil
+	}
+	resourceObjects, err := panopticonResourceObjectsWasm(ctx, event.GetPayload())
+	if err != nil {
+		return nil, nil, fmt.Errorf("extract Panopticon case resources: %w", err)
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -271,7 +229,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	for _, iocURN := range panopticonAddIOCs(entities, tenantID, event.GetSourceId(), event.GetId(), nil, payload) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, iocURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_case_ioc")))
 	}
-	for _, assetURN := range panopticonAddAssets(entities, tenantID, event.GetSourceId(), event.GetId(), nil, payload) {
+	for _, assetURN := range panopticonAddAssets(entities, tenantID, event.GetSourceId(), event.GetId(), nil, resourceObjects) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, assetURN, relationContains, panopticonLinkAttributes(event, "panopticon_case_asset")))
 	}
 	for _, evidenceURN := range panopticonAddEvidencePointers(entities, links, tenantID, event, payload) {
@@ -280,7 +238,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	}
 	panopticonAddContextAnchors(entities, links, tenantID, event.GetSourceId(), event, caseURN, relationAssociatedWith, attrs, payload, "panopticon_case_context")
 	panopticonAddIOCContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
-	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
+	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, resourceObjects)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -479,7 +437,7 @@ func panopticonAddIOCs(entities map[string]*ports.ProjectedEntity, tenantID stri
 	return urns
 }
 
-func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, eventID string, attrs map[string]string, payload map[string]any) []string {
+func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, eventID string, attrs map[string]string, resourceObjects []map[string]any) []string {
 	seen := map[string]struct{}{}
 	var urns []string
 	if len(attrs) != 0 && firstAttribute(attrs, "asset_id", "asset_name") != "" {
@@ -489,7 +447,7 @@ func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID st
 			urns = append(urns, urn)
 		}
 	}
-	for _, asset := range panopticonResourceObjects(payload) {
+	for _, asset := range resourceObjects {
 		urn := panopticonAddAssetEntity(entities, tenantID, sourceID, eventID, panopticonAssetAttributesFromObject(asset))
 		if urn == "" {
 			continue
@@ -655,14 +613,14 @@ func panopticonAddIOCContextAnchors(entities map[string]*ports.ProjectedEntity, 
 	}
 }
 
-func panopticonAddAssetContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string, payload map[string]any) {
+func panopticonAddAssetContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string, resourceObjects []map[string]any) {
 	if len(attrs) != 0 && firstAttribute(attrs, "asset_id", "asset_name") != "" {
 		assetAttrs := panopticonAssetAttributes(attrs)
 		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, nil, "panopticon_asset_context")
 		panopticonAddAssetStitching(entities, links, tenantID, sourceID, event, assetURN, assetAttrs)
 	}
-	for _, asset := range panopticonResourceObjects(payload) {
+	for _, asset := range resourceObjects {
 		assetAttrs := panopticonAssetAttributesFromObject(asset)
 		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, asset, "panopticon_asset_context")
@@ -730,86 +688,6 @@ func panopticonAssetAttributesFromObject(object map[string]any) map[string]strin
 		out["asset_id"] = firstNonEmpty(out["resource_id"], out["resource_arn"], out["resource_urn"], out["name"])
 	}
 	return out
-}
-
-func panopticonResourceObjects(payload map[string]any) []map[string]any {
-	if len(payload) == 0 {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	var objects []map[string]any
-	panopticonCollectResourceObjects(&objects, seen, payload, 0)
-	return objects
-}
-
-func panopticonCollectResourceObjects(objects *[]map[string]any, seen map[string]struct{}, payload map[string]any, depth int) {
-	if len(payload) == 0 || depth > 4 || len(*objects) >= maxPanopticonResourceObjects {
-		return
-	}
-	panopticonAppendObjectsForKeys(objects, seen, payload, false, panopticonAssetObjectKeys...)
-	panopticonAppendObjectsForKeys(objects, seen, payload, true, panopticonResourceObjectKeys...)
-	for _, context := range panopticonObjectsForKeys(payload, false, panopticonResourceContextKeys...) {
-		if panopticonLooksLikeResourceObject(context) {
-			panopticonAppendResourceObject(objects, seen, context)
-		}
-		panopticonCollectResourceObjects(objects, seen, context, depth+1)
-		if len(*objects) >= maxPanopticonResourceObjects {
-			return
-		}
-	}
-}
-
-func panopticonAppendObjectsForKeys(objects *[]map[string]any, seen map[string]struct{}, payload map[string]any, scalarAsResource bool, keys ...string) {
-	for _, object := range panopticonObjectsForKeys(payload, scalarAsResource, keys...) {
-		if !scalarAsResource || panopticonLooksLikeResourceObject(object) {
-			panopticonAppendResourceObject(objects, seen, object)
-		}
-		if len(*objects) >= maxPanopticonResourceObjects {
-			return
-		}
-	}
-}
-
-func panopticonAppendResourceObject(objects *[]map[string]any, seen map[string]struct{}, object map[string]any) {
-	if len(object) == 0 || len(*objects) >= maxPanopticonResourceObjects {
-		return
-	}
-	signature := panopticonResourceObjectSignature(object)
-	if signature != "" {
-		if _, ok := seen[signature]; ok {
-			return
-		}
-		seen[signature] = struct{}{}
-	}
-	*objects = append(*objects, object)
-}
-
-func panopticonResourceObjectSignature(object map[string]any) string {
-	attrs := panopticonAssetAttributesFromObject(object)
-	return firstNonEmpty(
-		attrs["resource_urn"],
-		attrs["resource_arn"],
-		attrs["resource_id"],
-		attrs["asset_id"],
-		attrs["id"],
-		attrs["name"],
-	)
-}
-
-func panopticonLooksLikeResourceObject(object map[string]any) bool {
-	if len(object) == 0 {
-		return false
-	}
-	attrs := panopticonAssetAttributesFromObject(object)
-	return firstNonEmpty(
-		attrs["resource_urn"],
-		attrs["resource_arn"],
-		attrs["resource_id"],
-		attrs["asset_id"],
-		attrs["id"],
-		attrs["hostname"],
-		attrs["name"],
-	) != ""
 }
 
 func panopticonAddAssetStitching(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, assetURN string, attrs map[string]string) {

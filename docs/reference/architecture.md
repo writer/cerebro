@@ -97,6 +97,12 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+The budget also includes explicit source-coverage evaluator error propagation at
+HTTP, MCP, and A2A boundaries. Coverage classification remains in
+`internal/sourcecoverage`; bootstrap only maps an unavailable embedded evaluator
+to the existing runtime-unavailable transport responses instead of treating a
+failed evaluation as an empty coverage result.
+
 The budget includes request-boundary wide-event annotations for auth, OAuth,
 MCP, GRC dashboard, and GRC ask handlers. These annotations stay in bootstrap
 because they combine HTTP status, response-writer timing, route shape, and

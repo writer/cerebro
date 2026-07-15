@@ -50,6 +50,16 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("graphagent-static-validator-check", self.command_names([path]))
 
+    def test_sourcecoverage_evaluator_paths_select_wasm_check(self):
+        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/sourcecoverage/evaluator/src/lib.rs", "internal/sourcecoverage/evaluator.go", "internal/sourcecoverage/evaluator.wasm"):
+            with self.subTest(path=path):
+                self.assertIn("sourcecoverage-evaluator-check", self.command_names([path]))
+
+    def test_panopticon_resource_paths_select_wasm_check(self):
+        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/sourceprojection/panopticonresources/src/lib.rs", "internal/sourceprojection/panopticon_resources_host.go", "internal/sourceprojection/panopticonresources.wasm"):
+            with self.subTest(path=path):
+                self.assertIn("panopticon-resource-extractor-check", self.command_names([path]))
+
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])
         self.assertIn("readme-check", names)

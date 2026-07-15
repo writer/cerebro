@@ -62,6 +62,7 @@ make workflow-e2e-test
 make workflow-replay-test
 make finding-rule-test
 make graph-rebuild-dryrun
+make sourcecoverage-evaluator-check
 ```
 
 ## Architecture Notes
