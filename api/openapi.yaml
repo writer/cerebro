@@ -2827,6 +2827,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: profile_id
+          in: query
+          description: Return findings associated with this built-in compliance profile. The profile predicate is applied before ordering and pagination.
+          schema:
+            type: string
         - name: opened_after
           in: query
           schema:
@@ -2864,6 +2869,12 @@ paths:
       responses:
         '200':
           description: GRC-friendly finding list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCFindingsResponse'
+        '400':
+          description: Invalid query parameter or unknown compliance profile.
   /grc/findings/triage:
     post:
       summary: Bulk update finding triage dispositions
@@ -2918,9 +2929,24 @@ paths:
           in: query
           schema:
             type: string
+        - name: profile_id
+          in: query
+          description: Export findings associated with this built-in compliance profile.
+          schema:
+            type: string
       responses:
         '200':
-          description: Auditor-friendly CSV of the full findings dataset.
+          description: Auditor-friendly CSV containing up to 500 matching findings. Boundary and profile headers state whether more matches exist and which profile was applied.
+          headers:
+            X-Cerebro-Result-Limit:
+              schema:
+                type: integer
+            X-Cerebro-Result-Truncated:
+              schema:
+                type: boolean
+            X-Cerebro-Profile-ID:
+              schema:
+                type: string
           content:
             text/csv:
               schema:
@@ -4001,11 +4027,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Stateless custom control-pack build request.
+              $ref: '#/components/schemas/GRCControlPackBuildRequest'
       responses:
         '200':
           description: Generated YAML preview plus live evidence packet for the generated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCCustomControlPacketResponse'
   /grc/evidence-packets:
     get:
       summary: Packaged evidence workflow records for a compliance profile
@@ -4123,11 +4152,17 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Stateless custom control-pack build request.
+              $ref: '#/components/schemas/GRCControlPackBuildRequest'
       responses:
         '200':
           description: Markdown or JSON export for the generated control evidence packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCCustomControlPacketResponse'
+            text/markdown:
+              schema:
+                type: string
   /grc/audit-packets/{packetID}:
     get:
       summary: GRC audit packet for one finding
@@ -5628,6 +5663,431 @@ components:
       schema:
         type: string
   schemas:
+    GRCControlPackBuildRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        extension_id:
+          type: string
+        extension_name:
+          type: string
+        description:
+          type: string
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        framework_version:
+          type: string
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        archetype_ids:
+          type: array
+          items:
+            type: string
+        include_profiles:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+    GRCCustomControlPacketResponse:
+      type: object
+      required: [profile, packet, controls, profile_finding_matches, profile_match_evaluation, preview, metadata, generated_at]
+      properties:
+        profile:
+          type: object
+          additionalProperties: true
+        packet:
+          type: object
+          additionalProperties: true
+        controls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        profile_finding_matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCProfileFindingMatch'
+        profile_match_evaluation:
+          $ref: '#/components/schemas/GRCProfileMatchEvaluation'
+        preview:
+          type: object
+          additionalProperties: true
+        metadata:
+          $ref: '#/components/schemas/GRCReportMetadata'
+        generated_at:
+          type: string
+          format: date-time
+    GRCProfileMatchEvaluation:
+      type: object
+      required: [evaluated_findings, matched_findings, evaluation_limit, scan_truncated]
+      properties:
+        evaluated_findings:
+          type: integer
+          minimum: 0
+        matched_findings:
+          type: integer
+          minimum: 0
+        evaluation_limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        scan_truncated:
+          type: boolean
+    GRCProfileFindingMatch:
+      type: object
+      required: [finding_id, profile_id, coverage_index_version, coverage_index_revision, mapping_basis]
+      properties:
+        finding_id:
+          type: string
+        finding_title:
+          type: string
+        rule_id:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+        mapping_basis:
+          type: string
+          enum: [direct, catalog_mapping, direct_and_catalog_mapping]
+        matched_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        direct_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        catalog_mapped_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        mapping_paths:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    GRCFindingsResponse:
+      type: object
+      required: [findings, meta, generated_at]
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCRiskInboxFinding'
+        meta:
+          $ref: '#/components/schemas/GRCListMetadata'
+        profile_summary:
+          $ref: '#/components/schemas/GRCFindingProfileSummary'
+        generated_at:
+          type: string
+          format: date-time
+    GRCListMetadata:
+      type: object
+      required: [limit, returned, truncated]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        returned:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+    GRCFindingProfileSummary:
+      type: object
+      required: [profile_id, profile_name, coverage_index_version, coverage_index_revision, matched_findings, open_findings, critical_findings, high_findings, unassigned_findings, evidence_items, evaluated_findings, evaluation_limit, evaluation_truncated, has_more_matches, scan_truncated]
+      properties:
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+          description: Immutable content revision for the serving index used to resolve this page.
+        matched_findings:
+          type: integer
+          minimum: 0
+        open_findings:
+          type: integer
+          minimum: 0
+        critical_findings:
+          type: integer
+          minimum: 0
+        high_findings:
+          type: integer
+          minimum: 0
+        unassigned_findings:
+          type: integer
+          minimum: 0
+        evidence_items:
+          type: integer
+          minimum: 0
+        evaluated_findings:
+          type: integer
+          minimum: 0
+        evaluation_limit:
+          type: integer
+          minimum: 1
+          maximum: 501
+        evaluation_truncated:
+          type: boolean
+          deprecated: true
+          description: Retained for compatibility. Profile predicates are applied before pagination; use has_more_matches and scan_truncated.
+        has_more_matches:
+          type: boolean
+          description: True when another profile-matching finding exists beyond the returned page.
+        scan_truncated:
+          type: boolean
+          description: True only when association evaluation stopped before the persisted profile predicate was complete.
+    GRCRiskInboxFinding:
+      type: object
+      required: [id, title, severity, status, evidence_count, owner, sla_status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        entity:
+          type: string
+        resource_urns:
+          type: array
+          items:
+            type: string
+        rule_id:
+          type: string
+        policy_id:
+          type: string
+        policy_name:
+          type: string
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        compliance_profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingProfileRef'
+        disposition:
+          type: string
+        status_reason:
+          type: string
+        assignee:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        status_updated_at:
+          type: string
+          format: date-time
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingNote'
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingTicket'
+        external_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingExternalRef'
+        risk_score:
+          type: integer
+        likelihood_score:
+          type: integer
+        impact_score:
+          type: integer
+        confidence_score:
+          type: integer
+        likelihood_level:
+          type: string
+        impact_level:
+          type: string
+        risk_reasons:
+          type: array
+          items:
+            type: string
+        risk_model_version:
+          type: string
+        evidence_count:
+          type: integer
+          minimum: 0
+        owner:
+          type: string
+        sla_status:
+          type: string
+        first_observed_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+    GRCFindingControlRef:
+      type: object
+      required: [framework_name, control_id]
+      properties:
+        framework_name:
+          type: string
+        control_id:
+          type: string
+    GRCFindingProfileRef:
+      type: object
+      required: [id, name, coverage_index_version, coverage_index_revision]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+        mapping_basis:
+          type: string
+          enum: [direct, catalog_mapping, direct_and_catalog_mapping]
+        matched_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        matched_finding_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        direct_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        catalog_mapped_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        mapping_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingProfileMappingPath'
+    GRCFindingProfileMappingPath:
+      type: object
+      required: [source, target, match_direction, declared_source, declared_target, coverage_credit]
+      properties:
+        source:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        target:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        match_direction:
+          type: string
+          enum: [finding_control_to_profile_control]
+          description: Direction used to associate a finding with the selected profile control.
+        declared_source:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        declared_target:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        coverage_credit:
+          type: string
+          enum: [legacy_catalog_mapping, reviewed_catalog_mapping]
+          description: Governance basis for granting full profile coverage through this path.
+        relationship:
+          type: string
+          enum: [equal-to, equivalent-to, subset-of, superset-of, intersects-with, no-relationship]
+        matching_rationale:
+          type: string
+          enum: [syntactic, semantic, functional]
+        mapping_description:
+          type: string
+        mapping_authority:
+          type: string
+        mapping_source:
+          type: string
+          format: uri
+        review_status:
+          type: string
+          enum: [complete, not-complete, draft, deprecated, superseded]
+        reviewed_at:
+          description: Review date or timestamp recorded by the mapping authority.
+          oneOf:
+            - type: string
+              format: date
+            - type: string
+              format: date-time
+        mapping_version:
+          type: string
+    GRCFindingNote:
+      type: object
+      required: [id, body, created_at]
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    GRCFindingTicket:
+      type: object
+      required: [url, name, external_id, linked_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+        external_id:
+          type: string
+        linked_at:
+          type: string
+          format: date-time
+    GRCFindingExternalRef:
+      type: object
+      required: [system, kind, external_id, url, external_status, external_status_reason, lifecycle_owner, observed_at]
+      properties:
+        system:
+          type: string
+        kind:
+          type: string
+        external_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        external_status:
+          type: string
+        external_status_reason:
+          type: string
+        lifecycle_owner:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     GRCEvidencePacketsResponse:
       type: object
       additionalProperties: true

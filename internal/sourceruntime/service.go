@@ -33,8 +33,10 @@ const (
 	defaultPageLimit = 1
 	maxPageLimit     = 100
 	defaultListLimit = 100
-	maxListLimit     = 500
-	redactedValue    = "[redacted]"
+	// One internal GRC caller fetches one boundary row to reject oversized
+	// runtime scopes instead of silently omitting the last runtimes.
+	maxListLimit  = 501
+	redactedValue = "[redacted]"
 
 	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 
