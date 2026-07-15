@@ -40,7 +40,8 @@ func FromRuntime(runtime *cerebrov1.SourceRuntime, generatedAt time.Time, graphR
 
 func GraphRunFromStore(run graphstore.IngestRun) *GraphRun {
 	return &GraphRun{
-		ID: run.ID, Status: run.Status, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, Error: run.Error,
+		ID: run.ID, Status: run.Status, CheckpointCursor: run.CheckpointCursor, CheckpointComplete: run.CheckpointCompleteValue(),
+		StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, Error: run.Error,
 		PagesRead: run.PagesRead, EventsRead: run.EventsRead, EntitiesProjected: run.EntitiesProjected, LinksProjected: run.LinksProjected,
 		GraphNodesBefore: run.GraphNodesBefore, GraphLinksBefore: run.GraphLinksBefore, GraphNodesAfter: run.GraphNodesAfter, GraphLinksAfter: run.GraphLinksAfter,
 		GraphNodeDelta: run.GraphNodesAfter - run.GraphNodesBefore, GraphLinkDelta: run.GraphLinksAfter - run.GraphLinksBefore,

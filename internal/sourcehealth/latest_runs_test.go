@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 )
 
@@ -30,7 +29,7 @@ func (s *boundedRunStore) ListIngestRuns(_ context.Context, filter graphstore.In
 	if s.failCall == len(s.filters) {
 		return nil, errListIngestRuns
 	}
-	if filter.Limit > graphingest.MaxStatusLimit {
+	if filter.Limit > maxGraphRunStatusLimit {
 		return nil, errors.New("ingest run limit exceeded")
 	}
 	runs := make([]graphstore.IngestRun, 0, len(filter.RuntimeIDs))
@@ -41,7 +40,7 @@ func (s *boundedRunStore) ListIngestRuns(_ context.Context, filter graphstore.In
 }
 
 func TestLatestGraphIngestRunsChunksRuntimeIDsAtStoreLimit(t *testing.T) {
-	runtimeIDs := make([]string, graphingest.MaxStatusLimit+1)
+	runtimeIDs := make([]string, maxGraphRunStatusLimit+1)
 	for index := range runtimeIDs {
 		runtimeIDs[index] = fmt.Sprintf("runtime-%03d", index)
 	}
@@ -57,7 +56,7 @@ func TestLatestGraphIngestRunsChunksRuntimeIDsAtStoreLimit(t *testing.T) {
 	if len(store.filters) != 2 {
 		t.Fatalf("ListIngestRuns() calls = %d, want 2", len(store.filters))
 	}
-	for index, wantSize := range []int{graphingest.MaxStatusLimit, 1} {
+	for index, wantSize := range []int{maxGraphRunStatusLimit, 1} {
 		filter := store.filters[index]
 		if len(filter.RuntimeIDs) != wantSize || filter.Limit != wantSize || !filter.LatestByRuntime {
 			t.Fatalf("ListIngestRuns() filter %d = %#v, want %d runtime IDs with matching limit and LatestByRuntime", index, filter, wantSize)
@@ -66,7 +65,7 @@ func TestLatestGraphIngestRunsChunksRuntimeIDsAtStoreLimit(t *testing.T) {
 }
 
 func TestLatestGraphIngestRunsReturnsBatchError(t *testing.T) {
-	runtimeIDs := make([]string, graphingest.MaxStatusLimit+1)
+	runtimeIDs := make([]string, maxGraphRunStatusLimit+1)
 	for index := range runtimeIDs {
 		runtimeIDs[index] = fmt.Sprintf("runtime-%03d", index)
 	}

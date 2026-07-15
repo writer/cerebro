@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -226,6 +227,78 @@ func LeaseRenewalInterval(ttl time.Duration) time.Duration {
 		return LeaseRenewalMaxInterval
 	}
 	return interval
+}
+
+// AcquireRenewableLease acquires one source-runtime lease and returns a
+// cancellable work context plus an idempotent release function. The work
+// context is cancelled if renewal fails or ownership is lost.
+func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string, ttl time.Duration) (context.Context, func() error, bool, error) {
+	noop := func() error { return nil }
+	if store == nil {
+		return ctx, noop, false, nil
+	}
+	runtimeID = strings.TrimSpace(runtimeID)
+	owner = strings.TrimSpace(owner)
+	if runtimeID == "" {
+		return ctx, noop, false, errors.New("source runtime id is required")
+	}
+	if owner == "" {
+		return ctx, noop, false, errors.New("source runtime lease owner is required")
+	}
+	if ttl <= 0 {
+		ttl = DefaultLeaseTTL
+	}
+	acquired, err := store.AcquireSourceRuntimeLease(ctx, runtimeID, owner, ttl)
+	if err != nil || !acquired {
+		return ctx, noop, acquired, err
+	}
+	workCtx, cancelWork := context.WithCancel(ctx)
+	renewCtx, cancelRenew := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(LeaseRenewalInterval(ttl))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				renewed, renewErr := store.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
+				if renewErr != nil {
+					if renewCtx.Err() != nil {
+						done <- nil
+						return
+					}
+					cancelWork()
+					done <- renewErr
+					return
+				}
+				if !renewed {
+					if renewCtx.Err() != nil {
+						done <- nil
+						return
+					}
+					cancelWork()
+					done <- fmt.Errorf("source runtime lease lost: %s", runtimeID)
+					return
+				}
+			}
+		}
+	}()
+	var (
+		releaseOnce sync.Once
+		releaseErr  error
+	)
+	return workCtx, func() error {
+		releaseOnce.Do(func() {
+			cancelRenew()
+			renewalErr := <-done
+			cancelWork()
+			releaseErr = errors.Join(renewalErr, releaseLease(ctx, store, runtimeID, owner))
+		})
+		return releaseErr
+	}, true, nil
 }
 
 func releaseLease(parent context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string) error {
