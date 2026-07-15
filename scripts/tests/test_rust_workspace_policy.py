@@ -184,6 +184,45 @@ class RustWorkspacePolicyTests(unittest.TestCase):
             "crates/control-kernel/src/lib.rs: safe-only crate must forbid unsafe_code", errors
         )
 
+    def test_rejects_large_crate_root_and_filesystem_in_pure_module(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manifest = self.root_manifest("serde = \"1.0.228\"").replace(
+                'members = ["member"]', 'members = ["tools/graphactiongen"]'
+            )
+            self.write_manifest(root / "Cargo.toml", manifest)
+            self.write_manifest(
+                root / "tools/graphactiongen/Cargo.toml",
+                """
+                [package]
+                name = "graphactiongen"
+                version = "0.1.0"
+
+                [dependencies]
+                serde.workspace = true
+
+                [lints]
+                workspace = true
+                """,
+            )
+            source = root / "tools/graphactiongen/src"
+            source.mkdir(parents=True)
+            (source / "lib.rs").write_text(
+                "mod catalog;\nmod error;\nmod filesystem;\nmod render;\n" + "// growth\n" * 40,
+                encoding="utf-8",
+            )
+            (source / "catalog.rs").write_text("use std::fs;\n", encoding="utf-8")
+            errors = rust_workspace_policy.validate_workspace(root)
+
+        self.assertIn(
+            "tools/graphactiongen/src/lib.rs: crate root must remain a thin module facade",
+            errors,
+        )
+        self.assertIn(
+            "tools/graphactiongen/src/catalog.rs: pure evaluation module must not access filesystem marker std::fs",
+            errors,
+        )
+
     @staticmethod
     def root_manifest(dependency: str) -> str:
         return f"""
