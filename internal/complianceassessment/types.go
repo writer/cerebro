@@ -458,6 +458,58 @@ func CanonicalResultDigest(value ObjectiveResult) (string, error) {
 	return digestBytes(data), nil
 }
 
+// CanonicalResultSetDigest hashes one canonical array of normalized results.
+// Persisted chunk boundaries do not change the result-set identity.
+func CanonicalResultSetDigest(values []ObjectiveResult) (string, error) {
+	if len(values) == 0 {
+		return "", errors.New("at least one objective result is required")
+	}
+	values, err := canonicalResultSet(values)
+	if err != nil {
+		return "", err
+	}
+	payload, err := canonicalBytes(values)
+	if err != nil {
+		return "", err
+	}
+	return digestBytes(payload), nil
+}
+
+func canonicalResultSet(values []ObjectiveResult) ([]ObjectiveResult, error) {
+	type sortableResult struct {
+		value   ObjectiveResult
+		key     string
+		encoded string
+	}
+	results := make([]sortableResult, len(values))
+	for index := range values {
+		value := NormalizeResult(values[index])
+		if err := ValidateObjectiveResult(value); err != nil {
+			return nil, fmt.Errorf("results[%d]: %w", index, err)
+		}
+		encoded, err := canonicalBytes(value)
+		if err != nil {
+			return nil, fmt.Errorf("results[%d]: %w", index, err)
+		}
+		results[index] = sortableResult{
+			value:   value,
+			key:     value.ControlRef.FrameworkID + "\x00" + value.ControlRef.ControlID + "\x00" + value.ObjectiveID + "\x00" + value.ID,
+			encoded: string(encoded),
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].key != results[j].key {
+			return results[i].key < results[j].key
+		}
+		return results[i].encoded < results[j].encoded
+	})
+	canonical := make([]ObjectiveResult, len(results))
+	for index := range results {
+		canonical[index] = results[index].value
+	}
+	return canonical, nil
+}
+
 func digestBytes(data []byte) string {
 	digest := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(digest[:])

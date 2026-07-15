@@ -19,6 +19,8 @@ import (
 
 const JobKindComplianceAssessment = "compliance_assessment"
 
+const defaultInterruptedRunRecoveryInterval = 15 * time.Second
+
 type Service struct {
 	store     Store
 	log       ports.AppendLog
@@ -210,6 +212,118 @@ func (s *Service) ReconcileUnboundRuns(ctx context.Context, limit uint32) (int, 
 		bound++
 	}
 	return bound, errors.Join(errs...)
+}
+
+// ReconcileInterruptedRuns aligns nonterminal assessments with their durable
+// jobs after projection recovery. Retryable attempts are requeued explicitly;
+// cancelled, exhausted, and permanently failed jobs become terminal runs.
+func (s *Service) ReconcileInterruptedRuns(ctx context.Context, limit uint32) (int, error) {
+	store, ok := s.store.(NonterminalRunStore)
+	if !ok || s.jobs == nil {
+		return 0, nil
+	}
+	drain := limit == 0
+	if limit == 0 || limit > 500 {
+		limit = 100
+	}
+	total := 0
+	var errs []error
+	for {
+		runs, err := store.ListNonterminalRuns(ctx, limit)
+		if err != nil {
+			errs = append(errs, err)
+			break
+		}
+		reconciled := 0
+		for _, run := range runs {
+			changed, reconcileErr := s.reconcileInterruptedRun(ctx, run)
+			if reconcileErr != nil {
+				errs = append(errs, reconcileErr)
+				continue
+			}
+			if changed {
+				reconciled++
+				total++
+			}
+		}
+		if !drain || len(runs) < int(limit) || reconciled == 0 {
+			break
+		}
+	}
+	return total, errors.Join(errs...)
+}
+
+func (s *Service) reconcileInterruptedRun(ctx context.Context, run AssessmentRun) (bool, error) {
+	if strings.TrimSpace(run.JobID) == "" {
+		return false, nil
+	}
+	job, err := s.jobs.Get(ctx, run.JobID)
+	if err != nil {
+		return false, fmt.Errorf("read assessment job %q: %w", run.JobID, err)
+	}
+	switch job.Status {
+	case ports.JobStatusQueued, ports.JobStatusRunning:
+		return false, nil
+	case ports.JobStatusFailed:
+		queued, requeued, retryErr := s.jobs.RequeueRetryable(ctx, job.ID, maxAssessmentJobAttempts)
+		if retryErr != nil {
+			return false, fmt.Errorf("requeue assessment job %q: %w", job.ID, retryErr)
+		}
+		if requeued {
+			s.jobs.StartAsync(ctx, queued)
+			return true, nil
+		}
+		code := "execution_failed"
+		if job.FailureClass == platformjobs.JobFailureRetryable && job.Attempt >= maxAssessmentJobAttempts {
+			code = "execution_retry_exhausted"
+		}
+		if err := s.recordFailedRun(ctx, run, code); err != nil {
+			return false, fmt.Errorf("fail assessment run %q: %w", run.ID, err)
+		}
+		return true, nil
+	case ports.JobStatusCancelled:
+		if err := s.recordCancelledRun(ctx, run); err != nil {
+			return false, fmt.Errorf("cancel assessment run %q: %w", run.ID, err)
+		}
+		return true, nil
+	case ports.JobStatusCompleted:
+		if err := s.recordFailedRun(ctx, run, "execution_state_mismatch"); err != nil {
+			return false, fmt.Errorf("reconcile completed assessment job %q: %w", job.ID, err)
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+// StartInterruptedRunRecovery continuously reconciles nonterminal assessments
+// with failed or cancelled jobs. The first pass runs immediately so callers do
+// not wait one interval after a dependency recovers.
+func (s *Service) StartInterruptedRunRecovery(ctx context.Context, interval time.Duration, logf func(string, ...any)) <-chan struct{} {
+	done := make(chan struct{})
+	if s == nil {
+		close(done)
+		return done
+	}
+	if interval <= 0 {
+		interval = defaultInterruptedRunRecoveryInterval
+	}
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			if _, err := s.ReconcileInterruptedRuns(ctx, 0); err != nil && ctx.Err() == nil && logf != nil {
+				logf("reconcile interrupted assessment runs: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return done
 }
 
 func (s *Service) appendRun(ctx context.Context, kind, operation string, run AssessmentRun, expectedVersion uint64) error {
