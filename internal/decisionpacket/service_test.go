@@ -85,6 +85,18 @@ func TestServiceMakesCoverageAndTruncationVisible(t *testing.T) {
 	}
 }
 
+func TestServiceKeepsUnknownEvidenceFreshnessVisible(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	resolver := &stubResolver{facts: ResolvedFacts{Evidence: []EvidenceReference{{ID: "evidence-1", Kind: "finding"}}}}
+	packet, err := NewService(resolver, fixedClock{now: now}).Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1"}, Request{Workflow: "triage", Question: "Is this finding current?"})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if packet.Freshness.State != "unknown" || packet.Claim.FreshnessState != "unknown" || packet.Claim.Verdict != agentplatform.ClaimVerdictWeaklySupported || packet.Decision.State != DecisionSupportedWithGaps {
+		t.Fatalf("freshness = %+v claim = %+v decision = %+v", packet.Freshness, packet.Claim, packet.Decision)
+	}
+}
+
 func TestServiceBlocksPrimaryContradictionAndDowngradesActions(t *testing.T) {
 	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
 	base := ClaimObservation{TenantID: "tenant-1", SubjectURN: "urn:cerebro:tenant-1:asset:1", Predicate: "public", ValidFrom: now.Add(-time.Hour), PrimaryClaim: true}
@@ -137,6 +149,7 @@ func TestServiceRejectsForeignResolvedFactsAndExecutionStates(t *testing.T) {
 		facts ResolvedFacts
 	}{
 		{name: "foreign evidence", facts: ResolvedFacts{Evidence: []EvidenceReference{{ID: "evidence-1", Kind: "finding", URN: "urn:cerebro:other:evidence:1"}}}},
+		{name: "foreign audit packet", facts: ResolvedFacts{AuditPackets: []AuditPacketReference{{ID: "audit-1", ScopeURN: "urn:cerebro:other:scope:1"}}}},
 		{name: "executed action", facts: ResolvedFacts{Actions: []ActionProposal{{ID: "action-1", State: "executed"}}}},
 	}
 	for _, tt := range tests {

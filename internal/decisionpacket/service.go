@@ -123,6 +123,11 @@ func validateResolvedFacts(tenantID string, facts ResolvedFacts) error {
 			return ErrProtectedReference
 		}
 	}
+	for _, auditPacket := range facts.AuditPackets {
+		if auditPacket.ScopeURN != "" && !tenantScopedURN(tenantID, auditPacket.ScopeURN) {
+			return ErrProtectedReference
+		}
+	}
 	for _, action := range facts.Actions {
 		switch action.State {
 		case ActionInformational, ActionStateProposal, ActionApprovalRequired:
@@ -153,11 +158,8 @@ func buildResolvedClaim(tenantID, actorID string, request Request, facts Resolve
 			missing = append(missing, gap.ID)
 		}
 	}
-	freshness := "fresh"
 	_, requiredStale, _, _ := gapFlags(facts.CoverageGaps)
-	if requiredStale {
-		freshness = "stale"
-	}
+	freshness := deriveFreshness(facts.Evidence, requiredStale).State
 	return agentplatform.BuildClaimVerification(agentplatform.ClaimVerificationRequest{
 		TenantID: tenantID, ActorID: actorID, Claim: request.Question, ClaimType: request.Workflow,
 		ScopeURN: request.ScopeURN, SupportingEvidenceURNs: supporting, CounterEvidenceURNs: counter,
