@@ -83,7 +83,106 @@ class RustWorkspacePolicyTests(unittest.TestCase):
             (root / "member/src/lib.rs").write_text("#![allow(unsafe_code)]\n", encoding="utf-8")
             errors = rust_workspace_policy.validate_workspace(root)
 
-        self.assertIn("member/src/lib.rs: unsafe_code allow is outside the audited ABI boundary", errors)
+        self.assertIn(
+            "member/src/lib.rs: unsafe_code allow or expect is outside the audited ABI boundary",
+            errors,
+        )
+
+    def test_rejects_combined_and_multiline_unsafe_allows(self):
+        for source in (
+            "#![allow(unused, unsafe_code)]\n",
+            "#![allow(\n  unused,\n  unsafe_code,\n)]\n",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(
+                    "member/src/lib.rs: unsafe_code allow or expect is outside the audited ABI boundary",
+                    rust_workspace_policy.validate_unsafe_source("member/src/lib.rs", source),
+                )
+
+    def test_rejects_expect_unsafe_code_suppression(self):
+        errors = rust_workspace_policy.validate_unsafe_source(
+            "member/src/lib.rs", "#![expect(unsafe_code)]\nunsafe fn hidden() {}\n"
+        )
+        self.assertIn(
+            "member/src/lib.rs: unsafe_code allow or expect is outside the audited ABI boundary",
+            errors,
+        )
+
+    def test_rejects_every_unsafe_syntax_outside_audited_modules(self):
+        sources = {
+            "block": "fn f() { unsafe { call(); } }",
+            "fn": "unsafe fn f() {}",
+            "impl": "unsafe impl Trait for Type {}",
+            "extern": 'unsafe extern "C" { fn f(); }',
+            "trait": "unsafe trait Marker {}",
+            "attribute": "#[unsafe(no_mangle)] pub extern \"C\" fn f() {}",
+        }
+        for expected, source in sources.items():
+            with self.subTest(expected=expected):
+                errors = rust_workspace_policy.validate_unsafe_source("member/src/lib.rs", source)
+                self.assertEqual(
+                    errors,
+                    [
+                        "member/src/lib.rs: unsafe syntax is outside the audited ABI boundary: "
+                        + expected
+                    ],
+                )
+
+    def test_ignores_unsafe_text_in_comments_and_literals(self):
+        source = '''
+        // unsafe fn commented_out() {}
+        const NOTE: &str = "#[allow(unsafe_code)] unsafe { ignored(); }";
+        const RAW: &str = r#"unsafe impl Ignored for Text {}"#;
+        '''
+        self.assertEqual(
+            rust_workspace_policy.validate_unsafe_source("member/src/lib.rs", source), []
+        )
+
+    def test_accepts_only_exact_audited_abi_shapes(self):
+        abi_source = '''
+        #![allow(unsafe_code)]
+        #[unsafe(no_mangle)] pub extern "C" fn version() -> u32 { 1 }
+        #[unsafe(no_mangle)] pub extern "C" fn alloc() -> u32 { 0 }
+        #[unsafe(no_mangle)] pub extern "C" fn evaluate() -> u32 { 0 }
+        '''
+        abi_path = "internal/mitre/evaluator/src/wasm_abi.rs"
+        self.assertEqual(rust_workspace_policy.validate_unsafe_source(abi_path, abi_source), [])
+
+        widened = abi_source + "unsafe fn extra() {}\n"
+        self.assertIn(
+            "audited unsafe syntax changed",
+            rust_workspace_policy.validate_unsafe_source(abi_path, widened)[0],
+        )
+
+    def test_requires_compiler_forbid_for_safe_only_crates(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manifest = self.root_manifest("serde = \"1.0.228\"").replace(
+                'members = ["member"]', 'members = ["crates/control-kernel"]'
+            )
+            self.write_manifest(root / "Cargo.toml", manifest)
+            self.write_manifest(
+                root / "crates/control-kernel/Cargo.toml",
+                """
+                [package]
+                name = "control-kernel"
+                version = "0.1.0"
+
+                [dependencies]
+                serde.workspace = true
+
+                [lints]
+                workspace = true
+                """,
+            )
+            source = root / "crates/control-kernel/src/lib.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("pub fn safe() {}\n", encoding="utf-8")
+            errors = rust_workspace_policy.validate_workspace(root)
+
+        self.assertIn(
+            "crates/control-kernel/src/lib.rs: safe-only crate must forbid unsafe_code", errors
+        )
 
     @staticmethod
     def root_manifest(dependency: str) -> str:

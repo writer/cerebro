@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error as StdError;
