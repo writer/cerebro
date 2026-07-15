@@ -119,7 +119,7 @@ import (
 // internal/mcpoperations.
 // Assurance decision routes add only service composition and route/auth
 // registration; decision validation and persistence remain in
-// internal/compliancedecision.
+// internal/complianceassessment.
 const bootstrapProductionGoLineBudget = 28037
 
 type bootstrapFileLineCount struct {
