@@ -44,8 +44,7 @@ Use [`release-notes-template.md`](release-notes-template.md) for the required co
 
 A release can include:
 
-- CLI archives,
-- Linux runtime binaries,
+- CLI archives for Linux and macOS on amd64 and arm64,
 - multi-arch runtime image,
 - image provenance and signatures,
 - target-specific runtime contracts, named `cerebro-runtime-contract-<target>.json`,

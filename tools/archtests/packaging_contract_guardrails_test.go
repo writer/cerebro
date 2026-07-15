@@ -212,6 +212,14 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 			t.Fatalf("candidate workflow contains stable publication marker %q", forbidden)
 		}
 	}
+	receiptIndex := strings.Index(candidate, "  receipt:\n")
+	if receiptIndex == -1 {
+		t.Fatal("candidate workflow must define the receipt job")
+	}
+	receipt := candidate[receiptIndex:]
+	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
+		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
