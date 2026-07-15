@@ -104,7 +104,13 @@ import (
 // internal/complianceassessment. Compliance reads add service registration,
 // route policy, auth scopes, and transport mapping while query behavior stays
 // in internal/complianceread and persistence remains behind store ports.
-const bootstrapProductionGoLineBudget = 27457
+// Compliance remediation adds capability-gated service composition, route/auth
+// registration, tenant and actor stamping, and request/response/error mapping;
+// work derivation, transition validation, independent verification, append-first
+// persistence, projection replay, and invalidation reopening stay behind
+// internal/complianceremediation, while Postgres adaptation stays in the
+// concrete state-store package.
+const bootstrapProductionGoLineBudget = 27715
 
 type bootstrapFileLineCount struct {
 	path  string

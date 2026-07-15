@@ -30,8 +30,8 @@ func TestComplianceReadRoutesRemainContractOnlyAndUseDistinctScopes(t *testing.T
 		{path: "/grc/compliance-results/{resultID}", scope: "cerebro.compliance.assessments.read"},
 		{path: "/grc/compliance-assessments/{runID}/reviews", scope: "cerebro.compliance.assessments.read"},
 		{path: "/grc/compliance-reviews/{reviewID}", scope: "cerebro.compliance.assessments.read"},
-		{path: "/grc/work-items", scope: "cerebro.compliance.work.read"},
-		{path: "/grc/work-items/{workItemID}", scope: "cerebro.compliance.work.read"},
+		{path: "/grc/compliance-work-items", scope: "cerebro.compliance.work.read"},
+		{path: "/grc/compliance-work-items/{workItemID}", scope: "cerebro.compliance.work.read"},
 	}
 	for _, test := range tests {
 		section := openAPIPathSection(t, doc, test.path)

@@ -29,8 +29,8 @@ func TestComplianceReadHTTPPoliciesUseDistinctScopes(t *testing.T) {
 		{path: "/grc/compliance-assessments/run-1/reviews", scope: scopeComplianceAssessmentsRead},
 		{path: "/grc/compliance-results/result-1", scope: scopeComplianceAssessmentsRead},
 		{path: "/grc/compliance-reviews/review-1", scope: scopeComplianceAssessmentsRead},
-		{path: "/grc/work-items", scope: scopeComplianceWorkRead},
-		{path: "/grc/work-items/work-1", scope: scopeComplianceWorkRead},
+		{path: "/grc/compliance-work-items", scope: scopeComplianceWorkRead},
+		{path: "/grc/compliance-work-items/work-1", scope: scopeComplianceWorkRead},
 	}
 	for _, test := range tests {
 		policy := httpRoutePolicyFor("GET", test.path)
