@@ -3,6 +3,7 @@ package graphagent
 import (
 	"bufio"
 	"context"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,18 @@ import (
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
+	"github.com/writer/cerebro/internal/wasmhost"
 )
+
+func TestStaticValidatorReportsCanceledDiagnostic(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runStaticValidator(ctx, "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1", 10)
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, wasmhost.ErrCanceled) {
+		t.Fatalf("runStaticValidator() error = %v, want cancellation diagnostic", err)
+	}
+}
 
 func TestStaticValidatorWasmMatchesABIGoldenCases(t *testing.T) {
 	file, err := os.Open("staticvalidator/testdata/abi_golden.tsv")
