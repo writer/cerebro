@@ -343,7 +343,7 @@ func (s *assessmentHTTPStore) ListResultChunksPage(_ context.Context, tenantID, 
 		if chunk.Sequence <= afterSequence {
 			continue
 		}
-		if uint32(len(page.Chunks)) == limit {
+		if int64(len(page.Chunks)) == int64(limit) {
 			page.HasMore = true
 			page.NextSequence = page.Chunks[len(page.Chunks)-1].Sequence
 			break

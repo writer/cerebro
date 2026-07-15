@@ -62,7 +62,7 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 		values = append(values, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i].GetId() < values[j].GetId() })
-	if filter.Limit != 0 && uint32(len(values)) > filter.Limit {
+	if filter.Limit != 0 && int64(len(values)) > int64(filter.Limit) {
 		values = values[:filter.Limit]
 	}
 	return values, nil

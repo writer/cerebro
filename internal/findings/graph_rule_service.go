@@ -151,7 +151,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		run.SourceDependencyComplete = proto.Bool(false)
 	}
 	if strings.TrimSpace(queryRequest.Query) != "" {
-		run.GraphRowLimit = proto.Uint32(uint32(effectiveGraphRowLimit(queryRequest)))
+		run.GraphRowLimit = proto.Uint32(boundedUint32(effectiveGraphRowLimit(queryRequest)))
 	}
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
@@ -269,7 +269,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	return result, nil
 }
 
-const maxGraphEvaluationDependencyRuntimes = uint32(500)
+const maxGraphEvaluationDependencyRuntimes = 500
 
 func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time) {
 	if run == nil {
@@ -285,7 +285,7 @@ func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *c
 		TenantID: strings.TrimSpace(trigger.GetTenantId()),
 		Limit:    maxGraphEvaluationDependencyRuntimes + 1,
 	})
-	if err != nil || uint32(len(runtimes)) > maxGraphEvaluationDependencyRuntimes {
+	if err != nil || len(runtimes) > maxGraphEvaluationDependencyRuntimes {
 		bindFindingEvaluationSourceSnapshot(run, trigger)
 		run.SourceDependencyComplete = proto.Bool(false)
 		return

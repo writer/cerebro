@@ -302,7 +302,7 @@ func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, target any)
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, h.maxBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%w: decode assessment request: %v", complianceassessment.ErrInvalidResult, err)
+		return fmt.Errorf("%w: decode assessment request: %w", complianceassessment.ErrInvalidResult, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("%w: assessment request must contain one JSON object", complianceassessment.ErrInvalidResult)

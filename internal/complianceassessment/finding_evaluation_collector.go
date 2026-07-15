@@ -89,7 +89,7 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 	resolvedRuntimes, err := c.runtimes.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
 		TenantID:   run.TenantID,
 		RuntimeIDs: runtimeIDs,
-		Limit:      uint32(len(runtimeIDs)),
+		Limit:      MaxFindingEvaluationBindings,
 	})
 	if err != nil {
 		return InputManifest{}, nil, fmt.Errorf("list assessment source runtimes: %w", err)
