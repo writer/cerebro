@@ -97,10 +97,23 @@ func (s *Service) PublishPlan(ctx context.Context, tenantID, planID, actorID str
 	if plan.Version != expectedVersion || plan.Status != PlanDraft {
 		return AssessmentPlanRevision{}, ErrAssessmentConflict
 	}
+	predecessorID := plan.RevisionID
+	revisionID, err := compliance.NewRevisionIdentifier(compliance.IdentifierPlan)
+	if err != nil {
+		return AssessmentPlanRevision{}, err
+	}
+	plan.PredecessorID = predecessorID
+	plan.RevisionID = revisionID
 	plan.Status = PlanPublished
 	plan.PublishedAt = CanonicalTime(s.now())
 	plan.PublishedBy = strings.TrimSpace(actorID)
 	plan.Version++
+	plan.ContentDigest = ""
+	digest, err := semanticHash(plan)
+	if err != nil {
+		return AssessmentPlanRevision{}, err
+	}
+	plan.ContentDigest = digest
 	if err := validatePlan(plan); err != nil {
 		return AssessmentPlanRevision{}, err
 	}
@@ -146,6 +159,10 @@ func (s *Service) RequestRun(ctx context.Context, request RunRequest) (Assessmen
 	if existing, findErr := s.store.FindRunByIdempotency(ctx, request.TenantID, request.IdempotencyKey); findErr == nil {
 		if existing.RequestHash != requestHash {
 			return AssessmentRun{}, false, ports.ErrJobIdempotencyConflict
+		}
+		if existing.State == RunQueued && strings.TrimSpace(existing.JobID) == "" {
+			bound, _, bindErr := s.bindRunJob(ctx, existing)
+			return bound, false, bindErr
 		}
 		return existing, false, nil
 	} else if !errors.Is(findErr, ErrRunNotFound) {
