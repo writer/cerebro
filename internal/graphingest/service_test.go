@@ -1453,6 +1453,25 @@ func TestFinishRunClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestFinishRunPreservesCheckpointTerminalState(t *testing.T) {
+	result := &IngestResult{
+		CheckpointID:        "checkpoint-1",
+		CheckpointCursor:    "page-2",
+		CheckpointPersisted: true,
+		CheckpointComplete:  false,
+	}
+	finished := finishRun(graphstore.IngestRun{ID: "run-1"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if finished.CheckpointID != result.CheckpointID || finished.CheckpointCursor != result.CheckpointCursor || finished.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want persisted partial checkpoint", finished)
+	}
+	result.CheckpointCursor = ""
+	result.CheckpointComplete = true
+	completed := finishRun(graphstore.IngestRun{ID: "run-2"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if completed.CheckpointCursor != "" || !completed.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want complete terminal checkpoint", completed)
+	}
+}
+
 func TestGetRunRejectsEmptyID(t *testing.T) {
 	_, err := New(nil, nil, nil, &stubRunStore{}).GetRun(context.Background(), " ")
 	if !errors.Is(err, ErrInvalidRequest) {

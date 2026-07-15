@@ -72,6 +72,15 @@ func TestGraphEvaluationBindsEverySourceAndDetectsProjectionChange(t *testing.T)
 	if findingEvaluationSourceSnapshotsTrusted(run, true) {
 		t.Fatal("source envelope remained trusted after graph checkpoint changed")
 	}
+
+	partial := completedGraphRun("graph-partial", okta.GetId(), "checkpoint-partial", sourceAt.Add(3*time.Minute))
+	partial.CheckpointComplete = false
+	partial.CheckpointCursor = "page-2"
+	snapshot := findingEvaluationSourceSnapshot(okta)
+	bindGraphSnapshot(snapshot, partial, evaluationAt)
+	if snapshot.GraphSnapshotComplete == nil || snapshot.GetGraphSnapshotComplete() {
+		t.Fatal("partial graph checkpoint was bound as complete")
+	}
 }
 
 func TestTrustedSourceResolutionGate(t *testing.T) {
@@ -119,6 +128,7 @@ func trustedFindingRuntime(runtimeID, sourceID, family string, sourceAt time.Tim
 func completedGraphRun(id, runtimeID, checkpointID string, finishedAt time.Time) graphstore.IngestRun {
 	return graphstore.IngestRun{
 		ID: id, RuntimeID: runtimeID, CheckpointID: checkpointID, Status: graphstore.IngestRunStatusCompleted,
-		FinishedAt: finishedAt.UTC().Format(time.RFC3339Nano),
+		CheckpointComplete: true,
+		FinishedAt:         finishedAt.UTC().Format(time.RFC3339Nano),
 	}
 }

@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,8 +18,9 @@ import (
 
 // EvaluateGraphRulesRequest scopes one graph-rule evaluation pass over one runtime.
 type EvaluateGraphRulesRequest struct {
-	RuntimeID string
-	RuleIDs   []string
+	RuntimeID        string
+	RuleIDs          []string
+	RuntimeLeaseHeld bool
 	// ExcludeRuleIDs drops the named graph rules from the default
 	// (ForRuntime) selection. The orchestrator uses this to run each
 	// tenant-scoped graph rule at most once per cycle even when many runtimes
@@ -51,7 +53,7 @@ var ErrGraphRuntimeUnavailable = fmt.Errorf("%w: graph query boundary is not con
 // Each rule is evaluated in its own bounded read transaction; failures of one rule do not
 // abort the others. The orchestrator should call this after the graph projection has been
 // updated for the runtime so the rule sees the freshest world model.
-func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request EvaluateGraphRulesRequest) (*EvaluateGraphRulesResult, error) {
+func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request EvaluateGraphRulesRequest) (result *EvaluateGraphRulesResult, err error) {
 	if s == nil || s.runtimeStore == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -62,6 +64,15 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if releaseErr := releaseLease(); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		}
+	}()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
@@ -71,13 +82,13 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 		return nil, err
 	}
 	startedAt := time.Now().UTC()
-	result := &EvaluateGraphRulesResult{
+	result = &EvaluateGraphRulesResult{
 		Runtime:     runtime,
 		Evaluations: make([]*GraphRuleEvaluationResult, 0, len(candidates)),
 	}
 	var firstErr error
 	for _, rule := range candidates {
-		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt)
+		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, trustedInput)
 		if evaluation != nil {
 			result.Evaluations = append(result.Evaluations, evaluation)
 		}
@@ -88,7 +99,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (evaluation *GraphRuleEvaluationResult, err error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, trustedInput bool) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
 	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
@@ -136,6 +147,9 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
 	run.RuleApplicable = proto.Bool(rule.SupportsRuntime(runtime))
 	s.bindGraphEvaluationSourceSnapshots(ctx, run, runtime, rule, startedAt)
+	if s.requireTrustedResolution && !trustedInput {
+		run.SourceDependencyComplete = proto.Bool(false)
+	}
 	if strings.TrimSpace(queryRequest.Query) != "" {
 		run.GraphRowLimit = proto.Uint32(uint32(effectiveGraphRowLimit(queryRequest)))
 	}
@@ -323,6 +337,7 @@ func (s *Service) verifyGraphEvaluationSourceSnapshots(ctx context.Context, run 
 func graphSnapshotMatchesRun(snapshot *cerebrov1.FindingEvaluationSourceSnapshot, run graphstore.IngestRun) bool {
 	if snapshot == nil || strings.TrimSpace(run.RuntimeID) != snapshot.GetRuntimeId() || strings.TrimSpace(run.ID) != snapshot.GetGraphIngestRunId() ||
 		strings.TrimSpace(run.Status) != snapshot.GetGraphIngestStatus() || strings.TrimSpace(run.CheckpointID) != snapshot.GetGraphCheckpointId() ||
+		!run.CheckpointComplete || strings.TrimSpace(run.CheckpointCursor) != "" ||
 		snapshot.GetGraphIngestedAt() == nil || snapshot.GetGraphIngestedAt().CheckValid() != nil {
 		return false
 	}

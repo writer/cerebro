@@ -1052,7 +1052,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := s.findingCoreService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+	response, err := s.findingWorkflowService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleIDs:    req.Msg.GetRuleIds(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -1070,7 +1070,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := s.findingCoreService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
+	response, err := s.findingWorkflowService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),

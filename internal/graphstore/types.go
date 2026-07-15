@@ -99,24 +99,26 @@ const (
 
 // IngestRun records one operational graph ingest attempt.
 type IngestRun struct {
-	ID                string `json:"id"`
-	RuntimeID         string `json:"runtime_id,omitempty"`
-	SourceID          string `json:"source_id,omitempty"`
-	TenantID          string `json:"tenant_id,omitempty"`
-	CheckpointID      string `json:"checkpoint_id,omitempty"`
-	Status            string `json:"status"`
-	Trigger           string `json:"trigger,omitempty"`
-	PagesRead         int64  `json:"pages_read"`
-	EventsRead        int64  `json:"events_read"`
-	EntitiesProjected int64  `json:"entities_projected"`
-	LinksProjected    int64  `json:"links_projected"`
-	GraphNodesBefore  int64  `json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore  int64  `json:"graph_links_before,omitempty"`
-	GraphNodesAfter   int64  `json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter   int64  `json:"graph_links_after,omitempty"`
-	StartedAt         string `json:"started_at,omitempty"`
-	FinishedAt        string `json:"finished_at,omitempty"`
-	Error             string `json:"error,omitempty"`
+	ID                 string `json:"id"`
+	RuntimeID          string `json:"runtime_id,omitempty"`
+	SourceID           string `json:"source_id,omitempty"`
+	TenantID           string `json:"tenant_id,omitempty"`
+	CheckpointID       string `json:"checkpoint_id,omitempty"`
+	CheckpointCursor   string `json:"checkpoint_cursor,omitempty"`
+	CheckpointComplete bool   `json:"checkpoint_complete"`
+	Status             string `json:"status"`
+	Trigger            string `json:"trigger,omitempty"`
+	PagesRead          int64  `json:"pages_read"`
+	EventsRead         int64  `json:"events_read"`
+	EntitiesProjected  int64  `json:"entities_projected"`
+	LinksProjected     int64  `json:"links_projected"`
+	GraphNodesBefore   int64  `json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore   int64  `json:"graph_links_before,omitempty"`
+	GraphNodesAfter    int64  `json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter    int64  `json:"graph_links_after,omitempty"`
+	StartedAt          string `json:"started_at,omitempty"`
+	FinishedAt         string `json:"finished_at,omitempty"`
+	Error              string `json:"error,omitempty"`
 }
 
 // IngestRunFilter scopes ingest run listing.

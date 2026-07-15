@@ -100,18 +100,25 @@ type ReplayPreparer func(context.Context) error
 // wired (e.g. tests) and matches the default 15m phase timeout less its margin.
 const defaultGraphRuleQueryTimeout = 14 * time.Minute
 
+const (
+	findingEvaluationLeaseTTL            = 30 * time.Minute
+	findingEvaluationLeaseReleaseTimeout = 5 * time.Second
+)
+
 // EvaluateRequest scopes one replay-backed finding evaluation.
 type EvaluateRequest struct {
-	RuntimeID  string
-	RuleID     string
-	EventLimit uint32
+	RuntimeID        string
+	RuleID           string
+	EventLimit       uint32
+	RuntimeLeaseHeld bool
 }
 
 // EvaluateRulesRequest scopes one replay-backed multi-rule evaluation.
 type EvaluateRulesRequest struct {
-	RuntimeID  string
-	RuleIDs    []string
-	EventLimit uint32
+	RuntimeID        string
+	RuleIDs          []string
+	EventLimit       uint32
+	RuntimeLeaseHeld bool
 }
 
 // ListRequest scopes one persisted finding query.
@@ -395,7 +402,7 @@ func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
 }
 
 // EvaluateSourceRuntime replays one runtime and persists findings for one selected registered rule.
-func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateRequest) (*EvaluateResult, error) {
+func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateRequest) (result *EvaluateResult, err error) {
 	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.claimStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -403,6 +410,15 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if releaseErr := releaseLease(); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		}
+	}()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
@@ -417,6 +433,9 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 	run.RuleApplicable = proto.Bool(applicable)
 	bindFindingEvaluationSourceSnapshot(run, runtime)
+	if s.requireTrustedResolution && !trustedInput {
+		run.SourceDependencyComplete = proto.Bool(false)
+	}
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
@@ -432,7 +451,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
 		}
 	}
-	result := &EvaluateResult{
+	result = &EvaluateResult{
 		Runtime: runtime,
 		Rule:    rule.Spec(),
 		Run:     run,
@@ -501,7 +520,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 		}
 	}
-	if s.canResolveFromFindingEvaluationRun(run, false) {
+	if s.canResolveFromEventEvaluationRun(run, result.EventsEvaluated) {
 		resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, rule, events, evaluatedEventIDs, emittedFindingIDs)
 		if err != nil {
 			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
@@ -519,7 +538,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 }
 
 // EvaluateSourceRuntimeRules replays one runtime once and evaluates one or more registered rules over that shared pass.
-func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request EvaluateRulesRequest) (*EvaluateRulesResult, error) {
+func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request EvaluateRulesRequest) (result *EvaluateRulesResult, err error) {
 	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.claimStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -527,6 +546,15 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if releaseErr := releaseLease(); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		}
+	}()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
@@ -537,7 +565,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	startedAt := time.Now().UTC()
 	states := make([]*ruleEvaluationState, 0, len(rules))
-	result := &EvaluateRulesResult{
+	result = &EvaluateRulesResult{
 		Runtime:     runtime,
 		Evaluations: make([]*RuleEvaluationResult, 0, len(rules)),
 	}
@@ -546,6 +574,9 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		run.RuleApplicable = proto.Bool(rule.SupportsRuntime(runtime))
 		bindFindingEvaluationSourceSnapshot(run, runtime)
+		if s.requireTrustedResolution && !trustedInput {
+			run.SourceDependencyComplete = proto.Bool(false)
+		}
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
@@ -678,7 +709,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		if state.failed {
 			continue
 		}
-		if s.canResolveFromFindingEvaluationRun(state.result.Run, false) {
+		if s.canResolveFromEventEvaluationRun(state.result.Run, state.eventsEvaluated) {
 			resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, events, evaluatedEventIDs, state.emittedFindingIDs)
 			if err != nil {
 				finalErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
@@ -1411,7 +1442,8 @@ func bindGraphSnapshot(snapshot *cerebrov1.FindingEvaluationSourceSnapshot, run 
 	snapshot.GraphIngestedAt = timestamppb.New(finishedAt.UTC())
 	lastSyncedAt := snapshot.GetLastSyncedAt()
 	complete := snapshot.GraphIngestRunId != "" && snapshot.GraphIngestStatus == graphstore.IngestRunStatusCompleted &&
-		snapshot.GraphCheckpointId != "" && !finishedAt.After(evaluationStartedAt) && lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil &&
+		snapshot.GraphCheckpointId != "" && run.CheckpointComplete && strings.TrimSpace(run.CheckpointCursor) == "" &&
+		!finishedAt.After(evaluationStartedAt) && lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil &&
 		!finishedAt.Before(lastSyncedAt.AsTime())
 	snapshot.GraphSnapshotComplete = proto.Bool(complete)
 }
@@ -1433,6 +1465,46 @@ func findingEvaluationSourceSnapshotsTrusted(run *cerebrov1.FindingEvaluationRun
 
 func (s *Service) canResolveFromFindingEvaluationRun(run *cerebrov1.FindingEvaluationRun, requireGraph bool) bool {
 	return s != nil && (!s.requireTrustedResolution || findingEvaluationSourceSnapshotsTrusted(run, requireGraph))
+}
+
+func (s *Service) canResolveFromEventEvaluationRun(run *cerebrov1.FindingEvaluationRun, eventsProcessed uint32) bool {
+	if !s.canResolveFromFindingEvaluationRun(run, false) {
+		return false
+	}
+	if !s.requireTrustedResolution {
+		return true
+	}
+	return run != nil && run.RuleApplicable != nil && run.GetRuleApplicable() && run.GetEventLimit() > 0 && eventsProcessed < run.GetEventLimit()
+}
+
+func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID string, alreadyHeld bool) (func() error, bool, error) {
+	noop := func() error { return nil }
+	if s == nil || !s.requireTrustedResolution {
+		return noop, true, nil
+	}
+	if alreadyHeld {
+		return noop, true, nil
+	}
+	leaser, ok := s.runtimeStore.(ports.SourceRuntimeLeaseStore)
+	if !ok || leaser == nil {
+		return noop, false, nil
+	}
+	owner := "finding-evaluation:" + strings.TrimSpace(runtimeID) + ":" + fmt.Sprintf("%d", time.Now().UnixNano()) + ":" + randomFindingRunSuffix()
+	acquired, err := leaser.AcquireSourceRuntimeLease(ctx, runtimeID, owner, findingEvaluationLeaseTTL)
+	if err != nil {
+		return nil, false, fmt.Errorf("acquire source runtime %q for finding evaluation: %w", runtimeID, err)
+	}
+	if !acquired {
+		return nil, false, fmt.Errorf("%w: source runtime %q is busy", ErrRuntimeUnavailable, runtimeID)
+	}
+	return func() error {
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), findingEvaluationLeaseReleaseTimeout)
+		defer cancel()
+		if err := leaser.ReleaseSourceRuntimeLease(releaseCtx, runtimeID, owner); err != nil {
+			return fmt.Errorf("release source runtime %q after finding evaluation: %w", runtimeID, err)
+		}
+		return nil
+	}, true, nil
 }
 
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")

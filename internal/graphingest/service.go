@@ -1211,6 +1211,8 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 	finished.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if result != nil {
 		finished.CheckpointID = result.CheckpointID
+		finished.CheckpointCursor = result.CheckpointCursor
+		finished.CheckpointComplete = result.CheckpointComplete
 		finished.PagesRead = int64(result.PagesRead)
 		finished.EventsRead = int64(result.EventsRead)
 		finished.EntitiesProjected = int64(result.EntitiesProjected)
@@ -1233,6 +1235,8 @@ func runningRunProgress(run graphstore.IngestRun, result *IngestResult) graphsto
 	progress.Error = ""
 	if result != nil {
 		progress.CheckpointID = result.CheckpointID
+		progress.CheckpointCursor = result.CheckpointCursor
+		progress.CheckpointComplete = result.CheckpointComplete
 		progress.PagesRead = int64(result.PagesRead)
 		progress.EventsRead = int64(result.EventsRead)
 		progress.EntitiesProjected = int64(result.EntitiesProjected)

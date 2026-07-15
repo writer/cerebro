@@ -725,7 +725,7 @@ func runOrchestratorIteration(
 			}
 			runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
 			findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
-				return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
+				return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit, RuntimeLeaseHeld: true})
 			})
 			if err != nil {
 				if errors.Is(err, findings.ErrRuleUnavailable) {
@@ -752,7 +752,7 @@ func runOrchestratorIteration(
 				excludedGraphRuleIDs := orchestratorEvaluatedGraphRuleIDs(graphRulesEvaluatedByTenant[runtimeResult.TenantID])
 				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_deduped_count", len(excludedGraphRuleIDs))
 				graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
-					return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), ExcludeRuleIDs: excludedGraphRuleIDs})
+					return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), ExcludeRuleIDs: excludedGraphRuleIDs, RuntimeLeaseHeld: true})
 				})
 				runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
 				// Mark every rule that was attempted (success or failure) so a slow

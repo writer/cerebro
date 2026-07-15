@@ -119,6 +119,17 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
 		},
 		{
+			name:       "advanced current runtime progress",
+			evaluation: eventEvaluationRun("evaluation-advanced-runtime", cutoff.Add(-30*time.Minute), 100, 12),
+			mutateRuntime: func(runtime *cerebrov1.SourceRuntime) {
+				advanced := runtime.GetLastSyncedAt().AsTime().Add(time.Minute)
+				runtime.LastSyncedAt = timestamppb.New(advanced)
+				runtime.Checkpoint.Watermark = timestamppb.New(advanced)
+			},
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
+		{
 			name: "unsupported cleanup run",
 			evaluation: func() *cerebrov1.FindingEvaluationRun {
 				run := eventEvaluationRun("evaluation-11", cutoff.Add(-30*time.Minute), 100, 12)
@@ -266,6 +277,58 @@ func TestValidateEvaluationSourceSnapshotsRequiresEveryGraphSourceInPlan(t *test
 	if err := validateEvaluationSourceSnapshots(evaluation, []string{"runtime-1", "runtime-2"}, startedAt, finishedAt, 2*time.Hour, runtimes); err != nil {
 		t.Fatalf("validateEvaluationSourceSnapshots() with complete plan error = %v", err)
 	}
+	runtimes["runtime-3"] = collectorTestRuntimeFromSnapshot(evaluation.GetSourceSnapshots()[0])
+	runtimes["runtime-3"].Id = "runtime-3"
+	if err := validateEvaluationSourceSnapshots(evaluation, []string{"runtime-1", "runtime-2", "runtime-3"}, startedAt, finishedAt, 2*time.Hour, runtimes); !errors.Is(err, ErrIncompleteInput) {
+		t.Fatalf("validateEvaluationSourceSnapshots() error = %v, want missing planned dependency", err)
+	}
+}
+
+func TestFindingEvaluationCollectorConsumesSingleMultiSourceGraphRun(t *testing.T) {
+	t.Parallel()
+	cutoff := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	evaluation := graphEvaluationRun("evaluation-cross-source", cutoff.Add(-30*time.Minute), 4)
+	second := collectorTestSourceSnapshot(evaluation.GetSourceSnapshots()[0].GetLastSyncedAt().AsTime(), true)
+	second.RuntimeId = "runtime-2"
+	second.SourceId = "github"
+	second.Family = "audit"
+	second.GraphIngestRunId = "graph-run-2"
+	second.GraphCheckpointId = "graph-checkpoint-2"
+	evaluation.SourceSnapshots = append(evaluation.SourceSnapshots, second)
+
+	plan := collectorTestPlan(cutoff)
+	plan.Execution.Tasks[0].RuntimeIDs = []string{"runtime-1", "runtime-2"}
+	plan = normalizePlan(plan)
+	evaluations := &collectorEvaluationLister{valuesByRuntime: map[string][]*cerebrov1.FindingEvaluationRun{
+		"runtime-1": {evaluation},
+		"runtime-2": nil,
+	}}
+	collector := NewFindingEvaluationCollector(
+		&collectorPlanReader{plan: plan},
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{
+			collectorTestRuntimeFromSnapshot(evaluation.GetSourceSnapshots()[0]),
+			collectorTestRuntimeFromSnapshot(second),
+		}},
+		evaluations,
+	)
+	collector.now = func() time.Time { return cutoff }
+
+	manifest, results, err := collector.Collect(context.Background(), collectorTestRun(cutoff))
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if len(evaluations.requests) != 2 {
+		t.Fatalf("evaluation queries = %d, want one lookup per planned runtime", len(evaluations.requests))
+	}
+	if len(manifest.Receipts) != 1 || manifest.Receipts[0].RuntimeID != "runtime-1" || manifest.Receipts[0].Completeness != CollectionComplete {
+		t.Fatalf("graph receipts = %#v, want one complete trigger-runtime receipt", manifest.Receipts)
+	}
+	if len(manifest.EvaluationRunIDs) != 1 || manifest.EvaluationRunIDs[0] != evaluation.GetId() {
+		t.Fatalf("evaluation run ids = %#v, want only %q", manifest.EvaluationRunIDs, evaluation.GetId())
+	}
+	if len(results) != 1 || results[0].AutomatedOutcome != OutcomeSatisfied || results[0].EvidenceState != EvidenceSufficient {
+		t.Fatalf("graph result = %#v, want satisfied with sufficient evidence", results)
+	}
 }
 
 func collectorTestPlan(now time.Time) AssessmentPlanRevision {
@@ -384,11 +447,17 @@ func (s *collectorRuntimeLister) ListSourceRuntimes(_ context.Context, filter po
 }
 
 type collectorEvaluationLister struct {
-	request ports.ListFindingEvaluationRunsRequest
-	values  []*cerebrov1.FindingEvaluationRun
+	request         ports.ListFindingEvaluationRunsRequest
+	requests        []ports.ListFindingEvaluationRunsRequest
+	values          []*cerebrov1.FindingEvaluationRun
+	valuesByRuntime map[string][]*cerebrov1.FindingEvaluationRun
 }
 
 func (s *collectorEvaluationLister) ListFindingEvaluationRuns(_ context.Context, request ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
 	s.request = request
+	s.requests = append(s.requests, request)
+	if s.valuesByRuntime != nil {
+		return s.valuesByRuntime[request.RuntimeID], nil
+	}
 	return s.values, nil
 }

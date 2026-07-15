@@ -205,16 +205,21 @@ type taskCollectionState struct {
 	incomplete       bool
 }
 
+type findingEvaluationTaskQuery struct {
+	runtimeID   string
+	queryDigest string
+	runs        []*cerebrov1.FindingEvaluationRun
+}
+
 func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan AssessmentPlanRevision, assessmentRun AssessmentRun, task PlanTask, cutoff time.Time, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) (ObjectiveResult, []CollectionReceipt, []string, error) {
 	maxAge, err := time.ParseDuration(task.MaxAge)
 	if err != nil || maxAge <= 0 {
 		return ObjectiveResult{}, nil, nil, fmt.Errorf("%w: task %q has invalid max_age", ErrIncompleteInput, task.ID)
 	}
-	state := taskCollectionState{evidenceState: EvidenceSufficient}
-	receipts := make([]CollectionReceipt, 0, len(task.RuntimeIDs))
+	queries := make([]findingEvaluationTaskQuery, 0, len(task.RuntimeIDs))
 	for _, runtimeID := range task.RuntimeIDs {
 		query := findingEvaluationQuery{
-			TaskID: task.ID, RuntimeID: runtimeID, RuleID: task.RuleID,
+			TaskID: task.ID, RuntimeID: runtimeID, RuntimeIDs: task.RuntimeIDs, RuleID: task.RuleID,
 			PeriodStart: assessmentRun.PeriodStart, PeriodEnd: assessmentRun.PeriodEnd,
 			Cutoff: cutoff, MaxAge: task.MaxAge,
 		}
@@ -232,7 +237,20 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 		if listErr != nil {
 			return ObjectiveResult{}, nil, nil, fmt.Errorf("list finding evaluations for task %q runtime %q: %w", task.ID, runtimeID, listErr)
 		}
-		receipt, collected, receiptErr := evaluationReceipt(task, runtimeID, queryDigest, runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge, resolvedRuntimeByID)
+		queries = append(queries, findingEvaluationTaskQuery{runtimeID: runtimeID, queryDigest: queryDigest, runs: runs})
+	}
+
+	// Tenant-scoped graph rules run once per orchestration cycle and bind every
+	// source dependency in that run's source snapshots. Consume the newest such
+	// run once instead of requiring one duplicate graph run per dependency.
+	if graphQueryIndex := newestGraphEvaluationQueryIndex(queries); graphQueryIndex >= 0 {
+		queries = queries[graphQueryIndex : graphQueryIndex+1]
+	}
+
+	state := taskCollectionState{evidenceState: EvidenceSufficient}
+	receipts := make([]CollectionReceipt, 0, len(queries))
+	for _, query := range queries {
+		receipt, collected, receiptErr := evaluationReceipt(task, query.runtimeID, query.queryDigest, query.runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge, resolvedRuntimeByID)
 		if receiptErr != nil {
 			return ObjectiveResult{}, nil, nil, receiptErr
 		}
@@ -257,9 +275,46 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 	return result, receipts, state.evaluationRunIDs, nil
 }
 
+func newestGraphEvaluationQueryIndex(queries []findingEvaluationTaskQuery) int {
+	newestIndex := -1
+	for index, query := range queries {
+		if len(query.runs) != 1 || query.runs[0] == nil || query.runs[0].GraphRule == nil || !query.runs[0].GetGraphRule() {
+			continue
+		}
+		if newestIndex < 0 || findingEvaluationRunNewer(query.runs[0], queries[newestIndex].runs[0]) {
+			newestIndex = index
+		}
+	}
+	return newestIndex
+}
+
+func findingEvaluationRunNewer(candidate, current *cerebrov1.FindingEvaluationRun) bool {
+	if candidate == nil {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+	candidateFinishedAt := candidate.GetFinishedAt()
+	currentFinishedAt := current.GetFinishedAt()
+	if candidateFinishedAt != nil && candidateFinishedAt.CheckValid() == nil && currentFinishedAt != nil && currentFinishedAt.CheckValid() == nil {
+		candidateTime := CanonicalTime(candidateFinishedAt.AsTime())
+		currentTime := CanonicalTime(currentFinishedAt.AsTime())
+		if !candidateTime.Equal(currentTime) {
+			return candidateTime.After(currentTime)
+		}
+	} else if candidateFinishedAt != nil && candidateFinishedAt.CheckValid() == nil {
+		return true
+	} else if currentFinishedAt != nil && currentFinishedAt.CheckValid() == nil {
+		return false
+	}
+	return strings.TrimSpace(candidate.GetId()) > strings.TrimSpace(current.GetId())
+}
+
 type findingEvaluationQuery struct {
 	TaskID      string    `json:"task_id"`
 	RuntimeID   string    `json:"runtime_id"`
+	RuntimeIDs  []string  `json:"runtime_ids"`
 	RuleID      string    `json:"rule_id"`
 	PeriodStart time.Time `json:"period_start"`
 	PeriodEnd   time.Time `json:"period_end"`
@@ -480,10 +535,10 @@ func validateEvaluationSourceSnapshots(run *cerebrov1.FindingEvaluationRun, task
 		}
 		currentLastSyncedAt := CanonicalTime(current.GetLastSyncedAt().AsTime())
 		currentCheckpointWatermark := CanonicalTime(current.GetCheckpoint().GetWatermark().AsTime())
-		if currentLastSyncedAt.Before(lastSyncedAt) || currentCheckpointWatermark.Before(checkpointWatermark) {
-			return fmt.Errorf("%w: finding evaluation run %q is ahead of runtime %q progress", ErrIncompleteInput, run.GetId(), runtimeID)
+		if !currentLastSyncedAt.Equal(lastSyncedAt) || !currentCheckpointWatermark.Equal(checkpointWatermark) {
+			return fmt.Errorf("%w: finding evaluation run %q no longer matches runtime %q progress", ErrIncompleteInput, run.GetId(), runtimeID)
 		}
-		if currentLastSyncedAt.Equal(lastSyncedAt) && currentCheckpointWatermark.Equal(checkpointWatermark) && !currentRuntimeMatchesSnapshot(current, snapshot) {
+		if !currentRuntimeMatchesSnapshot(current, snapshot) {
 			return fmt.Errorf("%w: finding evaluation run %q no longer matches runtime %q state", ErrIncompleteInput, run.GetId(), runtimeID)
 		}
 		if lastSyncedAt.After(evaluationStartedAt) || lastSyncedAt.After(periodEnd) || checkpointWatermark.After(periodEnd) ||
@@ -500,6 +555,9 @@ func validateEvaluationSourceSnapshots(run *cerebrov1.FindingEvaluationRun, task
 				return fmt.Errorf("%w: graph evaluation run %q graph snapshot is outside the assessment period", ErrIncompleteInput, run.GetId())
 			}
 		}
+	}
+	if run.GetGraphRule() && len(seen) != len(allowedRuntimeIDs) {
+		return fmt.Errorf("%w: graph evaluation run %q does not cover every planned runtime", ErrIncompleteInput, run.GetId())
 	}
 	return nil
 }
