@@ -72,6 +72,18 @@ The checks include formatting, Clippy, tests, warning-free rustdoc, dependency
 advisories and policy, the generated graph action registry, and all embedded
 Wasm artifacts.
 
+Rust dependency versions and shared features are owned by
+`[workspace.dependencies]` in the root `Cargo.toml`. Workspace members inherit
+those entries with `workspace = true`; a member may add features required by
+that crate but may not repeat or override a version, path, or Git source.
+
+Every workspace member also inherits `[workspace.lints]`. Unsafe code is denied
+by default, including unsafe operations inside unsafe functions. The only
+allowed exceptions are the narrow audited Wasm ABI modules that expose guest
+functions and the shared guest-memory module that contains their documented
+pointer operations. Run `make rust-workspace-policy` after adding a workspace
+member, dependency, or lint.
+
 Focused validation:
 
 ```bash

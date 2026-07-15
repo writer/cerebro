@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Durable control-plane primitives for Cerebro mandates and missions.
 //!
 //! This crate is intentionally free of network, database, graph, provider,

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use cerebro_graphactiongen::{
     DEFAULT_CATALOG_PATH, DEFAULT_OUTPUT_PATH, ensure_supported_platform, generate,
     read_generated_file, write_generated_file,
