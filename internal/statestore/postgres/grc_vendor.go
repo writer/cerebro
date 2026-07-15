@@ -89,7 +89,8 @@ func (s *Store) UpsertGRCVendorDiscoveryDecision(ctx context.Context, record por
 		return nil, fmt.Errorf("begin vendor discovery decision upsert: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, grcVendorDiscoveryDecisionAdvisoryLockSQL(), record.TenantID+"\x00"+record.DiscoveryURN); err != nil {
+	lockKey := postgresAdvisoryLockKey(record.TenantID, record.DiscoveryURN)
+	if _, err := tx.ExecContext(ctx, grcVendorDiscoveryDecisionAdvisoryLockSQL(), lockKey); err != nil {
 		return nil, fmt.Errorf("lock vendor discovery decision: %w", err)
 	}
 	var supersedesEventID string
