@@ -143,6 +143,7 @@ type CacheConfig struct {
 	DefaultTTL      time.Duration
 	StaleTTL        time.Duration
 	MaxPayloadBytes int
+	MaxEntries      int
 }
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
@@ -731,6 +732,12 @@ func Load() (Config, error) {
 	}
 	if cfg.Cache.MaxPayloadBytes <= 0 {
 		return Config{}, fmt.Errorf("CEREBRO_CACHE_MAX_PAYLOAD_BYTES must be greater than zero")
+	}
+	if cfg.Cache.MaxEntries, err = parseIntEnv("CEREBRO_CACHE_MAX_ENTRIES", 4096); err != nil {
+		return Config{}, err
+	}
+	if cfg.Cache.MaxEntries <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_CACHE_MAX_ENTRIES must be greater than zero")
 	}
 	if cfg.Cache.Namespace == "" {
 		cfg.Cache.Namespace = "cerebro"

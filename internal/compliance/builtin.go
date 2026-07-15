@@ -17,6 +17,9 @@ var builtinControlCoverageIndexYAML []byte
 //go:embed finding_profile_index.json.gz
 var builtinFindingProfileIndexJSONGZ []byte
 
+//go:embed finding_profile_exclusions.yaml
+var builtinFindingProfileExclusionsYAML []byte
+
 //go:embed control_archetypes.yaml
 var builtinControlArchetypesYAML []byte
 
@@ -52,6 +55,10 @@ func LoadBuiltinFindingProfileIndex() (FindingProfileIndex, error) {
 		return FindingProfileIndex{}, fmt.Errorf("built-in finding profile index source digest mismatch: got %q, want %q", index.SourceDigest, digest)
 	}
 	return index, nil
+}
+
+func LoadBuiltinFindingProfileExclusionLedger() (FindingProfileExclusionLedger, error) {
+	return LoadFindingProfileExclusionLedger(builtinFindingProfileExclusionsYAML)
 }
 
 func LoadBuiltinControlArchetypeSet() (ControlArchetypeSet, error) {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
@@ -75,8 +76,8 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 					return captureHTTPResponse(next, r), nil
 				})
 				if refreshErr == nil && response.cacheableJSON() {
-					_ = cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
-					response.writeTo(w, "miss", policy)
+					setErr := cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
+					response.writeTo(w, queryCacheWriteState(r.Context(), setErr), policy)
 					return
 				}
 				if refreshErr != nil || response == nil || response.statusCode >= http.StatusInternalServerError {
@@ -101,12 +102,24 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 			return
 		}
 		if response.cacheableJSON() {
-			_ = cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
-			response.writeTo(w, "miss", policy)
+			setErr := cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
+			response.writeTo(w, queryCacheWriteState(r.Context(), setErr), policy)
 			return
 		}
 		response.writeTo(w, "bypass", policy)
 	}
+}
+
+func queryCacheWriteState(ctx context.Context, err error) string {
+	if err == nil {
+		return "miss"
+	}
+	if errors.Is(err, querycache.ErrPayloadTooLarge) {
+		telemetry.IncrementMain(ctx, "query_cache.payload_too_large.count", 1)
+		return "skip"
+	}
+	telemetry.IncrementMain(ctx, "query_cache.write_error.count", 1)
+	return "bypass"
 }
 
 func (a *App) grcCachePolicy(family string, ttl time.Duration, scopes ...string) grcCachePolicy {
@@ -318,7 +331,7 @@ func copyHeaders(dst http.Header, src http.Header) {
 func setGRCQueryCacheHeaders(header http.Header, cacheState string, policy grcCachePolicy) {
 	header.Set("X-Cerebro-Cache", cacheState)
 	header.Set("Vary", appendVary(header.Get("Vary"), "Authorization", "X-Cerebro-API-Key", "X-Cerebro-Tenant"))
-	if cacheState != "bypass" && policy.TTL > 0 {
+	if (cacheState == "hit" || cacheState == "miss" || cacheState == "stale") && policy.TTL > 0 {
 		maxAge := int(policy.TTL / time.Second)
 		if maxAge < 1 {
 			maxAge = 1

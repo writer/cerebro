@@ -165,19 +165,25 @@ func (s *Store) ensureFindingEvaluationRunTables(ctx context.Context) error {
 }
 
 func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsRequest) (string, []any, error) {
-	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
+	runtimeIDs := normalizedNonEmptyStrings(append(append([]string(nil), request.RuntimeIDs...), request.RuntimeID))
+	if len(runtimeIDs) == 0 {
 		return "", nil, errors.New("finding evaluation runtime id is required")
 	}
-	clauses := []string{"runtime_id = $1"}
-	args := []any{runtimeID}
+	clauses := []string{}
+	args := []any{}
+	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingEvaluationRunFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingEvaluationRunFilter(&clauses, &args, "status", request.Status)
-	query := `
-SELECT finding_evaluation_run_json::text
+	selectClause := "SELECT finding_evaluation_run_json::text"
+	orderClause := "ORDER BY started_at DESC, id"
+	if request.LatestByRuntime {
+		selectClause = "SELECT DISTINCT ON (runtime_id) finding_evaluation_run_json::text"
+		orderClause = "ORDER BY runtime_id, started_at DESC, id DESC"
+	}
+	query := "\n" + selectClause + `
 FROM finding_evaluation_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY started_at DESC, id`
+` + orderClause
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

@@ -230,7 +230,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /credential-stores", routeSurfacePlatformHTTP, credentialStores.List)
 	registerHTTPRoute(mux, "GET /credential-stores/{storeID}", routeSurfacePlatformHTTP, credentialStores.Get)
 	registerHTTPRoute(mux, "GET /connectors", routeSurfacePlatformHTTP, app.handleListConnectors)
-	registerHTTPRoute(mux, "GET /connectors/coverage", routeSurfacePlatformHTTP, app.handleGetConnectorCoverage)
+	registerHTTPRoute(mux, "GET /connectors/coverage", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("connector.coverage", time.Minute, grcCacheScopeRuntime), app.handleGetConnectorCoverage))
 	registerHTTPRoute(mux, "GET /connectors/credential-key", routeSurfacePlatformHTTP, app.handleConnectorCredentialKey)
 	registerHTTPRoute(mux, "GET /connector-definitions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitions)
 	registerHTTPRoute(mux, "POST /connector-definitions", routeSurfacePlatformHTTP, app.handleCreateConnectorDefinition)
@@ -282,7 +282,7 @@ func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/workflow/replay", routeSurfacePlatformHTTP, app.handleReplayWorkflowEvents)
 }
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
-	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.handleListRuntimeFreshness)
+	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.freshness", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListRuntimeFreshness))
 	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)
 	registerHTTPRoute(mux, "POST /platform/graph/actions", routeSurfacePlatformHTTP, app.handleExecuteGraphAction)
 	registerHTTPRoute(mux, "POST /platform/graph/actions/reconcile", routeSurfacePlatformHTTP, app.handleReconcileGraphAction)
@@ -314,7 +314,7 @@ func (app *App) registerRuntimeResponseRoutes(mux *http.ServeMux) {
 }
 func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /source-runtimes", routeSurfacePlatformHTTP, app.handleListSourceRuntimes)
-	registerHTTPRoute(mux, "GET /source-runtimes/health", routeSurfacePlatformHTTP, app.handleListSourceRuntimeHealth)
+	registerHTTPRoute(mux, "GET /source-runtimes/health", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.health", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListSourceRuntimeHealth))
 	registerHTTPRoute(mux, "PUT /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handlePutSourceRuntime)
 	registerHTTPRoute(mux, "GET /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handleGetSourceRuntime)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/sync", routeSurfacePlatformHTTP, app.handleSyncSourceRuntime)

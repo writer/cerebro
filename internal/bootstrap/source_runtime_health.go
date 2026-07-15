@@ -16,14 +16,14 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/nhicoverage"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourcehealthview"
+	"github.com/writer/cerebro/internal/sourcehttp/coverageview"
+	"github.com/writer/cerebro/internal/sourcehttp/responseview"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type sourceRuntimeHealthResponse struct {
@@ -32,6 +32,8 @@ type sourceRuntimeHealthResponse struct {
 	SourceSummaries []sourceRuntimeHealthSummary `json:"source_summaries"`
 	Coverage        []sourcecoverage.Record      `json:"coverage,omitempty"`
 	CoverageSummary []sourcecoverage.Summary     `json:"coverage_summaries,omitempty"`
+	view            responseview.View
+	coverageRecords []sourcecoverage.Record
 }
 type runtimeFreshnessResponse struct {
 	GeneratedAt          string                    `json:"generated_at"`
@@ -124,7 +126,6 @@ type sourceRuntimeHealthSummary struct {
 }
 
 type sourceRuntimeHealthRecord = sourcehealthview.Record
-type sourceRuntimeHealthSync = sourcehealthview.Sync
 type sourceRuntimeHealthGraphRun = sourcehealthview.GraphRun
 type sourceRuntimeHealthFindingEvaluation = sourcehealthview.FindingEvaluation
 
@@ -144,8 +145,6 @@ const (
 	runtimeLastInvalidOccurredAtConfigKey = "__cerebro_runtime_last_invalid_occurred_at"
 	runtimeLastInvalidDiagnosticConfigKey = "__cerebro_runtime_last_invalid_diagnostic"
 	runtimeLastInvalidRetryableConfigKey  = "__cerebro_runtime_last_invalid_retryable"
-
-	sourceRuntimeHealthRecordConcurrency = 8
 )
 
 func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Request) {
@@ -171,11 +170,41 @@ func (a *App) handleGetConnectorCoverage(w http.ResponseWriter, r *http.Request)
 		writeSourceRuntimeError(w, err)
 		return
 	}
-	report := sourcecoverage.BuildScopedReport(health.Coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt)
+	coverage := health.coverageRecords
+	if coverage == nil {
+		coverage = health.Coverage
+	}
+	report := sourcecoverage.BuildScopedReport(coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt)
 	emitSourceCoverageGateTelemetry(r.Context(), report)
-	writeJSON(w, http.StatusOK, nhicoverage.WithSourceCoverage(report))
+	response := nhicoverage.WithSourceCoverage(report)
+	view, err := coverageview.FromRequest(r)
+	if err != nil {
+		writeSourceRuntimeError(w, errors.Join(sourceruntime.ErrInvalidRequest, err))
+		return
+	}
+	switch view {
+	case coverageview.Expanded:
+		writeJSON(w, http.StatusOK, response)
+	case coverageview.Summary:
+		writeJSON(w, http.StatusOK, coverageview.Compact(response))
+	case coverageview.Page:
+		page, err := coverageview.Paginate(r, response, report.Records)
+		if err != nil {
+			writeSourceRuntimeError(w, errors.Join(sourceruntime.ErrInvalidRequest, err))
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	}
 }
 func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthResponse, error) {
+	view, err := responseview.FromRequest(r)
+	if err != nil {
+		return sourceRuntimeHealthResponse{}, errors.Join(sourceruntime.ErrInvalidRequest, err)
+	}
+	coverageScope, err := responseview.CoverageScopeFromRequest(r, view)
+	if err != nil {
+		return sourceRuntimeHealthResponse{}, errors.Join(sourceruntime.ErrInvalidRequest, err)
+	}
 	limit, err := uint32QueryParam(r, "limit")
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
@@ -248,16 +277,22 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
 	}
-	coverage, err := a.sourceCoverageRecords(r.Context(), visibleRuntimes, filter, generatedAt)
+	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), visibleRuntimes, filter, generatedAt, coverageScope)
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
+	}
+	serializedCoverage := coverage
+	if view == responseview.Summary {
+		serializedCoverage = nil
 	}
 	return sourceRuntimeHealthResponse{
 		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
 		Runtimes:        records,
 		SourceSummaries: sourceRuntimeHealthSummaries(records),
-		Coverage:        coverage,
+		Coverage:        serializedCoverage,
 		CoverageSummary: sourcecoverage.Summaries(coverage),
+		view:            view,
+		coverageRecords: coverage,
 	}, nil
 }
 
@@ -281,22 +316,52 @@ func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFresh
 			break
 		}
 	}
-	blindSpots := sourcecoverage.BlindSpots(health.Coverage)
+	coverage := health.coverageRecords
+	if coverage == nil {
+		coverage = health.Coverage
+	}
+	blindSpots := sourcecoverage.BlindSpots(coverage)
+	serializedBlindSpots := blindSpots
+	if health.view == responseview.Summary {
+		serializedBlindSpots = nil
+	}
 	return runtimeFreshnessResponse{
 		GeneratedAt:          health.GeneratedAt,
 		Status:               status,
 		Runtimes:             records,
 		Summaries:            runtimeFreshnessSummaries(records),
-		CoverageBlindSpots:   blindSpots,
+		CoverageBlindSpots:   serializedBlindSpots,
 		CoverageBlindSummary: sourcecoverage.Summaries(blindSpots),
 	}
 }
 
 func (a *App) sourceCoverageRecords(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) ([]sourcecoverage.Record, error) {
+	return a.sourceCoverageRecordsScoped(ctx, runtimes, filter, generatedAt, responseview.CoverageCatalog)
+}
+
+func (a *App) sourceCoverageRecordsScoped(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time, scope responseview.CoverageScope) ([]sourcecoverage.Record, error) {
 	if a == nil || a.sources == nil {
 		return nil, nil
 	}
 	contracts := sourcecoverage.ContractsFromRegistry(a.sources)
+	if scope == responseview.CoverageConfigured {
+		configuredSources := make(map[string]struct{}, len(runtimes))
+		for _, runtime := range runtimes {
+			if runtime == nil {
+				continue
+			}
+			if sourceID := strings.TrimSpace(runtime.GetSourceId()); sourceID != "" {
+				configuredSources[sourceID] = struct{}{}
+			}
+		}
+		configuredContracts := contracts[:0]
+		for _, contract := range contracts {
+			if _, ok := configuredSources[strings.TrimSpace(contract.SourceID)]; ok {
+				configuredContracts = append(configuredContracts, contract)
+			}
+		}
+		contracts = configuredContracts
+	}
 	if len(contracts) == 0 {
 		return nil, nil
 	}
@@ -541,99 +606,49 @@ func sourceRuntimeGraphState(record sourceRuntimeHealthRecord) string {
 
 func (a *App) sourceRuntimeHealthRecords(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthRecord, error) {
 	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
+	runtimeIDs := make([]string, 0, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime != nil {
 			visibleRuntimes = append(visibleRuntimes, runtime)
+			runtimeIDs = append(runtimeIDs, strings.TrimSpace(runtime.GetId()))
 		}
 	}
-	records := make([]sourceRuntimeHealthRecord, len(visibleRuntimes))
+	var graphRuns map[string]*graphstore.IngestRun
+	var findingRuns map[string]*cerebrov1.FindingEvaluationRun
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(sourceRuntimeHealthRecordConcurrency)
-	for index, runtime := range visibleRuntimes {
-		index, runtime := index, runtime
-		group.Go(func() error {
-			record, err := a.sourceRuntimeHealthRecord(groupCtx, runtime, generatedAt)
-			if err != nil {
-				return err
-			}
-			records[index] = record
+	group.Go(func() error {
+		runStore, ok := a.deps.GraphStore.(graphingest.RunStore)
+		if !ok || isNilInterface(runStore) {
+			graphRuns = map[string]*graphstore.IngestRun{}
 			return nil
-		})
-	}
+		}
+		var loadErr error
+		graphRuns, loadErr = sourcehealth.LatestGraphIngestRuns(groupCtx, runStore, runtimeIDs)
+		return loadErr
+	})
+	group.Go(func() error {
+		runStore := findingEvaluationRunStore(a.deps.StateStore)
+		if runStore == nil {
+			findingRuns = map[string]*cerebrov1.FindingEvaluationRun{}
+			return nil
+		}
+		var loadErr error
+		findingRuns, loadErr = sourcehealth.LatestFindingEvaluationRuns(groupCtx, runStore, runtimeIDs)
+		if errors.Is(loadErr, findings.ErrRuntimeUnavailable) {
+			findingRuns = map[string]*cerebrov1.FindingEvaluationRun{}
+			return nil
+		}
+		return loadErr
+	})
 	if err := group.Wait(); err != nil {
 		return nil, err
 	}
+	records := make([]sourceRuntimeHealthRecord, len(visibleRuntimes))
+	for index, runtime := range visibleRuntimes {
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		records[index] = sourcehealthview.FromRuntime(runtime, generatedAt, graphRuns[runtimeID], findingRuns[runtimeID])
+	}
 	return records, nil
-}
-
-func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.SourceRuntime, generatedAt time.Time) (sourceRuntimeHealthRecord, error) {
-	record := sourceRuntimeHealthRecord{
-		RuntimeID:    strings.TrimSpace(runtime.GetId()),
-		SourceID:     strings.TrimSpace(runtime.GetSourceId()),
-		TenantID:     strings.TrimSpace(runtime.GetTenantId()),
-		Family:       strings.TrimSpace(runtime.GetConfig()["family"]),
-		EnabledState: runtimeEnabledState(runtime),
-		Status:       runtimeHealthStatus(runtime, generatedAt),
-		RecentSync: sourceRuntimeHealthSync{
-			RecordsScanned:    runtimeConfigUint32(runtime, runtimeRecordsScannedConfigKey),
-			RecordsAccepted:   runtimeConfigUint32(runtime, runtimeRecordsAcceptedConfigKey),
-			RecordsRejected:   runtimeConfigUint32(runtime, runtimeRecordsRejectedConfigKey),
-			EntitiesProjected: runtimeConfigUint32(runtime, runtimeEntitiesProjectedConfigKey),
-			LinksProjected:    runtimeConfigUint32(runtime, runtimeLinksProjectedConfigKey),
-		},
-		LastFailureCategory:     strings.TrimSpace(runtime.GetConfig()[runtimeLastFailureCategoryConfigKey]),
-		ContractProbeState:      runtimeContractProbeState(runtime),
-		CursorPending:           strings.TrimSpace(runtime.GetNextCursor().GetOpaque()) != "",
-		CheckpointCursorPresent: strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque()) != "",
-		// Schedule cadence/SLA is currently deployment configuration, not runtime state.
-		ScheduleContextConfigured: false,
-		GeneratedAt:               generatedAt.Format(time.RFC3339Nano),
-	}
-	if policy, err := resourcescope.FromConfig(runtime.GetConfig()); err == nil && !policy.Empty() {
-		record.ScopePolicy = &policy
-	}
-	if lastSynced := timestampValue(runtime.GetLastSyncedAt()); !lastSynced.IsZero() {
-		lastSynced = lastSynced.UTC()
-		record.LastSyncedAt = lastSynced.Format(time.RFC3339Nano)
-		record.SyncLagSeconds = secondsSince(generatedAt, lastSynced)
-	}
-	if watermark := timestampValue(runtime.GetCheckpoint().GetWatermark()); !watermark.IsZero() {
-		watermark = watermark.UTC()
-		record.CheckpointWatermark = watermark.Format(time.RFC3339Nano)
-		record.WatermarkLagSeconds = secondsSince(generatedAt, watermark)
-	}
-	var graphRun *graphstore.IngestRun
-	var findingRun *cerebrov1.FindingEvaluationRun
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
-		var err error
-		graphRun, err = a.latestGraphIngestRun(groupCtx, record.RuntimeID)
-		return err
-	})
-	group.Go(func() error {
-		var err error
-		findingRun, err = a.latestFindingEvaluationRun(groupCtx, record.RuntimeID)
-		return err
-	})
-	if err := group.Wait(); err != nil {
-		return record, err
-	}
-	if graphRun != nil {
-		record.LatestGraphRun = sourceRuntimeGraphRunHealth(*graphRun)
-		record.GraphLagSeconds = graphRunLagSeconds(generatedAt, *graphRun)
-	}
-	if findingRun != nil {
-		record.LatestFindingEvaluation = sourceRuntimeFindingEvaluationHealth(findingRun)
-	}
-	if expectedCadence := runtimeConfigInt64(runtime, "expected_cadence_seconds"); expectedCadence > 0 {
-		record.ExpectedCadenceSeconds = &expectedCadence
-		record.ScheduleContextConfigured = true
-	}
-	if staleAfter := runtimeConfigInt64(runtime, "stale_after_seconds"); staleAfter > 0 {
-		record.StaleAfterSeconds = &staleAfter
-		record.ScheduleContextConfigured = true
-	}
-	return record, nil
 }
 
 func runtimeConfigUint32(runtime *cerebrov1.SourceRuntime, key string) uint32 {
@@ -701,148 +716,6 @@ func runtimeContractProbeState(runtime *cerebrov1.SourceRuntime) string {
 		return "unknown"
 	}
 	return "passing"
-}
-
-func (a *App) latestGraphIngestRun(ctx context.Context, runtimeID string) (*graphstore.IngestRun, error) {
-	runStore, ok := a.deps.GraphStore.(graphingest.RunStore)
-	if !ok || isNilInterface(runStore) {
-		return nil, nil
-	}
-	runs, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: runtimeID, Limit: 1})
-	if err != nil {
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, nil
-	}
-	return &runs[0], nil
-}
-
-func (a *App) latestFindingEvaluationRun(ctx context.Context, runtimeID string) (*cerebrov1.FindingEvaluationRun, error) {
-	runStore := findingEvaluationRunStore(a.deps.StateStore)
-	if runStore == nil {
-		return nil, nil
-	}
-	runs, err := runStore.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{RuntimeID: runtimeID, Limit: 1})
-	if err != nil {
-		if errors.Is(err, findings.ErrRuntimeUnavailable) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, nil
-	}
-	return runs[0], nil
-}
-
-func sourceRuntimeGraphRunHealth(run graphstore.IngestRun) *sourceRuntimeHealthGraphRun {
-	return &sourceRuntimeHealthGraphRun{
-		ID:                run.ID,
-		Status:            run.Status,
-		StartedAt:         run.StartedAt,
-		FinishedAt:        run.FinishedAt,
-		Error:             run.Error,
-		PagesRead:         run.PagesRead,
-		EventsRead:        run.EventsRead,
-		EntitiesProjected: run.EntitiesProjected,
-		LinksProjected:    run.LinksProjected,
-		GraphNodesBefore:  run.GraphNodesBefore,
-		GraphLinksBefore:  run.GraphLinksBefore,
-		GraphNodesAfter:   run.GraphNodesAfter,
-		GraphLinksAfter:   run.GraphLinksAfter,
-		GraphNodeDelta:    run.GraphNodesAfter - run.GraphNodesBefore,
-		GraphLinkDelta:    run.GraphLinksAfter - run.GraphLinksBefore,
-		DurationSeconds:   durationSeconds(run.StartedAt, run.FinishedAt),
-	}
-}
-
-func sourceRuntimeFindingEvaluationHealth(run *cerebrov1.FindingEvaluationRun) *sourceRuntimeHealthFindingEvaluation {
-	if run == nil {
-		return nil
-	}
-	var graphRowsRead uint32
-	if run.GraphRowsRead != nil {
-		graphRowsRead = run.GetGraphRowsRead()
-	}
-	return &sourceRuntimeHealthFindingEvaluation{
-		ID:               run.GetId(),
-		RuntimeID:        run.GetRuntimeId(),
-		RuleID:           run.GetRuleId(),
-		Status:           run.GetStatus(),
-		StartedAt:        timestampString(run.GetStartedAt()),
-		FinishedAt:       timestampString(run.GetFinishedAt()),
-		Error:            run.GetError(),
-		EventsEvaluated:  run.GetEventsEvaluated(),
-		EventsProcessed:  run.GetEventsProcessed(),
-		EventsMatched:    run.GetEventsMatched(),
-		FindingsUpserted: run.GetFindingsUpserted(),
-		FindingsEmitted:  run.GetFindingsEmitted(),
-		GraphRule:        run.GraphRule,
-		GraphRowsRead:    graphRowsRead,
-		DurationSeconds:  timestampDurationSeconds(run.GetStartedAt(), run.GetFinishedAt()),
-	}
-}
-
-func timestampString(value *timestamppb.Timestamp) string {
-	if value == nil {
-		return ""
-	}
-	timestamp := value.AsTime()
-	if timestamp.IsZero() {
-		return ""
-	}
-	return timestamp.UTC().Format(time.RFC3339Nano)
-}
-
-func secondsSince(now time.Time, then time.Time) *int64 {
-	seconds := int64(now.UTC().Sub(then.UTC()).Seconds())
-	if seconds < 0 {
-		seconds = 0
-	}
-	return &seconds
-}
-
-func graphRunLagSeconds(now time.Time, run graphstore.IngestRun) *int64 {
-	if finished, ok := parseRFC3339(run.FinishedAt); ok {
-		return secondsSince(now, finished)
-	}
-	if started, ok := parseRFC3339(run.StartedAt); ok {
-		return secondsSince(now, started)
-	}
-	return nil
-}
-
-func durationSeconds(startedAt string, finishedAt string) *int64 {
-	started, ok := parseRFC3339(startedAt)
-	if !ok {
-		return nil
-	}
-	finished, ok := parseRFC3339(finishedAt)
-	if !ok {
-		return nil
-	}
-	seconds := int64(finished.Sub(started).Seconds())
-	if seconds < 0 {
-		seconds = 0
-	}
-	return &seconds
-}
-
-func timestampDurationSeconds(startedAt *timestamppb.Timestamp, finishedAt *timestamppb.Timestamp) *int64 {
-	if startedAt == nil || finishedAt == nil {
-		return nil
-	}
-	started := startedAt.AsTime()
-	finished := finishedAt.AsTime()
-	if started.IsZero() || finished.IsZero() {
-		return nil
-	}
-	seconds := int64(finished.UTC().Sub(started.UTC()).Seconds())
-	if seconds < 0 {
-		seconds = 0
-	}
-	return &seconds
 }
 
 func parseRFC3339(value string) (time.Time, bool) {

@@ -44,6 +44,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "")
 	t.Setenv("CEREBRO_CACHE_STALE_TTL", "")
 	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "")
+	t.Setenv("CEREBRO_CACHE_MAX_ENTRIES", "")
 	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
@@ -117,7 +118,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.StateStore.Driver != "" {
 		t.Fatalf("StateStore.Driver = %q, want empty", cfg.StateStore.Driver)
 	}
-	if cfg.Cache.Driver != CacheDriverOff || cfg.Cache.DefaultTTL != 30*time.Second || cfg.Cache.StaleTTL != 5*time.Minute || cfg.Cache.MaxPayloadBytes != 1<<20 {
+	if cfg.Cache.Driver != CacheDriverOff || cfg.Cache.DefaultTTL != 30*time.Second || cfg.Cache.StaleTTL != 5*time.Minute || cfg.Cache.MaxPayloadBytes != 1<<20 || cfg.Cache.MaxEntries != 4096 {
 		t.Fatalf("Cache defaults = %#v", cfg.Cache)
 	}
 	if cfg.GraphStore.Driver != "" {
@@ -223,6 +224,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "45s")
 	t.Setenv("CEREBRO_CACHE_STALE_TTL", "10m")
 	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "2097152")
+	t.Setenv("CEREBRO_CACHE_MAX_ENTRIES", "256")
 	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
@@ -361,7 +363,7 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.StateStore.DeadLetterPendingRetention != 9*24*time.Hour || cfg.StateStore.DeadLetterTerminalRetention != 48*time.Hour || cfg.StateStore.DeadLetterWarningRecords != 80 || cfg.StateStore.DeadLetterHardRecords != 100 || cfg.StateStore.DeadLetterWarningBytes != 8000 || cfg.StateStore.DeadLetterHardBytes != 10000 {
 		t.Fatalf("StateStore dead-letter policy = %#v", cfg.StateStore)
 	}
-	if cfg.Cache.Driver != CacheDriverValkey || cfg.Cache.URL != "rediss://cache.example.internal:6379" || cfg.Cache.Namespace != "cerebro:test" || cfg.Cache.DefaultTTL != 45*time.Second || cfg.Cache.StaleTTL != 10*time.Minute || cfg.Cache.MaxPayloadBytes != 2097152 {
+	if cfg.Cache.Driver != CacheDriverValkey || cfg.Cache.URL != "rediss://cache.example.internal:6379" || cfg.Cache.Namespace != "cerebro:test" || cfg.Cache.DefaultTTL != 45*time.Second || cfg.Cache.StaleTTL != 10*time.Minute || cfg.Cache.MaxPayloadBytes != 2097152 || cfg.Cache.MaxEntries != 256 {
 		t.Fatalf("Cache config = %#v", cfg.Cache)
 	}
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
@@ -676,6 +678,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "")
 	t.Setenv("CEREBRO_CACHE_STALE_TTL", "")
 	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "")
+	t.Setenv("CEREBRO_CACHE_MAX_ENTRIES", "")
 	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
