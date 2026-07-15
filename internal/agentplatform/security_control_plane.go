@@ -274,42 +274,25 @@ func SecurityControlPlaneSnapshot() SecurityControlPlane {
 
 func BuildEvidencePacket(request EvidencePacketRequest) AgentEvidencePacket {
 	request = normalizeEvidencePacketRequest(request)
-	preflight := PreflightAgentRun(AgentRunPreflightRequest{
-		TenantID:              request.TenantID,
-		ActorID:               request.ActorID,
-		CapabilityIDs:         request.CapabilityIDs,
-		Question:              request.Question,
-		ScopeURN:              request.ScopeURN,
-		Model:                 request.Model,
-		RequestedScopes:       request.RequestedScopes,
-		ScopeUnrestricted:     request.ScopeUnrestricted,
-		ConnectorReadiness:    request.ConnectorReadiness,
-		EvalStatusOverrides:   request.EvalStatusOverrides,
-		AllowPreview:          request.AllowPreview,
-		SelectionReason:       "evidence_packet",
-		ProvenanceRequirement: "",
-		CoverageContext:       request.CoverageContext,
-	})
-	agents := selectedSecurityAgentProfiles(request, preflight)
-	verifiers := evaluateAgentVerifiers(request, preflight, agents)
-	gates := decideConnectorToolGates(preflight)
+	guardrails := BuildAgentDecisionGuardrails(request)
+	agents := selectedSecurityAgentProfiles(request, guardrails.Preflight)
 	packet := AgentEvidencePacket{
-		Version:            ContractVersion,
+		Version:            guardrails.Version,
 		TenantID:           request.TenantID,
 		ActorID:            request.ActorID,
 		Question:           request.Question,
 		ScopeURN:           request.ScopeURN,
 		GeneratedAt:        evidencePacketGeneratedAt(request.GeneratedAt),
-		Preflight:          preflight,
-		EvidenceRefs:       evidenceReferences(request, preflight),
+		Preflight:          guardrails.Preflight,
+		EvidenceRefs:       evidenceReferences(request, guardrails.Preflight),
 		RecommendedAgents:  agents,
-		VerifierResults:    verifiers,
-		ActionLadder:       actionStageStatuses(request, verifiers),
+		VerifierResults:    guardrails.VerifierResults,
+		ActionLadder:       guardrails.ActionLadder,
 		EvalChecklist:      evalChecklistForAgents(agents),
 		SecurityMemory:     securityMemoryPlan(request),
-		ConnectorToolGates: gates,
-		SimulationPlan:     defensiveSimulationPlan(request, verifiers),
-		RequiredWriteBack:  evidencePacketWriteBack(preflight),
+		ConnectorToolGates: guardrails.ConnectorToolGates,
+		SimulationPlan:     defensiveSimulationPlan(request, guardrails.VerifierResults),
+		RequiredWriteBack:  guardrails.RequiredWriteBack,
 	}
 	packet.Confidence = evidencePacketConfidence(packet)
 	return packet
