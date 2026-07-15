@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cut-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || 'main' }}
+  group: stable-release-tag-reservation
   cancel-in-progress: false
 
 jobs:
