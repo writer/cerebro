@@ -1,8 +1,11 @@
 package bootstrap
 
 import (
+	"compress/gzip"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +42,132 @@ func TestGRCQueryCacheServesFreshHit(t *testing.T) {
 	}
 	if first.Body.String() != second.Body.String() {
 		t.Fatalf("cached body = %q, want %q", second.Body.String(), first.Body.String())
+	}
+}
+
+func TestGRCQueryCacheStoresCompressedRepresentation(t *testing.T) {
+	const maxPayloadBytes = 256
+	payload := `{"items":["` + strings.Repeat("compressible-content-", 512) + `"]}`
+	app := &App{
+		cfg: config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{
+			Namespace:       "test",
+			MaxPayloadBytes: maxPayloadBytes,
+		})},
+	}
+	calls := 0
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(payload))
+	})
+	request := func(acceptEncoding string) *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/grc/dashboard", nil)
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+		return req
+	}
+
+	first := httptest.NewRecorder()
+	handler(first, request("gzip"))
+	second := httptest.NewRecorder()
+	handler(second, request("gzip"))
+
+	if got := first.Header().Get("X-Cerebro-Cache"); got != "miss" {
+		t.Fatalf("first X-Cerebro-Cache = %q, want miss", got)
+	}
+	if got := second.Header().Get("X-Cerebro-Cache"); got != "hit" {
+		t.Fatalf("second X-Cerebro-Cache = %q, want hit", got)
+	}
+	if calls != 1 {
+		t.Fatalf("handler calls = %d, want 1", calls)
+	}
+	if got := second.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("second Content-Encoding = %q, want gzip", got)
+	}
+	if second.Body.Len() >= maxPayloadBytes {
+		t.Fatalf("compressed body = %d bytes, want below cache limit %d", second.Body.Len(), maxPayloadBytes)
+	}
+	reader, err := gzip.NewReader(second.Body)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	decompressed, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read compressed response: %v", err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("close gzip reader: %v", err)
+	}
+	if got := string(decompressed); got != payload {
+		t.Fatalf("decompressed body mismatch: got %d bytes, want %d", len(got), len(payload))
+	}
+
+	identity := httptest.NewRecorder()
+	handler(identity, request("gzip;q=0"))
+	if got := identity.Header().Get("X-Cerebro-Cache"); got != "skip" {
+		t.Fatalf("identity X-Cerebro-Cache = %q, want skip for oversized identity payload", got)
+	}
+	if got := identity.Header().Get("Content-Encoding"); got != "" {
+		t.Fatalf("identity Content-Encoding = %q, want empty", got)
+	}
+	if calls != 2 {
+		t.Fatalf("handler calls after identity variant = %d, want 2", calls)
+	}
+}
+
+func TestGRCQueryCacheKeepsSmallGzipRequestIdentityEncoded(t *testing.T) {
+	app := &App{
+		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+	}
+	calls := 0
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+
+	for index := 0; index < 2; index++ {
+		req := httptest.NewRequest(http.MethodGet, "/grc/dashboard", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp := httptest.NewRecorder()
+		handler(resp, req)
+		if got := resp.Header().Get("Content-Encoding"); got != "" {
+			t.Fatalf("response %d Content-Encoding = %q, want empty", index, got)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("handler calls = %d, want 1", calls)
+	}
+}
+
+func BenchmarkGRCQueryCacheCompressedHit(b *testing.B) {
+	payload := []byte(`{"items":["` + strings.Repeat("compressible-content-", 50000) + `"]}`)
+	app := &App{
+		cfg: config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{
+			Namespace:       "benchmark",
+			MaxPayloadBytes: 1 << 20,
+			MaxEntries:      256,
+		})},
+	}
+	handler := app.cacheGRCJSON(app.grcCachePolicy("runtime.health", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(payload)
+	})
+	request := httptest.NewRequest(http.MethodGet, "/source-runtimes/health?view=full", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	warm := httptest.NewRecorder()
+	handler(warm, request)
+	if got := warm.Header().Get("X-Cerebro-Cache"); got != "miss" {
+		b.Fatalf("warm X-Cerebro-Cache = %q, want miss", got)
+	}
+	b.SetBytes(int64(len(payload)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.ReportMetric(float64(warm.Body.Len()), "wire-bytes")
+	for range b.N {
+		response := httptest.NewRecorder()
+		handler(response, request)
 	}
 }
 

@@ -13,6 +13,11 @@ import (
 
 const responseThreshold = 1024
 
+// AcceptsGzip reports whether an Accept-Encoding header permits gzip.
+func AcceptsGzip(value string) bool {
+	return acceptsGzip(value)
+}
+
 // Middleware compresses JSON responses larger than one KiB when the client
 // accepts gzip. Smaller and non-JSON responses pass through unchanged.
 func Middleware(next http.Handler) http.Handler {
