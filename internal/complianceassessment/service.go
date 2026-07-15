@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
@@ -22,13 +23,25 @@ const JobKindComplianceAssessment = "compliance_assessment"
 const defaultInterruptedRunRecoveryInterval = 15 * time.Second
 
 type Service struct {
-	store        Store
-	log          ports.AppendLog
-	replayer     ports.EventReplayPager
-	jobs         *platformjobs.Service
-	collector    Collector
-	now          func() time.Time
-	terminalHook func(context.Context, ports.ComplianceMonitorRun, bool, time.Time) error
+	store         Store
+	log           ports.AppendLog
+	replayer      ports.EventReplayPager
+	jobs          *platformjobs.Service
+	collector     Collector
+	now           func() time.Time
+	terminalHook  func(context.Context, ports.ComplianceMonitorRun, bool, time.Time) error
+	planEventSink PlanEventSink
+}
+
+type PlanEventSink interface {
+	ProcessAssessmentPlanEvent(context.Context, *cerebrov1.EventEnvelope) error
+}
+
+func (s *Service) WithPlanEventSink(sink PlanEventSink) *Service {
+	if s != nil {
+		s.planEventSink = sink
+	}
+	return s
 }
 
 func (s *Service) WithRunTerminalHook(hook func(context.Context, ports.ComplianceMonitorRun, bool, time.Time) error) *Service {
@@ -85,6 +98,22 @@ func (s *Service) RecordPlan(ctx context.Context, plan AssessmentPlanRevision, a
 	if plan.CreatedBy == "" {
 		plan.CreatedBy = actorID
 	}
+	if expectedVersion > 0 {
+		previous, previousErr := s.store.GetPlan(ctx, plan.TenantID, plan.ID)
+		if previousErr != nil {
+			return AssessmentPlanRevision{}, previousErr
+		}
+		if previous.Version != expectedVersion {
+			return AssessmentPlanRevision{}, ErrAssessmentConflict
+		}
+		predecessor, refErr := assessmentPlanRevisionRef(previous)
+		if refErr != nil {
+			return AssessmentPlanRevision{}, refErr
+		}
+		plan.PredecessorID = previous.RevisionID
+		plan.PredecessorRevision = &predecessor
+	}
+	plan.RevisionModifiedAt = now
 	plan.ContentDigest = ""
 	digest, err := semanticHash(plan)
 	if err != nil {
@@ -106,16 +135,22 @@ func (s *Service) PublishPlan(ctx context.Context, tenantID, planID, actorID str
 		return AssessmentPlanRevision{}, ErrAssessmentConflict
 	}
 	predecessorID := plan.RevisionID
+	predecessor, err := assessmentPlanRevisionRef(plan)
+	if err != nil {
+		return AssessmentPlanRevision{}, err
+	}
 	revisionID, err := compliance.NewRevisionIdentifier(compliance.IdentifierPlan)
 	if err != nil {
 		return AssessmentPlanRevision{}, err
 	}
 	plan.PredecessorID = predecessorID
+	plan.PredecessorRevision = &predecessor
 	plan.RevisionID = revisionID
 	plan.Status = PlanPublished
 	plan.PublishedAt = CanonicalTime(s.now())
 	plan.PublishedBy = strings.TrimSpace(actorID)
 	plan.Version++
+	plan.RevisionModifiedAt = plan.PublishedAt
 	plan.ContentDigest = ""
 	digest, err := semanticHash(plan)
 	if err != nil {
@@ -149,10 +184,33 @@ func (s *Service) appendPlan(ctx context.Context, kind, operation string, plan A
 	if err := s.log.Append(ctx, event); err != nil {
 		return fmt.Errorf("append assessment plan: %w", err)
 	}
+	if s.planEventSink != nil {
+		if err := s.planEventSink.ProcessAssessmentPlanEvent(ctx, event); err != nil {
+			return fmt.Errorf("process assessment plan impact: %w", err)
+		}
+	}
 	if err := s.store.ApplyPlan(ctx, event.GetId(), plan, expectedVersion); err != nil {
 		return fmt.Errorf("project assessment plan: %w", err)
 	}
 	return nil
+}
+
+func assessmentPlanRevisionRef(plan AssessmentPlanRevision) (compliance.RevisionRef, error) {
+	modifiedAt := CanonicalTime(plan.RevisionModifiedAt)
+	if modifiedAt.IsZero() {
+		modifiedAt = CanonicalTime(plan.PublishedAt)
+	}
+	if modifiedAt.IsZero() {
+		modifiedAt = CanonicalTime(plan.CreatedAt)
+	}
+	ref := compliance.NormalizeRevisionRef(compliance.RevisionRef{
+		ID: plan.ID, RevisionID: plan.RevisionID, Version: plan.Version,
+		ContentDigest: compliance.ContentDigest(plan.ContentDigest), LastModified: modifiedAt,
+	})
+	if err := ref.Validate(); err != nil {
+		return compliance.RevisionRef{}, fmt.Errorf("assessment plan exact revision: %w", err)
+	}
+	return ref, nil
 }
 
 func (s *Service) RequestRun(ctx context.Context, request RunRequest) (AssessmentRun, bool, error) {

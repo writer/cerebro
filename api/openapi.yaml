@@ -7144,6 +7144,25 @@ components:
               format: uint64
             predecessor_id:
               type: string
+            predecessor_revision:
+              type: object
+              required: [id, revision_id, version, content_digest, last_modified]
+              properties:
+                id:
+                  type: string
+                revision_id:
+                  type: string
+                version:
+                  type: integer
+                  format: uint64
+                content_digest:
+                  type: string
+                last_modified:
+                  type: string
+                  format: date-time
+            revision_modified_at:
+              type: string
+              format: date-time
             status:
               type: string
               enum: [draft, published, retired]

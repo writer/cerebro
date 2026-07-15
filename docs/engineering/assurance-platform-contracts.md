@@ -123,7 +123,16 @@ for coalescing signals and preventing overlapping assessment runs.
 The production composition root now builds the monitor service from the
 Postgres monitor store and append log. When the graph store implements both the
 projection and bounded query ports, it also builds the compliance impact graph
-projector, analyzer, and scheduler.
+projector, analyzer, scheduler, and processor. The processor projects the new
+exact fact before traversal. An update traverses the exact predecessor and
+binds the new fact as its replacement; an update without exact predecessor
+identity is rejected instead of being treated as a create.
+
+Assessment plan events now retain `revision_modified_at` and the complete exact
+predecessor revision. The assessment service sends the already-appended event
+through the impact processor before advancing the Postgres plan projection.
+Retries repeat the same graph upsert and source event ID, so monitor signal
+recording remains idempotent.
 
 Each projected impact node represents one exact immutable revision. Its URN
 includes a digest of the full exact identity, while its attributes retain the

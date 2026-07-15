@@ -84,21 +84,23 @@ type PlanGovernance struct {
 }
 
 type AssessmentPlanRevision struct {
-	ID            string         `json:"id"`
-	TenantID      string         `json:"tenant_id"`
-	RevisionID    string         `json:"revision_id"`
-	Version       uint64         `json:"version"`
-	PredecessorID string         `json:"predecessor_id,omitempty"`
-	Status        string         `json:"status"`
-	Name          string         `json:"name"`
-	Scope         PlanScope      `json:"scope"`
-	Execution     PlanExecution  `json:"execution"`
-	Governance    PlanGovernance `json:"governance"`
-	ContentDigest string         `json:"content_digest"`
-	CreatedAt     time.Time      `json:"created_at"`
-	CreatedBy     string         `json:"created_by"`
-	PublishedAt   time.Time      `json:"published_at,omitempty"`
-	PublishedBy   string         `json:"published_by,omitempty"`
+	ID                  string                  `json:"id"`
+	TenantID            string                  `json:"tenant_id"`
+	RevisionID          string                  `json:"revision_id"`
+	Version             uint64                  `json:"version"`
+	PredecessorID       string                  `json:"predecessor_id,omitempty"`
+	PredecessorRevision *compliance.RevisionRef `json:"predecessor_revision,omitempty"`
+	RevisionModifiedAt  time.Time               `json:"revision_modified_at,omitempty"`
+	Status              string                  `json:"status"`
+	Name                string                  `json:"name"`
+	Scope               PlanScope               `json:"scope"`
+	Execution           PlanExecution           `json:"execution"`
+	Governance          PlanGovernance          `json:"governance"`
+	ContentDigest       string                  `json:"content_digest"`
+	CreatedAt           time.Time               `json:"created_at"`
+	CreatedBy           string                  `json:"created_by"`
+	PublishedAt         time.Time               `json:"published_at,omitempty"`
+	PublishedBy         string                  `json:"published_by,omitempty"`
 }
 
 func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
@@ -106,6 +108,10 @@ func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
 	plan.TenantID = strings.TrimSpace(plan.TenantID)
 	plan.RevisionID = strings.TrimSpace(plan.RevisionID)
 	plan.PredecessorID = strings.TrimSpace(plan.PredecessorID)
+	if plan.PredecessorRevision != nil {
+		value := compliance.NormalizeRevisionRef(*plan.PredecessorRevision)
+		plan.PredecessorRevision = &value
+	}
 	plan.Status = strings.TrimSpace(plan.Status)
 	plan.Name = strings.TrimSpace(plan.Name)
 	plan.CreatedBy = strings.TrimSpace(plan.CreatedBy)
@@ -140,6 +146,7 @@ func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
 	plan.Governance.ApproverIDs = normalizedStrings(plan.Governance.ApproverIDs)
 	plan.Governance.Limitations = normalizedStrings(plan.Governance.Limitations)
 	plan.CreatedAt = CanonicalTime(plan.CreatedAt)
+	plan.RevisionModifiedAt = CanonicalTime(plan.RevisionModifiedAt)
 	plan.PublishedAt = CanonicalTime(plan.PublishedAt)
 	return plan
 }

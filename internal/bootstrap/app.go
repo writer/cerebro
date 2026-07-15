@@ -113,6 +113,7 @@ type appServices struct {
 	monitors        *compliancemonitor.Service
 	impactProjector *complianceimpact.GraphProjector
 	impactScheduler *complianceimpact.Scheduler
+	impactProcessor *complianceimpact.Processor
 	remediation     *complianceremediation.Service
 }
 
@@ -261,6 +262,16 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
 	}
 	app.services.monitors, app.services.impactProjector, app.services.impactScheduler = app.newComplianceImpactServices(app.services.jobs, app.services.assessments)
+	if app.services.impactProjector != nil && app.services.impactScheduler != nil {
+		app.services.impactProcessor, _ = complianceimpact.NewProcessor(app.services.impactProjector, app.services.impactScheduler)
+		if app.services.assessments != nil && app.services.impactProcessor != nil {
+			adapter, adapterErr := complianceimpact.NewAssessmentPlanAdapter(app.services.impactProcessor)
+			if adapterErr != nil {
+				return nil, fmt.Errorf("assessment plan impact bootstrap failed: %w", adapterErr)
+			}
+			app.services.assessments.WithPlanEventSink(adapter)
+		}
+	}
 	if app.services.assessments != nil && app.services.monitors != nil {
 		app.services.assessments.WithRunTerminalHook(app.services.monitors.CompleteAssessmentRun)
 	}

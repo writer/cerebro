@@ -776,6 +776,9 @@ func recordPublishedPlan(t *testing.T, service *Service, now time.Time) Assessme
 	if plan.RevisionID == draftRevisionID || plan.PredecessorID != draftRevisionID || plan.ContentDigest == draftDigest {
 		t.Fatalf("published plan revision = %#v, want a new digest-bound revision after %q", plan, draftRevisionID)
 	}
+	if plan.PredecessorRevision == nil || plan.PredecessorRevision.RevisionID != draftRevisionID || plan.PredecessorRevision.ContentDigest != compliance.ContentDigest(draftDigest) || plan.RevisionModifiedAt.IsZero() {
+		t.Fatalf("published plan lineage = %#v, want exact predecessor and revision time", plan)
+	}
 	if collector, ok := service.collector.(*testCollector); ok {
 		collector.plan = plan
 	}
