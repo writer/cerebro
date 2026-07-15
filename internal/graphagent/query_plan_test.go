@@ -882,6 +882,32 @@ func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
 	}
 }
 
+func TestEnforceCypherLimitTreatsBooleanKeywordsAsExpressionBoundaries(t *testing.T) {
+	queries := []string{
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit AND true RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit OR false RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IS NOT NULL RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IN [true] RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit XOR false RETURN e`,
+	}
+	for _, query := range queries {
+		limited, diagnostic, changed := enforceCypherLimit(query, 100)
+		if limited != query+"\nLIMIT 100" || !changed || diagnostic.Code != "limit_injected" {
+			t.Fatalf("enforceCypherLimit(%q) = (%q, %#v, %t), want injected LIMIT 100", query, limited, diagnostic, changed)
+		}
+		validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), limited, nil)
+		if err != nil || !validation.OK || limit != 100 {
+			t.Fatalf("validate(%q) = (%#v, %d, %v), want allowed LIMIT 100", limited, validation, limit, err)
+		}
+	}
+
+	for _, keyword := range []string{"AND", "IN", "IS", "NOT", "OR", "XOR"} {
+		if !cypherLimitExpressionBoundary(strings.ToLower(keyword)) {
+			t.Fatalf("cypherLimitExpressionBoundary(%q) = false, want true", keyword)
+		}
+	}
+}
+
 func TestLastNumericCypherLimitRejectsExpressions(t *testing.T) {
 	for _, query := range []string{
 		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 * 1000`,
