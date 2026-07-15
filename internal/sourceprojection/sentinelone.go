@@ -725,6 +725,7 @@ func addSentinelOneThreatClassificationLinks(entities map[string]*ports.Projecte
 	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "detection_type", attrs["detection_type"])
 	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "mitre_tactic", attrs["mitre_tactics"])
 	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "mitre_technique", attrs["mitre_techniques"])
+	addMITREAttackContextLinks(entities, links, tenant, event, threatURN, attrs)
 	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "indicator_category", attrs["indicator_categories"])
 	if projectionBool(attrs["is_fileless"]) {
 		addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "threat_property", "fileless")

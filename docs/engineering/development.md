@@ -65,18 +65,6 @@ make graph-rebuild-dryrun
 make sourcecoverage-evaluator-check
 ```
 
-## Embedded Rust Wasm Modules
-
-`scripts/embedded_wasm.py` is the module registry for Rust packages embedded in
-the Go runtime. Each entry owns the Cargo package, checked-in artifact, stable
-Make targets, changed-path routing, and canonical artifact platform.
-
-Use the module's existing Make targets to check or regenerate an artifact. Add
-new modules to the registry instead of adding build commands directly to the
-Makefile or `scripts/changed_checks.py`. Artifact generation that requires
-`Linux-x86_64` fails on other platforms; checks still compile the module and
-report when byte comparison is deferred to CI.
-
 ## Architecture Notes
 
 - External data enters through source packages under `sources/`.

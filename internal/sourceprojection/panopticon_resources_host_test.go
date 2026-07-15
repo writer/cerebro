@@ -6,9 +6,20 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/writer/cerebro/internal/wasmjson"
 )
+
+func TestInitializePanopticonResourcesEngineClosesRuntimeOnFailure(t *testing.T) {
+	engine := panopticonResourcesEngine{}
+	engine.initialize(context.Background(), []byte("not a wasm module"))
+	if engine.err == nil {
+		t.Fatal("initialize() error = nil")
+	}
+
+	_, err := engine.runtime.CompileModule(context.Background(), panopticonResourcesWasm)
+	if err == nil {
+		t.Fatalf("compile after failed initialization error = %v, want closed runtime", err)
+	}
+}
 
 func TestPanopticonResourceObjectsWasmMatchesReferenceTraversal(t *testing.T) {
 	t.Parallel()
@@ -105,33 +116,22 @@ func TestPanopticonResourceObjectsWasmMatchesGoDerivedNameAliases(t *testing.T) 
 
 func TestPanopticonResourceObjectsWasmBoundsInputWithoutEchoingPayload(t *testing.T) {
 	t.Parallel()
-	marker := "payload-marker-that-must-not-be-logged"
-	payload := []byte(`{"resources":["` + marker + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
+	payload := []byte(`{"resources":["` + strings.Repeat("x", panopticonResourcesMaxInputBytes) + `"]}`)
 	_, err := panopticonResourceObjectsWasm(context.Background(), payload)
-	if !errors.Is(err, errPanopticonResourceExtractorUnavailable) {
-		t.Fatalf("oversized payload error = %v, want extractor unavailable", err)
+	if err == nil {
+		t.Fatal("oversized payload error = nil")
 	}
-	if !errors.Is(err, wasmjson.ErrInputTooLarge) {
-		t.Fatalf("oversized payload error = %v, want input too large", err)
-	}
-}
-
-func TestPanopticonResourceObjectsWasmAcceptsEmptyPayloadWithLiveContext(t *testing.T) {
-	resources, err := panopticonResourceObjectsWasm(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("empty payload error = %v", err)
-	}
-	if resources != nil {
-		t.Fatalf("empty payload resources = %#v, want nil", resources)
+	if !errors.Is(err, errPanopticonResourcesPayloadTooLarge) {
+		t.Fatalf("oversized payload error = %v, want %v", err, errPanopticonResourcesPayloadTooLarge)
 	}
 }
 
-func TestPanopticonResourceObjectsWasmHonorsCanceledContextForEmptyPayload(t *testing.T) {
+func TestPanopticonResourceObjectsWasmHonorsCanceledContext(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := panopticonResourceObjectsWasm(ctx, nil)
+	_, err := panopticonResourceObjectsWasm(ctx, []byte(`{"resources":["resource-1"]}`))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled extraction error = %v, want %v", err, context.Canceled)
 	}

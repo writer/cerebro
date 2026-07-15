@@ -3,59 +3,210 @@ package sourceprojection
 import (
 	"context"
 	_ "embed"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
+	"sync"
 	"time"
 
-	"github.com/writer/cerebro/internal/wasmjson"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 )
 
 const (
-	panopticonResourcesABIVersion     = 2
+	panopticonResourcesABIVersion     = 1
+	panopticonResourcesDescriptorSize = 16
 	panopticonResourcesMaxInputBytes  = 8 << 20
 	panopticonResourcesMaxOutputBytes = 8 << 20
+	// The guest needs room for the bounded input, serde's parsed tree, selected-object clones, and
+	// the bounded output at the same time. The host caps each byte buffer at 8 MiB; the 64 MiB guest
+	// ceiling leaves working memory without allowing unbounded growth.
+	panopticonResourcesMemoryLimitPage = 1024
 )
-
-var errPanopticonResourceExtractorUnavailable = errors.New("panopticon resource extractor is unavailable")
 
 //go:embed panopticonresources.wasm
 var panopticonResourcesWasm []byte
 
-var panopticonResourcesEvaluator = wasmjson.New(wasmjson.Config{
-	Name:              "embedded Panopticon resource extractor",
-	Module:            panopticonResourcesWasm,
-	ABIVersion:        panopticonResourcesABIVersion,
-	ABIVersionExport:  "cerebro_panopticon_resources_abi_version",
-	AllocateExport:    "cerebro_panopticon_resources_alloc",
-	EvaluateExport:    "cerebro_panopticon_resources_extract",
-	MemoryLimitPages:  1024,
-	MaxInputBytes:     panopticonResourcesMaxInputBytes,
-	MaxOutputBytes:    panopticonResourcesMaxOutputBytes,
-	InitializeTimeout: 30 * time.Second,
-	CallTimeout:       time.Second,
-})
+type panopticonResourcesEngine struct {
+	runtime  wazero.Runtime
+	compiled wazero.CompiledModule
+	err      error
+}
+
+var (
+	panopticonResourcesOnce               sync.Once
+	panopticonResourcesShared             panopticonResourcesEngine
+	errPanopticonResourcesPayloadTooLarge = errors.New("panopticon resource payload exceeds maximum")
+)
 
 func panopticonResourceObjectsWasm(ctx context.Context, payload []byte) ([]map[string]any, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("%w: context is required", errPanopticonResourceExtractorUnavailable)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %w", errPanopticonResourceExtractorUnavailable, err)
-	}
 	if len(payload) == 0 {
 		return nil, nil
 	}
-	output, err := panopticonResourcesEvaluator.Evaluate(ctx, payload)
+	if len(payload) > panopticonResourcesMaxInputBytes {
+		return nil, fmt.Errorf("%w: payload is %d bytes; maximum is %d", errPanopticonResourcesPayloadTooLarge, len(payload), panopticonResourcesMaxInputBytes)
+	}
+	panopticonResourcesOnce.Do(func() {
+		initializePanopticonResourcesEngine(ctx)
+	})
+	if panopticonResourcesShared.err != nil {
+		return nil, panopticonResourcesShared.err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	module, err := panopticonResourcesShared.runtime.InstantiateModule(callCtx, panopticonResourcesShared.compiled, panopticonResourcesModuleConfig())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errPanopticonResourceExtractorUnavailable, err)
+		return nil, fmt.Errorf("instantiate embedded panopticon resource extractor: %w", err)
+	}
+	defer module.Close(callCtx) //nolint:errcheck // The extraction result is already complete.
+
+	alloc := module.ExportedFunction("cerebro_panopticon_resources_alloc")
+	extract := module.ExportedFunction("cerebro_panopticon_resources_extract")
+	if alloc == nil || extract == nil || module.Memory() == nil {
+		return nil, errors.New("embedded panopticon resource extractor exports are incomplete")
+	}
+	inputAllocation, err := alloc.Call(callCtx, uint64(len(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("allocate panopticon resource payload: %w", err)
+	}
+	inputPointer, err := panopticonResourcesPointer(inputAllocation, "payload allocation")
+	if err != nil {
+		return nil, err
+	}
+	descriptorAllocation, err := alloc.Call(callCtx, panopticonResourcesDescriptorSize)
+	if err != nil {
+		return nil, fmt.Errorf("allocate panopticon resource descriptor: %w", err)
+	}
+	descriptorPointer, err := panopticonResourcesPointer(descriptorAllocation, "descriptor allocation")
+	if err != nil {
+		return nil, err
+	}
+	if !module.Memory().Write(inputPointer, payload) {
+		return nil, errors.New("write panopticon resource payload to embedded module memory")
+	}
+	status, err := extract.Call(callCtx, uint64(inputPointer), uint64(len(payload)), uint64(descriptorPointer))
+	if err != nil {
+		return nil, fmt.Errorf("execute embedded panopticon resource extractor: %w", err)
+	}
+	if len(status) != 1 || status[0] != 0 {
+		return nil, fmt.Errorf("embedded panopticon resource extractor status = %v", status)
+	}
+	descriptor, ok := module.Memory().Read(descriptorPointer, panopticonResourcesDescriptorSize)
+	if !ok {
+		return nil, errors.New("read panopticon resource descriptor from embedded module memory")
+	}
+	if resultStatus := binary.LittleEndian.Uint32(descriptor[0:4]); resultStatus != 0 {
+		return nil, fmt.Errorf("embedded panopticon resource result status = %d", resultStatus)
+	}
+	if reserved := binary.LittleEndian.Uint32(descriptor[4:8]); reserved != 0 {
+		return nil, fmt.Errorf("embedded panopticon resource reserved field = %d", reserved)
+	}
+	outputPointer := binary.LittleEndian.Uint32(descriptor[8:12])
+	outputLength := binary.LittleEndian.Uint32(descriptor[12:16])
+	if outputLength > panopticonResourcesMaxOutputBytes {
+		return nil, fmt.Errorf("embedded panopticon resource output is %d bytes; maximum is %d", outputLength, panopticonResourcesMaxOutputBytes)
+	}
+	output, ok := module.Memory().Read(outputPointer, outputLength)
+	if !ok {
+		return nil, errors.New("read panopticon resource output from embedded module memory")
 	}
 	var resources []map[string]any
 	if err := json.Unmarshal(output, &resources); err != nil {
-		return nil, fmt.Errorf("%w: decode response: %w", errPanopticonResourceExtractorUnavailable, err)
+		return nil, fmt.Errorf("decode embedded panopticon resource output: %w", err)
 	}
 	if len(resources) > maxPanopticonResourceObjects {
-		return nil, fmt.Errorf("%w: returned %d objects; maximum is %d", errPanopticonResourceExtractorUnavailable, len(resources), maxPanopticonResourceObjects)
+		return nil, fmt.Errorf("embedded panopticon resource extractor returned %d objects; maximum is %d", len(resources), maxPanopticonResourceObjects)
 	}
 	return resources, nil
+}
+
+func initializePanopticonResourcesEngine(ctx context.Context) {
+	panopticonResourcesShared.initialize(ctx, panopticonResourcesWasm)
+}
+
+func (engine *panopticonResourcesEngine) initialize(ctx context.Context, wasm []byte) {
+	initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	config := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).WithMemoryLimitPages(panopticonResourcesMemoryLimitPage)
+	engine.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
+	defer func() {
+		if engine.err != nil {
+			_ = engine.runtime.Close(initCtx)
+		}
+	}()
+	engine.compiled, engine.err = engine.runtime.CompileModule(initCtx, wasm)
+	if engine.err != nil {
+		engine.err = fmt.Errorf("compile embedded panopticon resource extractor: %w", engine.err)
+		return
+	}
+	if err := validatePanopticonResourcesABI(engine.compiled); err != nil {
+		engine.err = err
+		return
+	}
+	module, err := engine.runtime.InstantiateModule(initCtx, engine.compiled, panopticonResourcesModuleConfig())
+	if err != nil {
+		engine.err = fmt.Errorf("instantiate embedded panopticon resource extractor for ABI check: %w", err)
+		return
+	}
+	defer module.Close(initCtx) //nolint:errcheck // ABI check cleanup cannot change initialization result.
+	version := module.ExportedFunction("cerebro_panopticon_resources_abi_version")
+	if version == nil {
+		engine.err = errors.New("embedded panopticon resource ABI version export is missing")
+		return
+	}
+	results, err := version.Call(initCtx)
+	if err != nil {
+		engine.err = fmt.Errorf("read embedded panopticon resource ABI version: %w", err)
+		return
+	}
+	if len(results) != 1 || results[0] != panopticonResourcesABIVersion {
+		engine.err = fmt.Errorf("embedded panopticon resource ABI version = %v, want %d", results, panopticonResourcesABIVersion)
+	}
+}
+
+func panopticonResourcesModuleConfig() wazero.ModuleConfig {
+	return wazero.NewModuleConfig().WithName("").WithStartFunctions()
+}
+
+func validatePanopticonResourcesABI(compiled wazero.CompiledModule) error {
+	if len(compiled.ImportedFunctions()) != 0 || len(compiled.ImportedMemories()) != 0 {
+		return errors.New("embedded panopticon resource extractor must not import functions or memory")
+	}
+	if _, ok := compiled.ExportedMemories()["memory"]; !ok {
+		return errors.New("embedded panopticon resource extractor memory export is missing")
+	}
+	exports := compiled.ExportedFunctions()
+	required := []struct {
+		name    string
+		params  []api.ValueType
+		results []api.ValueType
+	}{
+		{name: "cerebro_panopticon_resources_abi_version", results: []api.ValueType{api.ValueTypeI32}},
+		{name: "cerebro_panopticon_resources_alloc", params: []api.ValueType{api.ValueTypeI32}, results: []api.ValueType{api.ValueTypeI32}},
+		{name: "cerebro_panopticon_resources_extract", params: []api.ValueType{api.ValueTypeI32, api.ValueTypeI32, api.ValueTypeI32}, results: []api.ValueType{api.ValueTypeI32}},
+	}
+	for _, expected := range required {
+		definition, ok := exports[expected.name]
+		if !ok {
+			return fmt.Errorf("embedded panopticon resource export %q is missing", expected.name)
+		}
+		if !slices.Equal(definition.ParamTypes(), expected.params) || !slices.Equal(definition.ResultTypes(), expected.results) {
+			return fmt.Errorf("embedded panopticon resource export %q has an incompatible signature", expected.name)
+		}
+	}
+	return nil
+}
+
+func panopticonResourcesPointer(results []uint64, operation string) (uint32, error) {
+	if len(results) != 1 {
+		return 0, fmt.Errorf("embedded panopticon resource %s returned %d values, want 1", operation, len(results))
+	}
+	if results[0] > math.MaxUint32 {
+		return 0, fmt.Errorf("embedded panopticon resource %s pointer overflows uint32", operation)
+	}
+	return uint32(results[0]), nil // #nosec G115 -- the value is bounded above by math.MaxUint32.
 }

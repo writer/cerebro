@@ -77,15 +77,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cerebro-mitre-evaluator"
-version = "0.1.0"
-dependencies = [
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cerebro-panopticon-resources"
 version = "0.1.0"
 dependencies = [

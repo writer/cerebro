@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,16 +25,10 @@ type ProjectionHandler interface {
 // ProjectFunc converts one source event into graph projection records.
 type ProjectFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
-// ContextProjectFunc converts one source event using caller cancellation and deadlines.
+// ContextProjectFunc converts one source event into graph projection records while preserving caller cancellation.
 type ContextProjectFunc func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
-// ErrProjectionContextRequired indicates that a context-free projection API cannot run the
-// registered projector. Call the corresponding Context method with a caller-owned context.
-var ErrProjectionContextRequired = errors.New("source projection requires caller context")
-
-type projectionCall struct {
-	ctx context.Context
-}
+type contextProjectInvoker func(ContextProjectFunc, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
 // EventProjector binds one event kind to one projector.
 type EventProjector struct {
@@ -616,8 +609,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"okta.authenticator":                            oktaAuthenticatorProjections,
 	"okta.threat_insight":                           oktaThreatInsightProjections,
 	"okta.trusted_origin":                           oktaTrustedOriginProjections,
-	"panopticon.alert":                              panopticonAlertProjections,
-	"panopticon.case":                               panopticonCaseProjections,
 	"panopticon.ioc":                                panopticonIOCProjections,
 	"google_workspace.user":                         googleWorkspaceUserProjections,
 	"google_workspace.group":                        googleWorkspaceGroupProjections,
@@ -6267,8 +6258,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }, contextProjectors: map[string]ContextProjectFunc{
-	"panopticon.alert": panopticonAlertProjectionsContext,
-	"panopticon.case":  panopticonCaseProjectionsContext,
+	"panopticon.alert": panopticonAlertProjections,
+	"panopticon.case":  panopticonCaseProjections,
 }}
 
 func init() {
@@ -6321,54 +6312,30 @@ func (r *Registry) Kinds() []string {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	kindSet := make(map[string]struct{}, len(r.projectors)+len(r.contextProjectors))
+	kinds := make([]string, 0, len(r.projectors)+len(r.contextProjectors))
 	for kind := range r.projectors {
-		kindSet[kind] = struct{}{}
+		kinds = append(kinds, kind)
 	}
 	for kind := range r.contextProjectors {
-		kindSet[kind] = struct{}{}
-	}
-	kinds := make([]string, 0, len(kindSet))
-	for kind := range kindSet {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
 	return kinds
 }
 
-// Project applies the registered base projector for an event. Projectors that require caller
-// cancellation return ErrProjectionContextRequired; use ProjectContext for those event kinds.
+// Project applies the registered projector for an event.
 func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	entities, links, err := r.project(projectionCall{}, event)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := ports.ValidateProjectedTenantScopes(entities, links); err != nil {
-		return nil, nil, err
-	}
-	return entities, links, nil
+	return r.project(event, nil)
 }
 
-// ProjectContext applies the registered projector and context-aware enrichments.
+// ProjectContext applies the registered projector while preserving caller cancellation.
 func (r *Registry) ProjectContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	if ctx == nil {
-		return nil, nil, fmt.Errorf("context is required")
-	}
-	entities, links, err := r.project(projectionCall{ctx: ctx}, event)
-	if err != nil {
-		return nil, nil, err
-	}
-	entities, links, err = addMITREProjectionContext(ctx, event, entities, links)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := ports.ValidateProjectedTenantScopes(entities, links); err != nil {
-		return nil, nil, err
-	}
-	return entities, links, nil
+	return r.project(event, func(project ContextProjectFunc, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return project(ctx, event)
+	})
 }
 
-func (r *Registry) project(call projectionCall, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func (r *Registry) project(event *cerebrov1.EventEnvelope, invokeContextProject contextProjectInvoker) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	if event == nil {
 		return nil, nil, fmt.Errorf("event is required")
 	}
@@ -6376,32 +6343,39 @@ func (r *Registry) project(call projectionCall, event *cerebrov1.EventEnvelope) 
 		return nil, nil, nil
 	}
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	kind := strings.TrimSpace(event.GetKind())
-	project := r.projectors[kind]
-	contextProject := r.contextProjectors[kind]
-	connectorProject := r.connectorDefinitionProjectors[kind][strings.TrimSpace(event.GetSourceId())]
-	r.mu.RUnlock()
-	switch {
-	case connectorProject != nil:
-		return connectorProject(event)
-	case call.ctx != nil && contextProject != nil:
-		return contextProject(call.ctx, event)
-	case project != nil:
-		return project(event)
-	case contextProject != nil:
-		return nil, nil, fmt.Errorf("projector %q: %w", kind, ErrProjectionContextRequired)
-	default:
+	project, ok := r.projectors[kind]
+	contextProject, contextOK := r.contextProjectors[kind]
+	if !ok && !contextOK {
 		return nil, nil, nil
 	}
+	var entities []*ports.ProjectedEntity
+	var links []*ports.ProjectedLink
+	var err error
+	if contextOK {
+		if invokeContextProject == nil {
+			return nil, nil, fmt.Errorf("projector %q requires caller context", kind)
+		}
+		entities, links, err = invokeContextProject(contextProject, event)
+	} else {
+		entities, links, err = project(event)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := ports.ValidateProjectedTenantScopes(entities, links); err != nil {
+		return nil, nil, err
+	}
+	return entities, links, nil
 }
 
-// ProjectEvent projects one event through the built-in base registry without stores. Projectors
-// that require caller cancellation return ErrProjectionContextRequired; use ProjectEventContext.
+// ProjectEvent projects one event through the built-in registry without stores.
 func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().Project(event)
 }
 
-// ProjectEventContext projects one event through the built-in registry with caller cancellation and context-aware enrichments.
+// ProjectEventContext projects one event through the built-in registry while preserving caller cancellation.
 func ProjectEventContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().ProjectContext(ctx, event)
 }
