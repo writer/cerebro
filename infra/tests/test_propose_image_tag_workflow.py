@@ -36,7 +36,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('promotion_mode="trusted_sec_dev_release"', apply_step)
         self.assertIn("apply_mode=direct_push is deprecated", apply_step)
         self.assertIn("Trusted release promotion:", apply_step)
-        self.assertIn('gh pr merge "${pr_url}" --merge --delete-branch', apply_step)
+        self.assertIn('gh pr merge "${PR_URL}" --merge --delete-branch', apply_step)
 
     def test_release_automation_requires_deploy_app_token(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -133,6 +133,33 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('GH_TOKEN="${CHECKS_TOKEN}" gh pr view', apply_step)
         self.assertIn("Could not read the PR check rollup", apply_step)
         self.assertNotIn("2>/dev/null || echo '[]'", apply_step)
+
+    def test_auto_merge_refreshes_deploy_app_token_after_long_wait(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        apply_step = workflow.split("      - name: Apply stack config update", 1)[1].split(
+            "      - name: Refresh deploy GitHub App token for merge",
+            1,
+        )[0]
+        refresh_step = workflow.split("      - name: Refresh deploy GitHub App token for merge", 1)[1].split(
+            "      - name: Merge trusted promotion PR",
+            1,
+        )[0]
+        merge_step = workflow.split("      - name: Merge trusted promotion PR", 1)[1].split(
+            "      - name: Report superseded release",
+            1,
+        )[0]
+
+        self.assertIn("id: apply", apply_step)
+        self.assertIn('echo "auto_merge_pr=${pr_url}" >> "${GITHUB_OUTPUT}"', apply_step)
+        self.assertNotIn("gh pr merge", apply_step)
+        self.assertIn("if: steps.apply.outputs.auto_merge_pr != ''", refresh_step)
+        self.assertIn("id: merge-app-token", refresh_step)
+        self.assertIn("uses: ./.github/actions/deploy-app-token", refresh_step)
+        self.assertIn("GH_TOKEN: ${{ steps.merge-app-token.outputs.token }}", merge_step)
+        self.assertIn("CHECKS_TOKEN: ${{ github.token }}", merge_step)
+        self.assertIn('GH_TOKEN="${CHECKS_TOKEN}" gh pr view', merge_step)
+        self.assertIn('[ "${pr_state}" = "MERGED" ]', merge_step)
+        self.assertIn('gh pr merge "${PR_URL}" --merge --delete-branch', merge_step)
 
     def test_release_pr_body_surfaces_runtime_contract_evidence(self) -> None:
         apply_step = self._apply_step()

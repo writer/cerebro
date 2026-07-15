@@ -328,6 +328,7 @@ jobs:
 
       - name: Apply stack config update
         if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
+        id: apply
         shell: bash
         env:
           GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
@@ -690,10 +691,38 @@ jobs:
             if [ "${STACK_NAME}" = "go-prod" ] && ! wait_for_sec_dev_release; then
               return 0
             fi
-            gh pr merge "${pr_url}" --merge --delete-branch
+            echo "auto_merge_pr=${pr_url}" >> "${GITHUB_OUTPUT}"
           }
 
           auto_merge_trusted_pr "${pr_url}"
+
+      - name: Refresh deploy GitHub App token for merge
+        if: steps.apply.outputs.auto_merge_pr != ''
+        id: merge-app-token
+        uses: ./.github/actions/deploy-app-token
+        with:
+          client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+
+      - name: Merge trusted promotion PR
+        if: steps.apply.outputs.auto_merge_pr != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.merge-app-token.outputs.token }}
+          CHECKS_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.apply.outputs.auto_merge_pr }}
+        run: |
+          set -euo pipefail
+          pr_state="$(GH_TOKEN="${CHECKS_TOKEN}" gh pr view "${PR_URL}" --json state --jq .state)"
+          if [ "${pr_state}" = "MERGED" ]; then
+            echo "::notice::${PR_URL} was already merged while the deployment gate was running."
+            exit 0
+          fi
+          if [ "${pr_state}" != "OPEN" ]; then
+            echo "::notice::${PR_URL} is ${pr_state}; no merge action is required."
+            exit 0
+          fi
+          gh pr merge "${PR_URL}" --merge --delete-branch
 
       - name: Report superseded release
         if: steps.latest.outputs.superseded == 'true'
