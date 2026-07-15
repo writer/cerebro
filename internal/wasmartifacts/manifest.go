@@ -122,6 +122,13 @@ var moduleSpecs = []ModuleSpec{
 		ABIVersion:   1,
 		MaxSizeBytes: 200_000,
 	},
+	{
+		Name:         "security-path-evaluator",
+		ArtifactPath: "internal/securitypathdelta/evaluator.wasm",
+		SourcePath:   "crates/security-path-kernel/src/evaluation.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 400_000,
+	},
 }
 
 func CanonicalBuilder() BuilderIdentity {

@@ -144,8 +144,8 @@ measure:
 
 The initial performance gates are:
 
-- warm Wasm evaluation remains below 25 milliseconds at 1,000 material paths on the
-  CI benchmark host;
+- warm Wasm evaluation remains below 25 milliseconds at the runtime maximum of 100
+  material paths on the CI benchmark host;
 - native Rust evaluation does not regress more than 20 percent between revisions at
   the recorded benchmark size;
 - the Wasm artifact stays within its checked-in size budget;

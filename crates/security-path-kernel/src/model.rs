@@ -3,6 +3,14 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+fn deserialize_default_on_null<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Completeness {
@@ -90,7 +98,7 @@ pub struct SecurityPath {
     pub proof_digest: String,
     #[serde(default)]
     pub materiality: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub reason_codes: Vec<String>,
     #[serde(default)]
     pub public_principal: NodeRef,
@@ -102,7 +110,7 @@ pub struct SecurityPath {
     pub principal: NodeRef,
     #[serde(default)]
     pub permission: NodeRef,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub proof_edges: Vec<ProofEdge>,
     #[serde(default)]
     pub ownership_state: String,
@@ -235,7 +243,7 @@ pub struct Snapshot {
     pub collection_receipt: CollectionReceipt,
     #[serde(default)]
     pub completeness: Completeness,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub paths: Vec<SecurityPath>,
     #[serde(default)]
     pub path_set_digest: String,
@@ -258,7 +266,7 @@ pub enum EvaluationRequest {
         requested_path_ids: Vec<String>,
     },
     RankCandidateCuts {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "deserialize_default_on_null")]
         paths: Vec<SecurityPath>,
     },
 }

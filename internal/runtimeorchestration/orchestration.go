@@ -25,6 +25,7 @@ type OrchestrationRequest struct {
 	RuleIDs                  []string
 	EventLimit               uint32
 	CaptureSecurityPathDelta bool
+	SecurityPathRustShadow   bool
 	SecurityPathAccountID    string
 	ObservationID            string
 	LeaseOwner               string
@@ -44,7 +45,7 @@ func (s *SecurityPathService) Orchestrate(ctx context.Context, evaluator finding
 	if request.CaptureSecurityPathDelta {
 		capture, captureErr := s.Capture(ctx, SecurityPathRequest{
 			RuntimeID: request.RuntimeID, AccountID: request.SecurityPathAccountID, ObservationID: request.ObservationID,
-			SourcePageLimit: request.SourcePageLimit, GraphPageLimit: request.GraphPageLimit, LeaseOwner: request.LeaseOwner,
+			SourcePageLimit: request.SourcePageLimit, GraphPageLimit: request.GraphPageLimit, LeaseOwner: request.LeaseOwner, RustShadow: request.SecurityPathRustShadow,
 		})
 		result.Sync, result.Graph, result.SecurityPath = capture.Sync, capture.Graph, &capture
 		if result.Graph != nil && evaluator != nil {
@@ -105,6 +106,9 @@ func (result OrchestrationResult) JobPayload() (OrchestrationJobPayload, map[str
 	}
 	capture := result.SecurityPath
 	securityPath := map[string]any{"before": capture.Before, "after": capture.After, "delta": capture.Delta}
+	if len(capture.RustShadow) != 0 {
+		securityPath["rust_shadow"] = capture.RustShadow
+	}
 	payload["security_path_delta"] = securityPath
 	refs["security_path_delta_id"] = capture.Delta.ID
 	refs["security_path_delta_digest"] = capture.Delta.Digest

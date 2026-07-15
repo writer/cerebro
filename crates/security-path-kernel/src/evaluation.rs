@@ -12,9 +12,9 @@ use crate::model::{
 
 pub const ABI_VERSION: u32 = 1;
 #[cfg(target_arch = "wasm32")]
-pub(crate) const MAX_INPUT_BYTES: usize = 32 << 20;
+pub(crate) const MAX_INPUT_BYTES: usize = 8 << 20;
 #[cfg(target_arch = "wasm32")]
-pub(crate) const MAX_OUTPUT_BYTES: usize = 32 << 20;
+pub(crate) const MAX_OUTPUT_BYTES: usize = 8 << 20;
 
 const COMPLETE: &str = "complete";
 const INITIAL: &str = "initial_observation";
@@ -743,6 +743,19 @@ mod tests {
         )
         .expect_err("unknown request fields must fail");
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn shared_candidate_cut_corpus_decodes() {
+        let request = serde_json::from_str::<EvaluationRequest>(include_str!(
+            "../../../internal/securitypathdelta/testdata/rust_shadow/shared_cut.json"
+        ))
+        .expect("shared candidate-cut corpus must decode");
+        let response = evaluate(request).expect("shared candidate-cut corpus must evaluate");
+        let EvaluationResponse::RankCandidateCuts { result } = response else {
+            panic!("candidate-cut corpus returned another operation");
+        };
+        assert_eq!(result[0].route_coverage, 2);
     }
 
     #[test]
