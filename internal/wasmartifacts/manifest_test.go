@@ -1,6 +1,7 @@
 package wasmartifacts
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,13 +36,31 @@ func TestBuildRejectsArtifactOverBudgetWithActionableError(t *testing.T) {
 	specs := testSpecs(t, root)
 	specs[0].MaxSizeBytes = 2
 	_, err := build(root, specs)
-	if err == nil {
-		t.Fatal("expected size budget failure")
+	if !errors.Is(err, ErrArtifactOverBudget) {
+		t.Fatalf("build() error = %v, want ErrArtifactOverBudget", err)
 	}
-	for _, fragment := range []string{"test-module", "3 bytes", "2-byte budget", "by 1 byte", "reviewed budget change"} {
-		if !strings.Contains(err.Error(), fragment) {
-			t.Fatalf("error %q missing %q", err, fragment)
-		}
+	var budgetError *ArtifactBudgetError
+	if !errors.As(err, &budgetError) {
+		t.Fatalf("build() error = %v, want ArtifactBudgetError", err)
+	}
+	if budgetError.Module != "test-module" || budgetError.SizeBytes != 3 || budgetError.BudgetBytes != 2 {
+		t.Fatalf("ArtifactBudgetError = %+v, want module=test-module size=3 budget=2", budgetError)
+	}
+}
+
+func TestBuildRejectsSymlinkedArtifact(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target.wasm")
+	if err := os.WriteFile(target, []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(root, "artifact.wasm")
+	if err := os.Symlink(target, artifact); err != nil {
+		t.Fatal(err)
+	}
+	_, err := build(root, []ModuleSpec{{Name: "test", ArtifactPath: "artifact.wasm", MaxSizeBytes: 10}})
+	if !errors.Is(err, ErrUnsafeArtifactPath) {
+		t.Fatalf("build() error = %v, want ErrUnsafeArtifactPath", err)
 	}
 }
 
@@ -55,23 +74,23 @@ func TestCompareReportsDigestAndBudgetDrift(t *testing.T) {
 	actual := expected
 	actual.Modules = append([]ModuleArtifact(nil), expected.Modules...)
 	actual.Modules[0].SHA256 = strings.Repeat("0", 64)
-	if err := compare(expected, actual); err == nil || !strings.Contains(err.Error(), "manifest SHA-256") {
-		t.Fatalf("expected digest drift error, got %v", err)
+	if err := compare(expected, actual); !errors.Is(err, ErrManifestDigestDrift) {
+		t.Fatalf("compare() error = %v, want ErrManifestDigestDrift", err)
 	}
 	actual.Modules[0] = expected.Modules[0]
 	actual.Modules[0].MaxSizeBytes++
-	if err := compare(expected, actual); err == nil || !strings.Contains(err.Error(), "size budget") {
-		t.Fatalf("expected budget drift error, got %v", err)
+	if err := compare(expected, actual); !errors.Is(err, ErrManifestBudgetDrift) {
+		t.Fatalf("compare() error = %v, want ErrManifestBudgetDrift", err)
 	}
 }
 
 func testSpecs(t *testing.T, root string) []ModuleSpec {
 	t.Helper()
 	path := filepath.Join(root, "artifacts", "test.wasm")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte{1, 2, 3}, 0o644); err != nil {
+	if err := os.WriteFile(path, []byte{1, 2, 3}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return []ModuleSpec{{

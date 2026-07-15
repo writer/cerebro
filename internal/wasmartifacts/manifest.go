@@ -12,12 +12,38 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	ManifestPath  = "tools/archtests/embedded_wasm_artifacts.json"
-	SchemaVersion = 1
+	ManifestPath     = "tools/archtests/embedded_wasm_artifacts.json"
+	SchemaVersion    = 1
+	maxManifestBytes = 1 << 20
 )
+
+var (
+	ErrArtifactOverBudget  = errors.New("embedded Wasm artifact exceeds its size budget")
+	ErrManifestDigestDrift = errors.New("embedded Wasm manifest digest drift")
+	ErrManifestBudgetDrift = errors.New("embedded Wasm manifest size budget drift")
+	ErrUnsafeArtifactPath  = errors.New("embedded Wasm artifact path is unsafe")
+)
+
+type ArtifactBudgetError struct {
+	Module      string
+	Path        string
+	SizeBytes   int64
+	BudgetBytes int64
+}
+
+func (e *ArtifactBudgetError) Error() string {
+	overage := e.SizeBytes - e.BudgetBytes
+	return fmt.Sprintf(
+		"%s artifact %s is %d bytes, exceeding its %d-byte budget by %d %s; reduce the artifact or make a reviewed budget change in internal/wasmartifacts/manifest.go",
+		e.Module, e.Path, e.SizeBytes, e.BudgetBytes, overage, byteUnit(overage),
+	)
+}
+
+func (e *ArtifactBudgetError) Unwrap() error { return ErrArtifactOverBudget }
 
 type BuilderIdentity struct {
 	ID            string `json:"id"`
@@ -110,22 +136,17 @@ func build(repoRoot string, specs []ModuleSpec) (Manifest, error) {
 		Modules:          make([]ModuleArtifact, 0, len(specs)),
 	}
 	for _, spec := range specs {
-		body, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(spec.ArtifactPath)))
+		artifactPath, err := repositoryPath(repoRoot, spec.ArtifactPath)
+		if err != nil {
+			return Manifest{}, fmt.Errorf("resolve %s artifact %s: %w", spec.Name, spec.ArtifactPath, err)
+		}
+		body, err := readRegularFile(artifactPath, spec.MaxSizeBytes)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("read %s artifact %s: %w", spec.Name, spec.ArtifactPath, err)
 		}
 		size := int64(len(body))
 		if size > spec.MaxSizeBytes {
-			overage := size - spec.MaxSizeBytes
-			return Manifest{}, fmt.Errorf(
-				"%s artifact %s is %d bytes, exceeding its %d-byte budget by %d %s; reduce the artifact or make a reviewed budget change in internal/wasmartifacts/manifest.go",
-				spec.Name,
-				spec.ArtifactPath,
-				size,
-				spec.MaxSizeBytes,
-				overage,
-				byteUnit(overage),
-			)
+			return Manifest{}, &ArtifactBudgetError{Module: spec.Name, Path: spec.ArtifactPath, SizeBytes: size, BudgetBytes: spec.MaxSizeBytes}
 		}
 		digest := sha256.Sum256(body)
 		manifest.Modules = append(manifest.Modules, ModuleArtifact{
@@ -149,12 +170,14 @@ func Marshal(manifest Manifest) ([]byte, error) {
 }
 
 func Load(path string) (Manifest, error) {
-	file, err := os.Open(path)
+	body, err := readRegularFile(path, maxManifestBytes)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("open embedded Wasm artifact manifest: %w", err)
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(file)
+	if len(body) > maxManifestBytes {
+		return Manifest{}, fmt.Errorf("embedded Wasm artifact manifest exceeds %d bytes", maxManifestBytes)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
@@ -175,7 +198,10 @@ func Write(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(repoRoot, filepath.FromSlash(ManifestPath))
+	path, err := repositoryPath(repoRoot, ManifestPath)
+	if err != nil {
+		return fmt.Errorf("resolve manifest %s: %w", ManifestPath, err)
+	}
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("refusing to replace symlinked manifest %s", ManifestPath)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -186,18 +212,15 @@ func Write(repoRoot string) error {
 		return fmt.Errorf("create temporary manifest: %w", err)
 	}
 	temporaryPath := file.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := file.Chmod(0o644); err != nil {
-		file.Close()
-		return fmt.Errorf("set temporary manifest mode: %w", err)
+		return errors.Join(fmt.Errorf("set temporary manifest mode: %w", err), closeTemporary(file))
 	}
 	if _, err := file.Write(body); err != nil {
-		file.Close()
-		return fmt.Errorf("write temporary manifest: %w", err)
+		return errors.Join(fmt.Errorf("write temporary manifest: %w", err), closeTemporary(file))
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
-		return fmt.Errorf("sync temporary manifest: %w", err)
+		return errors.Join(fmt.Errorf("sync temporary manifest: %w", err), closeTemporary(file))
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close temporary manifest: %w", err)
@@ -206,6 +229,64 @@ func Write(repoRoot string) error {
 		return fmt.Errorf("replace manifest %s: %w", ManifestPath, err)
 	}
 	return nil
+}
+
+func closeTemporary(file *os.File) error {
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temporary manifest: %w", err)
+	}
+	return nil
+}
+
+func repositoryPath(repoRoot string, relativePath string) (string, error) {
+	if relativePath == "" || filepath.IsAbs(relativePath) {
+		return "", fmt.Errorf("path must be repository-relative")
+	}
+	clean := filepath.Clean(filepath.FromSlash(relativePath))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes the repository")
+	}
+	root, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve repository root: %w", err)
+	}
+	path := filepath.Join(root, clean)
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes the repository")
+	}
+	return path, nil
+}
+
+func readRegularFile(path string, limit int64) (body []byte, resultErr error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s is not a regular file", ErrUnsafeArtifactPath, path)
+	}
+	file, err := os.Open(path) // #nosec G304 -- callers constrain repository paths and the identity check below rejects link replacement.
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close %s: %w", path, err))
+		}
+	}()
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect opened file %s: %w", path, err)
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
+		return nil, fmt.Errorf("%w: %s changed while opening", ErrUnsafeArtifactPath, path)
+	}
+	body, err = io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return body, nil
 }
 
 func byteUnit(value int64) string {
@@ -220,7 +301,10 @@ func Check(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(repoRoot, filepath.FromSlash(ManifestPath))
+	path, err := repositoryPath(repoRoot, ManifestPath)
+	if err != nil {
+		return fmt.Errorf("resolve manifest %s: %w", ManifestPath, err)
+	}
 	actual, err := Load(path)
 	if err != nil {
 		return err
@@ -232,9 +316,12 @@ func Check(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	actualBody, err := os.ReadFile(path)
+	actualBody, err := readRegularFile(path, maxManifestBytes)
 	if err != nil {
 		return fmt.Errorf("read manifest %s: %w", ManifestPath, err)
+	}
+	if len(actualBody) > maxManifestBytes {
+		return fmt.Errorf("manifest %s exceeds %d bytes", ManifestPath, maxManifestBytes)
 	}
 	if !bytes.Equal(actualBody, expectedBody) {
 		return fmt.Errorf("manifest %s is not in canonical JSON form; run make rust-wasm-manifest-generate", ManifestPath)
@@ -262,13 +349,13 @@ func compare(expected Manifest, actual Manifest) error {
 			return fmt.Errorf("%s manifest ABI version is %d, expected %d", want.Name, got.ABIVersion, want.ABIVersion)
 		}
 		if got.MaxSizeBytes != want.MaxSizeBytes {
-			return fmt.Errorf("%s manifest size budget is %d bytes, expected %d", want.Name, got.MaxSizeBytes, want.MaxSizeBytes)
+			return fmt.Errorf("%w: %s manifest size budget is %d bytes, expected %d", ErrManifestBudgetDrift, want.Name, got.MaxSizeBytes, want.MaxSizeBytes)
 		}
 		if got.SizeBytes != want.SizeBytes {
 			return fmt.Errorf("%s manifest size is %d bytes, artifact is %d bytes", want.Name, got.SizeBytes, want.SizeBytes)
 		}
 		if got.SHA256 != want.SHA256 {
-			return fmt.Errorf("%s manifest SHA-256 is %s, artifact SHA-256 is %s", want.Name, got.SHA256, want.SHA256)
+			return fmt.Errorf("%w: %s manifest SHA-256 is %s, artifact SHA-256 is %s", ErrManifestDigestDrift, want.Name, got.SHA256, want.SHA256)
 		}
 	}
 	return nil
