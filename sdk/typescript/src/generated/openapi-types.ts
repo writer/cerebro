@@ -707,21 +707,22 @@ export type AssessmentControlRef = {
 
 /** Immutable revisions, receipts, cutoff, and digests used by one assessment run. */
 export type AssessmentInputManifest = {
-  adapter_version: string;
-  collection_cutoff: string;
+  adapter_version?: string;
+  collection_cutoff?: string;
   evaluation_run_ids?: string[];
-  mapping_set_digest: string;
-  model_version: string;
-  period_end: string;
-  period_start: string;
-  plan_revision_id: string;
-  program_id: string;
-  reason_registry: string;
-  receipts: AssessmentCollectionReceipt[];
-  requested_scope_digest: string;
-  resolved_objective_set_digest: string;
-  revisions: AssessmentManifestRevision[];
-  scope_revision_id: string;
+  mapping_set_digest?: string;
+  model_version?: string;
+  period_end?: string;
+  period_start?: string;
+  plan_revision_id?: string;
+  program_id?: string;
+  reason_registry?: string;
+  receipts?: AssessmentCollectionReceipt[];
+  requested_scope_digest?: string;
+  resolved_objective_set_digest?: string;
+  revisions?: AssessmentManifestRevision[];
+  scope_revision_id?: string;
+  [key: string]: unknown;
 };
 
 export type AssessmentManifestRevision = {
@@ -830,7 +831,7 @@ export type AssessmentResultChunk = {
   first_result_id: string;
   last_result_id: string;
   previous_digest?: string;
-  results: AssessmentObjectiveResult[];
+  results: (AssessmentObjectiveResult | Record<string, unknown>)[];
   run_id: string;
   sequence: number;
 };
@@ -3606,12 +3607,12 @@ export type QualifiedAssuranceDecision = {
   as_of: string;
   decision_digest: string;
   limitations: AssuranceLimitation[];
-  manifest_hash: string;
-  proof_digest: string;
+  manifest_hash?: string;
+  proof_digest?: string;
   qualified: boolean;
   reasons?: ("manifest_invalid" | "scope_unpinned" | "population_incomplete" | "result_invalid" | "source_proof_missing" | "source_unhealthy" | "source_stale" | "evidence_proof_missing" | "evidence_not_current" | "evidence_conflicting" | "limitations_not_declared" | "blocking_limitation" | "review_requirements_not_declared" | "review_incomplete" | "exception_expired" | "verification_failed")[];
   required_reviews: AssuranceReviewRequirement[];
-  result_hash: string;
+  result_hash?: string;
   version: "qualified-decision/v1";
 };
 
