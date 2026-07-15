@@ -36,6 +36,8 @@ case "${command}" in
         --arg image_digest "${image_digest}" \
         --arg web_image_tag "${web_image_tag}" \
         --arg run_url "${run_url}" \
+        --argjson run_id "${GITHUB_RUN_ID}" \
+        --argjson run_attempt "${GITHUB_RUN_ATTEMPT}" \
         --argjson production_environment "${production_environment}" \
         --argjson transient_environment "${transient_environment}" \
         '{
@@ -49,7 +51,9 @@ case "${command}" in
           payload: ({
             imageTag: $image_tag,
             imageDigest: $image_digest,
-            workflowRun: $run_url
+            workflowRun: $run_url,
+            workflowRunId: $run_id,
+            workflowRunAttempt: $run_attempt
           } + (if $web_image_tag == "" then {} else {webImageTag: $web_image_tag} end))
         }'
     )"

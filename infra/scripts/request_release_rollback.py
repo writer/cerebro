@@ -13,14 +13,15 @@ from release_promotion import (
     find_successful_deployment,
     gh_json,
     parse_stable_tag,
+    post_commit_status,
     read_stack_digest,
     read_stack_tag,
+    ROLLBACK_APPROVAL_CONTEXT,
     resolve_image_digest,
     run,
 )
 
 
-ROLLBACK_LABEL = "approved-cerebro-rollback"
 PAUSE_LABEL = "cerebro-promotion-paused"
 PAUSE_ISSUE_TITLE = "Cerebro automatic promotion paused"
 
@@ -55,6 +56,27 @@ def _find_open_pr(repository: str, branch: str) -> str:
     if isinstance(pulls, list) and pulls and isinstance(pulls[0], dict):
         return str(pulls[0].get("url") or "")
     return ""
+
+
+def _record_rollback_approval(
+    repository: str, *, pr_url: str, image_tag: str
+) -> None:
+    pull = gh_json(
+        ["pr", "view", pr_url, "--repo", repository, "--json", "headRefOid"]
+    )
+    head_sha = str(pull.get("headRefOid") or "") if isinstance(pull, dict) else ""
+    server_url = os.environ.get("GITHUB_SERVER_URL", "")
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    if not head_sha or not server_url or not run_id.isdigit():
+        raise RuntimeError("Could not record protected rollback approval")
+    post_commit_status(
+        repository,
+        sha=head_sha,
+        state="success",
+        context=ROLLBACK_APPROVAL_CONTEXT,
+        description=f"Protected rollback workflow approved {image_tag}",
+        target_url=f"{server_url}/{repository}/actions/runs/{run_id}",
+    )
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -264,34 +286,6 @@ def main(argv: list[str] | None = None) -> int:
             f"Timed out waiting for the {args.environment} rollback PR for {args.image_tag}"
         )
 
-    if args.environment == "go-prod":
-        run(
-            [
-                "gh",
-                "label",
-                "create",
-                ROLLBACK_LABEL,
-                "--repo",
-                args.repository,
-                "--color",
-                "B60205",
-                "--description",
-                "Approved production image rollback",
-                "--force",
-            ]
-        )
-        run(
-            [
-                "gh",
-                "pr",
-                "edit",
-                pr_url,
-                "--repo",
-                args.repository,
-                "--add-label",
-                ROLLBACK_LABEL,
-            ]
-        )
     run(
         [
             "gh",
@@ -304,6 +298,10 @@ def main(argv: list[str] | None = None) -> int:
             f"Rollback requested through the approved workflow. Reason: {args.reason}",
         ]
     )
+    if args.environment == "go-prod":
+        _record_rollback_approval(
+            args.repository, pr_url=pr_url, image_tag=args.image_tag
+        )
     print(f"Rollback PR ready for review: {pr_url}")
     return 0
 

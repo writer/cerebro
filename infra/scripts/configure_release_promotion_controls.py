@@ -13,6 +13,18 @@ from release_promotion import gh_json
 RULESET_NAME = "Release promotion protection"
 REQUIRED_STATUS = "promotion/sec-dev-deployed"
 ACTIONS_INTEGRATION_ID = 15368
+SECURITY_TEAM_ID = 6539261
+SECURITY_CONTROL_PATTERNS = [
+    ".github/CODEOWNERS",
+    ".github/actions/**",
+    ".github/scripts/**",
+    ".github/workflows/**",
+    "infra/aws/**/*.py",
+    "infra/aws/Pulumi.yaml",
+    "infra/pyproject.toml",
+    "infra/scripts/**",
+    "infra/uv.lock",
+]
 
 
 def ruleset_payload() -> dict[str, Any]:
@@ -29,11 +41,18 @@ def ruleset_payload() -> dict[str, Any]:
                 "type": "pull_request",
                 "parameters": {
                     "allowed_merge_methods": ["merge", "squash", "rebase"],
-                    "dismiss_stale_reviews_on_push": False,
+                    "dismiss_stale_reviews_on_push": True,
                     "require_code_owner_review": False,
                     "require_last_push_approval": False,
                     "required_approving_review_count": 0,
                     "required_review_thread_resolution": True,
+                    "required_reviewers": [
+                        {
+                            "file_patterns": SECURITY_CONTROL_PATTERNS,
+                            "minimum_approvals": 1,
+                            "reviewer": {"id": SECURITY_TEAM_ID, "type": "Team"},
+                        }
+                    ],
                 },
             },
             {
@@ -103,6 +122,28 @@ def _has_pull_request_rule(ruleset: dict[str, Any]) -> bool:
     )
 
 
+def _requires_security_control_review(ruleset: dict[str, Any]) -> bool:
+    rules = ruleset.get("rules") or []
+    if not isinstance(rules, list):
+        return False
+    for rule in rules:
+        if not isinstance(rule, dict) or rule.get("type") != "pull_request":
+            continue
+        parameters = rule.get("parameters") or {}
+        if not isinstance(parameters, dict):
+            return False
+        required_reviewers = parameters.get("required_reviewers") or []
+        return isinstance(required_reviewers, list) and any(
+            isinstance(required, dict)
+            and required.get("minimum_approvals") == 1
+            and required.get("file_patterns") == SECURITY_CONTROL_PATTERNS
+            and required.get("reviewer")
+            == {"id": SECURITY_TEAM_ID, "type": "Team"}
+            for required in required_reviewers
+        )
+    return False
+
+
 def _has_rule(ruleset: dict[str, Any], rule_type: str) -> bool:
     rules = ruleset.get("rules") or []
     return isinstance(rules, list) and any(
@@ -140,6 +181,10 @@ def _has_required_reviewer(environment: dict[str, Any]) -> bool:
     )
 
 
+def _prevents_self_review(environment: dict[str, Any]) -> bool:
+    return environment.get("prevent_self_review") is True
+
+
 def verify_controls(repository: str) -> list[str]:
     errors: list[str] = []
     repo = gh_json(["api", f"repos/{repository}"])
@@ -169,6 +214,10 @@ def verify_controls(repository: str) -> list[str]:
             errors.append(f"ruleset {RULESET_NAME!r} allows force pushes")
         if not _has_pull_request_rule(ruleset):
             errors.append(f"ruleset {RULESET_NAME!r} does not require pull requests")
+        if not _requires_security_control_review(ruleset):
+            errors.append(
+                f"ruleset {RULESET_NAME!r} does not require security review for release controls"
+            )
         if not _has_required_status(ruleset):
             errors.append(
                 f"ruleset {RULESET_NAME!r} does not require {REQUIRED_STATUS}"
@@ -185,10 +234,12 @@ def verify_controls(repository: str) -> list[str]:
         )
     if not _has_required_reviewer(rollback):
         errors.append("production rollback requests do not require a reviewer")
+    if not _prevents_self_review(rollback):
+        errors.append("production rollback requests allow self-review")
     return errors
 
 
-def apply_controls(repository: str, reviewer_id: int) -> None:
+def apply_controls(repository: str, reviewer_ids: list[int]) -> None:
     gh_json(
         ["api", "--method", "PATCH", f"repos/{repository}"],
         input_payload={"allow_auto_merge": True, "delete_branch_on_merge": True},
@@ -223,8 +274,11 @@ def apply_controls(repository: str, reviewer_id: int) -> None:
         ],
         input_payload={
             "wait_timer": 0,
-            "prevent_self_review": False,
-            "reviewers": [{"type": "User", "id": reviewer_id}],
+            "prevent_self_review": True,
+            "reviewers": [
+                {"type": "User", "id": reviewer_id}
+                for reviewer_id in reviewer_ids
+            ],
             "deployment_branch_policy": branch_policy,
         },
     )
@@ -238,7 +292,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--verify", action="store_true")
-    parser.add_argument("--rollback-reviewer-id", type=int)
+    parser.add_argument("--rollback-reviewer-id", type=int, action="append")
     return parser.parse_args(argv)
 
 

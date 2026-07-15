@@ -4,11 +4,13 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import os
+import re
 import sys
 from typing import Any
 
 from release_promotion import (
     DeploymentReceipt,
+    ROLLBACK_APPROVAL_CONTEXT,
     find_successful_deployment,
     gh_json,
     parse_stable_tag,
@@ -22,7 +24,8 @@ from release_promotion import (
 
 CONTEXT = "promotion/sec-dev-deployed"
 GO_PROD_CONFIG = "infra/aws/Pulumi.go-prod.yaml"
-ROLLBACK_LABEL = "approved-cerebro-rollback"
+ROLLBACK_WORKFLOW_PATH = ".github/workflows/request-cerebro-image-rollback.yml"
+ROLLBACK_ENVIRONMENT = "production-rollback"
 
 
 @dataclass(frozen=True)
@@ -84,15 +87,74 @@ def _published_release(source_repository: str, tag: str) -> bool:
     )
 
 
-def _label_names(pull: dict[str, Any]) -> set[str]:
-    labels = pull.get("labels") or []
-    if not isinstance(labels, list):
-        return set()
-    return {
-        str(label.get("name"))
-        for label in labels
-        if isinstance(label, dict) and label.get("name")
-    }
+def _approved_environment_review(reviews: Any) -> bool:
+    if not isinstance(reviews, list):
+        return False
+    for review in reviews:
+        if not isinstance(review, dict) or review.get("state") != "approved":
+            continue
+        environments = review.get("environments") or []
+        if isinstance(environments, list) and any(
+            isinstance(environment, dict)
+            and environment.get("name") == ROLLBACK_ENVIRONMENT
+            for environment in environments
+        ):
+            return True
+    return False
+
+
+def _rollback_approved(repository: str, head_sha: str) -> bool:
+    statuses = gh_json(
+        ["api", f"repos/{repository}/commits/{head_sha}/statuses?per_page=100"]
+    )
+    if not isinstance(statuses, list):
+        return False
+    approval_status = next(
+        (
+            status
+            for status in statuses
+            if isinstance(status, dict)
+            and status.get("context") == ROLLBACK_APPROVAL_CONTEXT
+        ),
+        None,
+    )
+    creator = approval_status.get("creator") or {} if approval_status else {}
+    if (
+        not isinstance(approval_status, dict)
+        or approval_status.get("state") != "success"
+        or not isinstance(creator, dict)
+        or creator.get("login") != "github-actions[bot]"
+    ):
+        return False
+
+    target_url = str(approval_status.get("target_url") or "")
+    match = re.fullmatch(
+        rf"https://github\.com/{re.escape(repository)}/actions/runs/(\d+)",
+        target_url,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return False
+    run_id = int(match.group(1))
+    workflow_run = gh_json(["api", f"repos/{repository}/actions/runs/{run_id}"])
+    if not isinstance(workflow_run, dict):
+        return False
+    run_repository = workflow_run.get("repository") or {}
+    if (
+        workflow_run.get("id") != run_id
+        or workflow_run.get("event") != "workflow_dispatch"
+        or workflow_run.get("head_branch") != "main"
+        or workflow_run.get("path") != ROLLBACK_WORKFLOW_PATH
+        or workflow_run.get("conclusion") != "success"
+        or workflow_run.get("html_url") != target_url
+        or not isinstance(run_repository, dict)
+        or str(run_repository.get("full_name") or "").lower() != repository.lower()
+    ):
+        return False
+    reviews = gh_json(
+        ["api", f"repos/{repository}/actions/runs/{run_id}/approvals"]
+    )
+    return _approved_environment_review(reviews)
 
 
 def _refresh_pull(repository: str, source_repository: str, number: int) -> GateResult:
@@ -154,6 +216,9 @@ def _refresh_pull(repository: str, source_repository: str, number: int) -> GateR
                         f"Reviewed digest does not match published {target_tag}",
                     )
                 else:
+                    rollback_approved = False
+                    if parse_stable_tag(target_tag) < parse_stable_tag(base_tag):
+                        rollback_approved = _rollback_approved(repository, head_sha)
                     receipt = find_successful_deployment(
                         repository,
                         environment="sec-dev",
@@ -163,7 +228,7 @@ def _refresh_pull(repository: str, source_repository: str, number: int) -> GateR
                     result = evaluate_gate(
                         base_tag=base_tag,
                         target_tag=target_tag,
-                        rollback_approved=ROLLBACK_LABEL in _label_names(pull),
+                        rollback_approved=rollback_approved,
                         sec_dev_receipt=receipt,
                     )
             except RuntimeError as error:

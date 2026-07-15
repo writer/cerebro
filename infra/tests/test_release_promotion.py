@@ -40,6 +40,30 @@ class ReleasePromotionTest(unittest.TestCase):
         self.assertTrue(
             any(rule["type"] == "pull_request" for rule in payload["rules"])
         )
+        pull_request_rule = next(
+            rule for rule in payload["rules"] if rule["type"] == "pull_request"
+        )
+        self.assertFalse(
+            pull_request_rule["parameters"]["require_code_owner_review"]
+        )
+        self.assertTrue(
+            pull_request_rule["parameters"]["dismiss_stale_reviews_on_push"]
+        )
+        self.assertEqual(
+            pull_request_rule["parameters"]["required_reviewers"],
+            [
+                {
+                    "file_patterns": (
+                        configure_release_promotion_controls.SECURITY_CONTROL_PATTERNS
+                    ),
+                    "minimum_approvals": 1,
+                    "reviewer": {
+                        "id": configure_release_promotion_controls.SECURITY_TEAM_ID,
+                        "type": "Team",
+                    },
+                }
+            ],
+        )
         status_rule = next(
             rule
             for rule in payload["rules"]
@@ -80,16 +104,47 @@ class ReleasePromotionTest(unittest.TestCase):
             digest,
         )
 
+    def test_rollback_environment_requires_multiple_reviewers_and_no_self_review(
+        self,
+    ) -> None:
+        with patch(
+            "configure_release_promotion_controls.gh_json",
+            side_effect=[{}, [], {}, {}, {}],
+        ) as github:
+            configure_release_promotion_controls.apply_controls(
+                "WriterInternal/cerebro", [1, 2, 3]
+            )
+
+        rollback_payload = github.call_args_list[-1].kwargs["input_payload"]
+        self.assertTrue(rollback_payload["prevent_self_review"])
+        self.assertEqual(
+            rollback_payload["reviewers"],
+            [
+                {"type": "User", "id": 1},
+                {"type": "User", "id": 2},
+                {"type": "User", "id": 3},
+            ],
+        )
+
     def test_successful_deployment_requires_exact_digest_and_latest_success_status(
         self,
     ) -> None:
+        digest = f"sha256:{'a' * 64}"
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
         deployments = [
             {
                 "id": 42,
                 "environment": "sec-dev",
                 "ref": "abc123",
                 "created_at": "2026-07-14T10:00:00Z",
-                "payload": {"imageTag": "v2.1.10", "imageDigest": "sha256:release"},
+                "creator": {"login": "github-actions[bot]"},
+                "payload": {
+                    "imageTag": "v2.1.10",
+                    "imageDigest": digest,
+                    "workflowRun": run_url,
+                    "workflowRunId": 4200,
+                    "workflowRunAttempt": 1,
+                },
             },
             {
                 "id": 41,
@@ -99,21 +154,152 @@ class ReleasePromotionTest(unittest.TestCase):
                 "payload": {"imageTag": "v2.1.10", "imageDigest": "sha256:wrong"},
             },
         ]
-        statuses = [{"state": "success", "target_url": "https://github.com/run/42"}]
-        with patch("release_promotion.gh_json", side_effect=[deployments, statuses]):
+        statuses = [
+            {
+                "state": "success",
+                "environment": "sec-dev",
+                "target_url": run_url,
+                "creator": {"login": "github-actions[bot]"},
+            }
+        ]
+        workflow_run = {
+            "id": 4200,
+            "event": "push",
+            "head_branch": "main",
+            "head_sha": "abc123",
+            "path": release_promotion.INFRA_DEPLOY_WORKFLOW_PATH,
+            "run_attempt": 1,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        jobs = {
+            "jobs": [
+                {
+                    "name": "Deploy sec-dev",
+                    "conclusion": "success",
+                    "steps": [
+                        {"name": "Pulumi Up (sec-dev)", "conclusion": "success"}
+                    ],
+                }
+            ]
+        }
+        stack_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {digest}\n"
+        )
+        with (
+            patch(
+                "release_promotion.gh_json",
+                side_effect=[deployments, statuses, workflow_run, jobs],
+            ),
+            patch("release_promotion.repository_file", return_value=stack_text),
+        ):
             matched = release_promotion.find_successful_deployment(
                 "WriterInternal/cerebro",
                 environment="sec-dev",
                 image_tag="v2.1.10",
-                image_digest="sha256:release",
+                image_digest=digest,
             )
         self.assertIsNotNone(matched)
         self.assertEqual(matched.deployment_id, 42)
+
+    def test_forged_deployment_record_does_not_open_production_gate(self) -> None:
+        digest = f"sha256:{'a' * 64}"
+        deployments = [
+            {
+                "id": 42,
+                "ref": "abc123",
+                "creator": {"login": "write-user"},
+                "payload": {
+                    "imageTag": "v2.1.10",
+                    "imageDigest": digest,
+                    "workflowRunId": 4200,
+                    "workflowRunAttempt": 1,
+                },
+            }
+        ]
+        with patch("release_promotion.gh_json", return_value=deployments) as github:
+            matched = release_promotion.find_successful_deployment(
+                "WriterInternal/cerebro",
+                environment="sec-dev",
+                image_tag="v2.1.10",
+                image_digest=digest,
+            )
+
+        self.assertIsNone(matched)
+        github.assert_called_once()
+
+    def test_workflow_without_successful_pulumi_up_does_not_open_gate(self) -> None:
+        digest = f"sha256:{'a' * 64}"
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+        payload = {
+            "imageTag": "v2.1.10",
+            "imageDigest": digest,
+            "workflowRun": run_url,
+            "workflowRunId": 4200,
+            "workflowRunAttempt": 1,
+        }
+        deployment = {
+            "id": 42,
+            "environment": "sec-dev",
+            "ref": "abc123",
+            "creator": {"login": "github-actions[bot]"},
+            "payload": payload,
+        }
+        status = {
+            "state": "success",
+            "environment": "sec-dev",
+            "target_url": run_url,
+            "creator": {"login": "github-actions[bot]"},
+        }
+        workflow_run = {
+            "id": 4200,
+            "event": "push",
+            "head_branch": "main",
+            "head_sha": "abc123",
+            "path": release_promotion.INFRA_DEPLOY_WORKFLOW_PATH,
+            "run_attempt": 1,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        jobs = {
+            "jobs": [
+                {
+                    "name": "Deploy sec-dev",
+                    "conclusion": "success",
+                    "steps": [
+                        {"name": "Pulumi Up (sec-dev)", "conclusion": "skipped"}
+                    ],
+                }
+            ]
+        }
+        stack_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {digest}\n"
+        )
+        with (
+            patch(
+                "release_promotion.gh_json",
+                side_effect=[[deployment], [status], workflow_run, jobs],
+            ),
+            patch("release_promotion.repository_file", return_value=stack_text),
+        ):
+            matched = release_promotion.find_successful_deployment(
+                "WriterInternal/cerebro",
+                environment="sec-dev",
+                image_tag="v2.1.10",
+                image_digest=digest,
+            )
+
+        self.assertIsNone(matched)
 
     def test_failed_deployment_does_not_open_production_gate(self) -> None:
         deployments = [
             {
                 "id": 42,
+                "creator": {"login": "github-actions[bot]"},
                 "payload": {"imageTag": "v2.1.10", "imageDigest": "sha256:release"},
             }
         ]
@@ -308,6 +494,91 @@ class ReleasePromotionTest(unittest.TestCase):
         )
         self.assertEqual(result.state, "failure")
 
+    def test_gate_accepts_only_protected_workflow_rollback_approval(self) -> None:
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+        statuses = [
+            {
+                "context": release_promotion.ROLLBACK_APPROVAL_CONTEXT,
+                "state": "success",
+                "target_url": run_url,
+                "creator": {"login": "github-actions[bot]"},
+            }
+        ]
+        workflow_run = {
+            "id": 4200,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "path": refresh_release_promotion_gate.ROLLBACK_WORKFLOW_PATH,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        approvals = [
+            {
+                "state": "approved",
+                "environments": [{"name": "production-rollback"}],
+            }
+        ]
+        with patch(
+            "refresh_release_promotion_gate.gh_json",
+            side_effect=[statuses, workflow_run, approvals],
+        ):
+            approved = refresh_release_promotion_gate._rollback_approved(
+                "WriterInternal/cerebro", "head-sha"
+            )
+
+        self.assertTrue(approved)
+
+    def test_gate_rejects_write_user_rollback_status(self) -> None:
+        statuses = [
+            {
+                "context": release_promotion.ROLLBACK_APPROVAL_CONTEXT,
+                "state": "success",
+                "target_url": (
+                    "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+                ),
+                "creator": {"login": "write-user"},
+            }
+        ]
+        with patch(
+            "refresh_release_promotion_gate.gh_json", return_value=statuses
+        ) as github:
+            approved = refresh_release_promotion_gate._rollback_approved(
+                "WriterInternal/cerebro", "head-sha"
+            )
+
+        self.assertFalse(approved)
+        github.assert_called_once()
+
+    def test_gate_rejects_rollback_without_environment_approval(self) -> None:
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+        statuses = [
+            {
+                "context": release_promotion.ROLLBACK_APPROVAL_CONTEXT,
+                "state": "success",
+                "target_url": run_url,
+                "creator": {"login": "github-actions[bot]"},
+            }
+        ]
+        workflow_run = {
+            "id": 4200,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "path": refresh_release_promotion_gate.ROLLBACK_WORKFLOW_PATH,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        with patch(
+            "refresh_release_promotion_gate.gh_json",
+            side_effect=[statuses, workflow_run, []],
+        ):
+            approved = refresh_release_promotion_gate._rollback_approved(
+                "WriterInternal/cerebro", "head-sha"
+            )
+
+        self.assertFalse(approved)
+
     def test_gate_requires_exact_sec_dev_receipt(self) -> None:
         pending = refresh_release_promotion_gate.evaluate_gate(
             base_tag="v2.1.9",
@@ -466,6 +737,39 @@ class ReleasePromotionTest(unittest.TestCase):
         )
         self.assertTrue(
             any(items[:3] == ["gh", "issue", "create"] for items in commands)
+        )
+
+    def test_rollback_records_approval_on_the_exact_pr_commit(self) -> None:
+        with (
+            patch(
+                "request_release_rollback.gh_json",
+                return_value={"headRefOid": "rollback-head"},
+            ),
+            patch("request_release_rollback.post_commit_status") as post_status,
+            patch.dict(
+                "os.environ",
+                {
+                    "GITHUB_SERVER_URL": "https://github.com",
+                    "GITHUB_RUN_ID": "4200",
+                },
+                clear=False,
+            ),
+        ):
+            request_release_rollback._record_rollback_approval(
+                "WriterInternal/cerebro",
+                pr_url="https://github.com/WriterInternal/cerebro/pull/42",
+                image_tag="v2.1.9",
+            )
+
+        post_status.assert_called_once_with(
+            "WriterInternal/cerebro",
+            sha="rollback-head",
+            state="success",
+            context=release_promotion.ROLLBACK_APPROVAL_CONTEXT,
+            description="Protected rollback workflow approved v2.1.9",
+            target_url=(
+                "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+            ),
         )
 
     def test_go_prod_rollback_rejects_sec_dev_receipt_from_before_pause(self) -> None:

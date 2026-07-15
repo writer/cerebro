@@ -16,6 +16,7 @@ CANARY_WORKFLOW = ROOT / ".github" / "workflows" / "release-promotion-canary.yml
 ROLLBACK_WORKFLOW = (
     ROOT / ".github" / "workflows" / "request-cerebro-image-rollback.yml"
 )
+ROLLBACK_SCRIPT = ROOT / "infra" / "scripts" / "request_release_rollback.py"
 RESUME_WORKFLOW = (
     ROOT / ".github" / "workflows" / "resume-cerebro-release-promotions.yml"
 )
@@ -319,6 +320,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("pull_request_target:", workflow)
         self.assertIn("workflow_run:", workflow)
         self.assertIn("cron: '*/5 * * * *'", workflow)
+        self.assertIn("actions: read", workflow)
         self.assertIn("statuses: write", workflow)
         self.assertIn("scripts/refresh_release_promotion_gate.py", workflow)
 
@@ -327,6 +329,8 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         script = DEPLOYMENT_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("imageDigest: $image_digest", script)
+        self.assertIn("workflowRunId: $run_id", script)
+        self.assertIn("workflowRunAttempt: $run_attempt", script)
         self.assertIn("<image-digest>", script)
         for stack in ("sec-dev", "go-prod"):
             with self.subTest(stack=stack):
@@ -353,12 +357,16 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
 
     def test_rollback_uses_a_separate_approved_environment(self) -> None:
         workflow = ROLLBACK_WORKFLOW.read_text(encoding="utf-8")
+        rollback_script = ROLLBACK_SCRIPT.read_text(encoding="utf-8")
         resume = RESUME_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("environment: production-rollback", workflow)
         self.assertIn("scripts/request_release_rollback.py", workflow)
         self.assertIn("Operational reason for the rollback", workflow)
+        self.assertIn("statuses: write", workflow)
         self.assertNotIn("gh pr merge", workflow)
+        self.assertIn("_record_rollback_approval", rollback_script)
+        self.assertNotIn("approved-cerebro-rollback", rollback_script)
         self.assertIn("environment: production-rollback", resume)
         self.assertIn("cerebro-promotion-paused", resume)
         self.assertIn("Automatic promotion resumed after rollback verification", resume)
