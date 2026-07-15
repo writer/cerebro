@@ -1818,6 +1818,10 @@ paths:
                 properties:
                   finding:
                     $ref: '#/components/schemas/Finding'
+                  links:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResourceLink'
   /finding-candidates/{candidateID}:
     get:
       summary: Get candidate finding
@@ -14506,6 +14510,39 @@ components:
         observed_at:
           type: string
           format: date-time
+    ResourceRef:
+      type: object
+      required: [kind, id, state]
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+        revision:
+          type: string
+        api_path:
+          type: string
+          description: Relative API path. Callers must not treat this as authorization to read the target.
+        mcp_uri:
+          type: string
+          description: Cerebro MCP resource URI. Target reads apply their own authorization.
+        state:
+          type: string
+          enum: [current, immutable, unavailable]
+    ResourceLink:
+      type: object
+      required: [rel, target, authority, completeness]
+      properties:
+        rel:
+          type: string
+        target:
+          $ref: '#/components/schemas/ResourceRef'
+        authority:
+          type: string
+          enum: [canonical_record, derived_record]
+        completeness:
+          type: string
+          enum: [complete, partial]
     Finding:
       type: object
       properties:

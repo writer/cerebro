@@ -135,9 +135,20 @@ func buildRelationRegistry() map[string]RelationDefinition {
 		}
 	}
 
-	addRelationPair(registry, RelationHasEvidence, RelationEvidenceFor, RelationClassStructural, []ResourceKind{ResourceKindFinding, ResourceKindControl, ResourceKindEvidencePacket, ResourceKindAuditPacket, ResourceKindDecisionPacket, ResourceKindGraphEntity}, []ResourceKind{ResourceKindFindingEvidence, ResourceKindSourceEvent, ResourceKindEvidencePacket, ResourceKindGraphEntity}, true, true, false)
+	// The finding read adds typed navigation without replacing the existing graph
+	// projection meanings for these relations.
+	registry[RelationHasContext] = RelationDefinition{
+		Name: RelationHasContext, SourceKinds: []ResourceKind{ResourceKindGraphEntity, ResourceKindFinding}, TargetKinds: []ResourceKind{ResourceKindGraphEntity, ResourceKindFindingInvestigation},
+		Class: RelationClassProjectedContext, DefaultDirection: RelationDirectionOutgoing, RequiresEvidence: true,
+	}
+	registry[RelationAffects] = RelationDefinition{
+		Name: RelationAffects, SourceKinds: []ResourceKind{ResourceKindGraphEntity, ResourceKindFinding}, TargetKinds: []ResourceKind{ResourceKindGraphEntity},
+		Class: RelationClassProjectedContext, DefaultDirection: RelationDirectionOutgoing, RequiresEvidence: true,
+	}
+
+	addRelationPair(registry, RelationHasEvidence, RelationEvidenceFor, RelationClassStructural, []ResourceKind{ResourceKindFinding, ResourceKindControl, ResourceKindEvidencePacket, ResourceKindAuditPacket, ResourceKindDecisionPacket, ResourceKindGraphEntity}, []ResourceKind{ResourceKindFindingEvidence, ResourceKindFindingEvidenceCollection, ResourceKindSourceEvent, ResourceKindEvidencePacket, ResourceKindGraphEntity}, true, true, false)
 	addRelationPair(registry, RelationHasFinding, RelationFindingOn, RelationClassStructural, []ResourceKind{ResourceKindGraphEntity, ResourceKindControl, ResourceKindSourceRuntime}, []ResourceKind{ResourceKindFinding, ResourceKindGraphEntity}, true, true, false)
-	addRelationPair(registry, RelationObservedOn, RelationObserved, RelationClassStructural, []ResourceKind{ResourceKindFindingEvidence, ResourceKindSourceEvent, ResourceKindGraphEntity}, []ResourceKind{ResourceKindSourceRuntime, ResourceKindGraphEntity}, true, true, false)
+	addRelationPair(registry, RelationObservedOn, RelationObserved, RelationClassStructural, []ResourceKind{ResourceKindFinding, ResourceKindFindingEvidence, ResourceKindSourceEvent, ResourceKindGraphEntity}, []ResourceKind{ResourceKindSourceRuntime, ResourceKindGraphEntity}, true, true, false)
 	addRelationPair(registry, RelationProducedByRun, RelationProduced, RelationClassStructural, nil, []ResourceKind{ResourceKindEvaluationRun, ResourceKindReportRun, ResourceKindJob, ResourceKindQuestionnaireRun}, true, true, false)
 	addRelationPair(registry, RelationMappedToControl, RelationTestedBy, RelationClassStructural, []ResourceKind{ResourceKindFinding, ResourceKindRule}, []ResourceKind{ResourceKindControl}, true, false, false)
 	addRelationPair(registry, RelationPlannedIn, RelationHasCandidate, RelationClassStructural, []ResourceKind{ResourceKindFinding}, []ResourceKind{ResourceKindDecisionPacket}, true, false, false)

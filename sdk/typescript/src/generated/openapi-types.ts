@@ -3330,6 +3330,22 @@ export type RejectFindingCandidateRequest = {
   rejected_by: string;
 };
 
+export type ResourceLink = {
+  authority: "canonical_record" | "derived_record";
+  completeness: "complete" | "partial";
+  rel: string;
+  target: ResourceRef;
+};
+
+export type ResourceRef = {
+  api_path?: string;
+  id: string;
+  kind: string;
+  mcp_uri?: string;
+  revision?: string;
+  state: "current" | "immutable" | "unavailable";
+};
+
 export type RevokeDeviceRequest = {
   reason?: string;
 };
