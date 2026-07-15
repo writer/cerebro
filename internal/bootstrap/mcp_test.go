@@ -1158,13 +1158,14 @@ func TestMCPFindingsGet(t *testing.T) {
 	store := &stubRuntimeStore{
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
-				ID:        "finding-1",
-				RuntimeID: "writer-okta",
-				TenantID:  "writer",
-				RuleID:    "rule-1",
-				Title:     "Finding One",
-				Severity:  "critical",
-				Status:    "open",
+				ID:           "finding-1",
+				RuntimeID:    "writer-okta",
+				TenantID:     "writer",
+				RuleID:       "rule-1",
+				Title:        "Finding One",
+				Severity:     "critical",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:identity:user-1"},
 				FindingRisk: ports.FindingRisk{
 					RiskScore:       94,
 					LikelihoodScore: 87,
@@ -1192,9 +1193,21 @@ func TestMCPFindingsGet(t *testing.T) {
 	if response["error"] != nil {
 		t.Fatalf("tools/call error = %#v", response["error"])
 	}
-	finding := response["result"].(map[string]any)["structuredContent"].(map[string]any)["finding"].(map[string]any)
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	finding := content["finding"].(map[string]any)
 	if finding["id"] != "finding-1" || finding["risk_score"] != float64(94) {
 		t.Fatalf("finding response = %#v", finding)
+	}
+	links := content["links"].([]any)
+	if len(links) != 5 {
+		t.Fatalf("len(links) = %d, want 5", len(links))
+	}
+	for _, rawLink := range links {
+		link := rawLink.(map[string]any)
+		target := link["target"].(map[string]any)
+		if apiPath, _ := target["api_path"].(string); strings.HasPrefix(apiPath, "http://") || strings.HasPrefix(apiPath, "https://") {
+			t.Fatalf("link api_path is absolute: %q", apiPath)
+		}
 	}
 }
 

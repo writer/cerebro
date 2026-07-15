@@ -30,6 +30,7 @@ nav:
       - Cloud Deployment: operations/cloud-deployment.md
       - Deployment Examples: operations/deployment-examples.md
       - Operations Runbook: operations/operations-runbook.md
+      - Append-Log Dead-Letter Data Policy: operations/append-log-dead-letter-policy.md
       - Headroom: operations/headroom.md
       - Observability: operations/observability.md
       - Troubleshooting: operations/troubleshooting.md
@@ -53,6 +54,7 @@ nav:
       - Non-Goals: engineering/non-goals.md
       - Trusted Decisions Implementation Plan: engineering/trusted-decisions-implementation-plan.md
       - Durability Contract: engineering/durability-contract.md
+      - JetStream Durability Matrix: engineering/jetstream-durability-acceptance-matrix.md
       - Decision Packet Convergence: engineering/decision-packet-convergence.md
       - Finding-to-Verified-Fix Reference: engineering/finding-to-verified-fix-reference.md
       - Source Sync Recovery: engineering/source-sync-recovery.md
