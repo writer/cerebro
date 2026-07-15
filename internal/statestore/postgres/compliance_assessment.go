@@ -273,10 +273,20 @@ func (s *Store) ListNonterminalRuns(ctx context.Context, limit uint32) ([]compli
 	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.ensureJobTables(ctx); err != nil {
+		return nil, err
+	}
 	if limit == 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT record_json FROM compliance_assessment_runs WHERE state IN ('queued','collecting','evaluating') ORDER BY requested_at,tenant_id,id LIMIT $1`, limit)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT runs.record_json
+FROM compliance_assessment_runs runs
+JOIN platform_jobs jobs ON jobs.id = runs.job_id
+WHERE runs.state IN ('queued','collecting','evaluating')
+  AND jobs.status IN ('failed','cancelled','completed')
+ORDER BY runs.requested_at,runs.tenant_id,runs.id
+LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}

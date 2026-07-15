@@ -93,7 +93,18 @@ func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
 // StartPlatformJobRecovery continuously makes expired leases runnable. The
 // returned channel closes after cancellation and is included in shutdown waits.
 func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
-	return a.jobService().StartRecovery(ctx, logf)
+	jobsDone := a.jobService().StartRecovery(ctx, logf)
+	if a == nil || a.services.assessments == nil {
+		return jobsDone
+	}
+	assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-jobsDone
+		<-assessmentsDone
+	}()
+	return done
 }
 
 func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {

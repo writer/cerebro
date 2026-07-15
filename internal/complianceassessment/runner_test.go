@@ -317,6 +317,44 @@ func TestInterruptedAssessmentRequeuesThenCompletes(t *testing.T) {
 	}
 }
 
+func TestInterruptedAssessmentRecoveryLoopRequeuesWithoutRestart(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "continuous-recovery", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+
+	recoveryCtx, cancelRecovery := context.WithCancel(context.Background())
+	recoveryDone := service.StartInterruptedRunRecovery(recoveryCtx, 5*time.Millisecond, nil)
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted, 2*time.Second)
+	cancelRecovery()
+	select {
+	case <-recoveryDone:
+	case <-time.After(time.Second):
+		t.Fatal("interrupted assessment recovery did not stop")
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete {
+		t.Fatalf("completed run = (%#v, %v)", completed, err)
+	}
+}
+
 func TestInterruptedAssessmentExhaustionBecomesTerminal(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
