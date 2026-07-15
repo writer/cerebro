@@ -3,20 +3,11 @@
 .PHONY: release-train-test
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
-.PHONY: rust-fmt-check rust-clippy rust-test rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check
+.PHONY: rust-fmt-check rust-clippy rust-test rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 CARGO ?= cargo
-STATIC_VALIDATOR_WASM := internal/graphagent/staticvalidator.wasm
-STATIC_VALIDATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_graphagent_staticvalidator.wasm
-SOURCECOVERAGE_EVALUATOR_WASM := internal/sourcecoverage/evaluator.wasm
-SOURCECOVERAGE_EVALUATOR_BUILD := target/wasm32-unknown-unknown/release/cerebro_sourcecoverage_evaluator.wasm
-PANOPTICON_RESOURCE_WASM := internal/sourceprojection/panopticonresources.wasm
-PANOPTICON_RESOURCE_BUILD := target/wasm32-unknown-unknown/release/cerebro_panopticon_resources.wasm
-WASM_CANONICAL_PLATFORM := Linux-x86_64
-WASM_HOST_PLATFORM := $(shell uname -s)-$(shell uname -m)
-RUST_WASM_FLAGS := --remap-path-prefix=$(CURDIR)=/workspace --remap-path-prefix=$${CARGO_HOME:-$$HOME/.cargo}=/cargo
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -444,38 +435,31 @@ graph-action-check: rust-fmt-check rust-clippy rust-test ## Verify generated gra
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
-	cp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
-	chmod 0644 "$(STATIC_VALIDATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate graphagent-static-validator
 
 graphagent-static-validator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded static Cypher validator is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-graphagent-staticvalidator
-	cmp "$(STATIC_VALIDATOR_BUILD)" "$(STATIC_VALIDATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check graphagent-static-validator
 
 sourcecoverage-evaluator-generate: ## Rebuild the embedded source coverage evaluator.
-	@test "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" || (echo "source coverage artifact generation requires $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)" && exit 1)
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
-	cp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"
-	chmod 0644 "$(SOURCECOVERAGE_EVALUATOR_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate sourcecoverage-evaluator
 
 sourcecoverage-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded source coverage evaluator is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-sourcecoverage-evaluator
-	@if [ "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" ]; then cmp "$(SOURCECOVERAGE_EVALUATOR_BUILD)" "$(SOURCECOVERAGE_EVALUATOR_WASM)"; else echo "source coverage artifact byte comparison runs on $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)"; fi
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check sourcecoverage-evaluator
 
 panopticon-resource-extractor-generate: ## Rebuild the embedded Panopticon resource extractor.
-	@test "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" || (echo "Panopticon resource artifact generation requires $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)" && exit 1)
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-panopticon-resources
-	cp "$(PANOPTICON_RESOURCE_BUILD)" "$(PANOPTICON_RESOURCE_WASM)"
-	chmod 0644 "$(PANOPTICON_RESOURCE_WASM)"
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate panopticon-resource-extractor
 
 panopticon-resource-extractor-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded Panopticon resource extractor is current.
-	$(CARGO) clippy --locked --target wasm32-unknown-unknown -p cerebro-panopticon-resources -- -D warnings
-	RUSTFLAGS="$(RUST_WASM_FLAGS)" $(CARGO) build --locked --release --target wasm32-unknown-unknown -p cerebro-panopticon-resources
-	@if [ "$(WASM_HOST_PLATFORM)" = "$(WASM_CANONICAL_PLATFORM)" ]; then cmp "$(PANOPTICON_RESOURCE_BUILD)" "$(PANOPTICON_RESOURCE_WASM)"; else echo "Panopticon resource artifact byte comparison runs on $(WASM_CANONICAL_PLATFORM); current platform is $(WASM_HOST_PLATFORM)"; fi
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check panopticon-resource-extractor
 
-rust-wasm-check: graphagent-static-validator-check sourcecoverage-evaluator-check panopticon-resource-extractor-check ## Verify every embedded Rust Wasm module.
+mitre-context-evaluator-generate: ## Rebuild the embedded MITRE context evaluator.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate mitre-context-evaluator
+
+mitre-context-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded MITRE context evaluator is current.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check mitre-context-evaluator
+
+rust-wasm-check: rust-fmt-check rust-clippy rust-test ## Verify every embedded Rust Wasm module.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check all
 
 finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DSL YAML.
 	go run ./tools/findingdsl --migrate-policies --write
