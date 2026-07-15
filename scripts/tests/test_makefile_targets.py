@@ -73,6 +73,22 @@ class MakefileTargetTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(password_file.exists())
 
+    def test_embedded_wasm_targets_keep_stable_names_and_use_registry(self):
+        makefile = self.makefile_text()
+        targets = (
+            "graphagent-static-validator",
+            "sourcecoverage-evaluator",
+            "panopticon-resource-extractor",
+            "mitre-context-evaluator",
+        )
+        for module in targets:
+            with self.subTest(module=module):
+                self.assertIn(f"{module}-generate:", makefile)
+                self.assertIn(f"{module}-check:", makefile)
+                self.assertIn(f"scripts/embedded_wasm.py generate {module}", makefile)
+                self.assertIn(f"scripts/embedded_wasm.py check {module}", makefile)
+        self.assertIn("scripts/embedded_wasm.py check all", makefile)
+
 
 if __name__ == "__main__":
     unittest.main()
