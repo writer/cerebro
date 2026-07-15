@@ -154,6 +154,9 @@ func TestCanonicalizePacketIsStableAndContentAddressed(t *testing.T) {
 	if !strings.HasPrefix(first.ID, "dpr_") || len(first.ID) != 36 || len(first.Evidence) != 2 {
 		t.Fatalf("canonical packet = %+v", first)
 	}
+	if strings.Contains(string(firstJSON), "0001-01-01") {
+		t.Fatalf("canonical packet contains zero-time sentinels: %s", firstJSON)
+	}
 	packet.Decision.Reasons = append(packet.Decision.Reasons, "new_fact")
 	changed, _, err := CanonicalizePacket(packet)
 	if err != nil {
@@ -203,5 +206,44 @@ func TestCanonicalizePacketNormalizesFreshnessAndAuditTimesToUTC(t *testing.T) {
 	}
 	if localPacket.Freshness.State != "fresh" || localPacket.Contradictions[0].Left.Kind != "finding" || localPacket.Contradictions[0].Left.ObservedAt.Location() != time.UTC || localPacket.Freshness.OldestObservedAt.Location() != time.UTC || localPacket.Freshness.NewestObservedAt.Location() != time.UTC || localPacket.AuditPackets[0].GeneratedAt.Location() != time.UTC {
 		t.Fatalf("canonical times are not UTC: freshness=%+v audit=%+v", localPacket.Freshness, localPacket.AuditPackets[0])
+	}
+}
+
+func TestCanonicalizePacketNormalizesNestedDecisionFields(t *testing.T) {
+	instant := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	packet := Packet{
+		GeneratedAt: instant,
+		Contradictions: []Contradiction{{
+			ID: " conflict-1 ", SubjectURN: " urn:asset:1 ", Predicate: " Public ", ResolutionState: " UNRESOLVED ",
+			Left: EvidenceReference{ID: " left ", Kind: " Finding "}, Right: EvidenceReference{ID: " right ", Kind: " Finding "},
+		}},
+		CoverageGaps: []CoverageGap{{ID: " gap-1 ", SourceID: " source-1 ", Dimension: " Coverage ", State: " PARTIAL ", Reason: " Missing data "}},
+		Affected:     []SubjectReference{{URN: " urn:asset:1 ", Kind: " Resource ", Name: " Asset 1 "}},
+		Controls:     []ControlReference{{ID: " control-1 ", Framework: " SOC 2 ", Applicability: " APPLICABLE "}},
+		AuditPackets: []AuditPacketReference{{ID: " audit-1 ", ScopeURN: " urn:asset:1 ", Digest: " sha256:audit ", GeneratedAt: instant, Freshness: " FRESH "}},
+		Actions: []ActionProposal{{
+			ID: " proposal-1 ", ActionID: " action-1 ", State: " PROPOSAL ", TargetURNs: []string{" urn:asset:1 "},
+			Rationale: " Investigate ", ApprovalRequirements: []string{" security "}, CatalogVersion: " v1 ", ProposalDigest: " sha256:proposal ",
+		}},
+		Provenance: Provenance{TraceID: " trace-1 ", ResolverIDs: []string{" resolver-1 "}, SourceIDs: []string{" source-1 "}, EvidenceDigest: " sha256:evidence ", CoverageDigest: " sha256:coverage "},
+	}
+	canonical, canonicalJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(spaced) error = %v", err)
+	}
+
+	packet.Contradictions[0] = Contradiction{ID: "conflict-1", SubjectURN: "urn:asset:1", Predicate: "public", ResolutionState: "unresolved", Left: EvidenceReference{ID: "left", Kind: "finding"}, Right: EvidenceReference{ID: "right", Kind: "finding"}}
+	packet.CoverageGaps[0] = CoverageGap{ID: "gap-1", SourceID: "source-1", Dimension: "coverage", State: "partial", Reason: "Missing data"}
+	packet.Affected[0] = SubjectReference{URN: "urn:asset:1", Kind: "resource", Name: "Asset 1"}
+	packet.Controls[0] = ControlReference{ID: "control-1", Framework: "SOC 2", Applicability: "applicable"}
+	packet.AuditPackets[0] = AuditPacketReference{ID: "audit-1", ScopeURN: "urn:asset:1", Digest: "sha256:audit", GeneratedAt: instant, Freshness: "fresh"}
+	packet.Actions[0] = ActionProposal{ID: "proposal-1", ActionID: "action-1", State: "proposal", TargetURNs: []string{"urn:asset:1"}, Rationale: "Investigate", ApprovalRequirements: []string{"security"}, CatalogVersion: "v1", ProposalDigest: "sha256:proposal"}
+	packet.Provenance = Provenance{TraceID: "trace-1", ResolverIDs: []string{"resolver-1"}, SourceIDs: []string{"source-1"}, EvidenceDigest: "sha256:evidence", CoverageDigest: "sha256:coverage"}
+	plain, plainJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(plain) error = %v", err)
+	}
+	if canonical.ID != plain.ID || string(canonicalJSON) != string(plainJSON) {
+		t.Fatalf("nested formatting changed canonical packet: spaced=%s plain=%s", canonicalJSON, plainJSON)
 	}
 }

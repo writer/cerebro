@@ -115,8 +115,8 @@ type Confidence struct {
 
 type Freshness struct {
 	State            string    `json:"state"`
-	OldestObservedAt time.Time `json:"oldest_observed_at,omitempty"`
-	NewestObservedAt time.Time `json:"newest_observed_at,omitempty"`
+	OldestObservedAt time.Time `json:"oldest_observed_at,omitzero"`
+	NewestObservedAt time.Time `json:"newest_observed_at,omitzero"`
 	RequiredStale    bool      `json:"required_stale"`
 }
 
@@ -128,9 +128,9 @@ type EvidenceReference struct {
 	SubjectURN string    `json:"subject_urn,omitempty"`
 	Predicate  string    `json:"predicate,omitempty"`
 	Value      string    `json:"value,omitempty"`
-	ObservedAt time.Time `json:"observed_at,omitempty"`
-	ValidFrom  time.Time `json:"valid_from,omitempty"`
-	ValidTo    time.Time `json:"valid_to,omitempty"`
+	ObservedAt time.Time `json:"observed_at,omitzero"`
+	ValidFrom  time.Time `json:"valid_from,omitzero"`
+	ValidTo    time.Time `json:"valid_to,omitzero"`
 	Digest     string    `json:"digest,omitempty"`
 }
 

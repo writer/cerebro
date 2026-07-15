@@ -69,19 +69,53 @@ func normalizePacket(packet Packet) Packet {
 	packet.Freshness.NewestObservedAt = packet.Freshness.NewestObservedAt.UTC()
 	packet.Provenance.ResolverIDs = normalizeStrings(packet.Provenance.ResolverIDs)
 	packet.Provenance.SourceIDs = normalizeStrings(packet.Provenance.SourceIDs)
+	packet.Provenance.TraceID = strings.TrimSpace(packet.Provenance.TraceID)
+	packet.Provenance.EvidenceDigest = strings.TrimSpace(packet.Provenance.EvidenceDigest)
+	packet.Provenance.CoverageDigest = strings.TrimSpace(packet.Provenance.CoverageDigest)
 	for index := range packet.Evidence {
 		packet.Evidence[index] = normalizeEvidenceReference(packet.Evidence[index])
 	}
 	packet.Evidence = dedupeEvidence(packet.Evidence)
 	for index := range packet.Contradictions {
+		packet.Contradictions[index].ID = strings.TrimSpace(packet.Contradictions[index].ID)
+		packet.Contradictions[index].SubjectURN = strings.TrimSpace(packet.Contradictions[index].SubjectURN)
+		packet.Contradictions[index].Predicate = strings.ToLower(strings.TrimSpace(packet.Contradictions[index].Predicate))
+		packet.Contradictions[index].ResolutionState = strings.ToLower(strings.TrimSpace(packet.Contradictions[index].ResolutionState))
 		packet.Contradictions[index].Left = normalizeEvidenceReference(packet.Contradictions[index].Left)
 		packet.Contradictions[index].Right = normalizeEvidenceReference(packet.Contradictions[index].Right)
 	}
+	for index := range packet.CoverageGaps {
+		packet.CoverageGaps[index].ID = strings.TrimSpace(packet.CoverageGaps[index].ID)
+		packet.CoverageGaps[index].SourceID = strings.TrimSpace(packet.CoverageGaps[index].SourceID)
+		packet.CoverageGaps[index].Dimension = strings.ToLower(strings.TrimSpace(packet.CoverageGaps[index].Dimension))
+		packet.CoverageGaps[index].State = strings.ToLower(strings.TrimSpace(packet.CoverageGaps[index].State))
+		packet.CoverageGaps[index].Reason = strings.TrimSpace(packet.CoverageGaps[index].Reason)
+	}
+	for index := range packet.Affected {
+		packet.Affected[index].URN = strings.TrimSpace(packet.Affected[index].URN)
+		packet.Affected[index].Kind = strings.ToLower(strings.TrimSpace(packet.Affected[index].Kind))
+		packet.Affected[index].Name = strings.TrimSpace(packet.Affected[index].Name)
+	}
+	for index := range packet.Controls {
+		packet.Controls[index].ID = strings.TrimSpace(packet.Controls[index].ID)
+		packet.Controls[index].Framework = strings.TrimSpace(packet.Controls[index].Framework)
+		packet.Controls[index].Applicability = strings.ToLower(strings.TrimSpace(packet.Controls[index].Applicability))
+	}
 	for index := range packet.Actions {
+		packet.Actions[index].ID = strings.TrimSpace(packet.Actions[index].ID)
+		packet.Actions[index].ActionID = strings.TrimSpace(packet.Actions[index].ActionID)
+		packet.Actions[index].State = strings.ToLower(strings.TrimSpace(packet.Actions[index].State))
+		packet.Actions[index].Rationale = strings.TrimSpace(packet.Actions[index].Rationale)
+		packet.Actions[index].CatalogVersion = strings.TrimSpace(packet.Actions[index].CatalogVersion)
+		packet.Actions[index].ProposalDigest = strings.TrimSpace(packet.Actions[index].ProposalDigest)
 		packet.Actions[index].TargetURNs = normalizeStrings(packet.Actions[index].TargetURNs)
 		packet.Actions[index].ApprovalRequirements = normalizeStrings(packet.Actions[index].ApprovalRequirements)
 	}
 	for index := range packet.AuditPackets {
+		packet.AuditPackets[index].ID = strings.TrimSpace(packet.AuditPackets[index].ID)
+		packet.AuditPackets[index].ScopeURN = strings.TrimSpace(packet.AuditPackets[index].ScopeURN)
+		packet.AuditPackets[index].Digest = strings.TrimSpace(packet.AuditPackets[index].Digest)
+		packet.AuditPackets[index].Freshness = strings.ToLower(strings.TrimSpace(packet.AuditPackets[index].Freshness))
 		packet.AuditPackets[index].GeneratedAt = packet.AuditPackets[index].GeneratedAt.UTC()
 	}
 	sort.Slice(packet.Contradictions, func(i, j int) bool { return packet.Contradictions[i].ID < packet.Contradictions[j].ID })
