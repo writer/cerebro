@@ -367,7 +367,7 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, evidenceledger.ErrInvalidEvidence):
 		status = http.StatusBadRequest
-	case errors.Is(err, compliance.ErrInvalidProofObligation):
+	case errors.Is(err, compliance.ErrInvalidProofObligation), errors.Is(err, compliance.ErrInvalidIdentifier), errors.Is(err, compliance.ErrInvalidRevision):
 		status = http.StatusBadRequest
 	}
 	message := err.Error()

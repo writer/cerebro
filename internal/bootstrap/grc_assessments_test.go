@@ -122,8 +122,9 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 	unsupportedPlan.Execution.Tasks = append([]complianceassessment.PlanTask(nil), planInput.Execution.Tasks...)
 	unsupportedPlan.Execution.Tasks[0].Kind = complianceassessment.PlanTaskKindProcedure
 	doAssessmentStatus(t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", unsupportedPlan, "", http.StatusBadRequest)
+	planInput.PredecessorRevision = &compliance.RevisionRef{ID: "client-controlled-lineage"}
 	createResponse := doAssessmentRequest[testAssessmentPlanResponse](t, server.Client(), http.MethodPost, server.URL+"/grc/assessment-plans", planInput, "", http.StatusCreated)
-	if createResponse.Plan.Status != complianceassessment.PlanDraft || createResponse.Plan.Version != 1 || createResponse.Plan.ID == "" {
+	if createResponse.Plan.Status != complianceassessment.PlanDraft || createResponse.Plan.Version != 1 || createResponse.Plan.ID == "" || createResponse.Plan.PredecessorRevision != nil {
 		t.Fatalf("created plan = %#v", createResponse.Plan)
 	}
 	publishResponse := doAssessmentRequest[testAssessmentPlanResponse](t, server.Client(), http.MethodPost,

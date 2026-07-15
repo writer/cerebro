@@ -138,6 +138,19 @@ WHERE tenant_id=$1 AND (
 ORDER BY CASE WHEN id=$2 THEN 0 WHEN idempotency_key=$3 THEN 1 ELSE 2 END
 LIMIT 1`
 
+const insertComplianceAssessmentSnapshot = `
+INSERT INTO compliance_assessment_snapshots
+  (tenant_id,id,run_id,program_id,scope_revision_id,plan_revision_id,record_digest,idempotency_key,request_hash,created_at,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+ON CONFLICT DO NOTHING`
+
+const selectConflictingAssessmentSnapshotDigest = `
+SELECT record_digest
+FROM compliance_assessment_snapshots
+WHERE tenant_id=$1 AND (id=$2 OR idempotency_key=$3)
+ORDER BY CASE WHEN id=$2 THEN 0 ELSE 1 END
+LIMIT 1`
+
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceAssessment, "compliance_assessment", ensureComplianceAssessmentStatements)
 }
@@ -260,11 +273,7 @@ func (s *Store) ApplyAssessmentSnapshot(ctx context.Context, eventID string, sna
 		}
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `
-INSERT INTO compliance_assessment_snapshots
-  (tenant_id,id,run_id,program_id,scope_revision_id,plan_revision_id,record_digest,idempotency_key,request_hash,created_at,record_json)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-ON CONFLICT (tenant_id,id) DO NOTHING`, snapshot.TenantID, snapshot.ID, snapshot.RunID, snapshot.ProgramID,
+	result, err := tx.ExecContext(ctx, insertComplianceAssessmentSnapshot, snapshot.TenantID, snapshot.ID, snapshot.RunID, snapshot.ProgramID,
 		snapshot.ScopeRevisionID, snapshot.PlanRevisionID, snapshot.RecordDigest, snapshot.IdempotencyKey,
 		snapshot.RequestHash, snapshot.CreatedAt.UTC(), string(recordJSON))
 	if err != nil {
@@ -272,7 +281,9 @@ ON CONFLICT (tenant_id,id) DO NOTHING`, snapshot.TenantID, snapshot.ID, snapshot
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		var existingDigest string
-		if err := tx.QueryRowContext(ctx, `SELECT record_digest FROM compliance_assessment_snapshots WHERE tenant_id=$1 AND id=$2`, snapshot.TenantID, snapshot.ID).Scan(&existingDigest); err != nil {
+		if err := tx.QueryRowContext(ctx, selectConflictingAssessmentSnapshotDigest, snapshot.TenantID, snapshot.ID, snapshot.IdempotencyKey).Scan(&existingDigest); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: conflicting assessment snapshot is unavailable", complianceassessment.ErrAssessmentConflict)
+		} else if err != nil {
 			return fmt.Errorf("read existing assessment snapshot: %w", err)
 		}
 		if existingDigest != snapshot.RecordDigest {

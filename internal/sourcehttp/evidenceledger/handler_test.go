@@ -185,6 +185,18 @@ func TestUnavailableReturnsServiceUnavailable(t *testing.T) {
 	}
 }
 
+func TestWriteErrorTreatsComplianceValidationAsBadRequest(t *testing.T) {
+	t.Parallel()
+	handler := NewHandler(nil, nil, nil, nil, 0)
+	for _, err := range []error{compliance.ErrInvalidIdentifier, compliance.ErrInvalidRevision} {
+		response := httptest.NewRecorder()
+		handler.writeError(response, err)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("writeError(%v) status = %d, want %d", err, response.Code, http.StatusBadRequest)
+		}
+	}
+}
+
 func doJSON(t *testing.T, client *http.Client, method, url string, input any, wantStatus int, output any) {
 	t.Helper()
 	var body bytes.Buffer

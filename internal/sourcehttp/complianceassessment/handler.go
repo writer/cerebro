@@ -151,6 +151,7 @@ func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	plan.RevisionID = ""
 	plan.Version = 0
 	plan.PredecessorID = ""
+	plan.PredecessorRevision = nil
 	plan.Status = complianceassessment.PlanDraft
 	plan.ContentDigest = ""
 	plan.CreatedAt = time.Time{}
