@@ -103,10 +103,6 @@ func TestVerifyDeterministicReplayAcceptsStoredMultiChunkHashAcrossOrderPermutat
 		t.Fatalf("completed run = %#v", completed)
 	}
 	planArtifact := plan
-	planArtifact.Status = PlanDraft
-	planArtifact.PublishedAt = time.Time{}
-	planArtifact.PublishedBy = ""
-	planArtifact.Version--
 	planArtifact.ContentDigest = ""
 	encodedPlan, err := canonicalBytes(planArtifact)
 	if err != nil {
