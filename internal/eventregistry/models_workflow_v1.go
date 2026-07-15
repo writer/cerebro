@@ -10,6 +10,7 @@ const (
 	WorkflowV1FindingExternalRefLinked  = "workflow.v1.finding.external_ref_linked"
 	WorkflowV1FindingStatusChanged      = "workflow.v1.finding.status_changed"
 	WorkflowV1FindingTombstoned         = "workflow.v1.finding.tombstoned"
+	WorkflowV1CompliancePrefix          = "workflow.v1.compliance."
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 	workflowV1FindingExternalRefFP   = "27b8e9fa76d210c4"
 	workflowV1FindingStatusChangedFP = "8af95aec880d1c3a"
 	workflowV1FindingTombstonedFP    = "bc92d8a4e5c7d5c3"
+	workflowV1ComplianceAggregateFP  = "e5ce86187cf139f8"
 )
 
 type Event interface {
@@ -29,6 +31,41 @@ type Event interface {
 	Version() int
 	SchemaFingerprint() string
 	EncodeAvro() ([]byte, error)
+}
+
+// ComplianceAggregateV1 carries one immutable compliance-domain revision or
+// transition. Kind is constrained to workflow.v1.compliance.* and selects the
+// subject while the payload schema remains shared across aggregate families.
+type ComplianceAggregateV1 struct {
+	Kind             string `json:"kind"`
+	TenantID         string `json:"tenant_id"`
+	AggregateType    string `json:"aggregate_type"`
+	AggregateID      string `json:"aggregate_id"`
+	RevisionID       string `json:"revision_id,omitempty"`
+	AggregateVersion int64  `json:"aggregate_version"`
+	Operation        string `json:"operation"`
+	ContentDigest    string `json:"content_digest,omitempty"`
+	PayloadJSON      string `json:"payload_json,omitempty"`
+	ActorID          string `json:"actor_id,omitempty"`
+	RecordedAt       string `json:"recorded_at"`
+}
+
+func (e ComplianceAggregateV1) Subject() string         { return e.Kind }
+func (ComplianceAggregateV1) Version() int              { return 1 }
+func (ComplianceAggregateV1) SchemaFingerprint() string { return workflowV1ComplianceAggregateFP }
+func (e ComplianceAggregateV1) EncodeAvro() ([]byte, error) {
+	w := newAvroWriter()
+	w.string(e.TenantID)
+	w.string(e.AggregateType)
+	w.string(e.AggregateID)
+	w.string(e.RevisionID)
+	w.long(e.AggregateVersion)
+	w.string(e.Operation)
+	w.string(e.ContentDigest)
+	w.string(e.PayloadJSON)
+	w.string(e.ActorID)
+	w.string(e.RecordedAt)
+	return w.bytes()
 }
 
 type DecisionRecordedV1 struct {

@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-fmt-check rust-clippy rust-test rust-wasm-check graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
@@ -16,10 +17,10 @@ GO_TEST_SHARD_WEIGHTS ?= scripts/go_package_test_weights.json
 GO_TEST_SHARD_DEFAULT_WEIGHT ?= 1
 GO_RACE_SHARD_WEIGHTS ?= scripts/go_package_race_weights.json
 GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
-BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
-GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+BUF := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
-GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/goreleaser/goreleaser/v2@v2.16.0
+GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/goreleaser/goreleaser/v2@v2.16.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
@@ -240,7 +241,17 @@ finding-rule-scaffold-test: ## Run finding rule scaffold generator tests.
 	go test ./cmd/cerebro -run 'Test(ParseFindingRuleNewArgs|ScaffoldFindingRule|FindingRuleScaffold|RenderFindingRuleGo)' -count=1 -v
 
 sourcegen-test: ## Run source generator and generated runtime projection tests.
-	go test ./internal/sourcegen ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen -count=1
+	go test ./internal/sourcegen ./internal/sourcegen/grammarproof ./internal/sourcegen/reproproof ./internal/providercontractlock ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen ./tools/sourcegrammarcheck ./tools/sourcegenreprocheck ./tools/sourceproofcheck -count=1
+
+sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
+	go run ./tools/sourcegrammarcheck
+
+sourcegen-repro-check: ## Prove sourcegen output invariance and mutation rejection.
+	go run ./tools/sourcegenreprocheck
+
+sourcegen-proof-check: ## Verify one generated source against its proof receipt and provider contract lock.
+	@test -n "$(SOURCE_ID)" || (echo "SOURCE_ID is required" >&2; exit 2)
+	go run ./tools/sourceproofcheck -source-id "$(SOURCE_ID)"
 
 openapi-definition-gen-test: ## Run OpenAPI connector definition generator tests.
 	go test ./internal/connectordefinitions/openapigen ./tools/openapidefgen -count=1 -v
@@ -343,7 +354,7 @@ lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
 	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_SOURCE_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
 proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
@@ -370,6 +381,10 @@ openapi-sync: ## Update OpenAPI route parity metadata.
 catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/catalogcheck -runtime-depth-max-queued "$(CONNECTOR_CATALOG_RUNTIME_DEPTH_MAX_QUEUED)"
 	go run ./tools/controlindex --check
+
+content-pack-check: ## Verify signed pilot content packs independently from the kernel build.
+	go test ./internal/contentpacks ./internal/config ./internal/findingdsl ./internal/findings ./internal/observability ./internal/sourceregistry ./sources/deepseek ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
+	go run ./tools/contentpackcheck -root contentpacks/pilot -allowlist contentpacks/pilot/allowlist.json -tenant content-pack-pilot -kernel-version 1.0.0
 
 control-index-generate: ## Regenerate compliance control coverage index.
 	go run ./tools/controlindex --write
@@ -490,10 +505,19 @@ openapi-ts-check: ## Verify generated TypeScript types are current.
 
 connector-onboard: ## Onboard a connector from an OpenAPI spec (SPEC=path/to/spec.yaml SOURCE_ID=name).
 	@test -n "$(SPEC)" || (echo "SPEC is required, e.g. make connector-onboard SPEC=spec.yaml SOURCE_ID=example" && exit 1)
-	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" $(if $(DRY_RUN),-dry-run,)
+	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" -output-dir="$(if $(OUTPUT_DIR),$(OUTPUT_DIR),.)" -catalog-out="$(CATALOG_OUT)" -dry-run="$(if $(DRY_RUN),$(DRY_RUN),true)" -wire="$(if $(WIRE),$(WIRE),true)"
 
 codegen-status: ## Show unified codegen status across all generators.
-	go run ./tools/codegenstatus
+	@go run ./tools/codegenstatus
+
+codegen-check: codegen-catalog-check ## Run every unique check declared by the codegen registry.
+	go run ./tools/codegenstatus -check >/dev/null
+
+codegen-catalog-generate: ## Regenerate codegen operator documentation from the registry.
+	go run ./tools/codegencatalog -write
+
+codegen-catalog-check: ## Verify codegen registry documentation is current.
+	go run ./tools/codegencatalog -check
 
 projection-template-check: ## Verify projection template specs are consistent.
 	go run ./tools/projectiontemplates -check
@@ -509,9 +533,10 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate codegen-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
+	go run ./tools/codegencatalog -check
 	python3 scripts/docs_drift_check.py
 
 readme-check: ## Check README formatting and changed-line whitespace.

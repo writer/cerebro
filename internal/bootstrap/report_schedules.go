@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,17 +13,15 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
+	"github.com/writer/cerebro/internal/reportschedule"
 )
 
 const (
-	reportSchedulePollInterval              = 30 * time.Second
-	reportScheduleMinIntervalSeconds        = int64(60)
-	reportScheduleMaxIntervalSeconds        = int64(31 * 24 * 60 * 60)
-	reportScheduleClaimBatch         uint32 = 50
-	reportScheduleSubjectType               = "report_schedule"
+	reportSchedulePollInterval       = 30 * time.Second
+	reportScheduleMinIntervalSeconds = int64(60)
+	reportScheduleMaxIntervalSeconds = int64(31 * 24 * 60 * 60)
 )
 
 type reportScheduleView struct {
@@ -281,52 +278,7 @@ func (a *App) RunDueReportSchedules(ctx context.Context) (int, error) {
 	if store == nil {
 		return 0, nil
 	}
-	due, err := store.ClaimDueReportSchedules(ctx, time.Now().UTC(), reportScheduleClaimBatch)
-	if err != nil {
-		return 0, err
-	}
-	enqueued := 0
-	var errs []error
-	for _, schedule := range due {
-		if err := a.enqueueScheduledReportRun(ctx, schedule); err != nil {
-			errs = append(errs, fmt.Errorf("report schedule %q: %w", schedule.ID, err))
-			continue
-		}
-		enqueued++
-	}
-	return enqueued, errors.Join(errs...)
-}
-
-func (a *App) enqueueScheduledReportRun(ctx context.Context, schedule *ports.ReportSchedule) error {
-	if schedule == nil {
-		return nil
-	}
-	parameters := make(map[string]any, len(schedule.Parameters)+1)
-	for key, value := range schedule.Parameters {
-		parameters[key] = value
-	}
-	if tenantID := strings.TrimSpace(schedule.TenantID); tenantID != "" {
-		if _, ok := parameters["tenant_id"]; !ok {
-			parameters["tenant_id"] = tenantID
-		}
-	}
-	job, created, err := a.jobService().Create(ctx, ports.CreateJobRequest{
-		Kind:        platformjobs.KindReportRun,
-		TenantID:    schedule.TenantID,
-		SubjectType: reportScheduleSubjectType,
-		SubjectID:   schedule.ID,
-		Payload: map[string]any{
-			"report_id":  schedule.ReportID,
-			"parameters": parameters,
-		},
-	})
-	if err != nil {
-		return err
-	}
-	if created {
-		a.jobService().StartAsync(ctx, job)
-	}
-	return nil
+	return reportschedule.RunDue(ctx, store, a.jobService(), time.Now().UTC())
 }
 
 // StartReportScheduler launches the background loop that periodically enqueues

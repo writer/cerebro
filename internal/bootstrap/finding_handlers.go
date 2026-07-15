@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 )
 
 func (a *App) handleListFindingRules(w http.ResponseWriter, r *http.Request) {
@@ -26,9 +27,7 @@ func (a *App) handleGetFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingResponse{
-		Finding: safeFindingMessage(finding),
-	})
+	writeProtoJSON(w, http.StatusOK, linktransport.FindingResponse(safeFindingMessage(finding), finding))
 }
 
 func (a *App) handleResolveFinding(w http.ResponseWriter, r *http.Request) {
