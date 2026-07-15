@@ -141,6 +141,13 @@ references become `plan_scope` and `plan_implementation` dependencies in the
 impact graph. Resolution uses the requested revision IDs only and rejects a
 missing, invalid, or ambiguous revision instead of substituting a current row.
 
+The program impact adapter accepts already-appended scope and control
+implementation events. Scope facts retain exact framework and profile
+dependencies. Implementation facts retain the exact scope plus both ends of
+every control mapping. Updated scope and implementation records carry a full
+predecessor revision; the adapter rejects later versions that provide only a
+predecessor ID.
+
 Each projected impact node represents one exact immutable revision. Its URN
 includes a digest of the full exact identity, while its attributes retain the
 tenant, domain, fact kind, stable ID, revision ID, version, content digest, and

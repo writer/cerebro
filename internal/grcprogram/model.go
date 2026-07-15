@@ -123,12 +123,13 @@ type ProgramScopeSpecification struct {
 }
 
 type ProgramScopeRevisionRecord struct {
-	TenantID      string                     `json:"tenant_id"`
-	ProgramID     string                     `json:"program_id"`
-	State         string                     `json:"state"`
-	Version       compliance.VersionMetadata `json:"version"`
-	ChangeSummary string                     `json:"change_summary"`
-	Specification ProgramScopeSpecification  `json:"specification"`
+	TenantID            string                     `json:"tenant_id"`
+	ProgramID           string                     `json:"program_id"`
+	State               string                     `json:"state"`
+	Version             compliance.VersionMetadata `json:"version"`
+	PredecessorRevision *compliance.RevisionRef    `json:"predecessor_revision,omitempty"`
+	ChangeSummary       string                     `json:"change_summary"`
+	Specification       ProgramScopeSpecification  `json:"specification"`
 }
 
 type ControlMappingRef struct {
@@ -166,6 +167,7 @@ type ControlImplementationRecord struct {
 
 type ControlImplementationSpecification struct {
 	ScopeRevisionID         string                     `json:"scope_revision_id"`
+	ExactScopeRevision      *compliance.RevisionRef    `json:"exact_scope_revision,omitempty"`
 	ControlRef              compliance.ControlRef      `json:"control_ref"`
 	StatementID             string                     `json:"statement_id,omitempty"`
 	ObjectiveIDs            []string                   `json:"objective_ids"`
@@ -191,12 +193,13 @@ type ControlImplementationSpecification struct {
 }
 
 type ControlImplementationRevisionRecord struct {
-	TenantID         string                             `json:"tenant_id"`
-	ProgramID        string                             `json:"program_id"`
-	ImplementationID string                             `json:"implementation_id"`
-	Version          compliance.VersionMetadata         `json:"version"`
-	ChangeSummary    string                             `json:"change_summary"`
-	Specification    ControlImplementationSpecification `json:"specification"`
+	TenantID            string                             `json:"tenant_id"`
+	ProgramID           string                             `json:"program_id"`
+	ImplementationID    string                             `json:"implementation_id"`
+	Version             compliance.VersionMetadata         `json:"version"`
+	PredecessorRevision *compliance.RevisionRef            `json:"predecessor_revision,omitempty"`
+	ChangeSummary       string                             `json:"change_summary"`
+	Specification       ControlImplementationSpecification `json:"specification"`
 }
 
 // ControlImplementationRecordedPayload is the bounded event payload used to
