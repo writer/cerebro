@@ -1,0 +1,28 @@
+{
+  "schema_version": "cerebro.content-pack/v1",
+  "pack_id": "connector.deepseek.generated",
+  "version": "1.0.0",
+  "manifest_digest": "sha256:d9638130d0a4f6a045ad39980aeeb3c04425823254697d69b920abc077aa5eeb",
+  "signing_key_id": "content-pack-pilot-2026",
+  "kind": "connector",
+  "load_order": 100,
+  "kernel": {
+    "min_inclusive": "1.0.0",
+    "max_exclusive": "2.0.0"
+  },
+  "contents": [
+    {
+      "id": "source.deepseek.catalog",
+      "path": "content/source-catalog.yaml",
+      "media_type": "application/yaml",
+      "sha256": "sha256:5e5883d2114d8e433042a49022c4ffc7ad4956ff480980df2fe72a0c73ae08ed",
+      "bytes": 1999
+    }
+  ],
+  "metadata": {
+    "owner": "source-runtime",
+    "certification": "generated-pilot",
+    "generated_from": "sources/deepseek/catalog.yaml",
+    "rollback_boundary": "operator allowlist"
+  }
+}
