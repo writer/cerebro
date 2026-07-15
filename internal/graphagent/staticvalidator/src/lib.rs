@@ -658,6 +658,10 @@ fn all_node_patterns_tenant_scoped(query: &str) -> bool {
             continue;
         }
         if keyword_at(query, i, "WITH") {
+            if expression_local_pattern(query, i, subqueries.len()) {
+                i += 4;
+                continue;
+            }
             let base = pending_call_imports.as_ref().unwrap_or(&scoped);
             scoped = scoped_variables_after_with(query, i + 4, base);
             pending_call_imports = None;
@@ -1356,6 +1360,22 @@ mod tests {
 
         let anonymous = "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(:Entity {tenant_id:$tenant_id})) AS count RETURN e LIMIT 25";
         assert_eq!(validate(anonymous, 100).decision, Decision::Allow);
+    }
+
+    #[test]
+    fn expression_local_with_aliases_do_not_escape_the_expression() {
+        let queries = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, EXISTS { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS found MATCH (x) RETURN x LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, COUNT { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS n MATCH (x) RETURN x LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, COLLECT { WITH e AS x MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS xs MATCH (x) RETURN x LIMIT 25",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
     }
 
     #[test]
