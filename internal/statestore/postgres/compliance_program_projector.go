@@ -36,7 +36,8 @@ func (s *Store) ApplyComplianceProgramEvent(ctx context.Context, event *cerebrov
 		return false, fmt.Errorf("begin compliance program event application: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, complianceApplicationAdvisoryLockSQL(), application.tenantID+"\x00"+application.eventID); err != nil {
+	lockKey := postgresAdvisoryLockKey(application.tenantID, application.eventID)
+	if _, err := tx.ExecContext(ctx, complianceApplicationAdvisoryLockSQL(), lockKey); err != nil {
 		return false, fmt.Errorf("lock compliance event application: %w", err)
 	}
 	existingDigest, receiptExists, err := loadComplianceApplicationReceipt(ctx, tx, application.tenantID, application.eventID)

@@ -53,7 +53,8 @@ func (s *Store) ApplyAssessmentSamplingEvent(ctx context.Context, envelope *cere
 		return false, fmt.Errorf("begin assessment sampling projection: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, assessmentSamplingAdvisoryLockSQL(), event.tenantID+"\x00"+event.aggregateType+"\x00"+event.aggregateID); err != nil {
+	lockKey := postgresAdvisoryLockKey(event.tenantID, event.aggregateType, event.aggregateID)
+	if _, err := tx.ExecContext(ctx, assessmentSamplingAdvisoryLockSQL(), lockKey); err != nil {
 		return false, fmt.Errorf("lock assessment sampling aggregate: %w", err)
 	}
 	existingDigest, exists, err := loadAssessmentSamplingReceipt(ctx, tx, event.tenantID, event.eventID)
