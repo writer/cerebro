@@ -2,59 +2,36 @@ package sourcecoverage
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/wasmjson/wasmjsontest"
 )
 
-func TestRustEvaluatorMatchesGoOracle(t *testing.T) {
-	contracts := []sourcecdk.CoverageContract{
-		{
-			SourceID: " zeta ", OwnerDomain: " platform ", AuthorityDomain: " provider ",
-			Dimensions: []sourcecdk.CoverageDimension{
-				{ID: "", Type: "entity_family", Title: "Invalid", Support: sourcecdk.CoverageSupportSupported},
-				{ID: " users ", Type: " entity_family ", Title: " Users ", Families: []string{" user ", "user"}, RuntimeFamilies: []string{" users ", "users"}, Support: " supported ", HighValue: true, KnownUnsupportedFields: []string{"legacy"}, Notes: []string{"owner review"}, EvidenceTypes: []string{"identity"}, ControlDomains: []string{"access"}, ControlRefs: []sourcecdk.CoverageControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}}},
-				{ID: "apps", Type: "entity_family", Title: "Applications", Families: []string{"application"}, Support: sourcecdk.CoverageSupportSupported, HighValue: true},
-				{ID: "remediation", Type: "remediation_state", Title: "Remediation", Support: sourcecdk.CoverageSupportPlanned, HighValue: true},
-			},
-		},
-		{
-			SourceID: "alpha",
-			Dimensions: []sourcecdk.CoverageDimension{
-				{ID: "audit", Type: "audit_event", Title: "Audit", Families: []string{"audit"}, Support: sourcecdk.CoverageSupportPartial, HighValue: true},
-				{ID: "devices", Type: "entity_family", Title: "Devices", Families: []string{"device"}, Support: sourcecdk.CoverageSupportSupported},
-			},
-		},
-	}
-	observations := []RuntimeObservation{
-		{RuntimeID: "wrong-family-failed", SourceID: "zeta", TenantID: "tenant-a", Family: "user", Status: "failed"},
-		{RuntimeID: "first-users-failed", SourceID: " zeta ", TenantID: "tenant-a", Family: "users", Status: "healthy", LastFailureCategory: "schema", LastSyncedAt: "2026-07-14T10:00:00Z"},
-		{RuntimeID: "second-users-failed", SourceID: "zeta", TenantID: "tenant-a", Family: "users", Status: "failed"},
-		{RuntimeID: "wrong-tenant", SourceID: "zeta", TenantID: "tenant-b", Family: "application", Status: "healthy"},
-		{RuntimeID: "alpha-audit", SourceID: "alpha", TenantID: "tenant-a", Family: "audit", Status: "current"},
-		{RuntimeID: "alpha-device", SourceID: "alpha", TenantID: "tenant-a", Family: "device", Status: "mystery"},
-		{RuntimeID: "ignored", SourceID: " ", TenantID: "tenant-a", Family: "audit", Status: "failed"},
-	}
+const coverageEvaluatorFuzzMaxInput = 64 << 10
 
-	for _, options := range []Options{
-		{TenantID: " tenant-a "},
-		{TenantID: "tenant-a", SourceID: " zeta "},
-	} {
-		got, err := Evaluate(context.Background(), contracts, observations, options)
-		if err != nil {
-			t.Fatalf("Evaluate(%+v) error = %v", options, err)
-		}
-		want := evaluateCoverageGoOracle(contracts, observations, options)
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("Evaluate(%+v) parity mismatch\ngot:  %#v\nwant: %#v", options, got, want)
-		}
-	}
+//go:embed testdata/wasmjson/*.json
+var coverageEvaluatorCorpus embed.FS
+
+func TestCoverageEvaluatorCorpus(t *testing.T) {
+	t.Parallel()
+	inputs := wasmjsontest.LoadInputs[coverageEvaluationRequest](t, coverageEvaluatorCorpus, "testdata/wasmjson/*.json", coverageEvaluatorFuzzMaxInput)
+	wasmjsontest.RunCorpus(t, context.Background(), inputs, coverageEvaluatorDifferential())
+}
+
+func FuzzCoverageEvaluatorParity(f *testing.F) {
+	inputs := wasmjsontest.LoadInputs[coverageEvaluationRequest](f, coverageEvaluatorCorpus, "testdata/wasmjson/*.json", coverageEvaluatorFuzzMaxInput)
+	wasmjsontest.AddSeeds(f, inputs)
+	differential := coverageEvaluatorDifferential()
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		wasmjsontest.CheckFuzzInput(t, context.Background(), raw, differential)
+	})
 }
 
 func TestCoverageEvaluatorRejectsMalformedAndOversizedInput(t *testing.T) {
@@ -130,6 +107,28 @@ func evaluateCoverageGoOracle(contracts []sourcecdk.CoverageContract, observatio
 		return records[i].DimensionID < records[j].DimensionID
 	})
 	return records
+}
+
+func coverageEvaluatorDifferential() wasmjsontest.Differential[coverageEvaluationRequest, []Record] {
+	return wasmjsontest.Differential[coverageEvaluationRequest, []Record]{
+		MaxInputBytes: coverageEvaluatorFuzzMaxInput,
+		Oracle: func(request coverageEvaluationRequest) []Record {
+			contracts, observations, options := coverageEvaluationArguments(request)
+			return evaluateCoverageGoOracle(contracts, observations, options)
+		},
+		Candidate: func(ctx context.Context, input wasmjsontest.Input[coverageEvaluationRequest]) ([]Record, error) {
+			contracts, observations, options := coverageEvaluationArguments(input.Value)
+			return Evaluate(ctx, contracts, observations, options)
+		},
+	}
+}
+
+func coverageEvaluationArguments(request coverageEvaluationRequest) ([]sourcecdk.CoverageContract, []RuntimeObservation, Options) {
+	observations := make([]RuntimeObservation, 0, len(request.Observations))
+	for _, observation := range request.Observations {
+		observations = append(observations, RuntimeObservation(observation))
+	}
+	return request.Contracts, observations, Options(request.Options)
 }
 
 func oracleCoverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.CoverageDimension, observations []RuntimeObservation, options Options) Record {

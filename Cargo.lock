@@ -73,6 +73,7 @@ dependencies = [
 name = "cerebro-graphagent-staticvalidator"
 version = "0.1.0"
 dependencies = [
+ "cerebro-wasm-guest",
  "regex",
 ]
 
@@ -80,6 +81,7 @@ dependencies = [
 name = "cerebro-mitre-evaluator"
 version = "0.1.0"
 dependencies = [
+ "cerebro-wasm-guest",
  "regex",
  "serde",
  "serde_json",
@@ -89,6 +91,7 @@ dependencies = [
 name = "cerebro-panopticon-resources"
 version = "0.1.0"
 dependencies = [
+ "cerebro-wasm-guest",
  "serde_json",
 ]
 
@@ -96,9 +99,14 @@ dependencies = [
 name = "cerebro-sourcecoverage-evaluator"
 version = "0.1.0"
 dependencies = [
+ "cerebro-wasm-guest",
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "cerebro-wasm-guest"
+version = "0.1.0"
 
 [[package]]
 name = "cfg-if"
