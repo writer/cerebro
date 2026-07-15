@@ -5,8 +5,12 @@
 //! behavior. Runtime adapters belong outside the kernel.
 
 mod identity;
+mod mandate;
+mod mission;
 
 pub use identity::{ActorId, IdentifierError, MandateId, MissionId, TenantId};
+pub use mandate::{Mandate, MandateError, MandateInput, MandateStatus};
+pub use mission::{Mission, MissionError, MissionInput, MissionState, MissionTransition};
 
 /// Identifies the first public schema revision of the native control kernel.
 pub const SCHEMA_VERSION: &str = "cerebro.control-kernel.v1";
