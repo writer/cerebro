@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-var ErrMiss = errors.New("query cache miss")
+var (
+	ErrMiss            = errors.New("query cache miss")
+	ErrPayloadTooLarge = errors.New("query cache payload exceeds configured limit")
+)
 
 type State string
 

@@ -707,6 +707,21 @@ export type Claim = {
   valid_to?: string;
 };
 
+export type ConnectorCoveragePageResponse = {
+  blind_spot_summaries?: SourceCoverageSummary[];
+  blind_spots?: SourceCoverageRecord[];
+  gate?: SourceCoverageGate;
+  generated_at?: string;
+  nhi_coverage?: NHICoverageReport;
+  page: { next_cursor?: string; page_size?: number; returned?: number; total?: number };
+  records?: SourceCoverageRecord[];
+  source_id?: string;
+  summaries?: SourceCoverageSummary[];
+  tenant_id?: string;
+  totals?: SourceCoverageTotals;
+  version?: string;
+};
+
 export type ConnectorCoverageResponse = {
   blind_spot_summaries?: SourceCoverageSummary[];
   blind_spots?: SourceCoverageRecord[];

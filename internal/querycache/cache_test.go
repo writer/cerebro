@@ -167,8 +167,8 @@ func TestMemoryCacheSetSkipsEmptyPayload(t *testing.T) {
 func TestMemoryCacheSetSkipsOversizedPayload(t *testing.T) {
 	cache := NewMemory(Options{Namespace: "test", MaxPayloadBytes: 10})
 	big := make([]byte, 11)
-	if err := cache.Set(context.Background(), "key1", big, time.Minute, time.Minute); err != nil {
-		t.Fatalf("Set(oversized) error = %v", err)
+	if err := cache.Set(context.Background(), "key1", big, time.Minute, time.Minute); !errors.Is(err, ErrPayloadTooLarge) {
+		t.Fatalf("Set(oversized) error = %v, want ErrPayloadTooLarge", err)
 	}
 	_, err := cache.Get(context.Background(), "key1")
 	if !errors.Is(err, ErrMiss) {

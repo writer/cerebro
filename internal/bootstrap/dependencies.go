@@ -100,11 +100,13 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.QueryCache = querycache.NewMemory(querycache.Options{
 			Namespace:       cfg.Cache.Namespace,
 			MaxPayloadBytes: cfg.Cache.MaxPayloadBytes,
+			MaxEntries:      cfg.Cache.MaxEntries,
 		})
 	case config.CacheDriverRedis, config.CacheDriverValkey:
 		cache, err := querycache.OpenRedis(cfg.Cache.URL, querycache.Options{
 			Namespace:       cfg.Cache.Namespace,
 			MaxPayloadBytes: cfg.Cache.MaxPayloadBytes,
+			MaxEntries:      cfg.Cache.MaxEntries,
 		})
 		if err != nil {
 			return fail(fmt.Errorf("open query cache: %w", err))

@@ -88,3 +88,27 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 		t.Fatalf("findingEvaluationRunListQuery().args[3] = %#v, want 25", got)
 	}
 }
+
+func TestFindingEvaluationRunListQuerySelectsLatestForEachRuntime(t *testing.T) {
+	query, args, err := findingEvaluationRunListQuery(ports.ListFindingEvaluationRunsRequest{
+		RuntimeIDs:      []string{"runtime-b", "runtime-a"},
+		Limit:           2,
+		LatestByRuntime: true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvaluationRunListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"SELECT DISTINCT ON (runtime_id)",
+		"runtime_id IN ($1, $2)",
+		"ORDER BY runtime_id, started_at DESC, id DESC",
+		"LIMIT $3",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvaluationRunListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if len(args) != 3 || args[0] != "runtime-b" || args[1] != "runtime-a" || args[2] != int64(2) {
+		t.Fatalf("findingEvaluationRunListQuery().args = %#v", args)
+	}
+}
