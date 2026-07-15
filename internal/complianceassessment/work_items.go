@@ -453,14 +453,14 @@ func workActionTarget(current WorkItem, input WorkActionInput, at time.Time) (Wo
 		if current.State != WorkInProgress && current.State != WorkBlocked {
 			return "", fmt.Errorf("%w: only active work can resolve", ErrInvalidTransition)
 		}
+		if input.Action == WorkActionVerifyAssurance {
+			if err := validateWorkVerification(input.Verification); err != nil {
+				return "", err
+			}
+		}
 		if current.VerificationRequired {
 			if input.Action == WorkActionVerify && len(normalizedStrings(input.EvidenceIDs)) == 0 {
 				return "", fmt.Errorf("%w: verification evidence is required", ErrInvalidTransition)
-			}
-			if input.Action == WorkActionVerifyAssurance {
-				if err := validateWorkVerification(input.Verification); err != nil {
-					return "", err
-				}
 			}
 			actorID := strings.TrimSpace(input.ActorID)
 			if actorID == current.OwnerID || actorID == current.LastRemediatedBy {

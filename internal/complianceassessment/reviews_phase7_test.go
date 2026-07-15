@@ -181,6 +181,20 @@ func TestAssuranceVerificationRecordsImmutableReceipt(t *testing.T) {
 	}
 }
 
+func TestAssuranceVerificationRequiresReceiptForAllWork(t *testing.T) {
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	current := WorkItem{
+		ID: "work-a", State: WorkInProgress, OwnerID: "owner-a", Version: 1,
+	}
+	_, _, err := ApplyWorkAction(current, current.Version, WorkActionInput{
+		Action: WorkActionVerifyAssurance, Rationale: "Verify the assessment result.",
+		ActorID: "reviewer-a", At: now,
+	})
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("ApplyWorkAction(verify assurance without receipt) error = %v, want ErrInvalidTransition", err)
+	}
+}
+
 func TestWorkActionsClearStateSpecificMetadata(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
