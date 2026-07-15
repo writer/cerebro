@@ -131,10 +131,16 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"fetch-depth: 0",
 		"actions/setup-go@",
 		"go-version-file: go.mod",
+		`actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100`,
+		`^cerebro-candidate-[0-9a-f]{40}$`,
+		`sha="${artifact_name#cerebro-candidate-}"`,
 	} {
 		if !strings.Contains(verifyCandidate, marker) {
 			t.Fatalf("verify-candidate job missing required marker %q", marker)
 		}
+	}
+	if strings.Contains(verifyCandidate, "\n          sha=\"$(jq -r .head_sha") {
+		t.Fatal("verify-candidate must derive the candidate commit from the run artifact, not the branch head")
 	}
 	if strings.Contains(release, "-env sec-dev") {
 		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")

@@ -59,13 +59,27 @@ jobs:
           workflow_path="$(jq -r .path <<< "${run}")"
           conclusion="$(jq -r .conclusion <<< "${run}")"
           event="$(jq -r .event <<< "${run}")"
-          sha="$(jq -r .head_sha <<< "${run}")"
+          head_sha="$(jq -r .head_sha <<< "${run}")"
           if [ "${workflow_path}" != ".github/workflows/cut-release.yml" ] || [ "${conclusion}" != success ]; then
             echo "ERROR: run ${CANDIDATE_RUN_ID} is not a successful Candidate Build" >&2
             exit 1
           fi
           if [ "${event}" != push ] && [ "${event}" != workflow_dispatch ]; then
             echo "ERROR: candidate run event ${event} is not allowed" >&2
+            exit 1
+          fi
+          artifacts="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100")"
+          candidate_artifacts="$(
+            jq -c '[.artifacts[] | select(.expired == false) | .name | select(test("^cerebro-candidate-[0-9a-f]{40}$"))]' <<< "${artifacts}"
+          )"
+          if [ "$(jq 'length' <<< "${candidate_artifacts}")" -ne 1 ]; then
+            echo "ERROR: run ${CANDIDATE_RUN_ID} must contain exactly one unexpired candidate artifact" >&2
+            exit 1
+          fi
+          artifact_name="$(jq -r '.[0]' <<< "${candidate_artifacts}")"
+          sha="${artifact_name#cerebro-candidate-}"
+          if [ "${event}" = push ] && [ "${sha}" != "${head_sha}" ]; then
+            echo "ERROR: push candidate artifact ${sha} does not match run head ${head_sha}" >&2
             exit 1
           fi
           echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
