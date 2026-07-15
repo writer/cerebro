@@ -3274,6 +3274,17 @@ export type IssueBootstrapTokenResponse = {
   token_id: string;
 };
 
+export type KnowledgeWriteResult = {
+  action_id?: string;
+  decision_id?: string;
+  durability_status: "recorded" | "not_recorded";
+  event_id: string;
+  outcome_id?: string;
+  projection_error_category?: "graph_projection_failed";
+  projection_status: "projected" | "pending" | "not_configured" | "failed";
+  target_count: number;
+};
+
 export type ListClaimsResponse = {
   claims?: Claim[];
 };
