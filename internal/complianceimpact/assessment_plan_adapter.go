@@ -51,7 +51,30 @@ func (a *AssessmentPlanAdapter) ProcessAssessmentPlanEvent(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	fact, err := complianceintegration.NewDomainFact(current, nil)
+	dependencies := make([]complianceintegration.DependencyRef, 0, 1+len(plan.Scope.ExactImplementationRevisions))
+	if plan.Scope.ExactScopeRevision != nil {
+		scope, adaptErr := complianceintegration.AdaptRevisionRef(plan.TenantID, "compliance.program_scope", complianceintegration.FactProgram, *plan.Scope.ExactScopeRevision)
+		if adaptErr != nil {
+			return adaptErr
+		}
+		dependency, dependencyErr := complianceintegration.NewDependencyRef(scope, "plan_scope")
+		if dependencyErr != nil {
+			return dependencyErr
+		}
+		dependencies = append(dependencies, dependency)
+	}
+	for _, exact := range plan.Scope.ExactImplementationRevisions {
+		implementation, adaptErr := complianceintegration.AdaptRevisionRef(plan.TenantID, "compliance.control_implementation", complianceintegration.FactProjection, exact)
+		if adaptErr != nil {
+			return adaptErr
+		}
+		dependency, dependencyErr := complianceintegration.NewDependencyRef(implementation, "plan_implementation")
+		if dependencyErr != nil {
+			return dependencyErr
+		}
+		dependencies = append(dependencies, dependency)
+	}
+	fact, err := complianceintegration.NewDomainFact(current, dependencies)
 	if err != nil {
 		return err
 	}

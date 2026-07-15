@@ -28,10 +28,19 @@ func TestAssessmentPlanAdapterProcessesExactUpdateLineage(t *testing.T) {
 		ID: "plan-1", RevisionID: "plan-r1", Version: 1,
 		ContentDigest: compliance.ContentDigest("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), LastModified: now.Add(-time.Hour),
 	}
+	scope := compliance.RevisionRef{
+		ID: "scope-1", RevisionID: "scope-r1", Version: 1,
+		ContentDigest: compliance.ContentDigest("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"), LastModified: now.Add(-2 * time.Hour),
+	}
+	implementation := compliance.RevisionRef{
+		ID: "implementation-1", RevisionID: "implementation-r1", Version: 1,
+		ContentDigest: compliance.ContentDigest("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"), LastModified: now.Add(-2 * time.Hour),
+	}
 	plan := complianceassessment.AssessmentPlanRevision{
 		ID: "plan-1", TenantID: "tenant-1", RevisionID: "plan-r2", Version: 2,
 		PredecessorRevision: &previous, RevisionModifiedAt: now,
 		ContentDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Scope:         complianceassessment.PlanScope{ExactScopeRevision: &scope, ExactImplementationRevisions: []compliance.RevisionRef{implementation}},
 	}
 	payload, err := json.Marshal(plan)
 	if err != nil {
@@ -55,5 +64,8 @@ func TestAssessmentPlanAdapterProcessesExactUpdateLineage(t *testing.T) {
 	replacement, ok := scheduler.signal.Replacement()
 	if !ok || replacement.RevisionID() != plan.RevisionID {
 		t.Fatalf("replacement = %#v, %v", replacement, ok)
+	}
+	if dependencies := projector.fact.Dependencies(); len(dependencies) != 2 {
+		t.Fatalf("dependencies = %#v, want exact scope and implementation", dependencies)
 	}
 }

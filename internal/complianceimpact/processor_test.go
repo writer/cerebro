@@ -60,10 +60,14 @@ func TestProcessorRejectsUpdateWithoutExactPredecessorAfterProjection(t *testing
 	}
 }
 
-type processorProjector struct{ projected bool }
+type processorProjector struct {
+	projected bool
+	fact      complianceintegration.DomainFact
+}
 
-func (p *processorProjector) ProjectFact(context.Context, complianceintegration.DomainFact) error {
+func (p *processorProjector) ProjectFact(_ context.Context, fact complianceintegration.DomainFact) error {
 	p.projected = true
+	p.fact = fact
 	return nil
 }
 

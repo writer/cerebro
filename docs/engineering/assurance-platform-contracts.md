@@ -134,6 +134,13 @@ through the impact processor before advancing the Postgres plan projection.
 Retries repeat the same graph upsert and source event ID, so monitor signal
 recording remains idempotent.
 
+Before recording a plan, the Postgres capability resolves its compatibility
+`scope_revision_id` and `implementation_revision_ids` to complete immutable
+revision references. The original fields remain present. The additive exact
+references become `plan_scope` and `plan_implementation` dependencies in the
+impact graph. Resolution uses the requested revision IDs only and rejects a
+missing, invalid, or ambiguous revision instead of substituting a current row.
+
 Each projected impact node represents one exact immutable revision. Its URN
 includes a digest of the full exact identity, while its attributes retain the
 tenant, domain, fact kind, stable ID, revision ID, version, content digest, and

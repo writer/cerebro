@@ -37,6 +37,10 @@ type PlanEventSink interface {
 	ProcessAssessmentPlanEvent(context.Context, *cerebrov1.EventEnvelope) error
 }
 
+type PlanLineageResolver interface {
+	ResolveAssessmentPlanLineage(context.Context, string, string, string, []string) (compliance.RevisionRef, []compliance.RevisionRef, error)
+}
+
 func (s *Service) WithPlanEventSink(sink PlanEventSink) *Service {
 	if s != nil {
 		s.planEventSink = sink
@@ -114,6 +118,14 @@ func (s *Service) RecordPlan(ctx context.Context, plan AssessmentPlanRevision, a
 		plan.PredecessorRevision = &predecessor
 	}
 	plan.RevisionModifiedAt = now
+	if resolver, ok := s.store.(PlanLineageResolver); ok {
+		scopeRevision, implementationRevisions, resolveErr := resolver.ResolveAssessmentPlanLineage(ctx, plan.TenantID, plan.Scope.ProgramID, plan.Scope.ScopeRevisionID, plan.Scope.ImplementationRevisions)
+		if resolveErr != nil {
+			return AssessmentPlanRevision{}, fmt.Errorf("resolve assessment plan lineage: %w", resolveErr)
+		}
+		plan.Scope.ExactScopeRevision = &scopeRevision
+		plan.Scope.ExactImplementationRevisions = implementationRevisions
+	}
 	plan.ContentDigest = ""
 	digest, err := semanticHash(plan)
 	if err != nil {
