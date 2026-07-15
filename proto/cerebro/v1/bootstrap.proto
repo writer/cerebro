@@ -671,6 +671,10 @@ message WriteDecisionRequest {
 message WriteDecisionResponse {
   string decision_id = 1;
   uint32 target_count = 2;
+  string event_id = 3;
+  string durability_status = 4;
+  string projection_status = 5;
+  string projection_error_category = 6;
 }
 
 // WriteActionRequest records one action tied to recommendation context and optional decision state.
@@ -697,6 +701,10 @@ message WriteActionResponse {
   string action_id = 1;
   string decision_id = 2;
   uint32 target_count = 3;
+  string event_id = 4;
+  string durability_status = 5;
+  string projection_status = 6;
+  string projection_error_category = 7;
 }
 
 // WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
@@ -721,6 +729,10 @@ message WriteOutcomeResponse {
   string outcome_id = 1;
   string decision_id = 2;
   uint32 target_count = 3;
+  string event_id = 4;
+  string durability_status = 5;
+  string projection_status = 6;
+  string projection_error_category = 7;
 }
 
 // ReplayWorkflowEventsRequest replays durable workflow events into graph projections.

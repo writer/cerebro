@@ -5320,11 +5320,15 @@ func (x *WriteDecisionRequest) GetMetadata() *structpb.Struct {
 
 // WriteDecisionResponse returns the recorded decision identifier and target count.
 type WriteDecisionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DecisionId    string                 `protobuf:"bytes,1,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	TargetCount   uint32                 `protobuf:"varint,2,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	DecisionId              string                 `protobuf:"bytes,1,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	TargetCount             uint32                 `protobuf:"varint,2,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
+	EventId                 string                 `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	DurabilityStatus        string                 `protobuf:"bytes,4,opt,name=durability_status,json=durabilityStatus,proto3" json:"durability_status,omitempty"`
+	ProjectionStatus        string                 `protobuf:"bytes,5,opt,name=projection_status,json=projectionStatus,proto3" json:"projection_status,omitempty"`
+	ProjectionErrorCategory string                 `protobuf:"bytes,6,opt,name=projection_error_category,json=projectionErrorCategory,proto3" json:"projection_error_category,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *WriteDecisionResponse) Reset() {
@@ -5369,6 +5373,34 @@ func (x *WriteDecisionResponse) GetTargetCount() uint32 {
 		return x.TargetCount
 	}
 	return 0
+}
+
+func (x *WriteDecisionResponse) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *WriteDecisionResponse) GetDurabilityStatus() string {
+	if x != nil {
+		return x.DurabilityStatus
+	}
+	return ""
+}
+
+func (x *WriteDecisionResponse) GetProjectionStatus() string {
+	if x != nil {
+		return x.ProjectionStatus
+	}
+	return ""
+}
+
+func (x *WriteDecisionResponse) GetProjectionErrorCategory() string {
+	if x != nil {
+		return x.ProjectionErrorCategory
+	}
+	return ""
 }
 
 // WriteActionRequest records one action tied to recommendation context and optional decision state.
@@ -5530,12 +5562,16 @@ func (x *WriteActionRequest) GetMetadata() *structpb.Struct {
 
 // WriteActionResponse returns the recorded action identifier, optional decision, and target count.
 type WriteActionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ActionId      string                 `protobuf:"bytes,1,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
-	DecisionId    string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	TargetCount   uint32                 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	ActionId                string                 `protobuf:"bytes,1,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
+	DecisionId              string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	TargetCount             uint32                 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
+	EventId                 string                 `protobuf:"bytes,4,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	DurabilityStatus        string                 `protobuf:"bytes,5,opt,name=durability_status,json=durabilityStatus,proto3" json:"durability_status,omitempty"`
+	ProjectionStatus        string                 `protobuf:"bytes,6,opt,name=projection_status,json=projectionStatus,proto3" json:"projection_status,omitempty"`
+	ProjectionErrorCategory string                 `protobuf:"bytes,7,opt,name=projection_error_category,json=projectionErrorCategory,proto3" json:"projection_error_category,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *WriteActionResponse) Reset() {
@@ -5587,6 +5623,34 @@ func (x *WriteActionResponse) GetTargetCount() uint32 {
 		return x.TargetCount
 	}
 	return 0
+}
+
+func (x *WriteActionResponse) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *WriteActionResponse) GetDurabilityStatus() string {
+	if x != nil {
+		return x.DurabilityStatus
+	}
+	return ""
+}
+
+func (x *WriteActionResponse) GetProjectionStatus() string {
+	if x != nil {
+		return x.ProjectionStatus
+	}
+	return ""
+}
+
+func (x *WriteActionResponse) GetProjectionErrorCategory() string {
+	if x != nil {
+		return x.ProjectionErrorCategory
+	}
+	return ""
 }
 
 // WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
@@ -5732,12 +5796,16 @@ func (x *WriteOutcomeRequest) GetMetadata() *structpb.Struct {
 
 // WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.
 type WriteOutcomeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OutcomeId     string                 `protobuf:"bytes,1,opt,name=outcome_id,json=outcomeId,proto3" json:"outcome_id,omitempty"`
-	DecisionId    string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	TargetCount   uint32                 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	OutcomeId               string                 `protobuf:"bytes,1,opt,name=outcome_id,json=outcomeId,proto3" json:"outcome_id,omitempty"`
+	DecisionId              string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	TargetCount             uint32                 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
+	EventId                 string                 `protobuf:"bytes,4,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	DurabilityStatus        string                 `protobuf:"bytes,5,opt,name=durability_status,json=durabilityStatus,proto3" json:"durability_status,omitempty"`
+	ProjectionStatus        string                 `protobuf:"bytes,6,opt,name=projection_status,json=projectionStatus,proto3" json:"projection_status,omitempty"`
+	ProjectionErrorCategory string                 `protobuf:"bytes,7,opt,name=projection_error_category,json=projectionErrorCategory,proto3" json:"projection_error_category,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *WriteOutcomeResponse) Reset() {
@@ -5789,6 +5857,34 @@ func (x *WriteOutcomeResponse) GetTargetCount() uint32 {
 		return x.TargetCount
 	}
 	return 0
+}
+
+func (x *WriteOutcomeResponse) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *WriteOutcomeResponse) GetDurabilityStatus() string {
+	if x != nil {
+		return x.DurabilityStatus
+	}
+	return ""
+}
+
+func (x *WriteOutcomeResponse) GetProjectionStatus() string {
+	if x != nil {
+		return x.ProjectionStatus
+	}
+	return ""
+}
+
+func (x *WriteOutcomeResponse) GetProjectionErrorCategory() string {
+	if x != nil {
+		return x.ProjectionErrorCategory
+	}
+	return ""
 }
 
 // ReplayWorkflowEventsRequest replays durable workflow events into graph projections.
@@ -7559,11 +7655,15 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x0e \x01(\x01R\n" +
 	"confidence\x123\n" +
-	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"[\n" +
+	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\x8c\x02\n" +
 	"\x15WriteDecisionResponse\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\tR\n" +
 	"decisionId\x12!\n" +
-	"\ftarget_count\x18\x02 \x01(\rR\vtargetCount\"\xdc\x04\n" +
+	"\ftarget_count\x18\x02 \x01(\rR\vtargetCount\x12\x19\n" +
+	"\bevent_id\x18\x03 \x01(\tR\aeventId\x12+\n" +
+	"\x11durability_status\x18\x04 \x01(\tR\x10durabilityStatus\x12+\n" +
+	"\x11projection_status\x18\x05 \x01(\tR\x10projectionStatus\x12:\n" +
+	"\x19projection_error_category\x18\x06 \x01(\tR\x17projectionErrorCategory\"\xdc\x04\n" +
 	"\x12WriteActionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12+\n" +
 	"\x11recommendation_id\x18\x02 \x01(\tR\x10recommendationId\x12!\n" +
@@ -7586,12 +7686,16 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"confidence\x18\r \x01(\x01R\n" +
 	"confidence\x12%\n" +
 	"\x0eauto_generated\x18\x0e \x01(\bR\rautoGenerated\x123\n" +
-	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"v\n" +
+	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xa7\x02\n" +
 	"\x13WriteActionResponse\x12\x1b\n" +
 	"\taction_id\x18\x01 \x01(\tR\bactionId\x12\x1f\n" +
 	"\vdecision_id\x18\x02 \x01(\tR\n" +
 	"decisionId\x12!\n" +
-	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\"\x96\x04\n" +
+	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\x12\x19\n" +
+	"\bevent_id\x18\x04 \x01(\tR\aeventId\x12+\n" +
+	"\x11durability_status\x18\x05 \x01(\tR\x10durabilityStatus\x12+\n" +
+	"\x11projection_status\x18\x06 \x01(\tR\x10projectionStatus\x12:\n" +
+	"\x19projection_error_category\x18\a \x01(\tR\x17projectionErrorCategory\"\x96\x04\n" +
 	"\x13WriteOutcomeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vdecision_id\x18\x02 \x01(\tR\n" +
@@ -7612,13 +7716,17 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\f \x01(\x01R\n" +
 	"confidence\x123\n" +
-	"\bmetadata\x18\r \x01(\v2\x17.google.protobuf.StructR\bmetadata\"y\n" +
+	"\bmetadata\x18\r \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xaa\x02\n" +
 	"\x14WriteOutcomeResponse\x12\x1d\n" +
 	"\n" +
 	"outcome_id\x18\x01 \x01(\tR\toutcomeId\x12\x1f\n" +
 	"\vdecision_id\x18\x02 \x01(\tR\n" +
 	"decisionId\x12!\n" +
-	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\"\x9e\x02\n" +
+	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\x12\x19\n" +
+	"\bevent_id\x18\x04 \x01(\tR\aeventId\x12+\n" +
+	"\x11durability_status\x18\x05 \x01(\tR\x10durabilityStatus\x12+\n" +
+	"\x11projection_status\x18\x06 \x01(\tR\x10projectionStatus\x12:\n" +
+	"\x19projection_error_category\x18\a \x01(\tR\x17projectionErrorCategory\"\x9e\x02\n" +
 	"\x1bReplayWorkflowEventsRequest\x12\x1f\n" +
 	"\vkind_prefix\x18\x01 \x01(\tR\n" +
 	"kindPrefix\x12\x1b\n" +

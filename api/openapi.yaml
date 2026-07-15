@@ -4697,32 +4697,48 @@ paths:
       tags:
         - Knowledge
       responses:
-        '200':
-          description: Decision write result.
+        '201':
+          description: Durable decision event and independent graph projection status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeWriteResult'
   /platform/knowledge/actions:
     post:
       summary: Record platform action
       tags:
         - Knowledge
       responses:
-        '200':
-          description: Action write result.
+        '201':
+          description: Durable action event and independent graph projection status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeWriteResult'
   /platform/knowledge/actions/recommendation:
     post:
       summary: Record recommended action
       tags:
         - Knowledge
       responses:
-        '200':
-          description: Action write result.
+        '201':
+          description: Durable recommended-action event and independent graph projection status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeWriteResult'
   /platform/knowledge/outcomes:
     post:
       summary: Record platform outcome
       tags:
         - Knowledge
       responses:
-        '200':
-          description: Outcome write result.
+        '201':
+          description: Durable outcome event and independent graph projection status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeWriteResult'
   /platform/workflow/replay:
     post:
       summary: Replay workflow events
@@ -13148,6 +13164,35 @@ components:
         candidate_state:
           type: string
           enum: [dedupe_candidate]
+    KnowledgeWriteResult:
+      type: object
+      required:
+        - target_count
+        - event_id
+        - durability_status
+        - projection_status
+      properties:
+        decision_id:
+          type: string
+        action_id:
+          type: string
+        outcome_id:
+          type: string
+        target_count:
+          type: integer
+          format: int32
+          minimum: 0
+        event_id:
+          type: string
+        durability_status:
+          type: string
+          enum: [recorded, not_recorded]
+        projection_status:
+          type: string
+          enum: [projected, pending, not_configured, failed]
+        projection_error_category:
+          type: string
+          enum: [graph_projection_failed]
     GRCUploadResponse:
       type: object
       properties:

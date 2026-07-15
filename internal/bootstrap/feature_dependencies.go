@@ -162,7 +162,9 @@ func newKnowledgeFeatureDeps(deps Dependencies) knowledgeFeatureDeps {
 }
 
 func newKnowledgeFeatureService(deps knowledgeFeatureDeps) *knowledge.Service {
-	return knowledge.New(deps.GraphQueries, deps.ProjectionGraph).WithAppendLog(deps.AppendLog)
+	return knowledge.New(deps.GraphQueries, deps.ProjectionGraph).
+		WithAppendLog(deps.AppendLog).
+		WithDurabilityMode(knowledge.DurabilityRequired)
 }
 
 type graphQueryFeatureDeps struct {

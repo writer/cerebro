@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
+	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
@@ -48,10 +49,7 @@ func (a *App) handleWriteDecision(w http.ResponseWriter, r *http.Request) {
 		writeKnowledgeError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusCreated, &cerebrov1.WriteDecisionResponse{
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	})
+	writeProtoJSON(w, http.StatusCreated, knowledgetransport.DecisionResponse(result))
 }
 
 func (a *App) handleWriteAction(w http.ResponseWriter, r *http.Request) {
@@ -89,11 +87,7 @@ func (a *App) handleWriteAction(w http.ResponseWriter, r *http.Request) {
 		writeKnowledgeError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusCreated, &cerebrov1.WriteActionResponse{
-		ActionId:    result.ActionID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	})
+	writeProtoJSON(w, http.StatusCreated, knowledgetransport.ActionResponse(result))
 }
 
 func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
@@ -129,11 +123,7 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 		writeKnowledgeError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusCreated, &cerebrov1.WriteOutcomeResponse{
-		OutcomeId:   result.OutcomeID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	})
+	writeProtoJSON(w, http.StatusCreated, knowledgetransport.OutcomeResponse(result))
 }
 
 func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request) {

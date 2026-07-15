@@ -182,6 +182,11 @@ payload classification, retention, capacity limits, and emergency purge rules.
 
 Neo4j or Aura is required for graph projection, graph queries, graph health, graph ingest runs, impact queries, and graph-agent flows.
 
+Knowledge decision, action, and outcome writes remain accepted when JetStream records the event but graph projection
+fails. The response identifies this state with `durability_status=recorded`, `projection_status=failed`, and an
+`event_id`. After graph service is restored, replay the tenant-scoped `workflow.v1.knowledge.*` events through
+`POST /platform/workflow/replay`. Do not repeat an external action to repair its graph projection.
+
 Check:
 
 - `CEREBRO_GRAPH_STORE_DRIVER=neo4j`

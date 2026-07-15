@@ -43,6 +43,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/knowledge"
+	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
@@ -1094,10 +1095,7 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{}, req.Msg.GetTargetIds()...), append(req.Msg.GetEvidenceIds(), req.Msg.GetActionIds()...)...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteDecision(ctx, knowledge.DecisionWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteDecision(ctx, knowledge.DecisionWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionType:  req.Msg.GetDecisionType(),
 		Status:        req.Msg.GetStatus(),
@@ -1117,10 +1115,7 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteDecisionResponse{
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	return connect.NewResponse(knowledgetransport.DecisionResponse(result)), nil
 }
 
 func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request[cerebrov1.WriteActionRequest]) (*connect.Response[cerebrov1.WriteActionResponse], error) {
@@ -1131,10 +1126,7 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...), req.Msg.GetRecommendationId())...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteAction(ctx, knowledge.ActionWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteAction(ctx, knowledge.ActionWriteRequest{
 		ID:               req.Msg.GetId(),
 		RecommendationID: req.Msg.GetRecommendationId(),
 		InsightType:      req.Msg.GetInsightType(),
@@ -1154,11 +1146,7 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteActionResponse{
-		ActionId:    result.ActionID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	return connect.NewResponse(knowledgetransport.ActionResponse(result)), nil
 }
 
 func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Request[cerebrov1.WriteOutcomeRequest]) (*connect.Response[cerebrov1.WriteOutcomeResponse], error) {
@@ -1169,10 +1157,7 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionID:    req.Msg.GetDecisionId(),
 		OutcomeType:   req.Msg.GetOutcomeType(),
@@ -1190,11 +1175,7 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteOutcomeResponse{
-		OutcomeId:   result.OutcomeID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	return connect.NewResponse(knowledgetransport.OutcomeResponse(result)), nil
 }
 
 func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[cerebrov1.ReplayWorkflowEventsRequest]) (*connect.Response[cerebrov1.ReplayWorkflowEventsResponse], error) {
