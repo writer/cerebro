@@ -67,11 +67,13 @@ func CalculateSourceRunway(input SourceRunwayInput) (SourceRunway, error) {
 	}
 	result := SourceRunway{TenantID: input.TenantID, Objective: provenance(input.Objective), SourceProof: provenance(input.SourceProof), State: RunwayHealthy}
 	deadlines := make([]time.Time, 0, 3)
+	var stalenessDeadline time.Time
 	if input.LastSuccessfulAt.IsZero() {
 		result.State = RunwayUnknown
 		result.Reasons = append(result.Reasons, RunwayCheckpointMissing)
 	} else {
-		deadlines = append(deadlines, input.LastSuccessfulAt.UTC().Add(input.MaximumStaleness))
+		stalenessDeadline = input.LastSuccessfulAt.UTC().Add(input.MaximumStaleness)
+		deadlines = append(deadlines, stalenessDeadline)
 	}
 	if !input.CredentialExpiresAt.IsZero() {
 		deadlines = append(deadlines, input.CredentialExpiresAt.UTC())
@@ -93,7 +95,7 @@ func CalculateSourceRunway(input SourceRunwayInput) (SourceRunway, error) {
 		result.Remaining = result.BlindAt.Sub(input.AsOf.UTC())
 		if !result.BlindAt.After(input.AsOf.UTC()) {
 			result.State = RunwayBlind
-			if !input.LastSuccessfulAt.IsZero() {
+			if !stalenessDeadline.IsZero() && !stalenessDeadline.After(input.AsOf.UTC()) {
 				result.Reasons = append(result.Reasons, RunwayCollectionOverdue)
 			}
 		} else if result.State == RunwayHealthy && result.Remaining <= 2*input.ExpectedCadence {

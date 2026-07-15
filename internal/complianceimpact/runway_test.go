@@ -54,6 +54,18 @@ func TestCalculateSourceRunway(t *testing.T) {
 			t.Fatalf("result = %#v", result)
 		}
 	})
+	t.Run("overdue collection is blind", func(t *testing.T) {
+		input := base
+		input.LastSuccessfulAt = asOf.Add(-9 * time.Hour)
+		result, err := CalculateSourceRunway(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantReasons := []RunwayReason{RunwayCollectionOverdue}
+		if result.State != RunwayBlind || !slices.Equal(result.Reasons, wantReasons) {
+			t.Fatalf("result = %#v, want reasons %v", result, wantReasons)
+		}
+	})
 	t.Run("future checkpoint is rejected", func(t *testing.T) {
 		input := base
 		input.LastSuccessfulAt = asOf.Add(time.Minute)
@@ -96,6 +108,52 @@ func TestCalculateSourceRunwayMissingCheckpointExpiredDeadlineReasons(t *testing
 				t.Fatal(err)
 			}
 			wantReasons := []RunwayReason{RunwayCheckpointMissing, testCase.wantReason}
+			if first.State != RunwayBlind || !slices.Equal(first.Reasons, wantReasons) || hasRunwayReason(first.Reasons, RunwayCollectionOverdue) {
+				t.Fatalf("result = %#v, want reasons %v", first, wantReasons)
+			}
+			second, err := CalculateSourceRunway(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second.Digest != first.Digest || !slices.Equal(second.Reasons, first.Reasons) {
+				t.Fatalf("runway output is not stable: first=%#v second=%#v", first, second)
+			}
+		})
+	}
+}
+
+func TestCalculateSourceRunwayExpiredNonStalenessDeadlineIsNotCollectionOverdue(t *testing.T) {
+	asOf := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		expire     func(*SourceRunwayInput)
+		wantReason RunwayReason
+	}{
+		{
+			name: "expired credential",
+			expire: func(input *SourceRunwayInput) {
+				input.CredentialExpiresAt = asOf.Add(-30 * time.Minute)
+			},
+			wantReason: RunwaySourceAuthExpiring,
+		},
+		{
+			name: "expired evidence",
+			expire: func(input *SourceRunwayInput) {
+				input.EvidenceExpiresAt = asOf.Add(-30 * time.Minute)
+			},
+			wantReason: RunwayEvidenceExpiring,
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			input := sourceRunwayInput(asOf)
+			testCase.expire(&input)
+
+			first, err := CalculateSourceRunway(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantReasons := []RunwayReason{testCase.wantReason}
 			if first.State != RunwayBlind || !slices.Equal(first.Reasons, wantReasons) || hasRunwayReason(first.Reasons, RunwayCollectionOverdue) {
 				t.Fatalf("result = %#v, want reasons %v", first, wantReasons)
 			}

@@ -155,6 +155,7 @@ type AdapterResult struct {
 // exact-revision mappings. It performs no external I/O and returns no partial
 // output when request validation or a configured work limit fails.
 func AdaptCompatibility(request AdapterRequest) (AdapterResult, error) {
+	request.TenantID = strings.TrimSpace(request.TenantID)
 	if err := validateAdapterRequest(request); err != nil {
 		return AdapterResult{}, err
 	}

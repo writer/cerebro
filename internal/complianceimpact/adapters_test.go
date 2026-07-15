@@ -171,6 +171,38 @@ func TestCompatibilityAdapterRejectsTenantBoundaryInvalidMappingsAndLimits(t *te
 	}
 }
 
+func TestCompatibilityAdapterNormalizesRequestTenantIDBeforeExecution(t *testing.T) {
+	root := adapterRevision(t, complianceintegration.FactPolicy, "policy-source", 1)
+	request := adapterRequest(adapterImpact(t, root), []CompatibilityMapping{adapterMapping(root, "policy-1", "review.complete")})
+
+	want, err := AdaptCompatibility(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.TenantID = "  tenant-a  "
+	got, err := AdaptCompatibility(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TenantID != "tenant-a" {
+		t.Fatalf("tenant id = %q, want canonical tenant", got.TenantID)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("padded tenant changed adapter result:\ngot=%#v\nwant=%#v", got, want)
+	}
+	gotBytes, err := CanonicalAdapterBytes(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantBytes, err := CanonicalAdapterBytes(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotBytes) != string(wantBytes) {
+		t.Fatalf("padded tenant changed canonical replay bytes:\ngot=%s\nwant=%s", gotBytes, wantBytes)
+	}
+}
+
 func TestAdapterInputActionCountDoesNotWrapAtUint32Boundary(t *testing.T) {
 	count, ok := addAdapterActionCount(uint64(math.MaxUint32)-1, 1)
 	if !ok || count != uint64(math.MaxUint32) || adapterActionCountExceedsLimit(count, math.MaxUint32) {
