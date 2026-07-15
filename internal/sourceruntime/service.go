@@ -1117,8 +1117,11 @@ func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) 
 	if opaque == "" {
 		return terminal
 	}
-	envelope, ok := sourcecdk.DecodeCursorEnvelope(opaque)
+	envelope, ok := decodeStandardCursorEnvelope(opaque)
 	if !ok {
+		if sourcecdk.ResumableCursorOpaque(opaque) {
+			return terminal
+		}
 		terminal.CursorOpaque = ""
 		return terminal
 	}
@@ -1136,8 +1139,8 @@ func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) 
 }
 
 func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
-	existingEnvelope, existingOK := sourcecdk.DecodeCursorEnvelope(existing.GetCursorOpaque())
-	nextEnvelope, nextOK := sourcecdk.DecodeCursorEnvelope(next.GetCursorOpaque())
+	existingEnvelope, existingOK := decodeStandardCursorEnvelope(existing.GetCursorOpaque())
+	nextEnvelope, nextOK := decodeStandardCursorEnvelope(next.GetCursorOpaque())
 	if !existingOK || !nextOK {
 		return next
 	}
@@ -1155,6 +1158,21 @@ func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *c
 	merged := cloneCheckpoint(next)
 	merged.CursorOpaque = opaque
 	return merged
+}
+
+func decodeStandardCursorEnvelope(opaque string) (sourcecdk.CursorEnvelope, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(opaque)), &fields); err != nil {
+		return sourcecdk.CursorEnvelope{}, false
+	}
+	for field := range fields {
+		switch field {
+		case "version", "source", "family", "mode", "resumable_checkpoint", "token", "watermark", "boundary_ids", "extra":
+		default:
+			return sourcecdk.CursorEnvelope{}, false
+		}
+	}
+	return sourcecdk.DecodeCursorEnvelope(opaque)
 }
 
 func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string) map[string]string {

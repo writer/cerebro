@@ -1905,6 +1905,37 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 	}
 }
 
+func TestMergeEqualWatermarkCheckpointPreservesProviderCursor(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	existingCursor := `{"source":"cosmo.message","resumable_checkpoint":true,"since":"2026-06-14T00:00:00Z","until":"2026-06-15T00:00:00Z","event_type_index":1,"offset":100}`
+	nextCursor := `{"source":"cosmo.message","resumable_checkpoint":true,"since":"2026-06-15T00:00:00Z","until":"2026-06-16T00:00:00Z","event_type_index":2,"offset":200}`
+
+	merged := mergeEqualWatermarkCheckpoint(
+		&cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark),
+			CursorOpaque: existingCursor,
+		},
+		&cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark),
+			CursorOpaque: nextCursor,
+		},
+	)
+
+	if got := merged.GetCursorOpaque(); got != nextCursor {
+		t.Fatalf("merged provider cursor = %q, want %q", got, nextCursor)
+	}
+}
+
+func TestCheckpointWithoutContinuationTokenPreservesProviderCursor(t *testing.T) {
+	providerCursor := `{"source":"provider.events","resumable_checkpoint":true,"since":"2026-06-15T00:00:00Z","token":"provider-token"}`
+
+	terminal := checkpointWithoutContinuationToken(&cerebrov1.SourceCheckpoint{CursorOpaque: providerCursor})
+
+	if got := terminal.GetCursorOpaque(); got != providerCursor {
+		t.Fatalf("terminal provider cursor = %q, want %q", got, providerCursor)
+	}
+}
+
 func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(nilEventSource{})
 	if err != nil {
