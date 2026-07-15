@@ -7,6 +7,10 @@ on:
         description: Open production configuration pull request number
         required: true
         type: number
+      head_sha:
+        description: Full commit SHA reviewed in the pull request
+        required: true
+        type: string
       reason:
         description: Reason for approving the production configuration change
         required: true
@@ -38,7 +42,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
         run: >-
           python3 scripts/approve_production_config_change.py
           --repository "${GITHUB_REPOSITORY}"
           --pr-number "${PR_NUMBER}"
+          --head-sha "${HEAD_SHA}"

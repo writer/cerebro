@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 
 from release_promotion import (
@@ -12,7 +13,9 @@ from release_promotion import (
 )
 
 
-def approve_pull_request(repository: str, pr_number: int) -> str:
+def approve_pull_request(repository: str, pr_number: int, head_sha: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        raise RuntimeError("--head-sha must be a full lowercase commit SHA")
     pull = gh_json(["api", f"repos/{repository}/pulls/{pr_number}"])
     if not isinstance(pull, dict) or pull.get("state") != "open":
         raise RuntimeError(f"Pull request #{pr_number} is not open")
@@ -30,10 +33,14 @@ def approve_pull_request(repository: str, pr_number: int) -> str:
         raise RuntimeError(
             f"Pull request #{pr_number} must target main from this repository"
         )
-    head_sha = str(head.get("sha") or "")
+    current_head_sha = str(head.get("sha") or "")
+    if current_head_sha != head_sha:
+        raise RuntimeError(
+            f"Pull request #{pr_number} head changed; review and approve {current_head_sha}"
+        )
     server_url = os.environ.get("GITHUB_SERVER_URL", "")
     run_id = os.environ.get("GITHUB_RUN_ID", "")
-    if not head_sha or not server_url or not run_id.isdigit():
+    if not server_url or not run_id.isdigit():
         raise RuntimeError("Could not record production configuration approval")
     target_url = f"{server_url}/{repository}/actions/runs/{run_id}"
     post_commit_status(
@@ -53,6 +60,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
     parser.add_argument("--pr-number", type=int, required=True)
+    parser.add_argument("--head-sha", required=True)
     return parser.parse_args(argv)
 
 
@@ -60,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     if not args.repository:
         raise RuntimeError("GITHUB_REPOSITORY or --repository is required")
-    target_url = approve_pull_request(args.repository, args.pr_number)
+    target_url = approve_pull_request(args.repository, args.pr_number, args.head_sha)
     print(f"Production configuration PR #{args.pr_number} approved: {target_url}")
     return 0
 

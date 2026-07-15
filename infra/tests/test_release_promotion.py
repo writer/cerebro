@@ -773,12 +773,60 @@ class ReleasePromotionTest(unittest.TestCase):
 
         self.assertTrue(approved)
 
+    def test_protected_approval_survives_more_than_one_status_page(self) -> None:
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4300"
+        first_page = [
+            {
+                "context": refresh_release_promotion_gate.CONTEXT,
+                "state": "pending",
+                "creator": {"login": "github-actions[bot]"},
+            }
+            for _ in range(100)
+        ]
+        approval_status = {
+            "context": release_promotion.PRODUCTION_CONFIG_APPROVAL_CONTEXT,
+            "state": "success",
+            "target_url": run_url,
+            "creator": {"login": "github-actions[bot]"},
+        }
+        workflow_run = {
+            "id": 4300,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "path": refresh_release_promotion_gate.PRODUCTION_CONFIG_WORKFLOW_PATH,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        approvals = [
+            {
+                "state": "approved",
+                "environments": [{"name": "production-config-change"}],
+            }
+        ]
+        with patch(
+            "refresh_release_promotion_gate.gh_json",
+            side_effect=[
+                first_page,
+                [approval_status],
+                workflow_run,
+                approvals,
+            ],
+        ) as github:
+            approved = refresh_release_promotion_gate._production_config_approved(
+                "WriterInternal/cerebro", "head-sha"
+            )
+
+        self.assertTrue(approved)
+        self.assertIn("page=2", github.call_args_list[1].args[0][-1])
+
     def test_production_config_approval_records_exact_pr_commit(self) -> None:
+        head_sha = "a" * 40
         pull = {
             "state": "open",
             "base": {"ref": "main"},
             "head": {
-                "sha": "config-head",
+                "sha": head_sha,
                 "repo": {"full_name": "WriterInternal/cerebro"},
             },
         }
@@ -797,7 +845,7 @@ class ReleasePromotionTest(unittest.TestCase):
             ),
         ):
             target_url = approve_production_config_change.approve_pull_request(
-                "WriterInternal/cerebro", 42
+                "WriterInternal/cerebro", 42, head_sha
             )
 
         self.assertEqual(
@@ -806,12 +854,35 @@ class ReleasePromotionTest(unittest.TestCase):
         )
         post_status.assert_called_once_with(
             "WriterInternal/cerebro",
-            sha="config-head",
+            sha=head_sha,
             state="success",
             context=release_promotion.PRODUCTION_CONFIG_APPROVAL_CONTEXT,
             description="Protected production configuration approval for PR #42",
             target_url=target_url,
         )
+
+    def test_production_config_approval_rejects_a_changed_pr_head(self) -> None:
+        reviewed_sha = "a" * 40
+        pull = {
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {
+                "sha": "b" * 40,
+                "repo": {"full_name": "WriterInternal/cerebro"},
+            },
+        }
+        with (
+            patch("approve_production_config_change.gh_json", return_value=pull),
+            patch(
+                "approve_production_config_change.post_commit_status"
+            ) as post_status,
+            self.assertRaisesRegex(RuntimeError, "head changed"),
+        ):
+            approve_production_config_change.approve_pull_request(
+                "WriterInternal/cerebro", 42, reviewed_sha
+            )
+
+        post_status.assert_not_called()
 
     def test_gate_posts_error_status_when_release_verification_is_unavailable(
         self,

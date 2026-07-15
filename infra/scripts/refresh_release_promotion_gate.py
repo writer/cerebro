@@ -118,6 +118,26 @@ def _approved_environment_review(reviews: Any, environment_name: str) -> bool:
     return False
 
 
+def _commit_statuses(repository: str, head_sha: str) -> list[dict[str, Any]]:
+    statuses: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        page_statuses = gh_json(
+            [
+                "api",
+                f"repos/{repository}/commits/{head_sha}/statuses?per_page=100&page={page}",
+            ]
+        )
+        if not isinstance(page_statuses, list):
+            return statuses
+        statuses.extend(
+            status for status in page_statuses if isinstance(status, dict)
+        )
+        if len(page_statuses) < 100:
+            return statuses
+        page += 1
+
+
 def _protected_workflow_approved(
     repository: str,
     head_sha: str,
@@ -126,11 +146,7 @@ def _protected_workflow_approved(
     workflow_path: str,
     environment_name: str,
 ) -> bool:
-    statuses = gh_json(
-        ["api", f"repos/{repository}/commits/{head_sha}/statuses?per_page=100"]
-    )
-    if not isinstance(statuses, list):
-        return False
+    statuses = _commit_statuses(repository, head_sha)
     approval_status = next(
         (
             status

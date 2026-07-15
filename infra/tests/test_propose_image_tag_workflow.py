@@ -380,9 +380,11 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
 
         self.assertIn("environment: production-config-change", workflow)
         self.assertIn("Open production configuration pull request number", workflow)
+        self.assertIn("Full commit SHA reviewed in the pull request", workflow)
         self.assertIn("Reason for approving the production configuration change", workflow)
         self.assertIn("statuses: write", workflow)
         self.assertIn("scripts/approve_production_config_change.py", workflow)
+        self.assertIn('--head-sha "${HEAD_SHA}"', workflow)
         self.assertIn("actions: read", gate)
 
     def test_pulumi_preview_jobs_have_timeout(self) -> None:
