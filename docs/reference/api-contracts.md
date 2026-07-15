@@ -19,7 +19,7 @@ Generated-by-hand snapshot for the current bootstrap service. Source of truth: `
 | Source runtimes | `/source-runtimes/{runtimeID}`, `/source-runtimes/{runtimeID}/sync`, `/source-runtimes/{runtimeID}/graph-ingest-runs` |
 | Claims/findings | `/source-runtimes/{runtimeID}/claims`, `/source-runtimes/{runtimeID}/findings`, finding lifecycle routes |
 | Reports | `/reports`, `/reports/{reportID}/runs`, `/report-runs/{runID}` |
-| GRC/compliance | `/grc/dashboard`, `/grc/program-readiness`, `/grc/findings`, `/grc/controls`, `/grc/evidence`, `/grc/control-archetypes`, `/grc/control-profiles`, `/grc/control-coverage`, `/grc/control-packs*`, `/grc/audit-packets/{packetID}` |
+| GRC/compliance | `/grc/dashboard`, `/grc/program-readiness`, `/grc/findings`, `/grc/controls`, `/grc/evidence`, `/grc/control-archetypes`, `/grc/control-profiles`, `/grc/control-coverage`, `/grc/control-packs*`, `/grc/findings/{findingID}/audit-preview`, `/grc/audit-packets*` |
 | Platform knowledge | `/platform/knowledge/decisions`, `/platform/knowledge/actions`, `/platform/knowledge/outcomes` |
 | Platform workflow | `/platform/workflow/replay` |
 | Platform graph | `/platform/graph/neighborhood`, `/platform/graph/effective-access-paths`, `/platform/graph/ingest-health`, `/platform/graph/ingest-runs*` |

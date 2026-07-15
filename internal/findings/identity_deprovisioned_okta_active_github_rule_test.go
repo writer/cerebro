@@ -107,13 +107,13 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 	}
 }
 
-func TestDeprovisionedOktaActiveGitHubRuleAllowsOnlySuspendGraphAction(t *testing.T) {
+func TestDeprovisionedOktaActiveGitHubRuleDoesNotAdvertiseGraphAction(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
 	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
 	finding := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
-	if got := finding.Attributes["graph_actions_allowed"]; got != "identity.okta.suspend_user" {
-		t.Fatalf("graph_actions_allowed = %q, want only suspend action for deprovisioned identity finding", got)
+	if got, ok := finding.Attributes["graph_actions_allowed"]; ok {
+		t.Fatalf("graph_actions_allowed = %q, want attribute omitted until a downstream remediation is certified", got)
 	}
 }
 

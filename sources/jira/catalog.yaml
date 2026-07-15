@@ -1,6 +1,17 @@
 id: jira
 name: "Jira"
 description: "Collects Jira Cloud users, groups, group membership, projects, project role assignments, permission schemes, and audit records from the Jira REST API."
+certification:
+  owner: source-runtime
+  reviewed_at: 2026-07-14T00:00:00Z
+  expires_at: 2026-10-14T00:00:00Z
+  evidence:
+    - kind: provider_spec
+      reference: https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+      digest: sha256:611d46cf5dc985e38c78bbb81327da04090f0a6d59884757397fd85d9eb8b7b3
+    - kind: sandbox_contract
+      receipt: sources/jira/testdata
+      digest: sha256:b1ebdb300aa715c25c79704a16c130eec1ded5d0999d2f3de94f50d77d42dcfb
 emitted_kinds:
   - jira.users
   - jira.groups

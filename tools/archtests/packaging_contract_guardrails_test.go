@@ -91,6 +91,8 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
 		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
+		"name: Check Infisical bootstrap",
+		`echo "configured=false" >> "$GITHUB_OUTPUT"`,
 		`payload_keys="$(jq '.client_payload | length' <<<"${payload}")"`,
 		"GitHub allows at most 10",
 		`gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"`,
@@ -127,6 +129,20 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	matrixIndex := strings.Index(release, "target_environment: sec-dev")
 	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
 		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
+	}
+	orgSecretsIndex := strings.Index(release, "name: Fetch org-level secrets from Infisical")
+	repoSecretsIndex := strings.Index(release, "name: Fetch repo-level secrets from Infisical")
+	bootstrapIndex := strings.Index(release, "name: Check Infisical bootstrap")
+	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex || repoSecretsIndex > dispatchIndex {
+		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials and dispatching the release")
+	}
+	for name, section := range map[string]string{
+		"org":  release[orgSecretsIndex:repoSecretsIndex],
+		"repo": release[repoSecretsIndex:dispatchIndex],
+	} {
+		if !strings.Contains(section, "if: steps.infisical.outputs.configured == 'true'") {
+			t.Fatalf("release workflow must guard %s secret fetch behind the bootstrap check", name)
+		}
 	}
 
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))

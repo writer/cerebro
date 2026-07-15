@@ -39,6 +39,9 @@ jobs:
           - name: graph-actions
             command: make graph-action-check rust-wasm-check
             setup_rust: true
+          - name: codegen
+            command: make codegen-check
+            checkout_fetch_depth: '0'
           - name: docs-drift
             command: make docs-drift-check
           - name: readme

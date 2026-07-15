@@ -552,6 +552,17 @@ paths:
           in: query
           schema:
             type: string
+        - name: min_certification_tier
+          in: query
+          description: Minimum certification tier used to compute each connector's availability state. Entries below the tier remain in the response.
+          schema:
+            type: string
+            enum: [cataloged, spec_verified, contract_tested, production_observed, outcome_validated]
+        - name: include_preview
+          in: query
+          description: Mark below-minimum connectors as available for evaluation. This does not promote their certification tier.
+          schema:
+            type: boolean
       responses:
         '200':
           description: Source events and cursor.
@@ -647,9 +658,9 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Paginated responses include page.total, page.returned, page.limit, page.has_more, and page.next_cursor when another page is available.
+          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Every entry includes its closed certification tier, proof ownership and expiry, live runtime observation when present, and an availability state. Availability gates annotate rather than hide catalog-only or configured connectors. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Paginated responses include page.total, page.returned, page.limit, page.has_more, and page.next_cursor when another page is available.
         '400':
-          description: Connector catalog view, limit, or cursor was invalid.
+          description: Connector catalog view, limit, cursor, certification tier, or preview value was invalid.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -4128,9 +4139,51 @@ paths:
       responses:
         '200':
           description: Markdown or JSON export for the generated control evidence packet.
+  /grc/findings/{findingID}/audit-preview:
+    get:
+      operationId: previewGRCAuditPacket
+      summary: Preview the current audit evidence for one finding
+      tags:
+        - GRC
+      parameters:
+        - name: findingID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Live finding, evidence, controls, graph context, and recommended next action. This response is not an immutable audit packet.
+  /grc/audit-packets:
+    post:
+      operationId: createGRCAuditPacket
+      summary: Create an immutable audit packet from current finding evidence
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - finding_id
+              properties:
+                finding_id:
+                  type: string
+                  description: Finding to snapshot after tenant authorization.
+                supersedes:
+                  type: array
+                  items:
+                    type: string
+                  description: Earlier immutable packet IDs replaced by this packet.
+      responses:
+        '201':
+          description: Immutable audit packet with an independent packet ID and deterministic digest.
   /grc/audit-packets/{packetID}:
     get:
-      summary: GRC audit packet for one finding
+      operationId: getGRCAuditPacket
+      summary: Read one immutable GRC audit packet
       tags:
         - GRC
       parameters:
@@ -4141,7 +4194,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Finding, evidence, controls, graph context, and recommended next action.
+          description: Exact stored packet receipt. The read does not resolve current finding, evidence, runtime, or graph state.
   /platform/knowledge/decisions:
     post:
       summary: Record platform decision
@@ -5266,7 +5319,7 @@ paths:
   /grc/audit-packets/{packetID}/export:
     get:
       operationId: exportGRCAuditPacket
-      summary: Export a GRC audit packet
+      summary: Export one immutable GRC audit packet
       tags:
         - GRC
       parameters:
@@ -5285,7 +5338,7 @@ paths:
           description: Optional export format. Defaults to markdown.
       responses:
         '200':
-          description: Exported audit packet content.
+          description: Exported content derived from the exact stored packet receipt.
           content:
             text/markdown:
               schema:
