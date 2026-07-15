@@ -8,20 +8,18 @@ import (
 func TestRelationsAreSortedAndKnown(t *testing.T) {
 	relations := Relations()
 	if len(relations) == 0 {
-		t.Fatal("Relations() empty")
+		t.Fatal("Relations() returned no relations")
 	}
-	for i := 1; i < len(relations); i++ {
-		if relations[i-1] > relations[i] {
-			t.Fatalf("Relations() not sorted: %q before %q", relations[i-1], relations[i])
-		}
-	}
-	for _, relation := range []string{RelationBelongsTo, RelationDependsOn, RelationHasFinding, RelationRepresentsIdentity} {
+	for i, relation := range relations {
 		if !IsRelation(relation) {
-			t.Fatalf("IsRelation(%q) = false", relation)
+			t.Fatalf("Relations()[%d] = %q is not known", i, relation)
+		}
+		if i > 0 && relations[i-1] >= relation {
+			t.Fatalf("relations not strictly sorted: %q before %q", relations[i-1], relation)
 		}
 	}
-	if IsRelation("BELONGS_TO") || IsRelation("not_a_relation") {
-		t.Fatal("IsRelation accepted non-canonical relation")
+	if IsRelation("not_registered") {
+		t.Fatal("IsRelation accepted unknown relation")
 	}
 }
 
@@ -68,5 +66,27 @@ func TestRelationDefinitionsAreCopiedAndEnforceKinds(t *testing.T) {
 	fresh, _ := RelationDefinitionFor(RelationApprovedBy)
 	if !reflect.DeepEqual(fresh.SourceKinds, wantSources) {
 		t.Fatalf("registry mutated through returned definition: %v", fresh.SourceKinds)
+	}
+}
+
+func TestFindingLinkRelationsUseCanonicalResourceKinds(t *testing.T) {
+	tests := []struct {
+		relation string
+		target   ResourceKind
+	}{
+		{relation: RelationSelf, target: ResourceKindFinding},
+		{relation: RelationHasContext, target: ResourceKindFindingInvestigation},
+		{relation: RelationHasEvidence, target: ResourceKindFindingEvidenceCollection},
+		{relation: RelationObservedOn, target: ResourceKindSourceRuntime},
+		{relation: RelationAffects, target: ResourceKindGraphEntity},
+	}
+	for _, test := range tests {
+		definition, ok := RelationDefinitionFor(test.relation)
+		if !ok {
+			t.Fatalf("RelationDefinitionFor(%q) missing", test.relation)
+		}
+		if !definition.Allows(ResourceKindFinding, test.target) {
+			t.Fatalf("relation %q rejected finding -> %s", test.relation, test.target)
+		}
 	}
 }
