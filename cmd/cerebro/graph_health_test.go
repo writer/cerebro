@@ -129,6 +129,72 @@ func TestCheckGraphHealthFailsLatestFailedRunUnlessTransientAllowed(t *testing.T
 	}
 }
 
+func TestCheckGraphHealthAcceptsLegacyCompletedRunWithoutCheckpointState(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	store := graphHealthFixtureStore(t, now)
+	run, ok, err := store.GetIngestRun(ctx, "run-1")
+	if err != nil || !ok {
+		t.Fatalf("GetIngestRun(run-1) = %#v, %v, %v", run, ok, err)
+	}
+	run.CheckpointComplete = false
+	run.CheckpointCompleteKnown = false
+	if err := store.PutIngestRun(ctx, run); err != nil {
+		t.Fatalf("PutIngestRun(legacy completed) error = %v", err)
+	}
+
+	result, err := checkGraphHealth(ctx, store, graphHealthOptions{
+		IngestLimit:       10,
+		MaxRunningMinutes: 60,
+		RequiredRelations: []string{"belongs_to"},
+	}, now)
+	if err != nil {
+		t.Fatalf("checkGraphHealth() error = %v", err)
+	}
+	if result.Status != "passed" || len(result.Ingest.IncompleteRuns) != 0 {
+		t.Fatalf("health result = %#v, want legacy completed run accepted", result)
+	}
+}
+
+func TestCheckGraphHealthUsesLegacyCompletedRunAsTransientFailureHistory(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	store := graphHealthFixtureStore(t, now)
+	legacy, ok, err := store.GetIngestRun(ctx, "run-1")
+	if err != nil || !ok {
+		t.Fatalf("GetIngestRun(run-1) = %#v, %v, %v", legacy, ok, err)
+	}
+	legacy.CheckpointComplete = false
+	legacy.CheckpointCompleteKnown = false
+	if err := store.PutIngestRun(ctx, legacy); err != nil {
+		t.Fatalf("PutIngestRun(legacy completed) error = %v", err)
+	}
+	if err := store.PutIngestRun(ctx, graphstore.IngestRun{
+		ID:         "run-2",
+		RuntimeID:  "aws-runtime",
+		SourceID:   "aws",
+		Status:     graphstore.IngestRunStatusFailed,
+		StartedAt:  now.Add(-time.Minute).Format(time.RFC3339Nano),
+		FinishedAt: now.Format(time.RFC3339Nano),
+		Error:      "context deadline exceeded",
+	}); err != nil {
+		t.Fatalf("PutIngestRun(failed) error = %v", err)
+	}
+
+	result, err := checkGraphHealth(ctx, store, graphHealthOptions{
+		IngestLimit:                  10,
+		MaxRunningMinutes:            60,
+		RequiredRelations:            []string{"belongs_to"},
+		AllowTransientSourceFailures: true,
+	}, now)
+	if err != nil {
+		t.Fatalf("checkGraphHealth() error = %v", err)
+	}
+	if result.Status != "passed" || len(result.Ingest.IgnoredTransientFailedRuns) != 1 {
+		t.Fatalf("health result = %#v, want legacy completed history to qualify transient failure", result)
+	}
+}
+
 func TestCheckGraphHealthFailsZeroProjectionRun(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
@@ -164,16 +230,16 @@ func TestCheckGraphHealthFailsIncompleteCheckpoint(t *testing.T) {
 	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	store := graphHealthFixtureStore(t, now)
 	if err := store.PutIngestRun(ctx, graphstore.IngestRun{
-		ID:                 "run-partial",
-		RuntimeID:          "aws-runtime",
-		SourceID:           "aws",
-		Status:             graphstore.IngestRunStatusCompleted,
-		StartedAt:          now.Add(-time.Minute).Format(time.RFC3339Nano),
-		FinishedAt:         now.Format(time.RFC3339Nano),
-		EventsRead:         1,
-		EntitiesProjected:  1,
-		CheckpointCursor:   "page-2",
-		CheckpointComplete: false,
+		ID:                      "run-partial",
+		RuntimeID:               "aws-runtime",
+		SourceID:                "aws",
+		Status:                  graphstore.IngestRunStatusCompleted,
+		StartedAt:               now.Add(-time.Minute).Format(time.RFC3339Nano),
+		FinishedAt:              now.Format(time.RFC3339Nano),
+		EventsRead:              1,
+		EntitiesProjected:       1,
+		CheckpointComplete:      false,
+		CheckpointCompleteKnown: true,
 	}); err != nil {
 		t.Fatalf("PutIngestRun(partial) error = %v", err)
 	}
@@ -196,16 +262,17 @@ func TestCheckGraphHealthExpandsLimitForDeclaredRuntimeIDs(t *testing.T) {
 	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	store := graphHealthFixtureStore(t, now)
 	if err := store.PutIngestRun(ctx, graphstore.IngestRun{
-		ID:                 "run-azure",
-		RuntimeID:          "azure-runtime",
-		SourceID:           "azure",
-		Status:             graphstore.IngestRunStatusCompleted,
-		StartedAt:          now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
-		FinishedAt:         now.Add(-time.Minute).Format(time.RFC3339Nano),
-		EventsRead:         1,
-		EntitiesProjected:  1,
-		LinksProjected:     1,
-		CheckpointComplete: true,
+		ID:                      "run-azure",
+		RuntimeID:               "azure-runtime",
+		SourceID:                "azure",
+		Status:                  graphstore.IngestRunStatusCompleted,
+		StartedAt:               now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
+		FinishedAt:              now.Add(-time.Minute).Format(time.RFC3339Nano),
+		EventsRead:              1,
+		EntitiesProjected:       1,
+		LinksProjected:          1,
+		CheckpointComplete:      true,
+		CheckpointCompleteKnown: true,
 	}); err != nil {
 		t.Fatalf("PutIngestRun(azure) error = %v", err)
 	}
@@ -287,16 +354,17 @@ func graphHealthFixtureStore(t *testing.T, now time.Time) *graphTestStore {
 		t.Fatalf("UpsertProjectedLink() error = %v", err)
 	}
 	if err := store.PutIngestRun(ctx, graphstore.IngestRun{
-		ID:                 "run-1",
-		RuntimeID:          "aws-runtime",
-		SourceID:           "aws",
-		Status:             graphstore.IngestRunStatusCompleted,
-		StartedAt:          now.Add(-10 * time.Minute).Format(time.RFC3339Nano),
-		FinishedAt:         now.Add(-9 * time.Minute).Format(time.RFC3339Nano),
-		EventsRead:         1,
-		EntitiesProjected:  1,
-		LinksProjected:     1,
-		CheckpointComplete: true,
+		ID:                      "run-1",
+		RuntimeID:               "aws-runtime",
+		SourceID:                "aws",
+		Status:                  graphstore.IngestRunStatusCompleted,
+		StartedAt:               now.Add(-10 * time.Minute).Format(time.RFC3339Nano),
+		FinishedAt:              now.Add(-9 * time.Minute).Format(time.RFC3339Nano),
+		EventsRead:              1,
+		EntitiesProjected:       1,
+		LinksProjected:          1,
+		CheckpointComplete:      true,
+		CheckpointCompleteKnown: true,
 	}); err != nil {
 		t.Fatalf("PutIngestRun(completed) error = %v", err)
 	}

@@ -261,11 +261,12 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	}
 	startedAt := time.Now().UTC()
 	run := graphstore.IngestRun{
-		ID:        ingestRunID(runtimeID, startedAt),
-		RuntimeID: runtimeID,
-		Status:    graphstore.IngestRunStatusRunning,
-		Trigger:   ingestTrigger(request.Trigger),
-		StartedAt: startedAt.Format(time.RFC3339Nano),
+		ID:                      ingestRunID(runtimeID, startedAt),
+		RuntimeID:               runtimeID,
+		CheckpointCompleteKnown: true,
+		Status:                  graphstore.IngestRunStatusRunning,
+		Trigger:                 ingestTrigger(request.Trigger),
+		StartedAt:               startedAt.Format(time.RFC3339Nano),
 	}
 	result = &RunResult{Run: run}
 	if err := runStore.PutIngestRun(ctx, run); err != nil {

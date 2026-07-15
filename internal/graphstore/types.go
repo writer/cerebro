@@ -106,19 +106,32 @@ type IngestRun struct {
 	CheckpointID       string `json:"checkpoint_id,omitempty"`
 	CheckpointCursor   string `json:"checkpoint_cursor,omitempty"`
 	CheckpointComplete bool   `json:"checkpoint_complete"`
-	Status             string `json:"status"`
-	Trigger            string `json:"trigger,omitempty"`
-	PagesRead          int64  `json:"pages_read"`
-	EventsRead         int64  `json:"events_read"`
-	EntitiesProjected  int64  `json:"entities_projected"`
-	LinksProjected     int64  `json:"links_projected"`
-	GraphNodesBefore   int64  `json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore   int64  `json:"graph_links_before,omitempty"`
-	GraphNodesAfter    int64  `json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter    int64  `json:"graph_links_after,omitempty"`
-	StartedAt          string `json:"started_at,omitempty"`
-	FinishedAt         string `json:"finished_at,omitempty"`
-	Error              string `json:"error,omitempty"`
+	// CheckpointCompleteKnown distinguishes legacy runs without checkpoint
+	// terminal-state metadata from runs that explicitly persisted false.
+	CheckpointCompleteKnown bool   `json:"-"`
+	Status                  string `json:"status"`
+	Trigger                 string `json:"trigger,omitempty"`
+	PagesRead               int64  `json:"pages_read"`
+	EventsRead              int64  `json:"events_read"`
+	EntitiesProjected       int64  `json:"entities_projected"`
+	LinksProjected          int64  `json:"links_projected"`
+	GraphNodesBefore        int64  `json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore        int64  `json:"graph_links_before,omitempty"`
+	GraphNodesAfter         int64  `json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter         int64  `json:"graph_links_after,omitempty"`
+	StartedAt               string `json:"started_at,omitempty"`
+	FinishedAt              string `json:"finished_at,omitempty"`
+	Error                   string `json:"error,omitempty"`
+}
+
+// CheckpointCompleteValue returns nil when a legacy run has no persisted
+// checkpoint terminal state.
+func (run IngestRun) CheckpointCompleteValue() *bool {
+	if !run.CheckpointCompleteKnown {
+		return nil
+	}
+	complete := run.CheckpointComplete
+	return &complete
 }
 
 // IngestRunFilter scopes ingest run listing.

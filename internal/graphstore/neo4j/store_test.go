@@ -82,8 +82,23 @@ func TestScanIngestRunRecordIncludesCheckpointTerminalState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanIngestRunRecord() error = %v", err)
 	}
-	if run.CheckpointID != "checkpoint-1" || run.CheckpointCursor != "page-2" || run.CheckpointComplete {
+	if run.CheckpointID != "checkpoint-1" || run.CheckpointCursor != "page-2" || run.CheckpointComplete || !run.CheckpointCompleteKnown {
 		t.Fatalf("scanIngestRunRecord() checkpoint = %#v", run)
+	}
+}
+
+func TestScanIngestRunRecordPreservesMissingLegacyCheckpointTerminalState(t *testing.T) {
+	record := &neo4jdriver.Record{Values: []any{
+		"run-legacy", "runtime-1", "github", "writer", "", "", nil,
+		graphstore.IngestRunStatusCompleted, "api", int64(1), int64(10), int64(8), int64(4),
+		int64(2), int64(1), int64(10), int64(5), "2026-07-14T10:00:00Z", "2026-07-14T10:01:00Z", "",
+	}}
+	run, err := scanIngestRunRecord(record)
+	if err != nil {
+		t.Fatalf("scanIngestRunRecord() error = %v", err)
+	}
+	if run.CheckpointComplete || run.CheckpointCompleteKnown {
+		t.Fatalf("scanIngestRunRecord() checkpoint = %#v, want legacy terminal state absent", run)
 	}
 }
 
