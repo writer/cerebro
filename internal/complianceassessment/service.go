@@ -212,6 +212,67 @@ func (s *Service) ReconcileUnboundRuns(ctx context.Context, limit uint32) (int, 
 	return bound, errors.Join(errs...)
 }
 
+// ReconcileInterruptedRuns aligns nonterminal assessments with their durable
+// jobs after projection recovery. Retryable attempts are requeued explicitly;
+// cancelled, exhausted, and permanently failed jobs become terminal runs.
+func (s *Service) ReconcileInterruptedRuns(ctx context.Context, limit uint32) (int, error) {
+	store, ok := s.store.(NonterminalRunStore)
+	if !ok || s.jobs == nil {
+		return 0, nil
+	}
+	runs, err := store.ListNonterminalRuns(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	reconciled := 0
+	var errs []error
+	for _, run := range runs {
+		if strings.TrimSpace(run.JobID) == "" {
+			continue
+		}
+		job, getErr := s.jobs.Get(ctx, run.JobID)
+		if getErr != nil {
+			errs = append(errs, fmt.Errorf("read assessment job %q: %w", run.JobID, getErr))
+			continue
+		}
+		switch job.Status {
+		case ports.JobStatusQueued, ports.JobStatusRunning:
+			continue
+		case ports.JobStatusFailed:
+			if queued, requeued, retryErr := s.jobs.RequeueRetryable(ctx, job.ID, maxAssessmentJobAttempts); retryErr != nil {
+				errs = append(errs, fmt.Errorf("requeue assessment job %q: %w", job.ID, retryErr))
+				continue
+			} else if requeued {
+				s.jobs.StartAsync(ctx, queued)
+				reconciled++
+				continue
+			}
+			code := "execution_failed"
+			if job.FailureClass == platformjobs.JobFailureRetryable && job.Attempt >= maxAssessmentJobAttempts {
+				code = "execution_retry_exhausted"
+			}
+			if terminalErr := s.recordFailedRun(ctx, run, code); terminalErr != nil {
+				errs = append(errs, fmt.Errorf("fail assessment run %q: %w", run.ID, terminalErr))
+				continue
+			}
+			reconciled++
+		case ports.JobStatusCancelled:
+			if terminalErr := s.recordCancelledRun(ctx, run); terminalErr != nil {
+				errs = append(errs, fmt.Errorf("cancel assessment run %q: %w", run.ID, terminalErr))
+				continue
+			}
+			reconciled++
+		case ports.JobStatusCompleted:
+			if terminalErr := s.recordFailedRun(ctx, run, "execution_state_mismatch"); terminalErr != nil {
+				errs = append(errs, fmt.Errorf("reconcile completed assessment job %q: %w", job.ID, terminalErr))
+				continue
+			}
+			reconciled++
+		}
+	}
+	return reconciled, errors.Join(errs...)
+}
+
 func (s *Service) appendRun(ctx context.Context, kind, operation string, run AssessmentRun, expectedVersion uint64) error {
 	payload, err := json.Marshal(run)
 	if err != nil {

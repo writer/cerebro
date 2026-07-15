@@ -77,6 +77,11 @@ func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
 			return 0, fmt.Errorf("reconcile assessment runs: %w", err)
 		}
 		recovered += bound
+		interrupted, err := a.services.assessments.ReconcileInterruptedRuns(ctx, 0)
+		if err != nil {
+			return 0, fmt.Errorf("reconcile interrupted assessment runs: %w", err)
+		}
+		recovered += interrupted
 	}
 	if _, ok := a.deps.StateStore.(ports.JobLeaseStore); !ok {
 		return recovered, nil
