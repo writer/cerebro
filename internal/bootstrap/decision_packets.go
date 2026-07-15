@@ -46,7 +46,10 @@ func (r decisionCoverageReader) ReadCoverage(ctx context.Context, tenantID strin
 	observations := sourcecoverage.ObservationsFromRuntimes(runtimes, func(runtime *cerebrov1.SourceRuntime) string {
 		return runtimeHealthStatus(runtime, now)
 	})
-	records := sourcecoverage.Evaluate(contracts, observations, sourcecoverage.Options{TenantID: strings.TrimSpace(tenantID)})
+	records, err := sourcecoverage.Evaluate(ctx, contracts, observations, sourcecoverage.Options{TenantID: strings.TrimSpace(tenantID)})
+	if err != nil {
+		return nil, err
+	}
 	result := make([]sourcecoverage.Record, 0, len(records))
 	for _, record := range records {
 		if containsAuthValue(requiredSources, record.SourceID) {
@@ -55,7 +58,6 @@ func (r decisionCoverageReader) ReadCoverage(ctx context.Context, tenantID strin
 	}
 	return result, nil
 }
-
 func (a *App) newDecisionPacketService() *decisionpacket.Service {
 	receipts := decisionPacketReceiptStore(a.deps.StateStore)
 	if receipts == nil {
