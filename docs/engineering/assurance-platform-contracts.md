@@ -40,6 +40,21 @@ The plan revision remains the replay artifact. Obligation definitions are
 deterministically derived from that artifact, so replay does not depend on a
 second mutable obligation store.
 
+## Evidence Claim Validity
+
+Evidence versions continue to reference bytes in EvidenceCAS or an approved
+external system. A claim may set an earlier `valid_until` than its evidence
+version; it may not outlive that version. Claim validation returns
+`evidence_claim_expired` with `refresh_evidence` when the claim window closes.
+
+Validation also compares active reviewed claims over the same artifact version
+and exact objective, implementation, requirement, subject, and period scope. An
+approved claim conflicts with a rejected claim over that scope. Two approved
+claims conflict when their linkage, strength, or limitation differs. The result
+returns `evidence_claim_conflicting` with `resolve_conflict`. Invalidating the
+contradictory claim removes it from current conflict evaluation without changing
+historical events or snapshots.
+
 ## Public Event Mapping
 
 | Canonical workflow event | Public event | Public payload |

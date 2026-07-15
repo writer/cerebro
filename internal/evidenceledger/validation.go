@@ -13,6 +13,8 @@ const (
 	reasonClaimPending       = "evidence_claim_pending"
 	reasonClaimRejected      = "evidence_claim_rejected"
 	reasonClaimInvalidated   = "evidence_claim_invalidated"
+	reasonClaimExpired       = "evidence_claim_expired"
+	reasonClaimConflicting   = "evidence_claim_conflicting"
 	reasonVersionQuarantined = "evidence_version_quarantined"
 	reasonVersionRevoked     = "evidence_version_revoked"
 	reasonVersionExpired     = "evidence_version_expired"
@@ -71,6 +73,9 @@ func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimReques
 	if !version.ValidUntil.IsZero() && !at.Before(version.ValidUntil) {
 		addInvalid(reasonVersionExpired, "refresh_evidence")
 	}
+	if !claim.ValidUntil.IsZero() && !at.Before(claim.ValidUntil) {
+		addInvalid(reasonClaimExpired, "refresh_evidence")
+	}
 	if request.PeriodStart.Before(claim.Scope.PeriodStart) || request.PeriodEnd.After(claim.Scope.PeriodEnd) {
 		addInvalid(reasonPeriodGap, "collect_evidence")
 	}
@@ -81,9 +86,47 @@ func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimReques
 	if !subjectsCover(claim.Scope.Subjects, normalizeSubjects(request.Subjects)) || !subjectsCover(version.Subjects, normalizeSubjects(request.Subjects)) {
 		addInvalid(reasonSubjectMismatch, "collect_evidence")
 	}
+	claims, err := s.store.ListEvidenceClaimsByVersion(ctx, claim.TenantID, claim.ArtifactVersionID)
+	if err != nil {
+		return ports.EvidenceClaimValidation{}, err
+	}
+	for _, candidate := range claims {
+		candidate = normalizeClaim(candidate)
+		if conflictingEvidenceClaim(claim, candidate) {
+			addInvalid(reasonClaimConflicting, "resolve_conflict")
+			break
+		}
+	}
 	result.ReasonCodes = normalizedStrings(result.ReasonCodes)
 	result.NextActions = normalizedStrings(result.NextActions)
 	return result, nil
+}
+
+func conflictingEvidenceClaim(claim, candidate ports.EvidenceClaim) bool {
+	if candidate.ID == claim.ID || !candidate.Decision.InvalidatedAt.IsZero() || !sameEvidenceClaimScope(claim.Scope, candidate.Scope) {
+		return false
+	}
+	leftState := claim.Decision.ReviewState
+	rightState := candidate.Decision.ReviewState
+	if (leftState == ports.EvidenceReviewApproved && rightState == ports.EvidenceReviewRejected) ||
+		(leftState == ports.EvidenceReviewRejected && rightState == ports.EvidenceReviewApproved) {
+		return true
+	}
+	return leftState == ports.EvidenceReviewApproved && rightState == ports.EvidenceReviewApproved &&
+		(claim.Linkage != candidate.Linkage || claim.Strength != candidate.Strength || claim.Limitation != candidate.Limitation)
+}
+
+func sameEvidenceClaimScope(left, right ports.EvidenceClaimScope) bool {
+	if left.ObjectiveID != right.ObjectiveID || left.ImplementationRevisionID != right.ImplementationRevisionID || left.RequirementID != right.RequirementID ||
+		!left.PeriodStart.Equal(right.PeriodStart) || !left.PeriodEnd.Equal(right.PeriodEnd) || len(left.Subjects) != len(right.Subjects) {
+		return false
+	}
+	for index := range left.Subjects {
+		if left.Subjects[index] != right.Subjects[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) ReadVersion(ctx context.Context, access ports.EvidenceAccessRequest, versionID string) (ports.EvidenceVersion, error) {

@@ -47,6 +47,7 @@ var ensureEvidenceLedgerStatements = []string{
   aggregate_version BIGINT NOT NULL,
   review_state TEXT NOT NULL,
   invalidated_at TIMESTAMPTZ,
+  valid_until TIMESTAMPTZ,
   record_digest TEXT NOT NULL,
   record_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
@@ -54,7 +55,9 @@ var ensureEvidenceLedgerStatements = []string{
   PRIMARY KEY (tenant_id, id),
   FOREIGN KEY (tenant_id, artifact_version_id) REFERENCES grc_evidence_versions (tenant_id, id)
 )`,
+	`ALTER TABLE grc_evidence_claims ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS grc_evidence_claims_version_idx ON grc_evidence_claims (tenant_id, artifact_version_id, id)`,
+	`CREATE INDEX IF NOT EXISTS grc_evidence_claims_expiry_idx ON grc_evidence_claims (tenant_id, valid_until) WHERE valid_until IS NOT NULL`,
 	`CREATE TABLE IF NOT EXISTS grc_evidence_event_receipts (
   event_id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -164,16 +167,16 @@ func (s *Store) ApplyEvidenceClaim(ctx context.Context, eventID string, claim po
 	var result sql.Result
 	if expectedVersion == 0 {
 		result, err = tx.ExecContext(ctx, `
-INSERT INTO grc_evidence_claims (tenant_id,id,artifact_version_id,aggregate_version,review_state,invalidated_at,record_digest,record_json,created_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
+INSERT INTO grc_evidence_claims (tenant_id,id,artifact_version_id,aggregate_version,review_state,invalidated_at,valid_until,record_digest,record_json,created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
 ON CONFLICT (tenant_id, id) DO NOTHING`, claim.TenantID, claim.ID, claim.ArtifactVersionID, claim.Version,
-			claim.Decision.ReviewState, nullableTime(claim.Decision.InvalidatedAt), digest, string(recordJSON), claim.CreatedAt.UTC())
+			claim.Decision.ReviewState, nullableTime(claim.Decision.InvalidatedAt), nullableTime(claim.ValidUntil), digest, string(recordJSON), claim.CreatedAt.UTC())
 	} else {
 		result, err = tx.ExecContext(ctx, `
 UPDATE grc_evidence_claims
-SET aggregate_version = $4, review_state = $5, invalidated_at = $6, record_digest = $7, record_json = $8::jsonb, updated_at = NOW()
+SET aggregate_version = $4, review_state = $5, invalidated_at = $6, valid_until = $7, record_digest = $8, record_json = $9::jsonb, updated_at = NOW()
 WHERE tenant_id = $1 AND id = $2 AND aggregate_version = $3`, claim.TenantID, claim.ID, expectedVersion, claim.Version,
-			claim.Decision.ReviewState, nullableTime(claim.Decision.InvalidatedAt), digest, string(recordJSON))
+			claim.Decision.ReviewState, nullableTime(claim.Decision.InvalidatedAt), nullableTime(claim.ValidUntil), digest, string(recordJSON))
 	}
 	if err != nil {
 		return fmt.Errorf("project evidence claim: %w", err)

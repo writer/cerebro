@@ -139,6 +139,7 @@ type EvidenceClaim struct {
 	Version           uint64                `json:"version"`
 	CreatedAt         time.Time             `json:"created_at"`
 	CreatedBy         string                `json:"created_by"`
+	ValidUntil        time.Time             `json:"valid_until,omitempty"`
 }
 
 type EvidenceAccessRequest struct {
