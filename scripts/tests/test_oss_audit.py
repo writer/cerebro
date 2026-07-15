@@ -6,6 +6,15 @@ import scripts.oss_audit as oss_audit
 
 
 class OSSAuditTests(unittest.TestCase):
+    def test_file_scan_skips_cargo_target_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "target" / "debug"
+            target.mkdir(parents=True)
+            (target / "generated.txt").write_text("private build output\n", encoding="utf-8")
+
+            self.assertEqual(list(oss_audit.iter_files(root)), [])
+
     def test_public_doc_infrastructure_markers_reject_private_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -1,0 +1,8 @@
+[workspace]
+members = ["internal/graphagent/staticvalidator", "tools/graphactiongen"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93.1"
+license = "Apache-2.0"

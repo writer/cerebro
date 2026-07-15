@@ -37,7 +37,7 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check
+            command: make graph-action-check graphagent-static-validator-check
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'
@@ -70,6 +70,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Set up Rust
+        if: matrix.name == 'graph-actions'
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Cache Go build data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

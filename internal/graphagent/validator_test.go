@@ -2,7 +2,11 @@ package graphagent
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -202,6 +206,113 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 	if result.Code != "limit_exceeded" {
 		t.Fatalf("code = %q, want limit_exceeded; result = %#v", result.Code, result)
+	}
+}
+
+func TestValidatorStaticContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		cypher     string
+		maxRows    int
+		wantResult ValidatorResult
+		wantLimit  int
+	}{
+		{name: "empty", cypher: " \n ", wantResult: validatorRefusal("cypher_required", "cypher is required")},
+		{name: "unsafe clause takes precedence", cypher: `CREATE (e) RETURN e`, wantResult: validatorRefusal("unsafe_clause", "write or bulk-load Cypher clauses are forbidden")},
+		{name: "forbidden apoc takes precedence", cypher: `CALL apoc.periodic.iterate('a','b',{}) LIMIT 1`, wantResult: validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden")},
+		{name: "other apoc", cypher: `RETURN apoc.convert.fromJsonMap('{}') LIMIT 1`, wantResult: validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro")},
+		{name: "procedure call", cypher: `CALL db.labels() YIELD label RETURN label LIMIT 1`, wantResult: validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden")},
+		{name: "variable relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "nested relationship property list cannot hide variable relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*1..9999 {x:[1]}]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "escaped relationship type cannot hide variable relationship", cypher: "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R]`*1..9999]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1", wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "escaped star relationship type is fixed length", cypher: "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R*`]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1", wantResult: ValidatorResult{OK: true}, wantLimit: 1},
+		{name: "escaped star relationship type with quantifier", cypher: "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R*`*1..9999]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1", wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "escaped block comment identifier cannot hide variable relationship", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x/*` OPTIONAL MATCH (b:Entity {tenant_id:$tenant_id})-[:R*1..9999]->(c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1", wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "escaped line comment identifier cannot hide unscoped nodes", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "escaped identifier cannot establish tenant scope", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x) (b:Entity {tenant_id:$tenant_id})` MATCH (b) RETURN b LIMIT 1", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "escaped brace identifier cannot leak subquery scope", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) CALL { MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b AS `}` } MATCH (b) RETURN b LIMIT 25", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "escaped relationship bracket cannot leak comprehension scope", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, [(e)-[:`a]b`]->(c:Entity {tenant_id:$tenant_id}) | c] AS xs MATCH (c) RETURN c LIMIT 25", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "escaped brace cannot leak exists scope", cypher: "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, EXISTS { WITH e AS `}` MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS found MATCH (b) RETURN b LIMIT 25", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "quantified relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "optional quantified relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "quantified abbreviated relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "optional quantified abbreviated relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-->?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "optional quantified incoming abbreviated relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})<--?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
+		{name: "expansion", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) UNWIND [1] AS n RETURN e LIMIT 1`, wantResult: validatorRefusal("expansion_not_allowed", "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden")},
+		{name: "missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "decimal limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1.0`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "negative limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT -1`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "parameter limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT $max`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "limit arithmetic expression", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 * 1000`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "parenthesized numeric limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (5)`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "parenthesized limit expression", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (1 + 2)`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "signed integer overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 9223372036854775808`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 18446744073709551616`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "union second branch missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "union first branch missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "nested union branch missing limit", cypher: `CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } RETURN e LIMIT 25`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
+		{name: "earlier union limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101 UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
+		{name: "no node pattern", cypher: `RETURN 1 LIMIT 1`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "match keyword adjacency cannot hide unscoped node", cypher: `MATCH(e:Entity) MATCH (b:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "function pattern variable cannot establish scope", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS count MATCH (b) RETURN b LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "accepted", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted function in node properties", cypher: `MATCH (e:Entity {tenant_id:$tenant_id, id: toString($id)}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted nested node property map", cypher: `MATCH (e:Entity {tenant_id:$tenant_id, meta: {key: 'val'}}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted escaped entity label with nested map", cypher: "MATCH (e:`Entity` {tenant_id:$tenant_id, meta: {key: 'val'}}) RETURN e LIMIT 25", wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "nested tenant property is not inline scope", cypher: `MATCH (e:Entity {meta: {tenant_id:$tenant_id}}) RETURN e LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "function property does not hide later unscoped pattern", cypher: `MATCH (e:Entity {tenant_id:$tenant_id, id: toString($id)}) MATCH (b:Entity) RETURN b LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "escaped label colon does not create entity label", cypher: "MATCH (e:`Not:Entity` {tenant_id:$tenant_id}) RETURN e LIMIT 25", wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "accepted bounded union", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted limit-named arithmetic with numeric bound", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1 LIMIT 100`, wantResult: ValidatorResult{OK: true}, wantLimit: 100},
+		{name: "accepted already scoped function endpoints", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}), (b:Entity {tenant_id:$tenant_id}) WITH e, b, size((e)-[:R]->(b)) AS count RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted zero", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 0`, wantResult: ValidatorResult{OK: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := ValidatorOptions{DisableExplain: true, MaxRows: tt.maxRows}
+			result, limit, err := NewValidator(nil, options).validate(context.Background(), tt.cypher, nil)
+			if err != nil {
+				t.Fatalf("validate() error = %v", err)
+			}
+			if !reflect.DeepEqual(result, tt.wantResult) || limit != tt.wantLimit {
+				t.Fatalf("validate() = (%#v, %d), want (%#v, %d)", result, limit, tt.wantResult, tt.wantLimit)
+			}
+		})
+	}
+}
+
+func TestValidatorStaticRuntimeIsConcurrentAndFailsClosed(t *testing.T) {
+	const query = `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`
+	validator := NewValidator(nil, ValidatorOptions{DisableExplain: true})
+	var wait sync.WaitGroup
+	errorsByWorker := make(chan error, 16)
+	for range 16 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			result, limit, err := validator.validate(context.Background(), query, nil)
+			if err != nil {
+				errorsByWorker <- err
+				return
+			}
+			if !result.OK || limit != 25 {
+				errorsByWorker <- fmt.Errorf("validate() = (%#v, %d)", result, limit)
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsByWorker)
+	for err := range errorsByWorker {
+		t.Error(err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, limit, err := validator.validate(canceled, query, nil)
+	if !errors.Is(err, ErrRuntimeUnavailable) || result.OK || limit != 0 {
+		t.Fatalf("validate(canceled) = (%#v, %d, %v), want runtime unavailable", result, limit, err)
 	}
 }
 

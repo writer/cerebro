@@ -90,8 +90,11 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, prefixes=("internal/connectorcatalog/catalog/", "internal/connectordefinitions/", "internal/sourcegen/"), exact=("cmd/cerebro/source_runtime_sdk.go",)) for path in files):
         add_command(commands, seen, "sourcegen-check", ["make", "sourcegen-check"], "Connector definition or sourcegen contract changed.")
 
-    if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/")) for path in files):
+    if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
         add_command(commands, seen, "graph-action-check", ["make", "graph-action-check"], "Graph action catalog, generated registry, or generator changed.")
+
+    if any(path_matches(path, prefixes=("internal/graphagent/staticvalidator/",), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/graphagent/staticvalidator.go", "internal/graphagent/staticvalidator.wasm")) for path in files):
+        add_command(commands, seen, "graphagent-static-validator-check", ["make", "graphagent-static-validator-check"], "Static Cypher validator source, host, or embedded module changed.")
 
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")
