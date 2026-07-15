@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -385,7 +386,11 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 func sourceHealthRecord(record sourceRuntimeHealthRecord) sourcehealth.Record {
 	var graphRun *sourcehealth.GraphRun
 	if record.LatestGraphRun != nil {
-		graphRun = &sourcehealth.GraphRun{Status: record.LatestGraphRun.Status}
+		graphRun = &sourcehealth.GraphRun{
+			Status:             record.LatestGraphRun.Status,
+			CheckpointCursor:   record.LatestGraphRun.CheckpointCursor,
+			CheckpointComplete: record.LatestGraphRun.CheckpointComplete,
+		}
 	}
 	var findingEvaluation *sourcehealth.FindingEvaluation
 	if record.LatestFindingEvaluation != nil {
@@ -730,22 +735,24 @@ func (a *App) latestFindingEvaluationRun(ctx context.Context, runtimeID string) 
 
 func sourceRuntimeGraphRunHealth(run graphstore.IngestRun) *sourceRuntimeHealthGraphRun {
 	return &sourceRuntimeHealthGraphRun{
-		ID:                run.ID,
-		Status:            run.Status,
-		StartedAt:         run.StartedAt,
-		FinishedAt:        run.FinishedAt,
-		Error:             run.Error,
-		PagesRead:         run.PagesRead,
-		EventsRead:        run.EventsRead,
-		EntitiesProjected: run.EntitiesProjected,
-		LinksProjected:    run.LinksProjected,
-		GraphNodesBefore:  run.GraphNodesBefore,
-		GraphLinksBefore:  run.GraphLinksBefore,
-		GraphNodesAfter:   run.GraphNodesAfter,
-		GraphLinksAfter:   run.GraphLinksAfter,
-		GraphNodeDelta:    run.GraphNodesAfter - run.GraphNodesBefore,
-		GraphLinkDelta:    run.GraphLinksAfter - run.GraphLinksBefore,
-		DurationSeconds:   durationSeconds(run.StartedAt, run.FinishedAt),
+		ID:                 run.ID,
+		Status:             run.Status,
+		CheckpointCursor:   run.CheckpointCursor,
+		CheckpointComplete: proto.Bool(run.CheckpointComplete),
+		StartedAt:          run.StartedAt,
+		FinishedAt:         run.FinishedAt,
+		Error:              run.Error,
+		PagesRead:          run.PagesRead,
+		EventsRead:         run.EventsRead,
+		EntitiesProjected:  run.EntitiesProjected,
+		LinksProjected:     run.LinksProjected,
+		GraphNodesBefore:   run.GraphNodesBefore,
+		GraphLinksBefore:   run.GraphLinksBefore,
+		GraphNodesAfter:    run.GraphNodesAfter,
+		GraphLinksAfter:    run.GraphLinksAfter,
+		GraphNodeDelta:     run.GraphNodesAfter - run.GraphNodesBefore,
+		GraphLinkDelta:     run.GraphLinksAfter - run.GraphLinksBefore,
+		DurationSeconds:    durationSeconds(run.StartedAt, run.FinishedAt),
 	}
 }
 

@@ -1515,6 +1515,10 @@ paths:
       responses:
         '200':
           description: Graph ingest run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunGraphIngestRuntimeResponse'
   /source-runtimes/{runtimeID}/claims:
     get:
       summary: List claims for one runtime
@@ -4769,6 +4773,10 @@ paths:
       responses:
         '200':
           description: Graph ingest runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListGraphIngestRunsResponse'
   /platform/graph/ingest-runs/{runID}:
     get:
       summary: Get graph ingest run
@@ -4779,6 +4787,10 @@ paths:
       responses:
         '200':
           description: Graph ingest run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGraphIngestRunResponse'
   /platform/devices/enroll:
     post:
       summary: Enroll a SeCheck agent
@@ -14031,6 +14043,10 @@ components:
           type: string
         status:
           type: string
+        checkpoint_cursor:
+          type: string
+        checkpoint_complete:
+          type: boolean
         started_at:
           type: string
           format: date-time
@@ -14219,6 +14235,179 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GraphRelation'
+    GraphIngestRun:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        checkpoint_id:
+          type: string
+        status:
+          type: string
+        trigger:
+          type: string
+        pages_read:
+          type: integer
+          format: int64
+        events_read:
+          type: integer
+          format: int64
+        entities_projected:
+          type: integer
+          format: int64
+        links_projected:
+          type: integer
+          format: int64
+        graph_nodes_before:
+          type: integer
+          format: int64
+        graph_links_before:
+          type: integer
+          format: int64
+        graph_nodes_after:
+          type: integer
+          format: int64
+        graph_links_after:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        checkpoint_cursor:
+          type: string
+        checkpoint_complete:
+          type: boolean
+    GraphIngestResult:
+      type: object
+      properties:
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        pages_read:
+          type: integer
+          format: uint32
+          minimum: 0
+        events_read:
+          type: integer
+          format: uint32
+          minimum: 0
+        entities_projected:
+          type: integer
+          format: uint32
+          minimum: 0
+        links_projected:
+          type: integer
+          format: uint32
+          minimum: 0
+        graph_nodes_before:
+          type: integer
+          format: int64
+        graph_links_before:
+          type: integer
+          format: int64
+        graph_nodes_after:
+          type: integer
+          format: int64
+        graph_links_after:
+          type: integer
+          format: int64
+        next_cursor:
+          type: string
+        checkpoint_id:
+          type: string
+        checkpoint_cursor:
+          type: string
+        checkpoint_resumed:
+          type: boolean
+        checkpoint_persisted:
+          type: boolean
+        checkpoint_complete:
+          type: boolean
+        checkpoint_already_fresh:
+          type: boolean
+    GraphIngestRunResult:
+      type: object
+      properties:
+        run:
+          $ref: '#/components/schemas/GraphIngestRun'
+        ingest:
+          $ref: '#/components/schemas/GraphIngestResult'
+    RunGraphIngestRuntimeResponse:
+      type: object
+      properties:
+        result:
+          $ref: '#/components/schemas/GraphIngestRunResult'
+    GetGraphIngestRunResponse:
+      type: object
+      properties:
+        run:
+          $ref: '#/components/schemas/GraphIngestRun'
+    ListGraphIngestRunsResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphIngestRun'
+        failed_count:
+          type: integer
+          format: uint32
+          minimum: 0
+    FindingEvaluationSourceSnapshot:
+      type: object
+      properties:
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        family:
+          type: string
+        last_synced_at:
+          type: string
+          format: date-time
+        checkpoint_watermark:
+          type: string
+          format: date-time
+        complete:
+          type: boolean
+        records_scanned:
+          type: integer
+          minimum: 0
+        records_accepted:
+          type: integer
+          minimum: 0
+        records_rejected:
+          type: integer
+          minimum: 0
+        sync_status:
+          type: string
+        contract_probe_state:
+          type: string
+        progress_config_hash:
+          type: string
+        graph_ingest_run_id:
+          type: string
+        graph_ingest_status:
+          type: string
+        graph_checkpoint_id:
+          type: string
+        graph_ingested_at:
+          type: string
+          format: date-time
+        graph_snapshot_complete:
+          type: boolean
     FindingEvaluationRun:
       type: object
       properties:
@@ -14260,6 +14449,24 @@ components:
           format: date-time
         error:
           type: string
+        graph_rule:
+          type: boolean
+        graph_rows_read:
+          type: integer
+          minimum: 0
+        graph_truncated:
+          type: boolean
+        graph_row_limit:
+          type: integer
+          minimum: 0
+        source_snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingEvaluationSourceSnapshot'
+        source_dependency_complete:
+          type: boolean
+        rule_applicable:
+          type: boolean
     FindingCandidateRun:
       type: object
       properties:

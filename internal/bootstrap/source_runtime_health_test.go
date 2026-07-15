@@ -247,7 +247,7 @@ func TestSourceRuntimeHealthSummariesAggregateBySource(t *testing.T) {
 			SourceID:           "okta",
 			Status:             "healthy",
 			ContractProbeState: "passing",
-			LatestGraphRun:     sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+			LatestGraphRun:     sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed", CheckpointComplete: true}),
 			GraphLagSeconds:    &graphLag,
 			StaleAfterSeconds:  &staleAfter,
 		},
@@ -300,7 +300,7 @@ func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
 				SourceID:          "okta",
 				EnabledState:      "enabled",
 				Status:            "healthy",
-				LatestGraphRun:    sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				LatestGraphRun:    sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed", CheckpointComplete: true}),
 				GraphLagSeconds:   int64Ptr(60),
 				StaleAfterSeconds: &staleAfter,
 			},
@@ -318,7 +318,7 @@ func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
 				EnabledState:        "enabled",
 				Status:              "failing",
 				LastFailureCategory: "auth_error",
-				LatestGraphRun:      sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				LatestGraphRun:      sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed", CheckpointComplete: true}),
 				StaleAfterSeconds:   &staleAfter,
 			},
 			{
@@ -384,6 +384,35 @@ func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
 	}
 	if response.Summaries[0].Healthy != 1 || response.Summaries[0].NeedsAttention != 0 {
 		t.Fatalf("summary = %+v", response.Summaries[0])
+	}
+}
+
+func TestRuntimeFreshnessFromHealthSchedulesBackfillForPartialGraphCheckpoint(t *testing.T) {
+	latestGraphRun := sourceRuntimeGraphRunHealth(graphstore.IngestRun{
+		ID:                 "graph-run-partial",
+		Status:             graphstore.IngestRunStatusCompleted,
+		CheckpointCursor:   "page-2",
+		CheckpointComplete: false,
+	})
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-07-14T12:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{{
+			RuntimeID:      "runtime-partial",
+			SourceID:       "okta",
+			EnabledState:   "enabled",
+			Status:         "healthy",
+			LatestGraphRun: latestGraphRun,
+		}},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if latestGraphRun.CheckpointComplete == nil || *latestGraphRun.CheckpointComplete || latestGraphRun.CheckpointCursor != "page-2" {
+		t.Fatalf("latest graph run = %+v, want explicit partial checkpoint", latestGraphRun)
+	}
+	record := response.Runtimes[0]
+	if record.GraphIngestState != "behind" || record.FreshnessState != "graph_behind" || !record.BackfillEligible || record.RecommendedWorkflow != "source-runtime-backfill" {
+		t.Fatalf("partial graph freshness = %+v, want graph backfill work", record)
 	}
 }
 

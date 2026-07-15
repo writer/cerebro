@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,25 +126,109 @@ func TestTrustedFindingEvaluationHoldsRuntimeLeaseAcrossReplay(t *testing.T) {
 	}
 }
 
-type findingLeaseRuntimeStore struct {
-	*stubRuntimeStore
-	available          bool
-	held               bool
-	replayWithoutLease bool
-	acquireCalls       int
-	releaseCalls       int
+func TestTrustedFindingEvaluationCancelsWhenRuntimeLeaseIsLost(t *testing.T) {
+	t.Parallel()
+	runtimeID := "runtime-okta"
+	registry, err := NewRegistry(&emittingRule{
+		spec: &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"}, supportedSourceIDs: map[string]struct{}{"okta": {}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &findingLeaseRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtimeID: trustedFindingRuntime(runtimeID, "okta", "audit", time.Now().UTC())}},
+		available:        true,
+		renewAvailable:   false,
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(runtimeStore, findingLeaseBlockingReplayer{}, store, store, store, store, registry).WithTrustedSourceResolution()
+	service.findingEvaluationLeaseTTL = 30 * time.Millisecond
+
+	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: runtimeID, RuleID: "rule-a"})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want runtime unavailable after lease loss", err)
+	}
+	if runtimeStore.renewCalls.Load() == 0 || runtimeStore.releaseCalls != 1 || runtimeStore.held {
+		t.Fatalf("renew/release/state = %d/%d/%t, want renewal attempt, release, and no held lease", runtimeStore.renewCalls.Load(), runtimeStore.releaseCalls, runtimeStore.held)
+	}
 }
 
-func (s *findingLeaseRuntimeStore) AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+func TestGraphEvaluationLeasesEverySourceDependency(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	okta := trustedFindingRuntime("runtime-okta", "okta", "user", now)
+	github := trustedFindingRuntime("runtime-github", "github", "audit", now)
+	rule := &sourceSnapshotGraphRule{
+		multiSourceStubGraphRule: multiSourceStubGraphRule{
+			stubGraphRule: stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "cross-source-rule"}}, supportedSources: []string{"okta", "github"},
+		},
+		definition: RuleDefinition{ID: "cross-source-rule", EventKinds: []string{"okta.user", "github.audit"}},
+	}
+	tests := []struct {
+		name          string
+		unavailableID string
+		wantErr       bool
+	}{
+		{name: "all dependencies available"},
+		{name: "dependency syncing", unavailableID: github.GetId(), wantErr: true},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			runtimeStore := &findingLeaseRuntimeStore{
+				stubRuntimeStore:     &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{okta.GetId(): okta, github.GetId(): github}},
+				available:            true,
+				renewAvailable:       true,
+				unavailableRuntimeID: test.unavailableID,
+			}
+			service := &Service{runtimeStore: runtimeStore, requireTrustedResolution: true}
+			_, release, runtimes, trusted, err := service.acquireGraphEvaluationDependencyLeases(context.Background(), okta, []GraphRule{rule})
+			if test.wantErr {
+				if !errors.Is(err, ErrRuntimeUnavailable) || trusted || release == nil {
+					t.Fatalf("dependency lease = (%v, %v), want runtime unavailable", trusted, err)
+				}
+				return
+			}
+			if err != nil || !trusted || len(runtimes) != 2 {
+				t.Fatalf("dependency lease = (%d runtimes, %v, %v), want two trusted runtimes", len(runtimes), trusted, err)
+			}
+			if err := release(); err != nil {
+				t.Fatalf("release() error = %v", err)
+			}
+			if len(runtimeStore.acquiredRuntimeIDs) != 1 || runtimeStore.acquiredRuntimeIDs[0] != github.GetId() {
+				t.Fatalf("acquired runtime ids = %#v, want non-trigger dependency %q", runtimeStore.acquiredRuntimeIDs, github.GetId())
+			}
+		})
+	}
+}
+
+type findingLeaseRuntimeStore struct {
+	*stubRuntimeStore
+	available            bool
+	renewAvailable       bool
+	unavailableRuntimeID string
+	held                 bool
+	replayWithoutLease   bool
+	acquireCalls         int
+	releaseCalls         int
+	renewCalls           atomic.Int32
+	acquiredRuntimeIDs   []string
+}
+
+func (s *findingLeaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID, _ string, _ time.Duration) (bool, error) {
 	s.acquireCalls++
-	if s.available {
+	s.acquiredRuntimeIDs = append(s.acquiredRuntimeIDs, runtimeID)
+	available := s.available && runtimeID != s.unavailableRuntimeID
+	if available {
 		s.held = true
 	}
-	return s.available, nil
+	return available, nil
 }
 
 func (s *findingLeaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
-	return s.available, nil
+	s.renewCalls.Add(1)
+	return s.renewAvailable, nil
 }
 
 func (s *findingLeaseRuntimeStore) ReleaseSourceRuntimeLease(context.Context, string, string) error {
@@ -159,4 +244,11 @@ func (r findingLeaseCheckingReplayer) Replay(context.Context, ports.ReplayReques
 		r.runtimeStore.replayWithoutLease = true
 	}
 	return nil, nil
+}
+
+type findingLeaseBlockingReplayer struct{}
+
+func (findingLeaseBlockingReplayer) Replay(ctx context.Context, _ ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }

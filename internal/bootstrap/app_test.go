@@ -298,6 +298,26 @@ func TestFindingEvaluationRunJSONSurfacesGraphDefaultsWithoutPresenceFields(t *t
 	}
 }
 
+func TestGraphIngestRunMessageIncludesCheckpointState(t *testing.T) {
+	message := graphIngestRunMessage(graphstore.IngestRun{
+		ID:                 "graph-run-1",
+		CheckpointID:       "checkpoint-1",
+		CheckpointCursor:   "page-2",
+		CheckpointComplete: false,
+	})
+	if message.GetCheckpointId() != "checkpoint-1" || message.GetCheckpointCursor() != "page-2" || message.GetCheckpointComplete() {
+		t.Fatalf("graphIngestRunMessage() checkpoint = %#v, want persisted partial checkpoint", message)
+	}
+	message = graphIngestRunMessage(graphstore.IngestRun{
+		ID:                 "graph-run-2",
+		CheckpointID:       "checkpoint-2",
+		CheckpointComplete: true,
+	})
+	if message.GetCheckpointCursor() != "" || !message.GetCheckpointComplete() {
+		t.Fatalf("graphIngestRunMessage() checkpoint = %#v, want complete terminal checkpoint", message)
+	}
+}
+
 func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))
@@ -5277,6 +5297,12 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
 		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
 	}
+	if got := runRecord["checkpoint_cursor"]; got != "1" {
+		t.Fatalf("graph ingest checkpoint_cursor = %#v, want next page cursor 1", got)
+	}
+	if got := runRecord["checkpoint_complete"]; got != false {
+		t.Fatalf("graph ingest checkpoint_complete = %#v, want false for bounded partial ingest", got)
+	}
 	overrideReq, err := http.NewRequest(
 		http.MethodPost,
 		server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&reset_checkpoint=true",
@@ -5326,6 +5352,12 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	getRun, ok := getPayload["run"].(map[string]any)
 	if !ok || getRun["id"] != runID {
 		t.Fatalf("graph ingest get run = %#v, want id %q", getPayload["run"], runID)
+	}
+	if got := getRun["checkpoint_complete"]; got != false {
+		t.Fatalf("graph ingest get checkpoint_complete = %#v, want false", got)
+	}
+	if got := getRun["checkpoint_cursor"]; got != "1" {
+		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want next page cursor 1", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)

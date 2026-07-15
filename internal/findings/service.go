@@ -81,6 +81,7 @@ type Service struct {
 	tombstoneEventStore       ports.FindingTombstoneEventStore
 	closeoutHeartbeatInterval time.Duration
 	graphRuleQueryTimeout     time.Duration
+	findingEvaluationLeaseTTL time.Duration
 	rules                     *Registry
 	ttlClock                  ttlClock
 	ttlLogSink                ttlLogSink
@@ -101,7 +102,7 @@ type ReplayPreparer func(context.Context) error
 const defaultGraphRuleQueryTimeout = 14 * time.Minute
 
 const (
-	findingEvaluationLeaseTTL            = 30 * time.Minute
+	defaultFindingEvaluationLeaseTTL     = 30 * time.Minute
 	findingEvaluationLeaseReleaseTimeout = 5 * time.Second
 )
 
@@ -410,10 +411,11 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	leaseCtx, releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
 	if err != nil {
 		return nil, err
 	}
+	ctx = leaseCtx
 	defer func() {
 		if releaseErr := releaseLease(); releaseErr != nil {
 			err = errors.Join(err, releaseErr)
@@ -546,10 +548,11 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	leaseCtx, releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
 	if err != nil {
 		return nil, err
 	}
+	ctx = leaseCtx
 	defer func() {
 		if releaseErr := releaseLease(); releaseErr != nil {
 			err = errors.Join(err, releaseErr)
@@ -1477,33 +1480,78 @@ func (s *Service) canResolveFromEventEvaluationRun(run *cerebrov1.FindingEvaluat
 	return run != nil && run.RuleApplicable != nil && run.GetRuleApplicable() && run.GetEventLimit() > 0 && eventsProcessed < run.GetEventLimit()
 }
 
-func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID string, alreadyHeld bool) (func() error, bool, error) {
+func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID string, alreadyHeld bool) (context.Context, func() error, bool, error) {
 	noop := func() error { return nil }
 	if s == nil || !s.requireTrustedResolution {
-		return noop, true, nil
+		return ctx, noop, true, nil
 	}
 	if alreadyHeld {
-		return noop, true, nil
+		return ctx, noop, true, nil
 	}
 	leaser, ok := s.runtimeStore.(ports.SourceRuntimeLeaseStore)
 	if !ok || leaser == nil {
-		return noop, false, nil
+		return ctx, noop, false, nil
+	}
+	ttl := s.findingEvaluationLeaseTTL
+	if ttl <= 0 {
+		ttl = defaultFindingEvaluationLeaseTTL
 	}
 	owner := "finding-evaluation:" + strings.TrimSpace(runtimeID) + ":" + fmt.Sprintf("%d", time.Now().UnixNano()) + ":" + randomFindingRunSuffix()
-	acquired, err := leaser.AcquireSourceRuntimeLease(ctx, runtimeID, owner, findingEvaluationLeaseTTL)
+	acquired, err := leaser.AcquireSourceRuntimeLease(ctx, runtimeID, owner, ttl)
 	if err != nil {
-		return nil, false, fmt.Errorf("acquire source runtime %q for finding evaluation: %w", runtimeID, err)
+		return nil, nil, false, fmt.Errorf("acquire source runtime %q for finding evaluation: %w", runtimeID, err)
 	}
 	if !acquired {
-		return nil, false, fmt.Errorf("%w: source runtime %q is busy", ErrRuntimeUnavailable, runtimeID)
+		return nil, nil, false, fmt.Errorf("%w: source runtime %q is busy", ErrRuntimeUnavailable, runtimeID)
 	}
-	return func() error {
+	workCtx, cancelWork := context.WithCancel(ctx)
+	renewCtx, cancelRenew := context.WithCancel(ctx)
+	renewalDone := make(chan error, 1)
+	renewalInterval := ttl / 3
+	if renewalInterval <= 0 {
+		renewalInterval = time.Nanosecond
+	}
+	go func() {
+		ticker := time.NewTicker(renewalInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				renewalDone <- nil
+				return
+			case <-ticker.C:
+				renewed, renewErr := leaser.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
+				if renewErr != nil {
+					if renewCtx.Err() != nil {
+						renewalDone <- nil
+						return
+					}
+					cancelWork()
+					renewalDone <- fmt.Errorf("renew source runtime %q during finding evaluation: %w", runtimeID, renewErr)
+					return
+				}
+				if !renewed {
+					if renewCtx.Err() != nil {
+						renewalDone <- nil
+						return
+					}
+					cancelWork()
+					renewalDone <- fmt.Errorf("%w: source runtime %q lease was lost during finding evaluation", ErrRuntimeUnavailable, runtimeID)
+					return
+				}
+			}
+		}
+	}()
+	return workCtx, func() error {
+		cancelRenew()
+		renewalErr := <-renewalDone
+		cancelWork()
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), findingEvaluationLeaseReleaseTimeout)
 		defer cancel()
 		if err := leaser.ReleaseSourceRuntimeLease(releaseCtx, runtimeID, owner); err != nil {
-			return fmt.Errorf("release source runtime %q after finding evaluation: %w", runtimeID, err)
+			return errors.Join(renewalErr, fmt.Errorf("release source runtime %q after finding evaluation: %w", runtimeID, err))
 		}
-		return nil
+		return renewalErr
 	}, true, nil
 }
 
