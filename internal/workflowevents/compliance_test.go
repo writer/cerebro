@@ -28,6 +28,13 @@ func TestComplianceAggregateRoundTrip(t *testing.T) {
 	if event.GetAttributes()["aggregate_id"] != payload.AggregateID {
 		t.Fatalf("aggregate_id attribute = %q", event.GetAttributes()["aggregate_id"])
 	}
+	replayed, err := DecodeSharedEnvelopeEvent(event.GetPayload(), event.GetAttributes())
+	if err != nil {
+		t.Fatalf("DecodeSharedEnvelopeEvent() error = %v", err)
+	}
+	if got := replayed.GetSchemaRef(); got != SchemaComplianceAggregate {
+		t.Fatalf("replayed schema ref = %q, want %q", got, SchemaComplianceAggregate)
+	}
 }
 
 func TestComplianceAggregateKindsRegistered(t *testing.T) {
