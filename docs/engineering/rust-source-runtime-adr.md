@@ -9,6 +9,11 @@
 
 Cerebro will add a native Rust source-runtime process that executes normalized connector definitions and returns validated source pages to the existing Go compatibility plane. The unit of connector authoring becomes a versioned, language-neutral definition and proof bundle, not a generated Go package.
 
+This is the target boundary, not permission to translate working Go packages. The
+native worker advances only when an implementation slice deletes an existing
+ownership surface or proves a safety property that the current Go path leaves to
+runtime checks and review.
+
 The first Rust runtime owns shared provider execution:
 
 - definition validation and compilation into a canonical execution plan;
@@ -57,19 +62,71 @@ The repository already contains the correct beginnings of a scalable source mode
 
 The problem is not the absence of a connector factory. The problem is that the factory still materializes too much Go source and too much compile-time wiring.
 
-The current repository snapshot contains:
+The current repository snapshot, measured with `tools/codegenstatus` and
+`tools/sourcefidelity`, contains:
 
-- 820 source definitions;
-- 799 executable runtime sources;
-- 43 sources at the existing high-fidelity threshold;
+- 794 connector definitions;
+- 793 definitions accepted by the normalized generator grammar;
+- one definition classified as requiring a bespoke runtime;
+- 16 shared projection templates;
+- 820 entries in the source-fidelity inventory and 799 runtime sources;
+- 43 sources at the current high-fidelity threshold;
 - 743 sources that still need realistic fixtures;
 - 736 sources that still need every-family tests;
 - 752 sources that still need deploy-family coverage;
 - a 5,827-line compile-time source registry;
-- a second large compile-time projector registry;
+- a 6,407-line compile-time projector registry;
 - generated adapters that repeat large maps of paths, selectors, identity keys, and static attributes already present in connector definitions.
 
 Moving each package to Rust would preserve that shape and create a large Rust workspace with the same registration, fidelity, and review problems. The useful Rust boundary is the shared execution engine under the declarative catalog.
+
+## Proven boundary in the current tree
+
+The repository now contains a smaller executable proof in
+`internal/sourceruntime/recordkernel`. It deliberately leaves credentials,
+provider requests, retries, leases, append, projection, and checkpoint commits
+in Go. A bounded Rust/Wasm guest receives one credential-free page and mapping
+contract, then returns accepted records, quarantine references, a proposed
+cursor, and deterministic receipts.
+
+That proof establishes the first reusable primitives:
+
+- an unvalidated plan cannot execute because the executable method exists only
+  on the validated Rust type;
+- an execution permit is move-only and cannot authorize a second call;
+- host encoding, guest input, guest output, memory, and execution time are
+  bounded before any result is accepted;
+- the guest has zero function imports and zero memory imports;
+- empty cursor-only pages map successfully;
+- malformed signed limits return bounded contract rejections instead of being
+  reported as worker failures;
+- native and embedded tests prove stable output across JSON object key order;
+- the canonical artifact and its ABI, hash, and size are checked in the shared
+  embedded-Wasm manifest.
+
+It does not establish that provider HTTP, authentication, retry, or pagination
+should move to Rust. Those capabilities already work in Go. This ADR requires
+the later native worker to earn that larger boundary through registry deletion,
+definition-driven coverage, failure isolation, and live differential evidence.
+If it cannot, Cerebro keeps provider transport in Go and expands only the
+credential-free record kernel.
+
+## Why Rust, and where Rust is not the reason
+
+The decision is narrower than “Rust is safer”:
+
+| Boundary rule | Rust property | Go position | Decision consequence |
+| --- | --- | --- | --- |
+| A draft plan cannot execute | typestate exposes execution only on `SourcePlan<Validated>` | standard Go methods cannot depend on a compile-time state parameter | keep plan compilation and validation in Rust |
+| One grant authorizes one execution | ownership makes the permit move-only | standard Go has no user-defined move-only value | consume execution authority inside Rust |
+| Internal state additions reach every handler | closed enums and exhaustive Rust matches | Go wire consumers still validate string states at runtime | use Rust enums internally; validate every cross-language state at the ABI |
+| Mapping code has no ambient capabilities | the committed Wasm guest has no imports | the pinned standard Go Wasm runtime imports WASI process services | keep agent-written mapping inside the no-import guest |
+| Provider HTTP, auth, retries, and pagination work | no unique language advantage | the existing Go hosts already implement these operations | move them only when one native worker deletes duplicated runtime ownership |
+| A crash is isolated from the API process | separate process boundary | a separate Go process can provide the same isolation | process isolation alone does not justify a rewrite |
+
+The Rust-specific case is compile-time authority and state discipline around
+untrusted, frequently changed mapping and plan logic. The native-process case is
+operational consolidation. They are related but they are not the same claim.
 
 ## Current execution path
 
@@ -77,8 +134,8 @@ Today a source-runtime sync follows this sequence:
 
 ```text
 stored SourceRuntime
-  -> resolve secret-backed config
   -> acquire source implementation from registry
+  -> resolve secret-backed config
   -> Read or ReadWithCheckpoint
   -> materialize tenant/runtime fields
   -> validate the EventEnvelope
@@ -185,7 +242,9 @@ Runtime execution never consults unnormalized YAML maps. Unknown plan fields are
 
 ## Source execution protocol
 
-The new internal protocol is defined in `proto/cerebro/v1/source_runtime.proto` and generated for both Go and Rust. It is not exposed as a new public route in the first phase.
+The new internal protocol will be defined in
+`proto/cerebro/v1/source_runtime.proto` and generated for both Go and Rust. It
+is not exposed as a new public route in the first phase.
 
 ### Operations
 
@@ -246,8 +305,20 @@ The current code correctly treats page continuation and durable progress as diff
 - Empty pages may carry a next cursor.
 - A not-modified response may refresh checkpoint metadata without emitting events.
 - A high-watermark source must declare overlap and equality behavior.
-- A provider cursor is opaque to Go but typed inside the execution plan.
-- Cursor envelopes include the source, family, plan digest, and cursor-version identity so a token cannot be replayed against another plan.
+- The existing Go-compatible continuation cursor remains opaque and is
+  persisted unchanged in `NextCursor` during migration. Depending on the
+  source, that value may be a provider-native token or an existing Cerebro
+  composite that includes fan-out position and nested provider state. The
+  execution plan declares its format but does not wrap it in a Rust-only value.
+- Source, family, plan digest, engine, and cursor-schema identity are stored as
+  separate progress metadata. Go validates that metadata before it sends the
+  exact Go-compatible continuation cursor to either engine.
+- Worker-only continuation state, when required, uses a separate versioned
+  field. It cannot replace `NextCursor` and is never passed to a Go source as a
+  continuation token.
+- A new cursor representation requires an explicit converter back to the exact
+  Go-compatible continuation value plus differential resume and rollback
+  fixtures before that family can become authoritative.
 - Reconfiguration that changes progress-affecting fields invalidates incompatible continuation state through the existing configuration digest rule.
 
 ## Identity and event rules
@@ -483,15 +554,20 @@ Registration becomes data-driven. The runtime loads the compiled first-party pla
 
 ## Migration plan
 
-### Stage 0: contract extraction
+### Stage 0: bounded mapping proof and contract extraction
 
+- Keep the landed no-import record kernel credential-free and non-authoritative.
+- Use its typestate, permit, canonicalization, quarantine, receipt, ABI, host
+  limits, and artifact-manifest checks as the minimum contract for later plans.
 - Add `source_runtime.proto` with plan, request, result, receipt, limit, and error types.
 - Generate Go and Rust bindings in CI.
 - Add canonical serialization and digest test vectors.
 - Add a Go adapter from existing `Source` calls to the new request/result contract.
 - Do not add network transport yet.
 
-**Exit gate:** Go round-trips representative sources through the new contract without behavior changes.
+**Exit gate:** Go round-trips representative sources through the new contract
+without behavior changes, and the credential-free kernel can shadow recorded
+pages without changing append or checkpoint authority.
 
 ### Stage 1: definition compiler
 
@@ -592,6 +668,9 @@ Registration becomes data-driven. The runtime loads the compiled first-party pla
 - Go continues serving existing source APIs while the worker is unavailable.
 - An unavailable Rust worker produces an explicit capability state; it does not silently report success.
 - Per-family rollback does not require rewriting stored checkpoints.
+- Every authoritative family proves that Rust-to-Go rollback resumes from the
+  stored Go-compatible continuation cursor without wrapping, truncating, or
+  resetting it.
 - CPU, memory, latency, request, and response budgets are observable.
 - Worker version and execution-plan digest are visible in internal runtime diagnostics.
 
@@ -611,8 +690,10 @@ Authority is selected with a stored, tenant-scoped runtime flag containing the e
 Rollback is a state transition, not a deployment improvisation:
 
 1. stop issuing Rust page capabilities for the affected family;
-2. preserve the last committed checkpoint and cursor;
-3. route the next attempt to the Go adapter using the same durable progress;
+2. preserve the last committed checkpoint, Go-compatible continuation cursor,
+   and progress metadata;
+3. validate the stored source, family, plan, engine, and cursor-schema metadata,
+   then pass the exact Go-compatible continuation cursor to the Go adapter;
 4. keep the mismatch receipt and worker build identity;
 5. require a new plan or worker revision before Rust can regain authority.
 
@@ -642,7 +723,12 @@ Rejected. It moves code without changing the authoring, registry, fidelity, or p
 
 ### Keep Go source execution indefinitely
 
-Rejected as the target. The existing catalog runtime proves that most standard sources are data-driven. Keeping execution tied to generated Go packages makes the catalog less agentically operable and keeps provider execution coupled to the API process.
+Retained as the fallback, rejected as the default target. The existing catalog
+runtime proves that most standard sources are data-driven. Keeping execution
+tied to generated Go packages preserves compile-time registries and makes the
+catalog harder to operate through definitions and proofs. But Go remains the
+provider runtime if the native worker cannot delete those surfaces or meet the
+parity and operational gates in this ADR.
 
 ### Use CGO or in-process FFI
 
@@ -689,16 +775,19 @@ Rejected. Existing events and APIs are protobuf contracts. A language-specific w
 
 The implementation should land as reviewable ownership slices based on the native control-kernel foundation:
 
-1. **Source protocol:** protobuf contract, canonical digest vectors, Go adapter, Rust generated types.
-2. **Plan compiler:** Rust definition normalization and catalog grammar parity.
-3. **Fixture worker:** native process, bounded HTTP host, auth, pagination, events, receipts.
-4. **Differential harness:** Go/Rust page and projection comparison over existing fixtures.
-5. **Live shadow:** capability issuance, UDS or mTLS transport, mismatch receipts, metrics.
-6. **Control-loop receipts:** committed source revisions and typed mission wake conditions.
-7. **Family authority:** one declarative cohort with automatic rollback.
-8. **Registry deletion:** plan-index loading and removal of standard generated registration.
-9. **Projection delta:** shadow calculation and later authoritative declarative projection.
-10. **Deposit validation:** shared record validation behind the existing authenticated deposit surface.
+1. **Bounded record kernel:** landed typestate, move-only permit, no-import ABI,
+   host limits, empty-page behavior, quarantine, receipts, and reproducible
+   artifact evidence.
+2. **Source protocol:** protobuf contract, canonical digest vectors, Go adapter, Rust generated types.
+3. **Plan compiler:** Rust definition normalization and catalog grammar parity.
+4. **Fixture worker:** native process, bounded HTTP host, auth, pagination, events, receipts.
+5. **Differential harness:** Go/Rust page and projection comparison over existing fixtures.
+6. **Live shadow:** capability issuance, UDS or mTLS transport, mismatch receipts, metrics.
+7. **Control-loop receipts:** committed source revisions and typed mission wake conditions.
+8. **Family authority:** one declarative cohort with automatic rollback.
+9. **Registry deletion:** plan-index loading and removal of standard generated registration.
+10. **Projection delta:** shadow calculation and later authoritative declarative projection.
+11. **Deposit validation:** shared record validation behind the existing authenticated deposit surface.
 
 No slice should combine process transport, authoritative provider reads, append ownership, and graph writes.
 
