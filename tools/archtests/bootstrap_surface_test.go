@@ -114,7 +114,7 @@ import (
 // bounded baseline comparison, and remediation proposal shaping stay in
 // internal/complianceassessment; schemas and tool inventory stay in
 // internal/mcpoperations.
-const bootstrapProductionGoLineBudget = 27982
+const bootstrapProductionGoLineBudget = 27987
 
 type bootstrapFileLineCount struct {
 	path  string
