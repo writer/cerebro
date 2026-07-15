@@ -1,9 +1,18 @@
+#![deny(unsafe_code)]
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
 pub const ABI_VERSION: u32 = 1;
+#[cfg(target_arch = "wasm32")]
+const MAX_INPUT_BYTES: usize = 1 << 20;
+#[cfg(target_arch = "wasm32")]
+const MAX_OUTPUT_BYTES: usize = 2 << 20;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_abi;
 
 const ATTACK_TACTICS: &[(&str, &str)] = &[
     ("TA0043", "Reconnaissance"),
@@ -23,6 +32,7 @@ const ATTACK_TACTICS: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContextInput {
     #[serde(default)]
     attack_tactic_values: Vec<String>,
@@ -399,72 +409,6 @@ fn attack_subtechnique_url_pattern() -> &'static Regex {
 fn attack_tactic_pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     PATTERN.get_or_init(|| Regex::new(r"(?i-u)\bTA[0-9]{4}\b").expect("valid regex"))
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_mitre_abi_version() -> u32 {
-    ABI_VERSION
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_mitre_alloc(length: u32) -> u32 {
-    let mut bytes = vec![0_u8; length as usize];
-    let pointer = bytes.as_mut_ptr() as usize;
-    std::mem::forget(bytes);
-    u32::try_from(pointer).unwrap_or_default()
-}
-
-#[cfg(target_arch = "wasm32")]
-#[unsafe(no_mangle)]
-pub extern "C" fn cerebro_mitre_evaluate(
-    request_pointer: u32,
-    request_length: u32,
-    result_pointer: u32,
-) -> u32 {
-    const RESULT_SIZE: usize = 16;
-    let request_start = request_pointer as usize;
-    let result_start = result_pointer as usize;
-    let Some(request_end) = request_start.checked_add(request_length as usize) else {
-        return 3;
-    };
-    let Some(result_end) = result_start.checked_add(RESULT_SIZE) else {
-        return 3;
-    };
-    let memory_size = core::arch::wasm32::memory_size(0) * 65_536;
-    if request_end > memory_size || result_end > memory_size {
-        return 3;
-    }
-
-    // SAFETY: The host allocates the request range in this module and checks its bounds above.
-    let request_bytes = unsafe {
-        std::slice::from_raw_parts(request_pointer as *const u8, request_length as usize)
-    };
-    let request: ContextInput = match serde_json::from_slice(request_bytes) {
-        Ok(request) => request,
-        Err(_) => return 1,
-    };
-    let mut output = match serde_json::to_vec(&evaluate(request)) {
-        Ok(output) => output,
-        Err(_) => return 2,
-    };
-    let Ok(output_pointer) = u32::try_from(output.as_mut_ptr() as usize) else {
-        return 2;
-    };
-    let Ok(output_length) = u32::try_from(output.len()) else {
-        return 2;
-    };
-    std::mem::forget(output);
-
-    let mut result = [0_u8; RESULT_SIZE];
-    result[4..8].copy_from_slice(&output_pointer.to_le_bytes());
-    result[8..12].copy_from_slice(&output_length.to_le_bytes());
-    // SAFETY: The result range is checked against linear memory above.
-    unsafe {
-        std::ptr::copy_nonoverlapping(result.as_ptr(), result_pointer as *mut u8, result.len())
-    };
-    0
 }
 
 #[cfg(test)]

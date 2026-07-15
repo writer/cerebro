@@ -1,0 +1,15 @@
+{
+  "attack_tactic_values": [
+    "Initial Access|TA0001",
+    "TA9999"
+  ],
+  "attack_technique_values": [
+    "t1190,T1190;Native API\nnative-api\tT1562.001"
+  ],
+  "attack_technique_id_values": [
+    "attack.t1190|T1486"
+  ],
+  "defend_technique_values": [
+    "TokenBinding,TokenBinding,tokenbinding"
+  ]
+}
