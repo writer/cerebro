@@ -2535,6 +2535,8 @@ paths:
           description: The plan is incomplete or exceeds assessment bounds.
         '403':
           description: The caller cannot write assessment plans for the tenant.
+        '409':
+          description: The assessment plan projection changed before creation completed.
         '503':
           description: Assessment storage is unavailable.
   /grc/assessment-plans/{planID}:
@@ -2557,8 +2559,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssessmentPlanResponse'
+        '403':
+          description: The caller cannot read assessment plans for the tenant.
         '404':
           description: Assessment plan was not found in the tenant.
+        '503':
+          description: Assessment storage is unavailable.
   /grc/assessment-plans/{planID}/publish:
     post:
       operationId: publishAssessmentPlan
@@ -2591,10 +2597,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssessmentPlanResponse'
+        '400':
+          description: The request body or assessment plan execution is invalid.
+        '403':
+          description: The caller cannot publish assessment plans for the tenant.
         '404':
           description: Assessment plan was not found in the tenant.
         '409':
           description: The plan changed or is not a draft.
+        '503':
+          description: Assessment storage is unavailable.
   /grc/assessment-runs:
     post:
       operationId: requestAssessmentRun
@@ -2628,10 +2640,12 @@ paths:
                 $ref: '#/components/schemas/AssessmentRunResponse'
         '400':
           description: The period, plan revision, or idempotency key is invalid.
+        '403':
+          description: The caller cannot request assessment runs for the tenant.
         '404':
           description: The assessment plan revision was not found in the tenant.
         '409':
-          description: The idempotency key is already bound to another request.
+          description: The idempotency key is already bound to another request, or the plan revision cannot be executed.
         '503':
           description: Assessment execution is unavailable.
   /grc/assessment-runs/{runID}:
@@ -2654,8 +2668,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssessmentRunResponse'
+        '403':
+          description: The caller cannot read assessment runs for the tenant.
         '404':
           description: Assessment run was not found in the tenant.
+        '503':
+          description: Assessment storage is unavailable.
   /grc/assessment-runs/{runID}/results:
     get:
       operationId: listAssessmentRunResults
@@ -2692,6 +2710,8 @@ paths:
                 $ref: '#/components/schemas/AssessmentResultPageResponse'
         '400':
           description: The page cursor or limit is invalid.
+        '403':
+          description: The caller cannot read assessment results for the tenant.
         '404':
           description: Assessment run was not found in the tenant.
         '409':
