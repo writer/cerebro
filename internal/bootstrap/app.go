@@ -32,6 +32,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/evidenceledger"
 	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphactionapi"
@@ -106,6 +107,7 @@ type appServices struct {
 	workflowReplay *workflowprojection.Replayer
 	jobs           *platformjobs.Service
 	assessments    *complianceassessment.Service
+	evidence       *evidenceledger.Service
 	remediation    *complianceremediation.Service
 }
 
@@ -253,6 +255,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	if app.services.assessments != nil {
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
 	}
+	app.services.evidence = app.newEvidenceLedgerService()
 	app.services.remediation = app.newComplianceRemediationService()
 	mux := http.NewServeMux()
 	app.mux = mux

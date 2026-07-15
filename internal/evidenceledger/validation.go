@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -29,6 +30,68 @@ type ValidateClaimRequest struct {
 	PeriodStart time.Time
 	PeriodEnd   time.Time
 	At          time.Time
+}
+
+type CompatibilityRequest struct {
+	TenantID string
+	ClaimID  string
+	Source   compliance.ProofObligation
+	Target   compliance.ProofObligation
+	At       time.Time
+}
+
+type CompatibilityDecision struct {
+	Reusable        bool                          `json:"reusable"`
+	Reuse           compliance.ReuseDecision      `json:"reuse"`
+	ClaimValidation ports.EvidenceClaimValidation `json:"claim_validation"`
+	ReasonCodes     []string                      `json:"reason_codes"`
+}
+
+func (s *Service) ReadClaim(ctx context.Context, tenantID, claimID string) (ports.EvidenceClaim, error) {
+	if s == nil || s.store == nil {
+		return ports.EvidenceClaim{}, ErrInvalidEvidence
+	}
+	return s.store.GetEvidenceClaim(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(claimID))
+}
+
+func (s *Service) ReadArtifact(ctx context.Context, tenantID, artifactID string) (ports.EvidenceArtifact, error) {
+	if s == nil || s.store == nil {
+		return ports.EvidenceArtifact{}, ErrInvalidEvidence
+	}
+	return s.store.GetEvidenceArtifact(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(artifactID))
+}
+
+func (s *Service) EvaluateCompatibility(ctx context.Context, request CompatibilityRequest) (CompatibilityDecision, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	claim, err := s.ReadClaim(ctx, tenantID, request.ClaimID)
+	if err != nil {
+		return CompatibilityDecision{}, err
+	}
+	request.Source.TenantID = tenantID
+	request.Target.TenantID = tenantID
+	reuse, err := compliance.EvaluateEvidenceReuse(request.Source, request.Target)
+	if err != nil {
+		return CompatibilityDecision{}, err
+	}
+	validation, err := s.ValidateClaim(ctx, ValidateClaimRequest{
+		TenantID: tenantID, ClaimID: claim.ID, Subjects: claim.Scope.Subjects,
+		PeriodStart: request.Target.PeriodStart, PeriodEnd: request.Target.PeriodEnd, At: request.At,
+	})
+	if err != nil {
+		return CompatibilityDecision{}, err
+	}
+	reasons := append([]string(nil), validation.ReasonCodes...)
+	if reuse.State == compliance.ReuseIncompatible {
+		for _, predicate := range reuse.FailedPredicates {
+			reasons = append(reasons, "reuse_"+string(predicate)+"_mismatch")
+		}
+	}
+	return CompatibilityDecision{
+		Reusable:        validation.Valid && reuse.State != compliance.ReuseIncompatible,
+		Reuse:           reuse,
+		ClaimValidation: validation,
+		ReasonCodes:     normalizedStrings(reasons),
+	}, nil
 }
 
 func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimRequest) (ports.EvidenceClaimValidation, error) {

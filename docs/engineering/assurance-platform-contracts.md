@@ -55,6 +55,33 @@ returns `evidence_claim_conflicting` with `resolve_conflict`. Invalidating the
 contradictory claim removes it from current conflict evaluation without changing
 historical events or snapshots.
 
+The application composition root activates this ledger only when the configured
+state store implements `ports.EvidenceLedgerStore` and the append log is
+available. The HTTP contract preserves the existing `/grc/evidence`, control
+packet, evidence packet, and audit packet routes and adds tenant-scoped ledger
+operations:
+
+| Operation | State change or read |
+| --- | --- |
+| `POST /grc/evidence-artifacts/{artifactID}/versions` | Record artifact metadata and one immutable EvidenceCAS or approved external version reference. |
+| `GET /grc/evidence-versions/{versionID}` | Read version metadata after purpose and sensitivity checks. |
+| `POST /grc/evidence-claims` | Record a pending scoped claim. |
+| `GET /grc/evidence-claims/{claimID}` | Read the current claim projection. |
+| `POST /grc/evidence-claims/{claimID}/reviews` | Record an approved or rejected review with an expected version. |
+| `POST /grc/evidence-claims/{claimID}/invalidate` | Invalidate a claim with an expected version and reason. |
+| `POST /grc/evidence-claims/{claimID}/validate` | Evaluate review, expiry, conflict, subject, and period state. |
+| `POST /grc/evidence-claims/compatibility` | Compare exact source and target proof obligations and current claim validity. |
+| `POST /grc/evidence-claims/{claimID}/reuse` | Create a separate pending claim over the same immutable version; approval is never copied. |
+
+Compatibility uses `compliance.EvaluateEvidenceReuse`. The source and target
+obligations bind framework, control, implementation and scope revisions,
+population digest, subject kinds, period, method, strength, frequency, and review
+policy. An exact match is reusable. A narrower period over the same semantic
+inputs is partial. Any other mismatch is incompatible. Current claim validation
+can still deny an otherwise compatible obligation when the claim is pending,
+rejected, invalidated, expired, conflicting, outside its covered period, or does
+not cover the requested subjects.
+
 ## Change-Driven Assessment Scheduling
 
 `complianceimpact.Scheduler` connects immutable change signals to the existing

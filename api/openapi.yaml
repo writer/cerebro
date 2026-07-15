@@ -2918,6 +2918,274 @@ paths:
           description: Snapshot results, decisions, or evidence references no longer verify.
         '503':
           description: Assessment snapshot persistence is unavailable.
+  /grc/evidence-artifacts/{artifactID}/versions:
+    post:
+      operationId: registerEvidenceVersion
+      summary: Register immutable evidence version
+      tags:
+        - GRC
+      parameters:
+        - name: artifactID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceVersionRegisterRequest'
+      responses:
+        '201':
+          description: Evidence version registered from an immutable content reference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceVersionRegisterResponse'
+        '400':
+          description: Artifact, provenance, content reference, or governance metadata is invalid.
+        '403':
+          description: The caller cannot register evidence for the tenant.
+        '409':
+          description: The artifact revision conflicts with the current ledger state.
+  /grc/evidence-versions/{versionID}:
+    get:
+      operationId: getEvidenceVersion
+      summary: Get evidence version
+      tags:
+        - GRC
+      parameters:
+        - name: versionID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [assessment, review, audit, export]
+        - name: maximum_sensitivity
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/EvidenceSensitivity'
+      responses:
+        '200':
+          description: Tenant-scoped evidence metadata and immutable content reference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceVersionResponse'
+        '403':
+          description: The caller purpose or sensitivity ceiling does not allow access.
+        '404':
+          description: Evidence version was not found in the tenant.
+  /grc/evidence-claims:
+    post:
+      operationId: createEvidenceClaim
+      summary: Create evidence claim
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimCreateRequest'
+      responses:
+        '201':
+          description: Pending claim recorded against an immutable evidence version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimResponse'
+        '400':
+          description: Claim scope, validity, linkage, or mapping basis is invalid.
+        '403':
+          description: The caller cannot create evidence claims for the tenant.
+        '404':
+          description: Evidence version was not found in the tenant.
+  /grc/evidence-claims/compatibility:
+    post:
+      operationId: evaluateEvidenceClaimCompatibility
+      summary: Evaluate evidence claim compatibility
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimCompatibilityRequest'
+      responses:
+        '200':
+          description: Claim validity and exact proof-obligation compatibility decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimCompatibilityResponse'
+        '400':
+          description: Source or target proof obligation is incomplete.
+        '403':
+          description: The caller cannot evaluate evidence claims for the tenant.
+        '404':
+          description: Evidence claim or version was not found in the tenant.
+  /grc/evidence-claims/{claimID}:
+    get:
+      operationId: getEvidenceClaim
+      summary: Get evidence claim
+      tags:
+        - GRC
+      parameters:
+        - name: claimID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Current projected state of the tenant-scoped evidence claim.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimResponse'
+        '403':
+          description: The caller cannot read evidence claims for the tenant.
+        '404':
+          description: Evidence claim was not found in the tenant.
+  /grc/evidence-claims/{claimID}/reviews:
+    post:
+      operationId: reviewEvidenceClaim
+      summary: Review evidence claim
+      tags:
+        - GRC
+      parameters:
+        - name: claimID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimReviewRequest'
+      responses:
+        '200':
+          description: Claim review decision recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimResponse'
+        '400':
+          description: Review state or reason is invalid.
+        '403':
+          description: The caller cannot review evidence claims for the tenant.
+        '404':
+          description: Evidence claim was not found in the tenant.
+        '409':
+          description: Expected claim version does not match current state.
+  /grc/evidence-claims/{claimID}/invalidate:
+    post:
+      operationId: invalidateEvidenceClaim
+      summary: Invalidate evidence claim
+      tags:
+        - GRC
+      parameters:
+        - name: claimID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimInvalidateRequest'
+      responses:
+        '200':
+          description: Claim invalidation recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimResponse'
+        '400':
+          description: Invalidation reason is missing.
+        '403':
+          description: The caller cannot invalidate evidence claims for the tenant.
+        '404':
+          description: Evidence claim was not found in the tenant.
+        '409':
+          description: Expected claim version does not match current state.
+  /grc/evidence-claims/{claimID}/validate:
+    post:
+      operationId: validateEvidenceClaim
+      summary: Validate evidence claim
+      tags:
+        - GRC
+      parameters:
+        - name: claimID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimValidateRequest'
+      responses:
+        '200':
+          description: Current validity, reason codes, and required actions for the requested scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimValidationResponse'
+        '400':
+          description: Requested period or subject scope is invalid.
+        '403':
+          description: The caller cannot validate evidence claims for the tenant.
+        '404':
+          description: Evidence claim or version was not found in the tenant.
+  /grc/evidence-claims/{claimID}/reuse:
+    post:
+      operationId: reuseEvidenceClaim
+      summary: Reuse evidence version for new claim
+      tags:
+        - GRC
+      parameters:
+        - name: claimID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceClaimReuseRequest'
+      responses:
+        '201':
+          description: New pending claim recorded against the source claim's immutable evidence version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceClaimResponse'
+        '400':
+          description: Replacement scope or mapping basis is invalid.
+        '403':
+          description: The caller cannot reuse evidence claims for the tenant.
+        '404':
+          description: Source claim or evidence version was not found in the tenant.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -6984,6 +7252,509 @@ components:
         evaluated_at:
           type: string
           format: date-time
+    EvidenceSensitivity:
+      type: string
+      enum: [public, internal, confidential, restricted]
+    EvidenceSubjectRef:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+        id:
+          type: string
+    EvidenceArtifact:
+      type: object
+      required: [id, tenant_id, title, type, created_at, created_by]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+    EvidenceRevisionRef:
+      type: object
+      required: [id, revision_id, version, content_digest, last_modified]
+      properties:
+        id:
+          type: string
+        revision_id:
+          type: string
+        version:
+          type: integer
+          format: uint64
+        content_digest:
+          type: string
+        last_modified:
+          type: string
+          format: date-time
+    EvidenceContentRef:
+      type: object
+      required: [media_type, uri, content_digest, size_bytes]
+      properties:
+        media_type:
+          type: string
+        uri:
+          type: string
+        content_digest:
+          type: string
+        size_bytes:
+          type: integer
+          format: uint64
+    EvidenceProvenance:
+      type: object
+      required: [producer, collected_at, source_proof_revision_id]
+      properties:
+        producer:
+          type: string
+        producer_version:
+          type: string
+        collected_at:
+          type: string
+          format: date-time
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        source_runtime_id:
+          type: string
+        source_event_id:
+          type: string
+        source_proof_revision_id:
+          type: string
+        derivation_ids:
+          type: array
+          items:
+            type: string
+    EvidenceGovernance:
+      type: object
+      required: [sensitivity, access_policy, legal_hold]
+      properties:
+        sensitivity:
+          $ref: '#/components/schemas/EvidenceSensitivity'
+        access_policy:
+          type: string
+        retention_until:
+          type: string
+          format: date-time
+        legal_hold:
+          type: boolean
+        redaction_state:
+          type: string
+        parser_quality:
+          type: string
+    EvidenceVersion:
+      type: object
+      required: [id, tenant_id, artifact_id, revision, content, provenance, governance, valid_from, subjects, state, recorded_at]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        artifact_id:
+          type: string
+        revision:
+          $ref: '#/components/schemas/EvidenceRevisionRef'
+        content:
+          $ref: '#/components/schemas/EvidenceContentRef'
+        provenance:
+          $ref: '#/components/schemas/EvidenceProvenance'
+        governance:
+          $ref: '#/components/schemas/EvidenceGovernance'
+        valid_from:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceSubjectRef'
+        state:
+          type: string
+          enum: [collected, validation_failed, under_review, approved, stale, superseded, revoked]
+        quarantine_reason:
+          type: string
+        predecessor_id:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+    EvidenceArtifactInput:
+      type: object
+      required: [tenant_id, title, type]
+      properties:
+        tenant_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+    EvidenceVersionInput:
+      type: object
+      required: [content, provenance, governance, subjects]
+      properties:
+        id:
+          type: string
+        revision:
+          type: object
+          properties:
+            version:
+              type: integer
+              format: uint64
+        content:
+          $ref: '#/components/schemas/EvidenceContentRef'
+        provenance:
+          $ref: '#/components/schemas/EvidenceProvenance'
+        governance:
+          $ref: '#/components/schemas/EvidenceGovernance'
+        valid_from:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        subjects:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/EvidenceSubjectRef'
+        predecessor_id:
+          type: string
+    EvidenceVersionRegisterRequest:
+      type: object
+      required: [artifact, version]
+      properties:
+        artifact:
+          $ref: '#/components/schemas/EvidenceArtifactInput'
+        version:
+          $ref: '#/components/schemas/EvidenceVersionInput'
+    EvidenceVersionResponse:
+      type: object
+      required: [version]
+      properties:
+        version:
+          $ref: '#/components/schemas/EvidenceVersion'
+    EvidenceVersionRegisterResponse:
+      type: object
+      required: [artifact, version]
+      properties:
+        artifact:
+          $ref: '#/components/schemas/EvidenceArtifact'
+        version:
+          $ref: '#/components/schemas/EvidenceVersion'
+    EvidenceClaimScope:
+      type: object
+      required: [objective_id, implementation_revision_id, requirement_id, subjects, period_start, period_end]
+      properties:
+        objective_id:
+          type: string
+        implementation_revision_id:
+          type: string
+        requirement_id:
+          type: string
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceSubjectRef'
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+    EvidenceClaimDecision:
+      type: object
+      required: [review_state]
+      properties:
+        review_state:
+          type: string
+          enum: [pending, approved, rejected]
+        reviewer_id:
+          type: string
+        review_reason:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        invalidated_at:
+          type: string
+          format: date-time
+        invalidation_reason:
+          type: string
+    EvidenceClaim:
+      type: object
+      required: [id, tenant_id, artifact_version_id, scope, linkage, strength, mapping_rationale, decision, version, created_at, created_by]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        artifact_version_id:
+          type: string
+        scope:
+          $ref: '#/components/schemas/EvidenceClaimScope'
+        linkage:
+          type: string
+          enum: [direct, inherited, inferred]
+        strength:
+          type: string
+        limitation:
+          type: string
+        mapping_rationale:
+          type: string
+        decision:
+          $ref: '#/components/schemas/EvidenceClaimDecision'
+        version:
+          type: integer
+          format: uint64
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        valid_until:
+          type: string
+          format: date-time
+    EvidenceClaimInput:
+      type: object
+      required: [tenant_id, artifact_version_id, scope, linkage, strength, mapping_rationale]
+      properties:
+        tenant_id:
+          type: string
+        artifact_version_id:
+          type: string
+        scope:
+          $ref: '#/components/schemas/EvidenceClaimScope'
+        linkage:
+          type: string
+          enum: [direct, inherited, inferred]
+        strength:
+          type: string
+        limitation:
+          type: string
+        mapping_rationale:
+          type: string
+        valid_until:
+          type: string
+          format: date-time
+    EvidenceClaimReuseInput:
+      type: object
+      required: [scope, linkage, strength, mapping_rationale]
+      properties:
+        scope:
+          $ref: '#/components/schemas/EvidenceClaimScope'
+        linkage:
+          type: string
+          enum: [direct, inherited, inferred]
+        strength:
+          type: string
+        limitation:
+          type: string
+        mapping_rationale:
+          type: string
+        valid_until:
+          type: string
+          format: date-time
+    EvidenceClaimCreateRequest:
+      type: object
+      required: [claim]
+      properties:
+        claim:
+          $ref: '#/components/schemas/EvidenceClaimInput'
+    EvidenceClaimResponse:
+      type: object
+      required: [claim]
+      properties:
+        claim:
+          $ref: '#/components/schemas/EvidenceClaim'
+    EvidenceClaimReviewRequest:
+      type: object
+      required: [tenant_id, expected_version, state, reason]
+      properties:
+        tenant_id:
+          type: string
+        expected_version:
+          type: integer
+          format: uint64
+        state:
+          type: string
+          enum: [approved, rejected]
+        reason:
+          type: string
+    EvidenceClaimInvalidateRequest:
+      type: object
+      required: [tenant_id, expected_version, reason]
+      properties:
+        tenant_id:
+          type: string
+        expected_version:
+          type: integer
+          format: uint64
+        reason:
+          type: string
+    EvidenceClaimValidateRequest:
+      type: object
+      required: [tenant_id, subjects, period_start, period_end]
+      properties:
+        tenant_id:
+          type: string
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceSubjectRef'
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        at:
+          type: string
+          format: date-time
+    EvidenceClaimValidation:
+      type: object
+      required: [valid, reason_codes, next_actions]
+      properties:
+        valid:
+          type: boolean
+        reason_codes:
+          type: array
+          items:
+            type: string
+            enum: [evidence_claim_approved, evidence_claim_pending, evidence_claim_rejected, evidence_claim_invalidated, evidence_claim_expired, evidence_claim_conflicting, evidence_version_quarantined, evidence_version_revoked, evidence_version_expired, evidence_period_gap, evidence_subject_mismatch]
+        next_actions:
+          type: array
+          items:
+            type: string
+            enum: [none, review, replace_claim, refresh_evidence, resolve_conflict, repair_source, collect_evidence]
+    EvidenceClaimValidationResponse:
+      type: object
+      required: [claim_id, validation]
+      properties:
+        claim_id:
+          type: string
+        validation:
+          $ref: '#/components/schemas/EvidenceClaimValidation'
+    EvidenceProofObligation:
+      type: object
+      required: [requirement_id, control_id, framework_id, framework_version, implementation_revision, scope_revision, subject_kinds, population_digest, period_start, period_end, method, assurance_strength, frequency, reviewer_required]
+      properties:
+        tenant_id:
+          type: string
+        requirement_id:
+          type: string
+        control_id:
+          type: string
+        framework_id:
+          type: string
+        framework_version:
+          type: string
+        implementation_revision:
+          type: string
+        scope_revision:
+          type: string
+        subject_kinds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        population_digest:
+          type: string
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [automated, manual, hybrid]
+        assurance_strength:
+          type: string
+          enum: [documented, observed, tested, independently_reviewed]
+        frequency:
+          type: string
+        reviewer_required:
+          type: boolean
+        digest:
+          type: string
+    EvidenceReuseDecision:
+      type: object
+      required: [state, source_digest, target_digest, failed_predicates, decision_digest]
+      properties:
+        state:
+          type: string
+          enum: [exact, partial, incompatible]
+        source_digest:
+          type: string
+        target_digest:
+          type: string
+        failed_predicates:
+          type: array
+          items:
+            type: string
+            enum: [tenant, control, implementation_revision, scope_revision, subject_kinds, population, period, method, assurance_strength, frequency, reviewer_requirement]
+        decision_digest:
+          type: string
+    EvidenceClaimCompatibilityRequest:
+      type: object
+      required: [tenant_id, claim_id, source, target]
+      properties:
+        tenant_id:
+          type: string
+        claim_id:
+          type: string
+        source:
+          $ref: '#/components/schemas/EvidenceProofObligation'
+        target:
+          $ref: '#/components/schemas/EvidenceProofObligation'
+        at:
+          type: string
+          format: date-time
+    EvidenceClaimCompatibilityDecision:
+      type: object
+      required: [reusable, reuse, claim_validation, reason_codes]
+      properties:
+        reusable:
+          type: boolean
+        reuse:
+          $ref: '#/components/schemas/EvidenceReuseDecision'
+        claim_validation:
+          $ref: '#/components/schemas/EvidenceClaimValidation'
+        reason_codes:
+          type: array
+          items:
+            type: string
+    EvidenceClaimCompatibilityResponse:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: '#/components/schemas/EvidenceClaimCompatibilityDecision'
+    EvidenceClaimReuseRequest:
+      type: object
+      required: [tenant_id, claim]
+      properties:
+        tenant_id:
+          type: string
+        claim:
+          $ref: '#/components/schemas/EvidenceClaimReuseInput'
     AssuranceSourceProof:
       type: object
       required: [runtime_id, state, observed_at, fresh_until]
