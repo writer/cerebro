@@ -117,6 +117,27 @@ func TestDetectContradictionsRequiresOverlappingValidity(t *testing.T) {
 	}
 }
 
+func TestDetectContradictionsDistinguishesRepeatedEvidenceAcrossValidityWindows(t *testing.T) {
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	common := ClaimObservation{TenantID: "tenant-1", SubjectURN: "urn:asset:1", Predicate: "public", ValidTo: start.Add(4 * time.Hour)}
+	first := common
+	first.Value, first.ValidFrom, first.Evidence = "true", start, EvidenceReference{ID: "evidence-1", Kind: "observation", ValidFrom: start}
+	second := common
+	second.Value, second.ValidFrom, second.Evidence = "false", start, EvidenceReference{ID: "evidence-2", Kind: "observation", ValidFrom: start}
+	third := common
+	third.Value, third.ValidFrom, third.Evidence = "true", start.Add(time.Hour), EvidenceReference{ID: "evidence-1", Kind: "observation", ValidFrom: start.Add(time.Hour)}
+	got := DetectContradictions([]ClaimObservation{third, second, first})
+	if len(got) != 2 || got[0].ID == got[1].ID {
+		t.Fatalf("contradictions = %+v, want two distinct content-addressed conflicts", got)
+	}
+	reordered := DetectContradictions([]ClaimObservation{first, second, third})
+	leftJSON, _ := json.Marshal(got)
+	rightJSON, _ := json.Marshal(reordered)
+	if string(leftJSON) != string(rightJSON) {
+		t.Fatalf("input order changed contradictions: first=%s reordered=%s", leftJSON, rightJSON)
+	}
+}
+
 func TestNormalizeRequestBudgets(t *testing.T) {
 	got, err := NormalizeRequest(Request{Workflow: " Triage ", FindingIDs: []string{"b", "a", "a"}})
 	if err != nil {
@@ -266,5 +287,32 @@ func TestCanonicalizePacketTreatsNilAndEmptyResultSlicesEqually(t *testing.T) {
 	}
 	if withNil.ID != withEmpty.ID || string(nilJSON) != string(emptyJSON) {
 		t.Fatalf("nil and empty slices changed canonical packet: nil=%s empty=%s", nilJSON, emptyJSON)
+	}
+}
+
+func TestCanonicalizePacketNormalizesEmbeddedAgentContracts(t *testing.T) {
+	packet := Packet{
+		GeneratedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
+		Guardrails: agentplatform.AgentDecisionGuardrails{
+			Version:         " v1 ",
+			Readiness:       agentplatform.AgentReadinessAssessment{State: " READY ", Reasons: nil},
+			VerifierResults: []agentplatform.AgentVerifierResult{{ID: " verifier-1 ", Status: " PASS ", Evidence: nil}},
+		},
+		Claim: agentplatform.ClaimVerification{Claim: " Asset is public ", Verdict: " SUPPORTED ", SupportingEvidence: nil, RequiredWriteBack: nil},
+	}
+	spaced, spacedJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(spaced agent contracts) error = %v", err)
+	}
+	packet.Guardrails.Version = "v1"
+	packet.Guardrails.Readiness = agentplatform.AgentReadinessAssessment{State: "ready", Reasons: []string{}}
+	packet.Guardrails.VerifierResults[0] = agentplatform.AgentVerifierResult{ID: "verifier-1", Status: "pass", Evidence: []string{}}
+	packet.Claim = agentplatform.ClaimVerification{Claim: "Asset is public", Verdict: "supported", SupportingEvidence: []agentplatform.EvidenceReference{}, RequiredWriteBack: []string{}, Blockers: []agentplatform.CapabilityDecisionBlocker{}, Warnings: []string{}, CounterEvidence: []agentplatform.EvidenceReference{}, MissingEvidence: []string{}, VerifierResults: []agentplatform.AgentVerifierResult{}}
+	plain, plainJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(plain agent contracts) error = %v", err)
+	}
+	if spaced.ID != plain.ID || string(spacedJSON) != string(plainJSON) {
+		t.Fatalf("agent contract formatting changed canonical packet: spaced=%s plain=%s", spacedJSON, plainJSON)
 	}
 }

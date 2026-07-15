@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -59,6 +60,33 @@ func normalizePacket(packet Packet) Packet {
 	packet.Scope.TenantID = strings.TrimSpace(packet.Scope.TenantID)
 	packet.Scope.ActorID = strings.TrimSpace(packet.Scope.ActorID)
 	packet.Scope.URN = strings.TrimSpace(packet.Scope.URN)
+	normalizeEmbeddedCanonicalValue(&packet.Guardrails)
+	normalizeEmbeddedCanonicalValue(&packet.Claim)
+	packet.Guardrails.Readiness.State = strings.ToLower(packet.Guardrails.Readiness.State)
+	for index := range packet.Guardrails.VerifierResults {
+		packet.Guardrails.VerifierResults[index].Status = strings.ToLower(packet.Guardrails.VerifierResults[index].Status)
+	}
+	for index := range packet.Guardrails.ActionLadder {
+		packet.Guardrails.ActionLadder[index].Status = strings.ToLower(packet.Guardrails.ActionLadder[index].Status)
+	}
+	for index := range packet.Guardrails.ConnectorToolGates {
+		packet.Guardrails.ConnectorToolGates[index].Status = strings.ToLower(packet.Guardrails.ConnectorToolGates[index].Status)
+	}
+	packet.Claim.Verdict = strings.ToLower(packet.Claim.Verdict)
+	packet.Claim.AllowedNextStage = strings.ToLower(packet.Claim.AllowedNextStage)
+	packet.Claim.RequestedActionStage = strings.ToLower(packet.Claim.RequestedActionStage)
+	packet.Claim.FreshnessState = strings.ToLower(packet.Claim.FreshnessState)
+	for index := range packet.Claim.SupportingEvidence {
+		packet.Claim.SupportingEvidence[index].Kind = strings.ToLower(packet.Claim.SupportingEvidence[index].Kind)
+		packet.Claim.SupportingEvidence[index].CitationStatus = strings.ToLower(packet.Claim.SupportingEvidence[index].CitationStatus)
+	}
+	for index := range packet.Claim.CounterEvidence {
+		packet.Claim.CounterEvidence[index].Kind = strings.ToLower(packet.Claim.CounterEvidence[index].Kind)
+		packet.Claim.CounterEvidence[index].CitationStatus = strings.ToLower(packet.Claim.CounterEvidence[index].CitationStatus)
+	}
+	for index := range packet.Claim.VerifierResults {
+		packet.Claim.VerifierResults[index].Status = strings.ToLower(packet.Claim.VerifierResults[index].Status)
+	}
 	packet.Decision.State = strings.ToLower(strings.TrimSpace(packet.Decision.State))
 	packet.Decision.Rationale = strings.TrimSpace(packet.Decision.Rationale)
 	packet.Decision.Reasons = normalizeStrings(packet.Decision.Reasons)
@@ -202,6 +230,66 @@ func nonNilSlice[T any](values []T) []T {
 		return []T{}
 	}
 	return values
+}
+
+// normalizeEmbeddedCanonicalValue keeps imported, typed agent contracts stable
+// under whitespace and nil-versus-empty representation differences.
+func normalizeEmbeddedCanonicalValue(value any) {
+	normalizeCanonicalReflectValue(reflect.ValueOf(value))
+}
+
+func normalizeCanonicalReflectValue(value reflect.Value) {
+	if !value.IsValid() {
+		return
+	}
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return
+		}
+		normalizeCanonicalReflectValue(value.Elem())
+		return
+	}
+	switch value.Kind() {
+	case reflect.String:
+		if value.CanSet() {
+			value.SetString(strings.TrimSpace(value.String()))
+		}
+	case reflect.Struct:
+		for index := 0; index < value.NumField(); index++ {
+			field := value.Field(index)
+			normalizeCanonicalReflectValue(field)
+			if field.Kind() == reflect.String && field.CanSet() && canonicalLowercaseField(value.Type().Field(index).Name) {
+				field.SetString(strings.ToLower(field.String()))
+			}
+		}
+	case reflect.Slice:
+		if value.IsNil() && value.CanSet() {
+			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
+		}
+		for index := 0; index < value.Len(); index++ {
+			normalizeCanonicalReflectValue(value.Index(index))
+		}
+	case reflect.Map:
+		if value.IsNil() && value.CanSet() {
+			value.Set(reflect.MakeMap(value.Type()))
+		}
+		iterator := value.MapRange()
+		for iterator.Next() {
+			item := reflect.New(value.Type().Elem()).Elem()
+			item.Set(iterator.Value())
+			normalizeCanonicalReflectValue(item)
+			value.SetMapIndex(iterator.Key(), item)
+		}
+	}
+}
+
+func canonicalLowercaseField(name string) bool {
+	switch name {
+	case "ActionStage", "AllowedNextStage", "Applicability", "CitationStatus", "ClaimType", "CredentialBoundary", "DimensionType", "FreshnessState", "Kind", "Level", "MCPSurface", "Mode", "OAuthSurface", "QueryMode", "Readiness", "ReasoningSurface", "RequestedActionStage", "Stage", "State", "Status", "SupportLevel", "TokenOwner", "Type", "Verdict", "WritePolicy":
+		return true
+	default:
+		return false
+	}
 }
 
 func uniqueSortedStrings(values []string) []string { return normalizeStrings(values) }

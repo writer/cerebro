@@ -20,7 +20,7 @@ func DetectContradictions(observations []ClaimObservation) []Contradiction {
 			if cleanlySuperseded(left, right) {
 				continue
 			}
-			idInput := strings.Join([]string{left.TenantID, left.SubjectURN, left.Predicate, left.Evidence.ID, right.Evidence.ID}, "\x00")
+			idInput := observationIdentity(left) + "\x00" + observationIdentity(right)
 			digest := sha256.Sum256([]byte(idInput))
 			result = append(result, Contradiction{
 				ID: fmt.Sprintf("con_%x", digest[:16]), SubjectURN: left.SubjectURN, Predicate: left.Predicate,
@@ -34,7 +34,7 @@ func DetectContradictions(observations []ClaimObservation) []Contradiction {
 }
 
 func normalizeObservations(values []ClaimObservation) []ClaimObservation {
-	result := make([]ClaimObservation, 0, len(values))
+	byIdentity := make(map[string]ClaimObservation, len(values))
 	for _, value := range values {
 		value.TenantID = strings.TrimSpace(value.TenantID)
 		value.SubjectURN = strings.TrimSpace(value.SubjectURN)
@@ -45,11 +45,14 @@ func normalizeObservations(values []ClaimObservation) []ClaimObservation {
 		value.ValidTo = value.ValidTo.UTC()
 		value.ObservedAt = value.ObservedAt.UTC()
 		value.Evidence = normalizeEvidenceReference(value.Evidence)
+		byIdentity[observationIdentity(value)] = value
+	}
+	result := make([]ClaimObservation, 0, len(byIdentity))
+	for _, value := range byIdentity {
 		result = append(result, value)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		left, right := result[i], result[j]
-		return observationKey(left) < observationKey(right)
+		return observationIdentity(result[i]) < observationIdentity(result[j])
 	})
 	return result
 }
@@ -80,6 +83,13 @@ func cleanlySuperseded(left, right ClaimObservation) bool {
 	return !older.ValidTo.IsZero() && !older.ValidTo.After(newer.ValidFrom)
 }
 
-func observationKey(value ClaimObservation) string {
-	return strings.Join([]string{value.TenantID, value.SubjectURN, value.Predicate, value.Value, value.ValidFrom.Format(time.RFC3339Nano), value.Evidence.ID}, "\x00")
+func observationIdentity(value ClaimObservation) string {
+	return strings.Join([]string{
+		value.TenantID, value.SubjectURN, value.Predicate, value.Value, value.SourceID,
+		value.ValidFrom.Format(time.RFC3339Nano), value.ValidTo.Format(time.RFC3339Nano), value.ObservedAt.Format(time.RFC3339Nano),
+		value.Evidence.ID, value.Evidence.URN, value.Evidence.Kind, value.Evidence.SourceID, value.Evidence.SubjectURN,
+		value.Evidence.Predicate, value.Evidence.Value, value.Evidence.ObservedAt.Format(time.RFC3339Nano),
+		value.Evidence.ValidFrom.Format(time.RFC3339Nano), value.Evidence.ValidTo.Format(time.RFC3339Nano), value.Evidence.Digest,
+		fmt.Sprintf("%t", value.PrimaryClaim),
+	}, "\x00")
 }
