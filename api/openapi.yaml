@@ -2785,6 +2785,139 @@ paths:
           description: Assurance decision was not found in the tenant.
         '503':
           description: Assurance decision persistence is unavailable.
+  /grc/assessment-snapshots:
+    post:
+      operationId: createAssessmentSnapshot
+      summary: Record assessment snapshot
+      tags:
+        - GRC
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentSnapshotCreateRequest'
+      responses:
+        '200':
+          description: Existing snapshot returned for the idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentSnapshotCreateResponse'
+        '201':
+          description: Immutable snapshot commitment recorded for the completed run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentSnapshotCreateResponse'
+        '400':
+          description: Tenant, run, or idempotency key is missing.
+        '403':
+          description: The caller cannot record assessment snapshots for the tenant.
+        '404':
+          description: Assessment run was not found in the tenant.
+        '409':
+          description: Run artifacts changed or the idempotency key is bound to another request.
+        '503':
+          description: Assessment snapshot persistence is unavailable.
+  /grc/assessment-snapshots/{snapshotID}:
+    get:
+      operationId: getAssessmentSnapshot
+      summary: Get assessment snapshot
+      tags:
+        - GRC
+      parameters:
+        - name: snapshotID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Snapshot commitment for a completed assessment run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentSnapshotResponse'
+        '403':
+          description: The caller cannot read assessment snapshots for the tenant.
+        '404':
+          description: Assessment snapshot was not found in the tenant.
+        '409':
+          description: The stored snapshot commitment is invalid.
+        '503':
+          description: Assessment snapshot persistence is unavailable.
+  /grc/assessment-lenses:
+    get:
+      operationId: listAssessmentLenses
+      summary: List assessment lenses
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Governed lens definitions available for assessment snapshots.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentLensCatalogResponse'
+        '403':
+          description: The caller cannot read assessment data for the tenant.
+  /grc/assessment-snapshots/{snapshotID}/lenses/{audience}:
+    get:
+      operationId: getAssessmentSnapshotLens
+      summary: Get governed assessment view
+      tags:
+        - GRC
+      parameters:
+        - name: snapshotID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: audience
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/AssessmentLensAudience'
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Snapshot-bound assessment facts projected through the selected audience lens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentSnapshotLensResponse'
+        '400':
+          description: Cursor or limit is invalid.
+        '403':
+          description: The caller cannot read assessment data for the tenant.
+        '404':
+          description: Snapshot or audience lens was not found.
+        '409':
+          description: Snapshot results, decisions, or evidence references no longer verify.
+        '503':
+          description: Assessment snapshot persistence is unavailable.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -7071,6 +7204,282 @@ components:
           $ref: '#/components/schemas/AssuranceDecision'
         created:
           type: boolean
+    AssessmentSnapshotCreateRequest:
+      type: object
+      required: [tenant_id, run_id]
+      properties:
+        tenant_id:
+          type: string
+        run_id:
+          type: string
+    AssessmentSnapshotResultChunkRef:
+      type: object
+      required: [sequence, first_result_id, last_result_id, count, digest]
+      properties:
+        sequence:
+          type: integer
+          format: uint32
+        first_result_id:
+          type: string
+        last_result_id:
+          type: string
+        count:
+          type: integer
+          format: uint32
+        previous_digest:
+          type: string
+        digest:
+          type: string
+    AssessmentSnapshot:
+      type: object
+      required: [id, tenant_id, run_id, program_id, scope_revision_id, plan_revision_id, version, input_manifest, input_hash, result_set_hash, result_count, result_chunks, decision_cutoff, decision_set_digest, decision_count, qualified_decision_count, missing_decision_count, evidence_set_digest, evidence_count, run_completed_at, created_at, created_by, request_hash, idempotency_key, record_digest]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        run_id:
+          type: string
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        plan_revision_id:
+          type: string
+        version:
+          type: string
+          enum: [assessment-snapshot/v1]
+        input_manifest:
+          $ref: '#/components/schemas/AssessmentInputManifest'
+        input_hash:
+          type: string
+        result_set_hash:
+          type: string
+        result_count:
+          type: integer
+          format: uint64
+        result_chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentSnapshotResultChunkRef'
+        decision_cutoff:
+          type: string
+          format: date-time
+        decision_set_digest:
+          type: string
+        decision_count:
+          type: integer
+          format: uint64
+        qualified_decision_count:
+          type: integer
+          format: uint64
+        missing_decision_count:
+          type: integer
+          format: uint64
+        evidence_set_digest:
+          type: string
+        evidence_count:
+          type: integer
+          format: uint64
+        run_completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        request_hash:
+          type: string
+        idempotency_key:
+          type: string
+        record_digest:
+          type: string
+    AssessmentSnapshotResponse:
+      type: object
+      required: [snapshot]
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/AssessmentSnapshot'
+    AssessmentSnapshotCreateResponse:
+      type: object
+      required: [snapshot, created]
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/AssessmentSnapshot'
+        created:
+          type: boolean
+    AssessmentLensAudience:
+      type: string
+      enum: [security, audit, platform, leadership]
+    AssessmentLensDefinition:
+      type: object
+      required: [id, version, audience, first_question, promoted_signals, included_fields, suppressed_fields, work_queue, next_actions, question_starters]
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+          enum: [assessment-lens/v1]
+        audience:
+          $ref: '#/components/schemas/AssessmentLensAudience'
+        first_question:
+          type: string
+        promoted_signals:
+          type: array
+          items:
+            type: string
+        included_fields:
+          type: array
+          items:
+            type: string
+        suppressed_fields:
+          type: array
+          items:
+            type: string
+        work_queue:
+          type: string
+        next_actions:
+          type: array
+          items:
+            type: string
+        question_starters:
+          type: array
+          items:
+            type: string
+    AssessmentLensCatalogResponse:
+      type: object
+      required: [lenses]
+      properties:
+        lenses:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentLensDefinition'
+    AssessmentLensSummary:
+      type: object
+      required: [total_results, in_scope_results, satisfied, not_satisfied, not_assessed, qualified_decisions, missing_decisions, evidence_gaps, pending_reviews]
+      properties:
+        total_results:
+          type: integer
+          format: uint64
+        in_scope_results:
+          type: integer
+          format: uint64
+        satisfied:
+          type: integer
+          format: uint64
+        not_satisfied:
+          type: integer
+          format: uint64
+        not_assessed:
+          type: integer
+          format: uint64
+        qualified_decisions:
+          type: integer
+          format: uint64
+        missing_decisions:
+          type: integer
+          format: uint64
+        evidence_gaps:
+          type: integer
+          format: uint64
+        pending_reviews:
+          type: integer
+          format: uint64
+    AssessmentLensSignal:
+      type: object
+      required: [key, label, value, state]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: integer
+          format: uint64
+        state:
+          type: string
+          enum: [clear, attention]
+    AssessmentLensItem:
+      type: object
+      required: [result_id, control_ref, objective_id, scope_state, automated_outcome, assurance, evidence_state, operating_effectiveness_state, auditor_state, decision_state]
+      properties:
+        result_id:
+          type: string
+        control_ref:
+          $ref: '#/components/schemas/AssessmentControlRef'
+        objective_id:
+          type: string
+        scope_state:
+          type: string
+        automated_outcome:
+          type: string
+        assurance:
+          type: string
+        evidence_state:
+          type: string
+        operating_effectiveness_state:
+          type: string
+        auditor_state:
+          type: string
+        decision_state:
+          type: string
+          enum: [missing, unqualified, qualified]
+        decision_id:
+          type: string
+        decision_as_of:
+          type: string
+          format: date-time
+        reason_codes:
+          type: array
+          items:
+            type: string
+        next_actions:
+          type: array
+          items:
+            type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        source_runtime_ids:
+          type: array
+          items:
+            type: string
+    AssessmentSnapshotLens:
+      type: object
+      required: [snapshot_id, snapshot_digest, lens, summary, signals, items, has_more]
+      properties:
+        snapshot_id:
+          type: string
+        snapshot_digest:
+          type: string
+        lens:
+          $ref: '#/components/schemas/AssessmentLensDefinition'
+        summary:
+          $ref: '#/components/schemas/AssessmentLensSummary'
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentLensSignal'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentLensItem'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    AssessmentSnapshotLensResponse:
+      type: object
+      required: [view]
+      properties:
+        view:
+          $ref: '#/components/schemas/AssessmentSnapshotLens'
     ComplianceWorkItemState:
       type: string
       enum: [open, in_progress, blocked, resolved, accepted, snoozed, superseded]

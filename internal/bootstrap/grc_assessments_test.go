@@ -66,6 +66,19 @@ type testAssuranceDecisionResponse struct {
 	Decision complianceassessment.AssuranceDecision `json:"decision"`
 }
 
+type testAssessmentSnapshotResponse struct {
+	Snapshot complianceassessment.AssessmentSnapshot `json:"snapshot"`
+	Created  bool                                    `json:"created"`
+}
+
+type testAssessmentLensCatalogResponse struct {
+	Lenses []complianceassessment.AssessmentLensDefinition `json:"lenses"`
+}
+
+type testAssessmentSnapshotLensResponse struct {
+	View complianceassessment.AssessmentSnapshotLens `json:"view"`
+}
+
 func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 	now := time.Date(2026, 7, 14, 16, 30, 0, 0, time.UTC)
 	store := newAssessmentHTTPStore()
@@ -209,6 +222,29 @@ func TestGRCAssuranceDecisionRecordAndGet(t *testing.T) {
 	}
 	doAssessmentStatus(t, server.Client(), http.MethodGet,
 		server.URL+"/grc/assurance-decisions/"+recorded.Decision.ID+"?tenant_id=tenant-2", nil, "", http.StatusNotFound)
+
+	snapshot := doAssessmentRequest[testAssessmentSnapshotResponse](t, server.Client(), http.MethodPost,
+		server.URL+"/grc/assessment-snapshots", map[string]string{"tenant_id": run.TenantID, "run_id": run.ID}, "snapshot-key-1", http.StatusCreated)
+	if !snapshot.Created || snapshot.Snapshot.RunID != run.ID || snapshot.Snapshot.DecisionCount != 1 || snapshot.Snapshot.RecordDigest == "" {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	replayedSnapshot := doAssessmentRequest[testAssessmentSnapshotResponse](t, server.Client(), http.MethodPost,
+		server.URL+"/grc/assessment-snapshots", map[string]string{"tenant_id": run.TenantID, "run_id": run.ID}, "snapshot-key-1", http.StatusOK)
+	if replayedSnapshot.Created || replayedSnapshot.Snapshot.ID != snapshot.Snapshot.ID {
+		t.Fatalf("replayed snapshot = %+v", replayedSnapshot)
+	}
+	catalog := doAssessmentRequest[testAssessmentLensCatalogResponse](t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assessment-lenses?tenant_id=tenant-1", nil, "", http.StatusOK)
+	if len(catalog.Lenses) != 4 || catalog.Lenses[0].Audience != complianceassessment.LensAudienceSecurity {
+		t.Fatalf("lens catalog = %+v", catalog)
+	}
+	audit := doAssessmentRequest[testAssessmentSnapshotLensResponse](t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assessment-snapshots/"+snapshot.Snapshot.ID+"/lenses/audit?tenant_id=tenant-1&limit=1", nil, "", http.StatusOK)
+	if audit.View.SnapshotDigest != snapshot.Snapshot.RecordDigest || len(audit.View.Items) != 1 || audit.View.Items[0].DecisionID != recorded.Decision.ID || len(audit.View.Items[0].EvidenceIDs) != 1 {
+		t.Fatalf("audit lens = %+v", audit.View)
+	}
+	doAssessmentStatus(t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assessment-snapshots/"+snapshot.Snapshot.ID+"?tenant_id=tenant-2", nil, "", http.StatusNotFound)
 }
 
 func seedAssessmentHTTPDecisionRun(t *testing.T, store *assessmentHTTPStore, now time.Time) (complianceassessment.AssessmentRun, complianceassessment.ObjectiveResult) {
@@ -358,6 +394,8 @@ type assessmentHTTPStore struct {
 	chunks        map[string][]complianceassessment.ResultChunk
 	decisions     map[string]complianceassessment.AssuranceDecision
 	decisionByKey map[string]string
+	snapshots     map[string]complianceassessment.AssessmentSnapshot
+	snapshotByKey map[string]string
 }
 
 func newAssessmentHTTPStore() *assessmentHTTPStore {
@@ -369,6 +407,8 @@ func newAssessmentHTTPStore() *assessmentHTTPStore {
 		chunks:          map[string][]complianceassessment.ResultChunk{},
 		decisions:       map[string]complianceassessment.AssuranceDecision{},
 		decisionByKey:   map[string]string{},
+		snapshots:       map[string]complianceassessment.AssessmentSnapshot{},
+		snapshotByKey:   map[string]string{},
 	}
 }
 
@@ -402,6 +442,50 @@ func (s *assessmentHTTPStore) FindAssuranceDecisionByIdempotency(_ context.Conte
 		return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
 	}
 	return s.decisions[assessmentHTTPKey(tenantID, id)], nil
+}
+
+func (s *assessmentHTTPStore) ListAssuranceDecisionsByRun(_ context.Context, tenantID, runID string) ([]complianceassessment.AssuranceDecision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := []complianceassessment.AssuranceDecision{}
+	for _, decision := range s.decisions {
+		if decision.TenantID == tenantID && decision.RunID == runID {
+			result = append(result, decision)
+		}
+	}
+	return result, nil
+}
+
+func (s *assessmentHTTPStore) ApplyAssessmentSnapshot(_ context.Context, _ string, snapshot complianceassessment.AssessmentSnapshot) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := assessmentHTTPKey(snapshot.TenantID, snapshot.ID)
+	if existing, ok := s.snapshots[key]; ok && existing.RecordDigest != snapshot.RecordDigest {
+		return complianceassessment.ErrAssessmentConflict
+	}
+	s.snapshots[key] = snapshot
+	s.snapshotByKey[assessmentHTTPKey(snapshot.TenantID, snapshot.IdempotencyKey)] = snapshot.ID
+	return nil
+}
+
+func (s *assessmentHTTPStore) GetAssessmentSnapshot(_ context.Context, tenantID, snapshotID string) (complianceassessment.AssessmentSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapshot, ok := s.snapshots[assessmentHTTPKey(tenantID, snapshotID)]
+	if !ok {
+		return complianceassessment.AssessmentSnapshot{}, complianceassessment.ErrAssessmentSnapshotNotFound
+	}
+	return snapshot, nil
+}
+
+func (s *assessmentHTTPStore) FindAssessmentSnapshotByIdempotency(_ context.Context, tenantID, key string) (complianceassessment.AssessmentSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := s.snapshotByKey[assessmentHTTPKey(tenantID, key)]
+	if id == "" {
+		return complianceassessment.AssessmentSnapshot{}, complianceassessment.ErrAssessmentSnapshotNotFound
+	}
+	return s.snapshots[assessmentHTTPKey(tenantID, id)], nil
 }
 
 func assessmentHTTPKey(tenantID, id string) string { return tenantID + "\x00" + id }
@@ -536,6 +620,7 @@ func (*assessmentHTTPStore) ListFindingEvaluationRuns(context.Context, ports.Lis
 var _ complianceassessment.Store = (*assessmentHTTPStore)(nil)
 var _ complianceassessment.ResultChunkPageStore = (*assessmentHTTPStore)(nil)
 var _ complianceassessment.AssuranceDecisionStore = (*assessmentHTTPStore)(nil)
+var _ complianceassessment.AssessmentSnapshotStore = (*assessmentHTTPStore)(nil)
 
 func (s *assessmentHTTPStore) String() string {
 	return fmt.Sprintf("assessmentHTTPStore(%d plans, %d runs)", len(s.plans), len(s.runs))

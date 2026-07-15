@@ -112,6 +112,24 @@ type recordAssuranceDecisionResponse struct {
 	Created  bool                                   `json:"created"`
 }
 
+type createAssessmentSnapshotRequest struct {
+	TenantID string `json:"tenant_id"`
+	RunID    string `json:"run_id"`
+}
+
+type assessmentSnapshotResponse struct {
+	Snapshot complianceassessment.AssessmentSnapshot `json:"snapshot"`
+	Created  bool                                    `json:"created,omitempty"`
+}
+
+type assessmentLensCatalogResponse struct {
+	Lenses []complianceassessment.AssessmentLensDefinition `json:"lenses"`
+}
+
+type assessmentSnapshotLensResponse struct {
+	View complianceassessment.AssessmentSnapshotLens `json:"view"`
+}
+
 func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	service := h.service
 	if service == nil {
@@ -375,6 +393,93 @@ func (h *Handler) GetAssuranceDecision(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, assuranceDecisionResponse{Decision: decision})
 }
 
+func (h *Handler) CreateAssessmentSnapshot(w http.ResponseWriter, r *http.Request) {
+	service := h.service
+	if service == nil {
+		h.writeError(w, complianceassessment.ErrAssessmentSnapshotUnavailable)
+		return
+	}
+	var request createAssessmentSnapshotRequest
+	if err := h.decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	tenantID, err := h.resolveTenant(r.Context(), request.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		h.writeError(w, fmt.Errorf("%w: Idempotency-Key header is required", complianceassessment.ErrInvalidResult))
+		return
+	}
+	snapshot, created, err := service.CreateAssessmentSnapshot(r.Context(), complianceassessment.AssessmentSnapshotRequest{
+		TenantID: tenantID, RunID: request.RunID, IdempotencyKey: idempotencyKey, CreatedBy: h.actorID(r.Context()),
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, assessmentSnapshotResponse{Snapshot: snapshot, Created: created})
+}
+
+func (h *Handler) GetAssessmentSnapshot(w http.ResponseWriter, r *http.Request) {
+	service := h.service
+	if service == nil {
+		h.writeError(w, complianceassessment.ErrAssessmentSnapshotUnavailable)
+		return
+	}
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	snapshot, err := service.GetAssessmentSnapshot(r.Context(), tenantID, r.PathValue("snapshotID"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assessmentSnapshotResponse{Snapshot: snapshot})
+}
+
+func (h *Handler) ListAssessmentLenses(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id")); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assessmentLensCatalogResponse{Lenses: complianceassessment.ListAssessmentLenses()})
+}
+
+func (h *Handler) GetAssessmentSnapshotLens(w http.ResponseWriter, r *http.Request) {
+	service := h.service
+	if service == nil {
+		h.writeError(w, complianceassessment.ErrAssessmentSnapshotUnavailable)
+		return
+	}
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		h.writeError(w, fmt.Errorf("%w: limit must be an unsigned integer", complianceassessment.ErrInvalidResult))
+		return
+	}
+	view, err := service.GetAssessmentSnapshotLens(r.Context(), tenantID, r.PathValue("snapshotID"),
+		complianceassessment.AssessmentLensAudience(r.PathValue("audience")), r.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assessmentSnapshotLensResponse{View: view})
+}
+
 func validateExecutablePlan(plan complianceassessment.AssessmentPlanRevision) error {
 	for _, task := range plan.Execution.Tasks {
 		if task.Kind != complianceassessment.PlanTaskKindFindingEvaluation {
@@ -431,11 +536,11 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case h.isForbidden != nil && h.isForbidden(err):
 		status = http.StatusForbidden
-	case errors.Is(err, complianceassessment.ErrPlanNotFound), errors.Is(err, complianceassessment.ErrRunNotFound), errors.Is(err, complianceassessment.ErrAssuranceDecisionNotFound):
+	case errors.Is(err, complianceassessment.ErrPlanNotFound), errors.Is(err, complianceassessment.ErrRunNotFound), errors.Is(err, complianceassessment.ErrAssuranceDecisionNotFound), errors.Is(err, complianceassessment.ErrAssessmentSnapshotNotFound), errors.Is(err, complianceassessment.ErrAssessmentLensNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, complianceassessment.ErrAssessmentConflict), errors.Is(err, ports.ErrJobIdempotencyConflict):
 		status = http.StatusConflict
-	case errors.Is(err, complianceassessment.ErrResultPagingUnavailable), errors.Is(err, complianceassessment.ErrAssuranceDecisionUnavailable):
+	case errors.Is(err, complianceassessment.ErrResultPagingUnavailable), errors.Is(err, complianceassessment.ErrAssuranceDecisionUnavailable), errors.Is(err, complianceassessment.ErrAssessmentSnapshotUnavailable):
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, complianceassessment.ErrInvalidResult), errors.Is(err, complianceassessment.ErrInvalidManifest), errors.Is(err, complianceassessment.ErrIncompleteInput):
 		status = http.StatusBadRequest

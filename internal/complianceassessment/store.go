@@ -31,3 +31,12 @@ type AssuranceDecisionStore interface {
 	GetAssuranceDecision(context.Context, string, string) (AssuranceDecision, error)
 	FindAssuranceDecisionByIdempotency(context.Context, string, string) (AssuranceDecision, error)
 }
+
+// AssessmentSnapshotStore projects immutable snapshot commitments and exposes
+// the decision set needed to verify governed views at the recorded cutoff.
+type AssessmentSnapshotStore interface {
+	ApplyAssessmentSnapshot(context.Context, string, AssessmentSnapshot) error
+	GetAssessmentSnapshot(context.Context, string, string) (AssessmentSnapshot, error)
+	FindAssessmentSnapshotByIdempotency(context.Context, string, string) (AssessmentSnapshot, error)
+	ListAssuranceDecisionsByRun(context.Context, string, string) ([]AssuranceDecision, error)
+}

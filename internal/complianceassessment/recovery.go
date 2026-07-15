@@ -170,6 +170,24 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 			return false, err
 		}
 		return true, store.ApplyAssuranceDecision(ctx, event.GetId(), decision)
+	case workflowevents.EventKindComplianceAssessmentSnapshotRecorded:
+		store, ok := s.store.(AssessmentSnapshotStore)
+		if !ok {
+			return false, ErrAssessmentSnapshotUnavailable
+		}
+		var snapshot AssessmentSnapshot
+		if err := json.Unmarshal([]byte(record.PayloadJSON), &snapshot); err != nil {
+			return false, fmt.Errorf("decode assessment snapshot event: %w", err)
+		}
+		if strings.TrimSpace(record.AggregateType) != "assessment_snapshot" ||
+			strings.TrimSpace(record.TenantID) != snapshot.TenantID || strings.TrimSpace(record.AggregateID) != snapshot.ID ||
+			record.AggregateVersion != 1 || strings.TrimSpace(record.ContentDigest) != snapshot.RecordDigest {
+			return false, errors.New("assessment snapshot envelope does not match payload")
+		}
+		if err := validateAssessmentSnapshot(snapshot); err != nil {
+			return false, err
+		}
+		return true, store.ApplyAssessmentSnapshot(ctx, event.GetId(), snapshot)
 	default:
 		return false, nil
 	}
