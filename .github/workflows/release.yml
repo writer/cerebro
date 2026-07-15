@@ -15,7 +15,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: release-${{ inputs.release_tag }}
+  group: stable-release-publication
   cancel-in-progress: false
 
 jobs:
