@@ -143,6 +143,17 @@ func HasAdminRole(roles []string) bool {
 	return contains(roles, RoleCerebroAdmin) || contains(roles, "admin") || contains(roles, "owner")
 }
 
+// PrincipalActorID returns the first stable identity field supplied by the
+// authenticated principal.
+func PrincipalActorID(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func normalize(values []string) []string {
 	seen := map[string]struct{}{}
 	var normalized []string
