@@ -98,6 +98,22 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, exact=("Cargo.toml", "Cargo.lock", "deny.toml")) for path in files):
         add_command(commands, seen, "rust-deny", ["make", "rust-deny"], "Rust dependency manifest, lockfile, or policy changed.")
 
+    if any(
+        path_matches(
+            path,
+            exact=("Cargo.toml", "scripts/rust_workspace_policy.py", "scripts/tests/test_rust_workspace_policy.py"),
+            suffixes=("/Cargo.toml",),
+        )
+        for path in files
+    ):
+        add_command(
+            commands,
+            seen,
+            "rust-workspace-policy",
+            ["make", "rust-workspace-policy"],
+            "Rust workspace dependency or lint policy changed.",
+        )
+
     if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
         add_command(commands, seen, "graph-action-check", ["make", "graph-action-check"], "Graph action catalog, generated registry, or generator changed.")
 

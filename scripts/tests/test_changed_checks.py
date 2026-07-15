@@ -51,6 +51,17 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("rust-deny", self.command_names([path]))
 
+    def test_workspace_manifests_and_policy_select_workspace_check(self):
+        for path in (
+            "Cargo.toml",
+            "crates/control-kernel/Cargo.toml",
+            "internal/wasmguest/Cargo.toml",
+            "scripts/rust_workspace_policy.py",
+            "scripts/tests/test_rust_workspace_policy.py",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("rust-workspace-policy", self.command_names([path]))
+
     def test_shared_embedded_wasm_paths_select_aggregate_check(self):
         for path in (
             "Cargo.toml",

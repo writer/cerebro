@@ -6,5 +6,5 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-[lints.rust]
-unsafe_code = "allow"
+[lints]
+workspace = true

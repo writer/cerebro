@@ -10,8 +10,8 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cerebro-wasm-guest = { version = "0.1.0", path = "../../wasmguest" }
-regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }
+cerebro-wasm-guest.workspace = true
+regex.workspace = true
 
-[lints.rust]
-unsafe_code = "deny"
+[lints]
+workspace = true

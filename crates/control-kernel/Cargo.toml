@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
+serde.workspace = true
 
-[lints.rust]
-unsafe_code = "forbid"
+[lints]
+workspace = true
