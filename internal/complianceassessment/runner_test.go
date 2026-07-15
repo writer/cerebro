@@ -337,6 +337,39 @@ func TestAssessmentRecoveryPreservesTerminalRunJobState(t *testing.T) {
 	}
 }
 
+func TestAssessmentCollectorUnavailablePersistsFailureAfterCancellation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 14, 16, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &liveContextRunLog{}
+	service := NewAssessmentService(store, log, nil, nil)
+	service.now = func() time.Time { return now }
+	plan := recordPublishedPlan(t, service, now)
+	run := AssessmentRun{
+		ID: "run-1", TenantID: plan.TenantID, ProgramID: plan.Scope.ProgramID,
+		ScopeRevisionID: plan.Scope.ScopeRevisionID, PlanRevisionID: plan.RevisionID,
+		State: RunQueued, Version: 1, RequestedBy: "assessor-1",
+	}
+	store.runs[runKey(run.TenantID, run.ID)] = run
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := service.Runner()(ctx, &ports.Job{
+		TenantID: run.TenantID,
+		Payload:  map[string]any{"run_id": run.ID},
+	}, nil)
+	if err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("Runner() error = %v, want persisted collector_unavailable failure", err)
+	}
+	persisted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != RunFailed || persisted.FailureCode != "collector_unavailable" || persisted.Version != run.Version+1 {
+		t.Fatalf("persisted run = %#v, want terminal collector_unavailable failure", persisted)
+	}
+}
+
 func TestAssessmentResultProjectionFailureMarksRunFailed(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
@@ -528,6 +561,17 @@ type runLog struct {
 	err               error
 	failKind          string
 	remainingFailures int
+}
+
+type liveContextRunLog struct {
+	runLog
+}
+
+func (l *liveContextRunLog) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return l.runLog.Append(ctx, event)
 }
 
 func (l *runLog) Ping(context.Context) error { return nil }

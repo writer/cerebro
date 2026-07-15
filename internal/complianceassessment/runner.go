@@ -55,7 +55,7 @@ func (s *Service) Runner() platformjobs.Runner {
 			return nil, nil, s.failRun(ctx, run, "plan_unavailable")
 		}
 		if s.collector == nil {
-			return nil, nil, s.failRun(ctx, run, "collector_unavailable")
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "collector_unavailable")
 		}
 		if run.State == RunQueued {
 			expectedVersion := run.Version
