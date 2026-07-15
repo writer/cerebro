@@ -30,13 +30,14 @@ type coverageEvaluationRequest struct {
 }
 
 type coverageObservation struct {
-	RuntimeID           string `json:"runtime_id"`
-	SourceID            string `json:"source_id"`
-	TenantID            string `json:"tenant_id"`
-	Family              string `json:"family"`
-	Status              string `json:"status"`
-	LastFailureCategory string `json:"last_failure_category"`
-	LastSyncedAt        string `json:"last_synced_at"`
+	RuntimeID           string            `json:"runtime_id"`
+	SourceID            string            `json:"source_id"`
+	TenantID            string            `json:"tenant_id"`
+	Family              string            `json:"family"`
+	Status              string            `json:"status"`
+	LastFailureCategory string            `json:"last_failure_category"`
+	LastSyncedAt        string            `json:"last_synced_at"`
+	CertificationTier   CertificationTier `json:"certification_tier"`
 }
 
 type coverageOptions struct {

@@ -451,6 +451,34 @@ func TestRunRenewsLeaseDuringLongExecution(t *testing.T) {
 	}
 }
 
+func TestRunKeepsSuccessfulResultWhenHeartbeatCleanupCancelsRenewal(t *testing.T) {
+	store := &cleanupCancelRenewJobStore{
+		memoryJobStore: newMemoryJobStore(),
+		renewalStarted: make(chan struct{}),
+	}
+	store.jobs["job-cleanup"] = &ports.Job{ID: "job-cleanup", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store).WithLeaseTiming(time.Second, time.Millisecond)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		select {
+		case <-store.renewalStarted:
+		case <-time.After(time.Second):
+			t.Fatal("heartbeat renewal did not start")
+		}
+		return map[string]any{"result": "accepted"}, nil, nil
+	})
+
+	if err := service.Run(context.Background(), "job-cleanup"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	stored, err := store.GetJob(context.Background(), "job-cleanup")
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.Status != ports.JobStatusCompleted || stored.Result["result"] != "accepted" {
+		t.Fatalf("job = %+v, want completed result", stored)
+	}
+}
+
 func TestRunCannotCompleteAfterLeaseOwnershipChanges(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-stale-worker"] = &ports.Job{ID: "job-stale-worker", Kind: KindReportRun, Status: ports.JobStatusQueued}
@@ -493,6 +521,18 @@ type memoryJobStore struct {
 	jobs       map[string]*ports.Job
 	events     []*ports.JobEvent
 	renewCount int
+}
+
+type cleanupCancelRenewJobStore struct {
+	*memoryJobStore
+	renewalStarted chan struct{}
+	renewalOnce    sync.Once
+}
+
+func (s *cleanupCancelRenewJobStore) RenewJobLease(ctx context.Context, _ ports.JobLeaseRenewRequest) (*ports.Job, error) {
+	s.renewalOnce.Do(func() { close(s.renewalStarted) })
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 type boundedRecoveryJobStore struct {

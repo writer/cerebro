@@ -126,6 +126,7 @@ jobs:
           name: candidate-binaries-${{ needs.resolve.outputs.sha }}
           path: .dist/release
           if-no-files-found: error
+          include-hidden-files: true
 
   image:
     runs-on: ubuntu-latest
@@ -264,6 +265,7 @@ jobs:
           name: candidate-contract-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
           path: .dist
           if-no-files-found: error
+          include-hidden-files: true
 
   receipt:
     runs-on: ubuntu-latest

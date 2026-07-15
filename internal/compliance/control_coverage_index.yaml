@@ -83889,6 +83889,1310 @@ profiles:
       unmapped_controls:
         - framework_name: FedRAMP Rev. 5
           control_id: AC-1
+    - id: hipaa-security-breach-notification
+      name: HIPAA Security and Breach Notification
+      description: HIPAA security safeguards, business associate obligations, and breach notification requirements for protected health information reviews.
+      summary:
+        selected_controls: 99
+        mapped_controls: 24
+        unmapped_controls: 75
+        mapped_rules: 40
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 99
+      controls:
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(1)(i)
+          title: Security management process
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-security-management-process-missing
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(1)(ii)(A)
+          title: Risk analysis
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - compliance-risk-assessment-annual
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(1)(ii)(B)
+          title: Risk management
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-risk-management-measures-missing
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(1)(ii)(C)
+          title: Sanction policy
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(1)(ii)(D)
+          title: Information system activity review
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(3)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(3)(ii)(A)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(3)(ii)(B)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(3)(ii)(C)
+          title: Termination procedures
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - identity-okta-deprovisioned-active-in-github
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(4)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(4)(ii)(A)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(4)(ii)(B)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(4)(ii)(C)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(5)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(5)(ii)(A)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(5)(ii)(B)
+          title: Protection from malicious software
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - endpoint-edr-installed
+            - endpoint-kandji-edr-installed
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(5)(ii)(C)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(5)(ii)(D)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(6)
+          title: Security incident procedures
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - compliance-ir-plan-exists
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(6)(i)
+          title: Security incident procedures standard
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(6)(ii)
+          title: Response and reporting
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)
+          title: Contingency plan
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - compliance-bcdr-plan-exists
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(ii)(A)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(ii)(B)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(ii)(C)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(ii)(D)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(7)(ii)(E)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(a)(8)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(b)(1)
+          title: Business associate contracts and other arrangements
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - vendor-security-review-complete
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(b)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(b)(3)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.308"
+          family_name: Administrative Safeguards
+          control_id: 164.308(b)(4)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(a)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(a)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(a)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(a)(2)(iii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(a)(2)(iv)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(b)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(c)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(d)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(d)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(d)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(d)(2)(iii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.310"
+          family_name: Physical Safeguards
+          control_id: 164.310(d)(2)(iv)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: "164.312"
+          title: Technical safeguards
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 13
+          mapped_rules:
+            - backup-encryption
+            - backup-retention
+            - compliance-background-checks
+            - compliance-security-training
+            - db-audit-logging
+            - db-encryption-at-rest
+            - db-ssl-connections
+            - hipaa-access-controls
+            - hipaa-audit-controls
+            - hipaa-automatic-logoff
+            - hipaa-baa-required
+            - hipaa-phi-encryption
+            - hipaa-transmission-security
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(a)(1)
+          title: Access control
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-system-access-control-missing
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(a)(2)(i)
+          title: Unique user identification
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-system-unique-user-id-missing
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(a)(2)(ii)
+          title: Emergency access procedure
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - identity-account-deprovision
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(a)(2)(iii)
+          title: Automatic logoff
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-system-automatic-logoff-missing
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(a)(2)(iv)
+          title: Encryption and decryption
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 4
+          mapped_rules:
+            - endpoint-disk-encryption
+            - endpoint-intune-disk-encryption
+            - endpoint-jamf-disk-encryption
+            - endpoint-kandji-disk-encryption
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(b)
+          title: Audit controls
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - aws-cloudtrail-log-integrity
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(c)(1)
+          title: Integrity
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-system-integrity-control-missing
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(c)(2)
+          title: Mechanism to authenticate electronic protected health information
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(d)
+          title: Person or entity authentication
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-system-person-authentication-missing
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(e)(1)
+          title: Transmission security
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - aws-s3-https-only
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(e)(2)(i)
+          title: Integrity controls
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.312"
+          family_name: Technical Safeguards
+          control_id: 164.312(e)(2)(ii)
+          title: Encryption
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-phi-transmission-encryption-missing
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(a)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-business-associate-contract-safeguard-terms-missing
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(a)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(a)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(a)(2)(iii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(2)(iii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.314"
+          family_name: Organizational Requirements
+          control_id: 164.314(b)(2)(iv)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(a)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-security-policy-documentation-missing
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(b)(1)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(b)(1)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(b)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(b)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.316"
+          family_name: Policies and Documentation
+          control_id: 164.316(b)(2)(iii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404 (2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(a)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-breach-individual-notice-overdue
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(b)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(c)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(c)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(1)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(1)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(2)(i)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(2)(ii)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.404(d)(3)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.406(a)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-breach-media-notice-overdue
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.406(b)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.406(c)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.408(a)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - hipaa-breach-secretary-notice-overdue
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.408(b)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.408(c)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.410(a)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.410(a)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.410(b)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.410(c)(1)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: 164.410(c)(2)
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: "164.412"
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: HIPAA
+          family_id: "164.4"
+          family_name: Breach Notification
+          control_id: "164.414"
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: unmapped
+          rule_count: 0
+      rules:
+        - rule_id: aws-cloudtrail-log-integrity
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(b)
+        - rule_id: aws-s3-https-only
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(e)(1)
+        - rule_id: backup-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: backup-retention
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: compliance-background-checks
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: compliance-bcdr-plan-exists
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(7)
+        - rule_id: compliance-ir-plan-exists
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(6)
+        - rule_id: compliance-risk-assessment-annual
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(1)(ii)(A)
+        - rule_id: compliance-security-training
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: db-audit-logging
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: db-encryption-at-rest
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: db-ssl-connections
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: endpoint-disk-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(iv)
+        - rule_id: endpoint-edr-installed
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(5)(ii)(B)
+        - rule_id: endpoint-intune-disk-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(iv)
+        - rule_id: endpoint-jamf-disk-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(iv)
+        - rule_id: endpoint-kandji-disk-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(iv)
+        - rule_id: endpoint-kandji-edr-installed
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(5)(ii)(B)
+        - rule_id: hipaa-access-controls
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: hipaa-audit-controls
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: hipaa-automatic-logoff
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: hipaa-baa-required
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: hipaa-breach-individual-notice-overdue
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.404(a)
+        - rule_id: hipaa-breach-media-notice-overdue
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.406(a)
+        - rule_id: hipaa-breach-secretary-notice-overdue
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.408(a)
+        - rule_id: hipaa-business-associate-contract-safeguard-terms-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.314(a)(1)
+        - rule_id: hipaa-phi-encryption
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: hipaa-phi-system-access-control-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(1)
+        - rule_id: hipaa-phi-system-automatic-logoff-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(iii)
+        - rule_id: hipaa-phi-system-integrity-control-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(c)(1)
+        - rule_id: hipaa-phi-system-person-authentication-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(d)
+        - rule_id: hipaa-phi-system-unique-user-id-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(i)
+        - rule_id: hipaa-phi-transmission-encryption-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(e)(2)(ii)
+        - rule_id: hipaa-risk-management-measures-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(1)(ii)(B)
+        - rule_id: hipaa-security-management-process-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(1)(i)
+        - rule_id: hipaa-security-policy-documentation-missing
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.316(a)
+        - rule_id: hipaa-transmission-security
+          controls:
+            - framework_name: HIPAA
+              control_id: "164.312"
+        - rule_id: identity-account-deprovision
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.312(a)(2)(ii)
+        - rule_id: identity-okta-deprovisioned-active-in-github
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(a)(3)(ii)(C)
+        - rule_id: vendor-security-review-complete
+          controls:
+            - framework_name: HIPAA
+              control_id: 164.308(b)(1)
+      unmapped_controls:
+        - framework_name: HIPAA
+          control_id: 164.308(a)(1)(ii)(C)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(1)(ii)(D)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(2)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(3)(i)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(3)(ii)(A)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(3)(ii)(B)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(4)(i)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(4)(ii)(A)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(4)(ii)(B)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(4)(ii)(C)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(5)(i)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(5)(ii)(A)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(5)(ii)(C)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(5)(ii)(D)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(6)(i)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(6)(ii)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(i)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(ii)(A)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(ii)(B)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(ii)(C)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(ii)(D)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(7)(ii)(E)
+        - framework_name: HIPAA
+          control_id: 164.308(a)(8)
+        - framework_name: HIPAA
+          control_id: 164.308(b)(2)
+        - framework_name: HIPAA
+          control_id: 164.308(b)(3)
+        - framework_name: HIPAA
+          control_id: 164.308(b)(4)
+        - framework_name: HIPAA
+          control_id: 164.310(a)(1)
+        - framework_name: HIPAA
+          control_id: 164.310(a)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.310(a)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.310(a)(2)(iii)
+        - framework_name: HIPAA
+          control_id: 164.310(a)(2)(iv)
+        - framework_name: HIPAA
+          control_id: 164.310(b)
+        - framework_name: HIPAA
+          control_id: 164.310(c)
+        - framework_name: HIPAA
+          control_id: 164.310(d)(1)
+        - framework_name: HIPAA
+          control_id: 164.310(d)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.310(d)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.310(d)(2)(iii)
+        - framework_name: HIPAA
+          control_id: 164.310(d)(2)(iv)
+        - framework_name: HIPAA
+          control_id: 164.312(c)(2)
+        - framework_name: HIPAA
+          control_id: 164.312(e)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.314(a)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.314(a)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.314(a)(2)(iii)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(1)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(2)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(2)(iii)
+        - framework_name: HIPAA
+          control_id: 164.314(b)(2)(iv)
+        - framework_name: HIPAA
+          control_id: 164.316(b)(1)(i)
+        - framework_name: HIPAA
+          control_id: 164.316(b)(1)(ii)
+        - framework_name: HIPAA
+          control_id: 164.316(b)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.316(b)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.316(b)(2)(iii)
+        - framework_name: HIPAA
+          control_id: 164.404 (2)
+        - framework_name: HIPAA
+          control_id: 164.404(b)
+        - framework_name: HIPAA
+          control_id: 164.404(c)(1)
+        - framework_name: HIPAA
+          control_id: 164.404(c)(2)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(1)(i)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(1)(ii)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(2)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(2)(i)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(2)(ii)
+        - framework_name: HIPAA
+          control_id: 164.404(d)(3)
+        - framework_name: HIPAA
+          control_id: 164.406(b)
+        - framework_name: HIPAA
+          control_id: 164.406(c)
+        - framework_name: HIPAA
+          control_id: 164.408(b)
+        - framework_name: HIPAA
+          control_id: 164.408(c)
+        - framework_name: HIPAA
+          control_id: 164.410(a)(1)
+        - framework_name: HIPAA
+          control_id: 164.410(a)(2)
+        - framework_name: HIPAA
+          control_id: 164.410(b)
+        - framework_name: HIPAA
+          control_id: 164.410(c)(1)
+        - framework_name: HIPAA
+          control_id: 164.410(c)(2)
+        - framework_name: HIPAA
+          control_id: "164.412"
+        - framework_name: HIPAA
+          control_id: "164.414"
     - id: iso-technology-controls
       name: ISO Technology Controls
       description: Technology implementation controls for access, operations, logging, vulnerability management, and secure configuration evidence.

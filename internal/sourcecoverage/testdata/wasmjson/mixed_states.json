@@ -83,7 +83,8 @@
       "family": "users",
       "status": "healthy",
       "last_failure_category": "schema",
-      "last_synced_at": "2026-07-14T10:00:00Z"
+      "last_synced_at": "2026-07-14T10:00:00Z",
+      "certification_tier": "fixture_validated"
     },
     {
       "runtime_id": "second-users-failed",

@@ -156,6 +156,7 @@ func oracleCoverageRecord(contract sourcecdk.CoverageContract, dimension sourcec
 		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
 		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
 		SupportedRuntimeFamilies: oracleUniqueNonEmptyStrings(dimension.Families, dimension.RuntimeFamilies),
+		CertificationTier:        CertificationUnknown,
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
 		record.State = StateUnsupported
@@ -170,6 +171,7 @@ func oracleCoverageRecord(contract sourcecdk.CoverageContract, dimension sourcec
 	record.RuntimeID = best.RuntimeID
 	record.Family = best.Family
 	record.LastSyncedAt = best.LastSyncedAt
+	record.CertificationTier = BoundedCertificationTier(best.CertificationTier)
 	record.State = oracleObservationState(best)
 	if record.State == StateHealthy && dimension.Support == sourcecdk.CoverageSupportPartial {
 		record.State = StatePartial

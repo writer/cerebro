@@ -416,7 +416,9 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 			case <-ticker.C:
 				renewed, renewErr := leaseStore.RenewJobLease(heartbeatCtx, ports.JobLeaseRenewRequest{JobID: job.ID, Owner: leaseOwner, Now: s.now(), TTL: s.leaseTTL})
 				if renewErr != nil {
-					leaseLost.Store(true)
+					if heartbeatCtx.Err() == nil {
+						leaseLost.Store(true)
+					}
 					runnerCancel()
 					return
 				}

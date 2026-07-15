@@ -39,6 +39,12 @@ profiles:
     frameworks:
       - name: PCI DSS v4.0.1
         families: ["1", "6", "7", "8", "10", "11", "12"]
+  - id: hipaa-security-breach-notification
+    name: HIPAA Security and Breach Notification
+    description: HIPAA security safeguards, business associate obligations, and breach notification requirements for protected health information reviews.
+    frameworks:
+      - name: HIPAA
+        include_all: true
   - id: dora-operational-resilience
     name: DORA Operational Resilience
     description: Digital operational resilience scope for ICT governance, risk management, incident reporting, resilience testing, third-party risk, and information sharing.

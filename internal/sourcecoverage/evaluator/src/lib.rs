@@ -11,6 +11,10 @@ const STATE_UNCONFIGURED: &str = "unconfigured";
 const STATE_STALE: &str = "stale";
 const STATE_FAILED: &str = "failed";
 const STATE_UNKNOWN: &str = "unknown";
+const CERTIFICATION_UNKNOWN: &str = "unknown";
+const CERTIFICATION_CATALOG_DECLARED: &str = "catalog_declared";
+const CERTIFICATION_FIXTURE_VALIDATED: &str = "fixture_validated";
+const CERTIFICATION_LIVE_VALIDATED: &str = "live_validated";
 
 #[derive(Debug, Deserialize)]
 pub struct EvaluationRequest {
@@ -87,6 +91,8 @@ struct RuntimeObservation {
     last_failure_category: String,
     #[serde(default)]
     last_synced_at: String,
+    #[serde(default)]
+    certification_tier: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -140,6 +146,7 @@ pub struct Record {
     control_refs: Vec<CoverageControlRef>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     supported_runtime_families: Vec<String>,
+    certification_tier: String,
 }
 
 pub fn evaluate(request: EvaluationRequest) -> Vec<Record> {
@@ -230,6 +237,7 @@ fn coverage_record(
         control_domains: dimension.control_domains,
         control_refs: dimension.control_refs,
         supported_runtime_families,
+        certification_tier: CERTIFICATION_UNKNOWN.to_owned(),
         ..Record::default()
     };
 
@@ -246,11 +254,21 @@ fn coverage_record(
     record.runtime_id = best.runtime_id.clone();
     record.family = best.family.clone();
     record.last_synced_at = best.last_synced_at.clone();
+    record.certification_tier = bounded_certification_tier(&best.certification_tier).to_owned();
     record.state = observation_state(best).to_owned();
     if record.state == STATE_HEALTHY && support == "partial" {
         record.state = STATE_PARTIAL.to_owned();
     }
     Some(with_blind_spot(record))
+}
+
+fn bounded_certification_tier(value: &str) -> &'static str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        CERTIFICATION_CATALOG_DECLARED => CERTIFICATION_CATALOG_DECLARED,
+        CERTIFICATION_FIXTURE_VALIDATED => CERTIFICATION_FIXTURE_VALIDATED,
+        CERTIFICATION_LIVE_VALIDATED => CERTIFICATION_LIVE_VALIDATED,
+        _ => CERTIFICATION_UNKNOWN,
+    }
 }
 
 fn coverage_runtime_families(dimension: &CoverageDimension) -> Vec<String> {
@@ -441,7 +459,7 @@ mod tests {
                 ]}
               ],
               "observations": [
-                {"runtime_id":"z-user","source_id":"zeta","tenant_id":"tenant-a","family":"user","status":"healthy"},
+                {"runtime_id":"z-user","source_id":"zeta","tenant_id":"tenant-a","family":"user","status":"healthy","certification_tier":" Fixture_Validated "},
                 {"runtime_id":"a-audit","source_id":"alpha","tenant_id":"tenant-a","family":"audit","status":"healthy"}
               ],
               "options":{"tenant_id":" tenant-a "}
@@ -453,8 +471,13 @@ mod tests {
         assert!(records[0].blind_spot);
         assert_eq!(records[1].dimension_id, "apps");
         assert_eq!(records[1].state, STATE_UNCONFIGURED);
+        assert_eq!(records[1].certification_tier, CERTIFICATION_UNKNOWN);
         assert_eq!(records[2].dimension_id, "users");
         assert_eq!(records[2].state, STATE_HEALTHY);
+        assert_eq!(
+            records[2].certification_tier,
+            CERTIFICATION_FIXTURE_VALIDATED
+        );
     }
 
     #[test]
@@ -482,12 +505,13 @@ mod tests {
               "contracts":[{"source_id":"addigy","dimensions":[{"id":"devices","type":"entity_family","title":"Devices","families":[" device ","device"],"runtime_families":[" devices ","devices"],"support":"supported"}]}],
               "observations":[
                 {"runtime_id":"singular","source_id":"addigy","family":"device","status":"failed"},
-                {"runtime_id":"plural","source_id":"addigy","family":"devices","status":"healthy"}
+                {"runtime_id":"plural","source_id":"addigy","family":"devices","status":"healthy","certification_tier":"future_tier"}
               ]
             }"#,
         ));
         assert_eq!(records[0].runtime_id, "plural");
         assert_eq!(records[0].supported_runtime_families, ["device", "devices"]);
+        assert_eq!(records[0].certification_tier, CERTIFICATION_UNKNOWN);
     }
 
     #[test]
