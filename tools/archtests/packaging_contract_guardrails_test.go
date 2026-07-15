@@ -85,6 +85,18 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	if !strings.Contains(makefileText, "release-smoke: release-train-test ## Validate release-train configuration.") {
 		t.Fatal("release-smoke must keep the release-train contract validation dependency")
 	}
+	if _, err := os.Stat(filepath.Join(root, ".goreleaser.yaml")); err == nil {
+		t.Fatal("retired GoReleaser configuration must not remain in the repository")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat retired GoReleaser configuration: %v", err)
+	}
+	codeownersBody, err := os.ReadFile(filepath.Join(root, ".github", "CODEOWNERS"))
+	if err != nil {
+		t.Fatalf("read CODEOWNERS: %v", err)
+	}
+	if strings.Contains(strings.ToLower(string(codeownersBody)), "goreleaser") {
+		t.Fatal("CODEOWNERS must not retain ownership for retired GoReleaser configuration")
+	}
 	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)
