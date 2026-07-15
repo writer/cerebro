@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcecertification"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -567,6 +568,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpTaskActionPlan(r, args)
 	case "cerebro.sources.list":
 		return app.mcpListSources()
+	case "cerebro.connectors.list":
+		return app.mcpListConnectors(r, args)
 	case "cerebro.sources.check":
 		return app.mcpCheckSource(r, args)
 	case "cerebro.sources.discover":
@@ -641,6 +644,22 @@ func (app *App) mcpListSources() (any, error) {
 		return nil, err
 	}
 	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(len(response.GetSources()))), nil
+}
+
+func (app *App) mcpListConnectors(r *http.Request, args map[string]any) (any, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpTenantArg(r, args))
+	if err != nil {
+		return nil, err
+	}
+	preview := ""
+	if _, ok := args["include_preview"]; ok {
+		preview = strconv.FormatBool(mcpBoolArg(args, "include_preview"))
+	}
+	policy, err := sourcecertification.ParseAvailabilityPolicy(app.cfg.ConnectorAccess.MinCertificationTier, mcpStringArg(args, "min_certification_tier"), preview)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	return app.connectorLibraryWithPolicy(r, tenantID, policy), nil
 }
 
 func (app *App) mcpCheckSource(r *http.Request, args map[string]any) (any, error) {
@@ -2177,6 +2196,18 @@ func mcpTools() []mcpTool {
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"sources": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("List Sources"),
+		},
+		{
+			Name:        "cerebro.connectors.list",
+			Title:       "List Connector Certification",
+			Description: "List compiled and catalog-only connectors with certification proof, current runtime observation, and availability state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":              map[string]any{"type": "string"},
+				"min_certification_tier": map[string]any{"type": "string", "enum": []string{"cataloged", "spec_verified", "contract_tested", "production_observed", "outcome_validated"}},
+				"include_preview":        map[string]any{"type": "boolean", "description": "Mark below-minimum connectors as available for evaluation without hiding catalog entries."},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"connectors": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Connector Certification"),
 		},
 		{
 			Name:        "cerebro.sources.check",
