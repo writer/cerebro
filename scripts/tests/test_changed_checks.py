@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import scripts.changed_checks as changed
+from scripts.embedded_wasm import EMBEDDED_WASM_MODULES
 
 
 class ChangedChecksTests(unittest.TestCase):
@@ -50,20 +51,23 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("rust-deny", self.command_names([path]))
 
-    def test_static_validator_paths_select_wasm_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/graphagent/staticvalidator/src/lib.rs", "internal/graphagent/staticvalidator.go", "internal/graphagent/staticvalidator.wasm"):
+    def test_shared_embedded_wasm_paths_select_aggregate_check(self):
+        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "scripts/embedded_wasm.py"):
             with self.subTest(path=path):
-                self.assertIn("graphagent-static-validator-check", self.command_names([path]))
+                names = self.command_names([path])
+                self.assertIn("rust-wasm-check", names)
+                for module in EMBEDDED_WASM_MODULES:
+                    self.assertNotIn(module.check_target, names)
 
-    def test_sourcecoverage_evaluator_paths_select_wasm_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/sourcecoverage/evaluator/src/lib.rs", "internal/sourcecoverage/evaluator.go", "internal/sourcecoverage/evaluator.wasm"):
-            with self.subTest(path=path):
-                self.assertIn("sourcecoverage-evaluator-check", self.command_names([path]))
-
-    def test_panopticon_resource_paths_select_wasm_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/sourceprojection/panopticonresources/src/lib.rs", "internal/sourceprojection/panopticon_resources_host.go", "internal/sourceprojection/panopticonresources.wasm"):
-            with self.subTest(path=path):
-                self.assertIn("panopticon-resource-extractor-check", self.command_names([path]))
+    def test_module_paths_select_registered_module_check(self):
+        for module in EMBEDDED_WASM_MODULES:
+            paths = [
+                *(f"{prefix}src/lib.rs" for prefix in module.changed_prefixes),
+                *module.changed_paths,
+            ]
+            for path in paths:
+                with self.subTest(module=module.name, path=path):
+                    self.assertIn(module.check_target, self.command_names([path]))
 
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])
