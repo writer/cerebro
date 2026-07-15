@@ -1,7 +1,7 @@
 use serde_json::{Map, Value, json};
 use std::collections::HashSet;
 
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 const MAX_RESOURCE_OBJECTS: usize = 128;
 const MAX_CONTEXT_DEPTH: usize = 4;
 #[cfg(target_arch = "wasm32")]
@@ -337,8 +337,8 @@ pub extern "C" fn cerebro_panopticon_resources_extract(
     };
     std::mem::forget(output);
     let mut descriptor = [0_u8; RESULT_DESCRIPTOR_SIZE];
-    descriptor[8..12].copy_from_slice(&output_pointer.to_le_bytes());
-    descriptor[12..16].copy_from_slice(&output_length.to_le_bytes());
+    descriptor[4..8].copy_from_slice(&output_pointer.to_le_bytes());
+    descriptor[8..12].copy_from_slice(&output_length.to_le_bytes());
     // SAFETY: descriptor_pointer..descriptor_pointer+16 was checked against linear memory above.
     unsafe {
         std::ptr::copy_nonoverlapping(

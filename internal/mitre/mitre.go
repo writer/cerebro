@@ -29,33 +29,33 @@ var (
 )
 
 type AttackTactic struct {
-	ID          string
-	Name        string
-	SourceValue string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceValue string `json:"source_value"`
 }
 
 type AttackTechnique struct {
-	ID          string
-	Name        string
-	SourceValue string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceValue string `json:"source_value"`
 }
 
 type DefendTactic struct {
-	ID          string
-	Name        string
-	SourceValue string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceValue string `json:"source_value"`
 }
 
 type DefendTechnique struct {
-	ID          string
-	Name        string
-	SourceValue string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceValue string `json:"source_value"`
 }
 
 type DefendArtifact struct {
-	ID          string
-	Name        string
-	SourceValue string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceValue string `json:"source_value"`
 }
 
 var attackTactics = []AttackTactic{
