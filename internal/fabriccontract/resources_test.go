@@ -27,6 +27,8 @@ func TestResourceKindDefinitionsPreserveOwnershipBoundaries(t *testing.T) {
 		identifier ResourceIdentifierKind
 	}{
 		{ResourceKindFinding, ResourceOwnerFindings, ResourceIdentifierID},
+		{ResourceKindFindingInvestigation, ResourceOwnerFindings, ResourceIdentifierID},
+		{ResourceKindFindingEvidenceCollection, ResourceOwnerFindings, ResourceIdentifierID},
 		{ResourceKindGraphEntity, ResourceOwnerGraphProjection, ResourceIdentifierURN},
 		{ResourceKindRule, ResourceOwnerRuleCatalog, ResourceIdentifierID},
 		{ResourceKindActionExecution, ResourceOwnerActionWorkflow, ResourceIdentifierID},
