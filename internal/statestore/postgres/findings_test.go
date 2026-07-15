@@ -323,6 +323,40 @@ func TestFindingGRCListQueryAvoidsFullPayload(t *testing.T) {
 	}
 }
 
+func TestFindingFilterClausesApplyProfilePredicateBeforeLimit(t *testing.T) {
+	clauses, args, err := findingFilterClauses(ports.ListFindingsRequest{
+		TenantID:   "tenant",
+		RuntimeIDs: []string{"runtime-alpha"},
+		ProfilePredicate: ports.FindingProfilePredicate{
+			RuleIDs: []string{"rule-b", "rule-a", "rule-a"},
+			ControlRefs: []ports.FindingControlRef{
+				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+				{FrameworkName: "soc 2", ControlID: "cc6.1"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("findingFilterClauses() error = %v", err)
+	}
+	query := strings.Join(clauses, " AND ")
+	for _, fragment := range []string{
+		"rule_id IN (SELECT jsonb_array_elements_text($3::jsonb->'rule_ids'))",
+		"jsonb_array_elements(COALESCE(control_refs_json, '[]'::jsonb)) AS actual",
+		"jsonb_array_elements($3::jsonb->'control_refs') AS wanted",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("profile predicate missing %q in %s", fragment, query)
+		}
+	}
+	if len(args) != 3 {
+		t.Fatalf("len(args) = %d, want 3", len(args))
+	}
+	payload, ok := args[2].(string)
+	if !ok || strings.Count(payload, "framework_name") != 1 || !strings.Contains(payload, `"rule_ids":["rule-a","rule-b"]`) {
+		t.Fatalf("profile predicate payload = %#v, want normalized selectors", args[2])
+	}
+}
+
 func TestFindingFilterClausesSupportTrendDrilldownFilters(t *testing.T) {
 	openedAfter := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	openedBefore := openedAfter.AddDate(0, 0, 7)
