@@ -843,26 +843,5 @@ func setDefaultAttribute(attrs map[string]string, key string, value string) {
 }
 
 func schemaForKind(kind string) string {
-	switch strings.TrimSpace(kind) {
-	case EventKindKnowledgeDecisionRecorded:
-		return SchemaKnowledgeDecisionRecorded
-	case EventKindKnowledgeActionRecorded:
-		return SchemaKnowledgeActionRecorded
-	case EventKindKnowledgeOutcomeRecorded:
-		return SchemaKnowledgeOutcomeRecorded
-	case EventKindFindingRecorded:
-		return SchemaFindingRecorded
-	case EventKindFindingNoteAdded:
-		return SchemaFindingNoteAdded
-	case EventKindFindingTicketLinked:
-		return SchemaFindingTicketLinked
-	case EventKindFindingExternalRefLinked:
-		return SchemaFindingExternalRefLinked
-	case EventKindFindingStatusChanged:
-		return SchemaFindingStatusChanged
-	case EventKindFindingTombstoned:
-		return SchemaFindingTombstoned
-	default:
-		return ""
-	}
+	return SchemaForKind(strings.TrimSpace(kind))
 }
