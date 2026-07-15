@@ -40,6 +40,14 @@
       "size_bytes": 729552,
       "max_size_bytes": 800000,
       "abi_version": 1
+    },
+    {
+      "name": "sourceruntime-record-kernel",
+      "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
+      "sha256": "539fc4c74d3b2659801ca937a6f17f00f2d9c21c90ea2e76269ac291465bebb8",
+      "size_bytes": 163138,
+      "max_size_bytes": 200000,
+      "abi_version": 1
     }
   ]
 }

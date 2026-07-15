@@ -311,11 +311,10 @@ impl SourcePlan<Validated> {
 
     fn map_page_with_canonical_input(
         &self,
-        mut page: SourcePage,
+        page: SourcePage,
         permit: ExecutionPermit,
         canonical_input: &[u8],
     ) -> Result<MappingResponse, KernelRejection> {
-        page.canonicalize();
         if page.records.len() > self.contract.max_records {
             return Err(KernelRejection::new(
                 "page_record_limit_exceeded",
@@ -388,11 +387,7 @@ impl SourcePlan<Validated> {
                 payload,
             });
         }
-        accepted.sort_by(|left, right| {
-            left.external_id
-                .cmp(&right.external_id)
-                .then_with(|| left.fingerprint_sha256.cmp(&right.fingerprint_sha256))
-        });
+        accepted.sort_by(|left, right| left.external_id.cmp(&right.external_id));
         quarantined.sort_by_key(|record| record.input_index);
 
         let records_sha256 = sha256_hex(&serde_json::to_vec(&(&accepted, &quarantined)).map_err(
@@ -480,10 +475,9 @@ mod tests {
             Some("cursor-2".to_owned()),
         );
         let response = plan
-            .map_page_with_canonical_input(
+            .map_page(
                 page,
                 ExecutionPermit::issue("attempt-1").expect("valid permit"),
-                b"canonical-input",
             )
             .expect("mapping succeeds");
 
@@ -537,10 +531,9 @@ mod tests {
                 .validate()
                 .expect("valid plan");
         let rejection = plan
-            .map_page_with_canonical_input(
+            .map_page(
                 SourcePage::new(vec![json!({"id":"1"}), json!({"id":"2"})], None),
                 ExecutionPermit::issue("attempt-1").expect("valid permit"),
-                b"input",
             )
             .expect_err("record limit must fail closed");
 
