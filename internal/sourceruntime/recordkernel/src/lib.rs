@@ -118,18 +118,12 @@ impl SourcePlan<Draft> {
         validate_identifier("family_invalid", "family", &self.contract.family)?;
         validate_identifier("id_field_invalid", "id field", &self.contract.id_field)?;
         if self.contract.max_records == 0 || self.contract.max_records > HARD_MAX_RECORDS {
-            return Err(KernelRejection::new(
-                "max_records_invalid",
-                format!("max records must be between 1 and {HARD_MAX_RECORDS}"),
-            ));
+            return Err(max_records_invalid());
         }
         if self.contract.max_record_bytes == 0
             || self.contract.max_record_bytes > HARD_MAX_RECORD_BYTES
         {
-            return Err(KernelRejection::new(
-                "max_record_bytes_invalid",
-                format!("max record bytes must be between 1 and {HARD_MAX_RECORD_BYTES}"),
-            ));
+            return Err(max_record_bytes_invalid());
         }
         Ok(SourcePlan {
             contract: self.contract,
@@ -181,8 +175,37 @@ impl SourcePage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct WireContract {
+    source_id: String,
+    family: String,
+    id_field: String,
+    max_records: i64,
+    max_record_bytes: i64,
+}
+
+impl WireContract {
+    fn into_draft(self) -> Result<DraftContract, KernelRejection> {
+        let max_records = usize::try_from(self.max_records)
+            .ok()
+            .filter(|value| *value > 0 && *value <= HARD_MAX_RECORDS)
+            .ok_or_else(max_records_invalid)?;
+        let max_record_bytes = usize::try_from(self.max_record_bytes)
+            .ok()
+            .filter(|value| *value > 0 && *value <= HARD_MAX_RECORD_BYTES)
+            .ok_or_else(max_record_bytes_invalid)?;
+        Ok(DraftContract {
+            source_id: self.source_id,
+            family: self.family,
+            id_field: self.id_field,
+            max_records,
+            max_record_bytes,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct MappingRequest {
-    contract: DraftContract,
+    contract: WireContract,
     page: SourcePage,
     attempt_id: String,
 }
@@ -279,7 +302,11 @@ pub fn evaluate_json(input: &[u8]) -> Result<Vec<u8>, serde_json::Error> {
     let mut request: MappingRequest = serde_json::from_slice(input)?;
     request.page.canonicalize();
     let canonical_input = serde_json::to_vec(&request)?;
-    let plan = match SourcePlan::new(request.contract).validate() {
+    let contract = match request.contract.into_draft() {
+        Ok(contract) => contract,
+        Err(rejection) => return serde_json::to_vec(&MappingOutcome::rejected(rejection)),
+    };
+    let plan = match SourcePlan::new(contract).validate() {
         Ok(plan) => plan,
         Err(rejection) => return serde_json::to_vec(&MappingOutcome::rejected(rejection)),
     };
@@ -430,6 +457,20 @@ fn validate_identifier(
         ));
     }
     Ok(())
+}
+
+fn max_records_invalid() -> KernelRejection {
+    KernelRejection::new(
+        "max_records_invalid",
+        format!("max records must be between 1 and {HARD_MAX_RECORDS}"),
+    )
+}
+
+fn max_record_bytes_invalid() -> KernelRejection {
+    KernelRejection::new(
+        "max_record_bytes_invalid",
+        format!("max record bytes must be between 1 and {HARD_MAX_RECORD_BYTES}"),
+    )
 }
 
 fn sha256_hex(input: &[u8]) -> String {

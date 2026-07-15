@@ -135,7 +135,7 @@ report:
 
 | Artifact | Workload | Bytes | Imported functions | Callable exports |
 | --- | --- | ---: | ---: | --- |
-| Rust source record kernel | JSON validation, canonicalization, quarantine, SHA-256 receipts | 164,078 | 0 | ABI version, allocation, evaluation |
+| Rust source record kernel | JSON validation, canonicalization, quarantine, SHA-256 receipts | 164,994 | 0 | ABI version, allocation, evaluation |
 | Standard Go Wasm runtime floor | Empty `main` | 1,849,278 | 10 | `_start` |
 
 The standard Go artifact is built with VCS stamping disabled so the comparison

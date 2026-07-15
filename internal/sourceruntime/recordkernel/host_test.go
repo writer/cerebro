@@ -65,6 +65,60 @@ func TestRecordKernelReturnsBoundedContractRejection(t *testing.T) {
 	}
 }
 
+func TestRecordKernelMapsEmptyPageAndPreservesCursor(t *testing.T) {
+	t.Parallel()
+	request := recordKernelTestRequest()
+	request.Page.Records = nil
+
+	outcome, err := EvaluateRecordMapping(context.Background(), request)
+	if err != nil {
+		t.Fatalf("EvaluateRecordMapping() error = %v", err)
+	}
+	if outcome.Outcome != "mapped" || outcome.Response == nil {
+		t.Fatalf("outcome = %#v; want mapped response", outcome)
+	}
+	if len(outcome.Response.Accepted) != 0 || len(outcome.Response.Quarantined) != 0 {
+		t.Fatalf("response = %#v; want no mapped records", outcome.Response)
+	}
+	if outcome.Response.Checkpoint.NextCursor != request.Page.NextCursor {
+		t.Fatalf("next cursor = %q; want %q", outcome.Response.Checkpoint.NextCursor, request.Page.NextCursor)
+	}
+}
+
+func TestRecordKernelReturnsBoundedRejectionForNegativeLimits(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		code string
+		set  func(*RecordMappingContract)
+	}{
+		{
+			name: "records",
+			code: "max_records_invalid",
+			set:  func(contract *RecordMappingContract) { contract.MaxRecords = -1 },
+		},
+		{
+			name: "record bytes",
+			code: "max_record_bytes_invalid",
+			set:  func(contract *RecordMappingContract) { contract.MaxRecordBytes = -1 },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := recordKernelTestRequest()
+			test.set(&request.Contract)
+
+			outcome, err := EvaluateRecordMapping(context.Background(), request)
+			if err != nil {
+				t.Fatalf("EvaluateRecordMapping() error = %v", err)
+			}
+			if outcome.Outcome != "rejected" || outcome.Code != test.code || outcome.Response != nil {
+				t.Fatalf("outcome = %#v; want %s rejection", outcome, test.code)
+			}
+		})
+	}
+}
+
 func TestRecordKernelRejectsOversizedInputBeforeGuestExecution(t *testing.T) {
 	t.Parallel()
 	request := recordKernelTestRequest()

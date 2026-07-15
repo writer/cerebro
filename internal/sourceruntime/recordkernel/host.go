@@ -48,7 +48,7 @@ type RecordMappingContract struct {
 
 // RecordMappingPage carries one provider page and the cursor to commit after mapping succeeds.
 type RecordMappingPage struct {
-	Records    []json.RawMessage `json:"records"`
+	Records    []json.RawMessage `json:"records,omitempty"`
 	NextCursor string            `json:"next_cursor,omitempty"`
 }
 
