@@ -202,6 +202,8 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"cerebro.release-candidate/v1",
 		"bundle-checksums.txt",
 		"| head -n 1 || true",
+		"path: .dist/release\n          if-no-files-found: error\n          include-hidden-files: true",
+		"path: .dist\n          if-no-files-found: error\n          include-hidden-files: true",
 	} {
 		if !strings.Contains(candidate, marker) {
 			t.Fatalf("candidate workflow missing required marker %q", marker)
