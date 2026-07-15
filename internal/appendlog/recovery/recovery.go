@@ -142,7 +142,7 @@ func deadLetterFromEvent(event *cerebrov1.EventEnvelope, exhausted *ports.Append
 		RuntimeID:     strings.TrimSpace(attrs[ports.EventAttributeSourceRuntimeID]),
 		JobID:         strings.TrimSpace(attrs[ports.EventAttributeJobID]),
 		ErrorCategory: strings.TrimSpace(exhausted.ErrorCategory),
-		ErrorMessage:  strings.TrimSpace(exhausted.Error()),
+		ErrorMessage:  deadLetterDiagnostic(exhausted),
 		RetryCount:    exhausted.RetryCount,
 		MaxAttempts:   exhausted.MaxAttempts,
 		PayloadHash:   hash,
@@ -156,6 +156,24 @@ func deadLetterFromEvent(event *cerebrov1.EventEnvelope, exhausted *ports.Append
 		record.ErrorCategory = "unknown"
 	}
 	return record, nil
+}
+
+func deadLetterDiagnostic(exhausted *ports.AppendLogPublishExhaustedError) string {
+	if exhausted == nil {
+		return "append log publish exhausted; category=unknown"
+	}
+	category := strings.TrimSpace(exhausted.ErrorCategory)
+	if category == "" {
+		category = "unknown"
+	}
+	// Persist only bounded fields owned by the retry contract. The wrapped error may
+	// contain authorization headers, credentials, URLs, or provider response bodies.
+	return fmt.Sprintf(
+		"append log publish exhausted; category=%s; attempts=%d/%d",
+		category,
+		exhausted.RetryCount,
+		exhausted.MaxAttempts,
+	)
 }
 
 func deterministicEventPayload(event *cerebrov1.EventEnvelope) ([]byte, string, error) {

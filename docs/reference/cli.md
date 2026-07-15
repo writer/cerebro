@@ -7,7 +7,7 @@ make build
 ./bin/cerebro version
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 Agent onboarding is a Makefile workflow around the CLI and HTTP API:
 
@@ -57,11 +57,24 @@ Source runtime persistence requires Postgres. Sync also requires NATS JetStream.
 
 See [Source runtime guide](../domains/source-runtime-guide.md) for store setup, secrets, sync behavior, and recovery.
 
+## Connector Certification
+
+List compiled and catalog-only connectors with their certification proof and availability state:
+
+```bash
+./bin/cerebro connector-catalog list
+./bin/cerebro connector-catalog list --min-certification-tier contract_tested
+./bin/cerebro connector-catalog list --min-certification-tier production_observed --include-preview
+```
+
+The minimum tier changes each connector's availability state. It does not hide catalog entries or promote static proof into a live production or outcome state.
+
 ## Append Log Recovery
 
 Exhausted JetStream publishes are recorded in Postgres when the state store is configured. List pending records without requiring JetStream to be healthy:
 
 ```bash
+./bin/cerebro append-log dead-letters stats
 ./bin/cerebro append-log dead-letters list
 ./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
 ```
@@ -69,12 +82,32 @@ Exhausted JetStream publishes are recorded in Postgres when the state store is c
 Replay one record after the append-log path is healthy, or discard it after investigation:
 
 ```bash
-./bin/cerebro append-log dead-letters replay <dead-letter-id>
-./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+./bin/cerebro append-log dead-letters replay <dead-letter-id> actor=oncall@example.com reason=INC-1234
+./bin/cerebro append-log dead-letters discard <dead-letter-id> actor=oncall@example.com reason=INC-1234
 ```
+
+`replay` claims the record before publishing. `list` reports the claim owner,
+lease expiry, attempt count, and last bounded replay error category without
+exposing the claim token. A second operator cannot replay or discard the record
+until the active claim completes or expires.
+
+Replay and discard commit the status transition and actor/action/reason audit
+row in one Postgres transaction.
 
 Dead-letter IDs are deterministic for the subject, event ID, and payload. A
 replayed or discarded record stays terminal if the same event exhausts again.
+
+Delete terminal records before a retention cutoff in audited, resumable batches:
+
+```bash
+./bin/cerebro append-log dead-letters cleanup terminal_before=2026-06-01T00:00:00Z actor=oncall@example.com reason=CHG-1234 limit=100
+./bin/cerebro append-log dead-letters cleanup actor=oncall@example.com reason=scheduled-retention limit=100
+```
+
+`cleanup` only deletes replayed or discarded records. When `has_more` is true,
+run the command again with the returned `next_after_id` as `after_id`.
+When `terminal_before` is omitted, the command uses the configured terminal
+retention period.
 
 ## Finding Rules
 
