@@ -607,6 +607,10 @@ config:
     type: string
     default: ""
     description: Existing API key material for CEREBRO_API_KEYS
+  cerebro:apiCredentialsJson:
+    type: string
+    default: ""
+    description: Optional Pulumi-encrypted structured API credentials; defaults to credentials derived from cerebro:apiKeys
   cerebro:apiCredentialsSecretName:
     type: string
     default: CEREBRO_API_CREDENTIALS_JSON
@@ -615,6 +619,10 @@ config:
     type: boolean
     default: false
     description: Enable API key authentication for non-public routes
+  cerebro:infisicalExternalId:
+    type: string
+    default: ""
+    description: Optional Pulumi-encrypted external ID required by the Infisical assume-role trust policy
   cerebro:allowedTenants:
     type: array
     items:

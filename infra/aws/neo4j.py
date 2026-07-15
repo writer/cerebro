@@ -28,6 +28,12 @@ REPLACEMENT_INSTANCE_KEYS = (
 )
 STATE_ONLY_INSTANCE_KEYS = ("client_id", "client_secret", "timeout_seconds")
 
+API_CREDENTIAL_REQUIRED_FIELDS = frozenset(
+    {"credential_id", "client_id", "principal", "tenant_id", "key_sha256"}
+)
+API_CREDENTIAL_OPTIONAL_FIELDS = frozenset({"kind", "name", "scopes"})
+API_CREDENTIAL_ALLOWED_FIELDS = API_CREDENTIAL_REQUIRED_FIELDS | API_CREDENTIAL_OPTIONAL_FIELDS
+
 
 def _api_credentials_json_from_api_keys(raw: str) -> str:
     credentials = []
@@ -48,6 +54,77 @@ def _api_credentials_json_from_api_keys(raw: str) -> str:
             }
         )
     return json.dumps(credentials, separators=(",", ":"), sort_keys=True)
+
+
+def _normalize_api_credentials_json(configured: str) -> str:
+    try:
+        parsed = json.loads(configured)
+    except json.JSONDecodeError as error:
+        raise ValueError("apiCredentialsJson must be valid JSON") from error
+
+    if not isinstance(parsed, list) or not parsed:
+        raise ValueError("apiCredentialsJson must be a non-empty JSON array")
+
+    normalized: list[dict[str, Any]] = []
+    credential_ids: set[str] = set()
+    key_digests: set[str] = set()
+    for index, entry in enumerate(parsed):
+        label = f"apiCredentialsJson[{index}]"
+        if not isinstance(entry, dict):
+            raise ValueError(f"{label} must be an object")
+
+        fields = set(entry)
+        missing_fields = sorted(API_CREDENTIAL_REQUIRED_FIELDS - fields)
+        if missing_fields:
+            raise ValueError(f"{label} is missing required fields: {', '.join(missing_fields)}")
+        unsupported_fields = sorted(fields - API_CREDENTIAL_ALLOWED_FIELDS)
+        if unsupported_fields:
+            raise ValueError(f"{label} has unsupported fields: {', '.join(unsupported_fields)}")
+
+        credential: dict[str, Any] = {}
+        for field in sorted(API_CREDENTIAL_REQUIRED_FIELDS | {"kind", "name"}):
+            if field not in entry:
+                continue
+            value = entry[field]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{label}.{field} must be a non-empty string")
+            credential[field] = value.strip()
+
+        digest = credential["key_sha256"].lower()
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ValueError(f"{label}.key_sha256 must be a 64-character hexadecimal SHA-256 digest")
+        credential["key_sha256"] = digest
+
+        if "scopes" in entry:
+            scopes = entry["scopes"]
+            if not isinstance(scopes, list) or not scopes:
+                raise ValueError(f"{label}.scopes must be a non-empty array of strings")
+            normalized_scopes: list[str] = []
+            for scope_index, scope in enumerate(scopes):
+                if not isinstance(scope, str) or not scope.strip():
+                    raise ValueError(f"{label}.scopes[{scope_index}] must be a non-empty string")
+                normalized_scopes.append(scope.strip())
+            if len(normalized_scopes) != len(set(normalized_scopes)):
+                raise ValueError(f"{label}.scopes must not contain duplicates")
+            credential["scopes"] = sorted(normalized_scopes)
+
+        credential_id = credential["credential_id"]
+        if credential_id in credential_ids:
+            raise ValueError(f"apiCredentialsJson contains duplicate credential_id at index {index}")
+        credential_ids.add(credential_id)
+        if digest in key_digests:
+            raise ValueError(f"apiCredentialsJson contains duplicate key_sha256 at index {index}")
+        key_digests.add(digest)
+        normalized.append(credential)
+
+    normalized.sort(key=lambda credential: credential["credential_id"])
+    return json.dumps(normalized, separators=(",", ":"), sort_keys=True)
+
+
+def _api_credentials_json(legacy_derived: str, configured: str | None) -> str:
+    if configured is not None and configured.strip():
+        return _normalize_api_credentials_json(configured.strip())
+    return legacy_derived
 
 
 class Neo4jAuraProvider(dynamic.ResourceProvider):
@@ -258,6 +335,7 @@ def create_runtime_secrets(
     neo4j_uri: pulumi.Input[str],
     neo4j_password: pulumi.Input[str],
     api_keys: pulumi.Input[str] | None,
+    api_credentials_json: pulumi.Input[str] | None = None,
     kms_key_id: pulumi.Input[str] | None = None,
     import_arns: dict[str, str] | None = None,
     tags: dict[str, str] | None = None,
@@ -277,13 +355,22 @@ def create_runtime_secrets(
             special=False,
         ).result.apply(lambda token: f"{token}:legacy-api-key-1:writer")
 
-    api_credentials_json = pulumi.Output.secret(api_keys).apply(_api_credentials_json_from_api_keys)
+    legacy_api_credentials_json = pulumi.Output.secret(api_keys).apply(
+        _api_credentials_json_from_api_keys
+    )
+    if api_credentials_json is None:
+        resolved_api_credentials_json = legacy_api_credentials_json
+    else:
+        resolved_api_credentials_json = pulumi.Output.all(
+            legacy_api_credentials_json, api_credentials_json
+        ).apply(lambda values: _api_credentials_json(values[0], values[1]))
+    resolved_api_credentials_json = pulumi.Output.secret(resolved_api_credentials_json)
     secret_values = {
         "CEREBRO_NEO4J_URI": neo4j_uri,
         "CEREBRO_NEO4J_USERNAME": "neo4j",
         "CEREBRO_NEO4J_PASSWORD": neo4j_password,
         "CEREBRO_API_KEYS": api_keys,
-        "CEREBRO_API_CREDENTIALS_JSON": api_credentials_json,
+        "CEREBRO_API_CREDENTIALS_JSON": resolved_api_credentials_json,
     }
     secrets = {}
     versions = []

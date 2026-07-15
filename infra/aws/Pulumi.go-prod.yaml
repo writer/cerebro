@@ -10,6 +10,9 @@ config:
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
+  cerebro:albIngressCidrs:
+    - "10.20.0.0/16"
+    - "10.10.0.0/16"
   cerebro:privateSubnetIds:
     - subnet-0b278f102292ec822
     - subnet-065db524200fdd173
@@ -190,6 +193,11 @@ config:
       tenantId: writer
       owner: cerebro-platform
       reason: "Live API runtime declared without an AWS schedule until source credentials are synced."
+    - id: writer-slack-companion
+      sourceId: sdk
+      tenantId: writer
+      owner: cerebro-slack-companion
+      reason: "External Slack companion service writes interaction claims and reads production security state through the API."
     - id: writer-vulnview-asset
       sourceId: vulnview
       tenantId: writer
@@ -3761,3 +3769,7 @@ config:
     secure: AAABAE6cfy9Q+OQkmwT0eOEr2lFRBNQ7V+behbdTSxStFh2hsdsie58OjHXGKXwOoSLZK2letaCjXPQA3mM6ilUxdlJHm0E30Ts5+RRqLo9LRga2syvQU07iGRLQxS98
   cerebro:neo4jAuraProjectId:
     secure: AAABADcxrl4kflM8elbdIAQyjxtUfL+IJ4ZjJwVods1obI7jhle/VWwelrXsoOGN3qfclvvwE0gS7ZmQo//KXNPYmj8=
+  cerebro:apiCredentialsJson:
+    secure: AAABADdaAM6Gn+gZpRzmvW2BcQPf0U1oO2IEVbZfYKxLrKsVb0nf3QonZpLw0rOsRyb10CRyu4xqBhyFYwEiqPqqe9PRntVdZ1N4hq8HzslUs4GGsSh2v2UcXDWkfo7VOMXEN5uQjWsmZHMLepQtoHCmFYXnOkqJ5EddqJEnUYuoh17zO2JSNXVpnjtMkT2iVawXbwm6RxkofrzaRfg18XYNXPo78SL3bw8/3k7B2dxqOvhMjA2UIqpr2GrVGEzmQwHKs2SN9mmYOPeqaOQGhphTGrMtx1jZiQAVbkwSUYAE27Ei6z//V9k/HSk2Y/pUOmEpZYy1cwQE3vedrAXDL/jLbgNeQUO6PGY3mS/CtFysgvuUoxi3UvOUYfuimHcs7oKF0JlItbvxpv6UqgFLcLKjyuLHPme8J4XEj1DVGNWghJ3/IHUVnNYCuH7QV4QRnFgEymUiJWDlt69oy+x4gErtjqE1ZVA8OSNnHFSeCfK/j0PrlkA0MXcy7CvvDgIdnW6+aYN41nz4YTnSkUKV16X3vorUMtfH+rc4ls1tonyDHTJx2F/8n9dVi6V7rSWd7yxl0g8Gq4NJt7c7xBZqjDwU8FU79JEvxOh7WQKuqJE/y5f2kvJrYirvtCsn2Hly+HzhXl7CVJlkLNEc3V/GsUX0/zt0vSM0qN4AxAaOXsIraqWnsyFec/go1+wqISqCcFCHRsbvjTAg/FK4GVwKG327WMLgPj5lJ1fq3wOvaN56LRJAzxn96kTrwLVhIKrXZoSzp/HTiC5tKXUhjv/gdUB+o9Au6T9Sk+rkb78kCxI2zoSEImKiHonfDh9i509Fy3QBR9O2q9S4xxiKUjC9q8pezOfc79l6iarFfKY/+1BEYDV6AhCMg/4hhrQE2rCbf9QkZwFwdRfpXsPfFC2jrHjowCLebVZrb6tS
+  cerebro:infisicalExternalId:
+    secure: AAABAFEuAHpYWryGLM55ZI2sPEu2Bhai1JDD9wDDymdK/epImouPJvcgc+U2iodTFNEQ5Ao2GEAXWQ921y222Cqk/30=

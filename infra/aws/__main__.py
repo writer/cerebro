@@ -268,7 +268,7 @@ nat_gateway_per_az = _config_bool("natGatewayPerAz", is_production)
 # cannot delete Pulumi-managed generated secrets such as Postgres and Neo4j.
 enable_infisical = _config_bool("enableInfisicalSyncRole", False)
 infisical_principal_arn = config.get("infisicalAssumeRolePrincipalArn")
-infisical_external_id = config.get("infisicalExternalId")
+infisical_external_id = _config_optional_secret("infisicalExternalId")
 external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
 infisical_secrets_prefix = config.get("infisicalSecretsPrefix") or external_secrets_prefix
 if not otel_collector_config_secret_prefix:
@@ -395,6 +395,7 @@ neo4j_aura_type = config.get("neo4jAuraType") or "professional-db"
 neo4j_aura_vector_optimized = _config_bool("neo4jAuraVectorOptimized", True)
 neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
 api_keys = _config_optional_secret("apiKeys")
+api_credentials_json = _config_optional_secret("apiCredentialsJson")
 api_credentials_secret_name = config.get("apiCredentialsSecretName") or "CEREBRO_API_CREDENTIALS_JSON"
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
@@ -723,6 +724,7 @@ if neo4j_aura_enabled:
         neo4j_uri=neo4j_instance.connection_url,
         neo4j_password=neo4j_aura_password,
         api_keys=api_keys,
+        api_credentials_json=api_credentials_json,
         kms_key_id=kms_key["key_arn"],
         import_arns=neo4j_secret_import_arns,
         tags={
