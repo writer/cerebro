@@ -204,6 +204,12 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "5")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "30m")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "5m")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION", "216h")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", "48h")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", "80")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", "100")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES", "8000")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_BYTES", "10000")
 	t.Setenv("CEREBRO_CACHE_MODE", CacheDriverValkey)
 	t.Setenv("CEREBRO_CACHE_URL", "rediss://cache.example.internal:6379")
 	t.Setenv("CEREBRO_CACHE_NAMESPACE", "cerebro:test")
@@ -344,6 +350,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.StateStore.PostgresMaxOpenConns != 20 || cfg.StateStore.PostgresMaxIdleConns != 5 || cfg.StateStore.PostgresConnMaxLifetime != 30*time.Minute || cfg.StateStore.PostgresConnMaxIdleTime != 5*time.Minute {
 		t.Fatalf("StateStore pool config = %#v", cfg.StateStore)
+	}
+	if cfg.StateStore.DeadLetterPendingRetention != 9*24*time.Hour || cfg.StateStore.DeadLetterTerminalRetention != 48*time.Hour || cfg.StateStore.DeadLetterWarningRecords != 80 || cfg.StateStore.DeadLetterHardRecords != 100 || cfg.StateStore.DeadLetterWarningBytes != 8000 || cfg.StateStore.DeadLetterHardBytes != 10000 {
+		t.Fatalf("StateStore dead-letter policy = %#v", cfg.StateStore)
 	}
 	if cfg.Cache.Driver != CacheDriverValkey || cfg.Cache.URL != "rediss://cache.example.internal:6379" || cfg.Cache.Namespace != "cerebro:test" || cfg.Cache.DefaultTTL != 45*time.Second || cfg.Cache.StaleTTL != 10*time.Minute || cfg.Cache.MaxPayloadBytes != 2097152 {
 		t.Fatalf("Cache config = %#v", cfg.Cache)
@@ -648,6 +657,12 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_BYTES", "")
 	t.Setenv("CEREBRO_CACHE_MODE", "")
 	t.Setenv("CEREBRO_CACHE_URL", "")
 	t.Setenv("CEREBRO_CACHE_NAMESPACE", "")
@@ -1346,6 +1361,15 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "not-a-duration")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidDeadLetterPolicyBounds(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", "100")
+	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", "100")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want warning below hard limit error")
 	}
 }
 
