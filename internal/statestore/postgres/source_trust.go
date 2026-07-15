@@ -52,7 +52,8 @@ func (s *Store) ApplySourceTrustEvent(ctx context.Context, envelope *cerebrov1.E
 		return false, fmt.Errorf("begin source trust projection: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, sourceTrustAdvisoryLockSQL(), event.tenantID+"\x00"+event.aggregateType+"\x00"+event.aggregateID); err != nil {
+	lockKey := postgresAdvisoryLockKey(event.tenantID, event.aggregateType, event.aggregateID)
+	if _, err := tx.ExecContext(ctx, sourceTrustAdvisoryLockSQL(), lockKey); err != nil {
 		return false, fmt.Errorf("lock source trust aggregate: %w", err)
 	}
 	existingDigest, exists, err := loadSourceTrustReceipt(ctx, tx, event.tenantID, event.eventID)
