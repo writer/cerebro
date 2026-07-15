@@ -889,6 +889,9 @@ func TestEnforceCypherLimitTreatsKeywordsAsExpressionBoundaries(t *testing.T) {
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IS NOT NULL RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IN [true] RETURN e`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit XOR false RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit RETURN e, CASE WHEN limit THEN 1 ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE limit WHEN 1 THEN 1 ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE WHEN true THEN 1 ELSE limit END AS value`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE WHEN true THEN limit ELSE 0 END AS value`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit ASC`,
 		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit DESC`,
@@ -905,7 +908,7 @@ func TestEnforceCypherLimitTreatsKeywordsAsExpressionBoundaries(t *testing.T) {
 		}
 	}
 
-	for _, keyword := range []string{"AND", "ASC", "DESC", "ELSE", "IN", "IS", "NOT", "OR", "XOR"} {
+	for _, keyword := range []string{"AND", "ASC", "BY", "CASE", "DESC", "DISTINCT", "ELSE", "END", "IN", "IS", "NOT", "OR", "THEN", "UNWIND", "WHEN", "XOR", "YIELD"} {
 		if !cypherLimitExpressionBoundary(strings.ToLower(keyword)) {
 			t.Fatalf("cypherLimitExpressionBoundary(%q) = false, want true", keyword)
 		}
