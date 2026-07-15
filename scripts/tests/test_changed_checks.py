@@ -129,6 +129,17 @@ class ChangedChecksTests(unittest.TestCase):
             ],
         )
 
+    def test_static_validator_property_and_fuzz_paths_select_deterministic_properties(self):
+        for path in (
+            "internal/graphagent/staticvalidator/tests/properties.rs",
+            "internal/graphagent/staticvalidator/fuzz/fuzz_targets/validate.rs",
+            "internal/graphagent/staticvalidator/fuzz/corpus/validate/scoped-read",
+        ):
+            with self.subTest(path=path):
+                names = self.command_names([path])
+                self.assertIn("graphagent-static-validator-check", names)
+                self.assertIn("rust-validator-properties", names)
+
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])
         self.assertIn("readme-check", names)

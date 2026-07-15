@@ -1,0 +1,2 @@
+100
+MATCH (e:Entity {tenant_id:$tenant_id}) CALL { WITH e MATCH (e)-[:R]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 10 } RETURN b LIMIT 25
