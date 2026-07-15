@@ -247,3 +247,24 @@ func TestCanonicalizePacketNormalizesNestedDecisionFields(t *testing.T) {
 		t.Fatalf("nested formatting changed canonical packet: spaced=%s plain=%s", canonicalJSON, plainJSON)
 	}
 }
+
+func TestCanonicalizePacketTreatsNilAndEmptyResultSlicesEqually(t *testing.T) {
+	packet := Packet{GeneratedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)}
+	withNil, nilJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(nil) error = %v", err)
+	}
+	packet.Contradictions = []Contradiction{}
+	packet.CoverageGaps = []CoverageGap{}
+	packet.Affected = []SubjectReference{}
+	packet.Controls = []ControlReference{}
+	packet.AuditPackets = []AuditPacketReference{}
+	packet.Actions = []ActionProposal{}
+	withEmpty, emptyJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(empty) error = %v", err)
+	}
+	if withNil.ID != withEmpty.ID || string(nilJSON) != string(emptyJSON) {
+		t.Fatalf("nil and empty slices changed canonical packet: nil=%s empty=%s", nilJSON, emptyJSON)
+	}
+}

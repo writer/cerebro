@@ -118,6 +118,12 @@ func normalizePacket(packet Packet) Packet {
 		packet.AuditPackets[index].Freshness = strings.ToLower(strings.TrimSpace(packet.AuditPackets[index].Freshness))
 		packet.AuditPackets[index].GeneratedAt = packet.AuditPackets[index].GeneratedAt.UTC()
 	}
+	packet.Contradictions = nonNilSlice(packet.Contradictions)
+	packet.CoverageGaps = nonNilSlice(packet.CoverageGaps)
+	packet.Affected = nonNilSlice(packet.Affected)
+	packet.Controls = nonNilSlice(packet.Controls)
+	packet.AuditPackets = nonNilSlice(packet.AuditPackets)
+	packet.Actions = nonNilSlice(packet.Actions)
 	sort.Slice(packet.Contradictions, func(i, j int) bool { return packet.Contradictions[i].ID < packet.Contradictions[j].ID })
 	sort.Slice(packet.CoverageGaps, func(i, j int) bool { return packet.CoverageGaps[i].ID < packet.CoverageGaps[j].ID })
 	sort.Slice(packet.Affected, func(i, j int) bool { return packet.Affected[i].URN < packet.Affected[j].URN })
@@ -189,6 +195,13 @@ func normalizeStrings(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func nonNilSlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 func uniqueSortedStrings(values []string) []string { return normalizeStrings(values) }
