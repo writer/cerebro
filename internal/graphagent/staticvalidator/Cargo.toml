@@ -13,4 +13,4 @@ crate-type = ["cdylib", "rlib"]
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }
 
 [lints.rust]
-unsafe_code = "allow"
+unsafe_code = "deny"
