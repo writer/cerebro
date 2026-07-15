@@ -115,6 +115,7 @@ class VerificationOptions:
     succeed_after_graph_ingest: bool = False
     max_age_minutes: int = 180
     bootstrap_runtime_ids: tuple[str, ...] = ()
+    task_definition_override: str = ""
 
 
 class RuntimeSkippedError(RuntimeError):
@@ -426,6 +427,17 @@ def _latest_active_task_definition(task_definition: str, region: str) -> str:
     return replacement
 
 
+def _exact_active_task_definition(task_definition: str, region: str) -> str:
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    definition = response.get("taskDefinition") or {}
+    if definition.get("status") != "ACTIVE":
+        raise RuntimeError("task definition override must reference an ACTIVE revision")
+    resolved = str(definition.get("taskDefinitionArn") or "").strip()
+    if not resolved:
+        raise RuntimeError("task definition override did not resolve to an ARN")
+    return resolved
+
+
 def _verification_command(
     runtime_id: str,
     page_limit: int | None,
@@ -449,13 +461,19 @@ def _run_task(
     region: str,
     command_override: list[str] | None = None,
     bootstrap_runtime_ids: tuple[str, ...] = (),
+    *,
+    task_definition_override: str = "",
 ) -> str:
     ecs_params = target.target["EcsParameters"]
     network = ecs_params["NetworkConfiguration"]["awsvpcConfiguration"]
     subnets = ",".join(network["Subnets"])
     security_groups = ",".join(network["SecurityGroups"])
     assign_public_ip = network.get("AssignPublicIp", "DISABLED")
-    task_definition = _latest_active_task_definition(ecs_params["TaskDefinitionArn"], region)
+    task_definition = (
+        _exact_active_task_definition(task_definition_override, region)
+        if task_definition_override
+        else _latest_active_task_definition(ecs_params["TaskDefinitionArn"], region)
+    )
     args = [
         "ecs",
         "run-task",
@@ -1391,6 +1409,8 @@ def _run_and_verify_task_with_retries(
     run_attempt_timeout_seconds: int = 0,
     succeed_after_graph_ingest: bool = False,
     bootstrap_runtime_ids: tuple[str, ...] = (),
+    *,
+    task_definition_override: str = "",
 ) -> VerificationResult:
     if stop_running_before_run:
         _stop_running_tasks(
@@ -1405,7 +1425,13 @@ def _run_and_verify_task_with_retries(
     failed_run_retry_deadline = start + failed_run_retry_seconds if failed_run_retry_seconds > 0 else None
     while True:
         remaining = max(1, int(deadline - time.time()))
-        task_arn = _run_task(target, region, command_override, bootstrap_runtime_ids)
+        task_arn = _run_task(
+            target,
+            region,
+            command_override,
+            bootstrap_runtime_ids,
+            task_definition_override=task_definition_override,
+        )
         attempt_timeout = min(remaining, run_attempt_timeout_seconds) if run_attempt_timeout_seconds > 0 else remaining
         try:
             if succeed_after_graph_ingest:
@@ -1628,6 +1654,7 @@ def _print_dry_run_plan(
     print(f"failed_run_retry_seconds\t{options.failed_run_retry_seconds}")
     print(f"allow_missing_targets\t{str(allow_missing_targets).lower()}")
     print(f"target_concurrency\t{target_concurrency}")
+    print(f"task_definition\t{'override' if options.task_definition_override else 'deployed'}")
     print("runtime_id\tschedule\trule\tstatus")
     for runtime_id in runtime_ids:
         target = target_by_runtime.get(runtime_id)
@@ -1660,6 +1687,7 @@ def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) 
             options.run_attempt_timeout_seconds,
             options.succeed_after_graph_ingest,
             (target.runtime_id,) if options.bootstrap_runtime_ids else (),
+            task_definition_override=options.task_definition_override,
         )
     task_arn = _latest_task(target, options.max_age_minutes, options.region)
     return _verify_task(target, task_arn, options.region)
@@ -1716,7 +1744,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=_positive_int, default=10)
     parser.add_argument("--target-concurrency", type=_positive_int, default=1, help="Verify up to this many source runtime targets concurrently.")
     parser.add_argument("--allow-missing-targets", action="store_true", help="Skip declared runtimes whose EventBridge target is not deployed yet.")
+    parser.add_argument(
+        "--task-definition-override",
+        default="",
+        help="Use this exact ACTIVE ECS task definition revision for tasks started by --run.",
+    )
     args = parser.parse_args(argv)
+
+    if args.task_definition_override and not args.run:
+        raise ValueError("--task-definition-override requires --run")
 
     stack = _stack_name(args.stack_file)
     config = _load_config(args.stack_file)
@@ -1751,6 +1787,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
                 succeed_after_graph_ingest=args.succeed_after_graph_ingest,
                 max_age_minutes=args.max_age_minutes,
+                task_definition_override=args.task_definition_override,
             )
             _print_dry_run_plan(
                 stack,
@@ -1775,6 +1812,8 @@ def main(argv: list[str] | None = None) -> int:
 
     _verify_account(stack, args.region)
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region, args.allow_missing_targets)
+    if args.task_definition_override and len(targets) != 1:
+        raise ValueError(f"--task-definition-override requires exactly one deployed runtime target, found {len(targets)}")
     if not targets:
         if args.dry_run and args.allow_missing_targets:
             options = VerificationOptions(
@@ -1792,6 +1831,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
                 succeed_after_graph_ingest=args.succeed_after_graph_ingest,
                 max_age_minutes=args.max_age_minutes,
+                task_definition_override=args.task_definition_override,
             )
             _print_dry_run_plan(
                 stack,
@@ -1828,6 +1868,7 @@ def main(argv: list[str] | None = None) -> int:
         succeed_after_graph_ingest=args.succeed_after_graph_ingest,
         max_age_minutes=args.max_age_minutes,
         bootstrap_runtime_ids=tuple(runtime_ids),
+        task_definition_override=args.task_definition_override,
     )
     if args.dry_run:
         _print_dry_run_plan(

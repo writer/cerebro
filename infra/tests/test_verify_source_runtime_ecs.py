@@ -26,6 +26,7 @@ from scripts.verify_source_runtime_ecs import (
     _config_for_runtime_scope,
     _bootstrap_task_diagnostics,
     _declared_runtime_ids,
+    _exact_active_task_definition,
     _latest_active_task_definition,
     _latest_task,
     _observability_runtime_ids,
@@ -303,6 +304,14 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             self.assertNotIn("123456789012", stderr.getvalue())
             self.assertNotIn("arn:aws", stderr.getvalue())
 
+    def test_exact_active_task_definition_rejects_inactive_revision(self) -> None:
+        with patch(
+            "scripts.verify_source_runtime_ecs._aws",
+            return_value={"taskDefinition": {"status": "INACTIVE", "taskDefinitionArn": "candidate:1"}},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "must reference an ACTIVE revision"):
+                _exact_active_task_definition("candidate:1", "us-east-1")
+
     def test_verification_command_overrides_runtime_limits(self) -> None:
         self.assertEqual(
             _verification_command("writer-cosmo-fact", 1, 2, 3),
@@ -353,6 +362,40 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             self.assertEqual(_run_task(target, "us-east-1", command), "task-arn")
+
+    def test_run_task_uses_exact_task_definition_override(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={
+                "Arn": "cluster",
+                "EcsParameters": {
+                    "TaskDefinitionArn": "scheduled:3",
+                    "NetworkConfiguration": {
+                        "awsvpcConfiguration": {
+                            "Subnets": ["subnet-1"],
+                            "SecurityGroups": ["sg-1"],
+                        }
+                    },
+                },
+            },
+        )
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                self.assertEqual(args[-1], "candidate:1")
+                return {"taskDefinition": {"status": "ACTIVE", "taskDefinitionArn": "candidate:1"}}
+            if args[:2] == ["ecs", "run-task"]:
+                self.assertEqual(args[args.index("--task-definition") + 1], "candidate:1")
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(
+                _run_task(target, "us-east-1", task_definition_override="candidate:1"),
+                "task-arn",
+            )
 
     def test_run_task_can_scope_bootstrap_payload_to_observability_runtimes(self) -> None:
         target = RuntimeTarget(
@@ -884,11 +927,16 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             pages_read=1,
         )
 
-        def fake_run_and_verify(*args):
+        def fake_run_and_verify(*args, **kwargs):
             self.assertEqual(args[-1], ("runtime-1",))
+            self.assertEqual(kwargs["task_definition_override"], "candidate:1")
             return verified
 
-        options = VerificationOptions(run=True, bootstrap_runtime_ids=("runtime-1", "runtime-2"))
+        options = VerificationOptions(
+            run=True,
+            bootstrap_runtime_ids=("runtime-1", "runtime-2"),
+            task_definition_override="candidate:1",
+        )
         with patch("scripts.verify_source_runtime_ecs._run_and_verify_task_with_retries", side_effect=fake_run_and_verify):
             self.assertEqual(_verify_runtime_target(target, options), verified)
 
@@ -2097,6 +2145,49 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(events, ["bootstrap"])
         run_task.assert_not_called()
+
+    def test_task_definition_override_requires_run(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires --run"):
+            main(
+                [
+                    "--stack-file",
+                    "aws/Pulumi.go-prod.yaml",
+                    "--runtime-id",
+                    "runtime-1",
+                    "--task-definition-override",
+                    "candidate:1",
+                ]
+            )
+
+    def test_task_definition_override_requires_one_target(self) -> None:
+        config = {
+            "environment": "go-production",
+            "sourceRuntimes": [
+                {"id": "runtime-1", "sourceId": "source"},
+                {"id": "runtime-2", "sourceId": "source"},
+            ],
+        }
+        targets = [
+            RuntimeTarget("runtime-1", "runtime-1", "runtime-1", {"Arn": "cluster"}),
+            RuntimeTarget("runtime-2", "runtime-2", "runtime-2", {"Arn": "cluster"}),
+        ]
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+        ):
+            with self.assertRaisesRegex(ValueError, "requires exactly one deployed runtime target"):
+                main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--source-id",
+                        "source",
+                        "--run",
+                        "--task-definition-override",
+                        "candidate:1",
+                    ]
+                )
 
     def test_runtime_discovery_failure_includes_redacted_bootstrap_diagnostics(self) -> None:
         target = RuntimeTarget(

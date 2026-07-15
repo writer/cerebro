@@ -1,0 +1,262 @@
+name: Candidate Runtime Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful public Candidate Build run ID
+        required: true
+        type: string
+      candidate_sha:
+        description: Full candidate commit SHA
+        required: true
+        type: string
+      candidate_digest:
+        description: Candidate image digest from the build receipt
+        required: true
+        type: string
+      runtime_id:
+        description: One production runtime ID to execute
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: candidate-runtime-smoke-go-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: cerebro
+  GHCR_IMAGE: ghcr.io/writer/cerebro
+  SEC_PROD_ACCOUNT_ID: "837279440628"
+
+jobs:
+  smoke:
+    name: Verify candidate runtime
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate candidate build
+        shell: bash
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CANDIDATE_DIGEST: ${{ inputs.candidate_digest }}
+        run: |
+          set -euo pipefail
+          [[ "${CANDIDATE_RUN_ID}" =~ ^[0-9]+$ ]]
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${CANDIDATE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          run="$(curl --fail --silent --show-error --retry 3 \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/writer/cerebro/actions/runs/${CANDIDATE_RUN_ID}")"
+          test "$(jq -r .path <<<"${run}")" = ".github/workflows/cut-release.yml"
+          test "$(jq -r .event <<<"${run}")" = "push"
+          test "$(jq -r .conclusion <<<"${run}")" = "success"
+          test "$(jq -r .head_sha <<<"${run}")" = "${CANDIDATE_SHA}"
+
+          artifacts="$(curl --fail --silent --show-error --retry 3 \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/writer/cerebro/actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100")"
+          artifact_count="$(
+            jq --arg name "cerebro-candidate-${CANDIDATE_SHA}" \
+              '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"${artifacts}"
+          )"
+          test "${artifact_count}" -eq 1
+
+      - name: Install cosign
+        shell: bash
+        run: bash .github/scripts/install-cosign.sh
+
+      - name: Verify candidate image
+        id: candidate
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CANDIDATE_DIGEST: ${{ inputs.candidate_digest }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          candidate_tag="candidate-${CANDIDATE_SHA}"
+          source_image="${GHCR_IMAGE}@${CANDIDATE_DIGEST}"
+          resolved_digest="$(docker buildx imagetools inspect "${GHCR_IMAGE}:${candidate_tag}" --format '{{.Manifest.Digest}}')"
+          test "${resolved_digest}" = "${CANDIDATE_DIGEST}"
+          "${RUNNER_TEMP}/cosign/cosign" verify "${source_image}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp '^https://github.com/writer/cerebro/.github/workflows/cut-release.yml@refs/heads/main$'
+          tree="$("${RUNNER_TEMP}/cosign/cosign" tree "${source_image}")"
+          grep -Eq 'Attestation|SBOM|Provenance' <<<"${tree}"
+
+          raw_manifest="$(docker buildx imagetools inspect "${source_image}" --raw)"
+          platform_digest="$(
+            jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest] | unique | if length == 1 then .[0] else empty end' \
+              <<<"${raw_manifest}"
+          )"
+          [[ "${platform_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          {
+            echo "source_image=${source_image}"
+            echo "candidate_tag=${candidate_tag}"
+            echo "platform_digest=${platform_digest}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
+
+      - name: Mirror candidate to production ECR
+        id: ecr
+        shell: bash
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SOURCE_IMAGE: ${{ steps.candidate.outputs.source_image }}
+          CANDIDATE_TAG: ${{ steps.candidate.outputs.candidate_tag }}
+          PLATFORM_DIGEST: ${{ steps.candidate.outputs.platform_digest }}
+        run: |
+          set -euo pipefail
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${CANDIDATE_TAG}"
+          if ! aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${CANDIDATE_TAG}" >/dev/null 2>&1; then
+            docker pull "${SOURCE_IMAGE}"
+            docker tag "${SOURCE_IMAGE}" "${ecr_image}"
+            docker push "${ecr_image}"
+          fi
+          ecr_digest="$(
+            aws ecr describe-images --repository-name "${ECR_REPOSITORY}" \
+              --image-ids imageTag="${CANDIDATE_TAG}" --query 'imageDetails[0].imageDigest' --output text
+          )"
+          if [ "${ecr_digest}" != "${PLATFORM_DIGEST}" ]; then
+            source_identity="$(
+              docker buildx imagetools inspect "${GHCR_IMAGE}@${PLATFORM_DIGEST}" --raw \
+                | jq -c '{config:.config.digest,layers:[.layers[].digest]}'
+            )"
+            ecr_identity="$(
+              docker buildx imagetools inspect "${ecr_image}" --raw \
+                | jq -c '{config:.config.digest,layers:[.layers[].digest]}'
+            )"
+            test "${ecr_identity}" = "${source_identity}"
+            echo "::notice::ECR normalized the candidate manifest media type; config and ordered layers match."
+          fi
+          {
+            echo "image=${ECR_REGISTRY}/${ECR_REPOSITORY}@${ecr_digest}"
+            echo "digest=${ecr_digest}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Scan candidate image
+        shell: bash
+        env:
+          ECR_IMAGE: ${{ steps.ecr.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.cache/trivy"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity CRITICAL \
+            "${ECR_IMAGE}"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Prepare candidate task definition
+        id: task
+        shell: bash
+        working-directory: infra
+        env:
+          CANDIDATE_IMAGE: ${{ steps.ecr.outputs.image }}
+          RUNTIME_ID: ${{ inputs.runtime_id }}
+        run: >-
+          uv run python scripts/prepare_candidate_runtime_smoke.py
+          --stack-file aws/Pulumi.go-prod.yaml
+          --runtime-id "${RUNTIME_ID}"
+          --candidate-image "${CANDIDATE_IMAGE}"
+          --github-output "${GITHUB_OUTPUT}"
+
+      - name: Execute candidate runtime
+        shell: bash
+        working-directory: infra
+        env:
+          RUNTIME_ID: ${{ inputs.runtime_id }}
+          TASK_DEFINITION: ${{ steps.task.outputs.task_definition }}
+        run: >-
+          uv run python scripts/verify_source_runtime_ecs.py
+          --stack-file aws/Pulumi.go-prod.yaml
+          --runtime-id "${RUNTIME_ID}"
+          --run
+          --succeed-after-graph-ingest
+          --run-page-limit 1
+          --run-graph-page-limit 25
+          --run-event-limit 250
+          --wait-timeout-seconds 1800
+          --run-attempt-timeout-seconds 1200
+          --poll-seconds 5
+          --target-concurrency 1
+          --task-definition-override "${TASK_DEFINITION}"
+
+      - name: Write smoke receipt
+        shell: bash
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CANDIDATE_DIGEST: ${{ inputs.candidate_digest }}
+          ECR_DIGEST: ${{ steps.ecr.outputs.digest }}
+          RUNTIME_ID: ${{ inputs.runtime_id }}
+        run: |
+          jq -n \
+            --arg schema_version "cerebro.candidate-runtime-smoke/v1" \
+            --arg candidate_run_id "${CANDIDATE_RUN_ID}" \
+            --arg commit "${CANDIDATE_SHA}" \
+            --arg image_digest "${CANDIDATE_DIGEST}" \
+            --arg ecr_image_digest "${ECR_DIGEST}" \
+            --arg runtime_id "${RUNTIME_ID}" \
+            --arg workflow_run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg verified_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema_version:$schema_version,candidate_run_id:$candidate_run_id,commit:$commit,image_digest:$image_digest,ecr_image_digest:$ecr_image_digest,runtime_id:$runtime_id,workflow_run:$workflow_run,verified_at:$verified_at,checks:{candidate_build:"passed",signature:"passed",critical_vulnerability_scan:"passed",source_sync:"passed",graph_ingest:"passed"}}' \
+            > candidate-runtime-smoke-receipt.json
+
+      - name: Deregister candidate task definition
+        if: always() && steps.task.outputs.task_definition != ''
+        shell: bash
+        env:
+          TASK_DEFINITION: ${{ steps.task.outputs.task_definition }}
+        run: aws ecs deregister-task-definition --task-definition "${TASK_DEFINITION}" >/dev/null || true
+
+      - name: Upload smoke receipt
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-runtime-smoke-${{ inputs.candidate_sha }}
+          path: candidate-runtime-smoke-receipt.json
+          if-no-files-found: error
+          retention-days: 90
