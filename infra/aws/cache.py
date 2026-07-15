@@ -6,6 +6,19 @@ import pulumi
 import pulumi_aws as aws
 
 
+def resolve_query_cache_mode(*, cache_enabled: bool, engine: str, mode: str | None) -> str:
+    """Resolve API cache mode while preserving shared-cache configuration compatibility."""
+    normalized_engine = str(engine or "valkey").strip().lower()
+    normalized_mode = str(mode or (normalized_engine if cache_enabled else "off")).strip().lower()
+    if normalized_mode not in {"off", "memory", "valkey", "redis"}:
+        raise ValueError("cacheMode must be off, memory, valkey, or redis")
+    if cache_enabled and normalized_mode not in {"valkey", "redis"}:
+        raise ValueError("cacheEnabled requires cacheMode valkey or redis")
+    if not cache_enabled and normalized_mode in {"valkey", "redis"}:
+        raise ValueError("cacheMode valkey or redis requires cacheEnabled")
+    return normalized_mode
+
+
 def create_query_cache(
     name: str,
     vpc_id: pulumi.Input[str],

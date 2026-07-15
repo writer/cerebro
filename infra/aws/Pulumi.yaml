@@ -368,6 +368,10 @@ config:
     type: boolean
     default: false
     description: Provision an ElastiCache Serverless cache and enable Cerebro query caching
+  cerebro:cacheMode:
+    type: string
+    default: ""
+    description: Optional query cache mode for the API task; valid values are off, memory, valkey, or redis. When omitted, cacheEnabled selects the configured shared-cache engine.
   cerebro:cacheEngine:
     type: string
     default: valkey
@@ -388,6 +392,10 @@ config:
     type: string
     default: 5m
     description: Additional stale-if-error window for cacheable Cerebro API responses
+  cerebro:cacheMaxEntries:
+    type: integer
+    default: 4096
+    description: Maximum in-process query cache entries per API task
   cerebro:cacheMaxPayloadBytes:
     type: integer
     default: 1048576

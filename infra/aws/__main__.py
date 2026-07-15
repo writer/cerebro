@@ -309,11 +309,13 @@ retain_legacy_jobs_table = _config_bool("retainLegacyJobsTableForDeletionProtect
 
 cache_enabled = _config_bool("cacheEnabled", False)
 cache_engine = (config.get("cacheEngine") or "valkey").strip().lower()
+cache_mode = cache.resolve_query_cache_mode(cache_enabled=cache_enabled, engine=cache_engine, mode=config.get("cacheMode"))
 cache_major_engine_version = (config.get("cacheMajorEngineVersion") or "").strip() or None
 cache_namespace = config.get("cacheNamespace") or f"cerebro:{environment}:grc"
 cache_default_ttl = config.get("cacheDefaultTTL") or "30s"
 cache_stale_ttl = config.get("cacheStaleTTL") or "5m"
 cache_max_payload_bytes = _config_int("cacheMaxPayloadBytes", 1048576)
+cache_max_entries = _config_int("cacheMaxEntries", 4096)
 
 nats_cpu = _config_int("natsCpu", 512)
 nats_memory = _config_int("natsMemory", 1024)
@@ -980,13 +982,14 @@ if trusted_proxy_cidrs:
     app_environment["CEREBRO_TRUSTED_PROXY_CIDRS"] = ",".join(trusted_proxy_cidrs)
 if source_runtime_env_refs:
     app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
-if cache_stack:
+if cache_mode != "off":
     app_environment.update({
-        "CEREBRO_CACHE_MODE": cache_engine,
+        "CEREBRO_CACHE_MODE": cache_mode,
         "CEREBRO_CACHE_NAMESPACE": cache_namespace,
         "CEREBRO_CACHE_DEFAULT_TTL": cache_default_ttl,
         "CEREBRO_CACHE_STALE_TTL": cache_stale_ttl,
         "CEREBRO_CACHE_MAX_PAYLOAD_BYTES": str(cache_max_payload_bytes),
+        "CEREBRO_CACHE_MAX_ENTRIES": str(cache_max_entries),
     })
 
 graph_agent_llm_provider = config.get("graphAgentLlmProvider")

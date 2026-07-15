@@ -44,11 +44,13 @@ config:
   cerebro:postgresMultiAz: true
   cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true
   cerebro:cacheEnabled: false
+  cerebro:cacheMode: memory
   cerebro:cacheEngine: valkey
   cerebro:cacheNamespace: cerebro:go-production:grc
   cerebro:cacheDefaultTTL: 30s
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
+  cerebro:cacheMaxEntries: 256
   cerebro:natsCpu: 8192
   cerebro:natsMemory: 16384
   cerebro:natsImage: nats:2.14.2-alpine

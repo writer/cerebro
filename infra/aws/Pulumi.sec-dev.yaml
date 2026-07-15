@@ -64,11 +64,13 @@ config:
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true
   cerebro:cacheEnabled: false
+  cerebro:cacheMode: memory
   cerebro:cacheEngine: valkey
   cerebro:cacheNamespace: cerebro:sec-dev:grc
   cerebro:cacheDefaultTTL: 30s
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
+  cerebro:cacheMaxEntries: 256
   cerebro:natsCpu: 4096
   cerebro:natsMemory: 16384
   cerebro:natsImage: nats:2.14.2-alpine

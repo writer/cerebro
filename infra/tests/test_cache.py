@@ -33,6 +33,22 @@ class _FakeServerlessCache(_FakeResource):
 
 
 class QueryCacheTest(unittest.TestCase):
+    def test_memory_mode_does_not_require_shared_cache(self) -> None:
+        self.assertEqual(
+            cache.resolve_query_cache_mode(cache_enabled=False, engine="valkey", mode="memory"),
+            "memory",
+        )
+
+    def test_shared_cache_keeps_engine_default_when_mode_is_omitted(self) -> None:
+        self.assertEqual(
+            cache.resolve_query_cache_mode(cache_enabled=True, engine="valkey", mode=None),
+            "valkey",
+        )
+
+    def test_shared_cache_mode_requires_provisioning(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires cacheEnabled"):
+            cache.resolve_query_cache_mode(cache_enabled=False, engine="valkey", mode="valkey")
+
     def test_cache_url_uses_tls_scheme(self) -> None:
         self.assertEqual(
             cache._cache_url([{"address": "cache.example.internal", "port": 6379}]),
