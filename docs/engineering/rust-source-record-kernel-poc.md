@@ -90,7 +90,7 @@ The Rust kernel:
 - accepts only bounded, non-empty string identities;
 - quarantines non-object, oversized, missing-identity, and duplicate-identity
   rows without returning their payloads;
-- sorts accepted rows by external identity and fingerprint;
+- sorts accepted rows by external identity;
 - returns accepted and quarantined counts plus a SHA-256 record-set receipt;
 - returns a proposed cursor with a SHA-256 digest of the semantic input.
 
@@ -135,8 +135,8 @@ report:
 
 | Artifact | Workload | Bytes | Imported functions | Callable exports |
 | --- | --- | ---: | ---: | --- |
-| Rust source record kernel | JSON validation, canonicalization, quarantine, SHA-256 receipts | 162,866 | 0 | ABI version, allocation, evaluation |
-| Standard Go Wasm runtime floor | Empty `main` | 1,849,443 | 10 | `_start` |
+| Rust source record kernel | JSON validation, canonicalization, quarantine, SHA-256 receipts | 163,138 | 0 | ABI version, allocation, evaluation |
+| Standard Go Wasm runtime floor | Empty `main` | 1,849,448 | 10 | `_start` |
 
 The standard Go artifact imports arguments, environment, wall clock, random,
 file-descriptor write, polling, process exit, and scheduler functions through
