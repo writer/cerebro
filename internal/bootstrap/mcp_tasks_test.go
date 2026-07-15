@@ -29,6 +29,29 @@ func TestMCPInventoryCoversEveryToolDefinition(t *testing.T) {
 	}
 }
 
+func TestMCPBoolArgParsesJSONNumbers(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{value: "0"},
+		{value: "0.0"},
+		{value: "0e0"},
+		{value: "-0"},
+		{value: "invalid"},
+		{value: "1", want: true},
+		{value: "-1", want: true},
+		{value: "0.5", want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			if got := mcpBoolArg(map[string]any{"value": json.Number(test.value)}, "value"); got != test.want {
+				t.Fatalf("mcpBoolArg(%q) = %t, want %t", test.value, got, test.want)
+			}
+		})
+	}
+}
+
 func TestMCPTaskProfileIsBoundedAndPreservesDefaultTools(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()

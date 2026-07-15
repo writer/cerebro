@@ -4308,7 +4308,8 @@ func mcpBoolArg(args map[string]any, key string) bool {
 	case bool:
 		return typed
 	case json.Number:
-		return typed.String() != "" && typed.String() != "0"
+		number, err := typed.Float64()
+		return err == nil && number != 0
 	case float64:
 		return typed != 0
 	case string:
