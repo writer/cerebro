@@ -17,6 +17,29 @@ JetStream workflow envelopes remain the replay boundary. Evidence fields contain
 IDs and content digests only. EvidenceCAS or the approved external source retains
 artifact bytes. Neo4j remains a rebuildable impact and relationship projection.
 
+## Executable Obligations
+
+A published assessment plan is the immutable source for executable obligations.
+`CompileExecutableObligations` compiles each ordered finding-evaluation task into
+an `assessment-obligation/v1` definition that binds:
+
+- the plan revision, task, objective, and control
+- the finding rule and source runtime set
+- the evidence freshness limit and point-in-time evaluation mode
+- the `no_active_findings` predicate and evaluator revision
+
+Each definition has a content digest. The input manifest's
+`mapping_set_digest` pins the ordered compiled definition set. The finding
+evaluation collector executes the compiled definition against bounded durable
+evaluation runs. Missing, stale, incomplete, or untrusted inputs produce an
+indeterminate result; active findings produce a not-satisfied result; only
+complete evidence with no active finding produces a satisfied result. Unknown
+task kinds fail collection instead of producing an implied pass.
+
+The plan revision remains the replay artifact. Obligation definitions are
+deterministically derived from that artifact, so replay does not depend on a
+second mutable obligation store.
+
 ## Public Event Mapping
 
 | Canonical workflow event | Public event | Public payload |

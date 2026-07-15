@@ -77,13 +77,13 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 		return InputManifest{}, nil, fmt.Errorf("%w: assessment period is outside the collection cutoff", ErrIncompleteInput)
 	}
 
-	orderedTasks, err := orderedFindingEvaluationTasks(plan.Execution)
+	obligations, err := CompileExecutableObligations(plan)
 	if err != nil {
 		return InputManifest{}, nil, err
 	}
 	runtimeIDs := make([]string, 0, MaxFindingEvaluationBindings)
-	for _, task := range orderedTasks {
-		runtimeIDs = append(runtimeIDs, task.RuntimeIDs...)
+	for _, obligation := range obligations {
+		runtimeIDs = append(runtimeIDs, obligation.SourceRuntimeIDs...)
 	}
 	runtimeIDs = normalizedStrings(runtimeIDs)
 	resolvedRuntimes, err := c.runtimes.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
@@ -110,7 +110,7 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 	if err != nil {
 		return InputManifest{}, nil, err
 	}
-	mappingDigest, err := semanticHash(orderedTasks)
+	mappingDigest, err := executableObligationSetDigest(obligations)
 	if err != nil {
 		return InputManifest{}, nil, err
 	}
@@ -129,9 +129,9 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 			Version: plan.Version, Digest: plan.ContentDigest,
 		}},
 	}
-	results := make([]ObjectiveResult, 0, len(orderedTasks))
-	for _, task := range orderedTasks {
-		result, receipts, evaluationRunIDs, collectErr := c.collectTask(ctx, plan, run, task, cutoff, resolvedRuntimeByID)
+	results := make([]ObjectiveResult, 0, len(obligations))
+	for _, obligation := range obligations {
+		result, receipts, evaluationRunIDs, collectErr := c.collectTask(ctx, run, obligation, cutoff, resolvedRuntimeByID)
 		if collectErr != nil {
 			return InputManifest{}, nil, collectErr
 		}
@@ -211,17 +211,17 @@ type findingEvaluationTaskQuery struct {
 	runs        []*cerebrov1.FindingEvaluationRun
 }
 
-func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan AssessmentPlanRevision, assessmentRun AssessmentRun, task PlanTask, cutoff time.Time, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) (ObjectiveResult, []CollectionReceipt, []string, error) {
-	maxAge, err := time.ParseDuration(task.MaxAge)
+func (c *FindingEvaluationCollector) collectTask(ctx context.Context, assessmentRun AssessmentRun, obligation ExecutableObligation, cutoff time.Time, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) (ObjectiveResult, []CollectionReceipt, []string, error) {
+	maxAge, err := time.ParseDuration(obligation.MaxAge)
 	if err != nil || maxAge <= 0 {
-		return ObjectiveResult{}, nil, nil, fmt.Errorf("%w: task %q has invalid max_age", ErrIncompleteInput, task.ID)
+		return ObjectiveResult{}, nil, nil, fmt.Errorf("%w: obligation %q has invalid max_age", ErrIncompleteInput, obligation.ID)
 	}
-	queries := make([]findingEvaluationTaskQuery, 0, len(task.RuntimeIDs))
-	for _, runtimeID := range task.RuntimeIDs {
+	queries := make([]findingEvaluationTaskQuery, 0, len(obligation.SourceRuntimeIDs))
+	for _, runtimeID := range obligation.SourceRuntimeIDs {
 		query := findingEvaluationQuery{
-			TaskID: task.ID, RuntimeID: runtimeID, RuntimeIDs: task.RuntimeIDs, RuleID: task.RuleID,
+			TaskID: obligation.TaskID, RuntimeID: runtimeID, RuntimeIDs: obligation.SourceRuntimeIDs, RuleID: obligation.RuleID,
 			PeriodStart: assessmentRun.PeriodStart, PeriodEnd: assessmentRun.PeriodEnd,
-			Cutoff: cutoff, MaxAge: task.MaxAge,
+			Cutoff: cutoff, MaxAge: obligation.MaxAge,
 		}
 		queryDigest, hashErr := semanticHash(query)
 		if hashErr != nil {
@@ -229,13 +229,13 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 		}
 		runs, listErr := c.evaluations.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{
 			RuntimeID:          runtimeID,
-			RuleID:             task.RuleID,
+			RuleID:             obligation.RuleID,
 			Status:             "completed",
 			FinishedAtOrBefore: CanonicalTime(assessmentRun.PeriodEnd),
 			Limit:              1,
 		})
 		if listErr != nil {
-			return ObjectiveResult{}, nil, nil, fmt.Errorf("list finding evaluations for task %q runtime %q: %w", task.ID, runtimeID, listErr)
+			return ObjectiveResult{}, nil, nil, fmt.Errorf("list finding evaluations for obligation %q runtime %q: %w", obligation.ID, runtimeID, listErr)
 		}
 		queries = append(queries, findingEvaluationTaskQuery{runtimeID: runtimeID, queryDigest: queryDigest, runs: runs})
 	}
@@ -250,6 +250,7 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 	state := taskCollectionState{evidenceState: EvidenceSufficient}
 	receipts := make([]CollectionReceipt, 0, len(queries))
 	for _, query := range queries {
+		task := PlanTask{ID: obligation.TaskID, RuleID: obligation.RuleID, RuntimeIDs: obligation.SourceRuntimeIDs}
 		receipt, collected, receiptErr := evaluationReceipt(task, query.runtimeID, query.queryDigest, query.runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge, resolvedRuntimeByID)
 		if receiptErr != nil {
 			return ObjectiveResult{}, nil, nil, receiptErr
@@ -268,7 +269,7 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 	state.findingIDs = normalizedStrings(state.findingIDs)
 	state.reasons = normalizedEnums(state.reasons)
 	state.actions = normalizedEnums(state.actions)
-	result, err := taskObjectiveResult(plan, task, cutoff, state)
+	result, err := executeExecutableObligation(obligation, cutoff, state)
 	if err != nil {
 		return ObjectiveResult{}, nil, nil, err
 	}
@@ -612,50 +613,6 @@ func evaluationPopulation(run *cerebrov1.FindingEvaluationRun) (uint64, bool, er
 	}
 	population := uint64(run.GetEventsProcessed())
 	return population, population >= uint64(run.GetEventLimit()), nil
-}
-
-func taskObjectiveResult(plan AssessmentPlanRevision, task PlanTask, cutoff time.Time, state taskCollectionState) (ObjectiveResult, error) {
-	identityDigest, err := semanticHash(struct {
-		PlanRevisionID  string    `json:"plan_revision_id"`
-		TaskID          string    `json:"task_id"`
-		ObjectiveID     string    `json:"objective_id"`
-		EvaluationRunID []string  `json:"evaluation_run_ids"`
-		Cutoff          time.Time `json:"cutoff"`
-	}{
-		PlanRevisionID: plan.RevisionID, TaskID: task.ID, ObjectiveID: task.ObjectiveID,
-		EvaluationRunID: state.evaluationRunIDs, Cutoff: cutoff,
-	})
-	if err != nil {
-		return ObjectiveResult{}, err
-	}
-	result := ObjectiveResult{
-		ID:         "assessment-result-" + strings.TrimPrefix(identityDigest, "sha256:")[:24],
-		ControlRef: task.ControlRef, ObjectiveID: task.ObjectiveID, ScopeState: ScopeInScope,
-		DesignState: DesignUnknown, OperatingEffectivenessState: OperatingNotTested,
-		DispositionState: DispositionNone, AuditorState: AuditorNotReviewed,
-		EvidenceIDs: state.evaluationRunIDs, FindingIDs: state.findingIDs, SourceRuntimeIDs: task.RuntimeIDs,
-		EvaluatorRevision: findingEvaluationCollectorRevision, EvaluatedAt: cutoff,
-	}
-	if state.incomplete {
-		result.AutomatedOutcome = OutcomeIndeterminate
-		result.EvidenceState = state.evidenceState
-		result.Assurance = AssuranceNone
-		result.ReasonCodes = state.reasons
-		result.NextActions = state.actions
-	} else if len(state.findingIDs) != 0 {
-		result.AutomatedOutcome = OutcomeNotSatisfied
-		result.EvidenceState = EvidenceSufficient
-		result.Assurance = AssuranceMedium
-		result.ReasonCodes = []ReasonCode{ReasonActiveFinding}
-		result.NextActions = []NextAction{ActionRemediate}
-	} else {
-		result.AutomatedOutcome = OutcomeSatisfied
-		result.EvidenceState = EvidenceSufficient
-		result.Assurance = AssuranceMedium
-		result.ReasonCodes = []ReasonCode{ReasonSatisfied}
-		result.NextActions = []NextAction{ActionNone}
-	}
-	return NormalizeResult(result), nil
 }
 
 func strongerEvidenceFailure(current, candidate EvidenceState) EvidenceState {
