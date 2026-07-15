@@ -3,6 +3,8 @@ package complianceassessment
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,6 +97,10 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 	if err := validateResolvedRuntimes(run.TenantID, runtimeIDs, resolvedRuntimes); err != nil {
 		return InputManifest{}, nil, err
 	}
+	resolvedRuntimeByID := make(map[string]*cerebrov1.SourceRuntime, len(resolvedRuntimes))
+	for _, runtime := range resolvedRuntimes {
+		resolvedRuntimeByID[strings.TrimSpace(runtime.GetId())] = runtime
+	}
 
 	scopeDigest, err := semanticHash(plan.Scope)
 	if err != nil {
@@ -125,7 +131,7 @@ func (c *FindingEvaluationCollector) Collect(ctx context.Context, run Assessment
 	}
 	results := make([]ObjectiveResult, 0, len(orderedTasks))
 	for _, task := range orderedTasks {
-		result, receipts, evaluationRunIDs, collectErr := c.collectTask(ctx, plan, run, task, cutoff)
+		result, receipts, evaluationRunIDs, collectErr := c.collectTask(ctx, plan, run, task, cutoff, resolvedRuntimeByID)
 		if collectErr != nil {
 			return InputManifest{}, nil, collectErr
 		}
@@ -199,7 +205,7 @@ type taskCollectionState struct {
 	incomplete       bool
 }
 
-func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan AssessmentPlanRevision, assessmentRun AssessmentRun, task PlanTask, cutoff time.Time) (ObjectiveResult, []CollectionReceipt, []string, error) {
+func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan AssessmentPlanRevision, assessmentRun AssessmentRun, task PlanTask, cutoff time.Time, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) (ObjectiveResult, []CollectionReceipt, []string, error) {
 	maxAge, err := time.ParseDuration(task.MaxAge)
 	if err != nil || maxAge <= 0 {
 		return ObjectiveResult{}, nil, nil, fmt.Errorf("%w: task %q has invalid max_age", ErrIncompleteInput, task.ID)
@@ -226,7 +232,7 @@ func (c *FindingEvaluationCollector) collectTask(ctx context.Context, plan Asses
 		if listErr != nil {
 			return ObjectiveResult{}, nil, nil, fmt.Errorf("list finding evaluations for task %q runtime %q: %w", task.ID, runtimeID, listErr)
 		}
-		receipt, collected, receiptErr := evaluationReceipt(task, runtimeID, queryDigest, runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge)
+		receipt, collected, receiptErr := evaluationReceipt(task, runtimeID, queryDigest, runs, assessmentRun.PeriodStart, assessmentRun.PeriodEnd, cutoff, maxAge, resolvedRuntimeByID)
 		if receiptErr != nil {
 			return ObjectiveResult{}, nil, nil, receiptErr
 		}
@@ -262,28 +268,48 @@ type findingEvaluationQuery struct {
 }
 
 type findingEvaluationPage struct {
-	ID                        string    `json:"id"`
-	RuntimeID                 string    `json:"runtime_id"`
-	RuleID                    string    `json:"rule_id"`
-	Status                    string    `json:"status"`
-	EventLimit                uint32    `json:"event_limit"`
-	EventsEvaluated           uint32    `json:"events_evaluated"`
-	EventsProcessed           uint32    `json:"events_processed"`
-	FindingsUpserted          uint32    `json:"findings_upserted"`
-	FindingsEmitted           uint32    `json:"findings_emitted"`
-	FindingIDs                []string  `json:"finding_ids"`
-	StartedAt                 time.Time `json:"started_at"`
-	FinishedAt                time.Time `json:"finished_at"`
-	GraphRule                 bool      `json:"graph_rule"`
-	GraphRowsRead             uint32    `json:"graph_rows_read"`
-	GraphTruncated            bool      `json:"graph_truncated"`
-	GraphRowLimit             uint32    `json:"graph_row_limit"`
-	SourceLastSyncedAt        time.Time `json:"source_last_synced_at"`
-	SourceCheckpointWatermark time.Time `json:"source_checkpoint_watermark"`
-	SourceSnapshotComplete    bool      `json:"source_snapshot_complete"`
+	ID                       string                        `json:"id"`
+	RuntimeID                string                        `json:"runtime_id"`
+	RuleID                   string                        `json:"rule_id"`
+	Status                   string                        `json:"status"`
+	EventLimit               uint32                        `json:"event_limit"`
+	EventsEvaluated          uint32                        `json:"events_evaluated"`
+	EventsProcessed          uint32                        `json:"events_processed"`
+	FindingsUpserted         uint32                        `json:"findings_upserted"`
+	FindingsEmitted          uint32                        `json:"findings_emitted"`
+	FindingIDs               []string                      `json:"finding_ids"`
+	StartedAt                time.Time                     `json:"started_at"`
+	FinishedAt               time.Time                     `json:"finished_at"`
+	GraphRule                bool                          `json:"graph_rule"`
+	GraphRowsRead            uint32                        `json:"graph_rows_read"`
+	GraphTruncated           bool                          `json:"graph_truncated"`
+	GraphRowLimit            uint32                        `json:"graph_row_limit"`
+	SourceDependencyComplete bool                          `json:"source_dependency_complete"`
+	RuleApplicable           bool                          `json:"rule_applicable"`
+	SourceSnapshots          []findingEvaluationSourcePage `json:"source_snapshots"`
 }
 
-func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cerebrov1.FindingEvaluationRun, periodStart, periodEnd, cutoff time.Time, maxAge time.Duration) (CollectionReceipt, taskCollectionState, error) {
+type findingEvaluationSourcePage struct {
+	RuntimeID             string    `json:"runtime_id"`
+	SourceID              string    `json:"source_id"`
+	Family                string    `json:"family"`
+	LastSyncedAt          time.Time `json:"last_synced_at"`
+	CheckpointWatermark   time.Time `json:"checkpoint_watermark"`
+	Complete              bool      `json:"complete"`
+	RecordsScanned        uint32    `json:"records_scanned"`
+	RecordsAccepted       uint32    `json:"records_accepted"`
+	RecordsRejected       uint32    `json:"records_rejected"`
+	SyncStatus            string    `json:"sync_status"`
+	ContractProbeState    string    `json:"contract_probe_state"`
+	ProgressConfigHash    string    `json:"progress_config_hash"`
+	GraphIngestRunID      string    `json:"graph_ingest_run_id,omitempty"`
+	GraphIngestStatus     string    `json:"graph_ingest_status,omitempty"`
+	GraphCheckpointID     string    `json:"graph_checkpoint_id,omitempty"`
+	GraphIngestedAt       time.Time `json:"graph_ingested_at,omitempty"`
+	GraphSnapshotComplete bool      `json:"graph_snapshot_complete,omitempty"`
+}
+
+func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cerebrov1.FindingEvaluationRun, periodStart, periodEnd, cutoff time.Time, maxAge time.Duration, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) (CollectionReceipt, taskCollectionState, error) {
 	kind := PlanTaskKindFindingEvaluation + ":" + task.ID
 	zero := uint64(0)
 	missingDigest, err := semanticHash(struct {
@@ -323,23 +349,14 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 	if err != nil {
 		return CollectionReceipt{}, taskCollectionState{}, err
 	}
-	sourceLastSyncedAt := time.Time{}
-	if value := run.GetSourceLastSyncedAt(); value != nil && value.CheckValid() == nil {
-		sourceLastSyncedAt = CanonicalTime(value.AsTime())
-	}
-	sourceCheckpointWatermark := time.Time{}
-	if value := run.GetSourceCheckpointWatermark(); value != nil && value.CheckValid() == nil {
-		sourceCheckpointWatermark = CanonicalTime(value.AsTime())
-	}
+	sourcePages := findingEvaluationSourcePages(run.GetSourceSnapshots())
 	pageDigest, err := semanticHash(findingEvaluationPage{
 		ID: run.GetId(), RuntimeID: run.GetRuntimeId(), RuleID: run.GetRuleId(), Status: run.GetStatus(),
 		EventLimit: run.GetEventLimit(), EventsEvaluated: run.GetEventsEvaluated(), EventsProcessed: run.GetEventsProcessed(),
 		FindingsUpserted: run.GetFindingsUpserted(), FindingsEmitted: run.GetFindingsEmitted(), FindingIDs: findingIDs,
 		StartedAt: startedAt, FinishedAt: finishedAt, GraphRule: run.GetGraphRule(), GraphRowsRead: run.GetGraphRowsRead(),
 		GraphTruncated: run.GetGraphTruncated(), GraphRowLimit: run.GetGraphRowLimit(),
-		SourceLastSyncedAt:        sourceLastSyncedAt,
-		SourceCheckpointWatermark: sourceCheckpointWatermark,
-		SourceSnapshotComplete:    run.GetSourceSnapshotComplete(),
+		SourceDependencyComplete: run.GetSourceDependencyComplete(), RuleApplicable: run.GetRuleApplicable(), SourceSnapshots: sourcePages,
 	})
 	if err != nil {
 		return CollectionReceipt{}, taskCollectionState{}, err
@@ -369,7 +386,13 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 		collected.evidenceState = EvidenceUntrusted
 		collected.reasons = []ReasonCode{ReasonEvidenceInvalid}
 		collected.actions = []NextAction{ActionReview}
-	} else if sourceSnapshotErr := validateEvaluationSourceSnapshot(run, startedAt, periodEnd, maxAge); sourceSnapshotErr != nil {
+	} else if run.RuleApplicable == nil || !run.GetRuleApplicable() {
+		receipt.Completeness = CollectionUnknown
+		collected.incomplete = true
+		collected.evidenceState = EvidenceUntrusted
+		collected.reasons = []ReasonCode{ReasonSourceUnsupported}
+		collected.actions = []NextAction{ActionReview}
+	} else if sourceSnapshotErr := validateEvaluationSourceSnapshots(run, task.RuntimeIDs, startedAt, periodEnd, maxAge, resolvedRuntimeByID); sourceSnapshotErr != nil {
 		receipt.Completeness = CollectionUnknown
 		collected.incomplete = true
 		collected.evidenceState = EvidenceUntrusted
@@ -385,18 +408,121 @@ func evaluationReceipt(task PlanTask, runtimeID, queryDigest string, runs []*cer
 	return receipt, collected, nil
 }
 
-func validateEvaluationSourceSnapshot(run *cerebrov1.FindingEvaluationRun, evaluationStartedAt, periodEnd time.Time, maxAge time.Duration) error {
-	if run.SourceSnapshotComplete == nil || !run.GetSourceSnapshotComplete() || run.GetSourceLastSyncedAt() == nil || run.GetSourceLastSyncedAt().CheckValid() != nil ||
-		run.GetSourceCheckpointWatermark() == nil || run.GetSourceCheckpointWatermark().CheckValid() != nil {
-		return fmt.Errorf("%w: finding evaluation run %q has no complete source snapshot", ErrIncompleteInput, run.GetId())
+func findingEvaluationSourcePages(snapshots []*cerebrov1.FindingEvaluationSourceSnapshot) []findingEvaluationSourcePage {
+	pages := make([]findingEvaluationSourcePage, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if snapshot == nil {
+			continue
+		}
+		page := findingEvaluationSourcePage{
+			RuntimeID: snapshot.GetRuntimeId(), SourceID: snapshot.GetSourceId(), Family: snapshot.GetFamily(), Complete: snapshot.GetComplete(),
+			RecordsScanned: snapshot.GetRecordsScanned(), RecordsAccepted: snapshot.GetRecordsAccepted(), RecordsRejected: snapshot.GetRecordsRejected(),
+			SyncStatus: snapshot.GetSyncStatus(), ContractProbeState: snapshot.GetContractProbeState(), ProgressConfigHash: snapshot.GetProgressConfigHash(),
+			GraphIngestRunID: snapshot.GetGraphIngestRunId(), GraphIngestStatus: snapshot.GetGraphIngestStatus(), GraphCheckpointID: snapshot.GetGraphCheckpointId(),
+			GraphSnapshotComplete: snapshot.GetGraphSnapshotComplete(),
+		}
+		if value := snapshot.GetLastSyncedAt(); value != nil && value.CheckValid() == nil {
+			page.LastSyncedAt = CanonicalTime(value.AsTime())
+		}
+		if value := snapshot.GetCheckpointWatermark(); value != nil && value.CheckValid() == nil {
+			page.CheckpointWatermark = CanonicalTime(value.AsTime())
+		}
+		if value := snapshot.GetGraphIngestedAt(); value != nil && value.CheckValid() == nil {
+			page.GraphIngestedAt = CanonicalTime(value.AsTime())
+		}
+		pages = append(pages, page)
 	}
-	lastSyncedAt := CanonicalTime(run.GetSourceLastSyncedAt().AsTime())
-	checkpointWatermark := CanonicalTime(run.GetSourceCheckpointWatermark().AsTime())
-	if lastSyncedAt.After(evaluationStartedAt) || lastSyncedAt.After(periodEnd) || checkpointWatermark.After(periodEnd) ||
-		periodEnd.Sub(lastSyncedAt) > maxAge || periodEnd.Sub(checkpointWatermark) > maxAge {
-		return fmt.Errorf("%w: finding evaluation run %q source snapshot is outside the assessment period", ErrIncompleteInput, run.GetId())
+	sort.Slice(pages, func(i, j int) bool { return pages[i].RuntimeID < pages[j].RuntimeID })
+	return pages
+}
+
+func validateEvaluationSourceSnapshots(run *cerebrov1.FindingEvaluationRun, taskRuntimeIDs []string, evaluationStartedAt, periodEnd time.Time, maxAge time.Duration, resolvedRuntimeByID map[string]*cerebrov1.SourceRuntime) error {
+	if run.SourceDependencyComplete == nil || !run.GetSourceDependencyComplete() || len(run.GetSourceSnapshots()) == 0 {
+		return fmt.Errorf("%w: finding evaluation run %q has incomplete source dependencies", ErrIncompleteInput, run.GetId())
+	}
+	allowedRuntimeIDs := make(map[string]struct{}, len(taskRuntimeIDs))
+	for _, runtimeID := range taskRuntimeIDs {
+		allowedRuntimeIDs[strings.TrimSpace(runtimeID)] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(run.GetSourceSnapshots()))
+	for _, snapshot := range run.GetSourceSnapshots() {
+		if snapshot == nil || snapshot.Complete == nil || !snapshot.GetComplete() || snapshot.GetLastSyncedAt() == nil || snapshot.GetLastSyncedAt().CheckValid() != nil ||
+			snapshot.GetCheckpointWatermark() == nil || snapshot.GetCheckpointWatermark().CheckValid() != nil || snapshot.GetSyncStatus() != "completed" ||
+			(snapshot.GetContractProbeState() != "passing" && snapshot.GetContractProbeState() != "not_configured") || snapshot.GetRecordsRejected() != 0 ||
+			snapshot.GetRecordsAccepted() > snapshot.GetRecordsScanned() || strings.TrimSpace(snapshot.GetProgressConfigHash()) == "" {
+			return fmt.Errorf("%w: finding evaluation run %q has an incomplete source snapshot", ErrIncompleteInput, run.GetId())
+		}
+		runtimeID := strings.TrimSpace(snapshot.GetRuntimeId())
+		if runtimeID == "" {
+			return fmt.Errorf("%w: finding evaluation run %q has an unnamed source snapshot", ErrIncompleteInput, run.GetId())
+		}
+		if _, ok := allowedRuntimeIDs[runtimeID]; !ok {
+			return fmt.Errorf("%w: finding evaluation run %q reads runtime %q outside the plan", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		if _, ok := seen[runtimeID]; ok {
+			return fmt.Errorf("%w: finding evaluation run %q duplicates runtime %q", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		seen[runtimeID] = struct{}{}
+		current := resolvedRuntimeByID[runtimeID]
+		if current == nil {
+			return fmt.Errorf("%w: finding evaluation run %q runtime %q is unavailable", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		currentConfig := current.GetConfig()
+		if strings.TrimSpace(current.GetSourceId()) != strings.TrimSpace(snapshot.GetSourceId()) ||
+			strings.TrimSpace(current.GetConfig()["family"]) != strings.TrimSpace(snapshot.GetFamily()) ||
+			strings.TrimSpace(currentConfig["__cerebro_resolved_progress_config_hash"]) != strings.TrimSpace(snapshot.GetProgressConfigHash()) {
+			return fmt.Errorf("%w: finding evaluation run %q source scope changed for runtime %q", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		lastSyncedAt := CanonicalTime(snapshot.GetLastSyncedAt().AsTime())
+		checkpointWatermark := CanonicalTime(snapshot.GetCheckpointWatermark().AsTime())
+		if current.GetLastSyncedAt() == nil || current.GetLastSyncedAt().CheckValid() != nil || current.GetCheckpoint().GetWatermark() == nil || current.GetCheckpoint().GetWatermark().CheckValid() != nil {
+			return fmt.Errorf("%w: finding evaluation run %q no longer matches runtime %q progress", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		currentLastSyncedAt := CanonicalTime(current.GetLastSyncedAt().AsTime())
+		currentCheckpointWatermark := CanonicalTime(current.GetCheckpoint().GetWatermark().AsTime())
+		if currentLastSyncedAt.Before(lastSyncedAt) || currentCheckpointWatermark.Before(checkpointWatermark) {
+			return fmt.Errorf("%w: finding evaluation run %q is ahead of runtime %q progress", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		if currentLastSyncedAt.Equal(lastSyncedAt) && currentCheckpointWatermark.Equal(checkpointWatermark) && !currentRuntimeMatchesSnapshot(current, snapshot) {
+			return fmt.Errorf("%w: finding evaluation run %q no longer matches runtime %q state", ErrIncompleteInput, run.GetId(), runtimeID)
+		}
+		if lastSyncedAt.After(evaluationStartedAt) || lastSyncedAt.After(periodEnd) || checkpointWatermark.After(periodEnd) ||
+			periodEnd.Sub(lastSyncedAt) > maxAge || periodEnd.Sub(checkpointWatermark) > maxAge {
+			return fmt.Errorf("%w: finding evaluation run %q source snapshot is outside the assessment period", ErrIncompleteInput, run.GetId())
+		}
+		if run.GetGraphRule() {
+			if snapshot.GraphSnapshotComplete == nil || !snapshot.GetGraphSnapshotComplete() || snapshot.GetGraphIngestedAt() == nil || snapshot.GetGraphIngestedAt().CheckValid() != nil ||
+				snapshot.GetGraphIngestStatus() != "completed" || strings.TrimSpace(snapshot.GetGraphIngestRunId()) == "" || strings.TrimSpace(snapshot.GetGraphCheckpointId()) == "" {
+				return fmt.Errorf("%w: graph evaluation run %q has no complete graph snapshot for runtime %q", ErrIncompleteInput, run.GetId(), runtimeID)
+			}
+			graphIngestedAt := CanonicalTime(snapshot.GetGraphIngestedAt().AsTime())
+			if graphIngestedAt.Before(lastSyncedAt) || graphIngestedAt.After(evaluationStartedAt) || graphIngestedAt.After(periodEnd) || periodEnd.Sub(graphIngestedAt) > maxAge {
+				return fmt.Errorf("%w: graph evaluation run %q graph snapshot is outside the assessment period", ErrIncompleteInput, run.GetId())
+			}
+		}
 	}
 	return nil
+}
+
+func parseRuntimeCounter(value string) (uint32, bool) {
+	parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+	return uint32(parsed), err == nil
+}
+
+func currentRuntimeMatchesSnapshot(current *cerebrov1.SourceRuntime, snapshot *cerebrov1.FindingEvaluationSourceSnapshot) bool {
+	if current == nil || snapshot == nil {
+		return false
+	}
+	config := current.GetConfig()
+	contractState := strings.TrimSpace(config["__cerebro_runtime_contract_probe_state"])
+	scanned, scannedOK := parseRuntimeCounter(config["__cerebro_runtime_records_scanned"])
+	accepted, acceptedOK := parseRuntimeCounter(config["__cerebro_runtime_records_accepted"])
+	rejected, rejectedOK := parseRuntimeCounter(config["__cerebro_runtime_records_rejected"])
+	return strings.TrimSpace(config["__cerebro_runtime_status"]) == "completed" && strings.TrimSpace(config["__cerebro_runtime_last_failure_category"]) == "" &&
+		scannedOK && acceptedOK && rejectedOK && scanned == snapshot.GetRecordsScanned() && accepted == snapshot.GetRecordsAccepted() &&
+		rejected == snapshot.GetRecordsRejected() && rejected == 0 && contractState == snapshot.GetContractProbeState() &&
+		(contractState == "passing" || contractState == "not_configured") &&
+		strings.TrimSpace(current.GetNextCursor().GetOpaque()) == ""
 }
 
 func evaluationPopulation(run *cerebrov1.FindingEvaluationRun) (uint64, bool, error) {

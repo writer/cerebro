@@ -41,6 +41,33 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
 }
 
+func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	values := make([]*cerebrov1.SourceRuntime, 0, len(s.runtimes))
+	requested := make(map[string]struct{}, len(filter.RuntimeIDs)+1)
+	for _, runtimeID := range append(append([]string(nil), filter.RuntimeIDs...), filter.RuntimeID) {
+		if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
+			requested[runtimeID] = struct{}{}
+		}
+	}
+	for _, runtime := range s.runtimes {
+		if runtime == nil || (strings.TrimSpace(filter.TenantID) != "" && runtime.GetTenantId() != strings.TrimSpace(filter.TenantID)) ||
+			(strings.TrimSpace(filter.SourceID) != "" && runtime.GetSourceId() != strings.TrimSpace(filter.SourceID)) {
+			continue
+		}
+		if len(requested) != 0 {
+			if _, ok := requested[runtime.GetId()]; !ok {
+				continue
+			}
+		}
+		values = append(values, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].GetId() < values[j].GetId() })
+	if filter.Limit != 0 && uint32(len(values)) > filter.Limit {
+		values = values[:filter.Limit]
+	}
+	return values, nil
+}
+
 type stubReplayer struct {
 	request ports.ReplayRequest
 	events  []*cerebrov1.EventEnvelope

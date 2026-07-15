@@ -3,10 +3,12 @@ package findings
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -132,7 +134,8 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	}()
 	queryRequest := rule.QueryFor(runtime)
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
-	bindFindingEvaluationSourceSnapshot(run, runtime)
+	run.RuleApplicable = proto.Bool(rule.SupportsRuntime(runtime))
+	s.bindGraphEvaluationSourceSnapshots(ctx, run, runtime, rule, startedAt)
 	if strings.TrimSpace(queryRequest.Query) != "" {
 		run.GraphRowLimit = proto.Uint32(uint32(effectiveGraphRowLimit(queryRequest)))
 	}
@@ -166,6 +169,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
+	s.verifyGraphEvaluationSourceSnapshots(ctx, run)
 	result.RowsRead = boundedUint32(len(rows))
 	rowLimitTruncated := cypherRowsTruncated(queryRequest, len(rows))
 	result.Truncated = rowLimitTruncated || cypherRowsSignalTruncated(rows)
@@ -222,9 +226,9 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			}
 		}
 	}
-	resolveStale := !result.Truncated
+	resolveStale := !result.Truncated && s.canResolveFromFindingEvaluationRun(run, true)
 	var scopeFilter *staleScopeFilter
-	if result.Truncated && !rowLimitTruncated {
+	if result.Truncated && !rowLimitTruncated && s.canResolveFromFindingEvaluationRun(run, true) {
 		// Only an internal per-scope cap fired (not the global row limit). Scopes
 		// returned in full can still auto-resolve; scopes that were capped this pass
 		// must stay open because a still-matching row may have been dropped. The
@@ -249,6 +253,112 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, err
 	}
 	return result, nil
+}
+
+const maxGraphEvaluationDependencyRuntimes = uint32(500)
+
+func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time) {
+	if run == nil {
+		return
+	}
+	listStore, ok := s.runtimeStore.(ports.SourceRuntimeListStore)
+	if !ok || trigger == nil {
+		bindFindingEvaluationSourceSnapshot(run, trigger)
+		run.SourceDependencyComplete = proto.Bool(false)
+		return
+	}
+	runtimes, err := listStore.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(trigger.GetTenantId()),
+		Limit:    maxGraphEvaluationDependencyRuntimes + 1,
+	})
+	if err != nil || uint32(len(runtimes)) > maxGraphEvaluationDependencyRuntimes {
+		bindFindingEvaluationSourceSnapshot(run, trigger)
+		run.SourceDependencyComplete = proto.Bool(false)
+		return
+	}
+	dependencies := graphRuleDependencyKeys(rule)
+	resolvedDependencies := make(map[string]struct{}, len(dependencies))
+	snapshots := make([]*cerebrov1.FindingEvaluationSourceSnapshot, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime == nil || !rule.SupportsRuntime(runtime) {
+			continue
+		}
+		snapshot := findingEvaluationSourceSnapshot(runtime)
+		if s.graphRunStore != nil {
+			runs, listErr := s.graphRunStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: snapshot.GetRuntimeId(), Limit: 1})
+			if listErr == nil && len(runs) == 1 {
+				bindGraphSnapshot(snapshot, runs[0], evaluationStartedAt)
+			}
+		}
+		for _, dependency := range dependencies {
+			if runtimeMatchesGraphDependency(runtime, dependency) {
+				resolvedDependencies[dependency] = struct{}{}
+			}
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	if len(snapshots) == 0 {
+		snapshots = append(snapshots, findingEvaluationSourceSnapshot(trigger))
+	}
+	sort.Slice(snapshots, func(i, j int) bool { return snapshots[i].GetRuntimeId() < snapshots[j].GetRuntimeId() })
+	run.SourceSnapshots = snapshots
+	run.SourceDependencyComplete = proto.Bool(len(dependencies) > 0 && len(resolvedDependencies) == len(dependencies))
+}
+
+func (s *Service) verifyGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
+	if run == nil || s.graphRunStore == nil {
+		return
+	}
+	for _, snapshot := range run.GetSourceSnapshots() {
+		if snapshot == nil || snapshot.GraphSnapshotComplete == nil || !snapshot.GetGraphSnapshotComplete() {
+			continue
+		}
+		runs, err := s.graphRunStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: snapshot.GetRuntimeId(), Limit: 1})
+		if err != nil || len(runs) != 1 || !graphSnapshotMatchesRun(snapshot, runs[0]) {
+			snapshot.GraphSnapshotComplete = proto.Bool(false)
+		}
+	}
+}
+
+func graphSnapshotMatchesRun(snapshot *cerebrov1.FindingEvaluationSourceSnapshot, run graphstore.IngestRun) bool {
+	if snapshot == nil || strings.TrimSpace(run.RuntimeID) != snapshot.GetRuntimeId() || strings.TrimSpace(run.ID) != snapshot.GetGraphIngestRunId() ||
+		strings.TrimSpace(run.Status) != snapshot.GetGraphIngestStatus() || strings.TrimSpace(run.CheckpointID) != snapshot.GetGraphCheckpointId() ||
+		snapshot.GetGraphIngestedAt() == nil || snapshot.GetGraphIngestedAt().CheckValid() != nil {
+		return false
+	}
+	finishedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(run.FinishedAt))
+	return err == nil && finishedAt.UTC().Equal(snapshot.GetGraphIngestedAt().AsTime().UTC())
+}
+
+func graphRuleDependencyKeys(rule GraphRule) []string {
+	metadata, ok := ruleMetadata(rule)
+	if !ok {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, eventKind := range metadata.EventKinds {
+		parts := strings.SplitN(strings.ToLower(strings.TrimSpace(eventKind)), ".", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			continue
+		}
+		seen[parts[0]+"\x00"+strings.ReplaceAll(parts[1], ".", "_")] = struct{}{}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func runtimeMatchesGraphDependency(runtime *cerebrov1.SourceRuntime, dependency string) bool {
+	parts := strings.SplitN(dependency, "\x00", 2)
+	if runtime == nil || len(parts) != 2 {
+		return false
+	}
+	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
+	family := strings.ToLower(strings.TrimSpace(runtime.GetConfig()["family"]))
+	return sourceID == parts[0] && family == parts[1]
 }
 
 func retiredGraphRule(rule GraphRule) bool {

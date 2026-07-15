@@ -4,8 +4,15 @@ import (
 	"context"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+// GraphIngestRunStore supplies the projection checkpoint actually read by a
+// graph-rule evaluation.
+type GraphIngestRunStore interface {
+	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
+}
 
 // GraphRule evaluates the projected graph by issuing one bounded read-only Cypher query per
 // runtime invocation. Unlike event rules, graph rules do not see the append log directly;

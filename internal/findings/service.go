@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/appendlogindex"
 	"github.com/writer/cerebro/internal/findingevidence"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/proto"
@@ -71,6 +73,8 @@ type Service struct {
 	candidateStore            ports.FindingCandidateStore
 	claimStore                ports.ClaimStore
 	graphQuery                ports.GraphQueryStore
+	graphRunStore             GraphIngestRunStore
+	requireTrustedResolution  bool
 	graph                     ports.ProjectionGraphStore
 	appendLog                 ports.AppendLog
 	closeoutStore             ports.CloseoutRunStore
@@ -241,6 +245,29 @@ func (s *Service) WithGraphQueryStore(graphQuery ports.GraphQueryStore) *Service
 		return nil
 	}
 	s.graphQuery = graphQuery
+	if graphRuns, ok := graphQuery.(GraphIngestRunStore); ok {
+		s.graphRunStore = graphRuns
+	}
+	return s
+}
+
+// WithGraphIngestRunStore wires the durable projection checkpoints used to
+// prove graph-rule input freshness.
+func (s *Service) WithGraphIngestRunStore(store GraphIngestRunStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graphRunStore = store
+	return s
+}
+
+// WithTrustedSourceResolution prevents an incomplete source or graph snapshot
+// from closing an existing finding. Positive matches may still be recorded.
+func (s *Service) WithTrustedSourceResolution() *Service {
+	if s == nil {
+		return nil
+	}
+	s.requireTrustedResolution = true
 	return s
 }
 
@@ -386,13 +413,15 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	startedAt := time.Now().UTC()
 	normalizedLimit := normalizeEventLimit(request.EventLimit)
+	applicable := rule.SupportsRuntime(runtime)
 	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
+	run.RuleApplicable = proto.Bool(applicable)
 	bindFindingEvaluationSourceSnapshot(run, runtime)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
 	var events []*cerebrov1.EventEnvelope
-	if rule.SupportsRuntime(runtime) {
+	if applicable {
 		if err := s.prepareReplay(ctx); err != nil {
 			evaluationErr := fmt.Errorf("prepare replay runtime %q events: %w", runtimeID, err)
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
@@ -472,14 +501,16 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 		}
 	}
-	resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, rule, events, evaluatedEventIDs, emittedFindingIDs)
-	if err != nil {
-		evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
-		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
-	}
-	if err := s.applyCounterEventResolutionResults(ctx, run, result.Findings, &result.Evidence, evidenceIDs, resolvedCounterFindings); err != nil {
-		evaluationErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", result.Rule.GetId(), err)
-		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+	if s.canResolveFromFindingEvaluationRun(run, false) {
+		resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, rule, events, evaluatedEventIDs, emittedFindingIDs)
+		if err != nil {
+			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
+			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+		}
+		if err := s.applyCounterEventResolutionResults(ctx, run, result.Findings, &result.Evidence, evidenceIDs, resolvedCounterFindings); err != nil {
+			evaluationErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", result.Rule.GetId(), err)
+			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+		}
 	}
 	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings)); err != nil {
 		return nil, err
@@ -513,6 +544,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	for _, rule := range rules {
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
+		run.RuleApplicable = proto.Bool(rule.SupportsRuntime(runtime))
 		bindFindingEvaluationSourceSnapshot(run, runtime)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
@@ -646,14 +678,16 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		if state.failed {
 			continue
 		}
-		resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, events, evaluatedEventIDs, state.emittedFindingIDs)
-		if err != nil {
-			finalErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
-		}
-		if err := s.applyCounterEventResolutionResults(ctx, state.result.Run, state.result.Findings, &state.result.Evidence, state.evidenceIDs, resolvedCounterFindings); err != nil {
-			finalErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", state.result.Rule.GetId(), err)
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
+		if s.canResolveFromFindingEvaluationRun(state.result.Run, false) {
+			resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, events, evaluatedEventIDs, state.emittedFindingIDs)
+			if err != nil {
+				finalErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
+				return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
+			}
+			if err := s.applyCounterEventResolutionResults(ctx, state.result.Run, state.result.Findings, &state.result.Evidence, state.evidenceIDs, resolvedCounterFindings); err != nil {
+				finalErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", state.result.Rule.GetId(), err)
+				return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
+			}
 		}
 		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, state.eventsMatched, findingIDs(state.result.Findings)); err != nil {
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, err))
@@ -1305,17 +1339,100 @@ func bindFindingEvaluationSourceSnapshot(run *cerebrov1.FindingEvaluationRun, ru
 	if run == nil {
 		return
 	}
-	complete := false
-	if runtime != nil {
-		lastSyncedAt := runtime.GetLastSyncedAt()
-		checkpointWatermark := runtime.GetCheckpoint().GetWatermark()
-		if lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil && checkpointWatermark != nil && checkpointWatermark.CheckValid() == nil && strings.TrimSpace(runtime.GetNextCursor().GetOpaque()) == "" {
-			run.SourceLastSyncedAt = timestamppb.New(lastSyncedAt.AsTime().UTC())
-			run.SourceCheckpointWatermark = timestamppb.New(checkpointWatermark.AsTime().UTC())
-			complete = true
+	run.SourceSnapshots = []*cerebrov1.FindingEvaluationSourceSnapshot{findingEvaluationSourceSnapshot(runtime)}
+	run.SourceDependencyComplete = proto.Bool(runtime != nil)
+}
+
+const (
+	findingSnapshotStatusKey       = "__cerebro_runtime_status"
+	findingSnapshotScannedKey      = "__cerebro_runtime_records_scanned"
+	findingSnapshotAcceptedKey     = "__cerebro_runtime_records_accepted"
+	findingSnapshotRejectedKey     = "__cerebro_runtime_records_rejected"
+	findingSnapshotFailureKey      = "__cerebro_runtime_last_failure_category"
+	findingSnapshotContractKey     = "__cerebro_runtime_contract_probe_state"
+	findingSnapshotProgressHashKey = "__cerebro_resolved_progress_config_hash"
+)
+
+func findingEvaluationSourceSnapshot(runtime *cerebrov1.SourceRuntime) *cerebrov1.FindingEvaluationSourceSnapshot {
+	snapshot := &cerebrov1.FindingEvaluationSourceSnapshot{Complete: proto.Bool(false)}
+	if runtime == nil {
+		return snapshot
+	}
+	config := runtime.GetConfig()
+	snapshot.RuntimeId = strings.TrimSpace(runtime.GetId())
+	snapshot.SourceId = strings.TrimSpace(runtime.GetSourceId())
+	snapshot.Family = strings.TrimSpace(config["family"])
+	snapshot.SyncStatus = strings.TrimSpace(config[findingSnapshotStatusKey])
+	snapshot.ContractProbeState = strings.TrimSpace(config[findingSnapshotContractKey])
+	snapshot.ProgressConfigHash = strings.TrimSpace(config[findingSnapshotProgressHashKey])
+	scanned, scannedOK := findingSnapshotUint32(config[findingSnapshotScannedKey])
+	accepted, acceptedOK := findingSnapshotUint32(config[findingSnapshotAcceptedKey])
+	rejected, rejectedOK := findingSnapshotUint32(config[findingSnapshotRejectedKey])
+	snapshot.RecordsScanned = scanned
+	snapshot.RecordsAccepted = accepted
+	snapshot.RecordsRejected = rejected
+	lastSyncedAt := runtime.GetLastSyncedAt()
+	checkpointWatermark := runtime.GetCheckpoint().GetWatermark()
+	if lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil {
+		snapshot.LastSyncedAt = timestamppb.New(lastSyncedAt.AsTime().UTC())
+	}
+	if checkpointWatermark != nil && checkpointWatermark.CheckValid() == nil {
+		snapshot.CheckpointWatermark = timestamppb.New(checkpointWatermark.AsTime().UTC())
+	}
+	contractUsable := snapshot.ContractProbeState == "passing" || snapshot.ContractProbeState == "not_configured"
+	complete := snapshot.RuntimeId != "" && snapshot.SourceId != "" && snapshot.LastSyncedAt != nil && snapshot.CheckpointWatermark != nil &&
+		strings.TrimSpace(runtime.GetNextCursor().GetOpaque()) == "" && snapshot.SyncStatus == "completed" &&
+		strings.TrimSpace(config[findingSnapshotFailureKey]) == "" && contractUsable && snapshot.ProgressConfigHash != "" &&
+		scannedOK && acceptedOK && rejectedOK && accepted <= scanned && rejected == 0
+	snapshot.Complete = proto.Bool(complete)
+	return snapshot
+}
+
+func findingSnapshotUint32(value string) (uint32, bool) {
+	parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+	return uint32(parsed), err == nil
+}
+
+func bindGraphSnapshot(snapshot *cerebrov1.FindingEvaluationSourceSnapshot, run graphstore.IngestRun, evaluationStartedAt time.Time) {
+	if snapshot == nil {
+		return
+	}
+	snapshot.GraphSnapshotComplete = proto.Bool(false)
+	if strings.TrimSpace(run.RuntimeID) != snapshot.GetRuntimeId() {
+		return
+	}
+	snapshot.GraphIngestRunId = strings.TrimSpace(run.ID)
+	snapshot.GraphIngestStatus = strings.TrimSpace(run.Status)
+	snapshot.GraphCheckpointId = strings.TrimSpace(run.CheckpointID)
+	finishedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(run.FinishedAt))
+	if err != nil {
+		return
+	}
+	snapshot.GraphIngestedAt = timestamppb.New(finishedAt.UTC())
+	lastSyncedAt := snapshot.GetLastSyncedAt()
+	complete := snapshot.GraphIngestRunId != "" && snapshot.GraphIngestStatus == graphstore.IngestRunStatusCompleted &&
+		snapshot.GraphCheckpointId != "" && !finishedAt.After(evaluationStartedAt) && lastSyncedAt != nil && lastSyncedAt.CheckValid() == nil &&
+		!finishedAt.Before(lastSyncedAt.AsTime())
+	snapshot.GraphSnapshotComplete = proto.Bool(complete)
+}
+
+func findingEvaluationSourceSnapshotsTrusted(run *cerebrov1.FindingEvaluationRun, requireGraph bool) bool {
+	if run == nil || run.SourceDependencyComplete == nil || !run.GetSourceDependencyComplete() || len(run.GetSourceSnapshots()) == 0 {
+		return false
+	}
+	for _, snapshot := range run.GetSourceSnapshots() {
+		if snapshot == nil || snapshot.Complete == nil || !snapshot.GetComplete() {
+			return false
+		}
+		if requireGraph && (snapshot.GraphSnapshotComplete == nil || !snapshot.GetGraphSnapshotComplete()) {
+			return false
 		}
 	}
-	run.SourceSnapshotComplete = proto.Bool(complete)
+	return true
+}
+
+func (s *Service) canResolveFromFindingEvaluationRun(run *cerebrov1.FindingEvaluationRun, requireGraph bool) bool {
+	return s != nil && (!s.requireTrustedResolution || findingEvaluationSourceSnapshotsTrusted(run, requireGraph))
 }
 
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")

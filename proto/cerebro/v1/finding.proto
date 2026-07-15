@@ -6,6 +6,29 @@ option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
 import "google/protobuf/timestamp.proto";
 
+// FindingEvaluationSourceSnapshot binds one rule run to a source population.
+// Counters and status are copied from the durable runtime sync state so a
+// completed rule run cannot hide rejected records or a later scope change.
+message FindingEvaluationSourceSnapshot {
+  string runtime_id = 1;
+  string source_id = 2;
+  string family = 3;
+  google.protobuf.Timestamp last_synced_at = 4;
+  google.protobuf.Timestamp checkpoint_watermark = 5;
+  optional bool complete = 6;
+  uint32 records_scanned = 7;
+  uint32 records_accepted = 8;
+  uint32 records_rejected = 9;
+  string sync_status = 10;
+  string contract_probe_state = 11;
+  string progress_config_hash = 12;
+  string graph_ingest_run_id = 13;
+  string graph_ingest_status = 14;
+  string graph_checkpoint_id = 15;
+  google.protobuf.Timestamp graph_ingested_at = 16;
+  optional bool graph_snapshot_complete = 17;
+}
+
 // FindingEvaluationRun is the durable audit envelope for one rule evaluation over one source runtime.
 message FindingEvaluationRun {
   string id = 1;
@@ -36,13 +59,13 @@ message FindingEvaluationRun {
   optional bool graph_truncated = 17;
   // graph_row_limit records the effective transport cap used for this run.
   optional uint32 graph_row_limit = 18;
-  // source_last_synced_at and source_checkpoint_watermark bind the evaluation
-  // to the source snapshot that existed when the rule ran.
-  google.protobuf.Timestamp source_last_synced_at = 19;
-  google.protobuf.Timestamp source_checkpoint_watermark = 20;
-  // source_snapshot_complete is false when the runtime had no durable source
-  // watermark or still carried a continuation cursor during evaluation.
-  optional bool source_snapshot_complete = 21;
+  repeated FindingEvaluationSourceSnapshot source_snapshots = 19;
+  // source_dependency_complete is true only when every source/family read by a
+  // graph rule was resolved and bound into source_snapshots.
+  optional bool source_dependency_complete = 20;
+  // rule_applicable distinguishes a real evaluation from stale-finding cleanup
+  // for a rule that no longer supports the trigger runtime.
+  optional bool rule_applicable = 21;
 }
 
 // GraphEvidencePath captures one supporting graph edge for a graph-backed finding.

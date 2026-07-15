@@ -3,6 +3,7 @@ package complianceassessment
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 		wantCompleteness CollectionCompleteness
 		wantReason       ReasonCode
 		wantFindings     int
+		mutateRuntime    func(*cerebrov1.SourceRuntime)
 	}{
 		{
 			name:        "satisfied event evaluation",
@@ -78,9 +80,59 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			name: "incomplete source snapshot",
 			evaluation: func() *cerebrov1.FindingEvaluationRun {
 				run := eventEvaluationRun("evaluation-7", cutoff.Add(-30*time.Minute), 100, 12)
-				run.SourceLastSyncedAt = nil
-				run.SourceCheckpointWatermark = nil
-				run.SourceSnapshotComplete = boolPointer(false)
+				run.SourceSnapshots[0].LastSyncedAt = nil
+				run.SourceSnapshots[0].CheckpointWatermark = nil
+				run.SourceSnapshots[0].Complete = boolPointer(false)
+				return run
+			}(),
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
+		{
+			name: "rejected source records",
+			evaluation: func() *cerebrov1.FindingEvaluationRun {
+				run := eventEvaluationRun("evaluation-8", cutoff.Add(-30*time.Minute), 100, 12)
+				run.SourceSnapshots[0].RecordsRejected = 1
+				run.SourceSnapshots[0].Complete = boolPointer(false)
+				return run
+			}(),
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
+		{
+			name:       "failed current runtime",
+			evaluation: eventEvaluationRun("evaluation-9", cutoff.Add(-30*time.Minute), 100, 12),
+			mutateRuntime: func(runtime *cerebrov1.SourceRuntime) {
+				runtime.Config["__cerebro_runtime_status"] = "failed"
+				runtime.Config["__cerebro_runtime_last_failure_category"] = "provider"
+			},
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
+		{
+			name:       "changed source scope",
+			evaluation: eventEvaluationRun("evaluation-10", cutoff.Add(-30*time.Minute), 100, 12),
+			mutateRuntime: func(runtime *cerebrov1.SourceRuntime) {
+				runtime.Config["__cerebro_resolved_progress_config_hash"] = "sha256:changed"
+			},
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUntrusted,
+		},
+		{
+			name: "unsupported cleanup run",
+			evaluation: func() *cerebrov1.FindingEvaluationRun {
+				run := eventEvaluationRun("evaluation-11", cutoff.Add(-30*time.Minute), 100, 12)
+				run.RuleApplicable = boolPointer(false)
+				return run
+			}(),
+			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
+			wantCompleteness: CollectionUnknown, wantReason: ReasonSourceUnsupported,
+		},
+		{
+			name: "graph projection predates source",
+			evaluation: func() *cerebrov1.FindingEvaluationRun {
+				run := graphEvaluationRun("evaluation-12", cutoff.Add(-30*time.Minute), 14)
+				run.SourceSnapshots[0].GraphIngestedAt = timestamppb.New(run.SourceSnapshots[0].GetLastSyncedAt().AsTime().Add(-time.Minute))
 				return run
 			}(),
 			wantOutcome: OutcomeIndeterminate, wantEvidence: EvidenceUntrusted,
@@ -93,7 +145,11 @@ func TestFindingEvaluationCollectorProducesPointInTimeResults(t *testing.T) {
 			t.Parallel()
 			plan := collectorTestPlan(cutoff)
 			plans := &collectorPlanReader{plan: plan}
-			runtimes := &collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntime(cutoff)}}
+			runtime := collectorTestRuntimeForEvaluation(test.evaluation, cutoff)
+			if test.mutateRuntime != nil {
+				test.mutateRuntime(runtime)
+			}
+			runtimes := &collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{runtime}}
 			evaluations := &collectorEvaluationLister{}
 			if test.evaluation != nil {
 				evaluations.values = []*cerebrov1.FindingEvaluationRun{test.evaluation}
@@ -140,7 +196,7 @@ func TestFindingEvaluationCollectorRejectsPostPeriodEvidence(t *testing.T) {
 	evaluations := &collectorEvaluationLister{values: []*cerebrov1.FindingEvaluationRun{evaluation}}
 	collector := NewFindingEvaluationCollector(
 		&collectorPlanReader{plan: collectorTestPlan(cutoff)},
-		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntime(cutoff)}},
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntimeForEvaluation(evaluation, cutoff)}},
 		evaluations,
 	)
 	collector.now = func() time.Time { return cutoff }
@@ -178,13 +234,37 @@ func TestFindingEvaluationCollectorRejectsInconsistentFindingCounts(t *testing.T
 	evaluation.FindingIds = []string{"finding-1"}
 	collector := NewFindingEvaluationCollector(
 		&collectorPlanReader{plan: collectorTestPlan(cutoff)},
-		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{{Id: "runtime-1", TenantId: "tenant-1"}}},
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntimeForEvaluation(evaluation, cutoff)}},
 		&collectorEvaluationLister{values: []*cerebrov1.FindingEvaluationRun{evaluation}},
 	)
 	collector.now = func() time.Time { return cutoff }
 	_, _, err := collector.Collect(context.Background(), collectorTestRun(cutoff))
 	if !errors.Is(err, ErrIncompleteInput) {
 		t.Fatalf("Collect() error = %v, want ErrIncompleteInput", err)
+	}
+}
+
+func TestValidateEvaluationSourceSnapshotsRequiresEveryGraphSourceInPlan(t *testing.T) {
+	t.Parallel()
+	finishedAt := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	evaluation := graphEvaluationRun("evaluation-cross-source", finishedAt, 4)
+	second := collectorTestSourceSnapshot(evaluation.GetSourceSnapshots()[0].GetLastSyncedAt().AsTime(), true)
+	second.RuntimeId = "runtime-2"
+	second.SourceId = "github"
+	second.Family = "audit"
+	second.GraphIngestRunId = "graph-run-2"
+	second.GraphCheckpointId = "graph-checkpoint-2"
+	evaluation.SourceSnapshots = append(evaluation.SourceSnapshots, second)
+	runtimes := map[string]*cerebrov1.SourceRuntime{
+		"runtime-1": collectorTestRuntimeFromSnapshot(evaluation.GetSourceSnapshots()[0]),
+		"runtime-2": collectorTestRuntimeFromSnapshot(second),
+	}
+	startedAt := evaluation.GetStartedAt().AsTime()
+	if err := validateEvaluationSourceSnapshots(evaluation, []string{"runtime-1"}, startedAt, finishedAt, 2*time.Hour, runtimes); !errors.Is(err, ErrIncompleteInput) {
+		t.Fatalf("validateEvaluationSourceSnapshots() error = %v, want dependency outside plan", err)
+	}
+	if err := validateEvaluationSourceSnapshots(evaluation, []string{"runtime-1", "runtime-2"}, startedAt, finishedAt, 2*time.Hour, runtimes); err != nil {
+		t.Fatalf("validateEvaluationSourceSnapshots() with complete plan error = %v", err)
 	}
 }
 
@@ -216,7 +296,8 @@ func eventEvaluationRun(id string, finishedAt time.Time, eventLimit, eventsProce
 		Id: id, RuntimeId: "runtime-1", RuleId: "rule-1", Status: "completed",
 		EventLimit: eventLimit, EventsEvaluated: eventsProcessed, EventsProcessed: eventsProcessed,
 		GraphRule: &graphRule, StartedAt: timestamppb.New(startedAt), FinishedAt: timestamppb.New(finishedAt),
-		SourceLastSyncedAt: timestamppb.New(sourceAt), SourceCheckpointWatermark: timestamppb.New(sourceAt), SourceSnapshotComplete: boolPointer(true),
+		RuleApplicable: boolPointer(true), SourceDependencyComplete: boolPointer(true),
+		SourceSnapshots: []*cerebrov1.FindingEvaluationSourceSnapshot{collectorTestSourceSnapshot(sourceAt, false)},
 	}
 }
 
@@ -229,14 +310,47 @@ func graphEvaluationRun(id string, finishedAt time.Time, rows uint32) *cerebrov1
 		Id: id, RuntimeId: "runtime-1", RuleId: "rule-1", Status: "completed",
 		GraphRule: &graphRule, GraphRowsRead: &rows, GraphTruncated: boolPointer(false), GraphRowLimit: &rowLimit,
 		StartedAt: timestamppb.New(startedAt), FinishedAt: timestamppb.New(finishedAt),
-		SourceLastSyncedAt: timestamppb.New(sourceAt), SourceCheckpointWatermark: timestamppb.New(sourceAt), SourceSnapshotComplete: boolPointer(true),
+		RuleApplicable: boolPointer(true), SourceDependencyComplete: boolPointer(true),
+		SourceSnapshots: []*cerebrov1.FindingEvaluationSourceSnapshot{collectorTestSourceSnapshot(sourceAt, true)},
 	}
 }
 
-func collectorTestRuntime(now time.Time) *cerebrov1.SourceRuntime {
+func collectorTestSourceSnapshot(sourceAt time.Time, graph bool) *cerebrov1.FindingEvaluationSourceSnapshot {
+	snapshot := &cerebrov1.FindingEvaluationSourceSnapshot{
+		RuntimeId: "runtime-1", SourceId: "okta", Family: "user",
+		LastSyncedAt: timestamppb.New(sourceAt), CheckpointWatermark: timestamppb.New(sourceAt), Complete: boolPointer(true),
+		RecordsScanned: 12, RecordsAccepted: 12, RecordsRejected: 0, SyncStatus: "completed", ContractProbeState: "passing",
+		ProgressConfigHash: "sha256:collector-test-runtime",
+	}
+	if graph {
+		snapshot.GraphIngestRunId = "graph-run-1"
+		snapshot.GraphIngestStatus = "completed"
+		snapshot.GraphCheckpointId = "graph-checkpoint-1"
+		snapshot.GraphIngestedAt = timestamppb.New(sourceAt.Add(30 * time.Second))
+		snapshot.GraphSnapshotComplete = boolPointer(true)
+	}
+	return snapshot
+}
+
+func collectorTestRuntimeForEvaluation(evaluation *cerebrov1.FindingEvaluationRun, now time.Time) *cerebrov1.SourceRuntime {
+	snapshot := collectorTestSourceSnapshot(now.Add(-time.Hour), false)
+	if evaluation != nil && len(evaluation.GetSourceSnapshots()) != 0 && evaluation.GetSourceSnapshots()[0] != nil {
+		snapshot = evaluation.GetSourceSnapshots()[0]
+	}
+	return collectorTestRuntimeFromSnapshot(snapshot)
+}
+
+func collectorTestRuntimeFromSnapshot(snapshot *cerebrov1.FindingEvaluationSourceSnapshot) *cerebrov1.SourceRuntime {
 	return &cerebrov1.SourceRuntime{
-		Id: "runtime-1", TenantId: "tenant-1", LastSyncedAt: timestamppb.New(now.Add(-time.Hour)),
-		Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-time.Hour))},
+		Id: snapshot.GetRuntimeId(), TenantId: "tenant-1", SourceId: snapshot.GetSourceId(), LastSyncedAt: snapshot.GetLastSyncedAt(),
+		Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: snapshot.GetCheckpointWatermark()},
+		Config: map[string]string{
+			"family": snapshot.GetFamily(), "__cerebro_runtime_status": "completed", "__cerebro_runtime_last_failure_category": "",
+			"__cerebro_runtime_contract_probe_state": snapshot.GetContractProbeState(), "__cerebro_resolved_progress_config_hash": snapshot.GetProgressConfigHash(),
+			"__cerebro_runtime_records_scanned":  strconv.FormatUint(uint64(snapshot.GetRecordsScanned()), 10),
+			"__cerebro_runtime_records_accepted": strconv.FormatUint(uint64(snapshot.GetRecordsAccepted()), 10),
+			"__cerebro_runtime_records_rejected": strconv.FormatUint(uint64(snapshot.GetRecordsRejected()), 10),
+		},
 	}
 }
 
