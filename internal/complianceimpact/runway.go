@@ -93,7 +93,9 @@ func CalculateSourceRunway(input SourceRunwayInput) (SourceRunway, error) {
 		result.Remaining = result.BlindAt.Sub(input.AsOf.UTC())
 		if !result.BlindAt.After(input.AsOf.UTC()) {
 			result.State = RunwayBlind
-			result.Reasons = append(result.Reasons, RunwayCollectionOverdue)
+			if !input.LastSuccessfulAt.IsZero() {
+				result.Reasons = append(result.Reasons, RunwayCollectionOverdue)
+			}
 		} else if result.State == RunwayHealthy && result.Remaining <= 2*input.ExpectedCadence {
 			result.State = RunwayWarning
 		}
