@@ -307,13 +307,12 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	readFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/read_users.json")
 	for _, want := range []string{
-		`"api_path": "/v1/users"`,
 		`"kind": "example_idp.user"`,
 		`"record_selector": "$.data[*]"`,
 		`"schema_ref": "example_idp/user/v1"`,
 		`"source_id": "example_idp"`,
 		`"user_id":`,
-		`source-example_idp-users-1`,
+		`example_idp-users-001`,
 	} {
 		if !strings.Contains(readFixture, want) {
 			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
@@ -321,6 +320,9 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	if strings.Contains(readFixture, "Record One") {
 		t.Fatalf("read fixture still uses generic synthetic name:\n%s", readFixture)
+	}
+	if strings.Contains(readFixture, `"api_path"`) || strings.Contains(readFixture, " Fixture") {
+		t.Fatalf("verified provider fixture still contains generator markers:\n%s", readFixture)
 	}
 	var events []struct {
 		Payload    map[string]any    `json:"payload"`
@@ -1187,6 +1189,54 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)
 		}
+	}
+}
+
+func TestGenerateDefinitionSupportsNoAuth(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "builtin-public_api",
+			TenantID:    "builtin",
+			SourceID:    "public_api",
+			DisplayName: "Public API",
+			Auth:        connectordefinitions.AuthSpec{Model: AuthModelNone},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL:      "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{Path: "/health"},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "resources",
+				Path:           "/v1/resources",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "public_api.resources",
+					SchemaRef: "public_api/resources/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+				Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.AuthModel != AuthModelNone {
+		t.Fatalf("AuthModel = %q, want %q", result.AuthModel, AuthModelNone)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/public_api/source.go")
+	if !strings.Contains(source, `AuthModel:       "none"`) {
+		t.Fatalf("source.go missing no-auth runtime configuration:\n%s", source)
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/public_api/deploy.yaml")
+	if strings.Contains(deploy, "PUBLIC_API_TOKEN") || strings.Contains(deploy, "token: env:") {
+		t.Fatalf("deploy.yaml contains an auth secret for a public API:\n%s", deploy)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/public_api/source_test.go")
+	if strings.Contains(sourceTest, `"token": "test-token"`) || strings.Contains(sourceTest, `Authorization mismatch`) {
+		t.Fatalf("source_test.go asserts credentials for a public API:\n%s", sourceTest)
 	}
 }
 
@@ -2222,6 +2272,9 @@ func TestGenerateRegeneratesUnmodifiedOutputsWithoutForce(t *testing.T) {
 	if _, err := os.Stat(first.GenerationManifest); err != nil {
 		t.Fatalf("generation manifest stat: %v", err)
 	}
+	if _, err := os.Stat(first.ProofBundle); err != nil {
+		t.Fatalf("proof bundle stat: %v", err)
+	}
 
 	request.Name = "Renamed Demo Source"
 	request.AssetSchemas = []string{"host"}
@@ -2245,6 +2298,117 @@ func TestGenerateRegeneratesUnmodifiedOutputsWithoutForce(t *testing.T) {
 	}
 }
 
+func TestGenerateEmitsDeterministicProofBundleAndChangePlan(t *testing.T) {
+	request := Request{
+		SourceID:     "demo_source",
+		SourceType:   SourceTypeJSONAPI,
+		AuthModel:    AuthModelBearerToken,
+		AssetSchemas: []string{"host"},
+	}
+	firstDir := t.TempDir()
+	request.OutputDir = firstDir
+	first, err := Generate(request)
+	if err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	if first.ChangePlan.Status != ChangePlanReady {
+		t.Fatalf("first change plan status = %q, want %q", first.ChangePlan.Status, ChangePlanReady)
+	}
+	for _, change := range first.ChangePlan.Changes {
+		if change.Action != ChangeActionCreate {
+			t.Fatalf("first change %s action = %q, want create", change.Path, change.Action)
+		}
+	}
+	firstPayload, err := os.ReadFile(first.ProofBundle) // #nosec G304 -- test-owned generated path.
+	if err != nil {
+		t.Fatalf("read first proof bundle: %v", err)
+	}
+	var bundle ProofBundle
+	if err := json.Unmarshal(firstPayload, &bundle); err != nil {
+		t.Fatalf("decode proof bundle: %v", err)
+	}
+	if bundle.SchemaVersion != ProofBundleSchemaVersion || bundle.SourceID != request.SourceID || len(bundle.Outputs) == 0 {
+		t.Fatalf("proof bundle = %#v", bundle)
+	}
+	for _, feature := range []string{"auth.bearer_token", "method.GET", "runtime.json_api"} {
+		if !slices.Contains(bundle.GrammarFeatures, feature) {
+			t.Fatalf("proof bundle grammar features missing %q: %v", feature, bundle.GrammarFeatures)
+		}
+	}
+	if strings.Contains(string(firstPayload), "generated_at") || strings.Contains(string(firstPayload), firstDir) {
+		t.Fatalf("proof bundle contains nondeterministic run metadata:\n%s", firstPayload)
+	}
+	manifestPayload, err := os.ReadFile(first.GenerationManifest) // #nosec G304 -- test-owned generated path.
+	if err != nil {
+		t.Fatalf("read generation manifest: %v", err)
+	}
+	var manifest generationManifest
+	if err := json.Unmarshal(manifestPayload, &manifest); err != nil {
+		t.Fatalf("decode generation manifest: %v", err)
+	}
+	if manifest.GeneratorVersion != "sourcegen/v3" || !digestMatches(firstPayload, manifest.ProofDigest) {
+		t.Fatalf("generation manifest does not bind proof bundle: %#v", manifest)
+	}
+
+	secondDir := t.TempDir()
+	request.OutputDir = secondDir
+	second, err := Generate(request)
+	if err != nil {
+		t.Fatalf("second Generate() error = %v", err)
+	}
+	secondPayload, err := os.ReadFile(second.ProofBundle) // #nosec G304 -- test-owned generated path.
+	if err != nil {
+		t.Fatalf("read second proof bundle: %v", err)
+	}
+	if string(secondPayload) != string(firstPayload) {
+		t.Fatalf("proof bundle changed across output roots:\nfirst:\n%s\nsecond:\n%s", firstPayload, secondPayload)
+	}
+
+	request.OutputDir = firstDir
+	request.DryRun = true
+	dryRun, err := Generate(request)
+	if err != nil {
+		t.Fatalf("dry-run Generate() error = %v", err)
+	}
+	if dryRun.ChangePlan.Status != ChangePlanReady {
+		t.Fatalf("dry-run status = %q, want ready", dryRun.ChangePlan.Status)
+	}
+	for _, change := range dryRun.ChangePlan.Changes {
+		if change.Action != ChangeActionUnchanged {
+			t.Fatalf("dry-run change %s action = %q, want unchanged", change.Path, change.Action)
+		}
+	}
+}
+
+func TestGenerateDryRunReportsOwnershipConflict(t *testing.T) {
+	outputDir := t.TempDir()
+	request := Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}
+	if _, err := Generate(request); err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	sourcePath := filepath.Join(outputDir, "sources", "demo_source", "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package demosource\n\n// operator change\n"), 0o600); err != nil {
+		t.Fatalf("write operator change: %v", err)
+	}
+	request.DryRun = true
+	request.Name = "Changed Input"
+	result, err := Generate(request)
+	if err != nil {
+		t.Fatalf("dry-run Generate() error = %v", err)
+	}
+	if result.ChangePlan.Status != ChangePlanBlocked {
+		t.Fatalf("change plan status = %q, want blocked", result.ChangePlan.Status)
+	}
+	found := false
+	for _, change := range result.ChangePlan.Changes {
+		if change.Path == "sources/demo_source/source.go" && change.Action == ChangeActionConflict && change.Ownership == "operator_or_unknown" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("change plan did not report source.go ownership conflict: %#v", result.ChangePlan.Changes)
+	}
+}
 func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
 	outputDir := t.TempDir()
 	request := Request{
@@ -2341,7 +2505,6 @@ func TestGenerateCreatesNestedOutputRoot(t *testing.T) {
 		t.Fatalf("generated source stat: %v", err)
 	}
 }
-
 func TestGenerateFindingOnlyScaffold(t *testing.T) {
 	outputDir := t.TempDir()
 	if _, err := Generate(Request{
