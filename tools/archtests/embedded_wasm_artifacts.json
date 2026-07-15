@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "canonical_builder": {
+    "id": "cerebro-embedded-wasm-v1",
+    "platform": "Linux-x86_64",
+    "registry": "scripts/embedded_wasm.py",
+    "rust_toolchain": "1.93.1",
+    "target": "wasm32-unknown-unknown",
+    "profile": "release"
+  },
+  "modules": [
+    {
+      "name": "graphagent-static-validator",
+      "path": "internal/graphagent/staticvalidator.wasm",
+      "sha256": "d698b12ec2e0698af5503d48f7c23d6ad5d1ca09270559b72028979912ce1829",
+      "size_bytes": 652086,
+      "max_size_bytes": 700000,
+      "abi_version": 2
+    },
+    {
+      "name": "sourcecoverage-evaluator",
+      "path": "internal/sourcecoverage/evaluator.wasm",
+      "sha256": "388966fe3d994e4029ab161cca7098c4ce0a7363ff9870b974004e3252b100f9",
+      "size_bytes": 149563,
+      "max_size_bytes": 175000,
+      "abi_version": 1
+    },
+    {
+      "name": "panopticon-resource-extractor",
+      "path": "internal/sourceprojection/panopticonresources.wasm",
+      "sha256": "58cb2f0f7aa5dd54d570a8ebbedac1d5bd484d0300d07e1561f99d9ffa40427c",
+      "size_bytes": 134504,
+      "max_size_bytes": 160000,
+      "abi_version": 2
+    },
+    {
+      "name": "mitre-context-evaluator",
+      "path": "internal/mitre/evaluator.wasm",
+      "sha256": "fa904c9b15cb4f4f499deb3238fbf6dbc0c4967df0201d88b33742a67ff7161d",
+      "size_bytes": 729536,
+      "max_size_bytes": 800000,
+      "abi_version": 1
+    }
+  ]
+}

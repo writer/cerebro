@@ -94,6 +94,14 @@ Makefile or `scripts/changed_checks.py`. Artifact generation that requires
 `Linux-x86_64` fails on other platforms; checks still compile the module and
 report when byte comparison is deferred to CI.
 
+`tools/archtests/embedded_wasm_artifacts.json` records the canonical artifact
+path, SHA-256 digest, exact byte size, ABI version, pinned Rust builder inputs,
+and an explicit maximum size for every registered module. After regenerating
+the Wasm files on `Linux-x86_64`, run `make rust-wasm-manifest-generate` and
+commit the manifest update. `make rust-wasm-manifest-check` reports digest,
+ABI, size, or budget drift; increasing a budget requires an intentional change
+to `internal/wasmartifacts/manifest.go`.
+
 ## Architecture Notes
 
 - External data enters through source packages under `sources/`.
