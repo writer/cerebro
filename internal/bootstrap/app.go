@@ -47,6 +47,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
+	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -785,7 +786,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: safeFindingMessage(finding)}), nil
+	return connect.NewResponse(linktransport.FindingResponse(safeFindingMessage(finding), finding)), nil
 }
 
 func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {
@@ -1350,8 +1351,9 @@ func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(statusCode)
-	_, _ = w.Write(payload)
+	_, _ = w.Write(payload) //nolint:gosec // protojson escapes message fields; the response is JSON with content sniffing disabled.
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {

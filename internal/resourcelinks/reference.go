@@ -19,7 +19,10 @@ const (
 	maxIdentifierBytes = 4096
 )
 
-var ErrInvalidResourceRef = errors.New("invalid resource reference")
+var (
+	ErrInvalidResourceRef = errors.New("invalid resource reference")
+	ErrInvalidLink        = errors.New("invalid resource link")
+)
 
 // ResourceState describes whether a reference resolves to current or historical state.
 type ResourceState string
@@ -31,6 +34,22 @@ const (
 	ResourceStateArchived    ResourceState = "archived"
 	ResourceStateUnavailable ResourceState = "unavailable"
 	ResourceStateRedacted    ResourceState = "redacted"
+)
+
+// Authority describes the record that asserts a relationship.
+type Authority string
+
+const (
+	AuthorityCanonicalRecord Authority = "canonical_record"
+	AuthorityDerivedRecord   Authority = "derived_record"
+)
+
+// Completeness states whether the source record enumerates the full relation.
+type Completeness string
+
+const (
+	CompletenessComplete Completeness = "complete"
+	CompletenessPartial  Completeness = "partial"
 )
 
 // ResourceRef identifies one record without changing which domain owns it.
@@ -47,6 +66,15 @@ type ResourceRef struct {
 	MCPURI   string                      `json:"mcp_uri"`
 }
 
+// ResourceLink connects one authorized source resource to one target without
+// expanding or authorizing the target on the caller's behalf.
+type ResourceLink struct {
+	Relation     string       `json:"rel"`
+	Target       ResourceRef  `json:"target"`
+	Authority    Authority    `json:"authority"`
+	Completeness Completeness `json:"completeness"`
+}
+
 // NewID builds a canonical reference for an ID-addressed resource kind.
 func NewID(kind fabriccontract.ResourceKind, id string) (ResourceRef, error) {
 	return Normalize(ResourceRef{Kind: kind, ID: id})
@@ -55,6 +83,35 @@ func NewID(kind fabriccontract.ResourceKind, id string) (ResourceRef, error) {
 // NewURN builds a canonical reference for a URN-addressed resource kind.
 func NewURN(kind fabriccontract.ResourceKind, resourceURN string) (ResourceRef, error) {
 	return Normalize(ResourceRef{Kind: kind, URN: resourceURN})
+}
+
+// NewLink validates one link against the canonical resource and relation registries.
+func NewLink(sourceKind fabriccontract.ResourceKind, relation string, target ResourceRef, authority Authority, completeness Completeness) (ResourceLink, error) {
+	sourceKind = fabriccontract.ResourceKind(strings.TrimSpace(string(sourceKind)))
+	relation = strings.TrimSpace(relation)
+	authority = Authority(strings.TrimSpace(string(authority)))
+	completeness = Completeness(strings.TrimSpace(string(completeness)))
+
+	validatedTarget, err := Normalize(target)
+	if err != nil {
+		return ResourceLink{}, fmt.Errorf("%w: %w", ErrInvalidLink, err)
+	}
+	definition, ok := fabriccontract.RelationDefinitionFor(relation)
+	if !ok || !definition.Allows(sourceKind, validatedTarget.Kind) {
+		return ResourceLink{}, ErrInvalidLink
+	}
+	if authority != AuthorityCanonicalRecord && authority != AuthorityDerivedRecord {
+		return ResourceLink{}, ErrInvalidLink
+	}
+	if completeness != CompletenessComplete && completeness != CompletenessPartial {
+		return ResourceLink{}, ErrInvalidLink
+	}
+	return ResourceLink{
+		Relation:     relation,
+		Target:       validatedTarget,
+		Authority:    authority,
+		Completeness: completeness,
+	}, nil
 }
 
 // Normalize validates a reference and derives its canonical paths.
@@ -126,6 +183,11 @@ func (reference ResourceRef) Identifier() string {
 // CanonicalJSON returns stable JSON after applying reference normalization.
 func (reference ResourceRef) CanonicalJSON() ([]byte, error) {
 	return json.Marshal(reference)
+}
+
+// CanonicalReferenceBytes returns stable JSON for digesting and contract fixtures.
+func CanonicalReferenceBytes(reference ResourceRef) ([]byte, error) {
+	return reference.CanonicalJSON()
 }
 
 // MarshalJSON prevents invalid or non-canonical references from being serialized.

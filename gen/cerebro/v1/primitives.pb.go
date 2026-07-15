@@ -184,6 +184,162 @@ func (x *EntityRef) GetLabel() string {
 	return ""
 }
 
+// ResourceRef identifies one current or immutable Cerebro resource without
+// carrying authorization or relying on request-host-derived URLs.
+type ResourceRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Revision      string                 `protobuf:"bytes,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	ApiPath       string                 `protobuf:"bytes,4,opt,name=api_path,json=apiPath,proto3" json:"api_path,omitempty"`
+	McpUri        string                 `protobuf:"bytes,5,opt,name=mcp_uri,json=mcpUri,proto3" json:"mcp_uri,omitempty"`
+	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceRef) Reset() {
+	*x = ResourceRef{}
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceRef) ProtoMessage() {}
+
+func (x *ResourceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceRef.ProtoReflect.Descriptor instead.
+func (*ResourceRef) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ResourceRef) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ResourceRef) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ResourceRef) GetRevision() string {
+	if x != nil {
+		return x.Revision
+	}
+	return ""
+}
+
+func (x *ResourceRef) GetApiPath() string {
+	if x != nil {
+		return x.ApiPath
+	}
+	return ""
+}
+
+func (x *ResourceRef) GetMcpUri() string {
+	if x != nil {
+		return x.McpUri
+	}
+	return ""
+}
+
+func (x *ResourceRef) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+// ResourceLink connects an authorized resource to one independently
+// authorized target.
+type ResourceLink struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rel           string                 `protobuf:"bytes,1,opt,name=rel,proto3" json:"rel,omitempty"`
+	Target        *ResourceRef           `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	Authority     string                 `protobuf:"bytes,3,opt,name=authority,proto3" json:"authority,omitempty"`
+	Completeness  string                 `protobuf:"bytes,4,opt,name=completeness,proto3" json:"completeness,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceLink) Reset() {
+	*x = ResourceLink{}
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceLink) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceLink) ProtoMessage() {}
+
+func (x *ResourceLink) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceLink.ProtoReflect.Descriptor instead.
+func (*ResourceLink) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ResourceLink) GetRel() string {
+	if x != nil {
+		return x.Rel
+	}
+	return ""
+}
+
+func (x *ResourceLink) GetTarget() *ResourceRef {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *ResourceLink) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *ResourceLink) GetCompleteness() string {
+	if x != nil {
+		return x.Completeness
+	}
+	return ""
+}
+
 // Claim is a generic source-attributed assertion over one subject.
 type Claim struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -207,7 +363,7 @@ type Claim struct {
 
 func (x *Claim) Reset() {
 	*x = Claim{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -219,7 +375,7 @@ func (x *Claim) String() string {
 func (*Claim) ProtoMessage() {}
 
 func (x *Claim) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -232,7 +388,7 @@ func (x *Claim) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Claim.ProtoReflect.Descriptor instead.
 func (*Claim) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{2}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Claim) GetId() string {
@@ -346,7 +502,7 @@ type StreamSpec struct {
 
 func (x *StreamSpec) Reset() {
 	*x = StreamSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -358,7 +514,7 @@ func (x *StreamSpec) String() string {
 func (*StreamSpec) ProtoMessage() {}
 
 func (x *StreamSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -371,7 +527,7 @@ func (x *StreamSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamSpec.ProtoReflect.Descriptor instead.
 func (*StreamSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{3}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *StreamSpec) GetId() string {
@@ -415,7 +571,7 @@ type ViewSpec struct {
 
 func (x *ViewSpec) Reset() {
 	*x = ViewSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +583,7 @@ func (x *ViewSpec) String() string {
 func (*ViewSpec) ProtoMessage() {}
 
 func (x *ViewSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,7 +596,7 @@ func (x *ViewSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewSpec.ProtoReflect.Descriptor instead.
 func (*ViewSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{4}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ViewSpec) GetId() string {
@@ -485,7 +641,7 @@ type RuleSpec struct {
 
 func (x *RuleSpec) Reset() {
 	*x = RuleSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -497,7 +653,7 @@ func (x *RuleSpec) String() string {
 func (*RuleSpec) ProtoMessage() {}
 
 func (x *RuleSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -510,7 +666,7 @@ func (x *RuleSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleSpec.ProtoReflect.Descriptor instead.
 func (*RuleSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{5}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RuleSpec) GetId() string {
@@ -561,7 +717,7 @@ type ActionSpec struct {
 
 func (x *ActionSpec) Reset() {
 	*x = ActionSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -573,7 +729,7 @@ func (x *ActionSpec) String() string {
 func (*ActionSpec) ProtoMessage() {}
 
 func (x *ActionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -586,7 +742,7 @@ func (x *ActionSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionSpec.ProtoReflect.Descriptor instead.
 func (*ActionSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{6}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ActionSpec) GetId() string {
@@ -630,7 +786,7 @@ type AgentSpec struct {
 
 func (x *AgentSpec) Reset() {
 	*x = AgentSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +798,7 @@ func (x *AgentSpec) String() string {
 func (*AgentSpec) ProtoMessage() {}
 
 func (x *AgentSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +811,7 @@ func (x *AgentSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSpec.ProtoReflect.Descriptor instead.
 func (*AgentSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{7}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AgentSpec) GetId() string {
@@ -712,7 +868,19 @@ const file_cerebro_v1_primitives_proto_rawDesc = "" +
 	"\x03urn\x18\x01 \x01(\tR\x03urn\x12\x1f\n" +
 	"\ventity_type\x18\x02 \x01(\tR\n" +
 	"entityType\x12\x14\n" +
-	"\x05label\x18\x03 \x01(\tR\x05label\"\x96\x05\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\"\x97\x01\n" +
+	"\vResourceRef\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\tR\brevision\x12\x19\n" +
+	"\bapi_path\x18\x04 \x01(\tR\aapiPath\x12\x17\n" +
+	"\amcp_uri\x18\x05 \x01(\tR\x06mcpUri\x12\x14\n" +
+	"\x05state\x18\x06 \x01(\tR\x05state\"\x93\x01\n" +
+	"\fResourceLink\x12\x10\n" +
+	"\x03rel\x18\x01 \x01(\tR\x03rel\x12/\n" +
+	"\x06target\x18\x02 \x01(\v2\x17.cerebro.v1.ResourceRefR\x06target\x12\x1c\n" +
+	"\tauthority\x18\x03 \x01(\tR\tauthority\x12\"\n" +
+	"\fcompleteness\x18\x04 \x01(\tR\fcompleteness\"\x96\x05\n" +
 	"\x05Claim\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vsubject_urn\x18\x02 \x01(\tR\n" +
@@ -784,34 +952,37 @@ func file_cerebro_v1_primitives_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_primitives_proto_rawDescData
 }
 
-var file_cerebro_v1_primitives_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_cerebro_v1_primitives_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_cerebro_v1_primitives_proto_goTypes = []any{
 	(*EventEnvelope)(nil),         // 0: cerebro.v1.EventEnvelope
 	(*EntityRef)(nil),             // 1: cerebro.v1.EntityRef
-	(*Claim)(nil),                 // 2: cerebro.v1.Claim
-	(*StreamSpec)(nil),            // 3: cerebro.v1.StreamSpec
-	(*ViewSpec)(nil),              // 4: cerebro.v1.ViewSpec
-	(*RuleSpec)(nil),              // 5: cerebro.v1.RuleSpec
-	(*ActionSpec)(nil),            // 6: cerebro.v1.ActionSpec
-	(*AgentSpec)(nil),             // 7: cerebro.v1.AgentSpec
-	nil,                           // 8: cerebro.v1.EventEnvelope.AttributesEntry
-	nil,                           // 9: cerebro.v1.Claim.AttributesEntry
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*ResourceRef)(nil),           // 2: cerebro.v1.ResourceRef
+	(*ResourceLink)(nil),          // 3: cerebro.v1.ResourceLink
+	(*Claim)(nil),                 // 4: cerebro.v1.Claim
+	(*StreamSpec)(nil),            // 5: cerebro.v1.StreamSpec
+	(*ViewSpec)(nil),              // 6: cerebro.v1.ViewSpec
+	(*RuleSpec)(nil),              // 7: cerebro.v1.RuleSpec
+	(*ActionSpec)(nil),            // 8: cerebro.v1.ActionSpec
+	(*AgentSpec)(nil),             // 9: cerebro.v1.AgentSpec
+	nil,                           // 10: cerebro.v1.EventEnvelope.AttributesEntry
+	nil,                           // 11: cerebro.v1.Claim.AttributesEntry
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_cerebro_v1_primitives_proto_depIdxs = []int32{
-	10, // 0: cerebro.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	8,  // 1: cerebro.v1.EventEnvelope.attributes:type_name -> cerebro.v1.EventEnvelope.AttributesEntry
-	1,  // 2: cerebro.v1.Claim.subject_ref:type_name -> cerebro.v1.EntityRef
-	1,  // 3: cerebro.v1.Claim.object_ref:type_name -> cerebro.v1.EntityRef
-	10, // 4: cerebro.v1.Claim.observed_at:type_name -> google.protobuf.Timestamp
-	10, // 5: cerebro.v1.Claim.valid_from:type_name -> google.protobuf.Timestamp
-	10, // 6: cerebro.v1.Claim.valid_to:type_name -> google.protobuf.Timestamp
-	9,  // 7: cerebro.v1.Claim.attributes:type_name -> cerebro.v1.Claim.AttributesEntry
-	8,  // [8:8] is the sub-list for method output_type
-	8,  // [8:8] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	12, // 0: cerebro.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	10, // 1: cerebro.v1.EventEnvelope.attributes:type_name -> cerebro.v1.EventEnvelope.AttributesEntry
+	2,  // 2: cerebro.v1.ResourceLink.target:type_name -> cerebro.v1.ResourceRef
+	1,  // 3: cerebro.v1.Claim.subject_ref:type_name -> cerebro.v1.EntityRef
+	1,  // 4: cerebro.v1.Claim.object_ref:type_name -> cerebro.v1.EntityRef
+	12, // 5: cerebro.v1.Claim.observed_at:type_name -> google.protobuf.Timestamp
+	12, // 6: cerebro.v1.Claim.valid_from:type_name -> google.protobuf.Timestamp
+	12, // 7: cerebro.v1.Claim.valid_to:type_name -> google.protobuf.Timestamp
+	11, // 8: cerebro.v1.Claim.attributes:type_name -> cerebro.v1.Claim.AttributesEntry
+	9,  // [9:9] is the sub-list for method output_type
+	9,  // [9:9] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_primitives_proto_init() }
@@ -825,7 +996,7 @@ func file_cerebro_v1_primitives_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_primitives_proto_rawDesc), len(file_cerebro_v1_primitives_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

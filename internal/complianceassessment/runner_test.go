@@ -294,7 +294,7 @@ func TestInterruptedAssessmentRequeuesThenCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failedJob := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+	failedJob := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
 	if failedJob.FailureClass != platformjobs.JobFailureRetryable || failedJob.Attempt != 1 {
 		t.Fatalf("failed job = %#v, want retryable attempt 1", failedJob)
 	}
@@ -307,7 +307,7 @@ func TestInterruptedAssessmentRequeuesThenCompletes(t *testing.T) {
 	if err != nil || reconciled != 1 {
 		t.Fatalf("ReconcileInterruptedRuns() = (%d, %v), want (1, nil)", reconciled, err)
 	}
-	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted, 2*time.Second)
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted)
 	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
 	if err != nil || completed.State != RunComplete || completed.ResultCount != 1 {
 		t.Fatalf("completed run = (%#v, %v)", completed, err)
@@ -338,11 +338,11 @@ func TestInterruptedAssessmentRecoveryLoopRequeuesWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
 
 	recoveryCtx, cancelRecovery := context.WithCancel(context.Background())
 	recoveryDone := service.StartInterruptedRunRecovery(recoveryCtx, 5*time.Millisecond, nil)
-	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted, 2*time.Second)
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted)
 	cancelRecovery()
 	select {
 	case <-recoveryDone:
@@ -377,7 +377,7 @@ func TestInterruptedAssessmentExhaustionBecomesTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	for attempt := uint32(1); attempt <= maxAssessmentJobAttempts; attempt++ {
-		job := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed, 2*time.Second)
+		job := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
 		if job.Attempt != attempt || job.FailureClass != platformjobs.JobFailureRetryable {
 			t.Fatalf("failed job = %#v, want retryable attempt %d", job, attempt)
 		}
@@ -404,9 +404,9 @@ func TestInterruptedAssessmentExhaustionBecomesTerminal(t *testing.T) {
 	}
 }
 
-func waitForRunJobStatus(t *testing.T, store *runJobStore, jobID, status string, timeout time.Duration) *ports.Job {
+func waitForRunJobStatus(t *testing.T, store *runJobStore, jobID, status string) *ports.Job {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(2 * time.Second)
 	for {
 		job, err := store.GetJob(context.Background(), jobID)
 		if err != nil {
@@ -914,7 +914,7 @@ func (s *runStore) ListNonterminalRuns(_ context.Context, limit uint32) ([]Asses
 			continue
 		}
 		result = append(result, run)
-		if uint32(len(result)) == limit {
+		if len(result) == cap(result) {
 			break
 		}
 	}
