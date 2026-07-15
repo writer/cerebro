@@ -1357,7 +1357,7 @@ func hasCypherLimitClause(query string, tokens []cypherLimitToken) bool {
 		case 'n':
 			return true
 		case 'o':
-			if strings.HasPrefix(value, "$") || value == "+" || value == "-" {
+			if strings.HasPrefix(value, "$") || (value == "+" || value == "-") && cypherLimitClausePosition(query, tokens, index) {
 				return true
 			}
 		case 'i':
@@ -1367,6 +1367,26 @@ func hasCypherLimitClause(query string, tokens []cypherLimitToken) bool {
 		}
 	}
 	return false
+}
+
+func cypherLimitClausePosition(query string, tokens []cypherLimitToken, index int) bool {
+	if index == 0 {
+		return true
+	}
+	previous := tokens[index-1]
+	value := query[previous.start:previous.end]
+	if previous.kind == 'o' {
+		return value == ")" || value == "]" || value == "}"
+	}
+	if previous.kind != 'i' {
+		return true
+	}
+	switch strings.ToUpper(value) {
+	case "AND", "AS", "BY", "CALL", "CASE", "ELSE", "IN", "IS", "MATCH", "NOT", "OPTIONAL", "OR", "ORDER", "RETURN", "SKIP", "THEN", "UNION", "UNWIND", "WHEN", "WHERE", "WITH", "XOR", "YIELD":
+		return false
+	default:
+		return true
+	}
 }
 
 func cypherLimitExpressionBoundary(value string) bool {
