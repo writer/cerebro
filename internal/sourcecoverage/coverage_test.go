@@ -1,6 +1,7 @@
 package sourcecoverage
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -22,11 +23,14 @@ func TestEvaluateDistinguishesCoverageStates(t *testing.T) {
 			{ID: "entitlements", Type: "app_entitlement", Title: "App entitlements", Families: []string{"app_assignment"}, Support: sourcecdk.CoverageSupportPartial, HighValue: true},
 		},
 	}}
-	records := Evaluate(contracts, []RuntimeObservation{
+	records, err := Evaluate(context.Background(), contracts, []RuntimeObservation{
 		{RuntimeID: "okta-user", SourceID: "okta", TenantID: "writer", Family: "user", Status: "healthy"},
 		{RuntimeID: "okta-audit", SourceID: "okta", TenantID: "writer", Family: "audit", Status: "failing"},
 		{RuntimeID: "okta-app-assignment", SourceID: "okta", TenantID: "writer", Family: "app_assignment", Status: "healthy"},
 	}, Options{TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
 
 	byDimension := map[string]Record{}
 	for _, record := range records {
@@ -68,7 +72,7 @@ func TestEvaluateMatchesDeclaredRuntimeFamilies(t *testing.T) {
 			HighValue:       true,
 		}},
 	}}
-	records := Evaluate(contracts, []RuntimeObservation{
+	records, err := Evaluate(context.Background(), contracts, []RuntimeObservation{
 		{
 			RuntimeID:           "semantic-token",
 			SourceID:            "addigy",
@@ -85,6 +89,9 @@ func TestEvaluateMatchesDeclaredRuntimeFamilies(t *testing.T) {
 			Status:    "healthy",
 		},
 	}, Options{TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
 
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1: %#v", len(records), records)

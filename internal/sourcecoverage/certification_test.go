@@ -1,6 +1,7 @@
 package sourcecoverage
 
 import (
+	"context"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -45,14 +46,27 @@ func TestEvaluateCarriesOnlyExplicitRuntimeCertification(t *testing.T) {
 			ID: "users", Type: "entity_family", Title: "Users", Families: []string{"user"}, Support: sourcecdk.CoverageSupportSupported,
 		}},
 	}}
-	records := Evaluate(contracts, []RuntimeObservation{{
+	records, err := Evaluate(context.Background(), contracts, []RuntimeObservation{{
 		RuntimeID: "runtime-a", SourceID: "example", Family: "user", Status: "healthy", CertificationTier: CertificationFixtureValidated,
 	}}, Options{})
+	if err != nil {
+		t.Fatalf("Evaluate(explicit certification) error = %v", err)
+	}
 	if len(records) != 1 || records[0].CertificationTier != CertificationFixtureValidated {
 		t.Fatalf("Evaluate(explicit certification) = %#v", records)
 	}
-	records = Evaluate(contracts, []RuntimeObservation{{RuntimeID: "runtime-a", SourceID: "example", Family: "user", Status: "healthy"}}, Options{})
+	records, err = Evaluate(context.Background(), contracts, []RuntimeObservation{{RuntimeID: "runtime-a", SourceID: "example", Family: "user", Status: "healthy"}}, Options{})
+	if err != nil {
+		t.Fatalf("Evaluate(missing certification) error = %v", err)
+	}
 	if len(records) != 1 || records[0].CertificationTier != CertificationUnknown {
 		t.Fatalf("Evaluate(missing certification) = %#v, want unknown", records)
+	}
+	records, err = Evaluate(context.Background(), contracts, []RuntimeObservation{{RuntimeID: "runtime-a", SourceID: "example", Family: "user", Status: "healthy", CertificationTier: CertificationTier("future_tier")}}, Options{})
+	if err != nil {
+		t.Fatalf("Evaluate(unrecognized certification) error = %v", err)
+	}
+	if len(records) != 1 || records[0].CertificationTier != CertificationUnknown {
+		t.Fatalf("Evaluate(unrecognized certification) = %#v, want unknown", records)
 	}
 }

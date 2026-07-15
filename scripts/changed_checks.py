@@ -10,6 +10,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__:
+    from .embedded_wasm import EMBEDDED_WASM_MODULES
+else:
+    from embedded_wasm import EMBEDDED_WASM_MODULES
+
 
 class CommandPlan:
     def __init__(self, name: str, argv: list[str], reason: str) -> None:
@@ -93,8 +98,28 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
         add_command(commands, seen, "graph-action-check", ["make", "graph-action-check"], "Graph action catalog, generated registry, or generator changed.")
 
-    if any(path_matches(path, prefixes=("internal/graphagent/staticvalidator/",), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "internal/graphagent/staticvalidator.go", "internal/graphagent/staticvalidator.wasm")) for path in files):
-        add_command(commands, seen, "graphagent-static-validator-check", ["make", "graphagent-static-validator-check"], "Static Cypher validator source, host, or embedded module changed.")
+    changed_wasm_modules = [
+        module
+        for module in EMBEDDED_WASM_MODULES
+        if any(module.matches_changed_path(path) for path in files)
+    ]
+    if len(changed_wasm_modules) == len(EMBEDDED_WASM_MODULES):
+        add_command(
+            commands,
+            seen,
+            "rust-wasm-check",
+            ["make", "rust-wasm-check"],
+            "Changes affect every embedded Rust Wasm module.",
+        )
+    else:
+        for module in changed_wasm_modules:
+            add_command(
+                commands,
+                seen,
+                module.check_target,
+                ["make", module.check_target],
+                module.changed_reason,
+            )
 
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")

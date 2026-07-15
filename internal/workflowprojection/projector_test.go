@@ -806,6 +806,31 @@ func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
 	if _, ok := graph.links[anchorURN+"|has_context|"+updatedCoverageURN]; !ok {
 		t.Fatal("updated MITRE ATT&CK coverage link missing")
 	}
+
+	finding.Metadata = nil
+	recordedEvent, err = workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T12:10:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent(cleared) error = %v", err)
+	}
+	result, err = service.Project(context.Background(), recordedEvent)
+	if err != nil {
+		t.Fatalf("Project(cleared recorded) error = %v", err)
+	}
+	if result.LinksDeleted != 3 {
+		t.Fatalf("LinksDeleted after clearing metadata = %d, want 3 stale MITRE context links", result.LinksDeleted)
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1087"]; ok {
+		t.Fatal("MITRE ATT&CK technique link remained after clearing metadata")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0007"]; ok {
+		t.Fatal("MITRE ATT&CK tactic link remained after clearing metadata")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|"+updatedCoverageURN]; ok {
+		t.Fatal("MITRE ATT&CK coverage link remained after clearing metadata")
+	}
 }
 
 func TestProjectFindingRecordedPrunesBeyondCypherRowLimit(t *testing.T) {

@@ -37,7 +37,8 @@ jobs:
           - name: openapi
             command: make openapi-check openapi-lint
           - name: graph-actions
-            command: make graph-action-check graphagent-static-validator-check
+            command: make graph-action-check rust-wasm-check
+            setup_rust: true
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'
@@ -72,7 +73,7 @@ jobs:
           cache: false
 
       - name: Set up Rust
-        if: matrix.name == 'graph-actions'
+        if: matrix.setup_rust == true
         run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
 
       - name: Cache Go build data

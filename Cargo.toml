@@ -1,5 +1,11 @@
 [workspace]
-members = ["internal/graphagent/staticvalidator", "tools/graphactiongen"]
+members = [
+    "internal/graphagent/staticvalidator",
+    "internal/mitre/evaluator",
+    "internal/sourcecoverage/evaluator",
+    "internal/sourceprojection/panopticonresources",
+    "tools/graphactiongen",
+]
 resolver = "2"
 
 [workspace.package]

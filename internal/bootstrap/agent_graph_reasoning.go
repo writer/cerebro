@@ -30,6 +30,11 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	coverageContext, err := a.agentCoverageContext(r.Context(), request.TenantID)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	preflight := agentplatform.PreflightAgentRun(agentplatform.AgentRunPreflightRequest{
 		TenantID:              request.TenantID,
 		ActorID:               resolved.ActorID,
@@ -40,7 +45,7 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		RequestedScopes:       resolved.RequestedScopes,
 		ScopeUnrestricted:     resolved.ScopeUnrestricted || !resolved.Authenticated,
 		ProvenanceRequirement: "graph-reasoning",
-		CoverageContext:       a.agentCoverageContext(r.Context(), request.TenantID),
+		CoverageContext:       coverageContext,
 	})
 	if !preflight.Enabled {
 		writeGRCError(w, agentPreflightDeniedError(preflight))

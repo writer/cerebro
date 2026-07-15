@@ -137,7 +137,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if s == nil || (s.state == nil && s.graph == nil) {
 		return ports.ProjectionResult{}, nil
 	}
-	entities, links, err := s.ProjectRecords(event)
+	entities, links, err := s.ProjectRecordsContext(ctx, event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -495,20 +495,37 @@ func boundedConflictCategory(value string) string {
 	}
 }
 
-// ProjectRecords converts one event into normalized projection records without
-// writing them. Graph ingest uses this to coalesce repeated records before
-// touching Neo4j.
+// ProjectRecords converts one event into base projection records without context-aware
+// enrichments or writes. Projectors that require caller cancellation return
+// ErrProjectionContextRequired; use ProjectRecordsContext for those event kinds.
 func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return registry.Project(event)
+	})
+}
+
+// ProjectRecordsContext converts one event into normalized projection records while preserving caller cancellation.
+func (s *Service) ProjectRecordsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return s.projectRecords(event, func(registry *Registry, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return registry.ProjectContext(ctx, event)
+	})
+}
+
+func (s *Service) projectRecords(event *cerebrov1.EventEnvelope, project func(*Registry, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	if event == nil {
 		return nil, nil, fmt.Errorf("event is required")
 	}
 	if s == nil || s.registry == nil {
 		return nil, nil, nil
 	}
-	entities, links, err := s.registry.Project(event)
+	entities, links, err := project(s.registry, event)
 	if err != nil {
 		return nil, nil, err
 	}
+	return finalizeProjectedRecords(event, entities, links)
+}
+
+func finalizeProjectedRecords(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
 	if err := validateProjectedFabricContract(links); err != nil {
@@ -779,6 +796,18 @@ func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[stri
 		projectedLinks = append(projectedLinks, link)
 	}
 	return projectedEntities, projectedLinks
+}
+
+func projectionMaps(entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) (map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink) {
+	entityMap := map[string]*ports.ProjectedEntity{}
+	linkMap := map[string]*ports.ProjectedLink{}
+	for _, entity := range entities {
+		addEntity(entityMap, entity)
+	}
+	for _, link := range links {
+		addLink(linkMap, link)
+	}
+	return entityMap, linkMap
 }
 
 func tenantID(event *cerebrov1.EventEnvelope) (string, error) {

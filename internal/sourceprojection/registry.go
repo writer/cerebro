@@ -1,9 +1,11 @@
 package sourceprojection
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -24,6 +26,17 @@ type ProjectionHandler interface {
 // ProjectFunc converts one source event into graph projection records.
 type ProjectFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
+// ContextProjectFunc converts one source event using caller cancellation and deadlines.
+type ContextProjectFunc func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+
+// ErrProjectionContextRequired indicates that a context-free projection API cannot run the
+// registered projector. Call the corresponding Context method with a caller-owned context.
+var ErrProjectionContextRequired = errors.New("source projection requires caller context")
+
+type projectionCall struct {
+	ctx context.Context
+}
+
 // EventProjector binds one event kind to one projector.
 type EventProjector struct {
 	Kind    string
@@ -34,6 +47,7 @@ type EventProjector struct {
 type Registry struct {
 	mu                              sync.RWMutex
 	projectors                      map[string]ProjectFunc
+	contextProjectors               map[string]ContextProjectFunc
 	handlers                        map[string]ProjectionHandler
 	connectorDefinitionFingerprints map[string]string
 	connectorDefinitionKinds        map[string]map[string]struct{}
@@ -45,6 +59,7 @@ type Registry struct {
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 	registry := &Registry{
 		projectors:                      make(map[string]ProjectFunc, len(projectors)),
+		contextProjectors:               make(map[string]ContextProjectFunc),
 		handlers:                        make(map[string]ProjectionHandler),
 		connectorDefinitionFingerprints: map[string]string{},
 		connectorDefinitionKinds:        map[string]map[string]struct{}{},
@@ -6251,6 +6266,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"zylo.users":        zyloUsersProjections,
 
 	// awscollectorgen:projector (insert new kind projectors above this line)
+}, contextProjectors: map[string]ContextProjectFunc{
+	"panopticon.alert": panopticonAlertProjectionsContext,
+	"panopticon.case":  panopticonCaseProjectionsContext,
 }}
 
 func init() {
@@ -6303,29 +6321,25 @@ func (r *Registry) Kinds() []string {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.projectors))
+	kindSet := make(map[string]struct{}, len(r.projectors)+len(r.contextProjectors))
 	for kind := range r.projectors {
+		kindSet[kind] = struct{}{}
+	}
+	for kind := range r.contextProjectors {
+		kindSet[kind] = struct{}{}
+	}
+	kinds := make([]string, 0, len(kindSet))
+	for kind := range kindSet {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
 	return kinds
 }
 
-// Project applies the registered projector for an event.
+// Project applies the registered base projector for an event. Projectors that require caller
+// cancellation return ErrProjectionContextRequired; use ProjectContext for those event kinds.
 func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	if event == nil {
-		return nil, nil, fmt.Errorf("event is required")
-	}
-	if r == nil {
-		return nil, nil, nil
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	project, ok := r.projectors[strings.TrimSpace(event.GetKind())]
-	if !ok {
-		return nil, nil, nil
-	}
-	entities, links, err := project(event)
+	entities, links, err := r.project(projectionCall{}, event)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -6335,7 +6349,59 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	return entities, links, nil
 }
 
-// ProjectEvent projects one event through the built-in registry without stores.
+// ProjectContext applies the registered projector and context-aware enrichments.
+func (r *Registry) ProjectContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	if ctx == nil {
+		return nil, nil, fmt.Errorf("context is required")
+	}
+	entities, links, err := r.project(projectionCall{ctx: ctx}, event)
+	if err != nil {
+		return nil, nil, err
+	}
+	entities, links, err = addMITREProjectionContext(ctx, event, entities, links)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := ports.ValidateProjectedTenantScopes(entities, links); err != nil {
+		return nil, nil, err
+	}
+	return entities, links, nil
+}
+
+func (r *Registry) project(call projectionCall, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	if event == nil {
+		return nil, nil, fmt.Errorf("event is required")
+	}
+	if r == nil {
+		return nil, nil, nil
+	}
+	r.mu.RLock()
+	kind := strings.TrimSpace(event.GetKind())
+	project := r.projectors[kind]
+	contextProject := r.contextProjectors[kind]
+	connectorProject := r.connectorDefinitionProjectors[kind][strings.TrimSpace(event.GetSourceId())]
+	r.mu.RUnlock()
+	switch {
+	case connectorProject != nil:
+		return connectorProject(event)
+	case call.ctx != nil && contextProject != nil:
+		return contextProject(call.ctx, event)
+	case project != nil:
+		return project(event)
+	case contextProject != nil:
+		return nil, nil, fmt.Errorf("projector %q: %w", kind, ErrProjectionContextRequired)
+	default:
+		return nil, nil, nil
+	}
+}
+
+// ProjectEvent projects one event through the built-in base registry without stores. Projectors
+// that require caller cancellation return ErrProjectionContextRequired; use ProjectEventContext.
 func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return BuiltinRegistry().Project(event)
+}
+
+// ProjectEventContext projects one event through the built-in registry with caller cancellation and context-aware enrichments.
+func ProjectEventContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return BuiltinRegistry().ProjectContext(ctx, event)
 }
