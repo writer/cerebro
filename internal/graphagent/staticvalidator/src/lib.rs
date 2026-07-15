@@ -1191,6 +1191,7 @@ mod tests {
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b",
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b UNION MATCH (c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1",
             "CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } RETURN e LIMIT 25",
             "CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 } RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
         ];
@@ -1211,6 +1212,10 @@ mod tests {
         let validation = validate(oversized, 100);
         assert_eq!(validation.decision, Decision::LimitExceeded);
         assert_eq!(validation.detail, 101);
+
+        let nested_bounded =
+            lex_cypher("CALL { RETURN 1 LIMIT 1 UNION RETURN 2 LIMIT 2 } RETURN 1 LIMIT 25");
+        assert_eq!(query_limit(&nested_bounded), Some(25));
     }
 
     #[test]
