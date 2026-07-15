@@ -1,0 +1,45 @@
+[
+  {
+    "name": "fresh_complete",
+    "claim_verdict": "supported",
+    "supporting_evidence": 2,
+    "guardrails_passed": true,
+    "decision_state": "supported",
+    "confidence_level": "high"
+  },
+  {
+    "name": "partial_coverage",
+    "claim_verdict": "supported",
+    "supporting_evidence": 2,
+    "guardrails_passed": true,
+    "required_gap": true,
+    "decision_state": "supported_with_gaps",
+    "confidence_level": "low"
+  },
+  {
+    "name": "stale_required_evidence",
+    "claim_verdict": "supported",
+    "supporting_evidence": 1,
+    "guardrails_passed": true,
+    "required_stale": true,
+    "decision_state": "supported_with_gaps",
+    "confidence_level": "low"
+  },
+  {
+    "name": "conflicting_primary_claim",
+    "claim_verdict": "contradicted",
+    "supporting_evidence": 1,
+    "guardrails_passed": true,
+    "unresolved_conflict": true,
+    "primary_conflict": true,
+    "decision_state": "blocked",
+    "confidence_level": "medium"
+  },
+  {
+    "name": "no_evidence",
+    "claim_verdict": "unknown",
+    "guardrails_passed": true,
+    "decision_state": "insufficient_evidence",
+    "confidence_level": "unknown"
+  }
+]
