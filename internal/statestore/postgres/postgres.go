@@ -48,6 +48,7 @@ type grcTablesReady struct {
 	vendorDiscovery      bool
 	questionnaireRun     bool
 	complianceProgram    bool
+	sourceTrust          bool
 	complianceExchange   bool
 	complianceMonitor    bool
 	assessmentSampling   bool

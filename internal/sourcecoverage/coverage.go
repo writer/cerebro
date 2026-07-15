@@ -34,6 +34,7 @@ type RuntimeObservation struct {
 	Status              string
 	LastFailureCategory string
 	LastSyncedAt        string
+	CertificationTier   CertificationTier
 }
 
 type Record struct {
@@ -58,6 +59,7 @@ type Record struct {
 	ControlDomains           []string                       `json:"control_domains,omitempty"`
 	ControlRefs              []sourcecdk.CoverageControlRef `json:"control_refs,omitempty"`
 	SupportedRuntimeFamilies []string                       `json:"supported_runtime_families,omitempty"`
+	CertificationTier        CertificationTier              `json:"certification_tier"`
 }
 
 type Summary struct {
@@ -129,6 +131,7 @@ func ObservationsFromRuntimes(runtimes []*cerebrov1.SourceRuntime, status func(*
 			Status:              strings.TrimSpace(status(runtime)),
 			LastFailureCategory: strings.TrimSpace(runtime.GetConfig()["__cerebro_runtime_last_failure_category"]),
 			LastSyncedAt:        lastSyncedAt,
+			CertificationTier:   runtimeCertificationTier(runtime.GetConfig()[RuntimeCertificationConfigKey]),
 		})
 	}
 	return observations
@@ -357,6 +360,7 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
 		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
 		SupportedRuntimeFamilies: supportedRuntimeFamilies,
+		CertificationTier:        CertificationUnknown,
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
 		record.State = StateUnsupported
@@ -371,11 +375,20 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 	record.RuntimeID = best.RuntimeID
 	record.Family = best.Family
 	record.LastSyncedAt = best.LastSyncedAt
+	record.CertificationTier = BoundedCertificationTier(best.CertificationTier)
 	record.State = observationState(best)
 	if record.State == StateHealthy && dimension.Support == sourcecdk.CoverageSupportPartial {
 		record.State = StatePartial
 	}
 	return withBlindSpot(record)
+}
+
+func runtimeCertificationTier(value string) CertificationTier {
+	tier, ok := ParseCertificationTier(value)
+	if !ok {
+		return CertificationUnknown
+	}
+	return tier
 }
 
 func coverageRuntimeFamilies(dimension sourcecdk.CoverageDimension) []string {

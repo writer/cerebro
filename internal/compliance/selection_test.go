@@ -157,6 +157,54 @@ func TestResolveRuleCoverageCreditsMappedCustomFrameworkControls(t *testing.T) {
 	}
 }
 
+func TestResolveRuleCoverageDoesNotPromotePartialOrNegativeMappings(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		relationship string
+		reviewStatus string
+		wantMapped   bool
+	}{
+		{name: "legacy unspecified", wantMapped: true},
+		{name: "orphan complete review", reviewStatus: ControlMappingReviewStatusComplete},
+		{name: "equal", relationship: ControlMappingRelationshipEqualTo, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
+		{name: "equivalent", relationship: ControlMappingRelationshipEquivalentTo, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
+		{name: "source superset", relationship: ControlMappingRelationshipSupersetOf, reviewStatus: ControlMappingReviewStatusComplete, wantMapped: true},
+		{name: "source subset", relationship: ControlMappingRelationshipSubsetOf, reviewStatus: ControlMappingReviewStatusComplete},
+		{name: "intersection", relationship: ControlMappingRelationshipIntersectsWith, reviewStatus: ControlMappingReviewStatusComplete},
+		{name: "no relationship", relationship: ControlMappingRelationshipNoRelationship, reviewStatus: ControlMappingReviewStatusComplete},
+		{name: "draft equivalent", relationship: ControlMappingRelationshipEquivalentTo, reviewStatus: ControlMappingReviewStatusDraft},
+		{name: "superseded equivalent", relationship: ControlMappingRelationshipEquivalentTo, reviewStatus: ControlMappingReviewStatusSuperseded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolution := SelectionResolution{Controls: []ResolvedControl{{
+				FrameworkName: "Source Framework",
+				Control: Control{
+					ID: "IAM-1",
+					MapsTo: []ControlRef{{
+						FrameworkName: "Target Framework",
+						ControlID:     "AC-1",
+						Relationship:  test.relationship,
+						ReviewStatus:  test.reviewStatus,
+					}},
+				},
+			}}}
+			coverage := ResolveRuleCoverage(resolution, []RuleControlMapping{{
+				RuleID:      "target-rule",
+				ControlRefs: []ControlRef{{FrameworkName: "Target Framework", ControlID: "AC-1"}},
+			}})
+			if got := len(coverage.MappedRules) != 0; got != test.wantMapped {
+				t.Fatalf("MappedRules = %#v, mapped %t, want %t", coverage.MappedRules, got, test.wantMapped)
+			}
+		})
+	}
+}
+
+func TestControlMappingCreditsCoverageRejectsOrphanProvenance(t *testing.T) {
+	if ControlMappingCreditsCoverage(ControlRef{MappingAuthority: "Compliance Engineering"}) {
+		t.Fatal("ControlMappingCreditsCoverage() = true, want false for provenance without typed relationship semantics")
+	}
+}
+
 func testSelectionIndex(t *testing.T) *CatalogIndex {
 	t.Helper()
 	catalog := loadTestCatalog(t, `
@@ -209,6 +257,14 @@ frameworks:
             maps_to:
               - framework_id: soc2
                 control_id: CC6.1
+                relationship: equivalent-to
+                matching_rationale: functional
+                mapping_description: Both controls require MFA before privileged access is granted.
+                mapping_authority: Compliance Engineering
+                mapping_source: https://example.com/crosswalks/identity
+                review_status: complete
+                reviewed_at: 2026-07-14
+                mapping_version: "0.1"
 `)
 	index, issues := BuildCatalogIndex(catalog)
 	if len(issues) != 0 {
