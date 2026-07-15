@@ -81,10 +81,10 @@ func TestDeriveResolutionEpisodesTracksDurabilityAndRecurrence(t *testing.T) {
 	if len(episodes) != 2 {
 		t.Fatalf("episodes = %d, want 2", len(episodes))
 	}
-	if episodes[0].Durability != DurabilityRecurred || episodes[0].TimeToRecurrence != 35*24*time.Hour {
+	if episodes[0].Durability != EpisodeDurabilityRecurred || episodes[0].TimeToRecurrence != 35*24*time.Hour {
 		t.Fatalf("first episode = %+v", episodes[0])
 	}
-	if episodes[1].Durability != DurabilityOpen || !episodes[1].OpenedAt.Equal(recurred) {
+	if episodes[1].Durability != EpisodeDurabilityOpen || !episodes[1].OpenedAt.Equal(recurred) {
 		t.Fatalf("second episode = %+v", episodes[1])
 	}
 }
@@ -97,7 +97,7 @@ func TestDeriveResolutionEpisodesDoesNotCreditUnhealthySource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if episodes[0].Durability != DurabilityIndeterminateSourceUnhealthy {
+	if episodes[0].Durability != EpisodeDurabilityIndeterminateSourceUnhealthy {
 		t.Fatalf("durability = %s", episodes[0].Durability)
 	}
 }

@@ -86,7 +86,7 @@ func NewPredictionReceipt(input PredictionInput) (PredictionReceipt, error) {
 		RollbackPlanDigest:       strings.TrimSpace(input.RollbackPlanDigest),
 		CreatedAt:                canonicalTime(input.CreatedAt),
 	}
-	receipt.Digest, err = digest(receipt)
+	receipt.Digest, err = digestCanonicalJSON(receipt)
 	return receipt, err
 }
 
@@ -266,7 +266,7 @@ func NewRealizedResult(input RealizedInput) (RealizedResult, error) {
 		result.RiskPredictionError = &errorValue
 	}
 	var err error
-	result.Digest, err = digest(result)
+	result.Digest, err = digestCanonicalJSON(result)
 	return result, err
 }
 
@@ -293,13 +293,13 @@ type LifecycleObservation struct {
 type DurabilityState string
 
 const (
-	DurabilityOpen                         DurabilityState = "open"
-	DurabilityVerifiedClosed               DurabilityState = "verified_closed"
-	DurabilityObserving                    DurabilityState = "durability_observing"
-	Durability30Days                       DurabilityState = "durable_30d"
-	Durability90Days                       DurabilityState = "durable_90d"
-	DurabilityRecurred                     DurabilityState = "recurred"
-	DurabilityIndeterminateSourceUnhealthy DurabilityState = "indeterminate_source_unhealthy"
+	EpisodeDurabilityOpen                         DurabilityState = "open"
+	EpisodeDurabilityVerifiedClosed               DurabilityState = "verified_closed"
+	EpisodeDurabilityObserving                    DurabilityState = "durability_observing"
+	EpisodeDurability30Days                       DurabilityState = "durable_30d"
+	EpisodeDurability90Days                       DurabilityState = "durable_90d"
+	EpisodeDurabilityRecurred                     DurabilityState = "recurred"
+	EpisodeDurabilityIndeterminateSourceUnhealthy DurabilityState = "indeterminate_source_unhealthy"
 )
 
 type ResolutionEpisode struct {
@@ -365,28 +365,28 @@ func DeriveResolutionEpisodes(observations []LifecycleObservation, asOf time.Tim
 			episodes[index].ResolvedAt = item.ObservedAt
 			episodes[index].VerificationID = item.VerificationID
 			episodes[index].TimeToResolution = item.ObservedAt.Sub(episodes[index].OpenedAt)
-			episodes[index].Durability = DurabilityVerifiedClosed
+			episodes[index].Durability = EpisodeDurabilityVerifiedClosed
 		case ObservationRecurred:
 			if !ok || episodes[index].ResolvedAt.IsZero() {
 				return nil, fmt.Errorf("%w: recurrence without verified closure", ErrInvalidRecord)
 			}
 			episodes[index].ReopenedAt = item.ObservedAt
 			episodes[index].TimeToRecurrence = item.ObservedAt.Sub(episodes[index].ResolvedAt)
-			episodes[index].Durability = DurabilityRecurred
+			episodes[index].Durability = EpisodeDurabilityRecurred
 			episodes = append(episodes, newEpisode(item))
 			active[key] = len(episodes) - 1
 		case ObservationSourceUnhealthy:
 			if ok && !episodes[index].ResolvedAt.IsZero() && episodes[index].ReopenedAt.IsZero() {
-				episodes[index].Durability = DurabilityIndeterminateSourceUnhealthy
+				episodes[index].Durability = EpisodeDurabilityIndeterminateSourceUnhealthy
 			}
 		case ObservationSourceRestored:
-			if ok && episodes[index].Durability == DurabilityIndeterminateSourceUnhealthy {
+			if ok && episodes[index].Durability == EpisodeDurabilityIndeterminateSourceUnhealthy {
 				episodes[index].Durability = durabilityAt(episodes[index], asOf)
 			}
 		}
 	}
 	for i := range episodes {
-		if episodes[i].Durability != DurabilityRecurred && episodes[i].Durability != DurabilityIndeterminateSourceUnhealthy {
+		if episodes[i].Durability != EpisodeDurabilityRecurred && episodes[i].Durability != EpisodeDurabilityIndeterminateSourceUnhealthy {
 			episodes[i].Durability = durabilityAt(episodes[i], asOf)
 		}
 	}
@@ -473,24 +473,24 @@ func newEpisode(item LifecycleObservation) ResolutionEpisode {
 	opened := item.ObservedAt
 	payload := strings.Join([]string{item.TenantID, item.FindingID, item.Fingerprint, opened.Format(time.RFC3339Nano)}, "\x00")
 	sum := sha256.Sum256([]byte(payload))
-	return ResolutionEpisode{EpisodeID: "episode-" + hex.EncodeToString(sum[:12]), TenantID: item.TenantID, FindingID: item.FindingID, Fingerprint: item.Fingerprint, RuleID: item.RuleID, OpenedAt: opened, Durability: DurabilityOpen}
+	return ResolutionEpisode{EpisodeID: "episode-" + hex.EncodeToString(sum[:12]), TenantID: item.TenantID, FindingID: item.FindingID, Fingerprint: item.Fingerprint, RuleID: item.RuleID, OpenedAt: opened, Durability: EpisodeDurabilityOpen}
 }
 
 func durabilityAt(episode ResolutionEpisode, asOf time.Time) DurabilityState {
 	if episode.ResolvedAt.IsZero() {
-		return DurabilityOpen
+		return EpisodeDurabilityOpen
 	}
 	age := asOf.Sub(episode.ResolvedAt)
 	if age >= 90*24*time.Hour {
-		return Durability90Days
+		return EpisodeDurability90Days
 	}
 	if age >= 30*24*time.Hour {
-		return Durability30Days
+		return EpisodeDurability30Days
 	}
 	if age > 0 {
-		return DurabilityObserving
+		return EpisodeDurabilityObserving
 	}
-	return DurabilityVerifiedClosed
+	return EpisodeDurabilityVerifiedClosed
 }
 
 func normalizeFindingRevisions(values []FindingRevision) ([]FindingRevision, error) {
@@ -523,7 +523,7 @@ func normalizeFindingRevisions(values []FindingRevision) ([]FindingRevision, err
 	return result, nil
 }
 
-func digest(value any) (string, error) {
+func digestCanonicalJSON(value any) (string, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return "", err
