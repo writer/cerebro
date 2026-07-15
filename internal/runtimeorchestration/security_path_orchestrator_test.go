@@ -231,16 +231,16 @@ func verificationAttackPath(observedAt time.Time) attackpath.Path {
 	account := attackpath.NodeRef{URN: "urn:cerebro:tenant-a:account:prod", EntityType: "cloud.account", Label: "prod"}
 	principal := attackpath.NodeRef{URN: "urn:cerebro:tenant-a:principal:role", EntityType: "role", Label: "role"}
 	permission := attackpath.NodeRef{URN: "urn:cerebro:tenant-a:permission:admin", EntityType: "policy", Label: "admin"}
-	edge := func(from attackpath.NodeRef, relation string, to attackpath.NodeRef, runtimeID, eventID string) attackpath.Edge {
-		return attackpath.Edge{From: from, Relation: relation, To: to, Direction: "forward", SourceID: "aws", SourceRuntimeID: runtimeID, SourceEventID: eventID, ObservedAt: observedAt.Add(-time.Minute)}
+	edge := func(from attackpath.NodeRef, relation string, to attackpath.NodeRef, eventID string) attackpath.Edge {
+		return attackpath.Edge{From: from, Relation: relation, To: to, Direction: "forward", SourceID: "aws", SourceRuntimeID: "runtime-a", SourceEventID: eventID, ObservedAt: observedAt.Add(-time.Minute)}
 	}
-	exposure := edge(public, "can_reach", resource, "runtime-a", "event-reach")
+	exposure := edge(public, "can_reach", resource, "event-reach")
 	exposure.AssertionRuntimeIDs = []string{"runtime-b", "runtime-a"}
 	return attackpath.Path{
 		PublicPrincipal: public, ExposedResource: resource, CloudAccount: account, Principal: principal, Permission: permission,
 		ReachRelation: "can_reach", AccessRelation: "can_admin", RelationChain: []string{"runs_as"},
-		ExposureEdge: exposure, ResourceAccountEdge: edge(resource, "belongs_to", account, "runtime-a", "event-resource-account"),
-		TraversalEdges: []attackpath.Edge{edge(resource, "runs_as", principal, "runtime-a", "event-runtime")},
-		PrivilegeEdge:  edge(principal, "can_admin", permission, "runtime-a", "event-admin"), PermissionAccountEdge: edge(permission, "belongs_to", account, "runtime-a", "event-permission-account"),
+		ExposureEdge: exposure, ResourceAccountEdge: edge(resource, "belongs_to", account, "event-resource-account"),
+		TraversalEdges: []attackpath.Edge{edge(resource, "runs_as", principal, "event-runtime")},
+		PrivilegeEdge:  edge(principal, "can_admin", permission, "event-admin"), PermissionAccountEdge: edge(permission, "belongs_to", account, "event-permission-account"),
 	}
 }

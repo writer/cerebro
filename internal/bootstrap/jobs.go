@@ -332,10 +332,11 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 		SecurityPathRustShadow: boolPayload(job.Payload, "security_path_rust_shadow"),
 		ObservationID:          strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
-	result, refs, mapErr := orchestration.JobPayload()
+	payload, refs, mapErr := orchestration.JobPayload()
 	if mapErr != nil {
 		return nil, nil, mapErr
 	}
+	result = map[string]any(payload.Result())
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
 	if orchestration.FindingRules != nil {
 		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)

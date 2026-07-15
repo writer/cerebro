@@ -1588,7 +1588,7 @@ func (s *Store) CountProjectedLinksMissingAssertions(ctx context.Context, tenant
 	tenantID = strings.TrimSpace(tenantID)
 	relations = normalizeCleanupValues(relations)
 	if tenantID == "" || len(relations) == 0 {
-		return 0, errors.New("tenant_id and relations are required for projected link assertion coverage")
+		return 0, ErrProjectionAssertionScopeRequired
 	}
 	if err := s.requireConfigured(); err != nil {
 		return 0, err
