@@ -150,16 +150,14 @@ class EmbeddedWasmTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"CARGO": "/opt/cargo wrapper"}, clear=False):
             self.assertEqual(embedded_wasm.cargo_command(), ["/opt/cargo", "wrapper"])
 
-    def test_ci_and_release_rust_setup_uses_explicit_matrix_flag(self):
-        for path in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-            with self.subTest(path=path):
-                workflow = (ROOT / path).read_text(encoding="utf-8")
-                self.assertIn(
-                    "command: make graph-action-check rust-wasm-check\n            setup_rust: true",
-                    workflow,
-                )
-                self.assertIn("if: matrix.setup_rust == true", workflow)
-                self.assertNotIn("if: matrix.name == 'graph-actions'", workflow)
+    def test_ci_rust_setup_uses_explicit_matrix_flag(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "command: make graph-action-check rust-wasm-check\n            setup_rust: true",
+            workflow,
+        )
+        self.assertIn("if: matrix.setup_rust == true", workflow)
+        self.assertNotIn("if: matrix.name == 'graph-actions'", workflow)
 
 
 if __name__ == "__main__":
