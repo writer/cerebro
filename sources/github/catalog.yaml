@@ -1,6 +1,17 @@
 id: github
 name: GitHub
 description: GitHub audit, pull request, and Dependabot alert source.
+certification:
+  owner: source-runtime
+  reviewed_at: 2026-07-14T00:00:00Z
+  expires_at: 2026-10-14T00:00:00Z
+  evidence:
+    - kind: provider_spec
+      reference: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+      digest: sha256:9b0a095713ff578ebe58b7d7fc284470b6ac7fd005cb384bed2e2c0f7640dc0a
+    - kind: sandbox_contract
+      receipt: sources/github/testdata
+      digest: sha256:68926f0e37058aae12ec59a91bd8c8d567783c06e47f2f91f1f09b169452dfa4
 emitted_kinds:
   - github.audit
   - github.code.repository

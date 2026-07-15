@@ -1,6 +1,17 @@
 id: okta
 name: Okta
 description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, control-plane asset, and admin role source.
+certification:
+  owner: source-runtime
+  reviewed_at: 2026-07-14T00:00:00Z
+  expires_at: 2026-10-14T00:00:00Z
+  evidence:
+    - kind: provider_spec
+      reference: https://raw.githubusercontent.com/okta/okta-management-openapi-spec/master/dist/current/management-minimal.yaml
+      digest: sha256:97f151486fbfa9418e3d8abab77e9d9c3cfa1d2eb53cdecd60ee580ea5b5b439
+    - kind: sandbox_contract
+      receipt: sources/okta/testdata
+      digest: sha256:b9e2f6817b7ffef26c3d07bf53afb00fed2ff050d5050a2e6ac72178c8265a7b
 provider_api:
   status: verified
   basis: declared

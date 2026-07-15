@@ -19,11 +19,17 @@ const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
 
 const (
-	defaultPostgresMaxOpenConns    = 25
-	defaultPostgresMaxIdleConns    = 5
-	defaultPostgresConnMaxLifetime = 5 * time.Minute
-	defaultPostgresConnMaxIdleTime = time.Minute
-	maxConfigFileBytes             = 4 << 20
+	defaultPostgresMaxOpenConns        = 25
+	defaultPostgresMaxIdleConns        = 5
+	defaultPostgresConnMaxLifetime     = 5 * time.Minute
+	defaultPostgresConnMaxIdleTime     = time.Minute
+	defaultDeadLetterPendingRetention  = 7 * 24 * time.Hour
+	defaultDeadLetterTerminalRetention = 30 * 24 * time.Hour
+	defaultDeadLetterWarningRecords    = int64(10_000)
+	defaultDeadLetterHardRecords       = int64(100_000)
+	defaultDeadLetterWarningBytes      = int64(1 << 30)
+	defaultDeadLetterHardBytes         = int64(10 << 30)
+	maxConfigFileBytes                 = 4 << 20
 )
 
 const (
@@ -58,10 +64,19 @@ type Config struct {
 	ConnectorCredentials  ConnectorCredentialConfig
 	ConnectorSecretStores ConnectorSecretStoreConfig
 	ConnectorAccess       ConnectorAccessConfig
+	ContentPacks          ContentPackConfig
 	GraphActions          GraphActionsConfig
 	DocumentParsing       DocumentParsingConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
+}
+
+// ContentPackConfig selects signed declarative content without changing the kernel binary.
+type ContentPackConfig struct {
+	Root          string
+	AllowlistPath string
+	TenantID      string
+	KernelVersion string
 }
 
 // RateLimitConfig controls global API rate limiting.
@@ -94,12 +109,18 @@ type AppendLogConfig struct {
 
 // StateStoreConfig selects and configures the current-state store driver.
 type StateStoreConfig struct {
-	Driver                  string
-	PostgresDSN             string
-	PostgresMaxOpenConns    int
-	PostgresMaxIdleConns    int
-	PostgresConnMaxLifetime time.Duration
-	PostgresConnMaxIdleTime time.Duration
+	Driver                      string
+	PostgresDSN                 string
+	PostgresMaxOpenConns        int
+	PostgresMaxIdleConns        int
+	PostgresConnMaxLifetime     time.Duration
+	PostgresConnMaxIdleTime     time.Duration
+	DeadLetterPendingRetention  time.Duration
+	DeadLetterTerminalRetention time.Duration
+	DeadLetterWarningRecords    int64
+	DeadLetterHardRecords       int64
+	DeadLetterWarningBytes      int64
+	DeadLetterHardBytes         int64
 }
 
 // GraphStoreConfig selects and configures the graph projection store driver.
@@ -152,11 +173,12 @@ type ConnectorSecretStoreConfig struct {
 
 // ConnectorAccessConfig controls connector catalog visibility and setup gates.
 type ConnectorAccessConfig struct {
-	HiddenSources       []string
-	RestrictedSources   []string
-	RestrictionReason   string
-	RequestAccessURL    string
-	RequestAccessAction string
+	HiddenSources        []string
+	RestrictedSources    []string
+	MinCertificationTier string
+	RestrictionReason    string
+	RequestAccessURL     string
+	RequestAccessAction  string
 }
 
 // GraphActionsConfig configures graph action executors.
@@ -474,11 +496,18 @@ func Load() (Config, error) {
 			},
 		},
 		ConnectorAccess: ConnectorAccessConfig{
-			HiddenSources:       parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
-			RestrictedSources:   parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
-			RestrictionReason:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
-			RequestAccessURL:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
-			RequestAccessAction: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
+			HiddenSources:        parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
+			RestrictedSources:    parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
+			MinCertificationTier: strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_SOURCE_MIN_CERTIFICATION_TIER"))),
+			RestrictionReason:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
+			RequestAccessURL:     strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
+			RequestAccessAction:  strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
+		},
+		ContentPacks: ContentPackConfig{
+			Root:          strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_ROOT")),
+			AllowlistPath: strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_ALLOWLIST_PATH")),
+			TenantID:      strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_TENANT_ID")),
+			KernelVersion: strings.TrimSpace(os.Getenv("CEREBRO_CONTENT_PACK_KERNEL_VERSION")),
 		},
 		GraphActions: GraphActionsConfig{
 			AccessApprovals: AccessApprovalsActionConfig{
@@ -510,6 +539,21 @@ func Load() (Config, error) {
 				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
 			},
 		},
+	}
+	if cfg.ContentPacks.KernelVersion == "" {
+		cfg.ContentPacks.KernelVersion = "1.0.0"
+	}
+	contentPackConfigured := cfg.ContentPacks.Root != "" || cfg.ContentPacks.AllowlistPath != "" || cfg.ContentPacks.TenantID != ""
+	if contentPackConfigured && (cfg.ContentPacks.Root == "" || cfg.ContentPacks.AllowlistPath == "" || cfg.ContentPacks.TenantID == "") {
+		return Config{}, fmt.Errorf("CEREBRO_CONTENT_PACK_ROOT, CEREBRO_CONTENT_PACK_ALLOWLIST_PATH, and CEREBRO_CONTENT_PACK_TENANT_ID must be set together")
+	}
+	if cfg.ConnectorAccess.MinCertificationTier == "" {
+		cfg.ConnectorAccess.MinCertificationTier = "cataloged"
+	}
+	switch cfg.ConnectorAccess.MinCertificationTier {
+	case "cataloged", "spec_verified", "contract_tested", "production_observed", "outcome_validated":
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_SOURCE_MIN_CERTIFICATION_TIER %q", cfg.ConnectorAccess.MinCertificationTier)
 	}
 	authEnabled, err := parseBoolEnvDefault("CEREBRO_API_AUTH_ENABLED", !cfg.DevMode)
 	if err != nil {
@@ -628,6 +672,27 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.StateStore.PostgresConnMaxIdleTime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterPendingRetention, err = parseDurationEnv("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION", defaultDeadLetterPendingRetention); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterTerminalRetention, err = parseDurationEnv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", defaultDeadLetterTerminalRetention); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterWarningRecords, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", defaultDeadLetterWarningRecords); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterHardRecords, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", defaultDeadLetterHardRecords); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterWarningBytes, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES", defaultDeadLetterWarningBytes); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.DeadLetterHardBytes, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_BYTES", defaultDeadLetterHardBytes); err != nil {
+		return Config{}, err
+	}
+	if err := validateDeadLetterPolicy(cfg.StateStore); err != nil {
 		return Config{}, err
 	}
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
@@ -816,6 +881,24 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 	}
 	if cfg.PostgresConnMaxIdleTime == 0 {
 		cfg.PostgresConnMaxIdleTime = defaultPostgresConnMaxIdleTime
+	}
+	if cfg.DeadLetterPendingRetention == 0 {
+		cfg.DeadLetterPendingRetention = defaultDeadLetterPendingRetention
+	}
+	if cfg.DeadLetterTerminalRetention == 0 {
+		cfg.DeadLetterTerminalRetention = defaultDeadLetterTerminalRetention
+	}
+	if cfg.DeadLetterWarningRecords == 0 {
+		cfg.DeadLetterWarningRecords = defaultDeadLetterWarningRecords
+	}
+	if cfg.DeadLetterHardRecords == 0 {
+		cfg.DeadLetterHardRecords = defaultDeadLetterHardRecords
+	}
+	if cfg.DeadLetterWarningBytes == 0 {
+		cfg.DeadLetterWarningBytes = defaultDeadLetterWarningBytes
+	}
+	if cfg.DeadLetterHardBytes == 0 {
+		cfg.DeadLetterHardBytes = defaultDeadLetterHardBytes
 	}
 	return cfg
 }
@@ -1014,6 +1097,37 @@ func parseIntEnv(name string, defaultValue int) (int, error) {
 		return 0, fmt.Errorf("%s must be greater than or equal to zero", name)
 	}
 	return value, nil
+}
+
+func parseInt64Env(name string, defaultValue int64) (int64, error) {
+	raw, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to zero", name)
+	}
+	return value, nil
+}
+
+func validateDeadLetterPolicy(cfg StateStoreConfig) error {
+	if cfg.DeadLetterPendingRetention <= 0 {
+		return errors.New("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION must be greater than zero")
+	}
+	if cfg.DeadLetterTerminalRetention <= 0 {
+		return errors.New("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION must be greater than zero")
+	}
+	if cfg.DeadLetterWarningRecords <= 0 || cfg.DeadLetterHardRecords <= 0 || cfg.DeadLetterWarningRecords >= cfg.DeadLetterHardRecords {
+		return errors.New("dead-letter record limits require 0 < warning < hard")
+	}
+	if cfg.DeadLetterWarningBytes <= 0 || cfg.DeadLetterHardBytes <= 0 || cfg.DeadLetterWarningBytes >= cfg.DeadLetterHardBytes {
+		return errors.New("dead-letter byte limits require 0 < warning < hard")
+	}
+	return nil
 }
 
 func parseFloatEnv(name string, defaultValue float64) (float64, error) {
