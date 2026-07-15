@@ -269,6 +269,18 @@ func normalizeCanonicalReflectValue(value reflect.Value) {
 		for index := 0; index < value.Len(); index++ {
 			normalizeCanonicalReflectValue(value.Index(index))
 		}
+		if value.Type().Elem().Kind() == reflect.String && value.CanSet() {
+			stringsValue := make([]string, value.Len())
+			for index := 0; index < value.Len(); index++ {
+				stringsValue[index] = value.Index(index).String()
+			}
+			stringsValue = normalizeStrings(stringsValue)
+			normalized := reflect.MakeSlice(value.Type(), len(stringsValue), len(stringsValue))
+			for index := range stringsValue {
+				normalized.Index(index).SetString(stringsValue[index])
+			}
+			value.Set(normalized)
+		}
 	case reflect.Map:
 		if value.IsNil() && value.CanSet() {
 			value.Set(reflect.MakeMap(value.Type()))

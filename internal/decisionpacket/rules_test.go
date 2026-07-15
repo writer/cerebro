@@ -294,20 +294,22 @@ func TestCanonicalizePacketNormalizesEmbeddedAgentContracts(t *testing.T) {
 	packet := Packet{
 		GeneratedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
 		Guardrails: agentplatform.AgentDecisionGuardrails{
-			Version:         " v1 ",
-			Readiness:       agentplatform.AgentReadinessAssessment{State: " READY ", Reasons: nil},
-			VerifierResults: []agentplatform.AgentVerifierResult{{ID: " verifier-1 ", Status: " PASS ", Evidence: nil}},
+			Version:           " v1 ",
+			Readiness:         agentplatform.AgentReadinessAssessment{State: " READY ", Reasons: []string{" warning-b ", "warning-a", "warning-a"}},
+			RequiredWriteBack: []string{" event-b ", "event-a", "event-a"},
+			VerifierResults:   []agentplatform.AgentVerifierResult{{ID: " verifier-1 ", Status: " PASS ", Evidence: nil}},
 		},
-		Claim: agentplatform.ClaimVerification{Claim: " Asset is public ", Verdict: " SUPPORTED ", SupportingEvidence: nil, RequiredWriteBack: nil},
+		Claim: agentplatform.ClaimVerification{Claim: " Asset is public ", Verdict: " SUPPORTED ", SupportingEvidence: nil, Warnings: []string{" warning-b ", "warning-a", "warning-a"}, RequiredWriteBack: nil},
 	}
 	spaced, spacedJSON, err := CanonicalizePacket(packet)
 	if err != nil {
 		t.Fatalf("CanonicalizePacket(spaced agent contracts) error = %v", err)
 	}
 	packet.Guardrails.Version = "v1"
-	packet.Guardrails.Readiness = agentplatform.AgentReadinessAssessment{State: "ready", Reasons: []string{}}
+	packet.Guardrails.Readiness = agentplatform.AgentReadinessAssessment{State: "ready", Reasons: []string{"warning-a", "warning-b"}}
+	packet.Guardrails.RequiredWriteBack = []string{"event-a", "event-b"}
 	packet.Guardrails.VerifierResults[0] = agentplatform.AgentVerifierResult{ID: "verifier-1", Status: "pass", Evidence: []string{}}
-	packet.Claim = agentplatform.ClaimVerification{Claim: "Asset is public", Verdict: "supported", SupportingEvidence: []agentplatform.EvidenceReference{}, RequiredWriteBack: []string{}, Blockers: []agentplatform.CapabilityDecisionBlocker{}, Warnings: []string{}, CounterEvidence: []agentplatform.EvidenceReference{}, MissingEvidence: []string{}, VerifierResults: []agentplatform.AgentVerifierResult{}}
+	packet.Claim = agentplatform.ClaimVerification{Claim: "Asset is public", Verdict: "supported", SupportingEvidence: []agentplatform.EvidenceReference{}, RequiredWriteBack: []string{}, Blockers: []agentplatform.CapabilityDecisionBlocker{}, Warnings: []string{"warning-a", "warning-b"}, CounterEvidence: []agentplatform.EvidenceReference{}, MissingEvidence: []string{}, VerifierResults: []agentplatform.AgentVerifierResult{}}
 	plain, plainJSON, err := CanonicalizePacket(packet)
 	if err != nil {
 		t.Fatalf("CanonicalizePacket(plain agent contracts) error = %v", err)
