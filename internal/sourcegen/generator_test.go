@@ -1,6 +1,7 @@
 package sourcegen
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcegen/stampfile"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 )
 
@@ -83,6 +85,10 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	if got := receipt["health_endpoint"]; got != "/source-runtimes/health?source_id=demo_source" {
 		t.Fatalf("health_endpoint = %#v", got)
+	}
+	runtimeDoc := readGeneratedFile(t, outputDir, "sources/demo_source/SOURCE_RUNTIME.md")
+	if !strings.Contains(runtimeDoc, "- Health endpoint: `/source-runtimes/health?source_id=demo_source`") {
+		t.Fatalf("generated runtime documentation has the wrong health endpoint:\n%s", runtimeDoc)
 	}
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
@@ -2198,6 +2204,141 @@ func TestGeneratePreflightsExistingFilesBeforeWriting(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "sources", "demo_source", "catalog.yaml")); !os.IsNotExist(err) {
 		t.Fatalf("catalog.yaml was written before preflight completed, err=%v", err)
+	}
+}
+
+func TestGenerateRegeneratesUnmodifiedOutputsWithoutForce(t *testing.T) {
+	outputDir := t.TempDir()
+	request := Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host", "server"},
+		Name:         "Demo Source",
+		OutputDir:    outputDir,
+	}
+	first, err := Generate(request)
+	if err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	if _, err := os.Stat(first.GenerationManifest); err != nil {
+		t.Fatalf("generation manifest stat: %v", err)
+	}
+
+	request.Name = "Renamed Demo Source"
+	request.AssetSchemas = []string{"host"}
+	second, err := Generate(request)
+	if err != nil {
+		t.Fatalf("second Generate() error = %v", err)
+	}
+	if second.GenerationManifest != first.GenerationManifest {
+		t.Fatalf("manifest path changed from %q to %q", first.GenerationManifest, second.GenerationManifest)
+	}
+	if source := readGeneratedFile(t, outputDir, "sources/demo_source/catalog.yaml"); !strings.Contains(source, "Renamed Demo Source") {
+		t.Fatalf("regenerated catalog missing updated name:\n%s", source)
+	}
+	for _, stale := range []string{
+		"sources/demo_source/testdata/discover_asset_server.json",
+		"sources/demo_source/testdata/read_asset_server.json",
+	} {
+		if _, err := os.Stat(filepath.Join(outputDir, stale)); !os.IsNotExist(err) {
+			t.Fatalf("stale output %s still exists, err=%v", stale, err)
+		}
+	}
+}
+
+func TestGenerateRefusesToOverwriteOutputChangedAfterGeneration(t *testing.T) {
+	outputDir := t.TempDir()
+	request := Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host"},
+		OutputDir:    outputDir,
+	}
+	if _, err := Generate(request); err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	sourcePath := filepath.Join(outputDir, "sources", "demo_source", "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package demosource\n\n// operator change\n"), 0o600); err != nil {
+		t.Fatalf("write operator change: %v", err)
+	}
+	request.Name = "Changed Input"
+	if _, err := Generate(request); !errors.Is(err, ErrGeneratedOutputModified) {
+		t.Fatalf("second Generate() error = %v, want ownership error", err)
+	}
+	current, err := os.ReadFile(sourcePath) // #nosec G304 -- sourcePath is inside the test-owned temporary directory.
+	if err != nil {
+		t.Fatalf("read operator change: %v", err)
+	}
+	if !strings.Contains(string(current), "operator change") {
+		t.Fatalf("operator change was overwritten:\n%s", current)
+	}
+}
+
+func TestGenerateRejectsManifestOutputOutsideRoot(t *testing.T) {
+	workspace := t.TempDir()
+	outputDir := filepath.Join(workspace, "output")
+	manifestPath := filepath.Join(outputDir, "sources", "demo_source", manifestName)
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
+		t.Fatalf("mkdir manifest fixture: %v", err)
+	}
+	outsidePath := filepath.Join(workspace, "outside.txt")
+	outsidePayload := []byte("operator-owned")
+	if err := os.WriteFile(outsidePath, outsidePayload, 0o600); err != nil {
+		t.Fatalf("write outside fixture: %v", err)
+	}
+	digest, err := stampfile.HashReader(bytes.NewReader(outsidePayload))
+	if err != nil {
+		t.Fatalf("hash outside fixture: %v", err)
+	}
+	manifestPayload, err := json.Marshal(generationManifest{
+		GeneratorVersion: generatorVersion,
+		SourceID:         "demo_source",
+		InputDigest:      "attacker-controlled",
+		Outputs:          map[string]string{"../outside.txt": digest},
+	})
+	if err != nil {
+		t.Fatalf("marshal manifest fixture: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, manifestPayload, 0o600); err != nil {
+		t.Fatalf("write manifest fixture: %v", err)
+	}
+
+	_, err = Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir})
+	if !errors.Is(err, ErrInvalidGenerationManifestPath) {
+		t.Fatalf("Generate() error = %v, want %v", err, ErrInvalidGenerationManifestPath)
+	}
+	if current, readErr := os.ReadFile(outsidePath); readErr != nil || !bytes.Equal(current, outsidePayload) { // #nosec G304 -- outsidePath is inside the test-owned temporary directory.
+		t.Fatalf("outside file changed: payload=%q err=%v", current, readErr)
+	}
+}
+
+func TestGenerateRejectsSymlinkedOutputSubdirectory(t *testing.T) {
+	workspace := t.TempDir()
+	outputDir := filepath.Join(workspace, "output")
+	outsideDir := filepath.Join(workspace, "outside")
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
+		t.Fatalf("mkdir output fixture: %v", err)
+	}
+	if err := os.MkdirAll(outsideDir, 0o750); err != nil {
+		t.Fatalf("mkdir outside fixture: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(outputDir, "sources")); err != nil {
+		t.Fatalf("symlink output fixture: %v", err)
+	}
+
+	if _, err := Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}); err == nil {
+		t.Fatal("Generate() error = nil, want symlink escape rejection")
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "demo_source")); !os.IsNotExist(err) {
+		t.Fatalf("generator wrote through output symlink, err=%v", err)
+	}
+}
+
+func TestGenerateCreatesNestedOutputRoot(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "nested", "output")
+	if _, err := Generate(Request{SourceID: "demo_source", AssetSchemas: []string{"host"}, OutputDir: outputDir}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "sources", "demo_source", "source.go")); err != nil {
+		t.Fatalf("generated source stat: %v", err)
 	}
 }
 

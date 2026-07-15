@@ -43,10 +43,17 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_CONTENT_PACK_ALLOWLIST_PATH` | unset | JSON allowlist granting exact pack IDs, versions, digests, and signing keys. Required when a content-pack root is set. |
 | `CEREBRO_CONTENT_PACK_TENANT_ID` | unset | Tenant grant selected from the content-pack allowlist. Required when a content-pack root is set; never emitted as a metric label. |
 | `CEREBRO_CONTENT_PACK_KERNEL_VERSION` | `1.0.0` | Kernel compatibility version used for signed pack range checks. |
+| `CEREBRO_SOURCE_MIN_CERTIFICATION_TIER` | `cataloged` | Minimum connector certification tier for availability decisions. Supported values: `cataloged`, `spec_verified`, `contract_tested`, `production_observed`, and `outcome_validated`. Catalog-only and configured connectors remain discoverable with an explicit below-minimum state. |
 | `CEREBRO_POSTGRES_MAX_OPEN_CONNS` | Go default | Optional `database/sql` maximum open connections. |
 | `CEREBRO_POSTGRES_MAX_IDLE_CONNS` | Go default | Optional `database/sql` maximum idle connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_LIFETIME` | Go default | Optional maximum lifetime for pooled Postgres connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME` | Go default | Optional maximum idle time for pooled Postgres connections. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION` | `168h` | Age at which a pending record requires operator disposition. This setting never deletes pending records. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION` | `720h` | Default age used by terminal cleanup when `terminal_before` is omitted. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS` | `10000` | Pending-record count that reports a backlog warning. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS` | `100000` | Maximum pending-record count accepted by the recovery writer. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES` | `1073741824` | Estimated pending payload bytes that report a backlog warning. |
+| `CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_BYTES` | `10737418240` | Maximum estimated pending payload bytes accepted by the recovery writer. |
 | `CEREBRO_CACHE_MODE` | inferred | Optional query-cache driver. Supported: `off`, `memory`, `redis`, `valkey`. |
 | `CEREBRO_CACHE_URL` | unset | Redis/Valkey URL. Setting this infers `redis` unless `CEREBRO_CACHE_MODE` is set. |
 | `CEREBRO_CACHE_NAMESPACE` | `cerebro` | Cache key namespace. Use a distinct value per environment. |
