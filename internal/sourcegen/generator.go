@@ -22,6 +22,7 @@ import (
 const (
 	SourceTypeJSONAPI = "json_api"
 
+	AuthModelNone                   = "none"
 	AuthModelBearerToken            = "bearer_token"
 	AuthModelAPIToken               = "api_token"
 	AuthModelAPIKey                 = "api_key"
@@ -67,6 +68,7 @@ type Request struct {
 // DefinitionRequest describes a generated integration backed by a connector definition.
 type DefinitionRequest struct {
 	Definition           connectordefinitions.Definition
+	ProviderContract     *ProviderContractEvidence
 	FreshnessExpectation string
 	HealthPath           string
 	OutputDir            string
@@ -74,18 +76,28 @@ type DefinitionRequest struct {
 	Force                bool
 }
 
+// ProviderContractEvidence binds a reviewed provider contract lock to a
+// sourcegen proof bundle.
+type ProviderContractEvidence struct {
+	LockDigest  string `json:"lock_digest"`
+	DriftStatus string `json:"drift_status"`
+	Reviewed    bool   `json:"reviewed"`
+}
+
 // Result describes the files and operator receipt produced by the generator.
 type Result struct {
-	SourceID            string   `json:"source_id"`
-	SourceType          string   `json:"source_type"`
-	AuthModel           string   `json:"auth_model"`
-	DryRun              bool     `json:"dry_run"`
-	Files               []string `json:"files"`
-	HealthEndpoint      string   `json:"health_endpoint"`
-	SourceHealthReceipt string   `json:"source_health_receipt"`
-	GenerationManifest  string   `json:"generation_manifest"`
-	PRBody              string   `json:"pr_body"`
-	NextSteps           []string `json:"next_steps"`
+	SourceID            string     `json:"source_id"`
+	SourceType          string     `json:"source_type"`
+	AuthModel           string     `json:"auth_model"`
+	DryRun              bool       `json:"dry_run"`
+	Files               []string   `json:"files"`
+	HealthEndpoint      string     `json:"health_endpoint"`
+	SourceHealthReceipt string     `json:"source_health_receipt"`
+	GenerationManifest  string     `json:"generation_manifest"`
+	ProofBundle         string     `json:"proof_bundle"`
+	ChangePlan          ChangePlan `json:"change_plan"`
+	PRBody              string     `json:"pr_body"`
+	NextSteps           []string   `json:"next_steps"`
 }
 
 type normalizedRequest struct {
@@ -99,6 +111,7 @@ type normalizedRequest struct {
 	OAuthTokenParams  map[string]string
 	OAuthTokenMethod  string
 	ProviderAPI       *connectordefinitions.ProviderAPISpec
+	ProviderContract  *ProviderContractEvidence
 	EnvPrefix         string
 	PackageName       string
 	DefaultFamily     string
@@ -135,7 +148,15 @@ type familyData struct {
 	Config                familyConfigData
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
-	Projection            *connectordefinitions.ProjectionSpec
+	Contract              familyContractData
+}
+
+type familyContractData struct {
+	Projection         *connectordefinitions.ProjectionSpec
+	Coverage           []connectordefinitions.CoverageDimensionSpec
+	PaginationType     string
+	IncrementalState   string
+	ProjectionTemplate string
 }
 
 type familyConfigData struct {
@@ -199,6 +220,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		paths = append(paths, file.Path)
 	}
 	paths = append(paths, plan.ManifestPath)
+	paths = append(paths, plan.ProofPath)
 	result := &Result{
 		SourceID:            normalized.SourceID,
 		SourceType:          normalized.SourceType,
@@ -208,9 +230,12 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		HealthEndpoint:      healthEndpoint(normalized.SourceID),
 		SourceHealthReceipt: filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "source_health_receipt.json"),
 		GenerationManifest:  plan.ManifestPath,
+		ProofBundle:         plan.ProofPath,
+		ChangePlan:          plan.ChangePlan,
 		PRBody:              filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "PR_BODY.md"),
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
+			fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
 			"Register the source loader in internal/sourceregistry/registry.go.",
 			"Register generated projector functions in internal/sourceprojection/registry.go.",
 			fmt.Sprintf("Run: go test ./sources/%s ./internal/sourceprojection -count=1", normalized.SourceID),
@@ -326,6 +351,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		OAuthTokenParams:  cloneStringMap(definition.Auth.TokenParams),
 		OAuthTokenMethod:  strings.TrimSpace(definition.Auth.TokenRequestAuthMethod),
 		ProviderAPI:       cloneProviderAPI(definition.ProviderAPI),
+		ProviderContract:  cloneProviderContractEvidence(request.ProviderContract),
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 		BaseURLTemplate:   transportBaseURL(definition.Transport),
@@ -347,6 +373,16 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 	normalized.DefaultFamily = normalized.Families[0].Name
 	normalized.DefaultPath = normalized.Families[0].Path
 	return normalized, nil
+}
+
+func cloneProviderContractEvidence(evidence *ProviderContractEvidence) *ProviderContractEvidence {
+	if evidence == nil {
+		return nil
+	}
+	cloned := *evidence
+	cloned.LockDigest = strings.TrimSpace(cloned.LockDigest)
+	cloned.DriftStatus = strings.TrimSpace(cloned.DriftStatus)
+	return &cloned
 }
 
 func normalizeRequest(request Request) (normalizedRequest, error) {
@@ -446,6 +482,8 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 
 func authModelConfig(authModel string) (string, string, error) {
 	switch authModel {
+	case AuthModelNone:
+		return "", "", nil
 	case AuthModelBearerToken, "bearer":
 		return "Bearer", "token", nil
 	case AuthModelAPIToken, AuthModelAPIKey:
@@ -469,6 +507,8 @@ func authModelConfig(authModel string) (string, string, error) {
 
 func executableAuthModel(authModel string) (string, error) {
 	switch strings.TrimSpace(authModel) {
+	case AuthModelNone:
+		return AuthModelNone, nil
 	case AuthModelBearerToken, "bearer":
 		return AuthModelBearerToken, nil
 	case AuthModelAPIToken, AuthModelAPIKey:
@@ -758,7 +798,13 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			Config:                config,
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
-			Projection:            resource.Projection,
+			Contract: familyContractData{
+				Projection:         resource.Projection,
+				Coverage:           append([]connectordefinitions.CoverageDimensionSpec(nil), resource.Coverage...),
+				PaginationType:     paginationTypeForResource(resource),
+				IncrementalState:   incrementalStateForResource(resource),
+				ProjectionTemplate: strings.TrimSpace(resource.Projection.Template),
+			},
 		})
 	}
 	return families, nil
@@ -833,6 +879,20 @@ func cursorParamForResource(resource connectordefinitions.ResourceFamily) string
 		return ""
 	}
 	return strings.TrimSpace(resource.Pagination.CursorParam)
+}
+
+func paginationTypeForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Pagination == nil || strings.TrimSpace(resource.Pagination.Type) == "" {
+		return "none"
+	}
+	return strings.TrimSpace(resource.Pagination.Type)
+}
+
+func incrementalStateForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Incremental == nil || strings.TrimSpace(resource.Incremental.State) == "" {
+		return "none"
+	}
+	return strings.TrimSpace(resource.Incremental.State)
 }
 
 func nextCursorKeysForResource(resource connectordefinitions.ResourceFamily) []string {
@@ -1026,6 +1086,12 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "  authority_domain: %s\n", request.SourceID)
 	fmt.Fprintf(&b, "  dimensions:\n")
 	for _, family := range request.Families {
+		if len(family.Contract.Coverage) > 0 {
+			for index, dimension := range family.Contract.Coverage {
+				renderCoverageDimension(&b, family, dimension, index)
+			}
+			continue
+		}
 		dimensionType := coverageDimensionType(family.Class)
 		fmt.Fprintf(&b, "    - id: %s\n", family.Name)
 		fmt.Fprintf(&b, "      type: %s\n", dimensionType)
@@ -1058,6 +1124,55 @@ func renderCatalog(request normalizedRequest) string {
 		}
 	}
 	return b.String()
+}
+
+func renderCoverageDimension(b *strings.Builder, family familyData, dimension connectordefinitions.CoverageDimensionSpec, index int) {
+	id := strings.TrimSpace(dimension.ID)
+	if id == family.Name+"_"+strings.TrimSpace(dimension.Type) {
+		id = family.Name
+	}
+	if id == "" {
+		id = family.Name
+		if index > 0 {
+			id += "_" + strings.TrimSpace(dimension.Type)
+		}
+	}
+	families := uniqueStrings(dimension.Families)
+	if len(families) == 0 {
+		families = []string{family.Name}
+	}
+	fmt.Fprintf(b, "    - id: %s\n", id)
+	fmt.Fprintf(b, "      type: %s\n", strings.TrimSpace(dimension.Type))
+	fmt.Fprintf(b, "      title: %s\n", yamlString(firstNonEmptyString(dimension.Title, titleFromID(id))))
+	fmt.Fprintf(b, "      families: [%s]\n", strings.Join(families, ", "))
+	fmt.Fprintf(b, "      support: %s\n", strings.TrimSpace(dimension.Support))
+	fmt.Fprintf(b, "      high_value: %t\n", dimension.HighValue)
+	if len(dimension.EvidenceTypes) > 0 {
+		fmt.Fprintf(b, "      evidence_types: [%s]\n", strings.Join(dimension.EvidenceTypes, ", "))
+	}
+	if len(dimension.ControlDomains) > 0 {
+		fmt.Fprintf(b, "      control_domains: [%s]\n", strings.Join(dimension.ControlDomains, ", "))
+	}
+	if len(dimension.ControlRefs) > 0 {
+		fmt.Fprintf(b, "      control_refs:\n")
+		for _, ref := range dimension.ControlRefs {
+			if strings.TrimSpace(ref.FrameworkID) != "" {
+				fmt.Fprintf(b, "        - framework_id: %s\n", yamlString(ref.FrameworkID))
+			} else {
+				fmt.Fprintf(b, "        - framework_name: %s\n", yamlString(ref.FrameworkName))
+			}
+			fmt.Fprintf(b, "          control_id: %s\n", yamlString(ref.ControlID))
+		}
+	}
+	if len(dimension.KnownUnsupportedFields) > 0 {
+		fmt.Fprintf(b, "      known_unsupported_fields: [%s]\n", quotedStrings(dimension.KnownUnsupportedFields))
+	}
+	if len(dimension.Notes) > 0 {
+		fmt.Fprintf(b, "      notes:\n")
+		for _, note := range dimension.Notes {
+			fmt.Fprintf(b, "        - %s\n", yamlString(note))
+		}
+	}
 }
 
 func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPISpec) {
@@ -1265,6 +1380,9 @@ func coverageControlDomains(dimensionType string) []string {
 
 func deployAuthConfigKeys(request normalizedRequest) []string {
 	keys := []string{}
+	if request.AuthModel == AuthModelNone {
+		return keys
+	}
 	if request.OAuth != nil {
 		keys = append(keys, request.CredentialKeys...)
 	} else if request.AuthModel == AuthModelAWSSigV4 {
@@ -1596,8 +1714,8 @@ func attributePathsForFamily(family familyData) map[string]string {
 		base["alert_resolved_at"] = "resolved_at|closed_at|acknowledged_at"
 		base["alert_description"] = "description|summary|message|body"
 	}
-	if family.Projection != nil {
-		for key, value := range family.Projection.Fields {
+	if family.Contract.Projection != nil {
+		for key, value := range family.Contract.Projection.Fields {
 			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 				base[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			}
@@ -1756,6 +1874,14 @@ func renderSourceTestGo(request normalizedRequest) string {
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "\tif tokenRequests < 1 || tokenRequests > len(familyCases) {\n\t\tt.Fatalf(\"token requests = %%d, want between 1 and %%d\", tokenRequests, len(familyCases))\n\t}\n")
 	}
+	fmt.Fprintf(&b, "\tt.Run(\"ProviderUnavailable\", func(t *testing.T) {\n")
+	fmt.Fprintf(&b, "\t\tunavailableServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {\n\t\t\thttp.Error(w, \"provider unavailable\", http.StatusServiceUnavailable)\n\t\t}))\n\t\tdefer unavailableServer.Close()\n")
+	fmt.Fprintf(&b, "\t\tunavailableSource, err := New()\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"New() error = %%v\", err)\n\t\t}\n\t\tunavailableSource.allowLoopbackForTest()\n")
+	fmt.Fprintf(&b, "\t\tunavailableValues := map[string]string{}\n\t\tfor key, value := range cfgValues {\n\t\t\tunavailableValues[key] = value\n\t\t}\n\t\tunavailableValues[\"base_url\"] = unavailableServer.URL\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\t\tunavailableValues[\"token_url\"] = unavailableServer.URL + \"/oauth/token\"\n")
+	}
+	fmt.Fprintf(&b, "\t\tif err := unavailableSource.Check(context.Background(), sourcecdk.NewConfig(unavailableValues)); err == nil {\n\t\t\tt.Fatal(\"Check() error = nil, want provider unavailable error\")\n\t\t}\n\t})\n")
 	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "\nfunc TestNewFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := NewFixture()\n\tif err != nil {\n\t\tt.Fatalf(\"NewFixture() error = %%v\", err)\n\t}\n")
@@ -1801,8 +1927,8 @@ func sourceTestRecord(request normalizedRequest, family familyData) map[string]a
 			}
 		}
 	}
-	if family.Projection != nil {
-		for attr := range family.Projection.Fields {
+	if family.Contract.Projection != nil {
+		for attr := range family.Contract.Projection.Fields {
 			if path := strings.TrimSpace(paths[attr]); path != "" {
 				value := fixtureAttributeValueForMapping(request, attr, path, family)
 				if strings.TrimSpace(value) != "" {
@@ -1907,6 +2033,9 @@ func sourceTestExpectedAuthHeader(request normalizedRequest, family familyData) 
 }
 
 func generatedTestAuthAssertion(request normalizedRequest) string {
+	if request.AuthModel == AuthModelNone {
+		return ""
+	}
 	if usesDuoHMACAuth(request) {
 		defaultFamily := familyData{}
 		if len(request.Families) != 0 {
@@ -2022,8 +2151,6 @@ func fixturePayload(request normalizedRequest, family familyData) map[string]any
 	displayName := fixtureDisplayName(request, family)
 	evidenceURI := fixtureEvidenceURI(request, family)
 	payload := map[string]any{
-		"api_method":          fixtureAPIMethod(family),
-		"api_path":            family.Path,
 		"family":              family.Name,
 		"id":                  recordID,
 		"name":                displayName,
@@ -2036,6 +2163,10 @@ func fixturePayload(request normalizedRequest, family familyData) map[string]any
 		"updated_at":          "2026-06-01T00:00:00Z",
 		"evidence_cas_uri":    evidenceURI,
 		"evidence_cas_digest": "sha256:test",
+	}
+	if !providerAPIVerified(request) {
+		payload["api_method"] = fixtureAPIMethod(family)
+		payload["api_path"] = family.Path
 	}
 	if family.RecordSelector != "" {
 		payload["record_selector"] = family.RecordSelector
@@ -2091,8 +2222,6 @@ func fixtureAttributes(request normalizedRequest, family familyData) map[string]
 	displayName := fixtureDisplayName(request, family)
 	evidenceURI := fixtureEvidenceURI(request, family)
 	attributes := map[string]string{
-		"api_method":            fixtureAPIMethod(family),
-		"api_path":              family.Path,
 		"external_id":           recordID,
 		"family":                family.Name,
 		"provider":              request.SourceID,
@@ -2110,6 +2239,10 @@ func fixtureAttributes(request normalizedRequest, family familyData) map[string]
 		"evidence_cas_uri":      evidenceURI,
 		"evidence_cas_digest":   "sha256:test",
 		"evidence_cas_ref_type": "source_fixture",
+	}
+	if !providerAPIVerified(request) {
+		attributes["api_method"] = fixtureAPIMethod(family)
+		attributes["api_path"] = family.Path
 	}
 	if family.RecordSelector != "" {
 		attributes["record_selector"] = family.RecordSelector
@@ -2329,6 +2462,9 @@ func fixtureLiteralResourceType(rawPath string) string {
 }
 
 func fixtureRecordID(request normalizedRequest, family familyData) string {
+	if providerAPIVerified(request) {
+		return request.SourceID + "-" + family.Name + "-001"
+	}
 	return "source-" + request.SourceID + "-" + family.Name + "-1"
 }
 
@@ -2341,7 +2477,14 @@ func fixtureRelatedRecordID(request normalizedRequest, familyName string) string
 }
 
 func fixtureDisplayName(request normalizedRequest, family familyData) string {
+	if providerAPIVerified(request) {
+		return titleFromID(request.SourceID) + " " + titleFromID(family.Name)
+	}
 	return titleFromID(request.SourceID) + " " + titleFromID(family.Name) + " Fixture"
+}
+
+func providerAPIVerified(request normalizedRequest) bool {
+	return request.ProviderAPI != nil && strings.EqualFold(strings.TrimSpace(request.ProviderAPI.Status), "verified")
 }
 
 func fixtureEvidenceURI(request normalizedRequest, family familyData) string {
@@ -2486,7 +2629,7 @@ func renderProjectionGo(request normalizedRequest) string {
 			}
 			renderedProjectionResources[family.ProjectorName] = struct{}{}
 			fmt.Fprintf(&b, "var %sProjectionResource = connectordefinitions.ResourceFamily{\n\tID: %s,\n\tProjection: &connectordefinitions.ProjectionSpec{\n", family.ProjectorName, strconv.Quote(family.Name))
-			renderProjectionSpecLiteral(&b, family.Projection, "\t\t")
+			renderProjectionSpecLiteral(&b, family.Contract.Projection, "\t\t")
 			fmt.Fprintf(&b, "\t},\n}\n\n")
 		}
 	}
@@ -2596,7 +2739,7 @@ func projectionNeedsConnectordefinitions(families []familyData) bool {
 }
 
 func projectionFamilyNeedsAugmentation(family familyData) bool {
-	return family.Projection != nil && (family.Projection.Entity != nil || len(family.Projection.Relationships) != 0)
+	return family.Contract.Projection != nil && (family.Contract.Projection.Entity != nil || len(family.Contract.Projection.Relationships) != 0)
 }
 
 func renderProjectionDispatchReturn(b *strings.Builder, sourceID string, family familyData, baseFunc string) {

@@ -20,6 +20,36 @@ The endpoint is a stateless Streamable HTTP MCP endpoint:
 
 Do not advertise or emulate a stateful SSE session on this route. Native Droid uses the MCP SDK Streamable HTTP client for `type: "http"` servers, and it treats stateful session/SSE signals as part of the transport contract.
 
+## Task profile
+
+Set `X-Cerebro-MCP-Toolsets: task` when the client should start with a bounded,
+task-level tool list. The profile exposes six tools:
+
+| Tool | Result |
+| --- | --- |
+| `cerebro.health` | Service readiness |
+| `cerebro.version` | Running build identity |
+| `cerebro.risk.explain` | Finding, evidence, asset, and optional graph context |
+| `cerebro.evidence.packet` | Evidence packet for the requested question and authorized scope |
+| `cerebro.sources.health` | Configured source coverage and current blind spots |
+| `cerebro.action.plan` | Ranked remediation candidates without execution |
+
+Each task result returns `state` as `complete`, `partial`, or `blocked`, plus a
+dependency list. `partial_reasons` identifies missing graph data, stale or
+failed source coverage, and other optional inputs that changed the result.
+Clients should show these reasons with the result instead of treating a partial
+result as complete.
+
+Task tools do not mutate resources. `cerebro.action.plan` stops at
+`next_state: proposal`; approval and execution remain separate operations.
+The evidence-packet task accepts only `observe`, `explain`, `recommend`, and
+`dry_run` action stages.
+
+Requests without a toolset keep the full tool list for compatibility. Existing
+domain tools remain available as expert tools. Use
+`X-Cerebro-MCP-Toolsets: expert` for that profile, or the existing domain
+toolsets such as `graph`, `risk`, and `findings` for narrower access.
+
 ## Tool/domain parity
 
 MCP tools are adapters over existing Cerebro domain surfaces, not a parallel
@@ -48,7 +78,8 @@ For the local compose/dev key, one command is enough:
 
 ```bash
 droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
-  --header "Authorization: Bearer local-dev-key"
+  --header "Authorization: Bearer local-dev-key" \
+  --header "X-Cerebro-MCP-Toolsets: task"
 ```
 
 Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the origin.
@@ -60,7 +91,8 @@ Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the
       "type": "http",
       "url": "http://127.0.0.1:8080/api/v1/mcp",
       "headers": {
-        "Authorization": "Bearer ${CEREBRO_API_KEY:-local-dev-key}"
+        "Authorization": "Bearer ${CEREBRO_API_KEY:-local-dev-key}",
+        "X-Cerebro-MCP-Toolsets": "task"
       },
       "disabled": false
     },
@@ -68,6 +100,9 @@ Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the
       "type": "http",
       "url": "https://<cerebro-origin>/api/v1/mcp",
       "disabled": false,
+      "headers": {
+        "X-Cerebro-MCP-Toolsets": "task"
+      },
       "oauth": {
         "scopes": ["cerebro.cosmo.security.read"],
         "callbackPort": 53682

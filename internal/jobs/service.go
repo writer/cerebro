@@ -46,6 +46,7 @@ const (
 	KindAppendLogRuntimeIndex     = "append_log_runtime_index"
 	KindProactiveFindingTriage    = "proactive_finding_triage"
 	KindGRCUpload                 = "grc_upload"
+	KindComplianceAssessment      = "compliance_assessment"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
@@ -248,6 +249,36 @@ func (s *Service) Recover(ctx context.Context, limit uint32) (int, error) {
 	return len(queued), nil
 }
 
+// RequeueRetryable moves one failed job back to queued when an explicit caller
+// owns the retry policy. The attempt limit prevents recovery loops from
+// retrying a deterministic failure forever.
+func (s *Service) RequeueRetryable(ctx context.Context, jobID string, maxAttempts uint32) (*ports.Job, bool, error) {
+	if s == nil || s.store == nil {
+		return nil, false, ErrRuntimeUnavailable
+	}
+	job, err := s.store.GetJob(ctx, strings.TrimSpace(jobID))
+	if err != nil {
+		return nil, false, err
+	}
+	if job.Status != ports.JobStatusFailed || job.FailureClass != JobFailureRetryable || maxAttempts == 0 || job.Attempt >= maxAttempts {
+		return job, false, nil
+	}
+	job, err = s.store.UpdateJob(ctx, job.ID, ports.JobUpdate{
+		Status:          ports.JobStatusQueued,
+		Message:         "job queued for retry",
+		AllowedStatuses: []string{ports.JobStatusFailed},
+		ClearLease:      true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	appendJobEventLogged(ctx, s.store, ports.JobEvent{
+		JobID: job.ID, Type: "retry_queued", Status: ports.JobStatusQueued,
+		Message: "job queued for retry", Payload: map[string]any{"previous_attempt": job.Attempt},
+	})
+	return job, true, nil
+}
+
 // StartRecovery periodically resumes expired and queued work until cancellation.
 func (s *Service) StartRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
@@ -385,7 +416,9 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 			case <-ticker.C:
 				renewed, renewErr := leaseStore.RenewJobLease(heartbeatCtx, ports.JobLeaseRenewRequest{JobID: job.ID, Owner: leaseOwner, Now: s.now(), TTL: s.leaseTTL})
 				if renewErr != nil {
-					leaseLost.Store(true)
+					if heartbeatCtx.Err() == nil {
+						leaseLost.Store(true)
+					}
 					runnerCancel()
 					return
 				}
