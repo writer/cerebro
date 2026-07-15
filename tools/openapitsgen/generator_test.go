@@ -68,6 +68,29 @@ components:
 	}
 }
 
+func TestGenerateParenthesizesEnumUnionArrayItems(t *testing.T) {
+	spec := `
+components:
+  schemas:
+    Decision:
+      type: object
+      required: [reasons]
+      properties:
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [missing, stale, conflicting]
+`
+	result, err := Generate([]byte(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.TypeScript, `reasons: ("missing" | "stale" | "conflicting")[];`) {
+		t.Fatalf("generated enum array does not preserve union precedence:\n%s", result.TypeScript)
+	}
+}
+
 func TestGenerateAdditionalProperties(t *testing.T) {
 	spec := `
 components:

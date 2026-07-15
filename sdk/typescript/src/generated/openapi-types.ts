@@ -460,7 +460,7 @@ export type AgentPlatformGraphReasonProvenance = {
 };
 
 export type AgentPlatformGraphReasonRequest = {
-  history?: { content?: string; role?: "user" | "assistant" }[];
+  history?: ({ content?: string; role?: "user" | "assistant" })[];
   model?: string;
   question: string;
   scope_urn?: string;
@@ -678,6 +678,26 @@ export type AgentWorkflow = {
   state_check: AgentNextAction;
 };
 
+export type AssessmentCollectionReceipt = {
+  completeness: "complete" | "partial" | "truncated" | "changed_during_scan" | "unknown";
+  cursor?: string;
+  cutoff: string;
+  deduplicated_count: number;
+  excluded_count: number;
+  expected_total?: number;
+  first_key?: string;
+  included_count: number;
+  kind: string;
+  last_key?: string;
+  next_cursor?: string;
+  page_digest: string;
+  page_index: number;
+  query_digest: string;
+  raw_count: number;
+  runtime_id?: string;
+  watermark: string;
+};
+
 export type AssessmentControlRef = {
   control_id: string;
   framework?: string;
@@ -686,7 +706,52 @@ export type AssessmentControlRef = {
 };
 
 /** Immutable revisions, receipts, cutoff, and digests used by one assessment run. */
-export type AssessmentInputManifest = Record<string, unknown>;
+export type AssessmentInputManifest = {
+  adapter_version: string;
+  collection_cutoff: string;
+  evaluation_run_ids?: string[];
+  mapping_set_digest: string;
+  model_version: string;
+  period_end: string;
+  period_start: string;
+  plan_revision_id: string;
+  program_id: string;
+  reason_registry: string;
+  receipts: AssessmentCollectionReceipt[];
+  requested_scope_digest: string;
+  resolved_objective_set_digest: string;
+  revisions: AssessmentManifestRevision[];
+  scope_revision_id: string;
+};
+
+export type AssessmentManifestRevision = {
+  digest: string;
+  id: string;
+  kind: string;
+  revision_id: string;
+  version: number;
+};
+
+export type AssessmentObjectiveResult = {
+  assurance: "high" | "medium" | "low" | "none";
+  auditor_state: "not_reviewed" | "accepted" | "changes_requested" | "rejected";
+  automated_outcome: "satisfied" | "not_satisfied" | "indeterminate" | "not_assessed";
+  control_ref: AssessmentControlRef;
+  design_state: "effective" | "ineffective" | "unknown" | "not_assessed";
+  disposition_state: "none" | "accepted_exception" | "accepted_risk" | "review_override";
+  evaluated_at: string;
+  evaluator_revision: string;
+  evidence_ids?: string[];
+  evidence_state: "sufficient" | "missing" | "stale" | "conflicting" | "untrusted" | "incomplete" | "manual_review";
+  finding_ids?: string[];
+  id: string;
+  next_actions: ("none" | "review" | "collect_evidence" | "refresh_evidence" | "restore_source" | "resolve_scope" | "remediate" | "retest")[];
+  objective_id: string;
+  operating_effectiveness_state: "effective" | "ineffective" | "unknown" | "not_tested";
+  reason_codes: string[];
+  scope_state: "in_scope" | "not_applicable" | "unresolved";
+  source_runtime_ids?: string[];
+};
 
 export type AssessmentPlan = {
   content_digest: string;
@@ -765,7 +830,7 @@ export type AssessmentResultChunk = {
   first_result_id: string;
   last_result_id: string;
   previous_digest?: string;
-  results: Record<string, unknown>[];
+  results: AssessmentObjectiveResult[];
   run_id: string;
   sequence: number;
 };
@@ -814,6 +879,110 @@ export type AssessmentRunRequest = {
 export type AssessmentRunResponse = {
   created: boolean;
   run: AssessmentRun;
+};
+
+export type AssuranceDecision = {
+  decision: QualifiedAssuranceDecision;
+  id: string;
+  idempotency_key: string;
+  input_snapshot: AssuranceQualificationInput;
+  objective_id: string;
+  plan_revision_id: string;
+  program_id: string;
+  record_digest: string;
+  recorded_at: string;
+  recorded_by: string;
+  request_hash: string;
+  result_id: string;
+  run_id: string;
+  scope_revision_id: string;
+  tenant_id: string;
+  version: "assurance-decision/v1";
+};
+
+export type AssuranceDecisionRecordRequest = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  result_id: string;
+  run_id: string;
+  source_proofs: AssuranceSourceProof[];
+  tenant_id: string;
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceDecisionRecordResponse = {
+  created: boolean;
+  decision: AssuranceDecision;
+};
+
+export type AssuranceDecisionResponse = {
+  decision: AssuranceDecision;
+};
+
+export type AssuranceEvidenceProof = {
+  collected_at: string;
+  evidence_id: string;
+  state: "sufficient" | "missing" | "stale" | "conflicting" | "untrusted" | "incomplete" | "manual_review";
+  valid_until: string;
+};
+
+export type AssuranceExceptionProof = {
+  active: boolean;
+  exception_id: string;
+  valid_until: string;
+};
+
+export type AssuranceLimitation = {
+  blocking: boolean;
+  code: string;
+  detail: string;
+};
+
+export type AssuranceProofInput = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  source_proofs: AssuranceSourceProof[];
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceQualificationInput = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  input_manifest: AssessmentInputManifest;
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  result: AssessmentObjectiveResult;
+  source_proofs: AssuranceSourceProof[];
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceReviewRequirement = {
+  completed_at?: string;
+  kind: string;
+  required: boolean;
+  status: "pending" | "approved" | "rejected";
+  valid_until?: string;
+};
+
+export type AssuranceSourceProof = {
+  fresh_until: string;
+  observed_at: string;
+  runtime_id: string;
+  state: "supported" | "partial" | "stale" | "failed" | "unconfigured" | "unsupported" | "unverified" | "conflicting" | "unknown";
+};
+
+export type AssuranceVerificationProof = {
+  required: boolean;
+  state: "not_required" | "pending" | "passed" | "failed";
+  valid_until?: string;
+  verified_at?: string;
 };
 
 export type AuthErrorResponse = {
@@ -1038,7 +1207,7 @@ export type ConnectorDefinitionScopeOption = {
 };
 
 export type ConnectorDefinitionSupportReport = {
-  checks?: { category?: string; detail?: string; id?: string; status?: "ready" | "missing" }[];
+  checks?: ({ category?: string; detail?: string; id?: string; status?: "ready" | "missing" })[];
   definition_id?: string;
   grammar_version?: string;
   missing_features?: string[];
@@ -1066,7 +1235,7 @@ export type ConnectorDefinitionVersionsResponse = {
   definition_id: string;
   generated_at?: string;
   tenant_id?: string;
-  versions: { created_at?: string; definition?: ConnectorDefinition; stage?: "draft" | "sandbox" | "pilot" | "approved" | "certified"; version?: number }[];
+  versions: ({ created_at?: string; definition?: ConnectorDefinition; stage?: "draft" | "sandbox" | "pilot" | "approved" | "certified"; version?: number })[];
 };
 
 export type ConnectorDepositRecordError = {
@@ -1599,7 +1768,7 @@ export type GRCAccessSourceFreshness = {
 };
 
 export type GRCAskRequest = {
-  history?: { content?: string; role?: "user" | "assistant" }[];
+  history?: ({ content?: string; role?: "user" | "assistant" })[];
   model?: string;
   question: string;
   scope_urn?: string;
@@ -3431,6 +3600,19 @@ export type PutSourceRuntimeRequest = {
 
 export type PutSourceRuntimeResponse = {
   runtime?: SourceRuntime;
+};
+
+export type QualifiedAssuranceDecision = {
+  as_of: string;
+  decision_digest: string;
+  limitations: AssuranceLimitation[];
+  manifest_hash: string;
+  proof_digest: string;
+  qualified: boolean;
+  reasons: ("manifest_invalid" | "scope_unpinned" | "population_incomplete" | "result_invalid" | "source_proof_missing" | "source_unhealthy" | "source_stale" | "evidence_proof_missing" | "evidence_not_current" | "evidence_conflicting" | "limitations_not_declared" | "blocking_limitation" | "review_requirements_not_declared" | "review_incomplete" | "exception_expired" | "verification_failed")[];
+  required_reviews: AssuranceReviewRequirement[];
+  result_hash: string;
+  version: "qualified-decision/v1";
 };
 
 export type ReconcileGraphActionRequest = {

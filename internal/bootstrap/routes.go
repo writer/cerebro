@@ -139,6 +139,8 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/assessment-runs", routeSurfacePlatformHTTP, assessments.RequestRun)
 	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}", routeSurfacePlatformHTTP, assessments.GetRun)
 	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}/results", routeSurfacePlatformHTTP, assessments.ListResults)
+	registerHTTPRoute(mux, "POST /grc/assurance-decisions", routeSurfacePlatformHTTP, assessments.RecordAssuranceDecision)
+	registerHTTPRoute(mux, "GET /grc/assurance-decisions/{decisionID}", routeSurfacePlatformHTTP, assessments.GetAssuranceDecision)
 	registerHTTPRoute(mux, "GET /grc/report-catalog", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("report.catalog", 5*time.Minute), app.handleGRCReportCatalog))
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))

@@ -200,6 +200,9 @@ func tsType(schema *Schema, all map[string]*Schema) string {
 		return "boolean"
 	case "array":
 		itemType := tsType(schema.Items, all)
+		if strings.Contains(itemType, " | ") {
+			itemType = "(" + itemType + ")"
+		}
 		return itemType + "[]"
 	case "object":
 		if schema.AdditionalProperties != nil {
