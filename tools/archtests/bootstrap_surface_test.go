@@ -108,7 +108,13 @@ import (
 // persistence, projection replay, and invalidation reopening stay behind
 // internal/complianceremediation, while Postgres adaptation stays in the
 // concrete state-store package.
-const bootstrapProductionGoLineBudget = 27684
+// Agent assessment MCP tools add only tool registration, argument decoding,
+// tenant and scope enforcement, safe evidence/finding response composition,
+// and transport metadata. Plan/run semantics, canonical result verification,
+// bounded baseline comparison, and remediation proposal shaping stay in
+// internal/complianceassessment; schemas and tool inventory stay in
+// internal/mcpoperations.
+const bootstrapProductionGoLineBudget = 27982
 
 type bootstrapFileLineCount struct {
 	path  string

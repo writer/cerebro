@@ -17,6 +17,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -221,8 +222,10 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 			}
 		}
 		annotations := tool["annotations"].(map[string]any)
-		if annotations["readOnlyHint"] != true {
-			t.Fatalf("tool missing readOnlyHint annotation: %#v", item)
+		operation, known := mcpoperations.Lookup(name)
+		expectedReadOnly := !known || operation.Behavior != mcpoperations.BehaviorExecute
+		if annotations["readOnlyHint"] != expectedReadOnly {
+			t.Fatalf("%s readOnlyHint = %#v, want %v", name, annotations["readOnlyHint"], expectedReadOnly)
 		}
 		if strings.HasSuffix(name, ".propose") {
 			inputSchema := tool["inputSchema"].(map[string]any)
@@ -570,6 +573,15 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.agent.work.contract":             {Markers: []string{"agent-work-ledger"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
+	"cerebro.assessments.plan.create":         {Markers: []string{"POST /grc/assessment-plans"}},
+	"cerebro.assessments.plan.publish":        {Markers: []string{"POST /grc/assessment-plans/{planID}/publish"}},
+	"cerebro.assessments.plan.get":            {Markers: []string{"GET /grc/assessment-plans/{planID}"}},
+	"cerebro.assessments.run.request":         {Markers: []string{"POST /grc/assessment-runs"}},
+	"cerebro.assessments.run.get":             {Markers: []string{"GET /grc/assessment-runs/{runID}"}},
+	"cerebro.assessments.results.list":        {Markers: []string{"GET /grc/assessment-runs/{runID}/results"}},
+	"cerebro.assessments.run.diff":            {Markers: []string{"GET /grc/assessment-runs/{runID}/results"}},
+	"cerebro.assessments.result.explain":      {Markers: []string{"GET /grc/assessment-runs/{runID}/results", "GET /finding-evidence/{evidenceID}"}},
+	"cerebro.assessments.remediation.propose": {Markers: []string{"POST /grc/work-items"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
 	"cerebro.source_runtimes.refresh.propose": {Markers: []string{"POST /source-runtimes/{runtimeID}/sync"}},
 }
