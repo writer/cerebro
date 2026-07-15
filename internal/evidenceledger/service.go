@@ -150,9 +150,7 @@ func (s *Service) CreateClaim(ctx context.Context, request CreateClaimRequest) (
 	if claim.CreatedBy == "" {
 		claim.CreatedBy = actorID
 	}
-	if claim.Decision.ReviewState == "" {
-		claim.Decision.ReviewState = ports.EvidenceReviewPending
-	}
+	claim.Decision = ports.EvidenceClaimDecision{ReviewState: ports.EvidenceReviewPending}
 	version, err := s.store.GetEvidenceVersion(ctx, claim.TenantID, claim.ArtifactVersionID)
 	if err != nil {
 		return ports.EvidenceClaim{}, err
@@ -360,6 +358,14 @@ func validateArtifactVersion(artifact ports.EvidenceArtifact, version ports.Evid
 	}
 	if version.Content.MediaType == "" || version.Content.URI == "" || version.Provenance.Producer == "" || version.Provenance.CollectedAt.IsZero() || version.ValidFrom.IsZero() || len(version.Subjects) == 0 || version.Governance.AccessPolicy == "" {
 		return fmt.Errorf("%w: version metadata is incomplete", ErrInvalidEvidence)
+	}
+	if _, ok := sensitivityRank(version.Governance.Sensitivity); !ok {
+		return fmt.Errorf("%w: evidence sensitivity is invalid", ErrInvalidEvidence)
+	}
+	periodStartSet := !version.Provenance.PeriodStart.IsZero()
+	periodEndSet := !version.Provenance.PeriodEnd.IsZero()
+	if periodStartSet != periodEndSet || (periodStartSet && version.Provenance.PeriodEnd.Before(version.Provenance.PeriodStart)) {
+		return fmt.Errorf("%w: evidence provenance period is invalid", ErrInvalidEvidence)
 	}
 	parsed, err := url.Parse(version.Content.URI)
 	if err != nil || parsed.Scheme == "" || parsed.Scheme == "file" || parsed.Scheme == "data" {

@@ -43,6 +43,36 @@ func TestArtifactVersionSupportsIndependentClaims(t *testing.T) {
 	}
 }
 
+func TestCreateClaimForcesPendingReviewState(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newMemoryStore()
+	service := newTestService(store, &memoryLog{}, now)
+	version := registerTestVersion(t, service, now, true)
+	claim, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: ports.EvidenceClaim{
+		TenantID: version.TenantID, ArtifactVersionID: version.ID,
+		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-1", ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-1",
+			Subjects: version.Subjects, PeriodStart: version.Provenance.PeriodStart, PeriodEnd: version.Provenance.PeriodEnd},
+		Linkage: ports.EvidenceLinkDirect, Strength: "strong", MappingRationale: "Direct source record for the objective.",
+		Decision: ports.EvidenceClaimDecision{ReviewState: ports.EvidenceReviewApproved, ReviewerID: "caller-reviewer", ReviewReason: "caller-approved",
+			ReviewedAt: now, InvalidatedAt: now, InvalidationReason: "caller-invalidated"},
+	}, ActorID: "owner-1"})
+	if err != nil {
+		t.Fatalf("CreateClaim() error = %v", err)
+	}
+	want := ports.EvidenceClaimDecision{ReviewState: ports.EvidenceReviewPending}
+	if claim.Decision != want {
+		t.Fatalf("CreateClaim() decision = %#v, want %#v", claim.Decision, want)
+	}
+	stored, err := store.GetEvidenceClaim(context.Background(), claim.TenantID, claim.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Decision != want {
+		t.Fatalf("stored decision = %#v, want %#v", stored.Decision, want)
+	}
+}
+
 func TestQuarantinedVersionCannotSatisfyClaim(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
@@ -96,6 +126,44 @@ func TestInvalidationAndScopePeriodChecks(t *testing.T) {
 	}
 }
 
+func TestValidateClaimAllowsMissingProvenancePeriod(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newMemoryStore()
+	service := newTestService(store, &memoryLog{}, now)
+	request := testVersionRequest(now, true)
+	request.Version.Provenance.PeriodStart = time.Time{}
+	request.Version.Provenance.PeriodEnd = time.Time{}
+	version, err := service.RegisterVersion(context.Background(), request)
+	if err != nil {
+		t.Fatalf("RegisterVersion() error = %v", err)
+	}
+	periodStart := now.Add(-24 * time.Hour)
+	claim, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: ports.EvidenceClaim{
+		TenantID: version.TenantID, ArtifactVersionID: version.ID,
+		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-1", ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-1",
+			Subjects: version.Subjects, PeriodStart: periodStart, PeriodEnd: now},
+		Linkage: ports.EvidenceLinkDirect, Strength: "strong", MappingRationale: "Direct source record for the objective.",
+	}, ActorID: "owner-1"})
+	if err != nil {
+		t.Fatalf("CreateClaim() error = %v", err)
+	}
+	claim, err = service.ReviewClaim(context.Background(), claim.TenantID, claim.ID, "reviewer-1", ports.EvidenceReviewApproved, "Verified.", claim.Version)
+	if err != nil {
+		t.Fatalf("ReviewClaim() error = %v", err)
+	}
+	validation, err := service.ValidateClaim(context.Background(), ValidateClaimRequest{
+		TenantID: claim.TenantID, ClaimID: claim.ID, Subjects: claim.Scope.Subjects,
+		PeriodStart: claim.Scope.PeriodStart, PeriodEnd: claim.Scope.PeriodEnd, At: now,
+	})
+	if err != nil {
+		t.Fatalf("ValidateClaim() error = %v", err)
+	}
+	if !validation.Valid || contains(validation.ReasonCodes, reasonPeriodGap) {
+		t.Fatalf("ValidateClaim() = %#v", validation)
+	}
+}
+
 func TestEvidenceReadEnforcesPurposeSensitivityAndTenant(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
@@ -110,6 +178,51 @@ func TestEvidenceReadEnforcesPurposeSensitivityAndTenant(t *testing.T) {
 	}
 	if _, err := service.ReadVersion(context.Background(), ports.EvidenceAccessRequest{TenantID: version.TenantID, ActorID: "reader", Purpose: "audit", MaximumSensitivity: ports.EvidenceSensitivityRestricted}, version.ID); err != nil {
 		t.Fatalf("authorized read error = %v", err)
+	}
+	if _, err := service.ReadVersion(context.Background(), ports.EvidenceAccessRequest{TenantID: version.TenantID, ActorID: "reader", Purpose: "audit", MaximumSensitivity: "unknown"}, version.ID); !errors.Is(err, ports.ErrEvidenceAccessDenied) {
+		t.Fatalf("unknown clearance error = %v", err)
+	}
+	store.mu.Lock()
+	version.Governance.Sensitivity = "unknown"
+	store.versions[tenantKey(version.TenantID, version.ID)] = version
+	store.mu.Unlock()
+	if _, err := service.ReadVersion(context.Background(), ports.EvidenceAccessRequest{TenantID: version.TenantID, ActorID: "reader", Purpose: "audit", MaximumSensitivity: ports.EvidenceSensitivityRestricted}, version.ID); !errors.Is(err, ports.ErrEvidenceAccessDenied) {
+		t.Fatalf("unknown version sensitivity error = %v", err)
+	}
+}
+
+func TestRegisterVersionRejectsInvalidSensitivityAndPartialPeriod(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	tests := map[string]func(*RegisterVersionRequest){
+		"empty sensitivity": func(request *RegisterVersionRequest) {
+			request.Version.Governance.Sensitivity = ""
+		},
+		"unknown sensitivity": func(request *RegisterVersionRequest) {
+			request.Version.Governance.Sensitivity = "secret"
+		},
+		"missing period end": func(request *RegisterVersionRequest) {
+			request.Version.Provenance.PeriodEnd = time.Time{}
+		},
+		"period end before start": func(request *RegisterVersionRequest) {
+			request.Version.Provenance.PeriodEnd = request.Version.Provenance.PeriodStart.Add(-time.Hour)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := newMemoryStore()
+			log := &memoryLog{}
+			service := newTestService(store, log, now)
+			request := testVersionRequest(now, true)
+			mutate(&request)
+			if _, err := service.RegisterVersion(context.Background(), request); !errors.Is(err, ErrInvalidEvidence) {
+				t.Fatalf("RegisterVersion() error = %v", err)
+			}
+			if len(store.versions) != 0 || len(log.events) != 0 {
+				t.Fatalf("invalid version mutated state: versions=%d events=%d", len(store.versions), len(log.events))
+			}
+		})
 	}
 }
 

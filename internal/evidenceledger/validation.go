@@ -71,7 +71,11 @@ func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimReques
 	if !version.ValidUntil.IsZero() && !at.Before(version.ValidUntil) {
 		addInvalid(reasonVersionExpired, "refresh_evidence")
 	}
-	if request.PeriodStart.Before(claim.Scope.PeriodStart) || request.PeriodEnd.After(claim.Scope.PeriodEnd) || request.PeriodStart.Before(version.Provenance.PeriodStart) || request.PeriodEnd.After(version.Provenance.PeriodEnd) {
+	if request.PeriodStart.Before(claim.Scope.PeriodStart) || request.PeriodEnd.After(claim.Scope.PeriodEnd) {
+		addInvalid(reasonPeriodGap, "collect_evidence")
+	}
+	if !version.Provenance.PeriodStart.IsZero() && !version.Provenance.PeriodEnd.IsZero() &&
+		(request.PeriodStart.Before(version.Provenance.PeriodStart) || request.PeriodEnd.After(version.Provenance.PeriodEnd)) {
 		addInvalid(reasonPeriodGap, "collect_evidence")
 	}
 	if !subjectsCover(claim.Scope.Subjects, normalizeSubjects(request.Subjects)) || !subjectsCover(version.Subjects, normalizeSubjects(request.Subjects)) {
@@ -87,7 +91,9 @@ func (s *Service) ReadVersion(ctx context.Context, access ports.EvidenceAccessRe
 	if err != nil {
 		return ports.EvidenceVersion{}, err
 	}
-	if strings.TrimSpace(access.ActorID) == "" || !allowedPurpose(access.Purpose) || sensitivityRank(access.MaximumSensitivity) < sensitivityRank(version.Governance.Sensitivity) {
+	maximumRank, maximumOK := sensitivityRank(access.MaximumSensitivity)
+	versionRank, versionOK := sensitivityRank(version.Governance.Sensitivity)
+	if strings.TrimSpace(access.ActorID) == "" || !allowedPurpose(access.Purpose) || !maximumOK || !versionOK || maximumRank < versionRank {
 		return ports.EvidenceVersion{}, ports.ErrEvidenceAccessDenied
 	}
 	return version, nil
@@ -130,17 +136,17 @@ func allowedPurpose(value string) bool {
 	}
 }
 
-func sensitivityRank(value string) int {
+func sensitivityRank(value string) (int, bool) {
 	switch strings.TrimSpace(value) {
 	case ports.EvidenceSensitivityPublic:
-		return 1
+		return 1, true
 	case ports.EvidenceSensitivityInternal:
-		return 2
+		return 2, true
 	case ports.EvidenceSensitivityConfidential:
-		return 3
+		return 3, true
 	case ports.EvidenceSensitivityRestricted:
-		return 4
+		return 4, true
 	default:
-		return 0
+		return 0, false
 	}
 }
