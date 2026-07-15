@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 type fixedClock struct{ now time.Time }
@@ -18,6 +19,34 @@ type stubResolver struct {
 	facts ResolvedFacts
 	err   error
 	seen  AuthorizedTenant
+}
+
+type receiptStoreStub struct {
+	receipt *ports.DecisionPacketReceipt
+	putErr  error
+	getErr  error
+}
+
+func (s *receiptStoreStub) PutDecisionPacketReceipt(_ context.Context, receipt *ports.DecisionPacketReceipt) error {
+	if s.putErr != nil {
+		return s.putErr
+	}
+	copy := *receipt
+	copy.PacketJSON = append([]byte(nil), receipt.PacketJSON...)
+	s.receipt = &copy
+	return nil
+}
+
+func (s *receiptStoreStub) GetDecisionPacketReceipt(_ context.Context, tenantID, packetID string) (*ports.DecisionPacketReceipt, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	if s.receipt == nil || s.receipt.TenantID != tenantID || s.receipt.PacketID != packetID {
+		return nil, ports.ErrDecisionPacketNotFound
+	}
+	copy := *s.receipt
+	copy.PacketJSON = append([]byte(nil), s.receipt.PacketJSON...)
+	return &copy, nil
 }
 
 func (r *stubResolver) Resolve(_ context.Context, tenant AuthorizedTenant, _ Request) (ResolvedFacts, error) {
@@ -159,5 +188,53 @@ func TestServiceRejectsForeignResolvedFactsAndExecutionStates(t *testing.T) {
 				t.Fatal("Build() error = nil, want fail-closed validation")
 			}
 		})
+	}
+}
+
+func TestPersistentServiceRequiresReceiptAndCanReopenIt(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	store := &receiptStoreStub{}
+	resolver := &stubResolver{facts: ResolvedFacts{Evidence: []EvidenceReference{{ID: "evidence-1", Kind: "finding", ObservedAt: now}}}}
+	service := NewPersistentService(resolver, fixedClock{now: now}, store, 30*24*time.Hour)
+	packet, err := service.Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1", Scopes: []string{agentplatform.ScopeCosmoSecurityRead}}, Request{Workflow: "triage", Question: "Review this finding"})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if store.receipt == nil || store.receipt.PacketID != packet.ID || store.receipt.PacketDigest == "" || store.receipt.EvidenceDigest == "" || store.receipt.CoverageDigest == "" {
+		t.Fatalf("receipt = %+v", store.receipt)
+	}
+	if store.receipt.ExpiresAt == nil || !store.receipt.ExpiresAt.Equal(now.Add(30*24*time.Hour)) {
+		t.Fatalf("receipt expiry = %v", store.receipt.ExpiresAt)
+	}
+	reopened, err := service.GetReceipt(context.Background(), AuthorizedTenant{ID: "tenant-1"}, packet.ID)
+	if err != nil {
+		t.Fatalf("GetReceipt() error = %v", err)
+	}
+	if reopened.ID != packet.ID || reopened.Decision.State != packet.Decision.State {
+		t.Fatalf("reopened packet = %+v, want id %q", reopened, packet.ID)
+	}
+}
+
+func TestPersistentServiceDoesNotReturnPacketWhenReceiptWriteFails(t *testing.T) {
+	want := errors.New("receipt store unavailable")
+	service := NewPersistentService(&stubResolver{}, fixedClock{now: time.Now()}, &receiptStoreStub{putErr: want}, 0)
+	packet, err := service.Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1"}, Request{Workflow: "triage", Question: "Review"})
+	if packet != nil || !errors.Is(err, want) {
+		t.Fatalf("Build() = packet %+v, error %v; want nil packet and %v", packet, err, want)
+	}
+}
+
+func TestGetReceiptRejectsTamperedPacket(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	store := &receiptStoreStub{}
+	service := NewPersistentService(&stubResolver{facts: ResolvedFacts{Evidence: []EvidenceReference{{ID: "evidence-1", Kind: "finding"}}}}, fixedClock{now: now}, store, 0)
+	packet, err := service.Build(context.Background(), AuthorizedTenant{ID: "tenant-1"}, AuthorizedActor{ID: "actor-1"}, Request{Workflow: "triage", Question: "Review"})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	store.receipt.PacketJSON = append(store.receipt.PacketJSON[:len(store.receipt.PacketJSON)-1], []byte(`,"tampered":true}`)...)
+	_, err = service.GetReceipt(context.Background(), AuthorizedTenant{ID: "tenant-1"}, packet.ID)
+	if !errors.Is(err, ErrReceiptIntegrity) {
+		t.Fatalf("GetReceipt() error = %v, want ErrReceiptIntegrity", err)
 	}
 }
