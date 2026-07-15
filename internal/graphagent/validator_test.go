@@ -245,6 +245,7 @@ func TestValidatorStaticContract(t *testing.T) {
 		{name: "function pattern variable cannot establish scope", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS count MATCH (b) RETURN b LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
 		{name: "accepted", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
 		{name: "accepted bounded union", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted limit-named arithmetic with numeric bound", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1 LIMIT 100`, wantResult: ValidatorResult{OK: true}, wantLimit: 100},
 		{name: "accepted already scoped function endpoints", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}), (b:Entity {tenant_id:$tenant_id}) WITH e, b, size((e)-[:R]->(b)) AS count RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
 		{name: "accepted zero", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 0`, wantResult: ValidatorResult{OK: true}},
 	}
