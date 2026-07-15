@@ -203,6 +203,38 @@ func TestGraphEvaluationLeasesEverySourceDependency(t *testing.T) {
 	}
 }
 
+func TestGraphEvaluationLeasesCrossSourceAssetDependency(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	trigger := trustedFindingRuntime("runtime-okta", "okta", "user", now)
+	assetMetadata := trustedFindingRuntime("runtime-aws-asset-metadata", "aws", "asset_metadata", now)
+	rule := &sourceSnapshotGraphRule{
+		multiSourceStubGraphRule: multiSourceStubGraphRule{
+			stubGraphRule: stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "cross-source-asset-rule"}}, supportedSources: []string{"okta"},
+		},
+		definition: RuleDefinition{ID: "cross-source-asset-rule", EventKinds: []string{"okta.user", "asset.data_sensitivity", "asset.crown_jewel"}},
+	}
+	runtimeStore := &findingLeaseRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			trigger.GetId():       trigger,
+			assetMetadata.GetId(): assetMetadata,
+		}},
+		available:      true,
+		renewAvailable: true,
+	}
+	service := &Service{runtimeStore: runtimeStore, requireTrustedResolution: true}
+	_, release, runtimes, trusted, err := service.acquireGraphEvaluationDependencyLeases(context.Background(), trigger, []GraphRule{rule})
+	if err != nil || !trusted || len(runtimes) != 2 {
+		t.Fatalf("dependency lease = (%d runtimes, %v, %v), want trigger and trusted asset metadata", len(runtimes), trusted, err)
+	}
+	if err := release(); err != nil {
+		t.Fatalf("release() error = %v", err)
+	}
+	if len(runtimeStore.acquiredRuntimeIDs) != 1 || runtimeStore.acquiredRuntimeIDs[0] != assetMetadata.GetId() {
+		t.Fatalf("acquired runtime ids = %#v, want cross-source dependency %q", runtimeStore.acquiredRuntimeIDs, assetMetadata.GetId())
+	}
+}
+
 type findingLeaseRuntimeStore struct {
 	*stubRuntimeStore
 	available            bool

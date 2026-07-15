@@ -312,7 +312,7 @@ func (s *Service) acquireGraphEvaluationDependencyLeases(ctx context.Context, tr
 			continue
 		}
 		for _, rule := range rules {
-			if rule != nil && rule.SupportsRuntime(candidate) {
+			if graphRuleUsesRuntime(rule, candidate) {
 				selectedIDs = append(selectedIDs, strings.TrimSpace(candidate.GetId()))
 				break
 			}
@@ -371,6 +371,21 @@ func normalizedFindingStrings(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func graphRuleUsesRuntime(rule GraphRule, runtime *cerebrov1.SourceRuntime) bool {
+	if rule == nil || runtime == nil {
+		return false
+	}
+	if rule.SupportsRuntime(runtime) {
+		return true
+	}
+	for _, dependency := range graphRuleDependencyKeys(rule) {
+		if runtimeMatchesGraphDependency(runtime, dependency) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun, trigger *cerebrov1.SourceRuntime, rule GraphRule, evaluationStartedAt time.Time) {
