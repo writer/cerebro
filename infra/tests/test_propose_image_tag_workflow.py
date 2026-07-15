@@ -107,7 +107,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("permission-contents: write", action)
         self.assertIn("permission-pull-requests: write", action)
         self.assertNotIn("permission-checks: read", action)
-        self.assertNotIn("permission-statuses: read", action)
+        self.assertIn("permission-statuses: read", action)
         self.assertNotIn("check_permission", action)
         self.assertNotIn("permission-actions: write", action)
 

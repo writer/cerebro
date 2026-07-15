@@ -29,6 +29,7 @@ runs:
         permission-contents: write
         permission-issues: write
         permission-pull-requests: write
+        permission-statuses: read
 
     - name: Preflight deploy GitHub App token
       shell: bash
