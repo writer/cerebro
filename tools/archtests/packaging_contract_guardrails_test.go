@@ -99,6 +99,11 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
 		`test "$(jq '.client_payload | length' "${payload}")" -le 10`,
 		`gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"`,
+		`requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`,
+		"--workflow propose-image-tag.yml",
+		"--event repository_dispatch",
+		"deadline=$((SECONDS + 120))",
+		"no matching propose-image-tag.yml run appeared",
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
@@ -152,6 +157,7 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"cosign sign --yes",
 		"cerebro.release-candidate/v1",
 		"bundle-checksums.txt",
+		"| head -n 1 || true",
 	} {
 		if !strings.Contains(candidate, marker) {
 			t.Fatalf("candidate workflow missing required marker %q", marker)

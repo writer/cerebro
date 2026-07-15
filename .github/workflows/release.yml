@@ -290,11 +290,34 @@ jobs:
           grep -Eq 'client_payload\.request_id' "${handler}"
 
           payload="$(mktemp)"
+          requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          request_id="cerebro-${TARGET_ENVIRONMENT}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           jq -n --arg tag "${RELEASE_TAG}" --arg digest "${IMAGE_DIGEST}" \
             --arg release_url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
             --arg source_repository "${GITHUB_REPOSITORY}" --arg source_ref "refs/tags/${RELEASE_TAG}" \
-            --arg request_id "cerebro-${TARGET_ENVIRONMENT}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --arg request_id "${request_id}" \
             --arg target_environment "${TARGET_ENVIRONMENT}" --arg apply_mode "${APPLY_MODE}" \
             '{event_type:"cerebro-release-published",client_payload:{image_tag:$tag,image_digest:$digest,release_url:$release_url,source_repository:$source_repository,source_ref:$source_ref,request_id:$request_id,target_environment:$target_environment,apply_mode:$apply_mode}}' > "${payload}"
           test "$(jq '.client_payload | length' "${payload}")" -le 10
           gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"
+
+          deadline=$((SECONDS + 120))
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            run_record="$(
+              gh run list --repo "${infra_repository}" --workflow propose-image-tag.yml \
+                --event repository_dispatch --limit 20 \
+                --json databaseId,createdAt,displayTitle,url \
+                | jq -r --arg requested_at "${requested_at}" --arg request_id "${request_id}" \
+                  '.[] | select(.createdAt >= $requested_at and ((.displayTitle // "") | contains($request_id))) | [.databaseId, .url] | @tsv' \
+                | head -n 1 || true
+            )"
+            if [ -n "${run_record}" ]; then
+              IFS=$'\t' read -r run_id run_url <<< "${run_record}"
+              echo "Dispatched ${TARGET_ENVIRONMENT} ${APPLY_MODE} deployment request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url} (run ${run_id})"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ERROR: repository_dispatch was accepted, but no matching propose-image-tag.yml run appeared for ${TARGET_ENVIRONMENT} ${RELEASE_TAG}" >&2
+          echo "The downstream handler may be absent or disabled; failing closed to avoid silent deployment loss." >&2
+          exit 1

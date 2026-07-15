@@ -61,9 +61,12 @@ jobs:
           set -euo pipefail
           deadline=$((SECONDS + 1800))
           while [ "${SECONDS}" -lt "${deadline}" ]; do
-            ci_run="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow CI --event push --branch main --limit 50 \
-              --json headSha,status,conclusion,url \
-              --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\") | [.status, (.conclusion // \"\"), .url] | @tsv" | head -n 1)"
+            ci_run="$(
+              gh run list --repo "${GITHUB_REPOSITORY}" --workflow CI --event push --branch main --limit 50 \
+                --json headSha,status,conclusion,url \
+                --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\") | [.status, (.conclusion // \"\"), .url] | @tsv" \
+                | head -n 1 || true
+            )"
             if [ -n "${ci_run}" ]; then
               IFS=$'\t' read -r status conclusion url <<< "${ci_run}"
               if [ "${status}" = completed ] && [ "${conclusion}" = success ]; then

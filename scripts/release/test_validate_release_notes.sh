@@ -23,4 +23,7 @@ if "${validator}" "${tmp}/placeholder.md" 2> "${tmp}/error"; then
 fi
 grep -Fq "unfinished placeholder" "${tmp}/error"
 
+sed 's/No configuration keys changed./The TODOS integration remains supported./' "${tmp}/valid.md" > "${tmp}/placeholder-substring.md"
+"${validator}" "${tmp}/placeholder-substring.md"
+
 echo "release notes validator tests passed"

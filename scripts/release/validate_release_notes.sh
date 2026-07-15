@@ -26,7 +26,7 @@ for section in "${required_sections[@]}"; do
   fi
 done
 
-if grep -Eq '\{\{[^}]+\}\}|TBD|TODO|REPLACE_ME' "${notes}"; then
+if grep -Eq '\{\{[^}]+\}\}|\bTBD\b|\bTODO\b|\bREPLACE_ME\b' "${notes}"; then
   echo "ERROR: release notes contain an unfinished placeholder" >&2
   failed=1
 fi
