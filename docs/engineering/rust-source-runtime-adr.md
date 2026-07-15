@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-07-15
 - **Base decision:** [`rust-control-kernel-carve.md`](rust-control-kernel-carve.md)
-- **Related boundaries:** [`non-goals.md`](non-goals.md), [`source-cdk-extraction.md`](source-cdk-extraction.md), [`durability-contract.md`](durability-contract.md)
+- **Related boundaries:** [`non-goals.md`](non-goals.md), [`source-cdk-extraction.md`](source-cdk-extraction.md), [`durability-contract.md`](durability-contract.md), [`development.md`](development.md)
 
 ## Decision
 
@@ -102,7 +102,12 @@ That proof establishes the first reusable primitives:
   reported as worker failures;
 - native and embedded tests prove stable output across JSON object key order;
 - the canonical artifact and its ABI, hash, and size are checked in the shared
-  embedded-Wasm manifest.
+  embedded-Wasm manifest;
+- the Rust workspace enforces formatting, Clippy warnings, tests, dependency
+  policy, a 90% line-coverage floor, and bounded embedded-host benchmark smoke;
+- embedded-host failures preserve wrapped causes while exposing typed invalid
+  input, ABI or memory, guest status, invalid output, timeout, and cancellation
+  diagnostics.
 
 It does not establish that provider HTTP, authentication, retry, or pagination
 should move to Rust. Those capabilities already work in Go. This ADR requires
@@ -629,6 +634,22 @@ pages without changing append or checkpoint authority.
 - Do not translate deep sources for language-percentage goals.
 
 ## Release gates
+
+Every implementation stage inherits the current repository Rust baseline.
+`make rust-wasm-check` runs workspace policy, formatting, Clippy, tests, the
+90% line-coverage floor, bounded host benchmark smoke, embedded artifact checks,
+and manifest verification. `make rust-deny` retains the dependency policy.
+Safe-only crates retain compiler-enforced
+`forbid(unsafe_code)` declarations, while audited Wasm ABI modules retain their
+exact allowlisted unsafe shape. A source-runtime slice does not weaken these
+checks, raise an artifact budget to absorb unexplained growth, or treat benchmark
+output as a latency threshold. Stage-specific latency and resource thresholds
+come from the operational gates below.
+
+The Go host also exposes typed Wasm failure diagnostics without changing the
+existing error text or wrapped causes. New source-runtime host paths classify
+invalid input, ABI or memory violations, guest status, invalid output, timeout,
+and cancellation through that contract rather than parsing error strings.
 
 ### Contract gates
 
