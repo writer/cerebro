@@ -116,6 +116,44 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	}
 }
 
+func TestMonitoredAssessmentPersistsBindingAndCompletesTerminalHook(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: completeManifest(now), results: validResults(now, 1)})
+	service.now = func() time.Time { return now }
+	var completions atomic.Int32
+	service.WithRunTerminalHook(func(_ context.Context, run ports.ComplianceMonitorRun, succeeded bool, at time.Time) error {
+		if run.MonitorID != "monitor-1" || run.OccurrenceKey != "occurrence-1" || !succeeded || !at.Equal(now) {
+			t.Fatalf("terminal hook = (%#v, %v, %v)", run, succeeded, at)
+		}
+		completions.Add(1)
+		return nil
+	})
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	monitorRun := &ports.ComplianceMonitorRun{TenantID: plan.TenantID, MonitorID: "monitor-1", PlanRevisionID: plan.RevisionID, OccurrenceKey: "occurrence-1", LeaseOwner: "lease-1"}
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "occurrence-1", RequestedBy: "compliance_monitor:monitor-1", MonitorRun: monitorRun,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.MonitorRun == nil || stored.MonitorRun.LeaseOwner != "lease-1" || completions.Load() != 1 {
+		t.Fatalf("stored run = %#v completions=%d", stored, completions.Load())
+	}
+}
+
 func TestAssessmentRunCompletesFromTrustedFindingEvaluation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)

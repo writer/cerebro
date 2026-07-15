@@ -256,10 +256,13 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()
-	app.services.monitors, app.services.impactProjector, app.services.impactScheduler = app.newComplianceImpactServices(app.services.jobs)
 	app.services.assessments = app.newAssessmentService(app.services.jobs)
 	if app.services.assessments != nil {
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
+	}
+	app.services.monitors, app.services.impactProjector, app.services.impactScheduler = app.newComplianceImpactServices(app.services.jobs, app.services.assessments)
+	if app.services.assessments != nil && app.services.monitors != nil {
+		app.services.assessments.WithRunTerminalHook(app.services.monitors.CompleteAssessmentRun)
 	}
 	app.services.evidence = app.newEvidenceLedgerService()
 	app.services.remediation = app.newComplianceRemediationService()

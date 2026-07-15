@@ -25,6 +25,7 @@ const (
 	IdentifierResult         IdentifierKind = "assessment-result"
 	IdentifierDecision       IdentifierKind = "assurance-decision"
 	IdentifierSnapshot       IdentifierKind = "assessment-snapshot"
+	IdentifierMonitor        IdentifierKind = "compliance-monitor"
 	IdentifierReview         IdentifierKind = "assessment-review"
 	IdentifierArtifact       IdentifierKind = "artifact"
 	IdentifierMapping        IdentifierKind = "control-mapping"

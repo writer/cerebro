@@ -413,7 +413,37 @@ func newMonitorTestService(t *testing.T, store ports.ComplianceMonitorStore, app
 	if err != nil {
 		t.Fatal(err)
 	}
-	return service.WithJobs(jobs)
+	return service.WithJobs(jobs).WithAssessmentRequester(testAssessmentRequester{jobs: jobs})
+}
+
+type testAssessmentRequester struct {
+	jobs *platformjobs.Service
+}
+
+func (r testAssessmentRequester) RequestScheduledAssessment(ctx context.Context, request ScheduledAssessmentRequest) (ScheduledAssessment, error) {
+	job, _, err := r.jobs.Create(ctx, ports.CreateJobRequest{
+		Kind: platformjobs.KindComplianceAssessment, TenantID: request.TenantID,
+		SubjectType: "assessment_run", SubjectID: "run-1", IdempotencyKey: request.IdempotencyKey,
+		Payload: map[string]any{
+			"run_id": "run-1", "monitor_id": request.MonitorRun.MonitorID,
+			"plan_revision_id":      request.MonitorRun.PlanRevisionID,
+			"plan_lease_owner":      request.MonitorRun.LeaseOwner,
+			"plan_lease_occurrence": request.MonitorRun.OccurrenceKey,
+		},
+	})
+	if err != nil {
+		return ScheduledAssessment{}, err
+	}
+	return ScheduledAssessment{TenantID: request.TenantID, RunID: "run-1", JobID: job.ID}, nil
+}
+
+func (r testAssessmentRequester) StartScheduledAssessment(ctx context.Context, assessment ScheduledAssessment) error {
+	job, err := r.jobs.Get(ctx, assessment.JobID)
+	if err != nil {
+		return err
+	}
+	r.jobs.StartAsync(ctx, job)
+	return nil
 }
 
 func assertTriggerEvent(t *testing.T, events []*cerebrov1.EventEnvelope, triggerKind, monitorID string, windowVersion uint64) {

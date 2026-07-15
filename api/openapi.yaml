@@ -2512,6 +2512,123 @@ paths:
           description: Upload events were not found.
         '503':
           description: Replay dependencies are unavailable.
+  /grc/compliance-monitors:
+    get:
+      operationId: listComplianceMonitors
+      summary: List compliance monitors
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: after_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: Tenant-scoped compliance monitors ordered by identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceMonitorListResponse'
+        '403':
+          description: The caller cannot read compliance monitors for the tenant.
+        '503':
+          description: Compliance monitor storage is unavailable.
+    post:
+      operationId: createComplianceMonitor
+      summary: Create compliance monitor
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceMonitorInput'
+      responses:
+        '201':
+          description: Compliance monitor created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceMonitorResponse'
+        '400':
+          description: The monitor definition is invalid.
+        '403':
+          description: The caller cannot write compliance monitors for the tenant.
+        '409':
+          description: The monitor already exists.
+        '503':
+          description: Compliance monitor storage is unavailable.
+  /grc/compliance-monitors/{monitorID}:
+    get:
+      operationId: getComplianceMonitor
+      summary: Get compliance monitor
+      tags:
+        - GRC
+      parameters:
+        - name: monitorID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Current compliance monitor state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceMonitorResponse'
+        '403':
+          description: The caller cannot read the compliance monitor for the tenant.
+        '404':
+          description: The compliance monitor was not found in the tenant.
+        '503':
+          description: Compliance monitor storage is unavailable.
+    put:
+      operationId: updateComplianceMonitor
+      summary: Update compliance monitor
+      tags:
+        - GRC
+      parameters:
+        - name: monitorID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceMonitorUpdateRequest'
+      responses:
+        '200':
+          description: Compliance monitor updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceMonitorResponse'
+        '400':
+          description: The monitor definition or expected version is invalid.
+        '403':
+          description: The caller cannot write compliance monitors for the tenant.
+        '404':
+          description: The compliance monitor was not found in the tenant.
+        '409':
+          description: The monitor changed or overlaps another active monitor.
+        '503':
+          description: Compliance monitor storage is unavailable.
   /grc/assessment-plans:
     post:
       operationId: createAssessmentPlan
@@ -6795,6 +6912,94 @@ components:
       schema:
         type: string
   schemas:
+    ComplianceMonitorInput:
+      type: object
+      required: [tenant_id, program_id, plan_revision_id, trigger_kind, enabled]
+      properties:
+        tenant_id:
+          type: string
+        program_id:
+          type: string
+        plan_revision_id:
+          type: string
+        trigger_kind:
+          type: string
+          enum: [time, change]
+        interval_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Required and positive for a time-triggered monitor.
+        expected_coverage:
+          type: string
+        maximum_evidence_age_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+        grace_period_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+        debounce_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Required and positive for a change-triggered monitor.
+        escalation_owner:
+          type: string
+        enabled:
+          type: boolean
+        next_run_at:
+          type: string
+          format: date-time
+          description: Required for a time-triggered monitor.
+    ComplianceMonitorUpdateRequest:
+      type: object
+      required: [expected_version, monitor]
+      properties:
+        expected_version:
+          type: integer
+          format: uint64
+          minimum: 1
+        monitor:
+          $ref: '#/components/schemas/ComplianceMonitorInput'
+    ComplianceMonitor:
+      allOf:
+        - $ref: '#/components/schemas/ComplianceMonitorInput'
+        - type: object
+          required: [id, version, consecutive_failures, created_at, updated_at]
+          properties:
+            id:
+              type: string
+            version:
+              type: integer
+              format: uint64
+            last_success_at:
+              type: string
+              format: date-time
+            consecutive_failures:
+              type: integer
+              format: uint32
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    ComplianceMonitorResponse:
+      type: object
+      required: [monitor]
+      properties:
+        monitor:
+          $ref: '#/components/schemas/ComplianceMonitor'
+    ComplianceMonitorListResponse:
+      type: object
+      required: [monitors]
+      properties:
+        monitors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceMonitor'
     AssessmentControlRef:
       type: object
       required: [control_id]

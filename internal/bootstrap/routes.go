@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	complianceassessmenthttp "github.com/writer/cerebro/internal/sourcehttp/complianceassessment"
+	compliancemonitorhttp "github.com/writer/cerebro/internal/sourcehttp/compliancemonitor"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
@@ -130,6 +131,9 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	evidence := evidenceledgerhttp.NewHandler(app.services.evidence, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
 		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
 	}, maxProtoJSONBodyBytes)
+	monitors := compliancemonitorhttp.NewHandler(app.services.monitors, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
+		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
+	}, maxProtoJSONBodyBytes)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
 	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
 	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)
@@ -158,6 +162,10 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/invalidate", routeSurfacePlatformHTTP, evidence.InvalidateClaim)
 	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/validate", routeSurfacePlatformHTTP, evidence.ValidateClaim)
 	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/reuse", routeSurfacePlatformHTTP, evidence.ReuseClaim)
+	registerHTTPRoute(mux, "POST /grc/compliance-monitors", routeSurfacePlatformHTTP, monitors.Create)
+	registerHTTPRoute(mux, "GET /grc/compliance-monitors", routeSurfacePlatformHTTP, monitors.List)
+	registerHTTPRoute(mux, "GET /grc/compliance-monitors/{monitorID}", routeSurfacePlatformHTTP, monitors.Get)
+	registerHTTPRoute(mux, "PUT /grc/compliance-monitors/{monitorID}", routeSurfacePlatformHTTP, monitors.Update)
 	registerHTTPRoute(mux, "GET /grc/report-catalog", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("report.catalog", 5*time.Minute), app.handleGRCReportCatalog))
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))

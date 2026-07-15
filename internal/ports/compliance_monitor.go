@@ -77,6 +77,22 @@ type ComplianceChangeWindow struct {
 	ClaimExpiresAt time.Time
 }
 
+// ComplianceMonitorRun binds one canonical assessment run to the monitor
+// occurrence and overlap lease that created it.
+type ComplianceMonitorRun struct {
+	TenantID       string `json:"tenant_id"`
+	MonitorID      string `json:"monitor_id"`
+	PlanRevisionID string `json:"plan_revision_id"`
+	OccurrenceKey  string `json:"occurrence_key"`
+	LeaseOwner     string `json:"lease_owner"`
+}
+
+type ComplianceMonitorRunCompletion struct {
+	Run       ComplianceMonitorRun
+	Succeeded bool
+	At        time.Time
+}
+
 // ComplianceMonitorStore owns monitor definitions, due claims, and per-plan
 // overlap leases. Advancing a monitor is an acknowledgement after durable job
 // creation, never part of claiming the occurrence.
@@ -104,4 +120,10 @@ type ComplianceChangeMonitorStore interface {
 	ClaimDueComplianceChangeWindows(context.Context, time.Time, string, time.Duration, uint32) ([]*ComplianceChangeWindow, error)
 	CompleteComplianceChangeWindow(context.Context, string, string, string, uint64) error
 	ReleaseComplianceChangeWindow(context.Context, string, string, string) error
+}
+
+// ComplianceMonitorCompletionStore records one terminal outcome per monitor
+// occurrence and releases its exact plan lease in the same transaction.
+type ComplianceMonitorCompletionStore interface {
+	CompleteComplianceMonitorRun(context.Context, ComplianceMonitorRunCompletion) error
 }

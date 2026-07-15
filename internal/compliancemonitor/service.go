@@ -12,6 +12,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -32,9 +33,31 @@ const (
 // changes and trigger acknowledgements cannot reach the Postgres projection
 // without first passing through the durable workflow event log.
 type Service struct {
-	store     ports.ComplianceMonitorStore
-	appendLog ports.AppendLog
-	jobs      *platformjobs.Service
+	store       ports.ComplianceMonitorStore
+	appendLog   ports.AppendLog
+	jobs        *platformjobs.Service
+	assessments AssessmentRequester
+}
+
+type ScheduledAssessmentRequest struct {
+	TenantID       string
+	PlanRevisionID string
+	PeriodStart    time.Time
+	PeriodEnd      time.Time
+	IdempotencyKey string
+	RequestedBy    string
+	MonitorRun     ports.ComplianceMonitorRun
+}
+
+type ScheduledAssessment struct {
+	TenantID string
+	RunID    string
+	JobID    string
+}
+
+type AssessmentRequester interface {
+	RequestScheduledAssessment(context.Context, ScheduledAssessmentRequest) (ScheduledAssessment, error)
+	StartScheduledAssessment(context.Context, ScheduledAssessment) error
 }
 
 // New requires both the projection store and append log. A nil append log is
@@ -55,12 +78,28 @@ func (s *Service) WithJobs(jobs *platformjobs.Service) *Service {
 	return s
 }
 
+func (s *Service) WithAssessmentRequester(requester AssessmentRequester) *Service {
+	if s != nil {
+		s.assessments = requester
+	}
+	return s
+}
+
 // UpdateMonitor appends a deterministic monitor revision before projecting it
 // to Postgres. Repeating the same expected version and definition is replay
 // safe when the first projection committed but its result was not observed.
 func (s *Service) UpdateMonitor(ctx context.Context, monitor *ports.ComplianceMonitor, expectedVersion uint64, actorID string, recordedAt time.Time) (*ports.ComplianceMonitor, error) {
 	if s == nil || s.store == nil || s.appendLog == nil {
 		return nil, ErrServiceUnavailable
+	}
+	if monitor != nil && strings.TrimSpace(monitor.ID) == "" {
+		id, err := compliance.NewIdentifier(compliance.IdentifierMonitor)
+		if err != nil {
+			return nil, err
+		}
+		copy := *monitor
+		copy.ID = id
+		monitor = &copy
 	}
 	normalized, targetVersion, operation, err := normalizeMonitorUpdate(monitor, expectedVersion, actorID, recordedAt)
 	if err != nil {
@@ -220,24 +259,24 @@ func monitorUpdatedEvent(monitor *ports.ComplianceMonitor, version uint64, opera
 	return event, nil
 }
 
-func monitorTimeTriggeredEvent(monitor *ports.ComplianceMonitor, occurrence string, job *ports.Job) (*cerebrov1.EventEnvelope, error) {
+func monitorTimeTriggeredEvent(monitor *ports.ComplianceMonitor, occurrence, jobID string) (*cerebrov1.EventEnvelope, error) {
 	payload := monitorTriggerEvent{
 		MonitorID: monitor.ID, ProgramID: monitor.ProgramID, PlanRevisionID: monitor.PlanRevisionID,
-		TriggerKind: ports.ComplianceTriggerTime, OccurrenceKey: occurrence, JobID: job.ID,
+		TriggerKind: ports.ComplianceTriggerTime, OccurrenceKey: occurrence, JobID: strings.TrimSpace(jobID),
 		ScheduledFor: canonicalTime(monitor.NextRunAt).Format(time.RFC3339Nano),
 	}
-	return monitorTriggeredEvent(monitor.TenantID, occurrence, job.ID, operationTimeTrigger, monitor.NextRunAt, payload)
+	return monitorTriggeredEvent(monitor.TenantID, occurrence, jobID, operationTimeTrigger, monitor.NextRunAt, payload)
 }
 
-func monitorChangeTriggeredEvent(window *ports.ComplianceChangeWindow, occurrence string, job *ports.Job) (*cerebrov1.EventEnvelope, error) {
+func monitorChangeTriggeredEvent(window *ports.ComplianceChangeWindow, occurrence, jobID string) (*cerebrov1.EventEnvelope, error) {
 	payload := monitorTriggerEvent{
 		MonitorID: window.MonitorID, ProgramID: window.ProgramID, PlanRevisionID: window.PlanRevisionID,
-		TriggerKind: ports.ComplianceTriggerChange, OccurrenceKey: occurrence, JobID: job.ID,
+		TriggerKind: ports.ComplianceTriggerChange, OccurrenceKey: occurrence, JobID: strings.TrimSpace(jobID),
 		WindowVersion: window.Version, WindowOpenedAt: canonicalTime(window.OpenedAt).Format(time.RFC3339Nano),
 		WindowReadyAt: canonicalTime(window.ReadyAt).Format(time.RFC3339Nano), SignalCount: window.SignalCount,
 		ScopeDigest: strings.TrimSpace(window.ScopeDigest),
 	}
-	return monitorTriggeredEvent(window.TenantID, occurrence, job.ID, operationChange, window.ReadyAt, payload)
+	return monitorTriggeredEvent(window.TenantID, occurrence, jobID, operationChange, window.ReadyAt, payload)
 }
 
 func monitorTriggeredEvent(tenantID, occurrence, jobID, operation string, recordedAt time.Time, payload monitorTriggerEvent) (*cerebrov1.EventEnvelope, error) {

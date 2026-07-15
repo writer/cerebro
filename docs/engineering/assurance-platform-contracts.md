@@ -84,6 +84,28 @@ not cover the requested subjects.
 
 ## Change-Driven Assessment Scheduling
 
+Compliance monitors are managed through tenant-scoped HTTP routes:
+
+| Route | Action |
+| --- | --- |
+| `POST /grc/compliance-monitors` | Create a time-triggered or change-triggered monitor. |
+| `GET /grc/compliance-monitors` | List monitors after an optional identifier cursor. |
+| `GET /grc/compliance-monitors/{monitorID}` | Read the current monitor definition and execution state. |
+| `PUT /grc/compliance-monitors/{monitorID}` | Replace a monitor definition at an expected version. |
+
+The background scheduler scans due time monitors and closed change windows every
+15 seconds. It first creates a canonical assessment run and a queued platform job
+that contains the run ID. After the trigger event and monitor occurrence are
+recorded, it starts that job. Platform recovery can start a queued job if the
+process stops after recording the occurrence.
+
+Each monitor-triggered run retains the monitor, plan revision, occurrence, and
+lease-owner binding. Completing or failing the assessment writes one immutable
+monitor outcome and releases that exact plan lease in the same Postgres
+transaction. A replay with the same outcome is idempotent; a different terminal
+outcome for the same occurrence is a conflict. Existing monitor completion and
+lease-release methods remain available for compatibility.
+
 `complianceimpact.Scheduler` connects immutable change signals to the existing
 bounded impact analyzer and compliance monitor service. It records only source
 event IDs, monitor IDs, signal kinds, timestamps, and the assessment-directive
