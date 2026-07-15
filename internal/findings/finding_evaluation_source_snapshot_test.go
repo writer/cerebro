@@ -83,6 +83,96 @@ func TestGraphEvaluationBindsEverySourceAndDetectsProjectionChange(t *testing.T)
 	}
 }
 
+func TestGraphEvaluationBindsCrossSourceAssetDependencies(t *testing.T) {
+	t.Parallel()
+	sourceAt := time.Date(2026, 7, 14, 11, 0, 0, 0, time.UTC)
+	evaluationAt := sourceAt.Add(10 * time.Minute)
+	for _, sourceID := range []string{"aws", "azure", "gcp"} {
+		sourceID := sourceID
+		t.Run(sourceID, func(t *testing.T) {
+			t.Parallel()
+			trigger := trustedFindingRuntime("runtime-okta", "okta", "user", sourceAt)
+			assetMetadata := trustedFindingRuntime("runtime-"+sourceID+"-asset-metadata", sourceID, "asset_metadata", sourceAt)
+			runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+				trigger.GetId():       trigger,
+				assetMetadata.GetId(): assetMetadata,
+			}}
+			runStore := &sourceSnapshotGraphRunStore{runs: map[string]graphstore.IngestRun{
+				trigger.GetId():       completedGraphRun("graph-okta", trigger.GetId(), "checkpoint-okta", sourceAt.Add(time.Minute)),
+				assetMetadata.GetId(): completedGraphRun("graph-"+sourceID+"-asset", assetMetadata.GetId(), "checkpoint-"+sourceID+"-asset", sourceAt.Add(time.Minute)),
+			}}
+			rule := &sourceSnapshotGraphRule{
+				multiSourceStubGraphRule: multiSourceStubGraphRule{
+					stubGraphRule:    stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "cross-source-asset-rule"}},
+					supportedSources: []string{"okta"},
+				},
+				definition: RuleDefinition{ID: "cross-source-asset-rule", EventKinds: []string{"okta.user", "asset.data_sensitivity", "asset.crown_jewel"}},
+			}
+			service := (&Service{runtimeStore: runtimeStore, graphRunStore: runStore}).WithTrustedSourceResolution()
+			run := newGraphFindingEvaluationRun(trigger.GetId(), rule.Spec().GetId(), evaluationAt)
+			service.bindGraphEvaluationSourceSnapshots(context.Background(), run, trigger, rule, evaluationAt)
+			if run.SourceDependencyComplete == nil || !run.GetSourceDependencyComplete() || len(run.GetSourceSnapshots()) != 2 || !service.canResolveFromFindingEvaluationRun(run, true) {
+				t.Fatalf("bound source envelope = %#v, want trusted trigger and %s asset metadata dependency", run, sourceID)
+			}
+
+			delete(runtimeStore.runtimes, assetMetadata.GetId())
+			missing := newGraphFindingEvaluationRun(trigger.GetId(), rule.Spec().GetId(), evaluationAt)
+			service.bindGraphEvaluationSourceSnapshots(context.Background(), missing, trigger, rule, evaluationAt)
+			if missing.SourceDependencyComplete == nil || missing.GetSourceDependencyComplete() || service.canResolveFromFindingEvaluationRun(missing, true) {
+				t.Fatalf("missing %s asset metadata dependency remained trusted: %#v", sourceID, missing)
+			}
+		})
+	}
+}
+
+func TestCriticalAndHighGraphRulesMatchCloudAssetDependencies(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name                 string
+		rule                 Rule
+		wantID               string
+		wantSeverity         string
+		wantCrownJewelSource bool
+	}{
+		{name: "critical exposed compute", rule: newCloudExposedPrivilegedComputeRoleRule(), wantID: cloudExposedPrivilegedComputeRoleRuleID, wantSeverity: "CRITICAL"},
+		{name: "high identity access", rule: newIdentityPrivilegedNoMFAAccessRule(), wantID: identityPrivilegedNoMFAAccessRuleID, wantSeverity: "HIGH", wantCrownJewelSource: true},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			graphRule, ok := asGraphRule(test.rule)
+			if !ok {
+				t.Fatalf("rule %q is not a graph rule", test.wantID)
+			}
+			metadata, ok := ruleMetadata(test.rule)
+			if !ok || metadata.ID != test.wantID || metadata.Severity != test.wantSeverity {
+				t.Fatalf("rule metadata = %#v, want id %q severity %q", metadata, test.wantID, test.wantSeverity)
+			}
+			dependencies := graphRuleDependencyKeys(graphRule)
+			for _, sourceID := range []string{"aws", "azure", "gcp"} {
+				runtime := &cerebrov1.SourceRuntime{SourceId: sourceID, Config: map[string]string{"family": "asset_metadata"}}
+				matchedDataSensitivity := false
+				matchedCrownJewel := false
+				for _, dependency := range dependencies {
+					if !runtimeMatchesGraphDependency(runtime, dependency) {
+						continue
+					}
+					switch dependency {
+					case "asset\x00data_sensitivity":
+						matchedDataSensitivity = true
+					case "asset\x00crown_jewel":
+						matchedCrownJewel = true
+					}
+				}
+				if !matchedDataSensitivity || matchedCrownJewel != test.wantCrownJewelSource {
+					t.Fatalf("%s asset metadata matches data_sensitivity=%t crown_jewel=%t, want true/%t", sourceID, matchedDataSensitivity, matchedCrownJewel, test.wantCrownJewelSource)
+				}
+			}
+		})
+	}
+}
+
 func TestTrustedSourceResolutionGate(t *testing.T) {
 	t.Parallel()
 	untrusted := &cerebrov1.FindingEvaluationRun{SourceDependencyComplete: proto.Bool(false)}

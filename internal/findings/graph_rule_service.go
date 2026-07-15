@@ -294,7 +294,17 @@ func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *c
 	resolvedDependencies := make(map[string]struct{}, len(dependencies))
 	snapshots := make([]*cerebrov1.FindingEvaluationSourceSnapshot, 0, len(runtimes))
 	for _, runtime := range runtimes {
-		if runtime == nil || !rule.SupportsRuntime(runtime) {
+		if runtime == nil {
+			continue
+		}
+		matchesDependency := false
+		for _, dependency := range dependencies {
+			if runtimeMatchesGraphDependency(runtime, dependency) {
+				resolvedDependencies[dependency] = struct{}{}
+				matchesDependency = true
+			}
+		}
+		if !matchesDependency && !rule.SupportsRuntime(runtime) {
 			continue
 		}
 		snapshot := findingEvaluationSourceSnapshot(runtime)
@@ -304,11 +314,6 @@ func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *c
 				bindGraphSnapshot(snapshot, runs[0], evaluationStartedAt)
 			}
 		}
-		for _, dependency := range dependencies {
-			if runtimeMatchesGraphDependency(runtime, dependency) {
-				resolvedDependencies[dependency] = struct{}{}
-			}
-		}
 		snapshots = append(snapshots, snapshot)
 	}
 	if len(snapshots) == 0 {
@@ -316,7 +321,7 @@ func (s *Service) bindGraphEvaluationSourceSnapshots(ctx context.Context, run *c
 	}
 	sort.Slice(snapshots, func(i, j int) bool { return snapshots[i].GetRuntimeId() < snapshots[j].GetRuntimeId() })
 	run.SourceSnapshots = snapshots
-	run.SourceDependencyComplete = proto.Bool(len(dependencies) > 0 && len(resolvedDependencies) == len(dependencies))
+	run.SourceDependencyComplete = proto.Bool(len(resolvedDependencies) == len(dependencies))
 }
 
 func (s *Service) verifyGraphEvaluationSourceSnapshots(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
@@ -373,7 +378,27 @@ func runtimeMatchesGraphDependency(runtime *cerebrov1.SourceRuntime, dependency 
 	}
 	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
 	family := strings.ToLower(strings.TrimSpace(runtime.GetConfig()["family"]))
-	return sourceID == parts[0] && family == parts[1]
+	if sourceID == parts[0] && family == parts[1] {
+		return true
+	}
+	return runtimeMatchesAssetClassificationDependency(sourceID, family, parts[0], parts[1])
+}
+
+func runtimeMatchesAssetClassificationDependency(sourceID, family, dependencySource, dependencyFamily string) bool {
+	if dependencySource != "asset" || family != "asset_metadata" {
+		return false
+	}
+	switch dependencyFamily {
+	case "data_sensitivity", "crown_jewel":
+	default:
+		return false
+	}
+	for _, event := range builtinCloudCapabilities.events {
+		if strings.EqualFold(sourceID, event.SourceID) && strings.EqualFold(event.Kind, "asset.data_sensitivity") {
+			return true
+		}
+	}
+	return false
 }
 
 func retiredGraphRule(rule GraphRule) bool {
