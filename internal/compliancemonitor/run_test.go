@@ -51,6 +51,39 @@ func TestRunDueCreatesJobBeforeAdvancingAndPreventsOverlap(t *testing.T) {
 	}
 }
 
+func TestWithJobsPreservesDirectScheduling(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	monitors := &memoryMonitorStore{due: []*ports.ComplianceMonitor{{
+		ID: "monitor-legacy", TenantID: "tenant-1", ProgramID: "program-1",
+		PlanRevisionID: "plan-revision-1", TriggerKind: ports.ComplianceTriggerTime,
+		IntervalSeconds: 3600, Enabled: true, NextRunAt: now,
+	}}}
+	jobStore := newMemoryJobStore(now)
+	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
+	})
+	service, err := New(monitors, &memoryMonitorAppendLog{jobStore: jobStore, monitorStore: monitors})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, runErr := service.WithJobs(jobs).RunDue(context.Background(), now); runErr != nil || count != 1 {
+		t.Fatalf("RunDue() = (%d, %v)", count, runErr)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	jobStore.mu.Lock()
+	defer jobStore.mu.Unlock()
+	for _, job := range jobStore.jobs {
+		if job.SubjectType != subjectType || job.SubjectID != "monitor-legacy" || job.Payload["program_id"] != "program-1" || job.Payload["scheduled_for"] != now.Format(time.RFC3339Nano) {
+			t.Fatalf("legacy scheduled job = %+v", job)
+		}
+		return
+	}
+	t.Fatal("legacy scheduling did not create a job")
+}
+
 func TestRunDueReleasesClaimsWhenJobCreationFails(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)

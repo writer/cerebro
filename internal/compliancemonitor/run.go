@@ -49,7 +49,7 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
 			continue
 		}
 		assessment, createErr := s.assessments.RequestScheduledAssessment(ctx, ScheduledAssessmentRequest{
-			TenantID: monitor.TenantID, PlanRevisionID: monitor.PlanRevisionID,
+			TenantID: monitor.TenantID, ProgramID: monitor.ProgramID, PlanRevisionID: monitor.PlanRevisionID,
 			PeriodStart: monitor.NextRunAt.Add(-time.Duration(monitor.IntervalSeconds) * time.Second), PeriodEnd: monitor.NextRunAt,
 			IdempotencyKey: occurrence, RequestedBy: subjectType + ":" + monitor.ID,
 			MonitorRun: ports.ComplianceMonitorRun{TenantID: monitor.TenantID, MonitorID: monitor.ID, PlanRevisionID: monitor.PlanRevisionID, OccurrenceKey: occurrence, LeaseOwner: leaseOwner},
@@ -118,10 +118,11 @@ func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error)
 			continue
 		}
 		assessment, createErr := s.assessments.RequestScheduledAssessment(ctx, ScheduledAssessmentRequest{
-			TenantID: window.TenantID, PlanRevisionID: window.PlanRevisionID,
+			TenantID: window.TenantID, ProgramID: window.ProgramID, PlanRevisionID: window.PlanRevisionID,
 			PeriodStart: window.OpenedAt, PeriodEnd: window.ReadyAt,
 			IdempotencyKey: occurrence, RequestedBy: subjectType + ":" + window.MonitorID,
-			MonitorRun: ports.ComplianceMonitorRun{TenantID: window.TenantID, MonitorID: window.MonitorID, PlanRevisionID: window.PlanRevisionID, OccurrenceKey: occurrence, LeaseOwner: leaseOwner},
+			MonitorRun:   ports.ComplianceMonitorRun{TenantID: window.TenantID, MonitorID: window.MonitorID, PlanRevisionID: window.PlanRevisionID, OccurrenceKey: occurrence, LeaseOwner: leaseOwner},
+			ChangeWindow: window,
 		})
 		if createErr != nil {
 			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)

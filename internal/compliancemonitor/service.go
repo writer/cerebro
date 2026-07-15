@@ -36,18 +36,19 @@ const (
 type Service struct {
 	store       ports.ComplianceMonitorStore
 	appendLog   ports.AppendLog
-	jobs        *platformjobs.Service
 	assessments AssessmentRequester
 }
 
 type ScheduledAssessmentRequest struct {
 	TenantID       string
+	ProgramID      string
 	PlanRevisionID string
 	PeriodStart    time.Time
 	PeriodEnd      time.Time
 	IdempotencyKey string
 	RequestedBy    string
 	MonitorRun     ports.ComplianceMonitorRun
+	ChangeWindow   *ports.ComplianceChangeWindow
 }
 
 type ScheduledAssessment struct {
@@ -74,7 +75,11 @@ func New(store ports.ComplianceMonitorStore, appendLog ports.AppendLog) (*Servic
 // boundary. Monitor definition updates do not require the job runtime.
 func (s *Service) WithJobs(jobs *platformjobs.Service) *Service {
 	if s != nil {
-		s.jobs = jobs
+		if jobs == nil {
+			s.assessments = nil
+		} else {
+			s.assessments = jobAssessmentRequester{jobs: jobs}
+		}
 	}
 	return s
 }
@@ -84,6 +89,55 @@ func (s *Service) WithAssessmentRequester(requester AssessmentRequester) *Servic
 		s.assessments = requester
 	}
 	return s
+}
+
+type jobAssessmentRequester struct {
+	jobs *platformjobs.Service
+}
+
+func (r jobAssessmentRequester) RequestScheduledAssessment(ctx context.Context, request ScheduledAssessmentRequest) (ScheduledAssessment, error) {
+	if r.jobs == nil {
+		return ScheduledAssessment{}, ErrServiceUnavailable
+	}
+	payload := map[string]any{
+		"program_id":            request.ProgramID,
+		"plan_revision_id":      request.PlanRevisionID,
+		"monitor_id":            request.MonitorRun.MonitorID,
+		"plan_lease_owner":      request.MonitorRun.LeaseOwner,
+		"plan_lease_occurrence": request.MonitorRun.OccurrenceKey,
+	}
+	if request.ChangeWindow == nil {
+		payload["scheduled_for"] = request.PeriodEnd.UTC().Format(time.RFC3339Nano)
+	} else {
+		payload["change_window_version"] = request.ChangeWindow.Version
+		payload["change_window_opened_at"] = request.ChangeWindow.OpenedAt.UTC().Format(time.RFC3339Nano)
+		payload["change_signal_count"] = request.ChangeWindow.SignalCount
+		payload["change_scope_digest"] = request.ChangeWindow.ScopeDigest
+	}
+	job, _, err := r.jobs.Create(ctx, ports.CreateJobRequest{
+		Kind:           platformjobs.KindComplianceAssessment,
+		TenantID:       request.TenantID,
+		SubjectType:    subjectType,
+		SubjectID:      request.MonitorRun.MonitorID,
+		IdempotencyKey: request.IdempotencyKey,
+		Payload:        payload,
+	})
+	if err != nil {
+		return ScheduledAssessment{}, err
+	}
+	return ScheduledAssessment{TenantID: request.TenantID, JobID: job.ID}, nil
+}
+
+func (r jobAssessmentRequester) StartScheduledAssessment(ctx context.Context, assessment ScheduledAssessment) error {
+	if r.jobs == nil {
+		return ErrServiceUnavailable
+	}
+	job, err := r.jobs.Get(ctx, assessment.JobID)
+	if err != nil {
+		return err
+	}
+	r.jobs.StartAsync(ctx, job)
+	return nil
 }
 
 // UpdateMonitor appends a deterministic monitor revision before projecting it
