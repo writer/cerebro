@@ -107,6 +107,7 @@ config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.36
+  cerebro:imageDigest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   cerebro:apiMaxInstances: 2
   cerebro:natsCpu: 2048
   cerebro:natsMemory: 32768

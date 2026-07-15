@@ -374,8 +374,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           image_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' infra/aws/Pulumi.sec-dev.yaml)"
+          image_digest="$(awk '$1 == "cerebro:imageDigest:" { print $2; exit }' infra/aws/Pulumi.sec-dev.yaml)"
+          resolved_digest="$(docker buildx imagetools inspect "ghcr.io/writer/cerebro:${image_tag}" --format '{{.Manifest.Digest}}')"
+          if [ "${resolved_digest}" != "${image_digest}" ]; then
+            echo "Configured sec-dev digest ${image_digest} does not match ${image_tag} digest ${resolved_digest}." >&2
+            exit 1
+          fi
           web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' infra/aws/Pulumi.sec-dev.yaml || true)"
-          .github/scripts/github-deployment-status.sh create sec-dev "${image_tag}" "${web_image_tag}" false
+          .github/scripts/github-deployment-status.sh create sec-dev "${image_tag}" "${image_digest}" "${web_image_tag}" false
+          echo "image_digest=${image_digest}" >> "$GITHUB_OUTPUT"
 
       - name: Mark GitHub deployment in progress (sec-dev)
         if: steps.github_deployment.outputs.deployment_id != ''
@@ -426,7 +433,7 @@ jobs:
         working-directory: infra
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.sec-dev.yaml --receipt-output promotion-receipt-sec-dev.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.sec-dev.yaml --expected-api-digest "${{ steps.github_deployment.outputs.image_digest }}" --receipt-output promotion-receipt-sec-dev.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
 
       - name: Upload promotion receipt (sec-dev)
         if: always() && needs.changes.outputs.aws_sec_dev_deploy == 'true'
@@ -609,8 +616,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           image_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' infra/aws/Pulumi.go-prod.yaml)"
+          image_digest="$(awk '$1 == "cerebro:imageDigest:" { print $2; exit }' infra/aws/Pulumi.go-prod.yaml)"
+          resolved_digest="$(docker buildx imagetools inspect "ghcr.io/writer/cerebro:${image_tag}" --format '{{.Manifest.Digest}}')"
+          if [ "${resolved_digest}" != "${image_digest}" ]; then
+            echo "Configured go-prod digest ${image_digest} does not match ${image_tag} digest ${resolved_digest}." >&2
+            exit 1
+          fi
           web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' infra/aws/Pulumi.go-prod.yaml || true)"
-          .github/scripts/github-deployment-status.sh create go-prod "${image_tag}" "${web_image_tag}" true
+          .github/scripts/github-deployment-status.sh create go-prod "${image_tag}" "${image_digest}" "${web_image_tag}" true
+          echo "image_digest=${image_digest}" >> "$GITHUB_OUTPUT"
 
       - name: Mark GitHub deployment in progress (go-prod)
         if: steps.github_deployment.outputs.deployment_id != ''
@@ -661,7 +675,7 @@ jobs:
         working-directory: infra
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.go-prod.yaml --receipt-output promotion-receipt-go-prod.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.go-prod.yaml --expected-api-digest "${{ steps.github_deployment.outputs.image_digest }}" --receipt-output promotion-receipt-go-prod.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
 
       - name: Upload promotion receipt (go-prod)
         if: always() && needs.changes.outputs.aws_go_prod_deploy == 'true'
@@ -1027,17 +1041,25 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: |
-          image_tag=""
+          image_tag="not-applicable"
+          image_digest="not-applicable"
           web_image_tag=""
           if [[ "${STACK_NAME}" != gcp-* ]]; then
             image_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+            image_digest="$(awk '$1 == "cerebro:imageDigest:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+            resolved_digest="$(docker buildx imagetools inspect "ghcr.io/writer/cerebro:${image_tag}" --format '{{.Manifest.Digest}}')"
+            if [ "${resolved_digest}" != "${image_digest}" ]; then
+              echo "Configured ${STACK_NAME} digest ${image_digest} does not match ${image_tag} digest ${resolved_digest}." >&2
+              exit 1
+            fi
             web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml" || true)"
           fi
           production_environment=false
           if [[ "${STACK_NAME}" == *prod ]]; then
             production_environment=true
           fi
-          .github/scripts/github-deployment-status.sh create "${STACK_NAME}" "${image_tag}" "${web_image_tag}" "${production_environment}"
+          .github/scripts/github-deployment-status.sh create "${STACK_NAME}" "${image_tag}" "${image_digest}" "${web_image_tag}" "${production_environment}"
+          echo "image_digest=${image_digest}" >> "$GITHUB_OUTPUT"
 
       - name: Mark GitHub deployment in progress (manual)
         if: steps.github_deployment.outputs.deployment_id != ''
@@ -1102,7 +1124,7 @@ jobs:
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: uv run python scripts/ensure_ecr_promotion.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --receipt-output "promotion-receipt-${STACK_NAME}.json" --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --expected-api-digest "${{ steps.github_deployment.outputs.image_digest }}" --receipt-output "promotion-receipt-${STACK_NAME}.json" --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
 
       - name: Upload promotion receipt (AWS)
         if: always() && !startsWith(github.event.inputs.environment, 'gcp-')

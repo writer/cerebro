@@ -1,0 +1,43 @@
+name: Reconcile Cerebro Release Promotions
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - Infrastructure Deploy
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  deployments: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: reconcile-cerebro-release-promotions
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile latest stable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Reconcile release promotion
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/reconcile_release_promotions.py
+          --repository "${GITHUB_REPOSITORY}"
+          --manage-issue
+          --stale-after-minutes 120

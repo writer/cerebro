@@ -1,0 +1,38 @@
+name: Resume Cerebro Release Promotions
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Verification completed before automatic promotion resumes
+        required: true
+        type: string
+
+permissions:
+  issues: write
+
+concurrency:
+  group: cerebro-release-promotion-resume
+  cancel-in-progress: false
+
+jobs:
+  resume:
+    name: Resume automatic promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-rollback
+    steps:
+      - name: Close promotion pause
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          issue_numbers="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label cerebro-promotion-paused --json number --jq '.[].number')"
+          if [ -z "${issue_numbers}" ]; then
+            echo "No automatic promotion pause is active."
+            exit 0
+          fi
+          while read -r issue_number; do
+            gh issue close "${issue_number}" --repo "${GITHUB_REPOSITORY}" --comment "Automatic promotion resumed after rollback verification. ${RESUME_REASON}"
+          done <<<"${issue_numbers}"

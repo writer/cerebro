@@ -1,0 +1,59 @@
+name: Request Cerebro Image Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Stack to roll back first
+        required: true
+        type: choice
+        options:
+          - sec-dev
+          - go-prod
+      image_tag:
+        description: Published stable image tag to restore
+        required: true
+        type: string
+      reason:
+        description: Operational reason for the rollback
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+  deployments: read
+  issues: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cerebro-image-rollback-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  request:
+    name: Create reviewed rollback PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-rollback
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Request rollback
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          ROLLBACK_REASON: ${{ inputs.reason }}
+        run: >-
+          python3 scripts/request_release_rollback.py
+          --repository "${GITHUB_REPOSITORY}"
+          --environment "${TARGET_ENVIRONMENT}"
+          --image-tag "${IMAGE_TAG}"
+          --reason "${ROLLBACK_REASON}"
+          --stack-file "aws/Pulumi.${TARGET_ENVIRONMENT}.yaml"

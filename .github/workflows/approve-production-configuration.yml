@@ -1,0 +1,50 @@
+name: Approve Cerebro Production Configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open production configuration pull request number
+        required: true
+        type: number
+      head_sha:
+        description: Full commit SHA reviewed in the pull request
+        required: true
+        type: string
+      reason:
+        description: Reason for approving the production configuration change
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: production-config-approval-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    name: Approve production configuration PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-config-change
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Record protected approval
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: >-
+          python3 scripts/approve_production_config_change.py
+          --repository "${GITHUB_REPOSITORY}"
+          --pr-number "${PR_NUMBER}"
+          --head-sha "${HEAD_SHA}"
