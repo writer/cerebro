@@ -148,11 +148,17 @@ def _github_actions_actor(value: Any) -> bool:
     return isinstance(value, dict) and value.get("login") == "github-actions[bot]"
 
 
-def _successful_deploy_job(jobs: Any, environment: str) -> bool:
+def _successful_deploy_job(jobs: Any, environment: str, event: str) -> bool:
     if not isinstance(jobs, dict) or not isinstance(jobs.get("jobs"), list):
         return False
-    expected_job = f"Deploy {environment}"
-    expected_step = f"Pulumi Up ({environment})"
+    if event == "push":
+        expected_job = f"Deploy {environment}"
+        expected_step = f"Pulumi Up ({environment})"
+    elif event == "workflow_dispatch" and environment in {"sec-dev", "go-prod"}:
+        expected_job = "Manual Deploy"
+        expected_step = "Pulumi Up (AWS)"
+    else:
+        return False
     for job in jobs["jobs"]:
         if (
             not isinstance(job, dict)
@@ -202,10 +208,11 @@ def _trusted_workflow_deployment(
         return False
     run_sha = str(workflow_run.get("head_sha") or "")
     run_url = str(workflow_run.get("html_url") or "")
+    run_event = str(workflow_run.get("event") or "")
     run_repository = workflow_run.get("repository") or {}
     if (
         workflow_run.get("id") != run_id
-        or workflow_run.get("event") != "push"
+        or run_event not in {"push", "workflow_dispatch"}
         or workflow_run.get("head_branch") != "main"
         or workflow_run.get("path") != INFRA_DEPLOY_WORKFLOW_PATH
         or workflow_run.get("conclusion") != "success"
@@ -232,7 +239,7 @@ def _trusted_workflow_deployment(
             f"repos/{repository}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100",
         ]
     )
-    return _successful_deploy_job(jobs, environment)
+    return _successful_deploy_job(jobs, environment, run_event)
 
 
 def find_successful_deployment(

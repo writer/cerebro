@@ -286,6 +286,107 @@ class ReleasePromotionTest(unittest.TestCase):
         self.assertIsNone(matched)
         github.assert_called_once()
 
+    def test_successful_protected_manual_aws_deployment_opens_gate(self) -> None:
+        digest = f"sha256:{'a' * 64}"
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
+        deployment = {
+            "id": 42,
+            "environment": "sec-dev",
+            "ref": "abc123",
+            "created_at": "2026-07-14T10:00:00Z",
+            "creator": {"login": "github-actions[bot]"},
+            "payload": {
+                "imageTag": "v2.1.10",
+                "imageDigest": digest,
+                "workflowRun": run_url,
+                "workflowRunId": 4200,
+                "workflowRunAttempt": 1,
+            },
+        }
+        status = {
+            "state": "success",
+            "environment": "sec-dev",
+            "target_url": run_url,
+            "creator": {"login": "github-actions[bot]"},
+        }
+        workflow_run = {
+            "id": 4200,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "head_sha": "abc123",
+            "path": release_promotion.INFRA_DEPLOY_WORKFLOW_PATH,
+            "run_attempt": 1,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        jobs = {
+            "jobs": [
+                {
+                    "name": "Manual Deploy",
+                    "conclusion": "success",
+                    "steps": [
+                        {"name": "Pulumi Up (AWS)", "conclusion": "success"}
+                    ],
+                }
+            ]
+        }
+        stack_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {digest}\n"
+        )
+        with (
+            patch(
+                "release_promotion.gh_json",
+                side_effect=[[deployment], [status], workflow_run, jobs],
+            ),
+            patch("release_promotion.repository_file", return_value=stack_text),
+        ):
+            matched = release_promotion.find_successful_deployment(
+                "WriterInternal/cerebro",
+                environment="sec-dev",
+                image_tag="v2.1.10",
+                image_digest=digest,
+            )
+
+        self.assertIsNotNone(matched)
+        self.assertEqual(matched.deployment_id, 42)
+
+    def test_manual_deployment_requires_successful_aws_apply(self) -> None:
+        jobs = {
+            "jobs": [
+                {
+                    "name": "Manual Deploy",
+                    "conclusion": "success",
+                    "steps": [
+                        {"name": "Pulumi Up (AWS)", "conclusion": "skipped"}
+                    ],
+                }
+            ]
+        }
+
+        self.assertFalse(
+            release_promotion._successful_deploy_job(
+                jobs,
+                "sec-dev",
+                "workflow_dispatch",
+            )
+        )
+        self.assertFalse(
+            release_promotion._successful_deploy_job(
+                jobs,
+                "sec-dev",
+                "repository_dispatch",
+            )
+        )
+        self.assertFalse(
+            release_promotion._successful_deploy_job(
+                jobs,
+                "gcp-prod",
+                "workflow_dispatch",
+            )
+        )
+
     def test_workflow_without_successful_pulumi_up_does_not_open_gate(self) -> None:
         digest = f"sha256:{'a' * 64}"
         run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4200"
