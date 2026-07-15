@@ -107,7 +107,6 @@ var (
 	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
 	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
 	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
-	cypherLimitPattern    = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionResult {
@@ -1300,15 +1299,15 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 	if trimmed == "" {
 		return cypher, ConversionDiagnostic{}, false
 	}
-	matches := cypherLimitPattern.FindAllStringSubmatchIndex(trimmed, -1)
-	if len(matches) == 0 {
+	tokens := lexCypherLimitTokens(trimmed)
+	if !hasCypherLimitClause(trimmed, tokens) {
 		return trimmed + fmt.Sprintf("\nLIMIT %d", limit), ConversionDiagnostic{
 			Level:   "info",
 			Code:    "limit_injected",
 			Message: fmt.Sprintf("Added LIMIT %d to LLM fallback Cypher.", limit),
 		}, true
 	}
-	current, valueStart, valueEnd, ok := lastNumericCypherLimit(trimmed)
+	current, valueStart, valueEnd, ok := lastNumericCypherLimitTokens(trimmed, tokens)
 	if !ok || current <= limit {
 		return cypher, ConversionDiagnostic{}, false
 	}
@@ -1325,7 +1324,10 @@ type cypherLimitToken struct {
 }
 
 func lastNumericCypherLimit(query string) (int, int, int, bool) {
-	tokens := lexCypherLimitTokens(query)
+	return lastNumericCypherLimitTokens(query, lexCypherLimitTokens(query))
+}
+
+func lastNumericCypherLimitTokens(query string, tokens []cypherLimitToken) (int, int, int, bool) {
 	value, valueStart, valueEnd, found := 0, 0, 0, false
 	for index, token := range tokens {
 		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") {
@@ -1342,6 +1344,38 @@ func lastNumericCypherLimit(query string) (int, int, int, bool) {
 		value, valueStart, valueEnd, found = parsed, number.start, number.end, true
 	}
 	return value, valueStart, valueEnd, found
+}
+
+func hasCypherLimitClause(query string, tokens []cypherLimitToken) bool {
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") || index+1 >= len(tokens) {
+			continue
+		}
+		next := tokens[index+1]
+		value := query[next.start:next.end]
+		switch next.kind {
+		case 'n':
+			return true
+		case 'o':
+			if strings.HasPrefix(value, "$") || value == "+" || value == "-" {
+				return true
+			}
+		case 'i':
+			if !cypherLimitExpressionBoundary(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cypherLimitExpressionBoundary(value string) bool {
+	switch strings.ToUpper(value) {
+	case "AS", "WHERE", "ORDER", "SKIP", "LIMIT", "UNION", "WITH", "RETURN", "MATCH", "OPTIONAL", "CALL":
+		return true
+	default:
+		return false
+	}
 }
 
 func cypherLimitValueTerminated(query string, tokens []cypherLimitToken, index int) bool {
