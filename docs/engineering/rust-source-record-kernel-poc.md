@@ -114,7 +114,7 @@ memory. It creates a fresh instance for each call with these limits:
 | Linear memory | 128 pages / 8 MiB |
 | Input | 1 MiB |
 | Output | 2 MiB |
-| Call deadline | 500 ms |
+| Call deadline | 2 seconds |
 | Contract records | 1 to 1,000 |
 | Record bytes | 1 to 256 KiB |
 | Cursor bytes | 4 KiB |

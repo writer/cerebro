@@ -34,7 +34,7 @@ var recordKernelEvaluator = wasmjson.New(wasmjson.Config{
 	MaxInputBytes:     recordKernelMaxInput,
 	MaxOutputBytes:    recordKernelMaxOutput,
 	InitializeTimeout: 30 * time.Second,
-	CallTimeout:       500 * time.Millisecond,
+	CallTimeout:       2 * time.Second,
 })
 
 // RecordMappingContract sets the identity fields and hard page bounds enforced by the kernel.
