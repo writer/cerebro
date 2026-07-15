@@ -83,6 +83,13 @@ struct SubqueryScope {
     end: usize,
 }
 
+#[derive(Default)]
+struct LimitScope {
+    branch_limit: Option<u64>,
+    max_limit: Option<u64>,
+    saw_union: bool,
+}
+
 pub fn validate(query: &str, max_rows: u64) -> Validation {
     let query = query.trim();
     if query.is_empty() {
@@ -337,13 +344,54 @@ fn has_apoc_invocation(tokens: &[Token]) -> bool {
 }
 
 fn query_limit(tokens: &[Token]) -> Option<u64> {
-    let mut limit = None;
+    let mut scopes = vec![LimitScope::default()];
     for (i, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Symbol && token.text == "{" {
+            scopes.push(LimitScope::default());
+            continue;
+        }
+        if token.kind == TokenKind::Symbol && token.text == "}" {
+            if scopes.len() == 1 {
+                return None;
+            }
+            let scope = scopes.pop()?;
+            if scope.saw_union && scope.branch_limit.is_none() {
+                return None;
+            }
+            continue;
+        }
         if keyword_token(token, "LIMIT") {
-            limit = Some(numeric_limit_at(tokens, i)?);
+            let limit = numeric_limit_at(tokens, i)?;
+            let scope = scopes.last_mut()?;
+            scope.branch_limit = Some(
+                scope
+                    .branch_limit
+                    .map_or(limit, |current| current.max(limit)),
+            );
+            continue;
+        }
+        if keyword_token(token, "UNION") {
+            let scope = scopes.last_mut()?;
+            let branch_limit = scope.branch_limit?;
+            scope.max_limit = Some(
+                scope
+                    .max_limit
+                    .map_or(branch_limit, |current| current.max(branch_limit)),
+            );
+            scope.branch_limit = None;
+            scope.saw_union = true;
         }
     }
-    limit
+    if scopes.len() != 1 {
+        return None;
+    }
+    let scope = scopes.pop()?;
+    let branch_limit = scope.branch_limit?;
+    Some(
+        scope
+            .max_limit
+            .map_or(branch_limit, |current| current.max(branch_limit)),
+    )
 }
 
 fn oversized_limit(tokens: &[Token], max_rows: u64) -> Option<u64> {
@@ -525,6 +573,7 @@ fn all_node_patterns_tenant_scoped(query: &str) -> bool {
     let mut scoped = HashSet::new();
     let mut pending_call_imports: Option<HashSet<String>> = None;
     let mut subqueries: Vec<SubqueryScope> = Vec::new();
+    let mut paren_function_context = Vec::new();
     let mut saw_node = false;
     let mut i = 0;
     while i < query.len() {
@@ -575,6 +624,17 @@ fn all_node_patterns_tenant_scoped(query: &str) -> bool {
         }
         let (pattern, found, valid) = node_pattern_at(query, i);
         if !found {
+            match query.as_bytes()[i] {
+                b'(' => {
+                    let inside_function = paren_function_context.last().copied().unwrap_or(false)
+                        || function_call_open_at(query, i);
+                    paren_function_context.push(inside_function);
+                }
+                b')' => {
+                    paren_function_context.pop();
+                }
+                _ => {}
+            }
             i += 1;
             continue;
         }
@@ -582,10 +642,16 @@ fn all_node_patterns_tenant_scoped(query: &str) -> bool {
             return false;
         }
         saw_node = true;
+        let inside_function = paren_function_context.last().copied().unwrap_or(false);
+        paren_function_context.push(inside_function);
         if node_pattern_has_inline_tenant_scope(&pattern) {
-            if !pattern.variable.is_empty() && !expression_local_pattern(query, i, subqueries.len())
-            {
-                scoped.insert(pattern.variable);
+            if !pattern.variable.is_empty() {
+                if inside_function && !scoped.contains(&pattern.variable) {
+                    return false;
+                }
+                if !inside_function && !expression_local_pattern(query, i, subqueries.len()) {
+                    scoped.insert(pattern.variable);
+                }
             }
             i += 1;
             continue;
@@ -945,6 +1011,36 @@ fn brace_depth_at(query: &str, index: usize) -> usize {
     depth
 }
 
+fn function_call_open_at(query: &str, open: usize) -> bool {
+    let bytes = query.as_bytes();
+    let mut end = open;
+    while end > 0 && is_whitespace(bytes[end - 1]) {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && (is_identifier_byte(bytes[start - 1]) || bytes[start - 1] == b'.') {
+        start -= 1;
+    }
+    if start == end {
+        return false;
+    }
+    !matches!(
+        query[start..end].to_ascii_uppercase().as_str(),
+        "MATCH"
+            | "OPTIONAL"
+            | "WHERE"
+            | "RETURN"
+            | "WITH"
+            | "CALL"
+            | "UNION"
+            | "ORDER"
+            | "BY"
+            | "LIMIT"
+            | "SKIP"
+            | "AS"
+    )
+}
+
 fn expression_local_pattern(query: &str, index: usize, call_subquery_depth: usize) -> bool {
     square_bracket_depth_at(query, index) > 0 || brace_depth_at(query, index) > call_subquery_depth
 }
@@ -1071,6 +1167,62 @@ mod tests {
                 "{query}"
             );
         }
+    }
+
+    #[test]
+    fn every_union_branch_requires_a_numeric_row_bound() {
+        let missing_branch_limits = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b UNION MATCH (c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1",
+            "CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } RETURN e LIMIT 25",
+            "CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 } RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+        ];
+        for query in missing_branch_limits {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::LimitRequired,
+                "{query}"
+            );
+        }
+
+        let bounded = "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25";
+        let validation = validate(bounded, 100);
+        assert_eq!(validation.decision, Decision::Allow);
+        assert_eq!(validation.limit, 25);
+
+        let oversized = "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        let validation = validate(oversized, 100);
+        assert_eq!(validation.decision, Decision::LimitExceeded);
+        assert_eq!(validation.detail, 101);
+
+        let nested_bounded =
+            lex_cypher("CALL { RETURN 1 LIMIT 1 UNION RETURN 2 LIMIT 2 } RETURN 1 LIMIT 25");
+        assert_eq!(query_limit(&nested_bounded), Some(25));
+    }
+
+    #[test]
+    fn parenthesized_pattern_variables_do_not_escape_the_expression() {
+        let queries = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS count MATCH (b) RETURN b LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, shortestPath((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS path MATCH (b) RETURN b LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, allShortestPaths((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS paths MATCH (b) RETURN b LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, coalesce(size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})), 0) AS count MATCH (b) RETURN b LIMIT 25",
+        ];
+        for query in queries {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
+
+        let already_scoped = "MATCH (e:Entity {tenant_id:$tenant_id}), (b:Entity {tenant_id:$tenant_id}) WITH e, b, size((e)-[:R]->(b)) AS count RETURN b LIMIT 25";
+        assert_eq!(validate(already_scoped, 100).decision, Decision::Allow);
+
+        let anonymous = "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(:Entity {tenant_id:$tenant_id})) AS count RETURN e LIMIT 25";
+        assert_eq!(validate(anonymous, 100).decision, Decision::Allow);
     }
 
     #[test]
