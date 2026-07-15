@@ -509,7 +509,6 @@ func canonicalResultSet(values []ObjectiveResult) ([]ObjectiveResult, error) {
 	}
 	return canonical, nil
 }
-
 func digestBytes(data []byte) string {
 	digest := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(digest[:])
