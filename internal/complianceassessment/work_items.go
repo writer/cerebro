@@ -268,6 +268,12 @@ func ApplyWorkAction(current WorkItem, expectedVersion uint64, input WorkActionI
 		return WorkItem{}, WorkActionRecord{}, err
 	}
 	next.State = to
+	if next.State != WorkBlocked {
+		next.BlockerReason = ""
+	}
+	if next.State != WorkSnoozed {
+		next.SnoozeUntil = time.Time{}
+	}
 	if value := strings.TrimSpace(input.OwnerID); value != "" {
 		next.OwnerID = value
 	}
@@ -278,8 +284,6 @@ func ApplyWorkAction(current WorkItem, expectedVersion uint64, input WorkActionI
 		next.SnoozeUntil = CanonicalTime(input.SnoozeUntil)
 	}
 	if input.Action == WorkActionRemediate {
-		next.BlockerReason = ""
-		next.SnoozeUntil = time.Time{}
 		next.LastRemediatedBy = actorID
 		next.VerificationEvidenceIDs = nil
 		next.VerifiedBy = ""
