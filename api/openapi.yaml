@@ -5083,6 +5083,72 @@ paths:
             text/plain:
               schema:
                 type: string
+  /platform/append-log/dead-letters/{deadLetterID}/force-purge:
+    post:
+      operationId: forcePurgePendingAppendLogDeadLetter
+      summary: Delete one pending append-log dead letter
+      description: Requires an authenticated admin credential allowed for the requested tenant. The actor is derived from that credential. The operation rejects terminal records and records with an active replay claim, writes the audit row and deletion in one transaction, and never returns the replayable event envelope.
+      tags:
+        - Platform
+      parameters:
+        - name: deadLetterID
+          in: path
+          required: true
+          description: Exact pending dead-letter record ID to delete.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - tenant_id
+                - reason
+              properties:
+                tenant_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+                  description: Concrete incident, change, or recovery reason recorded in the durable audit row.
+      responses:
+        '200':
+          description: The pending record was deleted and its audit row was committed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - dead_letter_id
+                  - outcome
+                properties:
+                  dead_letter_id:
+                    type: string
+                  outcome:
+                    type: string
+                    enum:
+                      - purged
+        '400':
+          description: The record ID, tenant ID, or reason is missing or invalid.
+        '401':
+          description: An authenticated credential is required.
+        '403':
+          description: The credential is not an admin or is not allowed for the requested tenant.
+        '404':
+          description: The dead-letter record does not exist for the requested tenant.
+        '409':
+          description: The dead-letter record is terminal or has an active replay claim.
+        '503':
+          description: Pending dead-letter purge storage is not configured.
   /platform/jobs:
     get:
       operationId: listPlatformJobs

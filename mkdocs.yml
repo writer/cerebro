@@ -30,6 +30,7 @@ nav:
       - Cloud Deployment: operations/cloud-deployment.md
       - Deployment Examples: operations/deployment-examples.md
       - Operations Runbook: operations/operations-runbook.md
+      - Append-Log Dead-Letter Data Policy: operations/append-log-dead-letter-policy.md
       - Headroom: operations/headroom.md
       - Observability: operations/observability.md
       - Troubleshooting: operations/troubleshooting.md
