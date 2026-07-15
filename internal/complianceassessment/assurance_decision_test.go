@@ -87,6 +87,20 @@ func TestRecordAssuranceDecisionRejectsResultProjectionThatDoesNotMatchRun(t *te
 	}
 }
 
+func TestRecordAssuranceDecisionReportsMissingAssessmentResult(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	store, run, result := completedDecisionRun(t, now)
+	service := NewAssessmentService(store, &runLog{}, nil, nil)
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	request := validAssuranceDecisionRequest(run, result, now.Add(time.Minute))
+	request.ResultID = "missing-result"
+
+	_, _, err := service.RecordAssuranceDecision(context.Background(), request)
+	if !errors.Is(err, ErrInvalidResult) || errors.Is(err, ErrAssuranceDecisionNotFound) {
+		t.Fatalf("RecordAssuranceDecision() error = %v, want missing assessment result", err)
+	}
+}
+
 func TestProjectEventRebuildsAssuranceDecisionProjection(t *testing.T) {
 	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
 	store, run, result := completedDecisionRun(t, now)

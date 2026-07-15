@@ -104,6 +104,23 @@ INSERT INTO compliance_assessment_result_chunks (tenant_id,run_id,sequence,first
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
 ON CONFLICT (tenant_id,run_id,sequence) DO NOTHING`
 
+const insertComplianceAssuranceDecision = `
+INSERT INTO compliance_assurance_decisions
+  (tenant_id,id,run_id,result_id,objective_id,decision_digest,record_digest,idempotency_key,qualified,as_of,recorded_at,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+ON CONFLICT DO NOTHING`
+
+const selectConflictingAssuranceDecisionDigest = `
+SELECT record_digest
+FROM compliance_assurance_decisions
+WHERE tenant_id=$1 AND (
+  id=$2 OR
+  idempotency_key=$3 OR
+  (run_id=$4 AND result_id=$5 AND decision_digest=$6)
+)
+ORDER BY CASE WHEN id=$2 THEN 0 WHEN idempotency_key=$3 THEN 1 ELSE 2 END
+LIMIT 1`
+
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceAssessment, "compliance_assessment", ensureComplianceAssessmentStatements)
 }
@@ -128,11 +145,7 @@ func (s *Store) ApplyAssuranceDecision(ctx context.Context, eventID string, deci
 		}
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `
-INSERT INTO compliance_assurance_decisions
-  (tenant_id,id,run_id,result_id,objective_id,decision_digest,record_digest,idempotency_key,qualified,as_of,recorded_at,record_json)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
-ON CONFLICT (tenant_id,id) DO NOTHING`, decision.TenantID, decision.ID, decision.RunID, decision.ResultID,
+	result, err := tx.ExecContext(ctx, insertComplianceAssuranceDecision, decision.TenantID, decision.ID, decision.RunID, decision.ResultID,
 		decision.ObjectiveID, decision.Decision.DecisionDigest, decision.RecordDigest, decision.IdempotencyKey,
 		decision.Decision.Qualified, decision.Decision.AsOf.UTC(), decision.RecordedAt.UTC(), string(recordJSON))
 	if err != nil {
@@ -140,7 +153,11 @@ ON CONFLICT (tenant_id,id) DO NOTHING`, decision.TenantID, decision.ID, decision
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		var existingDigest string
-		if err := tx.QueryRowContext(ctx, `SELECT record_digest FROM compliance_assurance_decisions WHERE tenant_id=$1 AND id=$2`, decision.TenantID, decision.ID).Scan(&existingDigest); err != nil {
+		if err := tx.QueryRowContext(ctx, selectConflictingAssuranceDecisionDigest,
+			decision.TenantID, decision.ID, decision.IdempotencyKey, decision.RunID, decision.ResultID, decision.Decision.DecisionDigest,
+		).Scan(&existingDigest); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: conflicting assurance decision is unavailable", complianceassessment.ErrAssessmentConflict)
+		} else if err != nil {
 			return fmt.Errorf("read existing assurance decision: %w", err)
 		}
 		if existingDigest != decision.RecordDigest {

@@ -195,7 +195,7 @@ func (s *Service) findRunResult(ctx context.Context, tenantID, runID, resultID, 
 		return ObjectiveResult{}, fmt.Errorf("%w: assessment results do not match completed run", ErrAssessmentConflict)
 	}
 	if found == nil {
-		return ObjectiveResult{}, ErrAssuranceDecisionNotFound
+		return ObjectiveResult{}, fmt.Errorf("%w: assessment result %q was not found", ErrInvalidResult, resultID)
 	}
 	return *found, nil
 }

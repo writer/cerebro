@@ -38,6 +38,20 @@ func TestComplianceAssessmentChunkProjectionDoesNotRewriteExistingPayload(t *tes
 	}
 }
 
+func TestComplianceAssuranceDecisionProjectionHandlesEveryUniqueIdentity(t *testing.T) {
+	t.Parallel()
+	insert := strings.ToUpper(insertComplianceAssuranceDecision)
+	if strings.Contains(insert, "ON CONFLICT (") || !strings.Contains(insert, "ON CONFLICT DO NOTHING") {
+		t.Fatalf("assurance decision insert must handle every unique constraint: %s", insertComplianceAssuranceDecision)
+	}
+	lookup := strings.ToLower(selectConflictingAssuranceDecisionDigest)
+	for _, identity := range []string{"id=$2", "idempotency_key=$3", "run_id=$4", "result_id=$5", "decision_digest=$6"} {
+		if !strings.Contains(lookup, identity) {
+			t.Fatalf("assurance decision conflict lookup missing %q: %s", identity, selectConflictingAssuranceDecisionDigest)
+		}
+	}
+}
+
 func TestComplianceAssessmentChunkReplayRequiresExactPayload(t *testing.T) {
 	t.Parallel()
 	chunk := complianceassessment.ResultChunk{
