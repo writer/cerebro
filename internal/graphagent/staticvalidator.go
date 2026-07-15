@@ -155,7 +155,7 @@ func runStaticValidator(ctx context.Context, query string, maxRows int) (staticV
 	if err != nil {
 		return staticValidation{}, fmt.Errorf("%w: execute static validator: %w", ErrRuntimeUnavailable, err)
 	}
-	if len(status) != 1 || staticValidatorStatus(status[0]) != staticValidatorStatusSuccess {
+	if len(status) != 1 || status[0] != uint64(staticValidatorStatusSuccess) {
 		return staticValidation{}, fmt.Errorf("%w: static validator status = %v", ErrRuntimeUnavailable, status)
 	}
 	result, ok := module.Memory().Read(resultPointer, staticValidatorResultSize)

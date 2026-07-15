@@ -114,7 +114,7 @@ func TestStaticValidatorWasmRejectsOversizedGuestInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status) != 1 || staticValidatorStatus(status[0]) != staticValidatorStatusQueryTooLarge {
+	if len(status) != 1 || status[0] != uint64(staticValidatorStatusQueryTooLarge) {
 		t.Fatalf("oversized validation status = %v, want %d", status, staticValidatorStatusQueryTooLarge)
 	}
 }
@@ -147,7 +147,7 @@ func TestStaticValidatorWasmRejectsOverlappingRanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status) != 1 || staticValidatorStatus(status[0]) != staticValidatorStatusInvalidMemory {
+	if len(status) != 1 || status[0] != uint64(staticValidatorStatusInvalidMemory) {
 		t.Fatalf("overlapping validation status = %v, want %d", status, staticValidatorStatusInvalidMemory)
 	}
 }
