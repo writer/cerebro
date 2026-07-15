@@ -159,3 +159,34 @@ func TestCanonicalizePacketIsStableAndContentAddressed(t *testing.T) {
 		t.Fatal("packet ID did not change with decision inputs")
 	}
 }
+
+func TestCanonicalizePacketNormalizesFreshnessAndAuditTimesToUTC(t *testing.T) {
+	instant := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	offset := time.FixedZone("test-offset", -7*60*60)
+	packet := Packet{
+		GeneratedAt: instant,
+		Workflow:    Workflow{ID: "triage", Question: "Review finding"},
+		Scope:       Scope{TenantID: "tenant-1", ActorID: "analyst-1"},
+		Freshness: Freshness{
+			State: "fresh", OldestObservedAt: instant.In(offset), NewestObservedAt: instant.Add(time.Hour).In(offset),
+		},
+		AuditPackets: []AuditPacketReference{{ID: "audit-1", Digest: "sha256:test", GeneratedAt: instant.In(offset)}},
+	}
+	localPacket, localJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(local) error = %v", err)
+	}
+	packet.Freshness.OldestObservedAt = instant
+	packet.Freshness.NewestObservedAt = instant.Add(time.Hour)
+	packet.AuditPackets = []AuditPacketReference{{ID: "audit-1", Digest: "sha256:test", GeneratedAt: instant}}
+	utcPacket, utcJSON, err := CanonicalizePacket(packet)
+	if err != nil {
+		t.Fatalf("CanonicalizePacket(UTC) error = %v", err)
+	}
+	if localPacket.ID != utcPacket.ID || string(localJSON) != string(utcJSON) {
+		t.Fatalf("timezone changed canonical packet: local=%s UTC=%s", localJSON, utcJSON)
+	}
+	if localPacket.Freshness.OldestObservedAt.Location() != time.UTC || localPacket.Freshness.NewestObservedAt.Location() != time.UTC || localPacket.AuditPackets[0].GeneratedAt.Location() != time.UTC {
+		t.Fatalf("canonical times are not UTC: freshness=%+v audit=%+v", localPacket.Freshness, localPacket.AuditPackets[0])
+	}
+}

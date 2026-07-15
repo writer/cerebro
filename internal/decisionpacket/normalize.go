@@ -64,6 +64,8 @@ func normalizePacket(packet Packet) Packet {
 	packet.Decision.Reasons = normalizeStrings(packet.Decision.Reasons)
 	packet.Confidence.Level = strings.ToLower(strings.TrimSpace(packet.Confidence.Level))
 	packet.Confidence.Basis = normalizeStrings(packet.Confidence.Basis)
+	packet.Freshness.OldestObservedAt = packet.Freshness.OldestObservedAt.UTC()
+	packet.Freshness.NewestObservedAt = packet.Freshness.NewestObservedAt.UTC()
 	packet.Provenance.ResolverIDs = normalizeStrings(packet.Provenance.ResolverIDs)
 	packet.Provenance.SourceIDs = normalizeStrings(packet.Provenance.SourceIDs)
 	for index := range packet.Evidence {
@@ -73,6 +75,9 @@ func normalizePacket(packet Packet) Packet {
 	for index := range packet.Actions {
 		packet.Actions[index].TargetURNs = normalizeStrings(packet.Actions[index].TargetURNs)
 		packet.Actions[index].ApprovalRequirements = normalizeStrings(packet.Actions[index].ApprovalRequirements)
+	}
+	for index := range packet.AuditPackets {
+		packet.AuditPackets[index].GeneratedAt = packet.AuditPackets[index].GeneratedAt.UTC()
 	}
 	sort.Slice(packet.Contradictions, func(i, j int) bool { return packet.Contradictions[i].ID < packet.Contradictions[j].ID })
 	sort.Slice(packet.CoverageGaps, func(i, j int) bool { return packet.CoverageGaps[i].ID < packet.CoverageGaps[j].ID })
