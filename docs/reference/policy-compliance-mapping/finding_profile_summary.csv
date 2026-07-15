@@ -1,0 +1,18 @@
+profile_id,profile_name,coverage_index_version,selected_controls,mapped_controls,unmapped_controls,control_gap_status,unmapped_control_refs,coverage_rule_count,linked_finding_count,direct_finding_count,catalog_mapped_finding_count,direct_and_catalog_mapped_finding_count,finding_link_gap_count,finding_link_status
+cjis-security-policy,CJIS Security Policy,2026-06-17,31,31,0,complete,,1034,1034,0,1034,0,0,complete
+cloud-security-benchmarks,Cloud Security Benchmarks,2026-06-17,72,72,0,complete,,510,510,510,0,0,0,complete
+cmmc-2-core,CMMC 2.0 Core,2026-06-17,52,52,0,complete,,1018,1018,0,1018,0,0,complete
+cmmc-2-level-1,CMMC 2.0 Level 1,2026-06-17,23,23,0,complete,,760,760,0,760,0,0,complete
+dora-ict-third-party-risk,DORA ICT Third-Party Risk,2026-06-17,8,8,0,complete,,34,34,0,34,0,0,complete
+dora-operational-resilience,DORA Operational Resilience,2026-06-17,29,29,0,complete,,861,861,0,861,0,0,complete
+fedramp-rev5-continuous-monitoring,FedRAMP Rev. 5 Continuous Monitoring,2026-06-17,9,9,0,complete,,465,465,0,465,0,0,complete
+fedramp-rev5-core,FedRAMP Rev. 5 Core,2026-06-17,48,47,1,unmapped_controls,FedRAMP Rev. 5 AC-1,1008,1008,0,1008,0,0,complete
+hipaa-security-breach-notification,HIPAA Security and Breach Notification,2026-06-17,99,24,75,unmapped_controls,HIPAA 164.308(a)(1)(ii)(C); HIPAA 164.308(a)(1)(ii)(D); HIPAA 164.308(a)(2); HIPAA 164.308(a)(3)(i); HIPAA 164.308(a)(3)(ii)(A); HIPAA 164.308(a)(3)(ii)(B); HIPAA 164.308(a)(4)(i); HIPAA 164.308(a)(4)(ii)(A); HIPAA 164.308(a)(4)(ii)(B); HIPAA 164.308(a)(4)(ii)(C); HIPAA 164.308(a)(5)(i); HIPAA 164.308(a)(5)(ii)(A); ... 63 more,40,40,40,0,0,0,complete
+iso-technology-controls,ISO Technology Controls,2026-06-17,36,22,14,unmapped_controls,ISO 27001:2022 A.8.10; ISO 27001:2022 A.8.11; ISO 27001:2022 A.8.17; ISO 27001:2022 A.8.18; ISO 27001:2022 A.8.23; ISO 27001:2022 A.8.26; ISO 27001:2022 A.8.27; ISO 27001:2022 A.8.29; ISO 27001:2022 A.8.30; ISO 27001:2022 A.8.31; ISO 27001:2022 A.8.33; ISO 27001:2022 A.8.34; ... 2 more,591,591,591,0,0,0,complete
+nis2-cybersecurity-risk-management,NIS2 Cybersecurity Risk Management,2026-06-17,22,22,0,complete,,838,838,0,838,0,0,complete
+nist-csf-20-core,NIST CSF 2.0 Core,2026-06-17,53,51,2,unmapped_controls,NIST CSF 2.0 GV.PO; NIST CSF 2.0 GV.PO-01,1037,1037,0,1037,0,0,complete
+nist-csf-20-supply-chain,NIST CSF 2.0 Supply Chain,2026-06-17,3,3,0,complete,,11,11,0,11,0,0,complete
+pci-operational-security,PCI Operational Security,2026-06-17,49,21,28,unmapped_controls,PCI DSS v4.0.1 1.1; PCI DSS v4.0.1 1.2; PCI DSS v4.0.1 1.5; PCI DSS v4.0.1 10.1; PCI DSS v4.0.1 10.4; PCI DSS v4.0.1 10.5; PCI DSS v4.0.1 10.6; PCI DSS v4.0.1 10.7; PCI DSS v4.0.1 11.1; PCI DSS v4.0.1 11.2; PCI DSS v4.0.1 11.4; PCI DSS v4.0.1 11.5; ... 16 more,383,383,383,0,0,0,complete
+privacy-ai-governance,Privacy and AI Governance,2026-06-17,171,46,125,unmapped_controls,GDPR Article 19; GDPR Article 22; GDPR Article 23; GDPR Article 27; GDPR Article 35; GDPR Article 37; GDPR Article 38; GDPR Article 39; GDPR Article 44; GDPR Article 45; GDPR Article 46; GDPR Article 48; ... 113 more,52,52,52,0,0,0,complete
+soc2-availability,SOC 2 Availability,2026-06-17,3,3,0,complete,,80,80,15,52,13,0,complete
+soc2-security-core,SOC 2 Security Core,2026-06-17,36,32,4,unmapped_controls,SOC 2 CC1.1; SOC 2 CC5.1; SOC 2 CC6.4; SOC 2 CC6.5,1519,1519,162,54,1303,0,complete

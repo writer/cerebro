@@ -447,10 +447,10 @@ policy-rule-generate: ## Regenerate generated policy rule catalog.
 policy-rule-check: finding-dsl-check ## Verify generated policy rule catalog is current.
 	go run ./tools/policyrulegen --check
 
-policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.
+policy-mapping-export: policy-rule-generate detection-catalog-generate control-index-generate ## Regenerate policy compliance mapping CSVs.
 	go run ./tools/policymappingexport --write
 
-policy-mapping-check: policy-rule-check detection-catalog-check ## Verify policy compliance mapping CSVs are current.
+policy-mapping-check: policy-rule-check detection-catalog-check control-index-check ## Verify policy compliance mapping CSVs are current.
 	go run ./tools/policymappingexport --check
 
 detection-catalog-generate: ## Regenerate public detection catalog.
