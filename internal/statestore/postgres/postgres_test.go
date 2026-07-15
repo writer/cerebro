@@ -1,10 +1,25 @@
 package postgres
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/config"
 )
+
+func TestPostgresAdvisoryLockKeyIsTextSafeAndBoundaryStable(t *testing.T) {
+	t.Parallel()
+	first := postgresAdvisoryLockKey("tenant-a", "event-a")
+	if first == "" || strings.ContainsRune(first, '\x00') {
+		t.Fatalf("postgresAdvisoryLockKey() = %q, want non-empty text without NUL bytes", first)
+	}
+	if got := postgresAdvisoryLockKey("tenant-a", "event-a"); got != first {
+		t.Fatalf("postgresAdvisoryLockKey() = %q, want stable key %q", got, first)
+	}
+	if got := postgresAdvisoryLockKey("tenant", "-aevent-a"); got == first {
+		t.Fatal("postgresAdvisoryLockKey() collapsed distinct part boundaries")
+	}
+}
 
 func TestOpenRejectsMissingDSN(t *testing.T) {
 	if _, err := Open(config.StateStoreConfig{Driver: config.StateStoreDriverPostgres}); err == nil {

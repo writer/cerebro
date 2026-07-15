@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -15,6 +16,17 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/telemetry"
 )
+
+func postgresAdvisoryLockKey(parts ...string) string {
+	var key strings.Builder
+	for _, part := range parts {
+		key.WriteString(strconv.Itoa(len(part)))
+		key.WriteByte(':')
+		key.WriteString(part)
+	}
+	digest := sha256.Sum256([]byte(key.String()))
+	return hex.EncodeToString(digest[:])
+}
 
 // findingIntelReady tracks lazy schema creation for finding-domain auxiliary
 // tables (candidate staging, finding memory, and risk scoring config). Grouping

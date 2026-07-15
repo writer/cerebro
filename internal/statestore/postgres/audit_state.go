@@ -52,7 +52,8 @@ func (s *Store) ApplyAuditProjectionEvent(ctx context.Context, envelope *cerebro
 		return false, fmt.Errorf("begin audit projection: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, auditProjectionAdvisoryLockSQL(), event.tenantID+"\x00"+event.eventID); err != nil {
+	lockKey := postgresAdvisoryLockKey(event.tenantID, event.eventID)
+	if _, err := tx.ExecContext(ctx, auditProjectionAdvisoryLockSQL(), lockKey); err != nil {
 		return false, fmt.Errorf("lock audit projection event: %w", err)
 	}
 	existingDigest, exists, err := loadAuditEventReceipt(ctx, tx, event.tenantID, event.eventID)
