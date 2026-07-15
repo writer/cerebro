@@ -20,7 +20,10 @@ const (
 	Page     View = "page"
 )
 
-var ErrInvalidView = errors.New("coverage_view must be summary or page when provided")
+var (
+	ErrInvalidView   = errors.New("coverage_view must be summary or page when provided")
+	errInvalidCursor = errors.New("cursor is invalid")
+)
 
 type PageMetadata struct {
 	PageSize   int    `json:"page_size"`
@@ -71,34 +74,33 @@ func Paginate(r *http.Request, response nhicoverage.SourceCoverageResponse, reco
 }
 
 func RecordsPage(r *http.Request, records []sourcecoverage.Record) ([]sourcecoverage.Record, PageMetadata, error) {
-	pageSize := uint64(100)
+	pageSize := 100
 	if raw := strings.TrimSpace(r.URL.Query().Get("page_size")); raw != "" {
-		parsed, err := strconv.ParseUint(raw, 10, 32)
-		if err != nil || parsed == 0 || parsed > 500 {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 || parsed > 500 {
 			return nil, PageMetadata{}, errors.New("page_size must be between 1 and 500")
 		}
 		pageSize = parsed
 	}
-	offset := uint64(0)
+	offset := 0
 	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
 		decoded, err := base64.RawURLEncoding.DecodeString(raw)
 		if err != nil {
-			return nil, PageMetadata{}, errors.New("cursor is invalid")
+			return nil, PageMetadata{}, errInvalidCursor
 		}
-		parsed, err := strconv.ParseUint(string(decoded), 10, 64)
-		if err != nil {
-			return nil, PageMetadata{}, errors.New("cursor is invalid")
+		parsed, err := strconv.Atoi(string(decoded))
+		if err != nil || parsed < 0 {
+			return nil, PageMetadata{}, errInvalidCursor
 		}
 		offset = parsed
 	}
-	if offset > uint64(len(records)) {
+	if offset > len(records) {
 		return nil, PageMetadata{}, errors.New("cursor is beyond the result set")
 	}
-	end := min(offset+pageSize, uint64(len(records)))
-	startIndex, endIndex := int(offset), int(end) // #nosec G115 -- both values are bounded by len(records).
-	page := append([]sourcecoverage.Record(nil), records[startIndex:endIndex]...)
-	metadata := PageMetadata{PageSize: int(pageSize), Returned: len(page), Total: len(records)}
-	if end < uint64(len(records)) {
+	end := min(offset+pageSize, len(records))
+	page := append([]sourcecoverage.Record(nil), records[offset:end]...)
+	metadata := PageMetadata{PageSize: pageSize, Returned: len(page), Total: len(records)}
+	if end < len(records) {
 		metadata.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d", end)))
 	}
 	return page, metadata, nil

@@ -1,6 +1,8 @@
 package coverageview
 
 import (
+	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,5 +28,18 @@ func TestRecordsPageUsesBoundedCursor(t *testing.T) {
 	}
 	if len(second) != 1 || second[0].DimensionID != "c" || metadata.NextCursor != "" {
 		t.Fatalf("second page = %#v metadata=%#v", second, metadata)
+	}
+}
+
+func TestRecordsPageRejectsCursorOutsideValidIntRange(t *testing.T) {
+	for _, rawCursor := range []string{"-1", "18446744073709551615"} {
+		t.Run(rawCursor, func(t *testing.T) {
+			cursor := base64.RawURLEncoding.EncodeToString([]byte(rawCursor))
+			request := httptest.NewRequest(http.MethodGet, "/connectors/coverage?coverage_view=page&cursor="+cursor, nil)
+
+			if _, _, err := RecordsPage(request, nil); !errors.Is(err, errInvalidCursor) {
+				t.Fatalf("RecordsPage() error = %v, want %v", err, errInvalidCursor)
+			}
+		})
 	}
 }
