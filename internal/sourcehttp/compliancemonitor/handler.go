@@ -18,6 +18,8 @@ import (
 
 const defaultMaxBodyBytes = int64(1 << 20)
 
+var errInvalidMonitorRequest = errors.New("invalid compliance monitor request")
+
 type TenantResolver func(context.Context, string) (string, error)
 type ActorResolver func(context.Context) string
 type ForbiddenClassifier func(error) bool
@@ -116,7 +118,7 @@ func (h *Handler) writeMonitor(w http.ResponseWriter, r *http.Request, monitorID
 	}
 	maxSeconds := int64(math.MaxInt64 / int64(time.Second))
 	if input.MaximumEvidenceAgeSecond < 0 || input.MaximumEvidenceAgeSecond > maxSeconds || input.GracePeriodSeconds < 0 || input.GracePeriodSeconds > maxSeconds || input.DebounceSeconds < 0 || input.DebounceSeconds > maxSeconds {
-		h.writeError(w, errors.New("compliance monitor duration seconds are out of range"))
+		h.writeError(w, fmt.Errorf("%w: duration seconds are out of range", errInvalidMonitorRequest))
 		return
 	}
 	monitor := &ports.ComplianceMonitor{
@@ -166,7 +168,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		limit, err = strconv.ParseUint(raw, 10, 32)
 		if err != nil || limit == 0 || limit > 500 {
-			h.writeError(w, errors.New("compliance monitor limit must be between 1 and 500"))
+			h.writeError(w, fmt.Errorf("%w: limit must be between 1 and 500", errInvalidMonitorRequest))
 			return
 		}
 	}
@@ -202,10 +204,10 @@ func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, target any)
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, h.maxBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode compliance monitor request: %w", err)
+		return fmt.Errorf("%w: decode request: %w", errInvalidMonitorRequest, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("compliance monitor request must contain one JSON object")
+		return fmt.Errorf("%w: request must contain one JSON object", errInvalidMonitorRequest)
 	}
 	return nil
 }
@@ -221,7 +223,7 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, compliancemonitor.ErrServiceUnavailable):
 		status = http.StatusServiceUnavailable
-	case strings.Contains(err.Error(), "compliance monitor"), strings.Contains(err.Error(), "decode"):
+	case errors.Is(err, errInvalidMonitorRequest), errors.Is(err, compliancemonitor.ErrInvalidMonitor):
 		status = http.StatusBadRequest
 	}
 	message := err.Error()

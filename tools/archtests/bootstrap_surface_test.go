@@ -123,7 +123,12 @@ import (
 // Canonical compliance work adds query composition and response mapping;
 // bounded queries and assurance verification remain in the domain and
 // state-store packages.
-const bootstrapProductionGoLineBudget = 28071
+// The assurance platform adds composition, route registration, auth policy,
+// and scheduler lifecycle wiring documented in
+// docs/engineering/assurance-platform-contracts.md. Domain behavior remains in
+// complianceassessment, complianceimpact, compliancemonitor, evidenceledger,
+// and complianceremediation.
+const bootstrapProductionGoLineBudget = 28498
 
 type bootstrapFileLineCount struct {
 	path  string

@@ -29,15 +29,27 @@ const (
 )
 
 type AssessmentSnapshot struct {
-	ID                     string                   `json:"id"`
-	TenantID               string                   `json:"tenant_id"`
-	RunID                  string                   `json:"run_id"`
-	ProgramID              string                   `json:"program_id"`
-	ScopeRevisionID        string                   `json:"scope_revision_id"`
-	PlanRevisionID         string                   `json:"plan_revision_id"`
-	Version                string                   `json:"version"`
-	InputManifest          InputManifest            `json:"input_manifest"`
-	InputHash              string                   `json:"input_hash"`
+	ID              string        `json:"id"`
+	TenantID        string        `json:"tenant_id"`
+	RunID           string        `json:"run_id"`
+	ProgramID       string        `json:"program_id"`
+	ScopeRevisionID string        `json:"scope_revision_id"`
+	PlanRevisionID  string        `json:"plan_revision_id"`
+	Version         string        `json:"version"`
+	InputManifest   InputManifest `json:"input_manifest"`
+	InputHash       string        `json:"input_hash"`
+	AssessmentSnapshotCommitments
+	RunCompletedAt time.Time `json:"run_completed_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	CreatedBy      string    `json:"created_by"`
+	RequestHash    string    `json:"request_hash"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	RecordDigest   string    `json:"record_digest"`
+}
+
+// AssessmentSnapshotCommitments groups the immutable result, decision, and
+// evidence set commitments while retaining their existing flat JSON fields.
+type AssessmentSnapshotCommitments struct {
 	ResultSetHash          string                   `json:"result_set_hash"`
 	ResultCount            uint64                   `json:"result_count"`
 	ResultChunks           []SnapshotResultChunkRef `json:"result_chunks"`
@@ -48,12 +60,6 @@ type AssessmentSnapshot struct {
 	MissingDecisionCount   uint64                   `json:"missing_decision_count"`
 	EvidenceSetDigest      string                   `json:"evidence_set_digest"`
 	EvidenceCount          uint64                   `json:"evidence_count"`
-	RunCompletedAt         time.Time                `json:"run_completed_at"`
-	CreatedAt              time.Time                `json:"created_at"`
-	CreatedBy              string                   `json:"created_by"`
-	RequestHash            string                   `json:"request_hash"`
-	IdempotencyKey         string                   `json:"idempotency_key"`
-	RecordDigest           string                   `json:"record_digest"`
 }
 
 type SnapshotResultChunkRef struct {
@@ -234,11 +240,14 @@ func (s *Service) CreateAssessmentSnapshot(ctx context.Context, request Assessme
 		ID: id, TenantID: run.TenantID, RunID: run.ID, ProgramID: run.ProgramID,
 		ScopeRevisionID: run.ScopeRevisionID, PlanRevisionID: run.PlanRevisionID,
 		Version: AssessmentSnapshotVersion, InputManifest: NormalizeManifest(*run.InputManifest),
-		InputHash: run.InputHash, ResultSetHash: run.AutomatedResultHash, ResultCount: run.ResultCount,
-		ResultChunks: snapshotChunkRefs(chunks), DecisionCutoff: createdAt,
-		DecisionSetDigest: decisionSetDigest, DecisionCount: decisionCount,
-		QualifiedDecisionCount: qualified, MissingDecisionCount: run.ResultCount - decisionCount,
-		EvidenceSetDigest: evidenceSetDigest, EvidenceCount: evidenceCount,
+		InputHash: run.InputHash,
+		AssessmentSnapshotCommitments: AssessmentSnapshotCommitments{
+			ResultSetHash: run.AutomatedResultHash, ResultCount: run.ResultCount,
+			ResultChunks: snapshotChunkRefs(chunks), DecisionCutoff: createdAt,
+			DecisionSetDigest: decisionSetDigest, DecisionCount: decisionCount,
+			QualifiedDecisionCount: qualified, MissingDecisionCount: run.ResultCount - decisionCount,
+			EvidenceSetDigest: evidenceSetDigest, EvidenceCount: evidenceCount,
+		},
 		RunCompletedAt: CanonicalTime(run.CompletedAt), CreatedAt: createdAt, CreatedBy: request.CreatedBy,
 		RequestHash: requestHash, IdempotencyKey: request.IdempotencyKey,
 	}

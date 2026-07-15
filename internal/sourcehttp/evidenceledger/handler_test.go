@@ -19,15 +19,16 @@ import (
 
 func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 	t.Parallel()
+	errTenantForbidden := errors.New("tenant forbidden")
 	store := newHTTPStore()
 	service := evidenceledger.New(store, &httpLog{})
 	handler := NewHandler(service, func(_ context.Context, tenantID string) (string, error) {
 		if tenantID != "tenant-1" {
-			return "", errors.New("tenant forbidden")
+			return "", errTenantForbidden
 		}
 		return tenantID, nil
 	}, func(context.Context) string { return "operator-1" }, func(err error) bool {
-		return err != nil && err.Error() == "tenant forbidden"
+		return errors.Is(err, errTenantForbidden)
 	}, 0)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /grc/evidence-artifacts/{artifactID}/versions", handler.RegisterVersion)
@@ -150,7 +151,7 @@ func doJSON(t *testing.T, client *http.Client, method, url string, input any, wa
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != wantStatus {
 		var problem bytes.Buffer
 		_, _ = problem.ReadFrom(response.Body)

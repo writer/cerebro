@@ -19,6 +19,7 @@ import (
 )
 
 var ErrServiceUnavailable = errors.New("compliance monitor service unavailable")
+var ErrInvalidMonitor = errors.New("invalid compliance monitor")
 
 const (
 	monitorAggregateType = "compliance_monitor"
@@ -185,16 +186,16 @@ type monitorTriggerEvent struct {
 
 func normalizeMonitorUpdate(monitor *ports.ComplianceMonitor, expectedVersion uint64, actorID string, recordedAt time.Time) (*ports.ComplianceMonitor, uint64, string, error) {
 	if monitor == nil {
-		return nil, 0, "", errors.New("compliance monitor is required")
+		return nil, 0, "", fmt.Errorf("%w: monitor is required", ErrInvalidMonitor)
 	}
 	if expectedVersion >= math.MaxInt64 {
-		return nil, 0, "", errors.New("compliance monitor expected version exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: expected version exceeds its limit", ErrInvalidMonitor)
 	}
 	if recordedAt.IsZero() {
-		return nil, 0, "", errors.New("compliance monitor recorded time is required")
+		return nil, 0, "", fmt.Errorf("%w: recorded time is required", ErrInvalidMonitor)
 	}
 	if !bounded(actorID, 512, true) {
-		return nil, 0, "", errors.New("compliance monitor actor exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: actor exceeds its limit", ErrInvalidMonitor)
 	}
 	result := *monitor
 	result.ID = strings.TrimSpace(result.ID)
@@ -206,27 +207,27 @@ func normalizeMonitorUpdate(monitor *ports.ComplianceMonitor, expectedVersion ui
 	result.EscalationOwner = strings.TrimSpace(result.EscalationOwner)
 	result.NextRunAt = canonicalTime(result.NextRunAt)
 	if !bounded(result.ID, 512, false) || !bounded(result.TenantID, 255, false) || !bounded(result.ProgramID, 512, false) || !bounded(result.PlanRevisionID, 512, false) {
-		return nil, 0, "", errors.New("compliance monitor id, tenant, program, and plan revision are required and must be bounded")
+		return nil, 0, "", fmt.Errorf("%w: id, tenant, program, and plan revision are required and must be bounded", ErrInvalidMonitor)
 	}
 	if !bounded(result.ExpectedCoverage, 256, true) || !bounded(result.EscalationOwner, 512, true) {
-		return nil, 0, "", errors.New("compliance monitor coverage or escalation owner exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: coverage or escalation owner exceeds its limit", ErrInvalidMonitor)
 	}
 	if result.TriggerKind != ports.ComplianceTriggerTime && result.TriggerKind != ports.ComplianceTriggerChange {
-		return nil, 0, "", errors.New("compliance monitor trigger kind is invalid")
+		return nil, 0, "", fmt.Errorf("%w: trigger kind is invalid", ErrInvalidMonitor)
 	}
 	if result.MaximumEvidenceAge < 0 || result.GracePeriod < 0 || result.DebounceWindow < 0 ||
 		result.MaximumEvidenceAge%time.Second != 0 || result.GracePeriod%time.Second != 0 || result.DebounceWindow%time.Second != 0 {
-		return nil, 0, "", errors.New("compliance monitor durations must be non-negative whole seconds")
+		return nil, 0, "", fmt.Errorf("%w: durations must be non-negative whole seconds", ErrInvalidMonitor)
 	}
 	if result.TriggerKind == ports.ComplianceTriggerTime && (result.IntervalSeconds <= 0 || result.NextRunAt.IsZero()) {
-		return nil, 0, "", errors.New("time-triggered compliance monitor interval and next run time are required")
+		return nil, 0, "", fmt.Errorf("%w: time-triggered interval and next run time are required", ErrInvalidMonitor)
 	}
 	if result.TriggerKind == ports.ComplianceTriggerChange && result.DebounceWindow <= 0 {
-		return nil, 0, "", errors.New("change-triggered compliance monitor debounce window must be positive")
+		return nil, 0, "", fmt.Errorf("%w: change-triggered debounce window must be positive", ErrInvalidMonitor)
 	}
 	targetVersion := expectedVersion + 1
 	if result.Version != 0 && result.Version != targetVersion {
-		return nil, 0, "", fmt.Errorf("compliance monitor version %d does not match target version %d", result.Version, targetVersion)
+		return nil, 0, "", fmt.Errorf("%w: version %d does not match target version %d", ErrInvalidMonitor, result.Version, targetVersion)
 	}
 	result.Version = targetVersion
 	operation := operationUpdated
