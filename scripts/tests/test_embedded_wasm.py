@@ -150,16 +150,25 @@ class EmbeddedWasmTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"CARGO": "/opt/cargo wrapper"}, clear=False):
             self.assertEqual(embedded_wasm.cargo_command(), ["/opt/cargo", "wrapper"])
 
-    def test_ci_and_release_rust_setup_uses_explicit_matrix_flag(self):
-        for path in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-            with self.subTest(path=path):
-                workflow = (ROOT / path).read_text(encoding="utf-8")
-                self.assertIn(
-                    "command: make graph-action-check rust-wasm-check\n            setup_rust: true",
-                    workflow,
-                )
-                self.assertIn("if: matrix.setup_rust == true", workflow)
-                self.assertNotIn("if: matrix.name == 'graph-actions'", workflow)
+    def test_ci_sets_up_rust_and_release_consumes_a_ci_gated_candidate(self):
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "command: make graph-action-check rust-wasm-check\n            setup_rust: true",
+            ci,
+        )
+        self.assertIn("if: matrix.setup_rust == true", ci)
+        self.assertNotIn("if: matrix.name == 'graph-actions'", ci)
+
+        candidate = (ROOT / ".github/workflows/cut-release.yml").read_text(encoding="utf-8")
+        self.assertIn("- name: Require successful CI for candidate commit", candidate)
+        self.assertIn('if [ "${status}" = completed ] && [ "${conclusion}" = success ]; then', candidate)
+
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn('workflow_path="$(jq -r .path <<< "${run}")"', release)
+        self.assertIn(
+            'if [ "${workflow_path}" != ".github/workflows/cut-release.yml" ] || [ "${conclusion}" != success ]; then',
+            release,
+        )
 
 
 if __name__ == "__main__":
