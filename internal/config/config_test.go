@@ -82,6 +82,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
+	t.Setenv("CEREBRO_CONTENT_PACK_ROOT", "")
+	t.Setenv("CEREBRO_CONTENT_PACK_ALLOWLIST_PATH", "")
+	t.Setenv("CEREBRO_CONTENT_PACK_TENANT_ID", "")
+	t.Setenv("CEREBRO_CONTENT_PACK_KERNEL_VERSION", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
@@ -127,6 +131,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout != 10*time.Second || cfg.GraphActions.AccessApprovals.BaseURL != "" || cfg.GraphActions.AccessApprovals.BearerToken != "" {
 		t.Fatalf("GraphActions.AccessApprovals defaults = %#v", cfg.GraphActions.AccessApprovals)
+	}
+	if cfg.ContentPacks.Root != "" || cfg.ContentPacks.AllowlistPath != "" || cfg.ContentPacks.TenantID != "" || cfg.ContentPacks.KernelVersion != "1.0.0" {
+		t.Fatalf("ContentPacks defaults = %#v", cfg.ContentPacks)
 	}
 	if cfg.DocumentParsing.Reducto.APIKey != "" || cfg.DocumentParsing.Reducto.BaseURL != "" || cfg.DocumentParsing.Reducto.Timeout != 30*time.Second {
 		t.Fatalf("DocumentParsing.Reducto defaults = %#v", cfg.DocumentParsing.Reducto)
@@ -1540,5 +1547,28 @@ func TestLoadRejectsUnsupportedGraphStoreDriver(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "alternate")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadContentPackConfig(t *testing.T) {
+	t.Setenv("CEREBRO_CONTENT_PACK_ROOT", "/packs")
+	t.Setenv("CEREBRO_CONTENT_PACK_ALLOWLIST_PATH", "/config/allowlist.json")
+	t.Setenv("CEREBRO_CONTENT_PACK_TENANT_ID", "tenant-a")
+	t.Setenv("CEREBRO_CONTENT_PACK_KERNEL_VERSION", "1.2.3")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ContentPacks.Root != "/packs" || cfg.ContentPacks.AllowlistPath != "/config/allowlist.json" || cfg.ContentPacks.TenantID != "tenant-a" || cfg.ContentPacks.KernelVersion != "1.2.3" {
+		t.Fatalf("ContentPacks = %#v", cfg.ContentPacks)
+	}
+}
+
+func TestLoadRejectsPartialContentPackConfig(t *testing.T) {
+	t.Setenv("CEREBRO_CONTENT_PACK_ROOT", "/packs")
+	t.Setenv("CEREBRO_CONTENT_PACK_ALLOWLIST_PATH", "")
+	t.Setenv("CEREBRO_CONTENT_PACK_TENANT_ID", "tenant-a")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want partial content-pack config rejection")
 	}
 }

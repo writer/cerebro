@@ -197,6 +197,14 @@ func New(
 	return NewWithRegistry(runtimeStore, replayer, store, runStore, evidenceStore, claimStore, Builtin())
 }
 
+// NewWithOptionalRegistry uses an explicit registry when one is configured.
+func NewWithOptionalRegistry(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, runStore ports.FindingEvaluationRunStore, evidenceStore ports.FindingEvidenceStore, claimStore ports.ClaimStore, rules *Registry) *Service {
+	if rules == nil {
+		return New(runtimeStore, replayer, store, runStore, evidenceStore, claimStore)
+	}
+	return NewWithRegistry(runtimeStore, replayer, store, runStore, evidenceStore, claimStore, rules)
+}
+
 // NewWithRegistry constructs a replay-backed finding service with one explicit rule registry.
 func NewWithRegistry(
 	runtimeStore ports.SourceRuntimeStore,
