@@ -34,6 +34,10 @@ Provider execution has its own staged carve. [`rust-source-runtime-adr.md`](rust
 
 The graph remains a rebuildable projection. It is not a mission store, scheduler, authority system, or closure record.
 
+[`native-mission-operating-contract.md`](native-mission-operating-contract.md) defines how beliefs, plan revisions,
+commitments, wake conditions, conversation resolution, and supervisor directives make that mission ownership
+executable without granting a model authority over state transitions.
+
 ## Process Boundary
 
 The control kernel runs as a native Linux process. It does not use CGO, in-process Go/Rust FFI, or embedded Wasm for orchestration. The current embedded Rust/Wasm modules remain bounded deterministic helpers. The kernel communicates with the compatibility plane through:
