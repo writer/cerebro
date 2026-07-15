@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +22,8 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
+
+const platformJobRecoveryRetryInterval = 15 * time.Second
 
 type createJobHTTPRequest struct {
 	Kind           string         `json:"kind"`
@@ -95,17 +98,46 @@ func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
 	return recovered + jobs, err
 }
 
-// StartPlatformJobRecovery continuously makes expired leases runnable. The
-// returned channel closes after cancellation and is included in shutdown waits.
+// StartPlatformJobRecovery restores durable projections and continuously makes
+// expired leases runnable. Recovery starts asynchronously so a large append log
+// cannot prevent the HTTP server from becoming healthy. The returned channel
+// closes after cancellation and is included in shutdown waits.
 func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
-	jobsDone := a.jobService().StartRecovery(ctx, logf)
-	if a == nil || a.services.assessments == nil {
-		return jobsDone
-	}
-	assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
+	return a.startPlatformJobRecovery(ctx, logf, platformJobRecoveryRetryInterval)
+}
+
+func (a *App) startPlatformJobRecovery(ctx context.Context, logf func(string, ...any), retryInterval time.Duration) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		for {
+			_, err := a.RecoverPlatformJobs(ctx)
+			if err == nil {
+				break
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			if logf != nil {
+				logf("recover platform jobs: %v", err)
+			}
+			timer := time.NewTimer(retryInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		jobsDone := a.jobService().StartRecovery(ctx, logf)
+		if a == nil || a.services.assessments == nil {
+			<-jobsDone
+			return
+		}
+		assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
 		<-jobsDone
 		<-assessmentsDone
 	}()
