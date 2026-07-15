@@ -815,9 +815,16 @@ fn subquery_start_brace(query: &str, start: usize) -> Option<usize> {
 }
 
 fn matching_brace(query: &str, start: usize) -> Option<usize> {
+    let bytes = query.as_bytes();
     let mut depth = 0;
-    for (i, byte) in query.as_bytes().iter().enumerate().skip(start) {
-        match byte {
+    let mut i = start;
+    while i < bytes.len() {
+        if bytes[i] == b'`' {
+            let (_, end) = escaped_identifier_token(bytes, i);
+            i = end + 1;
+            continue;
+        }
+        match bytes[i] {
             b'{' => depth += 1,
             b'}' => {
                 depth -= 1;
@@ -827,6 +834,7 @@ fn matching_brace(query: &str, start: usize) -> Option<usize> {
             }
             _ => {}
         }
+        i += 1;
     }
     None
 }
@@ -1167,6 +1175,7 @@ mod tests {
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x/*` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x) (b:Entity {tenant_id:$tenant_id})` MATCH (b) RETURN b LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) CALL { MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b AS `}` } MATCH (b) RETURN b LIMIT 25",
         ];
         for query in unscoped {
             assert_eq!(
