@@ -183,8 +183,17 @@ func TestA2AAgentCardIsPublicSafeAndHonest(t *testing.T) {
 	if card.Capabilities.Streaming || card.Capabilities.PushNotifications || card.Capabilities.ExtendedAgentCard {
 		t.Fatalf("card over-advertises unsupported capabilities: %+v", card.Capabilities)
 	}
-	if len(card.Skills) < 4 {
-		t.Fatalf("card skills = %+v, want protocol, evidence-packet, webhook, and idempotency skills", card.Skills)
+	if len(card.Skills) < 5 {
+		t.Fatalf("card skills = %+v, want protocol, evidence-packet, assessment, webhook, and idempotency skills", card.Skills)
+	}
+	foundAssessment := false
+	for _, skill := range card.Skills {
+		if skill.ID == "continuous-assessment" {
+			foundAssessment = true
+		}
+	}
+	if !foundAssessment {
+		t.Fatalf("card skills = %+v, want continuous-assessment", card.Skills)
 	}
 }
 

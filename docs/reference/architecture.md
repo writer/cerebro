@@ -228,6 +228,17 @@ and MCP request/response mapping for the control-plane snapshot, claim
 verification request shape, tenant/URN authorization boundary, and durable work
 contract response.
 
+Agent assessment operations reuse `internal/complianceassessment` as the
+domain owner. That package owns plan and run semantics, canonical result-chunk
+verification, bounded complete-run collection, baseline comparison, and
+remediation proposal shaping. `internal/mcpoperations` owns the checked-in tool
+inventory and JSON schemas. The bootstrap budget includes only assessment MCP
+registration, argument decoding, tenant and per-tool scope enforcement,
+evidence/finding response composition through existing safe MCP adapters, and
+transport metadata. Assessment writes use the same append-first service,
+Postgres projection, optimistic version, and idempotency contracts as the HTTP
+routes; no MCP-specific state or graph write path exists.
+
 The append-log runtime replay index is populated by a global maintenance job
 whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap
 budget includes only the job registration, admin authorization, payload
