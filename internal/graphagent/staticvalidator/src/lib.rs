@@ -473,14 +473,14 @@ fn has_variable_length_relationship_pattern(query: &str) -> bool {
             i += 1;
             continue;
         }
-        let Some(close) = matching_square_bracket(bytes, i) else {
+        let Some(close) = matching_delimiter(bytes, i, b'[', b']') else {
             return true;
         };
         let Some(relationship_end) = relationship_end_after(bytes, close) else {
             i = close + 1;
             continue;
         };
-        if bytes[i + 1..close].contains(&b'*')
+        if relationship_body_has_quantifier(bytes, i + 1, close)
             || has_postfix_pattern_quantifier(bytes, relationship_end)
         {
             return true;
@@ -490,24 +490,47 @@ fn has_variable_length_relationship_pattern(query: &str) -> bool {
     has_quantified_abbreviated_relationship(query)
 }
 
-fn matching_square_bracket(query: &[u8], open: usize) -> Option<usize> {
+fn relationship_body_has_quantifier(query: &[u8], start: usize, end: usize) -> bool {
+    let mut cursor = start;
+    while cursor < end {
+        if query[cursor] == b'`' {
+            let (_, escaped_end) = escaped_identifier_token(query, cursor);
+            if escaped_end >= end || query[escaped_end] != b'`' {
+                return true;
+            }
+            cursor = escaped_end + 1;
+            continue;
+        }
+        if query[cursor] == b'*' {
+            return true;
+        }
+        cursor += 1;
+    }
+    false
+}
+
+fn matching_delimiter(query: &[u8], open: usize, opening: u8, closing: u8) -> Option<usize> {
+    if query.get(open) != Some(&opening) {
+        return None;
+    }
     let mut depth = 1;
     let mut cursor = open + 1;
     while cursor < query.len() {
         if query[cursor] == b'`' {
             let (_, end) = escaped_identifier_token(query, cursor);
+            if end <= cursor || query.get(end) != Some(&b'`') {
+                return None;
+            }
             cursor = end + 1;
             continue;
         }
-        match query[cursor] {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(cursor);
-                }
+        if query[cursor] == opening {
+            depth += 1;
+        } else if query[cursor] == closing {
+            depth -= 1;
+            if depth == 0 {
+                return Some(cursor);
             }
-            _ => {}
         }
         cursor += 1;
     }
@@ -705,13 +728,7 @@ fn match_clause_end_pattern() -> &'static Regex {
 
 fn node_body_pattern() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
-    VALUE.get_or_init(|| Regex::new(r"^[ \t\r\n\f]*([A-Za-z_][A-Za-z0-9_]*)?[ \t\r\n\f]*((?::[ \t\r\n\f]*[A-Za-z_][A-Za-z0-9_]*)*)[ \t\r\n\f]*(\{[^{}]*\})?[ \t\r\n\f]*$").expect("valid regex"))
-}
-
-fn inline_tenant_pattern() -> &'static Regex {
-    static VALUE: OnceLock<Regex> = OnceLock::new();
-    VALUE
-        .get_or_init(|| Regex::new(r"(?i-u:\btenant_id\s*:\s*\$tenant_id\b)").expect("valid regex"))
+    VALUE.get_or_init(|| Regex::new(r"(?s)^[ \t\r\n\f]*([A-Za-z_][A-Za-z0-9_]*)?[ \t\r\n\f]*((?::[ \t\r\n\f]*(?:[A-Za-z_][A-Za-z0-9_]*|`(?:``|[^`])*`))*)[ \t\r\n\f]*(\{.*\})?[ \t\r\n\f]*$").expect("valid regex"))
 }
 
 fn match_clauses_contain_only_node_patterns(query: &str) -> bool {
@@ -734,21 +751,33 @@ fn match_clauses_contain_only_node_patterns(query: &str) -> bool {
 fn node_patterns_in_text(text: &str, require_valid: bool) -> (Vec<NodePattern>, bool) {
     let bytes = text.as_bytes();
     let mut patterns = Vec::new();
-    for i in 0..bytes.len() {
-        if bytes[i] != b'(' || i > 0 && is_identifier_byte(bytes[i - 1]) {
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'`' {
+            let (_, end) = escaped_identifier_token(bytes, i);
+            if end <= i || bytes.get(end) != Some(&b'`') {
+                return (Vec::new(), !require_valid);
+            }
+            i = end + 1;
             continue;
         }
-        let Some(close) = bytes[i + 1..].iter().position(|byte| *byte == b')') else {
+        if bytes[i] != b'(' || i > 0 && is_identifier_byte(bytes[i - 1]) {
+            i += 1;
+            continue;
+        }
+        let Some(close) = matching_delimiter(bytes, i, b'(', b')') else {
             return (Vec::new(), !require_valid);
         };
-        let body = &text[i + 1..i + 1 + close];
+        let body = &text[i + 1..close];
         let Some(pattern) = parse_node_pattern(body) else {
             if require_valid {
                 return (Vec::new(), false);
             }
+            i = close + 1;
             continue;
         };
         patterns.push(pattern);
+        i = close + 1;
     }
     (patterns, true)
 }
@@ -762,10 +791,10 @@ fn node_pattern_at(text: &str, index: usize) -> (NodePattern, bool, bool) {
     {
         return (NodePattern::default(), false, false);
     }
-    let Some(close) = bytes[index + 1..].iter().position(|byte| *byte == b')') else {
+    let Some(close) = matching_delimiter(bytes, index, b'(', b')') else {
         return (NodePattern::default(), true, false);
     };
-    parse_node_pattern(&text[index + 1..index + 1 + close])
+    parse_node_pattern(&text[index + 1..close])
         .map_or((NodePattern::default(), true, false), |pattern| {
             (pattern, true, true)
         })
@@ -777,25 +806,25 @@ fn keyword_ends_at(query: &str, end: usize, keyword: &str) -> bool {
 
 fn parse_node_pattern(body: &str) -> Option<NodePattern> {
     let captures = node_body_pattern().captures(body)?;
+    let properties = captures.get(3).map_or("", |value| value.as_str());
+    if !properties.is_empty() && matching_brace(properties, 0) != Some(properties.len() - 1) {
+        return None;
+    }
     Some(NodePattern {
         variable: captures
             .get(1)
             .map_or("", |value| value.as_str())
-            .trim()
             .to_owned(),
         labels: captures
             .get(2)
             .map_or("", |value| value.as_str())
             .to_owned(),
-        properties: captures
-            .get(3)
-            .map_or("", |value| value.as_str())
-            .to_owned(),
+        properties: properties.to_owned(),
     })
 }
 
 fn node_pattern_has_inline_tenant_scope(pattern: &NodePattern) -> bool {
-    node_has_entity_label(&pattern.labels) && inline_tenant_pattern().is_match(&pattern.properties)
+    node_has_entity_label(&pattern.labels) && has_inline_tenant_scope(&pattern.properties)
 }
 
 impl NodePattern {
@@ -807,9 +836,49 @@ impl NodePattern {
 }
 
 fn node_has_entity_label(labels: &str) -> bool {
-    labels
-        .split(':')
-        .any(|label| label.trim().eq_ignore_ascii_case("Entity"))
+    lex_cypher(labels).iter().any(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Identifier | TokenKind::EscapedIdentifier
+        ) && token.text.eq_ignore_ascii_case("Entity")
+    })
+}
+
+fn has_inline_tenant_scope(properties: &str) -> bool {
+    let tokens = lex_cypher(properties);
+    let (mut braces, mut brackets, mut parentheses) = (0_usize, 0_usize, 0_usize);
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Symbol {
+            match token.text.as_str() {
+                "{" => braces += 1,
+                "}" => braces = braces.saturating_sub(1),
+                "[" => brackets += 1,
+                "]" => brackets = brackets.saturating_sub(1),
+                "(" => parentheses += 1,
+                ")" => parentheses = parentheses.saturating_sub(1),
+                _ => {}
+            }
+            continue;
+        }
+        let previous_is_delimiter = index.checked_sub(1).is_some_and(|previous| {
+            symbol_token_at(&tokens, previous, "{") || symbol_token_at(&tokens, previous, ",")
+        });
+        if braces == 1
+            && brackets == 0
+            && parentheses == 0
+            && previous_is_delimiter
+            && keyword_token(token, "tenant_id")
+            && symbol_token_at(&tokens, index + 1, ":")
+            && tokens.get(index + 2).is_some_and(|value| {
+                value.kind == TokenKind::Parameter && value.text.eq_ignore_ascii_case("$tenant_id")
+            })
+            && (symbol_token_at(&tokens, index + 3, ",")
+                || symbol_token_at(&tokens, index + 3, "}"))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn subquery_start_brace(query: &str, start: usize) -> Option<usize> {
@@ -831,28 +900,7 @@ fn subquery_start_brace(query: &str, start: usize) -> Option<usize> {
 }
 
 fn matching_brace(query: &str, start: usize) -> Option<usize> {
-    let bytes = query.as_bytes();
-    let mut depth = 0;
-    let mut i = start;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let (_, end) = escaped_identifier_token(bytes, i);
-            i = end + 1;
-            continue;
-        }
-        match bytes[i] {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    matching_delimiter(query.as_bytes(), start, b'{', b'}')
 }
 
 fn scoped_variables_after_with(
@@ -1333,12 +1381,43 @@ mod tests {
     fn escaped_relationship_types_cannot_hide_variable_length_traversals() {
         let fixed_length = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R]`]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
         assert_eq!(validate(fixed_length, 100).decision, Decision::Allow);
+        let fixed_star = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R*`]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(validate(fixed_star, 100).decision, Decision::Allow);
 
         let variable_length = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R]`*1..9999]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
         assert_eq!(
             validate(variable_length, 100).decision,
             Decision::VariableLengthRelationshipNotAllowed
         );
+        let variable_star = "MATCH (a:Entity {tenant_id:$tenant_id})-[r:`R*`*1..9999]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1";
+        assert_eq!(
+            validate(variable_star, 100).decision,
+            Decision::VariableLengthRelationshipNotAllowed
+        );
+    }
+
+    #[test]
+    fn node_patterns_accept_nested_property_syntax_without_weakening_scope() {
+        let accepted = [
+            "MATCH (e:Entity {tenant_id:$tenant_id, id: toString($id)}) RETURN e LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id, meta: {key: 'val'}}) RETURN e LIMIT 25",
+            "MATCH (e:`Entity` {tenant_id:$tenant_id, meta: {key: 'val'}}) RETURN e LIMIT 25",
+        ];
+        for query in accepted {
+            assert_eq!(validate(query, 100).decision, Decision::Allow, "{query}");
+        }
+
+        for query in [
+            "MATCH (e:Entity {meta: {tenant_id:$tenant_id}}) RETURN e LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id, id: toString($id)}) MATCH (b:Entity) RETURN b LIMIT 25",
+            "MATCH (e:`Not:Entity` {tenant_id:$tenant_id}) RETURN e LIMIT 25",
+        ] {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
     }
 
     #[test]
