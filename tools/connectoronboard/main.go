@@ -1,5 +1,5 @@
 // Command connectoronboard orchestrates the full connector onboarding pipeline:
-// OpenAPI spec → connector definition → catalog classification → sourcegen dry-run.
+// OpenAPI spec → connector definition → catalog classification → source generation.
 //
 // It unifies openapidefgen, classifier, catalogcheck, and sourcegen into a
 // single command that reduces connector onboarding from multiple manual steps
@@ -21,24 +21,26 @@ import (
 
 // OnboardResult reports the full pipeline outcome.
 type OnboardResult struct {
-	SourceID         string                          `json:"source_id"`
-	DisplayName      string                          `json:"display_name"`
-	Stage            string                          `json:"stage"`
-	Status           string                          `json:"status"`
-	Verdict          string                          `json:"verdict"`
-	Generateable     bool                            `json:"generateable"`
-	ResourceFamilies int                             `json:"resource_families"`
-	AuthModel        string                          `json:"auth_model"`
-	BaseURL          string                          `json:"base_url"`
-	Selected         []openapigen.Endpoint           `json:"selected_endpoints,omitempty"`
-	Skipped          []openapigen.Endpoint           `json:"skipped_endpoints,omitempty"`
-	MissingFeatures  []string                        `json:"missing_features,omitempty"`
-	SourcegenError   string                          `json:"sourcegen_error,omitempty"`
-	SourcegenFiles   []string                        `json:"sourcegen_files,omitempty"`
-	Definition       connectordefinitions.Definition `json:"definition"`
-	NextSteps        []string                        `json:"next_steps"`
-	CatalogPath      string                          `json:"catalog_path,omitempty"`
-	DryRun           bool                            `json:"dry_run"`
+	SourceID           string                          `json:"source_id"`
+	DisplayName        string                          `json:"display_name"`
+	Stage              string                          `json:"stage"`
+	Status             string                          `json:"status"`
+	Verdict            string                          `json:"verdict"`
+	Generateable       bool                            `json:"generateable"`
+	ResourceFamilies   int                             `json:"resource_families"`
+	AuthModel          string                          `json:"auth_model"`
+	BaseURL            string                          `json:"base_url"`
+	Selected           []openapigen.Endpoint           `json:"selected_endpoints,omitempty"`
+	Skipped            []openapigen.Endpoint           `json:"skipped_endpoints,omitempty"`
+	MissingFeatures    []string                        `json:"missing_features,omitempty"`
+	SourcegenError     string                          `json:"sourcegen_error,omitempty"`
+	SourcegenFiles     []string                        `json:"sourcegen_files,omitempty"`
+	GenerationManifest string                          `json:"generation_manifest,omitempty"`
+	WiredFiles         []string                        `json:"wired_files,omitempty"`
+	Definition         connectordefinitions.Definition `json:"definition"`
+	NextSteps          []string                        `json:"next_steps"`
+	CatalogPath        string                          `json:"catalog_path,omitempty"`
+	DryRun             bool                            `json:"dry_run"`
 }
 
 func main() {
@@ -56,6 +58,7 @@ func main() {
 	var outputDir string
 	var catalogOut string
 	var dryRun bool
+	var wire bool
 	flag.StringVar(&specPath, "spec", "", "OpenAPI document path (required)")
 	flag.StringVar(&sourceID, "source-id", "", "connector source id; inferred from spec title when empty")
 	flag.StringVar(&tenantID, "tenant-id", "builtin_catalog", "tenant id for the catalog entry")
@@ -70,6 +73,7 @@ func main() {
 	flag.StringVar(&outputDir, "output-dir", ".", "output directory for sourcegen files")
 	flag.StringVar(&catalogOut, "catalog-out", "", "write catalog entry YAML to this path")
 	flag.BoolVar(&dryRun, "dry-run", true, "dry-run mode (default true); set -dry-run=false to write files")
+	flag.BoolVar(&wire, "wire", true, "wire generated source, projection, and documentation entries when writing")
 	flag.Parse()
 
 	if strings.TrimSpace(specPath) == "" {
@@ -111,7 +115,7 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "onboard: classifier verdict: %s\n", supportReport.Verdict)
 
-	// Step 4: Dry-run sourcegen if supported.
+	// Step 4: Plan or write source files when the definition is supported.
 	result := OnboardResult{
 		SourceID:         definition.SourceID,
 		DisplayName:      definition.DisplayName,
@@ -131,15 +135,28 @@ func main() {
 		genResult, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
 			Definition: definition,
 			OutputDir:  outputDir,
-			DryRun:     true,
+			DryRun:     dryRun,
 		})
 		if err != nil {
 			result.SourcegenError = err.Error()
-			fmt.Fprintf(os.Stderr, "onboard: sourcegen dry-run failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "onboard: source generation failed: %v\n", err)
 		} else {
 			result.Generateable = true
 			result.SourcegenFiles = genResult.Files
-			fmt.Fprintf(os.Stderr, "onboard: sourcegen dry-run passed (%d files)\n", len(genResult.Files))
+			result.GenerationManifest = genResult.GenerationManifest
+			if dryRun {
+				fmt.Fprintf(os.Stderr, "onboard: sourcegen dry-run passed (%d files)\n", len(genResult.Files))
+			} else {
+				fmt.Fprintf(os.Stderr, "onboard: sourcegen wrote %d files\n", len(genResult.Files))
+				if wire {
+					wireResult, err := sourcegen.Wire(sourcegen.WireRequest{SourceID: definition.SourceID, OutputDir: outputDir})
+					if err != nil {
+						fail(fmt.Errorf("wire generated source: %w", err))
+					}
+					result.WiredFiles = wireResult.FilesModified
+					fmt.Fprintf(os.Stderr, "onboard: wired %d registry and documentation files\n", len(wireResult.FilesModified))
+				}
+			}
 		}
 	}
 
@@ -168,14 +185,18 @@ func buildNextSteps(result OnboardResult) []string {
 	switch result.Verdict {
 	case connectordefinitions.SupportVerdictSupported:
 		if result.Generateable {
-			steps = append(steps,
-				fmt.Sprintf("Add the definition to the appropriate category file under internal/connectorcatalog/catalog/"),
-				"Run: make catalog-check",
-				"Run: make sourcegen-check",
-				fmt.Sprintf("Generate the source: cerebro source-runtime sdk new %s catalog=true", result.SourceID),
-				fmt.Sprintf("Wire the source: cerebro source-runtime sdk wire %s", result.SourceID),
-				"Run: make verify",
-			)
+			if result.DryRun {
+				steps = append(steps,
+					"Set -dry-run=false after reviewing the selected endpoints and generated file plan.",
+					"Set -catalog-out to the reviewed connector catalog path.",
+				)
+			} else {
+				steps = append(steps,
+					fmt.Sprintf("Review the generated contract and fixtures under sources/%s.", result.SourceID),
+					fmt.Sprintf("Run: cerebro source-runtime sdk validate %s", result.SourceID),
+				)
+			}
+			steps = append(steps, "Run: make catalog-check sourcegen-check", "Run: make verify")
 		} else {
 			steps = append(steps,
 				"Add the definition to a catalog YAML file under internal/connectorcatalog/catalog/",
