@@ -9,33 +9,35 @@ import (
 type ResourceKind string
 
 const (
-	ResourceKindFinding             ResourceKind = "finding"
-	ResourceKindFindingEvidence     ResourceKind = "finding_evidence"
-	ResourceKindEvaluationRun       ResourceKind = "evaluation_run"
-	ResourceKindSourceEvent         ResourceKind = "source_event"
-	ResourceKindSourceRuntime       ResourceKind = "source_runtime"
-	ResourceKindGraphEntity         ResourceKind = "graph_entity"
-	ResourceKindGraphFact           ResourceKind = "graph_fact"
-	ResourceKindGraphPath           ResourceKind = "graph_path"
-	ResourceKindRule                ResourceKind = "rule"
-	ResourceKindControl             ResourceKind = "control"
-	ResourceKindEvidencePacket      ResourceKind = "evidence_packet"
-	ResourceKindAuditPacket         ResourceKind = "audit_packet"
-	ResourceKindDecisionPacket      ResourceKind = "decision_packet"
-	ResourceKindReportRun           ResourceKind = "report_run"
-	ResourceKindJob                 ResourceKind = "job"
-	ResourceKindAgentTask           ResourceKind = "agent_task"
-	ResourceKindAskQuery            ResourceKind = "ask_query"
-	ResourceKindDashboardLens       ResourceKind = "dashboard_lens"
-	ResourceKindQuestionnaireRun    ResourceKind = "questionnaire_run"
-	ResourceKindExternalWork        ResourceKind = "external_work"
-	ResourceKindActionProposal      ResourceKind = "action_proposal"
-	ResourceKindApprovalReceipt     ResourceKind = "approval_receipt"
-	ResourceKindActionExecution     ResourceKind = "action_execution"
-	ResourceKindVerification        ResourceKind = "verification"
-	ResourceKindWorkflowOutcome     ResourceKind = "workflow_outcome"
-	ResourceKindFindingEpisode      ResourceKind = "finding_episode"
-	ResourceKindRemediationCampaign ResourceKind = "remediation_campaign"
+	ResourceKindFinding                   ResourceKind = "finding"
+	ResourceKindFindingEvidence           ResourceKind = "finding_evidence"
+	ResourceKindFindingInvestigation      ResourceKind = "finding_investigation"
+	ResourceKindFindingEvidenceCollection ResourceKind = "finding_evidence_collection"
+	ResourceKindEvaluationRun             ResourceKind = "evaluation_run"
+	ResourceKindSourceEvent               ResourceKind = "source_event"
+	ResourceKindSourceRuntime             ResourceKind = "source_runtime"
+	ResourceKindGraphEntity               ResourceKind = "graph_entity"
+	ResourceKindGraphFact                 ResourceKind = "graph_fact"
+	ResourceKindGraphPath                 ResourceKind = "graph_path"
+	ResourceKindRule                      ResourceKind = "rule"
+	ResourceKindControl                   ResourceKind = "control"
+	ResourceKindEvidencePacket            ResourceKind = "evidence_packet"
+	ResourceKindAuditPacket               ResourceKind = "audit_packet"
+	ResourceKindDecisionPacket            ResourceKind = "decision_packet"
+	ResourceKindReportRun                 ResourceKind = "report_run"
+	ResourceKindJob                       ResourceKind = "job"
+	ResourceKindAgentTask                 ResourceKind = "agent_task"
+	ResourceKindAskQuery                  ResourceKind = "ask_query"
+	ResourceKindDashboardLens             ResourceKind = "dashboard_lens"
+	ResourceKindQuestionnaireRun          ResourceKind = "questionnaire_run"
+	ResourceKindExternalWork              ResourceKind = "external_work"
+	ResourceKindActionProposal            ResourceKind = "action_proposal"
+	ResourceKindApprovalReceipt           ResourceKind = "approval_receipt"
+	ResourceKindActionExecution           ResourceKind = "action_execution"
+	ResourceKindVerification              ResourceKind = "verification"
+	ResourceKindWorkflowOutcome           ResourceKind = "workflow_outcome"
+	ResourceKindFindingEpisode            ResourceKind = "finding_episode"
+	ResourceKindRemediationCampaign       ResourceKind = "remediation_campaign"
 )
 
 // ResourceOwner identifies the domain that owns a resource's canonical record.
@@ -77,33 +79,35 @@ type ResourceKindDefinition struct {
 }
 
 var resourceKindRegistry = map[ResourceKind]ResourceKindDefinition{
-	ResourceKindFinding:             resourceKindDefinition(ResourceKindFinding, ResourceOwnerFindings, ResourceIdentifierID),
-	ResourceKindFindingEvidence:     resourceKindDefinition(ResourceKindFindingEvidence, ResourceOwnerFindings, ResourceIdentifierID),
-	ResourceKindEvaluationRun:       resourceKindDefinition(ResourceKindEvaluationRun, ResourceOwnerFindingEvaluations, ResourceIdentifierID),
-	ResourceKindSourceEvent:         resourceKindDefinition(ResourceKindSourceEvent, ResourceOwnerSourceRuntime, ResourceIdentifierID),
-	ResourceKindSourceRuntime:       resourceKindDefinition(ResourceKindSourceRuntime, ResourceOwnerSourceRuntime, ResourceIdentifierID),
-	ResourceKindGraphEntity:         resourceKindDefinition(ResourceKindGraphEntity, ResourceOwnerGraphProjection, ResourceIdentifierURN),
-	ResourceKindGraphFact:           resourceKindDefinition(ResourceKindGraphFact, ResourceOwnerGraphProjection, ResourceIdentifierID),
-	ResourceKindGraphPath:           resourceKindDefinition(ResourceKindGraphPath, ResourceOwnerGraphProjection, ResourceIdentifierID),
-	ResourceKindRule:                resourceKindDefinition(ResourceKindRule, ResourceOwnerRuleCatalog, ResourceIdentifierID),
-	ResourceKindControl:             resourceKindDefinition(ResourceKindControl, ResourceOwnerControlCatalog, ResourceIdentifierID),
-	ResourceKindEvidencePacket:      resourceKindDefinition(ResourceKindEvidencePacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
-	ResourceKindAuditPacket:         resourceKindDefinition(ResourceKindAuditPacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
-	ResourceKindDecisionPacket:      resourceKindDefinition(ResourceKindDecisionPacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
-	ResourceKindReportRun:           resourceKindDefinition(ResourceKindReportRun, ResourceOwnerReports, ResourceIdentifierID),
-	ResourceKindJob:                 resourceKindDefinition(ResourceKindJob, ResourceOwnerJobs, ResourceIdentifierID),
-	ResourceKindAgentTask:           resourceKindDefinition(ResourceKindAgentTask, ResourceOwnerAgentPlatform, ResourceIdentifierID),
-	ResourceKindAskQuery:            resourceKindDefinition(ResourceKindAskQuery, ResourceOwnerAsk, ResourceIdentifierID),
-	ResourceKindDashboardLens:       resourceKindDefinition(ResourceKindDashboardLens, ResourceOwnerDashboards, ResourceIdentifierID),
-	ResourceKindQuestionnaireRun:    resourceKindDefinition(ResourceKindQuestionnaireRun, ResourceOwnerQuestionnaires, ResourceIdentifierID),
-	ResourceKindExternalWork:        resourceKindDefinition(ResourceKindExternalWork, ResourceOwnerExternalWork, ResourceIdentifierID),
-	ResourceKindActionProposal:      resourceKindDefinition(ResourceKindActionProposal, ResourceOwnerActionWorkflow, ResourceIdentifierID),
-	ResourceKindApprovalReceipt:     resourceKindDefinition(ResourceKindApprovalReceipt, ResourceOwnerActionWorkflow, ResourceIdentifierID),
-	ResourceKindActionExecution:     resourceKindDefinition(ResourceKindActionExecution, ResourceOwnerActionWorkflow, ResourceIdentifierID),
-	ResourceKindVerification:        resourceKindDefinition(ResourceKindVerification, ResourceOwnerActionWorkflow, ResourceIdentifierID),
-	ResourceKindWorkflowOutcome:     resourceKindDefinition(ResourceKindWorkflowOutcome, ResourceOwnerActionWorkflow, ResourceIdentifierID),
-	ResourceKindFindingEpisode:      resourceKindDefinition(ResourceKindFindingEpisode, ResourceOwnerFindingOutcomes, ResourceIdentifierID),
-	ResourceKindRemediationCampaign: resourceKindDefinition(ResourceKindRemediationCampaign, ResourceOwnerFindingOutcomes, ResourceIdentifierID),
+	ResourceKindFinding:                   resourceKindDefinition(ResourceKindFinding, ResourceOwnerFindings, ResourceIdentifierID),
+	ResourceKindFindingEvidence:           resourceKindDefinition(ResourceKindFindingEvidence, ResourceOwnerFindings, ResourceIdentifierID),
+	ResourceKindFindingInvestigation:      resourceKindDefinition(ResourceKindFindingInvestigation, ResourceOwnerFindings, ResourceIdentifierID),
+	ResourceKindFindingEvidenceCollection: resourceKindDefinition(ResourceKindFindingEvidenceCollection, ResourceOwnerFindings, ResourceIdentifierID),
+	ResourceKindEvaluationRun:             resourceKindDefinition(ResourceKindEvaluationRun, ResourceOwnerFindingEvaluations, ResourceIdentifierID),
+	ResourceKindSourceEvent:               resourceKindDefinition(ResourceKindSourceEvent, ResourceOwnerSourceRuntime, ResourceIdentifierID),
+	ResourceKindSourceRuntime:             resourceKindDefinition(ResourceKindSourceRuntime, ResourceOwnerSourceRuntime, ResourceIdentifierID),
+	ResourceKindGraphEntity:               resourceKindDefinition(ResourceKindGraphEntity, ResourceOwnerGraphProjection, ResourceIdentifierURN),
+	ResourceKindGraphFact:                 resourceKindDefinition(ResourceKindGraphFact, ResourceOwnerGraphProjection, ResourceIdentifierID),
+	ResourceKindGraphPath:                 resourceKindDefinition(ResourceKindGraphPath, ResourceOwnerGraphProjection, ResourceIdentifierID),
+	ResourceKindRule:                      resourceKindDefinition(ResourceKindRule, ResourceOwnerRuleCatalog, ResourceIdentifierID),
+	ResourceKindControl:                   resourceKindDefinition(ResourceKindControl, ResourceOwnerControlCatalog, ResourceIdentifierID),
+	ResourceKindEvidencePacket:            resourceKindDefinition(ResourceKindEvidencePacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
+	ResourceKindAuditPacket:               resourceKindDefinition(ResourceKindAuditPacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
+	ResourceKindDecisionPacket:            resourceKindDefinition(ResourceKindDecisionPacket, ResourceOwnerEvidencePackets, ResourceIdentifierID),
+	ResourceKindReportRun:                 resourceKindDefinition(ResourceKindReportRun, ResourceOwnerReports, ResourceIdentifierID),
+	ResourceKindJob:                       resourceKindDefinition(ResourceKindJob, ResourceOwnerJobs, ResourceIdentifierID),
+	ResourceKindAgentTask:                 resourceKindDefinition(ResourceKindAgentTask, ResourceOwnerAgentPlatform, ResourceIdentifierID),
+	ResourceKindAskQuery:                  resourceKindDefinition(ResourceKindAskQuery, ResourceOwnerAsk, ResourceIdentifierID),
+	ResourceKindDashboardLens:             resourceKindDefinition(ResourceKindDashboardLens, ResourceOwnerDashboards, ResourceIdentifierID),
+	ResourceKindQuestionnaireRun:          resourceKindDefinition(ResourceKindQuestionnaireRun, ResourceOwnerQuestionnaires, ResourceIdentifierID),
+	ResourceKindExternalWork:              resourceKindDefinition(ResourceKindExternalWork, ResourceOwnerExternalWork, ResourceIdentifierID),
+	ResourceKindActionProposal:            resourceKindDefinition(ResourceKindActionProposal, ResourceOwnerActionWorkflow, ResourceIdentifierID),
+	ResourceKindApprovalReceipt:           resourceKindDefinition(ResourceKindApprovalReceipt, ResourceOwnerActionWorkflow, ResourceIdentifierID),
+	ResourceKindActionExecution:           resourceKindDefinition(ResourceKindActionExecution, ResourceOwnerActionWorkflow, ResourceIdentifierID),
+	ResourceKindVerification:              resourceKindDefinition(ResourceKindVerification, ResourceOwnerActionWorkflow, ResourceIdentifierID),
+	ResourceKindWorkflowOutcome:           resourceKindDefinition(ResourceKindWorkflowOutcome, ResourceOwnerActionWorkflow, ResourceIdentifierID),
+	ResourceKindFindingEpisode:            resourceKindDefinition(ResourceKindFindingEpisode, ResourceOwnerFindingOutcomes, ResourceIdentifierID),
+	ResourceKindRemediationCampaign:       resourceKindDefinition(ResourceKindRemediationCampaign, ResourceOwnerFindingOutcomes, ResourceIdentifierID),
 }
 
 func resourceKindDefinition(kind ResourceKind, owner ResourceOwner, identifier ResourceIdentifierKind) ResourceKindDefinition {
