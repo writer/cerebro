@@ -136,11 +136,13 @@ report:
 | Artifact | Workload | Bytes | Imported functions | Callable exports |
 | --- | --- | ---: | ---: | --- |
 | Rust source record kernel | JSON validation, canonicalization, quarantine, SHA-256 receipts | 164,078 | 0 | ABI version, allocation, evaluation |
-| Standard Go Wasm runtime floor | Empty `main` | 1,849,448 | 10 | `_start` |
+| Standard Go Wasm runtime floor | Empty `main` | 1,849,278 | 10 | `_start` |
 
-The standard Go artifact imports arguments, environment, wall clock, random,
-file-descriptor write, polling, process exit, and scheduler functions through
-WASI. The Rust artifact performs the actual record work without an import.
+The standard Go artifact is built with VCS stamping disabled so the comparison
+does not change with the repository revision. It imports arguments, environment,
+wall clock, random, file-descriptor write, polling, process exit, and scheduler
+functions through WASI. The Rust artifact performs the actual record work
+without an import.
 
 This is not a speed benchmark and the two programs do not do equal work. The
 measurement answers a narrower question: what is the minimum ambient runtime
