@@ -1,8 +1,11 @@
 package graphactions
 
 import (
+	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestKnownActionContractHelpersExposeCatalogMetadata(t *testing.T) {
@@ -126,5 +129,24 @@ func TestActionStatusContract(t *testing.T) {
 	}
 	if ActionStatusKnown("unknown") {
 		t.Fatalf("ActionStatusKnown(unknown) = true, want false")
+	}
+}
+
+func TestFindingAllowsActionRejectsSuspendForDownstreamAccessFindings(t *testing.T) {
+	for _, ruleID := range []string{
+		"identity-okta-deprovisioned-active-in-github",
+		"identity-okta-deprovisioned-active-cloud-access",
+	} {
+		t.Run(ruleID, func(t *testing.T) {
+			finding := &ports.FindingRecord{
+				ID:         "finding-1",
+				RuleID:     ruleID,
+				Status:     "open",
+				Attributes: map[string]string{},
+			}
+			if err := FindingAllowsAction(ActionIdentityOktaSuspendUser, finding); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("FindingAllowsAction() error = %v, want ErrInvalidRequest", err)
+			}
+		})
 	}
 }
