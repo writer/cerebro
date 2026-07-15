@@ -57,6 +57,17 @@ type Request struct {
 	Budgets         Budgets  `json:"budgets"`
 }
 
+// AuthorizedTenant and AuthorizedActor are forced by transport authentication.
+// They are intentionally separate from Request so callers cannot override them.
+type AuthorizedTenant struct {
+	ID string
+}
+
+type AuthorizedActor struct {
+	ID     string
+	Scopes []string
+}
+
 type Budgets struct {
 	Evidence       int `json:"evidence,omitempty"`
 	Contradictions int `json:"contradictions,omitempty"`
