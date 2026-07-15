@@ -30,6 +30,8 @@ The Go compatibility plane owns during migration:
 - existing action adapters and verified-action APIs;
 - existing report and GRC compatibility routes.
 
+Provider execution has its own staged carve. [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md) defines how normalized connector definitions move behind a native Rust worker while Go retains source-runtime leases, append-log publication, durable checkpoint commits, and graph writes. Standard connectors are not translated package by package.
+
 The graph remains a rebuildable projection. It is not a mission store, scheduler, authority system, or closure record.
 
 ## Process Boundary
@@ -116,4 +118,5 @@ The Rust kernel cannot become authoritative until tests prove:
 - Do not merge a child into a feature branch to simulate progress.
 - Do not raise architecture budgets to hide misplaced behavior.
 - Do not port connectors to increase the percentage of Rust.
+- Move source behavior only through the language-neutral execution plan and parity gates in [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md).
 - Do not create a generic workflow DSL before the first mandate proves the required execution shape.

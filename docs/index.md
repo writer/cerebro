@@ -84,6 +84,7 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | CLI usage | [CLI reference](reference/cli.md) |
 | Built-in source integrations | [Source catalog](reference/sources.md) |
 | Source runtime sync | [Source runtime guide](domains/source-runtime-guide.md) |
+| Source runtime target architecture | [Native Rust source runtime ADR](engineering/rust-source-runtime-adr.md) |
 | Graph operations | [Graph operations](domains/graph-operations.md) |
 | Persona-specific graph views | [Persona view lenses](domains/persona-view-lenses.md) |
 | GRC architecture | [GRC architecture](domains/grc-architecture.md) |
