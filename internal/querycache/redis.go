@@ -61,6 +61,9 @@ func (c *RedisCache) Set(ctx context.Context, key string, payload []byte, ttl ti
 	if len(payload) == 0 || len(payload) > c.options.MaxPayloadBytes {
 		redisAnnotateMain(ctx, c.options.Namespace, "set", "skipped")
 		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "status_detail", Value: "payload_size"}))
+		if len(payload) > c.options.MaxPayloadBytes {
+			return ErrPayloadTooLarge
+		}
 		return nil
 	}
 	now := time.Now().UTC()

@@ -124,6 +124,34 @@ func TestGRCQueryCacheDoesNotEmitCacheControlForErrorResponse(t *testing.T) {
 	}
 }
 
+func TestGRCQueryCacheReportsOversizedResponseWithoutClientCacheHeaders(t *testing.T) {
+	app := &App{
+		cfg: config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{
+			Namespace:       "test",
+			MaxPayloadBytes: 10,
+		})},
+	}
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"payload": "larger than ten bytes"})
+	})
+
+	first := httptest.NewRecorder()
+	handler(first, httptest.NewRequest(http.MethodGet, "/grc/dashboard", nil))
+	second := httptest.NewRecorder()
+	handler(second, httptest.NewRequest(http.MethodGet, "/grc/dashboard", nil))
+
+	if got := first.Header().Get("X-Cerebro-Cache"); got != "skip" {
+		t.Fatalf("first X-Cerebro-Cache = %q, want skip", got)
+	}
+	if got := first.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("first Cache-Control = %q, want empty", got)
+	}
+	if got := second.Header().Get("X-Cerebro-Cache"); got != "skip" {
+		t.Fatalf("second X-Cerebro-Cache = %q, want skip", got)
+	}
+}
+
 func TestGRCQueryCacheServesStaleOnRefreshError(t *testing.T) {
 	app := &App{
 		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Millisecond, StaleTTL: time.Minute}},

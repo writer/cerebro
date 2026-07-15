@@ -1548,6 +1548,18 @@ func (s *stubRuntimeStore) ListFindingEvaluationRuns(_ context.Context, request 
 			return left.GetStartedAt().AsTime().After(right.GetStartedAt().AsTime())
 		}
 	})
+	if request.LatestByRuntime {
+		latest := make([]*cerebrov1.FindingEvaluationRun, 0, len(runs))
+		seen := map[string]struct{}{}
+		for _, run := range runs {
+			if _, ok := seen[run.GetRuntimeId()]; ok {
+				continue
+			}
+			seen[run.GetRuntimeId()] = struct{}{}
+			latest = append(latest, run)
+		}
+		runs = latest
+	}
 	if request.Limit != 0 && len(runs) > int(request.Limit) {
 		runs = runs[:int(request.Limit)]
 	}
@@ -1726,7 +1738,8 @@ func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 	s.ingestRunListFilter = filter
 	runs := make([]graphstore.IngestRun, 0, len(s.ingestRuns))
 	for _, run := range s.ingestRuns {
-		if filter.RuntimeID != "" && run.RuntimeID != filter.RuntimeID {
+		runtimeIDs := normalizedTestStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+		if len(runtimeIDs) != 0 && !containsTrimmed(runtimeIDs, run.RuntimeID) {
 			continue
 		}
 		if filter.Status != "" && run.Status != filter.Status {
@@ -1742,6 +1755,18 @@ func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 		}
 		return left.StartedAt > right.StartedAt
 	})
+	if filter.LatestByRuntime {
+		latest := make([]graphstore.IngestRun, 0, len(runs))
+		seen := map[string]struct{}{}
+		for _, run := range runs {
+			if _, ok := seen[run.RuntimeID]; ok {
+				continue
+			}
+			seen[run.RuntimeID] = struct{}{}
+			latest = append(latest, run)
+		}
+		runs = latest
+	}
 	if filter.Limit > 0 && len(runs) > filter.Limit {
 		runs = runs[:filter.Limit]
 	}
@@ -8475,7 +8500,8 @@ func findingEvaluationRunMatches(request ports.ListFindingEvaluationRunsRequest,
 	if run == nil {
 		return false
 	}
-	if strings.TrimSpace(run.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+	runtimeIDs := normalizedTestStrings(append(request.RuntimeIDs, request.RuntimeID))
+	if len(runtimeIDs) == 0 || !containsTrimmed(runtimeIDs, run.GetRuntimeId()) {
 		return false
 	}
 	if request.RuleID != "" && strings.TrimSpace(run.GetRuleId()) != strings.TrimSpace(request.RuleID) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	"github.com/writer/cerebro/internal/sourcehealthview"
+	"github.com/writer/cerebro/internal/sourcehttp/responseview"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -34,10 +37,7 @@ func TestSourceRuntimeHealthRecordIncludesScheduleReceipt(t *testing.T) {
 		},
 	}
 
-	record, err := (&App{}).sourceRuntimeHealthRecord(context.Background(), runtime, now)
-	if err != nil {
-		t.Fatalf("sourceRuntimeHealthRecord() error = %v", err)
-	}
+	record := sourcehealthview.FromRuntime(runtime, now, nil, nil)
 	if record.ExpectedCadenceSeconds == nil || *record.ExpectedCadenceSeconds != 3600 {
 		t.Fatalf("ExpectedCadenceSeconds = %v, want 3600", record.ExpectedCadenceSeconds)
 	}
@@ -63,10 +63,7 @@ func TestSourceRuntimeHealthRecordIgnoresMalformedStoredScopePolicy(t *testing.T
 		},
 	}
 
-	record, err := (&App{}).sourceRuntimeHealthRecord(context.Background(), runtime, now)
-	if err != nil {
-		t.Fatalf("sourceRuntimeHealthRecord() error = %v", err)
-	}
+	record := sourcehealthview.FromRuntime(runtime, now, nil, nil)
 	if record.ScopePolicy != nil {
 		t.Fatalf("ScopePolicy = %#v, want nil for malformed stored policy", record.ScopePolicy)
 	}
@@ -128,16 +125,13 @@ func TestSourceRuntimeHealthRecordHandlesPartialAndInvalidScheduleReceipt(t *tes
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			record, err := (&App{}).sourceRuntimeHealthRecord(context.Background(), &cerebrov1.SourceRuntime{
+			record := sourcehealthview.FromRuntime(&cerebrov1.SourceRuntime{
 				Id:           "runtime-1",
 				SourceId:     "generated",
 				TenantId:     "tenant",
 				LastSyncedAt: timestamppb.New(now),
 				Config:       test.config,
-			}, now)
-			if err != nil {
-				t.Fatalf("sourceRuntimeHealthRecord() error = %v", err)
-			}
+			}, now, nil, nil)
 			assertOptionalInt64(t, "ExpectedCadenceSeconds", record.ExpectedCadenceSeconds, test.wantCadence)
 			assertOptionalInt64(t, "StaleAfterSeconds", record.StaleAfterSeconds, test.wantStale)
 			if record.ScheduleContextConfigured != test.wantConfigured {
@@ -247,7 +241,7 @@ func TestSourceRuntimeHealthSummariesAggregateBySource(t *testing.T) {
 			SourceID:           "okta",
 			Status:             "healthy",
 			ContractProbeState: "passing",
-			LatestGraphRun:     sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+			LatestGraphRun:     sourcehealthview.GraphRunFromStore(graphstore.IngestRun{Status: "completed"}),
 			GraphLagSeconds:    &graphLag,
 			StaleAfterSeconds:  &staleAfter,
 		},
@@ -257,7 +251,7 @@ func TestSourceRuntimeHealthSummariesAggregateBySource(t *testing.T) {
 			Status:             "failing",
 			CursorPending:      true,
 			ContractProbeState: "failure",
-			LatestGraphRun:     sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "failed"}),
+			LatestGraphRun:     sourcehealthview.GraphRunFromStore(graphstore.IngestRun{Status: "failed"}),
 			StaleAfterSeconds:  &staleAfter,
 		},
 		{
@@ -300,7 +294,7 @@ func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
 				SourceID:          "okta",
 				EnabledState:      "enabled",
 				Status:            "healthy",
-				LatestGraphRun:    sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				LatestGraphRun:    sourcehealthview.GraphRunFromStore(graphstore.IngestRun{Status: "completed"}),
 				GraphLagSeconds:   int64Ptr(60),
 				StaleAfterSeconds: &staleAfter,
 			},
@@ -318,7 +312,7 @@ func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
 				EnabledState:        "enabled",
 				Status:              "failing",
 				LastFailureCategory: "auth_error",
-				LatestGraphRun:      sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				LatestGraphRun:      sourcehealthview.GraphRunFromStore(graphstore.IngestRun{Status: "completed"}),
 				StaleAfterSeconds:   &staleAfter,
 			},
 			{
@@ -368,7 +362,7 @@ func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
 				SourceID:       "okta",
 				EnabledState:   "enabled",
 				Status:         "healthy",
-				LatestGraphRun: sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "running"}),
+				LatestGraphRun: sourcehealthview.GraphRunFromStore(graphstore.IngestRun{Status: "running"}),
 			},
 		},
 	}
@@ -472,6 +466,86 @@ func TestListSourceRuntimeHealthFiltersCoverageByAllowedTenant(t *testing.T) {
 	}
 	if got := byDimension["applications"].RuntimeID; got != "" {
 		t.Fatalf("applications runtime_id = %q, want empty", got)
+	}
+}
+
+func TestListSourceRuntimeHealthSummaryKeepsAggregatesAndOmitsRecords(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id:           "writer-okta-user",
+			SourceId:     "okta",
+			TenantId:     "writer",
+			LastSyncedAt: timestamppb.Now(),
+			Config:       map[string]string{"family": "user"},
+		},
+	}}
+	app := &App{deps: Dependencies{StateStore: store}, sources: registry}
+	request := httptest.NewRequest(http.MethodGet, "/source-runtimes/health?view=summary", nil)
+
+	response, err := app.listSourceRuntimeHealth(request)
+	if err != nil {
+		t.Fatalf("listSourceRuntimeHealth() error = %v", err)
+	}
+	if len(response.Coverage) != 0 {
+		t.Fatalf("Coverage length = %d, want 0", len(response.Coverage))
+	}
+	if len(response.coverageRecords) != 3 || len(response.CoverageSummary) != 1 {
+		t.Fatalf("summary coverage records/summaries = %d/%d, want 3/1", len(response.coverageRecords), len(response.CoverageSummary))
+	}
+	if response.view != responseview.Summary {
+		t.Fatalf("view = %q, want summary", response.view)
+	}
+
+	freshness := runtimeFreshnessFromHealth(response)
+	if len(freshness.CoverageBlindSpots) != 0 {
+		t.Fatalf("freshness raw blind spots length = %d, want 0", len(freshness.CoverageBlindSpots))
+	}
+	if len(freshness.CoverageBlindSummary) != 1 || freshness.CoverageBlindSummary[0].BlindSpots != 2 {
+		t.Fatalf("freshness blind spot summary = %#v, want two blind spots", freshness.CoverageBlindSummary)
+	}
+}
+
+func TestSourceCoverageConfiguredScopeExcludesUnconfiguredSources(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{}, secondaryCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := &App{sources: registry}
+	runtimes := []*cerebrov1.SourceRuntime{{Id: "writer-okta", SourceId: "okta", TenantId: "writer"}}
+
+	records := app.sourceCoverageRecordsScoped(runtimes, ports.SourceRuntimeFilter{TenantID: "writer"}, time.Now().UTC(), responseview.CoverageConfigured)
+
+	for _, record := range records {
+		if record.SourceID == "secondary" {
+			t.Fatalf("configured coverage included unconfigured source: %#v", record)
+		}
+	}
+	if len(records) != 3 {
+		t.Fatalf("configured coverage length = %d, want 3", len(records))
+	}
+}
+
+func TestSourceRuntimeHealthRecordsBatchLatestRunQueries(t *testing.T) {
+	stateStore := &stubRuntimeStore{findingEvaluationRuns: map[string]*cerebrov1.FindingEvaluationRun{}}
+	graphStore := &stubGraphStore{ingestRuns: map[string]graphstore.IngestRun{}}
+	app := &App{deps: Dependencies{StateStore: stateStore, GraphStore: graphStore}}
+	runtimes := []*cerebrov1.SourceRuntime{
+		{Id: "runtime-b", SourceId: "aws", TenantId: "writer"},
+		{Id: "runtime-a", SourceId: "okta", TenantId: "writer"},
+	}
+
+	if _, err := app.sourceRuntimeHealthRecords(context.Background(), runtimes, time.Now().UTC()); err != nil {
+		t.Fatalf("sourceRuntimeHealthRecords() error = %v", err)
+	}
+	if !graphStore.ingestRunListFilter.LatestByRuntime || len(graphStore.ingestRunListFilter.RuntimeIDs) != 2 {
+		t.Fatalf("graph run filter = %#v, want one latest run for two runtimes", graphStore.ingestRunListFilter)
+	}
+	if !stateStore.findingEvaluationRunListRequest.LatestByRuntime || len(stateStore.findingEvaluationRunListRequest.RuntimeIDs) != 2 {
+		t.Fatalf("finding run request = %#v, want one latest run for two runtimes", stateStore.findingEvaluationRunListRequest)
 	}
 }
 
@@ -612,6 +686,48 @@ func TestRuntimeFreshnessIncludesCoverageBlindSpots(t *testing.T) {
 	}
 }
 
+func BenchmarkSourceRuntimeHealthSerialization(b *testing.B) {
+	coverage := make([]sourcecoverage.Record, 5143)
+	for index := range coverage {
+		coverage[index] = sourcecoverage.Record{
+			SourceID:      "connector",
+			DimensionID:   "dimension-" + strconv.Itoa(index),
+			DimensionType: "entity_family",
+			Title:         "Coverage dimension",
+			State:         sourcecoverage.StateUnconfigured,
+			SupportLevel:  sourcecdk.CoverageSupportSupported,
+			BlindSpot:     true,
+		}
+	}
+	cases := map[string]sourceRuntimeHealthResponse{
+		"expanded": {
+			GeneratedAt:     "2026-07-14T00:00:00Z",
+			Coverage:        coverage,
+			CoverageSummary: sourcecoverage.Summaries(coverage),
+		},
+		"summary": {
+			GeneratedAt:     "2026-07-14T00:00:00Z",
+			CoverageSummary: sourcecoverage.Summaries(coverage),
+		},
+	}
+	for name, response := range cases {
+		b.Run(name, func(b *testing.B) {
+			payload, err := json.Marshal(response)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := json.Marshal(response); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(len(payload)), "response-bytes")
+		})
+	}
+}
+
 func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 	f.Add("", "", "")
 	f.Add("3600", "7200", "passing")
@@ -644,6 +760,8 @@ func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 
 type sourceCoverageHealthSource struct{}
 
+type secondaryCoverageHealthSource struct{}
+
 func (sourceCoverageHealthSource) Spec() *cerebrov1.SourceSpec {
 	return &cerebrov1.SourceSpec{Id: "okta", Name: "Okta"}
 }
@@ -670,6 +788,33 @@ func (sourceCoverageHealthSource) Discover(context.Context, sourcecdk.Config) ([
 }
 
 func (sourceCoverageHealthSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, nil
+}
+
+func (secondaryCoverageHealthSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "secondary", Name: "Secondary"}
+}
+
+func (secondaryCoverageHealthSource) CoverageContract() sourcecdk.CoverageContract {
+	return sourcecdk.CoverageContract{
+		SourceID:        "secondary",
+		OwnerDomain:     "inventory",
+		AuthorityDomain: "secondary",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{ID: "assets", Type: "entity_family", Title: "Assets", Families: []string{"asset"}, Support: sourcecdk.CoverageSupportSupported},
+		},
+	}
+}
+
+func (secondaryCoverageHealthSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (secondaryCoverageHealthSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (secondaryCoverageHealthSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{}, nil
 }
 
