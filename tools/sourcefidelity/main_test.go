@@ -5,7 +5,134 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcegen"
 )
+
+func TestGeneratedProviderPilotsAreHighFidelity(t *testing.T) {
+	root := t.TempDir()
+	pilots := []struct {
+		name       string
+		auth       string
+		method     string
+		pagination *connectordefinitions.PaginationSpec
+	}{
+		{
+			name: "bearer_cursor_pilot",
+			auth: sourcegen.AuthModelBearerToken,
+			pagination: &connectordefinitions.PaginationSpec{
+				Type: "cursor", CursorParam: "after", CursorJSONPath: "$.paging.next",
+			},
+		},
+		{
+			name: "oauth_page_pilot",
+			auth: sourcegen.AuthModelOAuthClientCredentials,
+			pagination: &connectordefinitions.PaginationSpec{
+				Type: "page", PageParam: "page", PageSizeParam: "per_page", StartPage: 1,
+			},
+		},
+		{
+			name:   "post_list_pilot",
+			auth:   sourcegen.AuthModelBearerToken,
+			method: "POST",
+		},
+	}
+	for _, pilot := range pilots {
+		t.Run(pilot.name, func(t *testing.T) {
+			if _, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
+				Definition: providerPilotDefinition(pilot.name, pilot.auth, pilot.method, pilot.pagination),
+				OutputDir:  root,
+			}); err != nil {
+				t.Fatalf("GenerateDefinition() error = %v", err)
+			}
+		})
+	}
+
+	result, err := buildReport(root)
+	if err != nil {
+		t.Fatalf("buildReport() error = %v", err)
+	}
+	for _, pilot := range pilots {
+		source := sourceByID(t, result, pilot.name)
+		if source.Score != 100 || source.Level != "reference" {
+			t.Fatalf("%s fidelity = %d (%s), missing %#v", pilot.name, source.Score, source.Level, source.Missing)
+		}
+		if !source.IsGeneratedScaffold {
+			t.Fatalf("%s was not recognized as sourcegen output", pilot.name)
+		}
+	}
+}
+
+func providerPilotDefinition(sourceID string, authModel string, method string, pagination *connectordefinitions.PaginationSpec) connectordefinitions.Definition {
+	credentialFields := []connectordefinitions.Field{{Key: "token", Secret: true, ReferenceOnly: true}}
+	auth := connectordefinitions.AuthSpec{Model: authModel, CredentialFields: credentialFields}
+	if authModel == sourcegen.AuthModelOAuthClientCredentials {
+		auth.TokenURL = "https://api." + sourceID + ".example/oauth/token"
+		auth.CredentialFields = []connectordefinitions.Field{
+			{Key: "client_id", ReferenceOnly: true},
+			{Key: "client_secret", Secret: true, ReferenceOnly: true},
+		}
+	}
+	providerFamilies := make([]connectordefinitions.ProviderAPIFamilySpec, 0, 2)
+	resourceFamilies := make([]connectordefinitions.ResourceFamily, 0, 2)
+	for _, family := range []string{"accounts", "users"} {
+		path := "/v1/" + family
+		providerFamilies = append(providerFamilies, connectordefinitions.ProviderAPIFamilySpec{ID: family, Method: firstNonEmpty(method, "GET"), Path: path})
+		resourceFamilies = append(resourceFamilies, connectordefinitions.ResourceFamily{
+			ID:             family,
+			Path:           path,
+			Method:         method,
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			NameField:      "name",
+			Pagination:     pagination,
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      sourceID + "." + family,
+				SchemaRef: sourceID + "/" + family + "/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage: []connectordefinitions.CoverageDimensionSpec{{
+				ID:             family,
+				Type:           "entity_family",
+				Title:          strings.ToUpper(family[:1]) + family[1:],
+				Families:       []string{family},
+				Support:        "supported",
+				HighValue:      true,
+				EvidenceTypes:  []string{"asset_inventory"},
+				ControlDomains: []string{"asset_inventory"},
+				ControlRefs: []connectordefinitions.CoverageControlRefSpec{{
+					FrameworkName: "SOC 2", ControlID: "CC7.2",
+				}},
+			}},
+		})
+	}
+	return connectordefinitions.Definition{
+		ID:          "builtin-" + sourceID,
+		TenantID:    "builtin",
+		SourceID:    sourceID,
+		DisplayName: strings.ReplaceAll(sourceID, "_", " "),
+		Auth:        auth,
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL:      "https://api." + sourceID + ".example",
+			Verification: &connectordefinitions.VerificationSpec{Path: "/health"},
+		},
+		ProviderAPI: &connectordefinitions.ProviderAPISpec{
+			Status:        "verified",
+			Basis:         "provider_documentation",
+			VerifiedAt:    "2026-07-14T00:00:00Z",
+			Transport:     "rest",
+			Auth:          authModel,
+			AuthMechanics: authModel,
+			BaseURL:       "https://api." + sourceID + ".example",
+			References:    []string{"https://docs." + sourceID + ".example/api"},
+			AuthEvidence:  []string{"https://docs." + sourceID + ".example/auth"},
+			ScopeEvidence: []string{"https://docs." + sourceID + ".example/scopes"},
+			Families:      providerFamilies,
+		},
+		ResourceFamilies: resourceFamilies,
+	}
+}
 
 func TestBuildReportScoresProviderLikeSourceAboveGeneratedScaffold(t *testing.T) {
 	root := t.TempDir()
