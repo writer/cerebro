@@ -18,14 +18,18 @@ func LatestGraphIngestRuns(ctx context.Context, store graphingest.RunStore, runt
 	if len(runtimeIDs) == 0 {
 		return byRuntime, nil
 	}
-	runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeIDs: runtimeIDs, Limit: len(runtimeIDs), LatestByRuntime: true})
-	if err != nil {
-		return nil, err
-	}
-	for index := range runs {
-		run := runs[index]
-		if runtimeID := strings.TrimSpace(run.RuntimeID); runtimeID != "" {
-			byRuntime[runtimeID] = &run
+	for start := 0; start < len(runtimeIDs); start += graphingest.MaxStatusLimit {
+		end := min(start+graphingest.MaxStatusLimit, len(runtimeIDs))
+		batch := runtimeIDs[start:end]
+		runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeIDs: batch, Limit: len(batch), LatestByRuntime: true})
+		if err != nil {
+			return nil, err
+		}
+		for index := range runs {
+			run := runs[index]
+			if runtimeID := strings.TrimSpace(run.RuntimeID); runtimeID != "" {
+				byRuntime[runtimeID] = &run
+			}
 		}
 	}
 	return byRuntime, nil
