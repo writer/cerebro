@@ -1357,7 +1357,7 @@ func hasCypherLimitClause(query string, tokens []cypherLimitToken) bool {
 		case 'n':
 			return true
 		case 'o':
-			if strings.HasPrefix(value, "$") || (value == "+" || value == "-") && cypherLimitClausePosition(query, tokens, index) {
+			if strings.HasPrefix(value, "$") || (value == "+" || value == "-" || value == "(") && cypherLimitClausePosition(query, tokens, index) {
 				return true
 			}
 		case 'i':
