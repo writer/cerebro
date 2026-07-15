@@ -68,6 +68,25 @@ var ensureComplianceAssessmentStatements = []string{
   PRIMARY KEY (tenant_id, run_id, sequence),
   FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
 )`,
+	`CREATE TABLE IF NOT EXISTS compliance_assurance_decisions (
+  tenant_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  result_id TEXT NOT NULL,
+  objective_id TEXT NOT NULL,
+  decision_digest TEXT NOT NULL,
+  record_digest TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  qualified BOOLEAN NOT NULL,
+  as_of TIMESTAMPTZ NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL,
+  record_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, id),
+  UNIQUE (tenant_id, idempotency_key),
+  UNIQUE (tenant_id, run_id, result_id, decision_digest),
+  FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
+)`,
+	`CREATE INDEX IF NOT EXISTS compliance_assurance_decisions_run_idx ON compliance_assurance_decisions (tenant_id, run_id, recorded_at, id)`,
 	`CREATE TABLE IF NOT EXISTS compliance_assessment_event_receipts (
   event_id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -87,6 +106,77 @@ ON CONFLICT (tenant_id,run_id,sequence) DO NOTHING`
 
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceAssessment, "compliance_assessment", ensureComplianceAssessmentStatements)
+}
+
+func (s *Store) ApplyAssuranceDecision(ctx context.Context, eventID string, decision complianceassessment.AssuranceDecision) error {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return err
+	}
+	recordJSON, err := json.Marshal(decision)
+	if err != nil {
+		return fmt.Errorf("marshal assurance decision: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin assurance decision projection: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	applied, err := assessmentEventApplied(ctx, tx, eventID, decision.RecordDigest)
+	if err != nil || applied {
+		if applied {
+			return tx.Commit()
+		}
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `
+INSERT INTO compliance_assurance_decisions
+  (tenant_id,id,run_id,result_id,objective_id,decision_digest,record_digest,idempotency_key,qualified,as_of,recorded_at,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+ON CONFLICT (tenant_id,id) DO NOTHING`, decision.TenantID, decision.ID, decision.RunID, decision.ResultID,
+		decision.ObjectiveID, decision.Decision.DecisionDigest, decision.RecordDigest, decision.IdempotencyKey,
+		decision.Decision.Qualified, decision.Decision.AsOf.UTC(), decision.RecordedAt.UTC(), string(recordJSON))
+	if err != nil {
+		return fmt.Errorf("project assurance decision: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		var existingDigest string
+		if err := tx.QueryRowContext(ctx, `SELECT record_digest FROM compliance_assurance_decisions WHERE tenant_id=$1 AND id=$2`, decision.TenantID, decision.ID).Scan(&existingDigest); err != nil {
+			return fmt.Errorf("read existing assurance decision: %w", err)
+		}
+		if existingDigest != decision.RecordDigest {
+			return complianceassessment.ErrAssessmentConflict
+		}
+	}
+	if err := insertAssessmentReceipt(ctx, tx, eventID, decision.TenantID, "assurance_decision", decision.ID, 1, decision.RecordDigest); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GetAssuranceDecision(ctx context.Context, tenantID, decisionID string) (complianceassessment.AssuranceDecision, error) {
+	return s.getAssuranceDecision(ctx, `SELECT record_json FROM compliance_assurance_decisions WHERE tenant_id=$1 AND id=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(decisionID))
+}
+
+func (s *Store) FindAssuranceDecisionByIdempotency(ctx context.Context, tenantID, key string) (complianceassessment.AssuranceDecision, error) {
+	return s.getAssuranceDecision(ctx, `SELECT record_json FROM compliance_assurance_decisions WHERE tenant_id=$1 AND idempotency_key=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(key))
+}
+
+func (s *Store) getAssuranceDecision(ctx context.Context, query string, args ...any) (complianceassessment.AssuranceDecision, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return complianceassessment.AssuranceDecision{}, err
+	}
+	var recordJSON []byte
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&recordJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
+		}
+		return complianceassessment.AssuranceDecision{}, fmt.Errorf("get assurance decision: %w", err)
+	}
+	var decision complianceassessment.AssuranceDecision
+	if err := json.Unmarshal(recordJSON, &decision); err != nil {
+		return complianceassessment.AssuranceDecision{}, fmt.Errorf("decode assurance decision: %w", err)
+	}
+	return decision, nil
 }
 
 func (s *Store) ApplyPlan(ctx context.Context, eventID string, plan complianceassessment.AssessmentPlanRevision, expectedVersion uint64) error {

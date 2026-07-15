@@ -18,6 +18,9 @@ func TestComplianceAssessmentSchemaPinsTenantRevisionAndChunkBoundaries(t *testi
 		"UNIQUE (tenant_id, plan_id, revision_version)",
 		"UNIQUE (tenant_id, idempotency_key)",
 		"PRIMARY KEY (tenant_id, run_id, sequence)",
+		"PRIMARY KEY (tenant_id, id)",
+		"UNIQUE (tenant_id, idempotency_key)",
+		"UNIQUE (tenant_id, run_id, result_id, decision_digest)",
 		"FOREIGN KEY (tenant_id, plan_revision_id)",
 		"payload_digest TEXT NOT NULL",
 	} {

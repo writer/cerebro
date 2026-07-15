@@ -23,6 +23,7 @@ const (
 	IdentifierClaim          IdentifierKind = "evidence-claim"
 	IdentifierRun            IdentifierKind = "assessment-run"
 	IdentifierResult         IdentifierKind = "assessment-result"
+	IdentifierDecision       IdentifierKind = "assurance-decision"
 	IdentifierReview         IdentifierKind = "assessment-review"
 	IdentifierArtifact       IdentifierKind = "artifact"
 	IdentifierMapping        IdentifierKind = "control-mapping"
