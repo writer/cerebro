@@ -34,6 +34,7 @@ type RuntimeObservation struct {
 	Status              string
 	LastFailureCategory string
 	LastSyncedAt        string
+	CertificationTier   CertificationTier
 }
 
 type Record struct {
@@ -58,6 +59,7 @@ type Record struct {
 	ControlDomains           []string                       `json:"control_domains,omitempty"`
 	ControlRefs              []sourcecdk.CoverageControlRef `json:"control_refs,omitempty"`
 	SupportedRuntimeFamilies []string                       `json:"supported_runtime_families,omitempty"`
+	CertificationTier        CertificationTier              `json:"certification_tier"`
 }
 
 type Summary struct {
@@ -129,6 +131,7 @@ func ObservationsFromRuntimes(runtimes []*cerebrov1.SourceRuntime, status func(*
 			Status:              strings.TrimSpace(status(runtime)),
 			LastFailureCategory: strings.TrimSpace(runtime.GetConfig()["__cerebro_runtime_last_failure_category"]),
 			LastSyncedAt:        lastSyncedAt,
+			CertificationTier:   runtimeCertificationTier(runtime.GetConfig()[RuntimeCertificationConfigKey]),
 		})
 	}
 	return observations
@@ -136,6 +139,14 @@ func ObservationsFromRuntimes(runtimes []*cerebrov1.SourceRuntime, status func(*
 
 func Evaluate(ctx context.Context, contracts []sourcecdk.CoverageContract, observations []RuntimeObservation, options Options) ([]Record, error) {
 	return evaluateCoverage(ctx, contracts, observations, options)
+}
+
+func runtimeCertificationTier(value string) CertificationTier {
+	tier, ok := ParseCertificationTier(value)
+	if !ok {
+		return CertificationUnknown
+	}
+	return tier
 }
 
 func BlindSpots(records []Record) []Record {
