@@ -1,0 +1,51 @@
+name: Content packs
+
+on:
+  pull_request:
+    paths:
+      - "contentpacks/**"
+      - "internal/contentpacks/**"
+      - "internal/config/**"
+      - "internal/findingdsl/**"
+      - "internal/findings/**"
+      - "internal/observability/**"
+      - "internal/sourceregistry/**"
+      - "sources/deepseek/**"
+      - "cmd/cerebro/**"
+      - "tools/contentpack*/**"
+      - ".github/workflows/content-packs.yml"
+      - "Makefile"
+  push:
+    branches:
+      - main
+    paths:
+      - "contentpacks/**"
+      - "internal/contentpacks/**"
+      - "internal/config/**"
+      - "internal/findingdsl/**"
+      - "internal/findings/**"
+      - "internal/observability/**"
+      - "internal/sourceregistry/**"
+      - "sources/deepseek/**"
+      - "cmd/cerebro/**"
+      - "tools/contentpack*/**"
+      - ".github/workflows/content-packs.yml"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate signed packs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Validate packs
+        run: make content-pack-check
