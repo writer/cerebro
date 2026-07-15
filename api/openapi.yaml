@@ -552,6 +552,17 @@ paths:
           in: query
           schema:
             type: string
+        - name: min_certification_tier
+          in: query
+          description: Minimum certification tier used to compute each connector's availability state. Entries below the tier remain in the response.
+          schema:
+            type: string
+            enum: [cataloged, spec_verified, contract_tested, production_observed, outcome_validated]
+        - name: include_preview
+          in: query
+          description: Mark below-minimum connectors as available for evaluation. This does not promote their certification tier.
+          schema:
+            type: boolean
       responses:
         '200':
           description: Source events and cursor.
@@ -647,9 +658,9 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Paginated responses include page.total, page.returned, page.limit, page.has_more, and page.next_cursor when another page is available.
+          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Every entry includes its closed certification tier, proof ownership and expiry, live runtime observation when present, and an availability state. Availability gates annotate rather than hide catalog-only or configured connectors. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Paginated responses include page.total, page.returned, page.limit, page.has_more, and page.next_cursor when another page is available.
         '400':
-          description: Connector catalog view, limit, or cursor was invalid.
+          description: Connector catalog view, limit, cursor, certification tier, or preview value was invalid.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -1807,6 +1818,10 @@ paths:
                 properties:
                   finding:
                     $ref: '#/components/schemas/Finding'
+                  links:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResourceLink'
   /finding-candidates/{candidateID}:
     get:
       summary: Get candidate finding
@@ -5072,6 +5087,72 @@ paths:
             text/plain:
               schema:
                 type: string
+  /platform/append-log/dead-letters/{deadLetterID}/force-purge:
+    post:
+      operationId: forcePurgePendingAppendLogDeadLetter
+      summary: Delete one pending append-log dead letter
+      description: Requires an authenticated admin credential allowed for the requested tenant. The actor is derived from that credential. The operation rejects terminal records and records with an active replay claim, writes the audit row and deletion in one transaction, and never returns the replayable event envelope.
+      tags:
+        - Platform
+      parameters:
+        - name: deadLetterID
+          in: path
+          required: true
+          description: Exact pending dead-letter record ID to delete.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - tenant_id
+                - reason
+              properties:
+                tenant_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+                  description: Concrete incident, change, or recovery reason recorded in the durable audit row.
+      responses:
+        '200':
+          description: The pending record was deleted and its audit row was committed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - dead_letter_id
+                  - outcome
+                properties:
+                  dead_letter_id:
+                    type: string
+                  outcome:
+                    type: string
+                    enum:
+                      - purged
+        '400':
+          description: The record ID, tenant ID, or reason is missing or invalid.
+        '401':
+          description: An authenticated credential is required.
+        '403':
+          description: The credential is not an admin or is not allowed for the requested tenant.
+        '404':
+          description: The dead-letter record does not exist for the requested tenant.
+        '409':
+          description: The dead-letter record is terminal or has an active replay claim.
+        '503':
+          description: Pending dead-letter purge storage is not configured.
   /platform/jobs:
     get:
       operationId: listPlatformJobs
@@ -13962,6 +14043,39 @@ components:
         observed_at:
           type: string
           format: date-time
+    ResourceRef:
+      type: object
+      required: [kind, id, state]
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+        revision:
+          type: string
+        api_path:
+          type: string
+          description: Relative API path. Callers must not treat this as authorization to read the target.
+        mcp_uri:
+          type: string
+          description: Cerebro MCP resource URI. Target reads apply their own authorization.
+        state:
+          type: string
+          enum: [current, immutable, unavailable]
+    ResourceLink:
+      type: object
+      required: [rel, target, authority, completeness]
+      properties:
+        rel:
+          type: string
+        target:
+          $ref: '#/components/schemas/ResourceRef'
+        authority:
+          type: string
+          enum: [canonical_record, derived_record]
+        completeness:
+          type: string
+          enum: [complete, partial]
     Finding:
       type: object
       properties:
