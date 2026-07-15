@@ -117,7 +117,10 @@ import (
 // bounded baseline comparison, and remediation proposal shaping stay in
 // internal/complianceassessment; schemas and tool inventory stay in
 // internal/mcpoperations.
-const bootstrapProductionGoLineBudget = 28034
+// Assurance decision routes add only service composition and route/auth
+// registration; decision validation and persistence remain in
+// internal/compliancedecision.
+const bootstrapProductionGoLineBudget = 28037
 
 type bootstrapFileLineCount struct {
 	path  string
