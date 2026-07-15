@@ -377,7 +377,9 @@ fn query_limit(tokens: &[Token]) -> Option<u64> {
             continue;
         }
         if keyword_token(token, "LIMIT") {
-            let limit = numeric_limit_at(tokens, i)?;
+            let Some(limit) = numeric_limit_at(tokens, i) else {
+                continue;
+            };
             let scope = scopes.last_mut()?;
             scope.branch_limit = Some(
                 scope
@@ -1216,6 +1218,24 @@ mod tests {
         let nested_bounded =
             lex_cypher("CALL { RETURN 1 LIMIT 1 UNION RETURN 2 LIMIT 2 } RETURN 1 LIMIT 25");
         assert_eq!(query_limit(&nested_bounded), Some(25));
+    }
+
+    #[test]
+    fn limit_named_identifiers_do_not_hide_numeric_row_bounds() {
+        let bounded = "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1 LIMIT 100";
+        let validation = validate(bounded, 100);
+        assert_eq!(validation.decision, Decision::Allow);
+        assert_eq!(validation.limit, 100);
+
+        let unbounded =
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1";
+        assert_eq!(validate(unbounded, 100).decision, Decision::LimitRequired);
+
+        let arithmetic_limit = "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 + 1000";
+        assert_eq!(
+            validate(arithmetic_limit, 100).decision,
+            Decision::LimitRequired
+        );
     }
 
     #[test]
