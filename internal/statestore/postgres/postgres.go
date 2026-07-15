@@ -50,6 +50,7 @@ type grcTablesReady struct {
 	complianceMonitor    bool
 	assessmentSampling   bool
 	complianceAssessment bool
+	complianceReview     bool
 	evidenceLedger       bool
 	auditState           bool
 	auditPackets         bool
