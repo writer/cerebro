@@ -61,7 +61,7 @@ func VerifyResultChunkPage(runID string, afterSequence uint32, expectedPreviousD
 			return verification, fmt.Errorf("%w: result chunk %d predecessor digest does not match", ErrInvalidResult, chunk.Sequence)
 		}
 		if err := validateRecoveredResultChunk(chunk); err != nil {
-			return verification, fmt.Errorf("%w: verify result chunk %d: %v", ErrInvalidResult, chunk.Sequence, err)
+			return verification, fmt.Errorf("%w: verify result chunk %d: %w", ErrInvalidResult, chunk.Sequence, err)
 		}
 		if index == 0 {
 			verification.FirstSequence = chunk.Sequence

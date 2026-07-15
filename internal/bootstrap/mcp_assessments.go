@@ -121,15 +121,20 @@ func (app *App) mcpAssessmentResultsList(r *http.Request, args map[string]any) (
 	if err != nil {
 		return nil, err
 	}
+	// #nosec G115 -- mcpBoundedLimit caps this value at 100.
 	verified, err := service.VerifiedResultsPage(r.Context(), tenantID, mcpStringArg(args, "run_id"), afterSequence, uint32(limit), mcpStringArg(args, "expected_previous_digest"))
 	if err != nil {
 		return nil, err
+	}
+	returnedResults := 0
+	for _, chunk := range verified.Page.Chunks {
+		returnedResults += len(chunk.Results)
 	}
 	return map[string]any{
 		"run_id": verified.Run.ID, "state": verified.Run.State, "result_count": verified.Run.ResultCount,
 		"input_hash": verified.Run.InputHash, "automated_result_hash": verified.Run.AutomatedResultHash,
 		"chunks": verified.Page.Chunks, "next_sequence": verified.Page.NextSequence, "has_more": verified.Page.HasMore,
-		"verification": verified.Verification, "metadata": mcpResponseMetadata(limit, int(verified.Verification.ResultCount), nil),
+		"verification": verified.Verification, "metadata": mcpResponseMetadata(limit, returnedResults, nil),
 	}, nil
 }
 
@@ -229,12 +234,12 @@ func mcpAssessmentObjectArg(args map[string]any, key string, target any) error {
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("%w: encode %s: %v", complianceassessment.ErrInvalidResult, key, err)
+		return fmt.Errorf("%w: encode %s: %w", complianceassessment.ErrInvalidResult, key, err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%w: decode %s: %v", complianceassessment.ErrInvalidResult, key, err)
+		return fmt.Errorf("%w: decode %s: %w", complianceassessment.ErrInvalidResult, key, err)
 	}
 	return nil
 }

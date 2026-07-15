@@ -51,6 +51,7 @@ func verificationTestChunk(t *testing.T, runID string, sequence uint32, previous
 	return ResultChunk{
 		RunID: runID, Sequence: sequence,
 		FirstResultID: results[0].ID, LastResultID: results[len(results)-1].ID,
+		// #nosec G115 -- every test fixture in this helper contains one or two results.
 		Count: uint32(len(results)), PreviousDigest: previous,
 		Digest: digest, Results: results,
 	}
