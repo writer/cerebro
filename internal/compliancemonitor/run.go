@@ -62,16 +62,19 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
 		}
 		triggerEvent, eventErr := monitorTimeTriggeredEvent(monitor, occurrence, assessment.JobID)
 		if eventErr != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q trigger event: %w", monitor.ID, eventErr))
 			continue
 		}
 		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q trigger append: %w", monitor.ID, appendErr))
 			continue
 		}
 		if err := s.store.CompleteComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner, monitor.NextRunAt, now); err != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q completion: %w", monitor.ID, err))
 			continue
@@ -132,16 +135,19 @@ func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error)
 		}
 		triggerEvent, eventErr := monitorChangeTriggeredEvent(window, occurrence, assessment.JobID)
 		if eventErr != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger event: %w", window.MonitorID, eventErr))
 			continue
 		}
 		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger append: %w", window.MonitorID, appendErr))
 			continue
 		}
 		if err := store.CompleteComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner, window.Version); err != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q completion: %w", window.MonitorID, err))
 			continue

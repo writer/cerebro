@@ -29,7 +29,7 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 		return tenantID, nil
 	}, func(context.Context) string { return "operator-1" }, func(err error) bool {
 		return errors.Is(err, errTenantForbidden)
-	}, 0)
+	}, 0).WithMaximumSensitivity(func(context.Context) string { return ports.EvidenceSensitivityInternal })
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /grc/evidence-artifacts/{artifactID}/versions", handler.RegisterVersion)
 	mux.HandleFunc("GET /grc/evidence-versions/{versionID}", handler.GetVersion)
@@ -131,6 +131,51 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 	doJSON(t, server.Client(), http.MethodGet, server.URL+"/grc/evidence-versions/"+versionResponse.Version.ID+"?tenant_id=tenant-1&purpose=assessment&maximum_sensitivity=internal", nil, http.StatusOK, &readVersion)
 	if readVersion.Version.ID != versionResponse.Version.ID {
 		t.Fatalf("read version id = %q", readVersion.Version.ID)
+	}
+}
+
+func TestGetVersionUsesAuthenticatedSensitivity(t *testing.T) {
+	t.Parallel()
+	store := newHTTPStore()
+	store.versions[storeKey("tenant-1", "version-1")] = ports.EvidenceVersion{
+		ID: "version-1", TenantID: "tenant-1",
+		Governance: ports.EvidenceGovernance{Sensitivity: ports.EvidenceSensitivityRestricted},
+	}
+	service := evidenceledger.New(store, &httpLog{})
+	newServer := func(maximumSensitivity string) *httptest.Server {
+		handler := NewHandler(service, func(_ context.Context, tenantID string) (string, error) {
+			return tenantID, nil
+		}, func(context.Context) string { return "reader-1" }, nil, 0).
+			WithMaximumSensitivity(func(context.Context) string { return maximumSensitivity })
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /grc/evidence-versions/{versionID}", handler.GetVersion)
+		return httptest.NewServer(mux)
+	}
+
+	reader := newServer(ports.EvidenceSensitivityInternal)
+	defer reader.Close()
+	doJSON(t, reader.Client(), http.MethodGet, reader.URL+"/grc/evidence-versions/version-1?tenant_id=tenant-1&purpose=assessment&maximum_sensitivity=restricted", nil, http.StatusForbidden, nil)
+
+	operator := newServer(ports.EvidenceSensitivityRestricted)
+	defer operator.Close()
+	var response evidenceVersionResponse
+	doJSON(t, operator.Client(), http.MethodGet, operator.URL+"/grc/evidence-versions/version-1?tenant_id=tenant-1&purpose=assessment&maximum_sensitivity=public", nil, http.StatusOK, &response)
+	if response.Version.ID != "version-1" {
+		t.Fatalf("version id = %q", response.Version.ID)
+	}
+}
+
+func TestUnavailableReturnsServiceUnavailable(t *testing.T) {
+	t.Parallel()
+	handler := NewHandler(nil, func(_ context.Context, tenantID string) (string, error) {
+		return tenantID, nil
+	}, func(context.Context) string { return "reader-1" }, nil, 0)
+	request := httptest.NewRequest(http.MethodGet, "/grc/evidence-versions/version-1?tenant_id=tenant-1&purpose=assessment", nil)
+	request.SetPathValue("versionID", "version-1")
+	response := httptest.NewRecorder()
+	handler.GetVersion(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusServiceUnavailable, response.Body.String())
 	}
 }
 

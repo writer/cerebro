@@ -245,6 +245,12 @@ transport metadata. Assessment writes use the same append-first service,
 Postgres projection, optimistic version, and idempotency contracts as the HTTP
 routes; no MCP-specific state or graph write path exists.
 
+Evidence sensitivity enforcement remains in `internal/evidenceledger`. The
+bootstrap budget includes only the authenticated-scope adapter that assigns an
+internal ceiling to security readers and a restricted ceiling to GRC writers
+and existing unscoped administrator credentials. The HTTP adapter ignores any
+higher ceiling supplied by the client.
+
 The append-log runtime replay index is populated by a global maintenance job
 whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap
 budget includes only the job registration, admin authorization, payload

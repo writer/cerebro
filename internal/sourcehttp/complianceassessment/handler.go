@@ -119,7 +119,7 @@ type createAssessmentSnapshotRequest struct {
 
 type assessmentSnapshotResponse struct {
 	Snapshot complianceassessment.AssessmentSnapshot `json:"snapshot"`
-	Created  bool                                    `json:"created,omitempty"`
+	Created  bool                                    `json:"created"`
 }
 
 type assessmentLensCatalogResponse struct {

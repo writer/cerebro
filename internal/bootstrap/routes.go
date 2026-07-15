@@ -130,7 +130,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	}, maxProtoJSONBodyBytes)
 	evidence := evidenceledgerhttp.NewHandler(app.services.evidence, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
 		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
-	}, maxProtoJSONBodyBytes)
+	}, maxProtoJSONBodyBytes).WithMaximumSensitivity(evidenceMaximumSensitivity)
 	monitors := compliancemonitorhttp.NewHandler(app.services.monitors, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
 		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
 	}, maxProtoJSONBodyBytes)

@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -681,6 +682,24 @@ func hasRuntimeResponseTrustedScope(ctx context.Context) bool {
 		return true
 	}
 	return containsAuthValue(expandedPrincipalScopes(auth.principal), scopeRuntimeResponseWrite)
+}
+
+func evidenceMaximumSensitivity(ctx context.Context) string {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		return ports.EvidenceSensitivityPublic
+	}
+	if !principalScopeRestricted(auth.principal) {
+		return ports.EvidenceSensitivityRestricted
+	}
+	scopes := expandedPrincipalScopes(auth.principal)
+	if containsAuthValue(scopes, scopeGRCInventoryWrite) {
+		return ports.EvidenceSensitivityRestricted
+	}
+	if containsAuthValue(scopes, scopeCosmoSecurityRead) {
+		return ports.EvidenceSensitivityInternal
+	}
+	return ports.EvidenceSensitivityPublic
 }
 
 func principalScopeRestricted(principal authPrincipal) bool {

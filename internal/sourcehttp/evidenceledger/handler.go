@@ -20,13 +20,24 @@ const defaultMaxBodyBytes = int64(1 << 20)
 type TenantResolver func(context.Context, string) (string, error)
 type ActorResolver func(context.Context) string
 type ForbiddenClassifier func(error) bool
+type SensitivityResolver func(context.Context) string
+
+var ErrServiceUnavailable = errors.New("evidence ledger service unavailable")
 
 type Handler struct {
-	service       *evidenceledger.Service
-	resolveTenant TenantResolver
-	actorID       ActorResolver
-	isForbidden   ForbiddenClassifier
-	maxBodyBytes  int64
+	service        *evidenceledger.Service
+	resolveTenant  TenantResolver
+	actorID        ActorResolver
+	isForbidden    ForbiddenClassifier
+	maxSensitivity SensitivityResolver
+	maxBodyBytes   int64
+}
+
+func (h *Handler) WithMaximumSensitivity(resolver SensitivityResolver) *Handler {
+	if h != nil {
+		h.maxSensitivity = resolver
+	}
+	return h
 }
 
 func NewHandler(service *evidenceledger.Service, resolveTenant TenantResolver, actorID ActorResolver, isForbidden ForbiddenClassifier, maxBodyBytes int64) *Handler {
@@ -145,9 +156,13 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
+	maximumSensitivity := ports.EvidenceSensitivityPublic
+	if h.maxSensitivity != nil {
+		maximumSensitivity = h.maxSensitivity(r.Context())
+	}
 	version, err := h.service.ReadVersion(r.Context(), ports.EvidenceAccessRequest{
 		TenantID: tenantID, Purpose: r.URL.Query().Get("purpose"),
-		MaximumSensitivity: r.URL.Query().Get("maximum_sensitivity"), ActorID: h.actorID(r.Context()),
+		MaximumSensitivity: maximumSensitivity, ActorID: h.actorID(r.Context()),
 	}, r.PathValue("versionID"))
 	if err != nil {
 		h.writeError(w, err)
@@ -319,7 +334,7 @@ func (h *Handler) EvaluateCompatibility(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) available(w http.ResponseWriter) bool {
 	if h == nil || h.service == nil {
-		h.writeError(w, fmt.Errorf("%w: evidence ledger capability unavailable", evidenceledger.ErrInvalidEvidence))
+		h.writeError(w, ErrServiceUnavailable)
 		return false
 	}
 	return true
@@ -342,6 +357,8 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case h != nil && h.isForbidden != nil && h.isForbidden(err), errors.Is(err, ports.ErrEvidenceAccessDenied):
 		status = http.StatusForbidden
+	case errors.Is(err, ErrServiceUnavailable):
+		status = http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrEvidenceArtifactNotFound), errors.Is(err, ports.ErrEvidenceVersionNotFound), errors.Is(err, ports.ErrEvidenceClaimNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, ports.ErrEvidenceLedgerConflict):

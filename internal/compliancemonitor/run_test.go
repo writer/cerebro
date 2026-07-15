@@ -145,7 +145,7 @@ func TestRunDueRetriesSameJobAndEventAfterAppendFailure(t *testing.T) {
 	if count, err := service.RunDue(context.Background(), now); err == nil || count != 0 {
 		t.Fatalf("first RunDue() = (%d, %v)", count, err)
 	}
-	if monitors.completed || !monitors.claimReleased || monitors.planLeaseOwner == "" {
+	if monitors.completed || !monitors.claimReleased || monitors.planLeaseOwner != "" {
 		t.Fatalf("completed=%v claimReleased=%v planLeaseOwner=%q", monitors.completed, monitors.claimReleased, monitors.planLeaseOwner)
 	}
 	if count, err := service.RunDue(context.Background(), now.Add(time.Second)); err != nil || count != 1 {
@@ -179,6 +179,9 @@ func TestRunDueRetriesAcknowledgementWithoutChangingJobRequest(t *testing.T) {
 
 	if count, err := service.RunDue(context.Background(), now); err == nil || count != 0 {
 		t.Fatalf("first RunDue() = (%d, %v)", count, err)
+	}
+	if monitors.planLeaseOwner != "" || !monitors.claimReleased {
+		t.Fatalf("planLeaseOwner=%q claimReleased=%v after acknowledgement failure", monitors.planLeaseOwner, monitors.claimReleased)
 	}
 	if count, err := service.RunDue(context.Background(), now.Add(time.Second)); err != nil || count != 1 {
 		t.Fatalf("second RunDue() = (%d, %v)", count, err)
@@ -223,6 +226,42 @@ func TestRunDueChangesCreatesJobBeforeAcknowledgingExactWindow(t *testing.T) {
 	}
 }
 
+func TestRunDueChangesReleasesPlanLeaseAfterAppendFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 9, 15, 0, 0, time.UTC)
+	monitors := &memoryMonitorStore{changeWindows: []*ports.ComplianceChangeWindow{{
+		TenantID: "tenant-1", MonitorID: "monitor-change-retry", ProgramID: "program-1",
+		PlanRevisionID: "plan-revision-1", Version: 5, OpenedAt: now.Add(-time.Minute),
+		LastSignalAt: now.Add(-30 * time.Second), ReadyAt: now, SignalCount: 2,
+		ScopeDigest: "sha256:scope",
+	}}}
+	jobStore := newMemoryJobStore(now)
+	appendLog := &memoryMonitorAppendLog{err: errors.New("log unavailable"), failCount: 1, jobStore: jobStore, monitorStore: monitors}
+	jobs := platformjobs.New(jobStore).WithRunner(platformjobs.KindComplianceAssessment, func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return nil, nil, CompleteRun(ctx, monitors, job, true, now.Add(time.Minute))
+	})
+	service := newMonitorTestService(t, monitors, appendLog, jobs)
+
+	if count, err := service.RunDueChanges(context.Background(), now); err == nil || count != 0 {
+		t.Fatalf("first RunDueChanges() = (%d, %v)", count, err)
+	}
+	if monitors.planLeaseOwner != "" || !monitors.changeReleased {
+		t.Fatalf("planLeaseOwner=%q changeReleased=%v after append failure", monitors.planLeaseOwner, monitors.changeReleased)
+	}
+	if count, err := service.RunDueChanges(context.Background(), now.Add(time.Second)); err != nil || count != 1 {
+		t.Fatalf("second RunDueChanges() = (%d, %v)", count, err)
+	}
+	if len(jobStore.jobs) != 1 || len(appendLog.attempts) != 2 || len(appendLog.events) != 1 {
+		t.Fatalf("jobs=%d attempts=%d events=%d", len(jobStore.jobs), len(appendLog.attempts), len(appendLog.events))
+	}
+	if !sameEnvelope(appendLog.attempts[0], appendLog.attempts[1]) {
+		t.Fatal("append retry changed change-trigger event identity or payload")
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type memoryMonitorStore struct {
 	mu                     sync.Mutex
 	due                    []*ports.ComplianceMonitor
@@ -235,6 +274,7 @@ type memoryMonitorStore struct {
 	outcomeRecorded        bool
 	changeWindows          []*ports.ComplianceChangeWindow
 	changeCompleted        bool
+	changeReleased         bool
 	completedChangeVersion uint64
 }
 
@@ -305,6 +345,9 @@ func (s *memoryMonitorStore) CompleteComplianceChangeWindow(_ context.Context, _
 	return nil
 }
 func (s *memoryMonitorStore) ReleaseComplianceChangeWindow(context.Context, string, string, string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.changeReleased = true
 	return nil
 }
 func (s *memoryMonitorStore) jobExistedAtComplete(store *memoryJobStore) bool {

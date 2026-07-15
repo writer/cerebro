@@ -3088,6 +3088,7 @@ paths:
         - name: maximum_sensitivity
           in: query
           required: true
+          description: Accepted for compatibility. The server derives the effective sensitivity ceiling from the authenticated principal.
           schema:
             $ref: '#/components/schemas/EvidenceSensitivity'
       responses:

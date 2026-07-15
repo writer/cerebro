@@ -128,7 +128,7 @@ import (
 // docs/engineering/assurance-platform-contracts.md. Domain behavior remains in
 // complianceassessment, complianceimpact, compliancemonitor, evidenceledger,
 // and complianceremediation.
-const bootstrapProductionGoLineBudget = 28498
+const bootstrapProductionGoLineBudget = 28517
 
 type bootstrapFileLineCount struct {
 	path  string

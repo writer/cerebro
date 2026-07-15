@@ -233,6 +233,11 @@ func TestGRCAssuranceDecisionRecordAndGet(t *testing.T) {
 	if replayedSnapshot.Created || replayedSnapshot.Snapshot.ID != snapshot.Snapshot.ID {
 		t.Fatalf("replayed snapshot = %+v", replayedSnapshot)
 	}
+	replayedShape := doAssessmentRequest[map[string]json.RawMessage](t, server.Client(), http.MethodPost,
+		server.URL+"/grc/assessment-snapshots", map[string]string{"tenant_id": run.TenantID, "run_id": run.ID}, "snapshot-key-1", http.StatusOK)
+	if created, ok := replayedShape["created"]; !ok || string(created) != "false" {
+		t.Fatalf("replayed snapshot created field = %s, present=%v", created, ok)
+	}
 	catalog := doAssessmentRequest[testAssessmentLensCatalogResponse](t, server.Client(), http.MethodGet,
 		server.URL+"/grc/assessment-lenses?tenant_id=tenant-1", nil, "", http.StatusOK)
 	if len(catalog.Lenses) != 4 || catalog.Lenses[0].Audience != complianceassessment.LensAudienceSecurity {
