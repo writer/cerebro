@@ -101,8 +101,10 @@ import (
 // Assessment runtime composition adds capability-gated service and job-runner
 // wiring plus tenant and idempotency checks at the existing job HTTP boundary;
 // event replay, projection recovery, and run transitions stay in
-// internal/complianceassessment.
-const bootstrapProductionGoLineBudget = 27449
+// internal/complianceassessment. Compliance reads add service registration,
+// route policy, auth scopes, and transport mapping while query behavior stays
+// in internal/complianceread and persistence remains behind store ports.
+const bootstrapProductionGoLineBudget = 27457
 
 type bootstrapFileLineCount struct {
 	path  string
