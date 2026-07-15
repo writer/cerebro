@@ -30,6 +30,29 @@ SAFE_ONLY_CRATE_ROOTS = {
     "tools/graphactiongen/src/main.rs": "tools/graphactiongen",
 }
 RAW_STRING_START = r'(?:br|rb|cr|rc|r)(?P<hashes>#{0,255})"'
+THIN_CRATE_ROOTS = {
+    "internal/mitre/evaluator/src/lib.rs": ("mod evaluation;", "mod model;", "mod normalization;"),
+    "internal/sourcecoverage/evaluator/src/lib.rs": ("mod evaluation;", "mod model;"),
+    "internal/sourceprojection/panopticonresources/src/lib.rs": (
+        "mod extraction;",
+        "mod normalization;",
+    ),
+    "tools/graphactiongen/src/lib.rs": (
+        "mod catalog;",
+        "mod error;",
+        "mod filesystem;",
+        "mod render;",
+    ),
+}
+PURE_RUST_MODULES = (
+    "internal/mitre/evaluator/src/evaluation.rs",
+    "internal/mitre/evaluator/src/normalization.rs",
+    "internal/sourcecoverage/evaluator/src/evaluation.rs",
+    "internal/sourceprojection/panopticonresources/src/extraction.rs",
+    "internal/sourceprojection/panopticonresources/src/normalization.rs",
+    "tools/graphactiongen/src/catalog.rs",
+)
+FILESYSTEM_MARKERS = ("std::fs", "std::path", "File::", "OpenOptions", "fs::")
 
 
 def load_toml(path: Path) -> dict[str, Any]:
@@ -264,6 +287,33 @@ def validate_workspace(root: Path) -> list[str]:
         required = ["#", "!", "[", "forbid", "(", "unsafe_code", ")", "]"]
         if tokens[: len(required)] != required:
             errors.append(f"{relative_root}: safe-only crate must forbid unsafe_code")
+
+    workspace_members = set(workspace.get("members", []))
+    for relative_root, required_modules in THIN_CRATE_ROOTS.items():
+        member = relative_root.removesuffix("/src/lib.rs")
+        if member not in workspace_members:
+            continue
+        root_path = root / relative_root
+        if not root_path.is_file():
+            errors.append(f"{relative_root}: crate root is missing")
+            continue
+        source = root_path.read_text(encoding="utf-8")
+        if len(source.splitlines()) > 40:
+            errors.append(f"{relative_root}: crate root must remain a thin module facade")
+        for module in required_modules:
+            if module not in source:
+                errors.append(f"{relative_root}: required boundary {module} is missing")
+
+    for relative_module in PURE_RUST_MODULES:
+        module_path = root / relative_module
+        if not module_path.is_file():
+            continue
+        source = module_path.read_text(encoding="utf-8")
+        for marker in FILESYSTEM_MARKERS:
+            if marker in source:
+                errors.append(
+                    f"{relative_module}: pure evaluation module must not access filesystem marker {marker}"
+                )
 
     return errors
 

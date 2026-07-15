@@ -20,7 +20,7 @@
     {
       "name": "sourcecoverage-evaluator",
       "path": "internal/sourcecoverage/evaluator.wasm",
-      "sha256": "388966fe3d994e4029ab161cca7098c4ce0a7363ff9870b974004e3252b100f9",
+      "sha256": "8f06c23c134761c85ce7ba4b1434decd6a3c1acc85d3f0994022b5d5cbfa5ea3",
       "size_bytes": 149563,
       "max_size_bytes": 175000,
       "abi_version": 1
@@ -28,16 +28,16 @@
     {
       "name": "panopticon-resource-extractor",
       "path": "internal/sourceprojection/panopticonresources.wasm",
-      "sha256": "58cb2f0f7aa5dd54d570a8ebbedac1d5bd484d0300d07e1561f99d9ffa40427c",
-      "size_bytes": 134504,
+      "sha256": "5082505a49837c981c9c1680bc9dbaf05d99932c0029818933f085d3a9a2eca5",
+      "size_bytes": 134512,
       "max_size_bytes": 160000,
       "abi_version": 2
     },
     {
       "name": "mitre-context-evaluator",
       "path": "internal/mitre/evaluator.wasm",
-      "sha256": "fa904c9b15cb4f4f499deb3238fbf6dbc0c4967df0201d88b33742a67ff7161d",
-      "size_bytes": 729536,
+      "sha256": "38b465a023832295b2380f76516afc66c1a79ed2186606d03c750c291cc5eff1",
+      "size_bytes": 729552,
       "max_size_bytes": 800000,
       "abi_version": 1
     }
