@@ -2831,6 +2831,8 @@ paths:
                 $ref: '#/components/schemas/AssuranceDecisionRecordResponse'
         '400':
           description: Decision time or proof declarations are invalid.
+        '403':
+          description: The caller cannot record assurance decisions for the tenant.
         '404':
           description: Assessment run or result was not found in the tenant.
         '409':
@@ -2857,6 +2859,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssuranceDecisionResponse'
+        '403':
+          description: The caller cannot read assurance decisions for the tenant.
         '404':
           description: Assurance decision was not found in the tenant.
         '503':
@@ -7387,7 +7391,7 @@ components:
               $ref: '#/components/schemas/AssessmentObjectiveResult'
     QualifiedAssuranceDecision:
       type: object
-      required: [version, qualified, manifest_hash, result_hash, proof_digest, as_of, reasons, limitations, required_reviews, decision_digest]
+      required: [version, qualified, manifest_hash, result_hash, proof_digest, as_of, limitations, required_reviews, decision_digest]
       properties:
         version:
           type: string
@@ -7405,6 +7409,7 @@ components:
           format: date-time
         reasons:
           type: array
+          description: Qualification failures. Omitted when the decision is qualified.
           items:
             type: string
             enum: [manifest_invalid, scope_unpinned, population_incomplete, result_invalid, source_proof_missing, source_unhealthy, source_stale, evidence_proof_missing, evidence_not_current, evidence_conflicting, limitations_not_declared, blocking_limitation, review_requirements_not_declared, review_incomplete, exception_expired, verification_failed]

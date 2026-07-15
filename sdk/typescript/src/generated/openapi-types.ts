@@ -4041,7 +4041,7 @@ export type QualifiedAssuranceDecision = {
   manifest_hash: string;
   proof_digest: string;
   qualified: boolean;
-  reasons: ("manifest_invalid" | "scope_unpinned" | "population_incomplete" | "result_invalid" | "source_proof_missing" | "source_unhealthy" | "source_stale" | "evidence_proof_missing" | "evidence_not_current" | "evidence_conflicting" | "limitations_not_declared" | "blocking_limitation" | "review_requirements_not_declared" | "review_incomplete" | "exception_expired" | "verification_failed")[];
+  reasons?: ("manifest_invalid" | "scope_unpinned" | "population_incomplete" | "result_invalid" | "source_proof_missing" | "source_unhealthy" | "source_stale" | "evidence_proof_missing" | "evidence_not_current" | "evidence_conflicting" | "limitations_not_declared" | "blocking_limitation" | "review_requirements_not_declared" | "review_incomplete" | "exception_expired" | "verification_failed")[];
   required_reviews: AssuranceReviewRequirement[];
   result_hash: string;
   version: "qualified-decision/v1";

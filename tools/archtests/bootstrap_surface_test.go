@@ -146,7 +146,7 @@ import (
 // owns only their route-policy and OAuth discovery catalog entries.
 // Assurance decision routes add only service composition and route/auth
 // registration; decision validation and persistence remain in
-// internal/compliancedecision.
+// internal/complianceassessment.
 const bootstrapProductionGoLineBudget = 28960
 
 type bootstrapFileLineCount struct {
