@@ -74,6 +74,17 @@ func TestDockerfileCanBuildCurrentBootstrapBinary(t *testing.T) {
 
 func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	root := repoRoot(t)
+	makefileBody, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	makefileText := string(makefileBody)
+	if strings.Contains(strings.ToLower(makefileText), "goreleaser") {
+		t.Fatal("release-smoke must not validate unused GoReleaser configuration")
+	}
+	if !strings.Contains(makefileText, "release-smoke: release-train-test ## Validate release-train configuration.") {
+		t.Fatal("release-smoke must keep the release-train contract validation dependency")
+	}
 	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)

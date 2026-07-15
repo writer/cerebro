@@ -17,7 +17,6 @@ GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
-GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/goreleaser/goreleaser/v2@v2.16.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
@@ -608,8 +607,7 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 release-train-test: ## Validate release notes and release-train workflow contracts.
 	bash scripts/release/test_validate_release_notes.sh
 
-release-smoke: release-train-test ## Validate GoReleaser and release-train configuration.
-	$(GORELEASER) check
+release-smoke: release-train-test ## Validate release-train configuration.
 
 load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
 	$(PYTHON) scripts/load_smoke.py \
