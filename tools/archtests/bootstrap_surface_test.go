@@ -98,6 +98,9 @@ import (
 // auth discovery stays at the HTTP boundary. Agent task review hardening keeps
 // tenant-before-mutation checks and auth-challenge classification in bootstrap
 // because those depend on bootstrap auth sentinels and HTTP route policy.
+// Embedded source-coverage evaluation adds only explicit unavailable-error
+// propagation at HTTP, MCP, and A2A boundaries; classification remains in
+// internal/sourcecoverage and never falls back to empty coverage.
 // Assessment runtime composition adds capability-gated service and job-runner
 // wiring plus tenant and idempotency checks at the existing job HTTP boundary;
 // event replay, projection recovery, and run transitions stay in
@@ -114,7 +117,7 @@ import (
 // bounded baseline comparison, and remediation proposal shaping stay in
 // internal/complianceassessment; schemas and tool inventory stay in
 // internal/mcpoperations.
-const bootstrapProductionGoLineBudget = 27987
+const bootstrapProductionGoLineBudget = 28034
 
 type bootstrapFileLineCount struct {
 	path  string

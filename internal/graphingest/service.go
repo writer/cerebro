@@ -69,6 +69,10 @@ type projectionRecordProjector interface {
 	ProjectRecords(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 }
 
+type contextProjectionRecordProjector interface {
+	ProjectRecordsContext(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
 type projectionRecordCleanupProjector interface {
 	ProjectCleanupRecords(*cerebrov1.EventEnvelope) ([]string, error)
 }
@@ -722,7 +726,14 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 	result := pageProjectionResult{}
 	for _, event := range response.GetEvents() {
 		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
-		projectedEntities, projectedLinks, err := projector.ProjectRecords(ingested)
+		var projectedEntities []*ports.ProjectedEntity
+		var projectedLinks []*ports.ProjectedLink
+		var err error
+		if contextProjector, ok := projector.(contextProjectionRecordProjector); ok {
+			projectedEntities, projectedLinks, err = contextProjector.ProjectRecordsContext(ctx, ingested)
+		} else {
+			projectedEntities, projectedLinks, err = projector.ProjectRecords(ingested)
+		}
 		if err != nil {
 			return result, fmt.Errorf("project source event %q: %w", event.GetId(), err)
 		}

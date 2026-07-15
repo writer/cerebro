@@ -15,7 +15,7 @@ type mcpTaskPacketBuilder interface {
 }
 
 type mcpTaskPacketContext interface {
-	agentCoverageContext(context.Context, string) *agentplatform.AgentCoverageContext
+	agentCoverageContext(context.Context, string) (*agentplatform.AgentCoverageContext, error)
 }
 
 type currentAgentEvidencePacketBuilder struct{ context mcpTaskPacketContext }
@@ -27,7 +27,10 @@ func (builder currentAgentEvidencePacketBuilder) Build(ctx context.Context, requ
 	}
 	request.TenantID, request.ActorID = resolved.TenantID, resolved.ActorID
 	request.RequestedScopes, request.ScopeUnrestricted = resolved.RequestedScopes, resolved.ScopeUnrestricted
-	request.CoverageContext = builder.context.agentCoverageContext(ctx, request.TenantID)
+	request.CoverageContext, err = builder.context.agentCoverageContext(ctx, request.TenantID)
+	if err != nil {
+		return agentplatform.AgentEvidencePacket{}, nil, err
+	}
 	if err := authorizeAgentPlatformPacketURNs(ctx, request); err != nil {
 		return agentplatform.AgentEvidencePacket{}, nil, err
 	}
@@ -64,7 +67,11 @@ func (app *App) mcpTaskSourcesHealth(r *http.Request, _ map[string]any) (any, er
 	if err != nil {
 		return nil, err
 	}
-	return mcpoperations.SourcesHealth(app.agentCoverageContext(r.Context(), resolved.TenantID), sourceRuntimeStore(app.deps.StateStore) != nil, app.sources != nil)
+	coverage, err := app.agentCoverageContext(r.Context(), resolved.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	return mcpoperations.SourcesHealth(coverage, sourceRuntimeStore(app.deps.StateStore) != nil, app.sources != nil)
 }
 
 func (app *App) mcpTaskActionPlan(r *http.Request, args map[string]any) (any, error) {

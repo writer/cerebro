@@ -1909,7 +1909,10 @@ func (app *App) mcpAgentClaimVerify(r *http.Request, args map[string]any) (any, 
 	}
 	request.TenantID = resolved.TenantID
 	request.ActorID = resolved.ActorID
-	request.CoverageContext = app.agentCoverageContext(r.Context(), request.TenantID)
+	request.CoverageContext, err = app.agentCoverageContext(r.Context(), request.TenantID)
+	if err != nil {
+		return nil, err
+	}
 	if err := authorizeMCPClaimVerificationURNs(r.Context(), request); err != nil {
 		return nil, err
 	}
