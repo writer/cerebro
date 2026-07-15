@@ -235,11 +235,17 @@ func TestValidatorStaticContract(t *testing.T) {
 		{name: "limit arithmetic expression", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 2 * 1000`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "signed integer overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 9223372036854775808`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "overflow limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 18446744073709551616`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "union second branch missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "union first branch missing limit", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
+		{name: "nested union branch missing limit", cypher: `CALL { MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } RETURN e LIMIT 25`, wantResult: validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause")},
 		{name: "limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
 		{name: "earlier union limit exceeded", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101 UNION MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: validatorRefusal("limit_exceeded", "LIMIT 101 exceeds maximum 100")},
 		{name: "no node pattern", cypher: `RETURN 1 LIMIT 1`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
 		{name: "match keyword adjacency cannot hide unscoped node", cypher: `MATCH(e:Entity) MATCH (b:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
+		{name: "function pattern variable cannot establish scope", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, size((e)-[:R]->(b:Entity {tenant_id:$tenant_id})) AS count MATCH (b) RETURN b LIMIT 25`, wantResult: validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id")},
 		{name: "accepted", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted bounded union", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
+		{name: "accepted already scoped function endpoints", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}), (b:Entity {tenant_id:$tenant_id}) WITH e, b, size((e)-[:R]->(b)) AS count RETURN b LIMIT 25`, wantResult: ValidatorResult{OK: true}, wantLimit: 25},
 		{name: "accepted zero", cypher: `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 0`, wantResult: ValidatorResult{OK: true}},
 	}
 
