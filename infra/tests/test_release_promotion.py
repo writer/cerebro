@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import reconcile_release_promotions
+import approve_production_config_change
 import configure_release_promotion_controls
 import refresh_release_promotion_gate
 import release_promotion
@@ -109,13 +110,18 @@ class ReleasePromotionTest(unittest.TestCase):
     ) -> None:
         with patch(
             "configure_release_promotion_controls.gh_json",
-            side_effect=[{}, [], {}, {}, {}],
+            side_effect=[{}, [], {}, {}, {}, {}],
         ) as github:
             configure_release_promotion_controls.apply_controls(
                 "WriterInternal/cerebro", [1, 2, 3]
             )
 
-        rollback_payload = github.call_args_list[-1].kwargs["input_payload"]
+        rollback_call = next(
+            call
+            for call in github.call_args_list
+            if call.args[0][-1].endswith("/environments/production-rollback")
+        )
+        rollback_payload = rollback_call.kwargs["input_payload"]
         self.assertTrue(rollback_payload["prevent_self_review"])
         self.assertEqual(
             rollback_payload["reviewers"],
@@ -123,6 +129,22 @@ class ReleasePromotionTest(unittest.TestCase):
                 {"type": "User", "id": 1},
                 {"type": "User", "id": 2},
                 {"type": "User", "id": 3},
+            ],
+        )
+        config_call = next(
+            call
+            for call in github.call_args_list
+            if call.args[0][-1].endswith("/environments/production-config-change")
+        )
+        config_payload = config_call.kwargs["input_payload"]
+        self.assertTrue(config_payload["prevent_self_review"])
+        self.assertEqual(
+            config_payload["reviewers"],
+            [
+                {
+                    "type": "Team",
+                    "id": configure_release_promotion_controls.SECURITY_TEAM_ID,
+                }
             ],
         )
 
@@ -594,6 +616,180 @@ class ReleasePromotionTest(unittest.TestCase):
             sec_dev_receipt=receipt(),
         )
         self.assertEqual(passed.state, "success")
+
+    def test_gate_requires_sec_dev_receipt_for_same_tag_digest_change(self) -> None:
+        pending = refresh_release_promotion_gate.evaluate_gate(
+            base_tag="v2.1.10",
+            target_tag="v2.1.10",
+            base_digest="sha256:old",
+            target_digest="sha256:new",
+            rollback_approved=False,
+            sec_dev_receipt=None,
+        )
+        self.assertEqual(pending.state, "pending")
+
+        passed = refresh_release_promotion_gate.evaluate_gate(
+            base_tag="v2.1.10",
+            target_tag="v2.1.10",
+            base_digest="sha256:old",
+            target_digest="sha256:new",
+            rollback_approved=False,
+            sec_dev_receipt=receipt(),
+        )
+        self.assertEqual(passed.state, "success")
+
+    def test_gate_verifies_same_tag_digest_change_against_sec_dev(self) -> None:
+        base_digest = f"sha256:{'a' * 64}"
+        target_digest = f"sha256:{'b' * 64}"
+        pull = {"head": {"sha": "head-sha"}, "base": {"sha": "base-sha"}}
+        base_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {base_digest}\n"
+        )
+        target_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {target_digest}\n"
+        )
+        with (
+            patch("refresh_release_promotion_gate.gh_json", return_value=pull),
+            patch(
+                "refresh_release_promotion_gate.repository_file",
+                side_effect=[base_text, target_text],
+            ),
+            patch(
+                "refresh_release_promotion_gate._published_release", return_value=True
+            ),
+            patch(
+                "refresh_release_promotion_gate.resolve_image_digest",
+                return_value=target_digest,
+            ),
+            patch(
+                "refresh_release_promotion_gate.find_successful_deployment",
+                return_value=receipt(),
+            ) as find_receipt,
+            patch("refresh_release_promotion_gate.post_commit_status"),
+        ):
+            result = refresh_release_promotion_gate._refresh_pull(
+                "WriterInternal/cerebro", "writer/cerebro", 42
+            )
+
+        self.assertEqual(result.state, "success")
+        find_receipt.assert_called_once_with(
+            "WriterInternal/cerebro",
+            environment="sec-dev",
+            image_tag="v2.1.10",
+            image_digest=target_digest,
+        )
+
+    def test_gate_requires_protected_approval_for_non_image_production_change(
+        self,
+    ) -> None:
+        digest = f"sha256:{'a' * 64}"
+        pull = {"head": {"sha": "head-sha"}, "base": {"sha": "base-sha"}}
+        base_text = (
+            f"config:\n  cerebro:imageTag: v2.1.10\n"
+            f"  cerebro:imageDigest: {digest}\n  cerebro:vpcId: vpc-old\n"
+        )
+        target_text = base_text.replace("vpc-old", "vpc-new")
+        with (
+            patch("refresh_release_promotion_gate.gh_json", return_value=pull),
+            patch(
+                "refresh_release_promotion_gate.repository_file",
+                side_effect=[base_text, target_text],
+            ),
+            patch(
+                "refresh_release_promotion_gate._production_config_approved",
+                return_value=False,
+            ),
+            patch("refresh_release_promotion_gate.resolve_image_digest") as resolve,
+            patch("refresh_release_promotion_gate.post_commit_status") as post_status,
+        ):
+            result = refresh_release_promotion_gate._refresh_pull(
+                "WriterInternal/cerebro", "writer/cerebro", 42
+            )
+
+        self.assertEqual(result.state, "pending")
+        self.assertEqual(result.description, "Production configuration approval is required")
+        resolve.assert_not_called()
+        self.assertEqual(
+            post_status.call_args.kwargs["context"],
+            refresh_release_promotion_gate.CONTEXT,
+        )
+
+    def test_gate_accepts_only_protected_production_config_approval(self) -> None:
+        run_url = "https://github.com/WriterInternal/cerebro/actions/runs/4300"
+        statuses = [
+            {
+                "context": release_promotion.PRODUCTION_CONFIG_APPROVAL_CONTEXT,
+                "state": "success",
+                "target_url": run_url,
+                "creator": {"login": "github-actions[bot]"},
+            }
+        ]
+        workflow_run = {
+            "id": 4300,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "path": refresh_release_promotion_gate.PRODUCTION_CONFIG_WORKFLOW_PATH,
+            "conclusion": "success",
+            "html_url": run_url,
+            "repository": {"full_name": "WriterInternal/cerebro"},
+        }
+        approvals = [
+            {
+                "state": "approved",
+                "environments": [{"name": "production-config-change"}],
+            }
+        ]
+        with patch(
+            "refresh_release_promotion_gate.gh_json",
+            side_effect=[statuses, workflow_run, approvals],
+        ):
+            approved = refresh_release_promotion_gate._production_config_approved(
+                "WriterInternal/cerebro", "head-sha"
+            )
+
+        self.assertTrue(approved)
+
+    def test_production_config_approval_records_exact_pr_commit(self) -> None:
+        pull = {
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {
+                "sha": "config-head",
+                "repo": {"full_name": "WriterInternal/cerebro"},
+            },
+        }
+        with (
+            patch("approve_production_config_change.gh_json", return_value=pull),
+            patch(
+                "approve_production_config_change.post_commit_status"
+            ) as post_status,
+            patch.dict(
+                "os.environ",
+                {
+                    "GITHUB_SERVER_URL": "https://github.com",
+                    "GITHUB_RUN_ID": "4300",
+                },
+                clear=False,
+            ),
+        ):
+            target_url = approve_production_config_change.approve_pull_request(
+                "WriterInternal/cerebro", 42
+            )
+
+        self.assertEqual(
+            target_url,
+            "https://github.com/WriterInternal/cerebro/actions/runs/4300",
+        )
+        post_status.assert_called_once_with(
+            "WriterInternal/cerebro",
+            sha="config-head",
+            state="success",
+            context=release_promotion.PRODUCTION_CONFIG_APPROVAL_CONTEXT,
+            description="Protected production configuration approval for PR #42",
+            target_url=target_url,
+        )
 
     def test_gate_posts_error_status_when_release_verification_is_unavailable(
         self,

@@ -17,6 +17,9 @@ ROLLBACK_WORKFLOW = (
     ROOT / ".github" / "workflows" / "request-cerebro-image-rollback.yml"
 )
 ROLLBACK_SCRIPT = ROOT / "infra" / "scripts" / "request_release_rollback.py"
+PRODUCTION_CONFIG_APPROVAL_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "approve-production-configuration.yml"
+)
 RESUME_WORKFLOW = (
     ROOT / ".github" / "workflows" / "resume-cerebro-release-promotions.yml"
 )
@@ -370,6 +373,17 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("environment: production-rollback", resume)
         self.assertIn("cerebro-promotion-paused", resume)
         self.assertIn("Automatic promotion resumed after rollback verification", resume)
+
+    def test_non_image_production_changes_use_a_protected_approval(self) -> None:
+        workflow = PRODUCTION_CONFIG_APPROVAL_WORKFLOW.read_text(encoding="utf-8")
+        gate = GATE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("environment: production-config-change", workflow)
+        self.assertIn("Open production configuration pull request number", workflow)
+        self.assertIn("Reason for approving the production configuration change", workflow)
+        self.assertIn("statuses: write", workflow)
+        self.assertIn("scripts/approve_production_config_change.py", workflow)
+        self.assertIn("actions: read", gate)
 
     def test_pulumi_preview_jobs_have_timeout(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")

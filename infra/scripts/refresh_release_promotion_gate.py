@@ -10,6 +10,9 @@ from typing import Any
 
 from release_promotion import (
     DeploymentReceipt,
+    IMAGE_DIGEST_KEY,
+    IMAGE_TAG_KEY,
+    PRODUCTION_CONFIG_APPROVAL_CONTEXT,
     ROLLBACK_APPROVAL_CONTEXT,
     find_successful_deployment,
     gh_json,
@@ -26,6 +29,10 @@ CONTEXT = "promotion/sec-dev-deployed"
 GO_PROD_CONFIG = "infra/aws/Pulumi.go-prod.yaml"
 ROLLBACK_WORKFLOW_PATH = ".github/workflows/request-cerebro-image-rollback.yml"
 ROLLBACK_ENVIRONMENT = "production-rollback"
+PRODUCTION_CONFIG_WORKFLOW_PATH = (
+    ".github/workflows/approve-production-configuration.yml"
+)
+PRODUCTION_CONFIG_ENVIRONMENT = "production-config-change"
 
 
 @dataclass(frozen=True)
@@ -41,8 +48,16 @@ def evaluate_gate(
     target_tag: str,
     rollback_approved: bool,
     sec_dev_receipt: DeploymentReceipt | None,
+    base_digest: str = "",
+    target_digest: str = "",
+    production_config_changed: bool = False,
+    production_config_approved: bool = False,
 ) -> GateResult:
-    if target_tag == base_tag:
+    if production_config_changed and not production_config_approved:
+        return GateResult(
+            "pending", "Production configuration approval is required"
+        )
+    if target_tag == base_tag and target_digest == base_digest:
         return GateResult("success", "No production image change")
     base_version = parse_stable_tag(base_tag)
     target_version = parse_stable_tag(target_tag)
@@ -87,7 +102,7 @@ def _published_release(source_repository: str, tag: str) -> bool:
     )
 
 
-def _approved_environment_review(reviews: Any) -> bool:
+def _approved_environment_review(reviews: Any, environment_name: str) -> bool:
     if not isinstance(reviews, list):
         return False
     for review in reviews:
@@ -96,14 +111,21 @@ def _approved_environment_review(reviews: Any) -> bool:
         environments = review.get("environments") or []
         if isinstance(environments, list) and any(
             isinstance(environment, dict)
-            and environment.get("name") == ROLLBACK_ENVIRONMENT
+            and environment.get("name") == environment_name
             for environment in environments
         ):
             return True
     return False
 
 
-def _rollback_approved(repository: str, head_sha: str) -> bool:
+def _protected_workflow_approved(
+    repository: str,
+    head_sha: str,
+    *,
+    context: str,
+    workflow_path: str,
+    environment_name: str,
+) -> bool:
     statuses = gh_json(
         ["api", f"repos/{repository}/commits/{head_sha}/statuses?per_page=100"]
     )
@@ -114,7 +136,7 @@ def _rollback_approved(repository: str, head_sha: str) -> bool:
             status
             for status in statuses
             if isinstance(status, dict)
-            and status.get("context") == ROLLBACK_APPROVAL_CONTEXT
+            and status.get("context") == context
         ),
         None,
     )
@@ -144,7 +166,7 @@ def _rollback_approved(repository: str, head_sha: str) -> bool:
         workflow_run.get("id") != run_id
         or workflow_run.get("event") != "workflow_dispatch"
         or workflow_run.get("head_branch") != "main"
-        or workflow_run.get("path") != ROLLBACK_WORKFLOW_PATH
+        or workflow_run.get("path") != workflow_path
         or workflow_run.get("conclusion") != "success"
         or workflow_run.get("html_url") != target_url
         or not isinstance(run_repository, dict)
@@ -154,7 +176,49 @@ def _rollback_approved(repository: str, head_sha: str) -> bool:
     reviews = gh_json(
         ["api", f"repos/{repository}/actions/runs/{run_id}/approvals"]
     )
-    return _approved_environment_review(reviews)
+    return _approved_environment_review(reviews, environment_name)
+
+
+def _rollback_approved(repository: str, head_sha: str) -> bool:
+    return _protected_workflow_approved(
+        repository,
+        head_sha,
+        context=ROLLBACK_APPROVAL_CONTEXT,
+        workflow_path=ROLLBACK_WORKFLOW_PATH,
+        environment_name=ROLLBACK_ENVIRONMENT,
+    )
+
+
+def _production_config_approved(repository: str, head_sha: str) -> bool:
+    return _protected_workflow_approved(
+        repository,
+        head_sha,
+        context=PRODUCTION_CONFIG_APPROVAL_CONTEXT,
+        workflow_path=PRODUCTION_CONFIG_WORKFLOW_PATH,
+        environment_name=PRODUCTION_CONFIG_ENVIRONMENT,
+    )
+
+
+def _without_release_lock(text: str) -> str:
+    counts = {IMAGE_TAG_KEY: 0, IMAGE_DIGEST_KEY: 0}
+    retained: list[str] = []
+    patterns = {key: re.compile(rf"^\s*{re.escape(key)}\s*:") for key in counts}
+    for line in text.splitlines(keepends=True):
+        key = next(
+            (key for key, pattern in patterns.items() if pattern.match(line)), None
+        )
+        if key is None:
+            retained.append(line)
+            continue
+        counts[key] += 1
+    for key, count in counts.items():
+        if count != 1:
+            raise ValueError(f"{key} must appear exactly once")
+    return "".join(retained)
+
+
+def _production_config_changed(base_text: str, target_text: str) -> bool:
+    return _without_release_lock(base_text) != _without_release_lock(target_text)
 
 
 def _refresh_pull(repository: str, source_repository: str, number: int) -> GateResult:
@@ -173,72 +237,74 @@ def _refresh_pull(repository: str, source_repository: str, number: int) -> GateR
         target_text = repository_file(repository, GO_PROD_CONFIG, head_sha)
         base_tag = read_stack_tag_text(base_text)
         target_tag = read_stack_tag_text(target_text)
+        base_digest = read_stack_digest_text(base_text)
+        target_digest = read_stack_digest_text(target_text)
+        production_config_changed = _production_config_changed(base_text, target_text)
         parse_stable_tag(target_tag)
     except (RuntimeError, ValueError) as error:
         result = GateResult(
             "failure", f"Invalid production image configuration: {error}"
         )
     else:
-        if target_tag == base_tag:
-            result = evaluate_gate(
-                base_tag=base_tag,
-                target_tag=target_tag,
-                rollback_approved=False,
-                sec_dev_receipt=None,
+        try:
+            production_config_approved = not production_config_changed or (
+                _production_config_approved(repository, head_sha)
             )
-        elif not _published_release(source_repository, target_tag):
+        except RuntimeError as error:
             result = GateResult(
-                "failure", f"{target_tag} is not a published stable release"
+                "error", "Production configuration approval unavailable; retry scheduled"
+            )
+            print(
+                f"::error::PR #{number} production configuration approval failed: {error}",
+                file=sys.stderr,
             )
         else:
-            try:
-                image_digest = read_stack_digest_text(target_text)
-            except ValueError as error:
+            if production_config_changed and not production_config_approved:
                 result = GateResult(
-                    "failure", f"Invalid production image digest: {error}"
+                    "pending", "Production configuration approval is required"
                 )
-                image_digest = ""
-            if not image_digest:
-                post_commit_status(
-                    repository,
-                    sha=head_sha,
-                    state=result.state,
-                    context=CONTEXT,
-                    description=result.description,
+            elif target_tag == base_tag and target_digest == base_digest:
+                result = GateResult("success", "No production image change")
+            elif not _published_release(source_repository, target_tag):
+                result = GateResult(
+                    "failure", f"{target_tag} is not a published stable release"
                 )
-                print(f"PR #{number}: {result.state}: {result.description}")
-                return result
-            try:
-                resolved_digest = resolve_image_digest(target_tag)
-                if resolved_digest != image_digest:
+            else:
+                try:
+                    resolved_digest = resolve_image_digest(target_tag)
+                    if resolved_digest != target_digest:
+                        result = GateResult(
+                            "failure",
+                            f"Reviewed digest does not match published {target_tag}",
+                        )
+                    else:
+                        rollback_approved = False
+                        if parse_stable_tag(target_tag) < parse_stable_tag(base_tag):
+                            rollback_approved = _rollback_approved(repository, head_sha)
+                        receipt = find_successful_deployment(
+                            repository,
+                            environment="sec-dev",
+                            image_tag=target_tag,
+                            image_digest=target_digest,
+                        )
+                        result = evaluate_gate(
+                            base_tag=base_tag,
+                            target_tag=target_tag,
+                            rollback_approved=rollback_approved,
+                            sec_dev_receipt=receipt,
+                            base_digest=base_digest,
+                            target_digest=target_digest,
+                            production_config_changed=production_config_changed,
+                            production_config_approved=production_config_approved,
+                        )
+                except RuntimeError as error:
                     result = GateResult(
-                        "failure",
-                        f"Reviewed digest does not match published {target_tag}",
+                        "error", "Release verification unavailable; retry scheduled"
                     )
-                else:
-                    rollback_approved = False
-                    if parse_stable_tag(target_tag) < parse_stable_tag(base_tag):
-                        rollback_approved = _rollback_approved(repository, head_sha)
-                    receipt = find_successful_deployment(
-                        repository,
-                        environment="sec-dev",
-                        image_tag=target_tag,
-                        image_digest=image_digest,
+                    print(
+                        f"::error::PR #{number} release verification failed: {error}",
+                        file=sys.stderr,
                     )
-                    result = evaluate_gate(
-                        base_tag=base_tag,
-                        target_tag=target_tag,
-                        rollback_approved=rollback_approved,
-                        sec_dev_receipt=receipt,
-                    )
-            except RuntimeError as error:
-                result = GateResult(
-                    "error", "Release verification unavailable; retry scheduled"
-                )
-                print(
-                    f"::error::PR #{number} release verification failed: {error}",
-                    file=sys.stderr,
-                )
 
     post_commit_status(
         repository,

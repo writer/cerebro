@@ -19,6 +19,7 @@ STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 IMAGE_DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 INFRA_DEPLOY_WORKFLOW_PATH = ".github/workflows/infra-deploy.yml"
 ROLLBACK_APPROVAL_CONTEXT = "promotion/rollback-approved"
+PRODUCTION_CONFIG_APPROVAL_CONTEXT = "promotion/production-config-approved"
 STACK_CONFIG_PATHS = {
     "sec-dev": "infra/aws/Pulumi.sec-dev.yaml",
     "go-prod": "infra/aws/Pulumi.go-prod.yaml",

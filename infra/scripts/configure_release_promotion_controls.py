@@ -14,6 +14,7 @@ RULESET_NAME = "Release promotion protection"
 REQUIRED_STATUS = "promotion/sec-dev-deployed"
 ACTIONS_INTEGRATION_ID = 15368
 SECURITY_TEAM_ID = 6539261
+PRODUCTION_CONFIG_ENVIRONMENT = "production-config-change"
 SECURITY_CONTROL_PATTERNS = [
     ".github/CODEOWNERS",
     ".github/actions/**",
@@ -181,6 +182,23 @@ def _has_required_reviewer(environment: dict[str, Any]) -> bool:
     )
 
 
+def _has_security_team_reviewer(environment: dict[str, Any]) -> bool:
+    rules = environment.get("protection_rules") or []
+    return isinstance(rules, list) and any(
+        isinstance(rule, dict)
+        and rule.get("type") == "required_reviewers"
+        and isinstance(rule.get("reviewers"), list)
+        and any(
+            isinstance(reviewer, dict)
+            and reviewer.get("type") == "Team"
+            and isinstance(reviewer.get("reviewer"), dict)
+            and reviewer["reviewer"].get("id") == SECURITY_TEAM_ID
+            for reviewer in rule["reviewers"]
+        )
+        for rule in rules
+    )
+
+
 def _prevents_self_review(environment: dict[str, Any]) -> bool:
     return environment.get("prevent_self_review") is True
 
@@ -236,6 +254,18 @@ def verify_controls(repository: str) -> list[str]:
         errors.append("production rollback requests do not require a reviewer")
     if not _prevents_self_review(rollback):
         errors.append("production rollback requests allow self-review")
+
+    production_config = _environment(repository, PRODUCTION_CONFIG_ENVIRONMENT)
+    if not _protected_branch_environment(production_config):
+        errors.append(
+            "production configuration approvals are not limited to protected branches"
+        )
+    if not _has_security_team_reviewer(production_config):
+        errors.append(
+            "production configuration changes do not require a security team reviewer"
+        )
+    if not _prevents_self_review(production_config):
+        errors.append("production configuration approvals allow self-review")
     return errors
 
 
@@ -279,6 +309,20 @@ def apply_controls(repository: str, reviewer_ids: list[int]) -> None:
                 {"type": "User", "id": reviewer_id}
                 for reviewer_id in reviewer_ids
             ],
+            "deployment_branch_policy": branch_policy,
+        },
+    )
+    gh_json(
+        [
+            "api",
+            "--method",
+            "PUT",
+            f"repos/{repository}/environments/{PRODUCTION_CONFIG_ENVIRONMENT}",
+        ],
+        input_payload={
+            "wait_timer": 0,
+            "prevent_self_review": True,
+            "reviewers": [{"type": "Team", "id": SECURITY_TEAM_ID}],
             "deployment_branch_policy": branch_policy,
         },
     )
