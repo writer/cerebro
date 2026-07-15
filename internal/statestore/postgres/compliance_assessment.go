@@ -269,6 +269,43 @@ func (s *Store) ListUnboundRuns(ctx context.Context, limit uint32) ([]compliance
 	return result, rows.Err()
 }
 
+func (s *Store) ListNonterminalRuns(ctx context.Context, limit uint32) ([]complianceassessment.AssessmentRun, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.ensureJobTables(ctx); err != nil {
+		return nil, err
+	}
+	if limit == 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT runs.record_json
+FROM compliance_assessment_runs runs
+JOIN platform_jobs jobs ON jobs.id = runs.job_id
+WHERE runs.state IN ('queued','collecting','evaluating')
+  AND jobs.status IN ('failed','cancelled','completed')
+ORDER BY runs.requested_at,runs.tenant_id,runs.id
+LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []complianceassessment.AssessmentRun
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var run complianceassessment.AssessmentRun
+		if err := json.Unmarshal(data, &run); err != nil {
+			return nil, err
+		}
+		result = append(result, run)
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) ApplyResultChunk(ctx context.Context, eventID, tenantID string, chunk complianceassessment.ResultChunk) error {
 	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
 		return err

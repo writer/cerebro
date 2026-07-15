@@ -3,10 +3,12 @@ package bootstrap
 import (
 	"context"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/config"
+	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -67,6 +69,27 @@ func TestNormalizeAssessmentJobRequestPinsRunIdentity(t *testing.T) {
 	request.IdempotencyKey = "different"
 	if err := normalizeAssessmentJobRequest(&request); err == nil {
 		t.Fatal("normalizeAssessmentJobRequest() accepted conflicting idempotency key")
+	}
+}
+
+func TestStartPlatformJobRecoveryIncludesAssessmentLoop(t *testing.T) {
+	store := &assessmentRuntimeStore{a2ATestJobStore: newA2ATestJobStore()}
+	app := &App{}
+	app.services.jobs = platformjobs.New(store)
+	app.services.assessments = complianceassessment.NewAssessmentService(store, &assessmentRuntimeLog{}, app.services.jobs, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := app.StartPlatformJobRecovery(ctx, nil)
+	select {
+	case <-done:
+		cancel()
+		t.Fatal("platform recovery stopped while assessment recovery was active")
+	case <-time.After(20 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("platform recovery did not stop after cancellation")
 	}
 }
 

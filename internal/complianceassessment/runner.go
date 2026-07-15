@@ -15,7 +15,11 @@ import (
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
-const resultChunkSize = 250
+const (
+	resultChunkSize             = 250
+	maxAssessmentAppendAttempts = 3
+	maxAssessmentJobAttempts    = 3
+)
 
 func (s *Service) Runner() platformjobs.Runner {
 	return func(ctx context.Context, job *ports.Job, jobs *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -55,7 +59,7 @@ func (s *Service) Runner() platformjobs.Runner {
 			return nil, nil, s.failRun(ctx, run, "plan_unavailable")
 		}
 		if s.collector == nil {
-			return nil, nil, s.failRun(ctx, run, "collector_unavailable")
+			return nil, nil, s.failRun(context.WithoutCancel(ctx), run, "collector_unavailable")
 		}
 		if run.State == RunQueued {
 			expectedVersion := run.Version
@@ -133,7 +137,7 @@ func (s *Service) appendRunDurably(ctx context.Context, kind, operation string, 
 	if err != nil {
 		return err
 	}
-	for {
+	for attempt := 1; attempt <= maxAssessmentAppendAttempts; attempt++ {
 		err = s.appendRun(ctx, kind, operation, run, expectedVersion)
 		if err == nil {
 			return nil
@@ -146,6 +150,9 @@ func (s *Service) appendRunDurably(ctx context.Context, kind, operation string, 
 		if errors.Is(err, ErrAssessmentConflict) {
 			return err
 		}
+		if attempt == maxAssessmentAppendAttempts {
+			return platformjobs.Retryable(fmt.Errorf("persist assessment transition after %d attempts: %w", attempt, err))
+		}
 		timer := time.NewTimer(retryInterval)
 		select {
 		case <-ctx.Done():
@@ -156,6 +163,7 @@ func (s *Service) appendRunDurably(ctx context.Context, kind, operation string, 
 		case <-timer.C:
 		}
 	}
+	return err
 }
 
 func validateCollectionBinding(plan AssessmentPlanRevision, run AssessmentRun, manifest InputManifest) error {
@@ -262,6 +270,13 @@ func boundedChunkCount(value int) (uint32, error) {
 }
 
 func (s *Service) failRun(ctx context.Context, run AssessmentRun, code string) error {
+	if err := s.recordFailedRun(ctx, run, code); err != nil {
+		return err
+	}
+	return fmt.Errorf("assessment run failed: %s", code)
+}
+
+func (s *Service) recordFailedRun(ctx context.Context, run AssessmentRun, code string) error {
 	expectedVersion := run.Version
 	run.State = RunFailed
 	run.Version++
@@ -270,10 +285,17 @@ func (s *Service) failRun(ctx context.Context, run AssessmentRun, code string) e
 	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_failed", run, expectedVersion); err != nil {
 		return err
 	}
-	return fmt.Errorf("assessment run failed: %s", code)
+	return nil
 }
 
 func (s *Service) cancelRun(ctx context.Context, run AssessmentRun) error {
+	if err := s.recordCancelledRun(ctx, run); err != nil {
+		return err
+	}
+	return context.Canceled
+}
+
+func (s *Service) recordCancelledRun(ctx context.Context, run AssessmentRun) error {
 	expectedVersion := run.Version
 	run.State = RunCancelled
 	run.Version++
@@ -282,7 +304,7 @@ func (s *Service) cancelRun(ctx context.Context, run AssessmentRun) error {
 	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCancelled, "assessment_cancelled", run, expectedVersion); err != nil {
 		return err
 	}
-	return context.Canceled
+	return nil
 }
 
 func manifestComplete(manifest InputManifest) bool {
