@@ -179,6 +179,11 @@ fn scrub_cypher(query: &str) -> String {
                 output.extend_from_slice(b"''");
                 i = skip_quoted_literal(bytes, i, bytes[i]) + 1;
             }
+            b'`' => {
+                let (_, end) = escaped_identifier_token(bytes, i);
+                output.extend_from_slice(&bytes[i..=end]);
+                i = end + 1;
+            }
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
                 output.push(b' ');
                 i += 2;
@@ -1136,6 +1141,34 @@ mod tests {
         assert_eq!(validate(query, 100).decision, Decision::UnsafeClause);
         let query = "MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'CREATE' AS c RETURN a LIMIT 25";
         assert_eq!(validate(query, 100).decision, Decision::Allow);
+    }
+
+    #[test]
+    fn escaped_identifiers_cannot_hide_scrubbed_security_checks() {
+        let variable_length = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x/*` OPTIONAL MATCH (b:Entity {tenant_id:$tenant_id})-[:R*1..9999]->(c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity {tenant_id:$tenant_id})-[:R*1..9999]->(c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x``/*` OPTIONAL MATCH (b:Entity {tenant_id:$tenant_id})-[:R*1..9999]->(c:Entity {tenant_id:$tenant_id}) RETURN c LIMIT 1",
+        ];
+        for query in variable_length {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::VariableLengthRelationshipNotAllowed,
+                "{query}"
+            );
+        }
+
+        let unscoped = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x/*` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
+        ];
+        for query in unscoped {
+            assert_eq!(
+                validate(query, 100).decision,
+                Decision::TenantScopeRequired,
+                "{query}"
+            );
+        }
     }
 
     #[test]
