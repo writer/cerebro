@@ -48,7 +48,36 @@ The evidence-packet task accepts only `observe`, `explain`, `recommend`, and
 Requests without a toolset keep the full tool list for compatibility. Existing
 domain tools remain available as expert tools. Use
 `X-Cerebro-MCP-Toolsets: expert` for that profile, or the existing domain
-toolsets such as `graph`, `risk`, and `findings` for narrower access.
+toolsets such as `graph`, `risk`, `findings`, and `assessments` for narrower access.
+
+## Assessment operations
+
+Set `X-Cerebro-MCP-Toolsets: assessments` to expose the assessment lifecycle:
+
+| Tool | Required scope | Result |
+| --- | --- | --- |
+| `cerebro.assessments.plan.create` | security read + GRC inventory write | Persisted plan draft with server-owned identity and digest |
+| `cerebro.assessments.plan.publish` | security read + GRC inventory write | Published immutable plan revision using `expected_version` |
+| `cerebro.assessments.plan.get` | security read | One tenant-scoped plan revision |
+| `cerebro.assessments.run.request` | security read + GRC inventory write | Recoverable run; repeated key and body return the existing run |
+| `cerebro.assessments.run.get` | security read | Current state, pinned input manifest, result availability, and hashes |
+| `cerebro.assessments.results.list` | security read | Bounded result page with recomputed payload and predecessor-digest verification |
+| `cerebro.assessments.run.diff` | security read | Complete bounded comparison with the explicit or pinned baseline |
+| `cerebro.assessments.result.explain` | security read | Verified result, manifest, evidence, findings, and exact provenance follow-up calls |
+| `cerebro.assessments.remediation.propose` | security read | Non-mutating work request for the existing approval-gated GRC work endpoint |
+
+Start result paging with `after_sequence: 0` and no predecessor digest. For each
+following page, pass the preceding response's
+`verification.next_previous_digest` as `expected_previous_digest`. A page fails
+if its run ID, sequence, result boundaries, canonical payload digest, or
+predecessor link does not match.
+
+Plan creation, plan publication, and run requests are the only mutating tools in
+this profile. They call the existing assessment domain service, preserve its
+append-first records and Postgres projections, and require the same GRC write
+scope as the HTTP routes. Run requests are idempotent. The other assessment
+tools are read-only. Remediation remains a proposal and requires a separate
+call to `POST /grc/work-items` with `cerebro.findings.write`.
 
 ## Tool/domain parity
 
@@ -58,9 +87,12 @@ or explicitly named composite of those surfaces. Agent-oriented tools such as
 investigation context and risk action planning may bundle multiple reads, but
 their source domain surfaces must stay listed in the MCP parity test.
 
-Mutating workflows are exposed only as proposal tools with `dry_run=true`,
-`readOnlyHint=true`, and a response that describes the required write scope
-without applying the action.
+Action and remediation workflows are exposed only as proposal tools with
+`dry_run=true`, `readOnlyHint=true`, and a response that describes the required
+write scope without applying the action. Domain-owned assessment plan and run
+writes may execute only through the existing assessment service, with the same
+tenant, write-scope, optimistic-concurrency, idempotency, append-log, and
+projection contracts as their HTTP routes.
 
 Agent control-loop tools expose the security-agent control plane without adding
 write access. `cerebro.agent.control_plane` returns the evidence packet, claim

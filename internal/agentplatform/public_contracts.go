@@ -249,6 +249,15 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 				OutputModes: []string{"application/json"},
 			},
 			{
+				ID:          "continuous-assessment",
+				Name:        "Compliance assessment operations",
+				Description: "Create and publish bounded assessment plans, request idempotent runs, verify paged result digests, compare a completed run with its baseline, explain one result from its evidence and finding references, and prepare approval-gated remediation work. Write operations require cerebro.grc.inventory.write in addition to the default read scope.",
+				Tags:        []string{"compliance", "assessment", "evidence", "remediation"},
+				Examples:    []string{"Run the published access assessment, verify every result page, explain changed failures, and prepare owner work without executing remediation."},
+				InputModes:  []string{"text/plain", "application/json"},
+				OutputModes: []string{"application/json"},
+			},
+			{
 				ID:          "event-subscription-contract",
 				Name:        "Outbound event subscription contract discovery",
 				Description: "Explain supported outbound webhook trigger families, signing, retry, and idempotency semantics.",

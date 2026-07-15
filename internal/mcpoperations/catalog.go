@@ -6,13 +6,17 @@ import (
 	"strings"
 )
 
-const ScopeSecurityRead = "cerebro.cosmo.security.read"
+const (
+	ScopeSecurityRead      = "cerebro.cosmo.security.read"
+	ScopeGRCInventoryWrite = "cerebro.grc.inventory.write"
+)
 
 type Behavior string
 
 const (
 	BehaviorRead    Behavior = "read"
 	BehaviorPropose Behavior = "propose"
+	BehaviorExecute Behavior = "execute"
 )
 
 type Classification string
@@ -71,6 +75,15 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.agent.work.contract", "agent-platform", "agent work contract"),
 		expertRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace"),
 		expertRead("cerebro.investigation.context", "findings", "finding investigation context"),
+		expertExecute("cerebro.assessments.plan.create", "compliance-assessment", "persisted assessment plan draft"),
+		expertExecute("cerebro.assessments.plan.publish", "compliance-assessment", "published assessment plan revision"),
+		expertRead("cerebro.assessments.plan.get", "compliance-assessment", "assessment plan revision"),
+		expertExecute("cerebro.assessments.run.request", "compliance-assessment", "idempotent assessment run request"),
+		expertRead("cerebro.assessments.run.get", "compliance-assessment", "assessment run with pinned input manifest"),
+		expertRead("cerebro.assessments.results.list", "compliance-assessment", "verified assessment result page"),
+		expertRead("cerebro.assessments.run.diff", "compliance-assessment", "bounded baseline assessment diff"),
+		expertRead("cerebro.assessments.result.explain", "compliance-assessment", "assessment result with evidence and provenance handoffs"),
+		expertPropose("cerebro.assessments.remediation.propose", "compliance-assessment", "approval-gated remediation work proposal"),
 		expertPropose("cerebro.findings.action.propose", "findings", "finding action proposal"),
 		expertPropose("cerebro.source_runtimes.refresh.propose", "source-runtime", "runtime refresh proposal"),
 		taskRead("cerebro.risk.explain", "findings", "task result with finding, evidence, assets, and optional graph context", "explain risk", "investigate finding", "why is this risky", "finding evidence"),
@@ -99,6 +112,12 @@ func expertRead(name string, domain string, response string) Operation {
 
 func expertPropose(name string, domain string, response string) Operation {
 	return operation(name, domain, BehaviorPropose, ClassificationExpert, response, nil)
+}
+
+func expertExecute(name string, domain string, response string) Operation {
+	result := operation(name, domain, BehaviorExecute, ClassificationExpert, response, nil)
+	result.RequiredScopes = []string{ScopeSecurityRead, ScopeGRCInventoryWrite}
+	return result
 }
 
 func operation(name string, domain string, behavior Behavior, classification Classification, response string, terms []string) Operation {
@@ -206,6 +225,8 @@ func ToolsetForName(name string) string {
 		return "findings"
 	case strings.HasPrefix(name, "assets."):
 		return "assets"
+	case strings.HasPrefix(name, "assessments."):
+		return "assessments"
 	case strings.HasPrefix(name, "sources."), strings.HasPrefix(name, "connectors."), strings.HasPrefix(name, "source_runtimes."), strings.HasPrefix(name, "runtimes."), strings.HasPrefix(name, "connector_definitions."):
 		return "operations"
 	case strings.HasPrefix(name, "agent."):

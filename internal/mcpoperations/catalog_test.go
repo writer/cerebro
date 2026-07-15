@@ -11,7 +11,7 @@ func TestCatalogOperationsAreCompleteAndSorted(t *testing.T) {
 		if operation.Name == "" || operation.OwnerDomain == "" || operation.ResponseContract == "" {
 			t.Fatalf("operation %d is incomplete: %#v", i, operation)
 		}
-		if operation.Behavior != BehaviorRead && operation.Behavior != BehaviorPropose {
+		if operation.Behavior != BehaviorRead && operation.Behavior != BehaviorPropose && operation.Behavior != BehaviorExecute {
 			t.Fatalf("operation %q behavior = %q", operation.Name, operation.Behavior)
 		}
 		if operation.Classification != ClassificationTask && operation.Classification != ClassificationExpert {
@@ -23,6 +23,28 @@ func TestCatalogOperationsAreCompleteAndSorted(t *testing.T) {
 		if i > 0 && operations[i-1].Name >= operation.Name {
 			t.Fatalf("operations are not strictly sorted: %q before %q", operations[i-1].Name, operation.Name)
 		}
+	}
+}
+
+func TestAssessmentExecutionToolsRequireReadAndWriteScopes(t *testing.T) {
+	for _, name := range []string{
+		"cerebro.assessments.plan.create",
+		"cerebro.assessments.plan.publish",
+		"cerebro.assessments.run.request",
+	} {
+		operation, ok := Lookup(name)
+		if !ok {
+			t.Fatalf("Lookup(%q) missing", name)
+		}
+		if operation.Behavior != BehaviorExecute {
+			t.Fatalf("Lookup(%q).Behavior = %q, want %q", name, operation.Behavior, BehaviorExecute)
+		}
+		if len(operation.RequiredScopes) != 2 || operation.RequiredScopes[0] != ScopeSecurityRead || operation.RequiredScopes[1] != ScopeGRCInventoryWrite {
+			t.Fatalf("Lookup(%q).RequiredScopes = %#v", name, operation.RequiredScopes)
+		}
+	}
+	if got := ToolsetForName("cerebro.assessments.run.get"); got != "assessments" {
+		t.Fatalf("ToolsetForName(assessment) = %q, want assessments", got)
 	}
 }
 

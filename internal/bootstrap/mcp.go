@@ -489,8 +489,21 @@ func authorizeMCPMethodScope(ctx context.Context, method string) error {
 	}
 }
 
-func authorizeMCPToolScope(ctx context.Context, _ string) error {
-	return authorizeMCPReadScope(ctx)
+func authorizeMCPToolScope(ctx context.Context, name string) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok || !principalScopeRestricted(auth.principal) {
+		return nil
+	}
+	operation, known := mcpoperations.Lookup(name)
+	if !known {
+		return authorizePrincipalScope(auth.principal, scopeCosmoSecurityRead)
+	}
+	for _, required := range operation.RequiredScopes {
+		if err := authorizePrincipalScope(auth.principal, required); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func authorizeMCPResourceScope(ctx context.Context, _ string) error {
@@ -629,6 +642,24 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
 		return app.mcpInvestigationContext(r, args)
+	case "cerebro.assessments.plan.create":
+		return app.mcpAssessmentPlanCreate(r, args)
+	case "cerebro.assessments.plan.publish":
+		return app.mcpAssessmentPlanPublish(r, args)
+	case "cerebro.assessments.plan.get":
+		return app.mcpAssessmentPlanGet(r, args)
+	case "cerebro.assessments.run.request":
+		return app.mcpAssessmentRunRequest(r, args)
+	case "cerebro.assessments.run.get":
+		return app.mcpAssessmentRunGet(r, args)
+	case "cerebro.assessments.results.list":
+		return app.mcpAssessmentResultsList(r, args)
+	case "cerebro.assessments.run.diff":
+		return app.mcpAssessmentRunDiff(r, args)
+	case "cerebro.assessments.result.explain":
+		return app.mcpAssessmentResultExplain(r, args)
+	case "cerebro.assessments.remediation.propose":
+		return app.mcpAssessmentRemediationPropose(r, args)
 	case "cerebro.findings.action.propose":
 		return app.mcpProposeFindingAction(r, args)
 	case "cerebro.source_runtimes.refresh.propose":
@@ -2747,6 +2778,7 @@ func mcpTools() []mcpTool {
 			Annotations: mcpReadOnlyAnnotations("Propose Runtime Refresh"),
 		},
 	}
+	tools = append(tools, mcpAssessmentTools()...)
 	for _, definition := range mcpoperations.TaskToolDefinitions(mcpoperations.TaskToolLimits{Evidence: maxMCPEvidenceLimit, Assets: maxMCPAssetLimit, Actions: riskplan.MaxCandidateLimit, Findings: maxMCPRiskLimit, ResourceRoots: maxMCPRiskActionRoots, Graph: maxMCPRiskActionGraph}) {
 		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: mcpoperations.TaskOutputSchema(), Annotations: mcpReadOnlyAnnotations(definition.Title)})
 	}
@@ -2847,6 +2879,16 @@ func mcpReadOnlyAnnotations(title string) map[string]any {
 		"destructiveHint": false,
 		"idempotentHint":  true,
 		"openWorldHint":   true,
+	}
+}
+
+func mcpWriteAnnotations(title string, idempotent bool) map[string]any {
+	return map[string]any{
+		"title":           title,
+		"readOnlyHint":    false,
+		"destructiveHint": false,
+		"idempotentHint":  idempotent,
+		"openWorldHint":   false,
 	}
 }
 
