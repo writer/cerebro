@@ -1,0 +1,88 @@
+version: "2026-07-14"
+catalog_version: "2026-05-21"
+exclusions:
+  - finding_id: contract-billing-mismatch
+    reason: The finding targets contract-to-billing reconciliation. No named compliance profile currently selects the internal financial control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: hubspot-excessive-discount
+    reason: The finding targets sales discount authorization. No named compliance profile currently selects the internal revenue or financial control families, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: hubspot-no-next-step
+    reason: The finding targets sales pipeline execution. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: hubspot-stale-deal
+    reason: The finding targets sales pipeline freshness and forecasting. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-bottleneck-critical
+    reason: The finding targets organizational dependency concentration. No named compliance profile currently selects the internal organizational resilience control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-bus-factor-critical
+    reason: The finding targets single-person operational dependency. No named compliance profile currently selects the internal organizational resilience control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-customer-relationship-health-low
+    reason: The finding targets customer relationship concentration and health. No named compliance profile currently selects the internal organizational resilience or revenue operations control families, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-customer-topology-churn-risk
+    reason: The finding targets customer relationship topology and churn risk. No named compliance profile currently selects the internal organizational resilience or revenue operations control families, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-customer-touchpoints-low
+    reason: The finding targets customer contact coverage. No named compliance profile currently selects the internal organizational resilience control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-relationship-decay-customer
+    reason: The finding targets customer relationship decay. No named compliance profile currently selects the internal organizational resilience or revenue operations control families, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-silo-shared-dependency
+    reason: The finding targets coordination risk across teams that share dependencies. No named compliance profile currently selects the internal organizational resilience control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: org-tenure-risk
+    reason: The finding targets knowledge concentration and employee disengagement. No named compliance profile currently selects the internal organizational resilience control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: sf-close-date-slip
+    reason: The finding targets sales forecast changes. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: sf-stale-enterprise-opp
+    reason: The finding targets sales pipeline freshness and forecasting. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: stripe-large-refund
+    reason: The finding targets refund approval. No named compliance profile currently selects the internal financial control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: stripe-payment-failure-streak
+    reason: The finding targets customer payment collection. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
+  - finding_id: stripe-trial-no-payment-method
+    reason: The finding targets trial conversion and payment readiness. No named compliance profile currently selects the internal revenue operations control family, and no reviewed crosswalk supports an external profile link.
+    owner: compliance-mapping
+    review_state: reviewed
+    reviewed_at: "2026-07-14"
