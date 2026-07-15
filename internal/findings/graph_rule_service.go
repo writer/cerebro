@@ -64,7 +64,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	leaseCtx, releaseLease, trustedInput, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	leaseCtx, releaseLease, _, err := s.acquireFindingEvaluationLease(ctx, runtimeID, request.RuntimeLeaseHeld)
 	if err != nil {
 		return nil, err
 	}
@@ -82,12 +82,11 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if err != nil {
 		return nil, err
 	}
-	dependencyCtx, releaseDependencies, dependencyRuntimes, dependenciesTrusted, err := s.acquireGraphEvaluationDependencyLeases(ctx, runtime, candidates)
+	dependencyCtx, releaseDependencies, dependencyRuntimes, _, err := s.acquireGraphEvaluationDependencyLeases(ctx, runtime, candidates)
 	if err != nil {
 		return nil, err
 	}
 	ctx = dependencyCtx
-	trustedInput = trustedInput && dependenciesTrusted
 	defer func() {
 		if releaseErr := releaseDependencies(); releaseErr != nil {
 			err = errors.Join(err, releaseErr)
@@ -100,7 +99,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	}
 	var firstErr error
 	for _, rule := range candidates {
-		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, trustedInput, dependencyRuntimes)
+		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, dependencyRuntimes)
 		if evaluation != nil {
 			result.Evaluations = append(result.Evaluations, evaluation)
 		}
@@ -111,7 +110,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, trustedInput bool, dependencyRuntimes []*cerebrov1.SourceRuntime) (evaluation *GraphRuleEvaluationResult, err error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, dependencyRuntimes []*cerebrov1.SourceRuntime) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
 	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
@@ -162,9 +161,6 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		s.bindGraphEvaluationSourceSnapshots(ctx, run, runtime, rule, startedAt)
 	} else {
 		s.bindGraphEvaluationSourceSnapshotsFromRuntimes(ctx, run, runtime, rule, startedAt, dependencyRuntimes)
-	}
-	if s.requireTrustedResolution && !trustedInput {
-		run.SourceDependencyComplete = proto.Bool(false)
 	}
 	// Source-runtime and graph-ingest checkpoints do not yet fence every writer
 	// of the shared tenant graph. Finding lifecycle projection, connector

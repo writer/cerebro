@@ -181,7 +181,7 @@ func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsReques
 SELECT finding_evaluation_run_json::text
 FROM finding_evaluation_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY finished_at DESC, started_at DESC, id`
+ORDER BY finished_at DESC NULLS LAST, started_at DESC, id`
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

@@ -69,7 +69,7 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 		"rule_id = $2",
 		"status = $3",
 		"finished_at <= $4",
-		"ORDER BY finished_at DESC, started_at DESC, id",
+		"ORDER BY finished_at DESC NULLS LAST, started_at DESC, id",
 		"LIMIT $5",
 	} {
 		if !strings.Contains(query, fragment) {
