@@ -2,6 +2,8 @@ package complianceassessment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
@@ -23,7 +26,13 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	log := &runLog{}
 	jobStore := newRunJobStore(now)
 	jobs := platformjobs.New(jobStore)
-	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1205)}
+	results := validResults(now, 1205)
+	for index := range results {
+		// Keep result identity order intentionally different from objective order.
+		// Replay hashing must use the runtime's canonical assessment identity.
+		results[index].ID = fmt.Sprintf("result-%04d", len(results)-index)
+	}
+	collector := &testCollector{manifest: completeManifest(now), results: results}
 	service := NewAssessmentService(store, log, jobs, collector)
 	service.now = func() time.Time { return now }
 	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
@@ -61,6 +70,49 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 		if index > 0 && chunk.PreviousDigest != chunks[index-1].Digest {
 			t.Fatalf("chunk %d previous digest mismatch", chunk.Sequence)
 		}
+	}
+	storedResults := make([]ObjectiveResult, 0, completed.ResultCount)
+	storedHash := sha256.New()
+	for _, chunk := range chunks {
+		storedResults = append(storedResults, chunk.Results...)
+		payload, encodeErr := canonicalBytes(chunk.Results)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		_, _ = storedHash.Write(payload)
+	}
+	chunkDigest := "sha256:" + hex.EncodeToString(storedHash.Sum(nil))
+	if chunkDigest == completed.AutomatedResultHash {
+		t.Fatalf("AutomatedResultHash = concatenated chunk digest %q, want one canonical result-set digest", chunkDigest)
+	}
+	canonicalResults, err := canonicalResultSet(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalPayload, err := canonicalBytes(canonicalResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wholeSetDigest := digestBytes(canonicalPayload)
+	if completed.AutomatedResultHash != wholeSetDigest {
+		t.Fatalf("AutomatedResultHash = %q, want whole result-set digest %q", completed.AutomatedResultHash, wholeSetDigest)
+	}
+	storedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedDigest != completed.AutomatedResultHash {
+		t.Fatalf("stored result digest = %q, want %q", storedDigest, completed.AutomatedResultHash)
+	}
+	for left, right := 0, len(storedResults)-1; left < right; left, right = left+1, right-1 {
+		storedResults[left], storedResults[right] = storedResults[right], storedResults[left]
+	}
+	permutedDigest, err := CanonicalResultSetDigest(storedResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permutedDigest != completed.AutomatedResultHash {
+		t.Fatalf("permuted result digest = %q, want %q", permutedDigest, completed.AutomatedResultHash)
 	}
 }
 
@@ -110,6 +162,263 @@ func TestIncompleteManifestFailsWithoutTerminalResult(t *testing.T) {
 	}
 	if failed.State != RunFailed || failed.FailureCode != "collection_incomplete" || failed.AutomatedResultHash != "" {
 		t.Fatalf("failed run = %#v", failed)
+	}
+}
+
+func TestAssessmentRejectsManifestForAnotherRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1), skipBinding: true}
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "mismatched-manifest", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jobs.Wait(context.Background())
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != RunFailed || failed.FailureCode != "collection_mismatch" {
+		t.Fatalf("failed run = %#v, want collection_mismatch", failed)
+	}
+}
+
+func TestAssessmentRejectsPartialObjectiveSet(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	planInput := validPlan(now)
+	planInput.Scope.ObjectiveIDs = []string{"objective-0000", "objective-0001"}
+	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector.plan = plan
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "partial-objectives", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jobs.Wait(context.Background())
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != RunFailed || failed.FailureCode != "result_scope_mismatch" {
+		t.Fatalf("failed run = %#v, want result_scope_mismatch", failed)
+	}
+}
+
+func TestAssessmentCompletionRetriesAppendWithoutRecollecting(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: 1}
+	jobs := platformjobs.New(newRunJobStore(now))
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "retry-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var completed AssessmentRun
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		completed, err = store.GetRun(context.Background(), run.TenantID, run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if completed.State == RunComplete {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run state = %q, want complete", completed.State)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != RunComplete || collector.calls.Load() != 1 || log.remainingFailures != 0 {
+		t.Fatalf("completed run = %#v, collector calls = %d, remaining failures = %d", completed, collector.calls.Load(), log.remainingFailures)
+	}
+}
+
+func TestInterruptedAssessmentRequeuesThenCompletes(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "interrupted-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedJob := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
+	if failedJob.FailureClass != platformjobs.JobFailureRetryable || failedJob.Attempt != 1 {
+		t.Fatalf("failed job = %#v, want retryable attempt 1", failedJob)
+	}
+	interrupted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || interrupted.State != RunEvaluating {
+		t.Fatalf("interrupted run = (%#v, %v), want evaluating", interrupted, err)
+	}
+
+	reconciled, err := service.ReconcileInterruptedRuns(context.Background(), 10)
+	if err != nil || reconciled != 1 {
+		t.Fatalf("ReconcileInterruptedRuns() = (%d, %v), want (1, nil)", reconciled, err)
+	}
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted)
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete || completed.ResultCount != 1 {
+		t.Fatalf("completed run = (%#v, %v)", completed, err)
+	}
+	if collector.calls.Load() != 2 {
+		t.Fatalf("collector calls = %d, want one initial attempt and one deterministic resume", collector.calls.Load())
+	}
+}
+
+func TestInterruptedAssessmentRecoveryLoopRequeuesWithoutRestart(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "continuous-recovery", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
+
+	recoveryCtx, cancelRecovery := context.WithCancel(context.Background())
+	recoveryDone := service.StartInterruptedRunRecovery(recoveryCtx, 5*time.Millisecond, nil)
+	waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusCompleted)
+	cancelRecovery()
+	select {
+	case <-recoveryDone:
+	case <-time.After(time.Second):
+		t.Fatal("interrupted assessment recovery did not stop")
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete {
+		t.Fatalf("completed run = (%#v, %v)", completed, err)
+	}
+}
+
+func TestInterruptedAssessmentExhaustionBecomesTerminal(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &runLog{failKind: workflowevents.EventKindComplianceAssessmentCompleted, remainingFailures: maxAssessmentAppendAttempts * maxAssessmentJobAttempts}
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	collector := &testCollector{manifest: completeManifest(now), results: validResults(now, 1)}
+	service := NewAssessmentService(store, log, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+
+	run, _, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "exhausted-completion", RequestedBy: "assessor-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := uint32(1); attempt <= maxAssessmentJobAttempts; attempt++ {
+		job := waitForRunJobStatus(t, jobStore, run.JobID, ports.JobStatusFailed)
+		if job.Attempt != attempt || job.FailureClass != platformjobs.JobFailureRetryable {
+			t.Fatalf("failed job = %#v, want retryable attempt %d", job, attempt)
+		}
+		if attempt < maxAssessmentJobAttempts {
+			reconciled, reconcileErr := service.ReconcileInterruptedRuns(context.Background(), 10)
+			if reconcileErr != nil || reconciled != 1 {
+				t.Fatalf("retry reconciliation %d = (%d, %v)", attempt, reconciled, reconcileErr)
+			}
+		}
+	}
+	log.mu.Lock()
+	log.remainingFailures = 0
+	log.mu.Unlock()
+	reconciled, err := service.ReconcileInterruptedRuns(context.Background(), 10)
+	if err != nil || reconciled != 1 {
+		t.Fatalf("terminal reconciliation = (%d, %v), want (1, nil)", reconciled, err)
+	}
+	failed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || failed.State != RunFailed || failed.FailureCode != "execution_retry_exhausted" {
+		t.Fatalf("failed run = (%#v, %v)", failed, err)
+	}
+	if collector.calls.Load() != int32(maxAssessmentJobAttempts) {
+		t.Fatalf("collector calls = %d, want %d", collector.calls.Load(), maxAssessmentJobAttempts)
+	}
+}
+
+func waitForRunJobStatus(t *testing.T, store *runJobStore, jobID, status string) *ports.Job {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		job, err := store.GetJob(context.Background(), jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Status == status {
+			return job
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job %q status = %q, want %q", jobID, job.Status, status)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -174,6 +483,39 @@ func TestAssessmentRecoveryPreservesTerminalRunJobState(t *testing.T) {
 				t.Fatalf("terminal run = (%#v, %v), want unchanged %q", persisted, err, test.runState)
 			}
 		})
+	}
+}
+
+func TestAssessmentCollectorUnavailablePersistsFailureAfterCancellation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 14, 16, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	log := &liveContextRunLog{}
+	service := NewAssessmentService(store, log, nil, nil)
+	service.now = func() time.Time { return now }
+	plan := recordPublishedPlan(t, service, now)
+	run := AssessmentRun{
+		ID: "run-1", TenantID: plan.TenantID, ProgramID: plan.Scope.ProgramID,
+		ScopeRevisionID: plan.Scope.ScopeRevisionID, PlanRevisionID: plan.RevisionID,
+		State: RunQueued, Version: 1, RequestedBy: "assessor-1",
+	}
+	store.runs[runKey(run.TenantID, run.ID)] = run
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := service.Runner()(ctx, &ports.Job{
+		TenantID: run.TenantID,
+		Payload:  map[string]any{"run_id": run.ID},
+	}, nil)
+	if err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("Runner() error = %v, want persisted collector_unavailable failure", err)
+	}
+	persisted, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != RunFailed || persisted.FailureCode != "collector_unavailable" || persisted.Version != run.Version+1 {
+		t.Fatalf("persisted run = %#v, want terminal collector_unavailable failure", persisted)
 	}
 }
 
@@ -274,13 +616,23 @@ func TestReconcileUnboundRunStartsExistingQueuedJob(t *testing.T) {
 
 func recordPublishedPlan(t *testing.T, service *Service, now time.Time) AssessmentPlanRevision {
 	t.Helper()
-	plan, err := service.RecordPlan(context.Background(), validPlan(now), "owner-1", 0)
+	planInput := validPlan(now)
+	if collector, ok := service.collector.(*testCollector); ok && len(collector.results) != 0 {
+		planInput.Scope.ObjectiveIDs = make([]string, 0, len(collector.results))
+		for _, result := range collector.results {
+			planInput.Scope.ObjectiveIDs = append(planInput.Scope.ObjectiveIDs, result.ObjectiveID)
+		}
+	}
+	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
 	if err != nil {
 		t.Fatalf("RecordPlan() error = %v", err)
 	}
 	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
 	if err != nil {
 		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	if collector, ok := service.collector.(*testCollector); ok {
+		collector.plan = plan
 	}
 	return plan
 }
@@ -323,21 +675,52 @@ func validResults(now time.Time, count int) []ObjectiveResult {
 }
 
 type testCollector struct {
-	manifest InputManifest
-	results  []ObjectiveResult
-	err      error
-	calls    atomic.Int32
+	manifest    InputManifest
+	results     []ObjectiveResult
+	err         error
+	calls       atomic.Int32
+	plan        AssessmentPlanRevision
+	skipBinding bool
 }
 
-func (c *testCollector) Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error) {
+func (c *testCollector) Collect(_ context.Context, run AssessmentRun) (InputManifest, []ObjectiveResult, error) {
 	c.calls.Add(1)
-	return c.manifest, append([]ObjectiveResult(nil), c.results...), c.err
+	manifest := c.manifest
+	if !c.skipBinding && c.plan.RevisionID != "" {
+		manifest.ProgramID = run.ProgramID
+		manifest.ScopeRevisionID = run.ScopeRevisionID
+		manifest.PlanRevisionID = run.PlanRevisionID
+		manifest.PeriodStart = run.PeriodStart
+		manifest.PeriodEnd = run.PeriodEnd
+		scopeDigest, _ := semanticHash(c.plan.Scope)
+		objectiveDigest, _ := semanticHash(c.plan.Scope.ObjectiveIDs)
+		manifest.RequestedScopeDigest = scopeDigest
+		manifest.ResolvedObjectiveSetDigest = objectiveDigest
+		manifest.Revisions = []ManifestRevision{{
+			Kind: "plan", ID: c.plan.ID, RevisionID: c.plan.RevisionID,
+			Version: c.plan.Version, Digest: c.plan.ContentDigest,
+		}}
+	}
+	return manifest, append([]ObjectiveResult(nil), c.results...), c.err
 }
 
 type runLog struct {
-	mu     sync.Mutex
-	events []*cerebrov1.EventEnvelope
-	err    error
+	mu                sync.Mutex
+	events            []*cerebrov1.EventEnvelope
+	err               error
+	failKind          string
+	remainingFailures int
+}
+
+type liveContextRunLog struct {
+	runLog
+}
+
+func (l *liveContextRunLog) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return l.runLog.Append(ctx, event)
 }
 
 func (l *runLog) Ping(context.Context) error { return nil }
@@ -346,6 +729,10 @@ func (l *runLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error
 	defer l.mu.Unlock()
 	if l.err != nil {
 		return l.err
+	}
+	if event.GetKind() == l.failKind && l.remainingFailures > 0 {
+		l.remainingFailures--
+		return errors.New("append unavailable")
 	}
 	l.events = append(l.events, event)
 	return nil
@@ -470,6 +857,31 @@ func (s *runStore) ListResultChunks(_ context.Context, tenantID, runID string) (
 		result = append(result, chunk)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Sequence < result[j].Sequence })
+	return result, nil
+}
+
+func (s *runStore) ListNonterminalRuns(_ context.Context, limit uint32) ([]AssessmentRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit == 0 {
+		limit = 100
+	}
+	result := make([]AssessmentRun, 0, limit)
+	for _, run := range s.runs {
+		if run.State != RunQueued && run.State != RunCollecting && run.State != RunEvaluating {
+			continue
+		}
+		result = append(result, run)
+		if len(result) == cap(result) {
+			break
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].RequestedAt.Equal(result[j].RequestedAt) {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].RequestedAt.Before(result[j].RequestedAt)
+	})
 	return result, nil
 }
 

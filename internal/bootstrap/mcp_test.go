@@ -240,6 +240,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.health",
 		"cerebro.version",
 		"cerebro.sources.list",
+		"cerebro.connectors.list",
 		"cerebro.sources.check",
 		"cerebro.sources.discover",
 		"cerebro.sources.read",
@@ -310,6 +311,32 @@ func TestMCPSourceToolsUseStatelessSourceService(t *testing.T) {
 	}
 	if metadata := listed["metadata"].(map[string]any); metadata["source_preview"] != true {
 		t.Fatalf("sources.list metadata = %#v, want source_preview=true", metadata)
+	}
+	connectorsResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0", "id": 11, "method": "tools/call",
+		"params": map[string]any{"name": "cerebro.connectors.list", "arguments": map[string]any{"min_certification_tier": "contract_tested", "include_preview": true}},
+	})
+	if connectorsResp["error"] != nil {
+		t.Fatalf("connectors.list error = %#v", connectorsResp["error"])
+	}
+	connectorContent := connectorsResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	foundGitHub := false
+	for _, item := range connectorContent["connectors"].([]any) {
+		connector := item.(map[string]any)
+		availability := connector["availability"].(map[string]any)
+		if availability["discoverable"] != true {
+			t.Fatalf("connectors.list availability = %#v", availability)
+		}
+		if connector["source_id"] == "github" {
+			foundGitHub = true
+			certification := connector["certification"].(map[string]any)
+			if certification["effective_tier"] == "" || availability["state"] == "" {
+				t.Fatalf("github connector state = %#v", connector)
+			}
+		}
+	}
+	if !foundGitHub {
+		t.Fatal("connectors.list missing github")
 	}
 
 	config := map[string]any{"tenant_id": "writer", "owner": "writer", "repo": "cerebro"}
@@ -509,6 +536,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.health":                          {Markers: []string{"GET /health"}},
 	"cerebro.version":                         {Markers: []string{"GetVersion"}},
 	"cerebro.sources.list":                    {Markers: []string{"GET /sources"}},
+	"cerebro.connectors.list":                 {Markers: []string{"GET /connectors"}},
 	"cerebro.sources.check":                   {Markers: []string{"GET /sources/{sourceID}/check"}},
 	"cerebro.sources.discover":                {Markers: []string{"GET /sources/{sourceID}/discover"}},
 	"cerebro.sources.read":                    {Markers: []string{"GET /sources/{sourceID}/read"}},
@@ -1130,13 +1158,14 @@ func TestMCPFindingsGet(t *testing.T) {
 	store := &stubRuntimeStore{
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
-				ID:        "finding-1",
-				RuntimeID: "writer-okta",
-				TenantID:  "writer",
-				RuleID:    "rule-1",
-				Title:     "Finding One",
-				Severity:  "critical",
-				Status:    "open",
+				ID:           "finding-1",
+				RuntimeID:    "writer-okta",
+				TenantID:     "writer",
+				RuleID:       "rule-1",
+				Title:        "Finding One",
+				Severity:     "critical",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:identity:user-1"},
 				FindingRisk: ports.FindingRisk{
 					RiskScore:       94,
 					LikelihoodScore: 87,
@@ -1164,9 +1193,21 @@ func TestMCPFindingsGet(t *testing.T) {
 	if response["error"] != nil {
 		t.Fatalf("tools/call error = %#v", response["error"])
 	}
-	finding := response["result"].(map[string]any)["structuredContent"].(map[string]any)["finding"].(map[string]any)
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	finding := content["finding"].(map[string]any)
 	if finding["id"] != "finding-1" || finding["risk_score"] != float64(94) {
 		t.Fatalf("finding response = %#v", finding)
+	}
+	links := content["links"].([]any)
+	if len(links) != 5 {
+		t.Fatalf("len(links) = %d, want 5", len(links))
+	}
+	for _, rawLink := range links {
+		link := rawLink.(map[string]any)
+		target := link["target"].(map[string]any)
+		if apiPath, _ := target["api_path"].(string); strings.HasPrefix(apiPath, "http://") || strings.HasPrefix(apiPath, "https://") {
+			t.Fatalf("link api_path is absolute: %q", apiPath)
+		}
 	}
 }
 

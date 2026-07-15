@@ -25,6 +25,26 @@ message EntityRef {
   string label = 3;
 }
 
+// ResourceRef identifies one current or immutable Cerebro resource without
+// carrying authorization or relying on request-host-derived URLs.
+message ResourceRef {
+  string kind = 1;
+  string id = 2;
+  string revision = 3;
+  string api_path = 4;
+  string mcp_uri = 5;
+  string state = 6;
+}
+
+// ResourceLink connects an authorized resource to one independently
+// authorized target.
+message ResourceLink {
+  string rel = 1;
+  ResourceRef target = 2;
+  string authority = 3;
+  string completeness = 4;
+}
+
 // Claim is a generic source-attributed assertion over one subject.
 message Claim {
   string id = 1;
