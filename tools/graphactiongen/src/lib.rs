@@ -558,22 +558,22 @@ fn read_bounded_file(path: &Path) -> Result<Vec<u8>> {
         path: path.to_path_buf(),
         source,
     })?;
-    read_limited(file, "file")
+    read_limited(file, "file", path)
 }
 
 pub fn read_generated_file(path: &Path) -> Result<Vec<u8>> {
     reject_symlink(path)?;
     let file = open_no_follow(path)?;
-    read_limited(file, "generated graph action file")
+    read_limited(file, "generated graph action file", path)
 }
 
-fn read_limited(file: File, label: &'static str) -> Result<Vec<u8>> {
+fn read_limited(file: File, label: &'static str, path: &Path) -> Result<Vec<u8>> {
     let mut content = Vec::new();
     file.take((MAX_GENERATED_FILE_BYTES + 1) as u64)
         .read_to_end(&mut content)
         .map_err(|source| Error::Io {
             operation: "read",
-            path: PathBuf::from(label),
+            path: path.to_path_buf(),
             source,
         })?;
     if content.len() > MAX_GENERATED_FILE_BYTES {
@@ -886,6 +886,22 @@ mod tests {
         fs::write(&path, vec![b'x'; MAX_GENERATED_FILE_BYTES + 1]).unwrap();
         let error = generate(&root.0, Path::new(DEFAULT_CATALOG_PATH)).unwrap_err();
         assert!(error.to_string().contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn bounded_read_error_preserves_the_actual_path() {
+        let root = TestDir::new();
+        let expected = root.0.join("write-only");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&expected)
+            .unwrap();
+        let error = read_limited(file, "test file", &expected).unwrap_err();
+        match error {
+            Error::Io { path, .. } => assert_eq!(path, expected),
+            other => panic!("expected an I/O error, got {other}"),
+        }
     }
 
     #[test]
