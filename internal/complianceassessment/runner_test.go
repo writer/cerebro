@@ -614,6 +614,43 @@ func TestReconcileUnboundRunStartsExistingQueuedJob(t *testing.T) {
 	}
 }
 
+func TestAssessmentRunIdempotentRetryBindsExistingQueuedRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: completeManifest(now), results: validResults(now, 1)})
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	request := RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "retry-binds-existing-run", RequestedBy: "assessor-1",
+	}
+
+	store.applyRunVersion = 2
+	store.applyRunErr = errors.New("run projection unavailable")
+	first, _, err := service.RequestRun(context.Background(), request)
+	if err == nil || first.ID == "" || first.JobID == "" {
+		t.Fatalf("first RequestRun() = (%#v, %v), want run and binding projection error", first, err)
+	}
+	store.applyRunErr = nil
+
+	retried, created, err := service.RequestRun(context.Background(), request)
+	if err != nil || created || retried.ID != first.ID || retried.JobID != first.JobID {
+		t.Fatalf("retry RequestRun() = (%#v, %v, %v), want existing run bound to %q", retried, created, err, first.JobID)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), retried.TenantID, retried.ID)
+	if err != nil || completed.State != RunComplete {
+		t.Fatalf("completed run = (%#v, %v), want complete", completed, err)
+	}
+}
+
 func recordPublishedPlan(t *testing.T, service *Service, now time.Time) AssessmentPlanRevision {
 	t.Helper()
 	planInput := validPlan(now)
@@ -627,9 +664,14 @@ func recordPublishedPlan(t *testing.T, service *Service, now time.Time) Assessme
 	if err != nil {
 		t.Fatalf("RecordPlan() error = %v", err)
 	}
+	draftRevisionID := plan.RevisionID
+	draftDigest := plan.ContentDigest
 	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
 	if err != nil {
 		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	if plan.RevisionID == draftRevisionID || plan.PredecessorID != draftRevisionID || plan.ContentDigest == draftDigest {
+		t.Fatalf("published plan revision = %#v, want a new digest-bound revision after %q", plan, draftRevisionID)
 	}
 	if collector, ok := service.collector.(*testCollector); ok {
 		collector.plan = plan
