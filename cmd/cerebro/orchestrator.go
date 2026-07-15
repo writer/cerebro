@@ -683,48 +683,45 @@ func runOrchestratorIteration(
 				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_checkpoint_current", checkpointStatus.CheckpointCurrent)
 				if checkpointStatus.CheckpointCurrent {
 					runtimeResult.DownstreamSkipReason = downstreamSkipReason
-					runtimeResult.GraphIngest = "skipped"
 					runtimeResult.FindingRules = "skipped"
 					runtimeResult.GraphRules = "skipped"
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "downstream_skip_reason", downstreamSkipReason)
-					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_skip_reason", downstreamSkipReason)
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", downstreamSkipReason)
 					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", downstreamSkipReason)
-					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_ingest", downstreamSkipReason)
 					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.finding_rules", downstreamSkipReason)
 					recordOrchestratorPhaseSkip(runtimeCtx, runtime, "orchestrator.graph_rules", downstreamSkipReason)
-					runtimeResult.Health = withOrchestratorFreshGraphHealth(runtimeResult.Health)
 				}
 			}
 		}
 
-		if runtimeResult.DownstreamSkipReason == "" {
-			graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
-			resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
-			resetCompletedGraphCheckpoint := runtimeResult.EventsAppended > 0
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
-			graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, options.GraphTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
-				return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
-					RuntimeID:                runtime.GetId(),
-					PageLimit:                graphPageLimit,
-					ResetCheckpoint:          resetGraphCheckpoint,
-					ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
-					Trigger:                  "orchestrator",
-					RuntimeLeaseHeld:         true,
-				})
+		graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
+		resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
+		resetCompletedGraphCheckpoint := runtimeResult.EventsAppended > 0
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
+		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, options.GraphTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
+			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
+				RuntimeID:                runtime.GetId(),
+				PageLimit:                graphPageLimit,
+				ResetCheckpoint:          resetGraphCheckpoint,
+				ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
+				Trigger:                  "orchestrator",
+				RuntimeLeaseHeld:         true,
 			})
-			runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
-			if err != nil {
-				runtimeResult.GraphIngest = "failed"
-				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
-				runErr = err
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error_kind", telemetry.ErrorKind(err))
-			} else {
-				runtimeResult.GraphIngest = "completed"
-			}
-			runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
+		})
+		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
+		if err != nil {
+			runtimeResult.GraphIngest = "failed"
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
+			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error_kind", telemetry.ErrorKind(err))
+		} else {
+			runtimeResult.GraphIngest = "completed"
+		}
+		runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
+
+		if runtimeResult.DownstreamSkipReason == "" {
 			findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
 				return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit, RuntimeLeaseHeld: true})
 			})
@@ -1098,13 +1095,6 @@ func withOrchestratorGraphHealth(record sourcehealth.Record, graphResult *graphi
 	}
 	record.LatestGraphRun = &sourcehealth.GraphRun{Status: status}
 	record.GraphLagSeconds = orchestratorGraphRunLagSeconds(now, graphResult.Run.StartedAt, graphResult.Run.FinishedAt)
-	return record
-}
-
-func withOrchestratorFreshGraphHealth(record sourcehealth.Record) sourcehealth.Record {
-	lag := int64(0)
-	record.LatestGraphRun = &sourcehealth.GraphRun{Status: "fresh"}
-	record.GraphLagSeconds = &lag
 	return record
 }
 
