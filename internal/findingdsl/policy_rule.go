@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -328,11 +329,23 @@ func LoadPolicyRuleFile(root string, path string) (PolicyFindingRule, []Issue, e
 	if err != nil {
 		return PolicyFindingRule{}, nil, fmt.Errorf("read %s: %w", rel, err)
 	}
+	return ParsePolicyRuleYAML(rel, content)
+}
+
+// ParsePolicyRuleYAML parses one strict declarative policy document from verified bytes.
+func ParsePolicyRuleYAML(rel string, content []byte) (PolicyFindingRule, []Issue, error) {
+	rel = filepath.ToSlash(strings.TrimSpace(rel))
+	if rel == "" {
+		rel = "policies/external/policy.yaml"
+	}
 	var rule PolicyFindingRule
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
 	if parseErr := decoder.Decode(&rule); parseErr != nil {
 		return policyRuleIssue(rel, "invalid PolicyFindingRule YAML: "+parseErr.Error())
+	}
+	if parseErr := decoder.Decode(&struct{}{}); !errors.Is(parseErr, io.EOF) {
+		return policyRuleIssue(rel, "PolicyFindingRule YAML must contain one document")
 	}
 	rule.RelPath = rel
 	rule.Domain = PolicyDomain(rel)

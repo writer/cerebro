@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/appendlogindex"
+	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
@@ -63,6 +64,49 @@ func (a *App) newJobService() *platformjobs.Service {
 	return service
 }
 
+// RecoverPlatformJobs resumes queued work and jobs whose worker lease expired.
+// Claiming is owner-checked, so every server replica may call this at startup.
+func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
+	recovered := 0
+	if a != nil && a.services.assessments != nil {
+		if _, err := a.services.assessments.RecoverProjections(ctx, 0); err != nil {
+			return 0, fmt.Errorf("recover assessment projections: %w", err)
+		}
+		bound, err := a.services.assessments.ReconcileUnboundRuns(ctx, 0)
+		if err != nil {
+			return 0, fmt.Errorf("reconcile assessment runs: %w", err)
+		}
+		recovered += bound
+		interrupted, err := a.services.assessments.ReconcileInterruptedRuns(ctx, 0)
+		if err != nil {
+			return 0, fmt.Errorf("reconcile interrupted assessment runs: %w", err)
+		}
+		recovered += interrupted
+	}
+	if _, ok := a.deps.StateStore.(ports.JobLeaseStore); !ok {
+		return recovered, nil
+	}
+	jobs, err := a.jobService().Recover(ctx, 0)
+	return recovered + jobs, err
+}
+
+// StartPlatformJobRecovery continuously makes expired leases runnable. The
+// returned channel closes after cancellation and is included in shutdown waits.
+func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
+	jobsDone := a.jobService().StartRecovery(ctx, logf)
+	if a == nil || a.services.assessments == nil {
+		return jobsDone
+	}
+	assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-jobsDone
+		<-assessmentsDone
+	}()
+	return done
+}
+
 func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var request createJobHTTPRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes)).Decode(&request); err != nil {
@@ -81,6 +125,10 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.TenantID = tenantID
+	if err := normalizeAssessmentJobRequest(&request); err != nil {
+		writeJobError(w, err)
+		return
+	}
 	tenantID, err = authorizeJobCreate(r.Context(), a.deps.StateStore, request)
 	if err != nil {
 		writeJobError(w, err)
@@ -107,6 +155,32 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	writeJSON(w, status, jobResponse{Job: job})
+}
+
+func normalizeAssessmentJobRequest(request *createJobHTTPRequest) error {
+	if request == nil || strings.TrimSpace(request.Kind) != complianceassessment.JobKindComplianceAssessment {
+		return nil
+	}
+	runID := stringPayload(request.Payload, "run_id", request.SubjectID)
+	if runID == "" {
+		return fmt.Errorf("%w: assessment run_id is required", platformjobs.ErrInvalidRequest)
+	}
+	if subjectType := strings.TrimSpace(request.SubjectType); subjectType != "" && subjectType != "assessment_run" {
+		return fmt.Errorf("%w: assessment subject_type must be assessment_run", platformjobs.ErrInvalidRequest)
+	}
+	if subjectID := strings.TrimSpace(request.SubjectID); subjectID != "" && subjectID != runID {
+		return fmt.Errorf("%w: assessment subject_id must match run_id", platformjobs.ErrInvalidRequest)
+	}
+	expectedKey := "assessment-run:" + runID
+	if request.IdempotencyKey != "" && request.IdempotencyKey != expectedKey {
+		return fmt.Errorf("%w: assessment idempotency_key must match run_id", platformjobs.ErrInvalidRequest)
+	}
+	request.SubjectType = "assessment_run"
+	request.SubjectID = runID
+	request.IdempotencyKey = expectedKey
+	request.Payload["run_id"] = runID
+	request.Payload["tenant_id"] = request.TenantID
+	return nil
 }
 
 func (a *App) handleListJobs(w http.ResponseWriter, r *http.Request) {
@@ -404,6 +478,20 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 			return "", err
 		}
 		return firstNonEmpty(request.TenantID, reportTenantID), nil
+	case complianceassessment.JobKindComplianceAssessment:
+		runID := stringPayload(request.Payload, "run_id", request.SubjectID)
+		store := assessmentStore(store)
+		if store == nil {
+			return "", platformjobs.ErrRuntimeUnavailable
+		}
+		run, err := store.GetRun(ctx, request.TenantID, runID)
+		if err != nil {
+			return "", err
+		}
+		if err := requireMatchingJobTenant(request.TenantID, run.TenantID); err != nil {
+			return "", err
+		}
+		return firstNonEmpty(request.TenantID, run.TenantID), nil
 	case platformjobs.KindAppendLogRuntimeIndex:
 		if err := authorizeJobAdmin(ctx); err != nil {
 			return "", err
@@ -430,6 +518,8 @@ func writeJobError(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, ports.ErrJobNotFound):
 		status = http.StatusNotFound
+	case errors.Is(err, ports.ErrJobIdempotencyConflict), errors.Is(err, ports.ErrJobUpdateConflict), errors.Is(err, ports.ErrJobLeaseConflict):
+		status = http.StatusConflict
 	case errors.Is(err, platformjobs.ErrRuntimeUnavailable):
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, errTenantForbidden):

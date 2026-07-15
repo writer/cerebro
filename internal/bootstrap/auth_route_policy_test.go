@@ -300,6 +300,23 @@ func TestMetricsHTTPRouteRequiresAdminOnly(t *testing.T) {
 	}
 }
 
+func TestDeadLetterForcePurgeHTTPRouteRequiresAdminOnly(t *testing.T) {
+	path := "/platform/append-log/dead-letters/apdl-1/force-purge"
+	policy := httpRoutePolicyFor(http.MethodPost, path)
+	if policy.Scope != "" || !policy.AdminOnly {
+		t.Fatalf("POST %s policy = %#v, want admin-only", path, policy)
+	}
+	request := httptest.NewRequest(http.MethodPost, path, nil)
+	reader := authContext{principal: authPrincipal{Roles: []string{roleCerebroViewer}}}
+	if err := authorizeHTTPRequestScope(reader, request); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("reader authorization error = %v, want scope forbidden", err)
+	}
+	admin := authContext{principal: authPrincipal{Roles: []string{roleCerebroAdmin}}}
+	if err := authorizeHTTPRequestScope(admin, request); err != nil {
+		t.Fatalf("admin authorization error = %v", err)
+	}
+}
+
 func TestRBACRolesAuthorizeRouteScopes(t *testing.T) {
 	viewer := authPrincipal{Roles: []string{roleCerebroViewer}}
 	if err := authorizePrincipalHTTPPolicy(viewer, httpRoutePolicyFor(http.MethodGet, "/sources")); err != nil {

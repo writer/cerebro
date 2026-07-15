@@ -72,32 +72,61 @@ func TestDockerfileCanBuildCurrentBootstrapBinary(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
+func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	root := repoRoot(t)
+	makefileBody, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	makefileText := string(makefileBody)
+	if strings.Contains(strings.ToLower(makefileText), "goreleaser") {
+		t.Fatal("release-smoke must not validate unused GoReleaser configuration")
+	}
+	if !strings.Contains(makefileText, "release-smoke: release-train-test ## Validate release-train configuration.") {
+		t.Fatal("release-smoke must keep the release-train contract validation dependency")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".goreleaser.yaml")); err == nil {
+		t.Fatal("retired GoReleaser configuration must not remain in the repository")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat retired GoReleaser configuration: %v", err)
+	}
+	codeownersBody, err := os.ReadFile(filepath.Join(root, ".github", "CODEOWNERS"))
+	if err != nil {
+		t.Fatalf("read CODEOWNERS: %v", err)
+	}
+	if strings.Contains(strings.ToLower(string(codeownersBody)), "goreleaser") {
+		t.Fatal("CODEOWNERS must not retain ownership for retired GoReleaser configuration")
+	}
 	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)
 	}
 	release := string(releaseBody)
 	for _, marker := range []string{
-		"command: make sdk-test",
-		"command: make proto-lint proto-generate-check proto-breaking",
-		"command: make docker-smoke",
-		"is_stable_release:",
-		`if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`,
-		"Skipping latest tag for prerelease",
+		"environment: stable-release",
+		"candidate_run_id:",
+		"smoke_receipt_url:",
+		"scripts/release/validate_release_notes.sh",
+		"cosign verify",
+		`docker buildx imagetools create -t "${image_base}:${RELEASE_TAG}"`,
+		`docker buildx imagetools create -t "${image_base}:latest"`,
 		"target_environment: sec-dev",
 		"apply_mode: direct_push",
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
+		"name: Check Infisical bootstrap",
+		`echo "configured=false" >> "$GITHUB_OUTPUT"`,
+		"Dispatch stable deployment request",
+		"for target in sec-dev go-prod; do",
+		`cerebro-runtime-contract-${target}.json`,
 		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
-		`payload_keys="$(jq '.client_payload | length' <<<"${payload}")"`,
-		"GitHub allows at most 10",
-		`gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"`,
-		`target_environment: [sec-dev, go-prod]`,
-		`-env "${TARGET_ENVIRONMENT}"`,
-		"cerebro-runtime-contract-sec-dev.json",
-		"cerebro-runtime-contract-go-prod.json",
+		`test "$(jq '.client_payload | length' "${payload}")" -le 10`,
+		`gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"`,
+		`requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`,
+		"--workflow propose-image-tag.yml",
+		"--event repository_dispatch",
+		"deadline=$((SECONDS + 120))",
+		"no matching propose-image-tag.yml run appeared",
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
@@ -115,20 +144,82 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 			t.Fatalf("release dispatch payload contains stale contract marker %q", stale)
 		}
 	}
+	verifyIndex := strings.Index(release, "  verify-candidate:")
+	promoteIndex := strings.Index(release, "  promote:")
+	if verifyIndex == -1 || promoteIndex == -1 || verifyIndex >= promoteIndex {
+		t.Fatal("release workflow must define verify-candidate before promote")
+	}
+	verifyCandidate := release[verifyIndex:promoteIndex]
+	for _, marker := range []string{
+		"fetch-depth: 0",
+		"actions/setup-go@",
+		"go-version-file: go.mod",
+		`actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100`,
+		`^cerebro-candidate-[0-9a-f]{40}$`,
+		`sha="${artifact_name#cerebro-candidate-}"`,
+	} {
+		if !strings.Contains(verifyCandidate, marker) {
+			t.Fatalf("verify-candidate job missing required marker %q", marker)
+		}
+	}
+	if strings.Contains(verifyCandidate, "\n          sha=\"$(jq -r .head_sha") {
+		t.Fatal("verify-candidate must derive the candidate commit from the run artifact, not the branch head")
+	}
 	if strings.Contains(release, "-env sec-dev") {
 		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")
 	}
-	latestIndex := strings.Index(release, `docker buildx imagetools create -t "${IMAGE_BASE}:latest"`)
-	stableGuardIndex := strings.Index(release, `if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`)
-	if latestIndex == -1 || stableGuardIndex == -1 || stableGuardIndex > latestIndex {
-		t.Fatal("release workflow must guard latest image publication behind stable-release check")
-	}
-	dispatchIndex := strings.Index(release, "Dispatch release deployment request")
+	dispatchIndex := strings.Index(release, "Dispatch stable deployment request")
 	matrixIndex := strings.Index(release, "target_environment: sec-dev")
 	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
 		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
 	}
-
+	orgSecretsIndex := strings.Index(release, "name: Fetch organization release credentials")
+	repoSecretsIndex := strings.Index(release, "name: Fetch repository release credentials")
+	bootstrapIndex := strings.Index(release, "name: Check Infisical bootstrap")
+	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex || repoSecretsIndex > dispatchIndex {
+		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials and dispatching the release")
+	}
+	for name, section := range map[string]string{
+		"organization": release[orgSecretsIndex:repoSecretsIndex],
+		"repository":   release[repoSecretsIndex:dispatchIndex],
+	} {
+		if !strings.Contains(section, "if: steps.infisical.outputs.configured == 'true'") {
+			t.Fatalf("release workflow must guard %s secret fetch behind the bootstrap check", name)
+		}
+	}
+	candidateBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "cut-release.yml"))
+	if err != nil {
+		t.Fatalf("read candidate workflow: %v", err)
+	}
+	candidate := string(candidateBody)
+	for _, marker := range []string{
+		"name: Candidate Build",
+		"branches: [main]",
+		"Require successful CI for candidate commit",
+		"image_tag=candidate-${sha}",
+		"--provenance=mode=max --sbom=true --push",
+		"cosign sign --yes",
+		"cerebro.release-candidate/v1",
+		"bundle-checksums.txt",
+		"| head -n 1 || true",
+	} {
+		if !strings.Contains(candidate, marker) {
+			t.Fatalf("candidate workflow missing required marker %q", marker)
+		}
+	}
+	for _, forbidden := range []string{"git tag", "gh release create", `:${RELEASE_TAG}`, `:latest`} {
+		if strings.Contains(candidate, forbidden) {
+			t.Fatalf("candidate workflow contains stable publication marker %q", forbidden)
+		}
+	}
+	receiptIndex := strings.Index(candidate, "  receipt:\n")
+	if receiptIndex == -1 {
+		t.Fatal("candidate workflow must define the receipt job")
+	}
+	receipt := candidate[receiptIndex:]
+	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
+		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/mitre"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -24,17 +25,17 @@ const (
 	annotationEntityType  = "annotation"
 	ticketEntityType      = "ticket"
 	externalRefEntityType = "external_ref"
-	relationTargets       = "targets"
-	relationBasedOn       = "based_on"
-	relationExecutedBy    = "executed_by"
-	relationEvaluates     = "evaluates"
-	relationHasFinding    = "has_finding"
-	relationHasContext    = "has_context"
-	relationBelongsTo     = "belongs_to"
-	relationSupports      = "supports"
-	relationHasEvidence   = "has_evidence"
-	relationAnnotatedWith = "annotated_with"
-	relationTrackedBy     = "tracked_by"
+	relationTargets       = fabriccontract.RelationTargets
+	relationBasedOn       = fabriccontract.RelationBasedOn
+	relationExecutedBy    = fabriccontract.RelationExecutedBy
+	relationEvaluates     = fabriccontract.RelationEvaluates
+	relationHasFinding    = fabriccontract.RelationHasFinding
+	relationHasContext    = fabriccontract.RelationHasContext
+	relationBelongsTo     = fabriccontract.RelationBelongsTo
+	relationSupports      = fabriccontract.RelationSupports
+	relationHasEvidence   = fabriccontract.RelationHasEvidence
+	relationAnnotatedWith = fabriccontract.RelationAnnotatedWith
+	relationTrackedBy     = fabriccontract.RelationTrackedBy
 	graphEntityLabelLimit = 160
 )
 
