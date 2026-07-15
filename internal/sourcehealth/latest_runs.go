@@ -7,19 +7,24 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func LatestGraphIngestRuns(ctx context.Context, store graphingest.RunStore, runtimeIDs []string) (map[string]*graphstore.IngestRun, error) {
+const maxGraphRunStatusLimit = 500
+
+type GraphIngestRunStore interface {
+	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
+}
+
+func LatestGraphIngestRuns(ctx context.Context, store GraphIngestRunStore, runtimeIDs []string) (map[string]*graphstore.IngestRun, error) {
 	byRuntime := map[string]*graphstore.IngestRun{}
 	runtimeIDs = normalizeRuntimeIDs(runtimeIDs)
 	if len(runtimeIDs) == 0 {
 		return byRuntime, nil
 	}
-	for start := 0; start < len(runtimeIDs); start += graphingest.MaxStatusLimit {
-		end := min(start+graphingest.MaxStatusLimit, len(runtimeIDs))
+	for start := 0; start < len(runtimeIDs); start += maxGraphRunStatusLimit {
+		end := min(start+maxGraphRunStatusLimit, len(runtimeIDs))
 		batch := runtimeIDs[start:end]
 		runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeIDs: batch, Limit: len(batch), LatestByRuntime: true})
 		if err != nil {

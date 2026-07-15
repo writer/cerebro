@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -99,6 +100,7 @@ type RuntimeRequest struct {
 	ResetCheckpoint          bool
 	ResetCompletedCheckpoint bool
 	Trigger                  string
+	RuntimeLeaseHeld         bool
 }
 
 type IngestResult struct {
@@ -247,17 +249,28 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: runtime_id is required", ErrInvalidRequest)
 	}
+	leaseCtx, releaseLease, err := s.acquireRuntimeLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	if err != nil {
+		return nil, err
+	}
+	ctx = leaseCtx
+	defer func() {
+		if releaseErr := releaseLease(); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("release graph ingest runtime %q lease: %w", runtimeID, releaseErr))
+		}
+	}()
 	pageLimit, err := normalizePageLimit(request.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	startedAt := time.Now().UTC()
 	run := graphstore.IngestRun{
-		ID:        ingestRunID(runtimeID, startedAt),
-		RuntimeID: runtimeID,
-		Status:    graphstore.IngestRunStatusRunning,
-		Trigger:   ingestTrigger(request.Trigger),
-		StartedAt: startedAt.Format(time.RFC3339Nano),
+		ID:                      ingestRunID(runtimeID, startedAt),
+		RuntimeID:               runtimeID,
+		CheckpointCompleteKnown: true,
+		Status:                  graphstore.IngestRunStatusRunning,
+		Trigger:                 ingestTrigger(request.Trigger),
+		StartedAt:               startedAt.Format(time.RFC3339Nano),
 	}
 	result = &RunResult{Run: run}
 	if err := runStore.PutIngestRun(ctx, run); err != nil {
@@ -311,6 +324,26 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	return result, nil
 }
 
+func (s *Service) acquireRuntimeLease(ctx context.Context, runtimeID string, alreadyHeld bool) (context.Context, func() error, error) {
+	noop := func() error { return nil }
+	if alreadyHeld {
+		return ctx, noop, nil
+	}
+	leaser, ok := s.runtimeStore.(ports.SourceRuntimeLeaseStore)
+	if !ok || leaser == nil {
+		return ctx, noop, nil
+	}
+	owner := "graph-ingest:" + runtimeID + ":" + fmt.Sprintf("%d", time.Now().UnixNano())
+	leaseCtx, release, acquired, err := sourceruntime.AcquireRenewableLease(ctx, leaser, runtimeID, owner, sourceruntime.DefaultLeaseTTL)
+	if err != nil {
+		return ctx, noop, fmt.Errorf("acquire graph ingest runtime %q lease: %w", runtimeID, err)
+	}
+	if !acquired {
+		return ctx, noop, fmt.Errorf("%w: %s", sourceruntime.ErrSyncInProgress, runtimeID)
+	}
+	return leaseCtx, release, nil
+}
+
 func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *RunResult) telemetry.Attributes {
 	if result == nil {
 		return attributes
@@ -337,6 +370,8 @@ func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *Run
 
 func graphIngestTelemetryErrorKind(err error) string {
 	switch {
+	case errors.Is(err, sourceruntime.ErrSyncInProgress):
+		return "sync_in_progress"
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
 	case errors.Is(err, ErrRuntimeUnavailable):
@@ -1222,6 +1257,8 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 	finished.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if result != nil {
 		finished.CheckpointID = result.CheckpointID
+		finished.CheckpointCursor = result.CheckpointCursor
+		finished.CheckpointComplete = result.CheckpointComplete
 		finished.PagesRead = int64(result.PagesRead)
 		finished.EventsRead = int64(result.EventsRead)
 		finished.EntitiesProjected = int64(result.EntitiesProjected)
@@ -1244,6 +1281,8 @@ func runningRunProgress(run graphstore.IngestRun, result *IngestResult) graphsto
 	progress.Error = ""
 	if result != nil {
 		progress.CheckpointID = result.CheckpointID
+		progress.CheckpointCursor = result.CheckpointCursor
+		progress.CheckpointComplete = result.CheckpointComplete
 		progress.PagesRead = int64(result.PagesRead)
 		progress.EventsRead = int64(result.EventsRead)
 		progress.EntitiesProjected = int64(result.EntitiesProjected)

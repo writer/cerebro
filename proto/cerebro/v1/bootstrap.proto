@@ -795,6 +795,8 @@ message GraphIngestRun {
   string started_at = 16;
   string finished_at = 17;
   string error = 18;
+  string checkpoint_cursor = 19;
+  optional bool checkpoint_complete = 20;
 }
 
 // GraphIngestResult summarizes one runtime ingest pass.

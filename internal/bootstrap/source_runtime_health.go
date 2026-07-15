@@ -458,7 +458,11 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 func sourceHealthRecord(record sourceRuntimeHealthRecord) sourcehealth.Record {
 	var graphRun *sourcehealth.GraphRun
 	if record.LatestGraphRun != nil {
-		graphRun = &sourcehealth.GraphRun{Status: record.LatestGraphRun.Status}
+		graphRun = &sourcehealth.GraphRun{
+			Status:             record.LatestGraphRun.Status,
+			CheckpointCursor:   record.LatestGraphRun.CheckpointCursor,
+			CheckpointComplete: record.LatestGraphRun.CheckpointComplete,
+		}
 	}
 	var findingEvaluation *sourcehealth.FindingEvaluation
 	if record.LatestFindingEvaluation != nil {

@@ -384,12 +384,13 @@ type FindingExternalRefLink struct {
 
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
-	RuntimeID       string
-	RuntimeIDs      []string
-	RuleID          string
-	Status          string
-	Limit           uint32
-	LatestByRuntime bool
+	RuntimeID          string
+	RuntimeIDs         []string
+	RuleID             string
+	Status             string
+	FinishedAtOrBefore time.Time
+	Limit              uint32
+	LatestByRuntime    bool
 }
 
 // ListFindingEvidenceRequest scopes one finding evidence query.

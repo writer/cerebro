@@ -72,6 +72,36 @@ func TestNeighborhoodRelationsOrdersByStoredRelationKey(t *testing.T) {
 	}
 }
 
+func TestScanIngestRunRecordIncludesCheckpointTerminalState(t *testing.T) {
+	record := &neo4jdriver.Record{Values: []any{
+		"run-1", "runtime-1", "github", "writer", "checkpoint-1", "page-2", false,
+		graphstore.IngestRunStatusCompleted, "api", int64(1), int64(10), int64(8), int64(4),
+		int64(2), int64(1), int64(10), int64(5), "2026-07-14T10:00:00Z", "2026-07-14T10:01:00Z", "",
+	}}
+	run, err := scanIngestRunRecord(record)
+	if err != nil {
+		t.Fatalf("scanIngestRunRecord() error = %v", err)
+	}
+	if run.CheckpointID != "checkpoint-1" || run.CheckpointCursor != "page-2" || run.CheckpointComplete || !run.CheckpointCompleteKnown {
+		t.Fatalf("scanIngestRunRecord() checkpoint = %#v", run)
+	}
+}
+
+func TestScanIngestRunRecordPreservesMissingLegacyCheckpointTerminalState(t *testing.T) {
+	record := &neo4jdriver.Record{Values: []any{
+		"run-legacy", "runtime-1", "github", "writer", "", "", nil,
+		graphstore.IngestRunStatusCompleted, "api", int64(1), int64(10), int64(8), int64(4),
+		int64(2), int64(1), int64(10), int64(5), "2026-07-14T10:00:00Z", "2026-07-14T10:01:00Z", "",
+	}}
+	run, err := scanIngestRunRecord(record)
+	if err != nil {
+		t.Fatalf("scanIngestRunRecord() error = %v", err)
+	}
+	if run.CheckpointComplete || run.CheckpointCompleteKnown {
+		t.Fatalf("scanIngestRunRecord() checkpoint = %#v, want legacy terminal state absent", run)
+	}
+}
+
 func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
@@ -471,12 +501,12 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil || !ok || gotCheckpoint.ID != checkpoint.ID || !gotCheckpoint.Completed {
 		t.Fatalf("GetIngestCheckpoint() = %#v, %v, %v", gotCheckpoint, ok, err)
 	}
-	run := graphstore.IngestRun{ID: "run-1", RuntimeID: "runtime", Status: graphstore.IngestRunStatusCompleted, StartedAt: "2026-05-01T00:00:00Z"}
+	run := graphstore.IngestRun{ID: "run-1", RuntimeID: "runtime", CheckpointID: "checkpoint-1", CheckpointComplete: true, Status: graphstore.IngestRunStatusCompleted, StartedAt: "2026-05-01T00:00:00Z"}
 	if err := store.PutIngestRun(ctx, run); err != nil {
 		t.Fatalf("PutIngestRun() error = %v", err)
 	}
 	runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: "runtime", Status: graphstore.IngestRunStatusCompleted, Limit: 10})
-	if err != nil || len(runs) != 1 || runs[0].ID != run.ID {
+	if err != nil || len(runs) != 1 || runs[0].ID != run.ID || runs[0].CheckpointID != run.CheckpointID || !runs[0].CheckpointComplete || runs[0].CheckpointCursor != "" {
 		t.Fatalf("ListIngestRuns() = %#v, %v", runs, err)
 	}
 	if err := store.DeleteProjectedLink(ctx, issueLink); err != nil {

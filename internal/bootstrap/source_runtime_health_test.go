@@ -381,6 +381,62 @@ func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
 	}
 }
 
+func TestRuntimeFreshnessFromHealthSchedulesBackfillForExplicitIncompleteGraphCheckpoint(t *testing.T) {
+	latestGraphRun := sourcehealthview.GraphRunFromStore(graphstore.IngestRun{
+		ID:                      "graph-run-incomplete",
+		Status:                  graphstore.IngestRunStatusCompleted,
+		CheckpointComplete:      false,
+		CheckpointCompleteKnown: true,
+	})
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-07-14T12:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{{
+			RuntimeID:      "runtime-incomplete",
+			SourceID:       "okta",
+			EnabledState:   "enabled",
+			Status:         "healthy",
+			LatestGraphRun: latestGraphRun,
+		}},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if latestGraphRun.CheckpointComplete == nil || *latestGraphRun.CheckpointComplete {
+		t.Fatalf("latest graph run = %+v, want explicit incomplete checkpoint", latestGraphRun)
+	}
+	record := response.Runtimes[0]
+	if record.GraphIngestState != "behind" || record.FreshnessState != "graph_behind" || !record.BackfillEligible || record.RecommendedWorkflow != "source-runtime-backfill" {
+		t.Fatalf("incomplete graph freshness = %+v, want graph backfill work", record)
+	}
+}
+
+func TestRuntimeFreshnessFromHealthTreatsLegacyGraphCheckpointStateAsUnknown(t *testing.T) {
+	latestGraphRun := sourcehealthview.GraphRunFromStore(graphstore.IngestRun{
+		ID:     "graph-run-legacy",
+		Status: graphstore.IngestRunStatusCompleted,
+	})
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-07-14T12:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{{
+			RuntimeID:      "runtime-legacy",
+			SourceID:       "okta",
+			EnabledState:   "enabled",
+			Status:         "healthy",
+			LatestGraphRun: latestGraphRun,
+		}},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if latestGraphRun.CheckpointComplete != nil {
+		t.Fatalf("latest graph run = %+v, want legacy checkpoint state absent", latestGraphRun)
+	}
+	record := response.Runtimes[0]
+	if record.GraphIngestState != "current" || record.FreshnessState != "healthy" || record.BackfillEligible {
+		t.Fatalf("legacy graph freshness = %+v, want current without forced backfill", record)
+	}
+}
+
 func TestSourceCoverageRecordsSurfacesBlindSpots(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
 	if err != nil {
