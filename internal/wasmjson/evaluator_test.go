@@ -31,11 +31,16 @@ func TestEvaluatorCachesInitializationError(t *testing.T) {
 	config := testConfig()
 	config.MaxInputBytes = 1
 	evaluator := New(config)
+	var cached error
 	for range 2 {
 		_, err := evaluator.Evaluate(context.Background(), nil)
 		if !errors.Is(err, ErrInvalidConfig) {
 			t.Fatalf("Evaluate() error = %v; want %v", err, ErrInvalidConfig)
 		}
+		if cached != nil && !errors.Is(err, cached) {
+			t.Fatalf("Evaluate() error = %v; want cached error %v", err, cached)
+		}
+		cached = err
 	}
 }
 
