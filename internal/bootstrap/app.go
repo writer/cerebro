@@ -25,6 +25,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
+	"github.com/writer/cerebro/internal/complianceassessment"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
@@ -101,6 +102,7 @@ type appServices struct {
 	graphIngestOps *graphingest.Service
 	workflowReplay *workflowprojection.Replayer
 	jobs           *platformjobs.Service
+	assessments    *complianceassessment.Service
 }
 
 type bootstrapService struct {
@@ -243,6 +245,10 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()
+	app.services.assessments = app.newAssessmentService(app.services.jobs)
+	if app.services.assessments != nil {
+		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
+	}
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)

@@ -98,7 +98,11 @@ import (
 // auth discovery stays at the HTTP boundary. Agent task review hardening keeps
 // tenant-before-mutation checks and auth-challenge classification in bootstrap
 // because those depend on bootstrap auth sentinels and HTTP route policy.
-const bootstrapProductionGoLineBudget = 27373
+// Assessment runtime composition adds capability-gated service and job-runner
+// wiring plus tenant and idempotency checks at the existing job HTTP boundary;
+// event replay, projection recovery, and run transitions stay in
+// internal/complianceassessment.
+const bootstrapProductionGoLineBudget = 27449
 
 type bootstrapFileLineCount struct {
 	path  string
