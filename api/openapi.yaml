@@ -2798,6 +2798,69 @@ paths:
           description: The assessment run is not complete.
         '503':
           description: Assessment result paging is unavailable.
+  /grc/assurance-decisions:
+    post:
+      operationId: recordAssuranceDecision
+      summary: Record assurance decision
+      tags:
+        - GRC
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssuranceDecisionRecordRequest'
+      responses:
+        '200':
+          description: Existing assurance decision returned for the idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssuranceDecisionRecordResponse'
+        '201':
+          description: Assurance decision recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssuranceDecisionRecordResponse'
+        '400':
+          description: Decision time or proof declarations are invalid.
+        '404':
+          description: Assessment run or result was not found in the tenant.
+        '409':
+          description: Assessment artifacts changed or the idempotency key is bound to another request.
+        '503':
+          description: Assurance decision persistence is unavailable.
+  /grc/assurance-decisions/{decisionID}:
+    get:
+      operationId: getAssuranceDecision
+      summary: Get assurance decision
+      tags:
+        - GRC
+      parameters:
+        - name: decisionID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Immutable assurance decision and decision-time proof snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssuranceDecisionResponse'
+        '404':
+          description: Assurance decision was not found in the tenant.
+        '503':
+          description: Assurance decision persistence is unavailable.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -6918,7 +6981,109 @@ components:
     AssessmentInputManifest:
       type: object
       description: Immutable revisions, receipts, cutoff, and digests used by one assessment run.
-      additionalProperties: true
+      required: [model_version, program_id, scope_revision_id, plan_revision_id, period_start, period_end, collection_cutoff, requested_scope_digest, resolved_objective_set_digest, mapping_set_digest, revisions, receipts, reason_registry, adapter_version]
+      properties:
+        model_version:
+          type: string
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        plan_revision_id:
+          type: string
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        collection_cutoff:
+          type: string
+          format: date-time
+        requested_scope_digest:
+          type: string
+        resolved_objective_set_digest:
+          type: string
+        mapping_set_digest:
+          type: string
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentManifestRevision'
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentCollectionReceipt'
+        evaluation_run_ids:
+          type: array
+          items:
+            type: string
+        reason_registry:
+          type: string
+        adapter_version:
+          type: string
+    AssessmentManifestRevision:
+      type: object
+      required: [kind, id, revision_id, version, digest]
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+        revision_id:
+          type: string
+        version:
+          type: integer
+          format: uint64
+        digest:
+          type: string
+    AssessmentCollectionReceipt:
+      type: object
+      required: [kind, query_digest, page_index, raw_count, deduplicated_count, included_count, excluded_count, watermark, cutoff, completeness, page_digest]
+      properties:
+        kind:
+          type: string
+        runtime_id:
+          type: string
+        query_digest:
+          type: string
+        page_index:
+          type: integer
+          format: uint32
+        cursor:
+          type: string
+        next_cursor:
+          type: string
+        raw_count:
+          type: integer
+          format: uint64
+        deduplicated_count:
+          type: integer
+          format: uint64
+        included_count:
+          type: integer
+          format: uint64
+        excluded_count:
+          type: integer
+          format: uint64
+        expected_total:
+          type: integer
+          format: uint64
+        first_key:
+          type: string
+        last_key:
+          type: string
+        watermark:
+          type: string
+          format: date-time
+        cutoff:
+          type: string
+          format: date-time
+        completeness:
+          type: string
+          enum: [complete, partial, truncated, changed_during_scan, unknown]
+        page_digest:
+          type: string
     AssessmentRun:
       type: object
       required: [id, tenant_id, program_id, scope_revision_id, plan_revision_id, state, version, period_start, period_end, requested_at, requested_by]
@@ -7002,8 +7167,7 @@ components:
         results:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/AssessmentObjectiveResult'
     AssessmentResultPageResponse:
       type: object
       required: [run_id, state, result_count, automated_result_hash, chunks, has_more]
@@ -7026,6 +7190,285 @@ components:
           type: integer
           format: uint32
         has_more:
+          type: boolean
+    AssessmentObjectiveResult:
+      type: object
+      required: [id, control_ref, objective_id, scope_state, automated_outcome, design_state, operating_effectiveness_state, evidence_state, disposition_state, assurance, auditor_state, reason_codes, next_actions, evaluator_revision, evaluated_at]
+      properties:
+        id:
+          type: string
+        control_ref:
+          $ref: '#/components/schemas/AssessmentControlRef'
+        objective_id:
+          type: string
+        scope_state:
+          type: string
+          enum: [in_scope, not_applicable, unresolved]
+        automated_outcome:
+          type: string
+          enum: [satisfied, not_satisfied, indeterminate, not_assessed]
+        design_state:
+          type: string
+          enum: [effective, ineffective, unknown, not_assessed]
+        operating_effectiveness_state:
+          type: string
+          enum: [effective, ineffective, unknown, not_tested]
+        evidence_state:
+          type: string
+          enum: [sufficient, missing, stale, conflicting, untrusted, incomplete, manual_review]
+        disposition_state:
+          type: string
+          enum: [none, accepted_exception, accepted_risk, review_override]
+        assurance:
+          type: string
+          enum: [high, medium, low, none]
+        auditor_state:
+          type: string
+          enum: [not_reviewed, accepted, changes_requested, rejected]
+        reason_codes:
+          type: array
+          items:
+            type: string
+        next_actions:
+          type: array
+          items:
+            type: string
+            enum: [none, review, collect_evidence, refresh_evidence, restore_source, resolve_scope, remediate, retest]
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        source_runtime_ids:
+          type: array
+          items:
+            type: string
+        evaluator_revision:
+          type: string
+        evaluated_at:
+          type: string
+          format: date-time
+    AssuranceSourceProof:
+      type: object
+      required: [runtime_id, state, observed_at, fresh_until]
+      properties:
+        runtime_id:
+          type: string
+        state:
+          type: string
+          enum: [supported, partial, stale, failed, unconfigured, unsupported, unverified, conflicting, unknown]
+        observed_at:
+          type: string
+          format: date-time
+        fresh_until:
+          type: string
+          format: date-time
+    AssuranceEvidenceProof:
+      type: object
+      required: [evidence_id, state, collected_at, valid_until]
+      properties:
+        evidence_id:
+          type: string
+        state:
+          type: string
+          enum: [sufficient, missing, stale, conflicting, untrusted, incomplete, manual_review]
+        collected_at:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+    AssuranceLimitation:
+      type: object
+      required: [code, detail, blocking]
+      properties:
+        code:
+          type: string
+        detail:
+          type: string
+        blocking:
+          type: boolean
+    AssuranceReviewRequirement:
+      type: object
+      required: [kind, required, status]
+      properties:
+        kind:
+          type: string
+        required:
+          type: boolean
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        completed_at:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+    AssuranceExceptionProof:
+      type: object
+      required: [exception_id, active, valid_until]
+      properties:
+        exception_id:
+          type: string
+        active:
+          type: boolean
+        valid_until:
+          type: string
+          format: date-time
+    AssuranceVerificationProof:
+      type: object
+      required: [required, state]
+      properties:
+        required:
+          type: boolean
+        state:
+          type: string
+          enum: [not_required, pending, passed, failed]
+        verified_at:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+    AssuranceProofInput:
+      type: object
+      required: [as_of, source_proofs, evidence_proofs, limitations, required_reviews, verification]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        source_proofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceSourceProof'
+        evidence_proofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceEvidenceProof'
+        limitations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceLimitation'
+        required_reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceReviewRequirement'
+        exceptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceExceptionProof'
+        verification:
+          $ref: '#/components/schemas/AssuranceVerificationProof'
+    AssuranceDecisionRecordRequest:
+      allOf:
+        - $ref: '#/components/schemas/AssuranceProofInput'
+        - type: object
+          required: [tenant_id, run_id, result_id]
+          properties:
+            tenant_id:
+              type: string
+            run_id:
+              type: string
+            result_id:
+              type: string
+    AssuranceQualificationInput:
+      allOf:
+        - $ref: '#/components/schemas/AssuranceProofInput'
+        - type: object
+          required: [input_manifest, result]
+          properties:
+            input_manifest:
+              $ref: '#/components/schemas/AssessmentInputManifest'
+            result:
+              $ref: '#/components/schemas/AssessmentObjectiveResult'
+    QualifiedAssuranceDecision:
+      type: object
+      required: [version, qualified, manifest_hash, result_hash, proof_digest, as_of, reasons, limitations, required_reviews, decision_digest]
+      properties:
+        version:
+          type: string
+          enum: [qualified-decision/v1]
+        qualified:
+          type: boolean
+        manifest_hash:
+          type: string
+        result_hash:
+          type: string
+        proof_digest:
+          type: string
+        as_of:
+          type: string
+          format: date-time
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [manifest_invalid, scope_unpinned, population_incomplete, result_invalid, source_proof_missing, source_unhealthy, source_stale, evidence_proof_missing, evidence_not_current, evidence_conflicting, limitations_not_declared, blocking_limitation, review_requirements_not_declared, review_incomplete, exception_expired, verification_failed]
+        limitations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceLimitation'
+        required_reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssuranceReviewRequirement'
+        decision_digest:
+          type: string
+    AssuranceDecision:
+      type: object
+      required: [id, tenant_id, run_id, result_id, objective_id, program_id, scope_revision_id, plan_revision_id, version, input_snapshot, decision, request_hash, idempotency_key, recorded_at, recorded_by, record_digest]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        run_id:
+          type: string
+        result_id:
+          type: string
+        objective_id:
+          type: string
+        program_id:
+          type: string
+        scope_revision_id:
+          type: string
+        plan_revision_id:
+          type: string
+        version:
+          type: string
+          enum: [assurance-decision/v1]
+        input_snapshot:
+          $ref: '#/components/schemas/AssuranceQualificationInput'
+        decision:
+          $ref: '#/components/schemas/QualifiedAssuranceDecision'
+        request_hash:
+          type: string
+        idempotency_key:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+        recorded_by:
+          type: string
+        record_digest:
+          type: string
+    AssuranceDecisionResponse:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: '#/components/schemas/AssuranceDecision'
+    AssuranceDecisionRecordResponse:
+      type: object
+      required: [decision, created]
+      properties:
+        decision:
+          $ref: '#/components/schemas/AssuranceDecision'
+        created:
           type: boolean
     GRCEvidencePacketsResponse:
       type: object

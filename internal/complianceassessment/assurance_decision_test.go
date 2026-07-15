@@ -47,6 +47,23 @@ func TestRecordAssuranceDecisionBindsCompletedRunArtifacts(t *testing.T) {
 	}
 }
 
+func TestRecordAssuranceDecisionLoadsRunArtifactsWhenRequestCarriesOnlyProofs(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	store, run, result := completedDecisionRun(t, now)
+	service := NewAssessmentService(store, &runLog{}, nil, nil)
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	request := validAssuranceDecisionRequest(run, result, now.Add(time.Minute))
+	request.Input.Manifest = InputManifest{}
+	request.Input.Result = ObjectiveResult{}
+	recorded, created, err := service.RecordAssuranceDecision(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("RecordAssuranceDecision() = (%+v, %v, %v)", recorded, created, err)
+	}
+	if recorded.InputSnapshot.Manifest.ProgramID != run.ProgramID || recorded.InputSnapshot.Result.ID != result.ID || !recorded.Decision.Qualified {
+		t.Fatalf("decision did not load persisted run artifacts: %+v", recorded)
+	}
+}
+
 func TestRecordAssuranceDecisionRejectsChangedArtifactsAndIdempotencyReuse(t *testing.T) {
 	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
 	store, run, result := completedDecisionRun(t, now)
@@ -57,11 +74,12 @@ func TestRecordAssuranceDecisionRejectsChangedArtifactsAndIdempotencyReuse(t *te
 		t.Fatalf("RecordAssuranceDecision() error = %v", err)
 	}
 
-	request.Input.Result.EvaluatorRevision = "changed-evaluator"
+	request.Input.EvidenceProofs[0].ValidUntil = request.Input.EvidenceProofs[0].ValidUntil.Add(time.Hour)
 	if _, _, err := service.RecordAssuranceDecision(context.Background(), request); !errors.Is(err, ports.ErrJobIdempotencyConflict) {
 		t.Fatalf("idempotency reuse error = %v, want conflict", err)
 	}
 	request.IdempotencyKey = "decision-request-2"
+	request.Input.Result.EvaluatorRevision = "changed-evaluator"
 	if _, _, err := service.RecordAssuranceDecision(context.Background(), request); !errors.Is(err, ErrAssessmentConflict) {
 		t.Fatalf("changed result error = %v, want assessment conflict", err)
 	}
