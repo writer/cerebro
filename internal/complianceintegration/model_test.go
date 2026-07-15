@@ -2,7 +2,6 @@ package complianceintegration
 
 import (
 	"errors"
-	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -129,13 +128,9 @@ func TestRevisionAdapterRejectsInvalidIdentity(t *testing.T) {
 
 func testRevision(t *testing.T, tenant string, kind FactKind, id string, version uint64) RevisionRef {
 	t.Helper()
-	if version > math.MaxInt64 {
-		t.Fatalf("version %d exceeds test timestamp range", version)
-	}
-	seconds := int64(version) // #nosec G115 -- bounded by MaxInt64 above.
 	ref, err := AdaptRevisionRef(tenant, "test.domain", kind, compliance.RevisionRef{
 		ID: id, RevisionID: id + "-r" + strconv.FormatUint(version, 10), Version: version,
-		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(seconds, 0),
+		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)), LastModified: time.Unix(1, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
