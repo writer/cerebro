@@ -25,7 +25,7 @@ const (
 	RustShadowResultMismatch = "result_mismatch"
 )
 
-var ErrRustEvaluatorUnavailable = errors.New("Rust security path evaluator is unavailable")
+var ErrRustEvaluatorUnavailable = errors.New("rust security path evaluator is unavailable")
 
 //go:embed evaluator.wasm
 var securityPathEvaluatorWasm []byte
