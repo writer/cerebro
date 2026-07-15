@@ -523,7 +523,7 @@ fn relationship_end_after(query: &[u8], index: usize) -> Option<usize> {
 
 fn has_postfix_pattern_quantifier(query: &[u8], pattern_end: usize) -> bool {
     next_non_whitespace_index(query, pattern_end + 1)
-        .is_some_and(|index| matches!(query[index], b'*' | b'+' | b'{'))
+        .is_some_and(|index| matches!(query[index], b'*' | b'+' | b'?' | b'{'))
 }
 
 fn has_quantified_abbreviated_relationship(query: &str) -> bool {
@@ -584,6 +584,11 @@ fn all_node_patterns_tenant_scoped(query: &str) -> bool {
     let mut saw_node = false;
     let mut i = 0;
     while i < query.len() {
+        if query.as_bytes()[i] == b'`' {
+            let (_, end) = escaped_identifier_token(query.as_bytes(), i);
+            i = end + 1;
+            continue;
+        }
         if subqueries.last().is_some_and(|scope| i == scope.end) {
             let current = subqueries.pop().expect("subquery exists");
             scoped = merge_scoped_variables(
@@ -1161,6 +1166,7 @@ mod tests {
         let unscoped = [
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x/*` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x) (b:Entity {tenant_id:$tenant_id})` MATCH (b) RETURN b LIMIT 1",
         ];
         for query in unscoped {
             assert_eq!(
@@ -1317,9 +1323,12 @@ mod tests {
             "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->+(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->*(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})-[r:R]->?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (a:Entity {tenant_id:$tenant_id})-->{1,9999}(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (a:Entity {tenant_id:$tenant_id})--+(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})-->?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
             "MATCH (a:Entity {tenant_id:$tenant_id})<--*(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
+            "MATCH (a:Entity {tenant_id:$tenant_id})<--?(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1",
         ];
         for query in queries {
             assert_eq!(
