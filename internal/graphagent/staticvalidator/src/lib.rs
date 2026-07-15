@@ -1055,26 +1055,20 @@ fn is_identifier_start(value: u8) -> bool {
     value.is_ascii_alphabetic() || value == b'_'
 }
 
-fn square_bracket_depth_at(query: &str, index: usize) -> usize {
-    let mut depth = 0;
-    for byte in &query.as_bytes()[..index] {
-        match byte {
-            b'[' => depth += 1,
-            b']' if depth > 0 => depth -= 1,
-            _ => {}
+fn delimiter_depth_at(query: &str, index: usize, opening: u8, closing: u8) -> usize {
+    let (bytes, mut depth, mut i) = (query.as_bytes(), 0_usize, 0);
+    while i < index {
+        if bytes[i] == b'`' {
+            let (_, end) = escaped_identifier_token(bytes, i);
+            i = end + 1;
+            continue;
         }
-    }
-    depth
-}
-
-fn brace_depth_at(query: &str, index: usize) -> usize {
-    let mut depth = 0;
-    for byte in &query.as_bytes()[..index] {
-        match byte {
-            b'{' => depth += 1,
-            b'}' if depth > 0 => depth -= 1,
-            _ => {}
+        if bytes[i] == opening {
+            depth += 1;
+        } else if bytes[i] == closing {
+            depth = depth.saturating_sub(1);
         }
+        i += 1;
     }
     depth
 }
@@ -1110,7 +1104,8 @@ fn function_call_open_at(query: &str, open: usize) -> bool {
 }
 
 fn expression_local_pattern(query: &str, index: usize, call_subquery_depth: usize) -> bool {
-    square_bracket_depth_at(query, index) > 0 || brace_depth_at(query, index) > call_subquery_depth
+    delimiter_depth_at(query, index, b'[', b']') > 0
+        || delimiter_depth_at(query, index, b'{', b'}') > call_subquery_depth
 }
 
 #[cfg(test)]
@@ -1184,6 +1179,8 @@ mod tests {
         let accepted = [
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e MATCH (e)-[:R]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25",
             "MATCH (e:Entity {tenant_id:$tenant_id}) CALL { WITH e MATCH (e)-[:R]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25 } RETURN b LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, [(e)-[:`a]b`]->(c:Entity {tenant_id:$tenant_id}) | c] AS xs RETURN e LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, EXISTS { WITH e AS `}` MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS found RETURN e LIMIT 25",
         ];
         for query in accepted {
             assert_eq!(validate(query, 100).decision, Decision::Allow, "{query}")
@@ -1224,6 +1221,8 @@ mod tests {
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x//` OPTIONAL MATCH (b:Entity)-[:R]->(c:Entity) RETURN c LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS `x) (b:Entity {tenant_id:$tenant_id})` MATCH (b) RETURN b LIMIT 1",
             "MATCH (e:Entity {tenant_id:$tenant_id}) CALL { MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b AS `}` } MATCH (b) RETURN b LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, [(e)-[:`a]b`]->(c:Entity {tenant_id:$tenant_id}) | c] AS xs MATCH (c) RETURN c LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, EXISTS { WITH e AS `}` MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b } AS found MATCH (b) RETURN b LIMIT 25",
         ];
         for query in unscoped {
             assert_eq!(
