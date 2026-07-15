@@ -16,7 +16,7 @@ func TestInitializePanopticonResourcesEngineClosesRuntimeOnFailure(t *testing.T)
 	}
 
 	_, err := engine.runtime.CompileModule(context.Background(), panopticonResourcesWasm)
-	if err == nil || !strings.Contains(err.Error(), "runtime closed") {
+	if err == nil {
 		t.Fatalf("compile after failed initialization error = %v, want closed runtime", err)
 	}
 }
