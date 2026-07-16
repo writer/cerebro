@@ -86,6 +86,25 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 	}
 }
 
+func TestGraphRuleCatalogMarksUnknownEvaluateRowsSemanticsIncomplete(t *testing.T) {
+	registry, err := NewRegistry(newSentinelOneEndpointActiveInfectionRule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := registry.GraphRuleCatalog("tenant-a", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("catalog entries = %d, want one incomplete query-derived scope", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.SemanticsComplete || len(entry.Signature.RequiredEntityTypes) == 0 {
+			t.Fatalf("catalog entry claimed incomplete EvaluateRows semantics were complete: %#v", entry)
+		}
+	}
+}
+
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
 	seenPackIDs := make(map[string]struct{}, len(packs))

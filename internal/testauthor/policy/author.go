@@ -2,6 +2,7 @@ package policy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -49,17 +50,25 @@ func Author(intent Intent) (Artifacts, error) {
 }
 
 func ArtifactsForRule(domain string, rule findingdsl.PolicyFindingRule) (Artifacts, error) {
-	return artifactsForRule(domain, rule, nil)
+	return artifactsForRule(domain, rule, SuiteForRule)
 }
 
 // ArtifactsForRuleWithGraphEvidence derives deterministic multi-hop fixtures
 // from typed evidence. Evidence node IDs are local handles: authored fixtures
 // never copy source URNs, labels, or other resource identifiers.
-func ArtifactsForRuleWithGraphEvidence(domain string, rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (Artifacts, error) {
-	return artifactsForRule(domain, rule, evidence)
+func ArtifactsForRuleWithGraphEvidence(ctx context.Context, domain string, rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (Artifacts, error) {
+	return artifactsForRule(domain, rule, func(rule findingdsl.PolicyFindingRule) (findingdsl.PolicyRuleTestSuite, error) {
+		if evidence == nil {
+			return findingdsl.PolicyRuleTestSuite{}, ErrGraphEvidenceRequired
+		}
+		if strings.TrimSpace(rule.Spec.Graph.Query) == "" {
+			return findingdsl.PolicyRuleTestSuite{}, errors.New("graph evidence requires a policy with spec.graph.query")
+		}
+		return SuiteForGraphRule(ctx, rule, *evidence)
+	})
 }
 
-func artifactsForRule(domain string, rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (Artifacts, error) {
+func artifactsForRule(domain string, rule findingdsl.PolicyFindingRule, buildSuite func(findingdsl.PolicyFindingRule) (findingdsl.PolicyRuleTestSuite, error)) (Artifacts, error) {
 	domain = strings.TrimSpace(domain)
 	if !domainPattern.MatchString(domain) {
 		return Artifacts{}, fmt.Errorf("policy domain %q must use lowercase dash-separated alphanumeric segments", domain)
@@ -70,7 +79,7 @@ func artifactsForRule(domain string, rule findingdsl.PolicyFindingRule, evidence
 	if issues := findingdsl.ValidatePolicyRule(rule); len(issues) != 0 {
 		return Artifacts{}, fmt.Errorf("authored policy is invalid: %s", joinIssues(issues))
 	}
-	suite, err := suiteForRule(rule, evidence)
+	suite, err := buildSuite(rule)
 	if err != nil {
 		return Artifacts{}, err
 	}
@@ -98,18 +107,8 @@ func artifactsForRule(domain string, rule findingdsl.PolicyFindingRule, evidence
 }
 
 func SuiteForRule(rule findingdsl.PolicyFindingRule) (findingdsl.PolicyRuleTestSuite, error) {
-	return suiteForRule(rule, nil)
-}
-
-func suiteForRule(rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (findingdsl.PolicyRuleTestSuite, error) {
 	if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
-		if evidence == nil {
-			return findingdsl.PolicyRuleTestSuite{}, ErrGraphEvidenceRequired
-		}
-		return SuiteForGraphRule(rule, *evidence)
-	}
-	if evidence != nil {
-		return findingdsl.PolicyRuleTestSuite{}, errors.New("graph evidence requires a policy with spec.graph.query")
+		return findingdsl.PolicyRuleTestSuite{}, ErrGraphEvidenceRequired
 	}
 	finding, passing, err := findingdsl.SynthesizeEqualityConditionFixtures(rule.Spec.Match.Conditions)
 	if err != nil {
