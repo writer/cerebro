@@ -10,6 +10,7 @@ import { useApiKey } from "@/components/providers";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { Badge, DataStateBanner, MetricCard, PageHeader, Panel, ResultLimitNotice, RiskBadge, RiskBreakdown, SeverityDot } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
+import { runFindingMutation } from "@/lib/finding-actions";
 import { securityProducerForFinding, securityProducerResponseActionCandidates } from "@/lib/security-producer-response";
 import { pluralize } from "@/lib/format";
 import { displayDate, GRCAuditPacket, GRCEntityImpact, humanize, shortEntity } from "@/lib/grc";
@@ -525,19 +526,20 @@ export default function FindingDetailPage() {
     setActionSaving(key);
     setActionError(null);
     setActionSuccess(null);
-    const response = await fetchCerebro(path, apiKey, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    return runFindingMutation({
+      failurePrefix: "Finding update failed",
+      onError: setActionError,
+      onSettled: () => setActionSaving(null),
+      onSuccess: () => {
+        setActionSuccess(success);
+        void reload();
+      },
+      request: () => fetchCerebro(path, apiKey, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     });
-    setActionSaving(null);
-    if (!response.ok) {
-      setActionError(typeof response.data === "string" ? response.data : `Finding update failed (${response.status})`);
-      return false;
-    }
-    setActionSuccess(success);
-    void reload();
-    return true;
   };
 
   const assignFinding = async (event: FormEvent<HTMLFormElement>) => {
