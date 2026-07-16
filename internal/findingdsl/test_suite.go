@@ -146,6 +146,7 @@ func ValidatePolicyRuleTestSuite(suite PolicyRuleTestSuite) []Issue {
 			issues = append(issues, validatePolicyGraphFixture(path, idx, testCase)...)
 		}
 	}
+	issues = append(issues, validatePolicyGraphMutationPair(path, suite.Cases)...)
 	return issues
 }
 

@@ -62,6 +62,78 @@ func containsTwoEdgePath(adjacency map[string][]string) bool {
 	return false
 }
 
+func validatePolicyGraphMutationPair(path string, cases []PolicyRuleTestCase) []Issue {
+	var findingCases, passingCases []PolicyRuleTestCase
+	for _, testCase := range cases {
+		if testCase.GraphFixture == nil {
+			continue
+		}
+		if testCase.WantFinding {
+			findingCases = append(findingCases, testCase)
+		} else {
+			passingCases = append(passingCases, testCase)
+		}
+	}
+	if len(findingCases)+len(passingCases) == 0 {
+		return nil
+	}
+	for _, findingCase := range findingCases {
+		for _, passingCase := range passingCases {
+			if graphFixtureSingleEdgeMutation(findingCase.GraphFixture, passingCase.GraphFixture) {
+				return nil
+			}
+		}
+	}
+	return []Issue{{Path: path, Message: "graphFixture suites require a finding case and a passing case with identical nodes and exactly one policy-critical edge removed"}}
+}
+
+func graphFixtureSingleEdgeMutation(finding, passing *PolicyGraphFixture) bool {
+	if finding == nil || passing == nil || strings.TrimSpace(finding.TenantID) != strings.TrimSpace(passing.TenantID) {
+		return false
+	}
+	findingNodes, passingNodes := map[string]struct{}{}, map[string]struct{}{}
+	for _, node := range finding.Nodes {
+		findingNodes[strings.TrimSpace(node.URN)] = struct{}{}
+	}
+	for _, node := range passing.Nodes {
+		passingNodes[strings.TrimSpace(node.URN)] = struct{}{}
+	}
+	if !sameStringSet(findingNodes, passingNodes) {
+		return false
+	}
+	findingEdges, passingEdges := graphFixtureEdgeSet(finding.Edges), graphFixtureEdgeSet(passing.Edges)
+	if len(findingEdges) != len(passingEdges)+1 {
+		return false
+	}
+	for edge := range passingEdges {
+		if _, ok := findingEdges[edge]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func graphFixtureEdgeSet(edges []PolicyGraphFixtureEdge) map[string]struct{} {
+	out := make(map[string]struct{}, len(edges))
+	for _, edge := range edges {
+		key := strings.TrimSpace(edge.FromURN) + "\x00" + strings.TrimSpace(edge.Relation) + "\x00" + strings.TrimSpace(edge.ToURN)
+		out[key] = struct{}{}
+	}
+	return out
+}
+
+func sameStringSet(left, right map[string]struct{}) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for value := range left {
+		if _, ok := right[value]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule PolicyFindingRule, testCase PolicyRuleTestCase) (err error) {
 	fixture := testCase.GraphFixture
 	for _, node := range fixture.Nodes {

@@ -57,6 +57,25 @@ func TestValidatePolicyGraphFixtureRequiresConnectedTwoEdgePath(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyGraphFixtureRequiresSingleEdgeMutationPair(t *testing.T) {
+	nodes := []PolicyGraphFixtureNode{
+		{URN: "a", SourceID: "okta", EntityType: "okta.user"},
+		{URN: "b", SourceID: "okta", EntityType: "okta.group"},
+		{URN: "c", SourceID: "okta", EntityType: "okta.application"},
+	}
+	edges := []PolicyGraphFixtureEdge{
+		{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"},
+		{FromURN: "b", ToURN: "c", SourceID: "okta", Relation: "assigned_to"},
+	}
+	suite := PolicyRuleTestSuite{APIVersion: APIVersion, Kind: KindPolicyFindingRuleTest, Cases: []PolicyRuleTestCase{
+		{Name: "finding only", GraphFixture: &PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: edges}, WantFinding: true},
+	}}
+	issues := ValidatePolicyRuleTestSuite(suite)
+	if !issuesContain(issues, "exactly one policy-critical edge removed") {
+		t.Fatalf("ValidatePolicyRuleTestSuite() issues = %#v, want mutation-pair issue", issues)
+	}
+}
+
 func TestRunPolicyGraphFixtureProjectsTopologyAndExecutesPolicyCypher(t *testing.T) {
 	rule := PolicyFindingRule{Spec: PolicyFindingRuleSpec{Graph: PolicyRuleGraphFinding{
 		Query: "MATCH (a)-[:RELATION]->(b)-[:RELATION]->(c) RETURN a.urn AS primary_urn", RowLimit: 25,
