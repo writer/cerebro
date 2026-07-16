@@ -5,7 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Cerebro is Writer's public monorepo for turning security, identity, cloud, SaaS, workflow, policy, and compliance data into evidence-backed context that people, coding agents, and automation can use. The Go runtime exposes source integration, evidence, findings, controls, and graph capabilities through a CLI, JSON HTTP API, Connect RPC, MCP, and SDK helpers. Independently built clients live under `apps/` and consume those typed contracts.
+Cerebro is Writer's public monorepo for turning security, identity, cloud, SaaS, workflow, policy, and compliance data into evidence-backed context that people, coding agents, and automation can use. The Go runtime exposes source integration, evidence, findings, controls, and graph capabilities through a CLI, JSON HTTP API, Connect RPC, MCP, and SDK helpers. Public applications live under `apps/`, consume those typed contracts, and stay portable across environments.
 
 Cerebro is not a SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. Its runtime and contract layer lets clients ask grounded questions such as:
 
@@ -49,6 +49,15 @@ make build
 ./bin/cerebro source list
 ```
 
+Check all npm workspaces when you touch public applications or generated TypeScript helpers:
+
+```bash
+npm ci
+npm run check:workspaces
+npm run build --workspace @writer/cerebro-web
+npm run check --workspace @writer/cerebro-slack-companion
+```
+
 ## Give A Coding Agent Context
 
 Start Cerebro, connect an MCP client to the local MCP endpoint, then let the agent read live source data through Cerebro.
@@ -89,17 +98,20 @@ The compose stack runs Cerebro with NATS JetStream, Postgres, Neo4j, and the loc
 
 Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. If you switch between those modes, recreate local volumes with `docker compose down -v` or run the Make target with an explicit local Postgres password that matches the existing volume. `docker compose down -v` deletes local stack data.
 
-## What Is In This Repo
+## Repository Layout
 
-- `apps/`: independently built browser and companion clients that consume public contracts.
-- `cmd/cerebro`: the main Go binary. It defaults to `serve` and also exposes source, runtime, graph, finding, closeout, deploy, and orchestration commands.
-- `internal/bootstrap`: HTTP, Connect RPC, MCP, auth, rate-limit, and route wiring for the runtime.
-- `internal/sourcecdk`, `internal/sourceregistry`, and `sources/`: the source contract and built-in source catalog for cloud, SaaS, identity, endpoint, vulnerability, workflow, and compliance signals.
-- `internal/appendlog`, `internal/sourceprojection`, `internal/findings`, and graph packages: durable event, runtime sync, finding, report, and graph workflows.
-- `policies/`, `internal/findingdsl`, and `internal/findings`: policy, control mapping, finding rule, and detection catalogs.
-- `api/openapi.yaml` and `proto/cerebro/v1/bootstrap.proto`: JSON HTTP and Connect RPC contracts.
-- `sdk/python/README.md`, `sdk/typescript/README.md`, and `sdk/go/cerebroapi`: SDK helper packages.
-- `docs/`, `scripts/`, and `tools/`: operating guides, validation checks, generators, and repository-specific guardrails.
+| Area | Paths | Purpose |
+| --- | --- | --- |
+| Runtime and CLI | `cmd/cerebro`, `internal/bootstrap` | Go server, CLI, HTTP, Connect RPC, MCP, auth, rate-limit, and route wiring. |
+| Public applications | `apps/web`, `apps/slack-companion` | Portable browser and Slack companion workspaces that consume Cerebro contracts. |
+| Source and evidence contracts | `internal/sourcecdk`, `internal/sourceregistry`, `sources/` | Source contract plus built-in catalog for cloud, SaaS, identity, endpoint, vulnerability, workflow, and compliance signals. |
+| Durable workflows | `internal/appendlog`, `internal/sourceprojection`, `internal/findings`, graph packages | Append-log, runtime sync, finding, report, and graph projection behavior. |
+| Policies and detections | `policies/`, `internal/findingdsl`, `internal/findings` | Policy, control mapping, finding rule, and detection catalogs. |
+| API contracts | `api/openapi.yaml`, `proto/cerebro/v1/bootstrap.proto` | JSON HTTP and Connect RPC contracts. |
+| SDK helpers | `sdk/python`, `sdk/typescript`, `sdk/go/cerebroapi` | Generated and hand-written helpers for public API surfaces. |
+| DevEx and guardrails | `docs/`, `scripts/`, `tools/` | Operating guides, validation checks, generators, and repository-specific structural tests. |
+
+The application workspaces are peers of the Go runtime, not embedded assets. The runtime can build, test, and publish its contracts without serving app bundles, and applications can build against those contracts without carrying deployment-specific overlays.
 
 ## Main Surfaces
 
@@ -137,11 +149,13 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connecto
 
 ## Runtime Boundaries
 
-This public repository is authoritative for runtime behavior, CLI/API contracts, source catalogs, configuration semantics, validation checks, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, and rollout procedures intentionally live outside this public repo.
+This public repository is authoritative for runtime behavior, portable application behavior, CLI/API contracts, source catalogs, configuration semantics, validation checks, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, secret addresses, rollout procedures, and recovery procedures intentionally live outside this public repo.
 
 The deployment handoff is the release payload: container images plus `cerebro-runtime-contract.json`. Treat that contract as the bridge between public runtime releases and environment-specific promotion and deployment automation.
 
-Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/reference/config-env-vars.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
+Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/reference/config-env-vars.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release handoff data in `cerebro-runtime-contract.json`.
+
+Do not add infrastructure manifests, environment routes, credential references, deployment overlays, or private rollout policy under `apps/`. Application packages should expose portable behavior, tests, and typed seams for private deployment adapters.
 
 Read [Non-goals](docs/engineering/non-goals.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
 
@@ -156,6 +170,7 @@ make verify                   # CI-parity local verification
 make readme-check             # README formatting and drift checks
 make docs-drift-check         # documentation drift checks
 make oss-audit                # public repository hygiene scan
+make workspace-check          # install, test, and type-check npm workspaces
 make sdk-test                 # SDK tests and type checks
 make secure-business-demo     # run local security onboarding and write a receipt
 make github-business-demo     # seed durable graph context from a real GitHub repo
