@@ -95,7 +95,7 @@ func EvidencePacketRequest(args StructuredContent) (agentplatform.EvidencePacket
 func TaskToolDefinitions(limits TaskToolLimits) []TaskToolDefinition {
 	readScope := " Requires cerebro.cosmo.security.read."
 	return []TaskToolDefinition{
-		{Name: "cerebro.risk.explain", Title: "Explain Finding or Exposure Risk", Description: "Explain why one authorized finding or exposure is risky, with supporting evidence, affected assets, and optional graph context. Finding and evidence stores are required; graph failures return a partial task state." + readScope, InputSchema: objectSchema(map[string]any{
+		{Name: "cerebro.risk.explain", Title: "Explain Why a Finding Is Risky", Description: "Explain why one authorized finding or exposure is risky, with supporting evidence, affected assets, and optional graph context. Finding and evidence stores are required; graph failures return a partial task state." + readScope, InputSchema: objectSchema(map[string]any{
 			"finding_id": map[string]any{"type": "string"}, "limit": limitSchema(limits.Evidence, "evidence records"), "asset_limit": limitSchema(limits.Assets, "related assets"), "skip_graph": map[string]any{"type": "boolean"}, "compact": map[string]any{"type": "boolean"},
 		}, []string{"finding_id"})},
 		{Name: "cerebro.evidence.packet", Title: "Prepare Evidence Packet", Description: "Collect authorized evidence for an audit, control, or decision packet using current coverage and verifier contracts. The tool never approves or executes an action and reports blocked or partial task states." + readScope, InputSchema: objectSchema(map[string]any{
