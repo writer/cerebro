@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -11,8 +12,22 @@ import (
 )
 
 var (
-	ErrGraphEvidenceRequired = errors.New("typed graph evidence is required for graph policy tests")
-	safeGraphSourcePattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]*$`)
+	ErrGraphEvidenceRequired      = errors.New("typed graph evidence is required for graph policy tests")
+	ErrGraphTenantScopeRequired   = errors.New("authored graph policy query must scope reads with $tenant_id")
+	ErrGraphMultiHopQueryRequired = errors.New("authored graph policy query must depend on at least two causal edges")
+	safeGraphSourcePattern        = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]*$`)
+)
+
+const (
+	maxGraphEdgeAblations    = 8
+	maxGraphPredicateMutants = 8
+
+	graphFindingCaseName           = "complete graph path produces a finding"
+	graphCriticalEdgeCaseName      = "critical graph edge removed passes"
+	graphEdgeAblationCasePrefix    = "graph edge ablation "
+	graphPredicateCasePrefix       = "graph predicate mutation "
+	graphCurrentStateCasePrefix    = "current state closeout "
+	graphNeighborIsolationCaseName = "unrelated neighbor edge does not restore the path"
 )
 
 // GraphEvidence describes topology with local node handles instead of source
@@ -130,6 +145,9 @@ func SuiteForGraphRule(rule findingdsl.PolicyFindingRule, evidence GraphEvidence
 	if strings.TrimSpace(rule.Spec.Graph.Query) == "" {
 		return findingdsl.PolicyRuleTestSuite{}, errors.New("graph evidence requires spec.graph.query")
 	}
+	if !strings.Contains(strings.ToLower(rule.Spec.Graph.Query), "$tenant_id") {
+		return findingdsl.PolicyRuleTestSuite{}, ErrGraphTenantScopeRequired
+	}
 	tenantID := "test-authored-" + fixtureSlug(rule.Metadata.ID)
 	if tenantID == "test-authored-" {
 		return findingdsl.PolicyRuleTestSuite{}, errors.New("graph policy metadata.id is required")
@@ -202,21 +220,203 @@ func SuiteForGraphRule(rule findingdsl.PolicyFindingRule, evidence GraphEvidence
 	}
 
 	findingFixture := &findingdsl.PolicyGraphFixture{TenantID: tenantID, Nodes: cloneGraphNodes(nodes), Edges: cloneGraphEdges(edges)}
-	passingEdges := make([]findingdsl.PolicyGraphFixtureEdge, 0, len(edges)-1)
-	for index, edge := range edges {
-		if index != criticalIndex {
-			passingEdges = append(passingEdges, cloneGraphEdge(edge))
-		}
-	}
-	passingFixture := &findingdsl.PolicyGraphFixture{TenantID: tenantID, Nodes: cloneGraphNodes(nodes), Edges: passingEdges}
 	suite := findingdsl.PolicyRuleTestSuite{APIVersion: findingdsl.APIVersion, Kind: findingdsl.KindPolicyFindingRuleTest, Cases: []findingdsl.PolicyRuleTestCase{
-		{Name: "complete graph path produces a finding", GraphFixture: findingFixture, WantEvidenceURNs: wantEvidenceURNs, WantFinding: true},
-		{Name: "critical graph edge removed passes", GraphFixture: passingFixture, WantFinding: false},
+		{Name: graphFindingCaseName, GraphFixture: findingFixture, WantEvidenceURNs: wantEvidenceURNs, WantFinding: true},
+		{Name: graphCriticalEdgeCaseName, GraphFixture: graphFixtureWithoutEdge(findingFixture, criticalIndex), WantFinding: false},
 	}}
+
+	// Keep the declared critical-edge pair first for compatibility, then prove
+	// every other query-referenced edge up to a fixed budget. Evidence can carry
+	// contextual edges that a policy intentionally does not depend on; those are
+	// not asserted as causal merely because they were present in the source path.
+	edgeAblations := 0
+	for index, edge := range edges {
+		if index == criticalIndex || edgeAblations >= maxGraphEdgeAblations-1 || !queryReferencesGraphValue(rule.Spec.Graph.Query, edge.Relation) {
+			continue
+		}
+		edgeAblations++
+		suite.Cases = append(suite.Cases, findingdsl.PolicyRuleTestCase{
+			Name:         fmt.Sprintf("%s%d passes", graphEdgeAblationCasePrefix, edgeAblations),
+			GraphFixture: graphFixtureWithoutEdge(findingFixture, index), WantFinding: false,
+		})
+	}
+	if edgeAblations < 1 {
+		return findingdsl.PolicyRuleTestSuite{}, ErrGraphMultiHopQueryRequired
+	}
+
+	mutants := graphPredicateMutants(rule.Spec.Graph.Query, findingFixture)
+	if len(mutants) > maxGraphPredicateMutants {
+		mutants = mutants[:maxGraphPredicateMutants]
+	}
+	for index, mutant := range mutants {
+		prefix := graphPredicateCasePrefix
+		if mutant.currentState {
+			prefix = graphCurrentStateCasePrefix
+		}
+		suite.Cases = append(suite.Cases, findingdsl.PolicyRuleTestCase{
+			Name:         fmt.Sprintf("%s%d passes", prefix, index+1),
+			GraphFixture: mutant.fixture, WantFinding: false,
+		})
+	}
+
+	// A same-relation edge between unrelated fixture entities must not repair a
+	// severed causal path. This catches queries that match a relation anywhere in
+	// the tenant instead of joining the exact path subjects.
+	neighborFixture, err := graphNeighborIsolationFixture(findingFixture, criticalIndex)
+	if err != nil {
+		return findingdsl.PolicyRuleTestSuite{}, err
+	}
+	suite.Cases = append(suite.Cases, findingdsl.PolicyRuleTestCase{
+		Name:         graphNeighborIsolationCaseName,
+		GraphFixture: neighborFixture,
+		WantFinding:  false,
+	})
 	if issues := findingdsl.ValidatePolicyRuleTestSuite(suite); len(issues) != 0 {
 		return suite, fmt.Errorf("authored graph test suite is invalid: %s", joinIssues(issues))
 	}
 	return suite, nil
+}
+
+type graphPredicateMutant struct {
+	fixture      *findingdsl.PolicyGraphFixture
+	currentState bool
+}
+
+func graphPredicateMutants(query string, finding *findingdsl.PolicyGraphFixture) []graphPredicateMutant {
+	var out []graphPredicateMutant
+	for nodeIndex, node := range finding.Nodes {
+		for _, key := range sortedStringKeys(node.Attributes) {
+			value := node.Attributes[key]
+			mutated, currentState, ok := safeGraphPredicateMutation(key, value)
+			if !ok || !queryReferencesGraphPredicate(query, key, value) {
+				continue
+			}
+			fixture := cloneGraphFixture(finding)
+			fixture.Nodes[nodeIndex].Attributes[key] = mutated
+			out = append(out, graphPredicateMutant{fixture: fixture, currentState: currentState})
+		}
+	}
+	for edgeIndex, edge := range finding.Edges {
+		for _, key := range sortedStringKeys(edge.Attributes) {
+			value := edge.Attributes[key]
+			mutated, currentState, ok := safeGraphPredicateMutation(key, value)
+			if !ok || !queryReferencesGraphPredicate(query, key, value) {
+				continue
+			}
+			fixture := cloneGraphFixture(finding)
+			fixture.Edges[edgeIndex].Attributes[key] = mutated
+			out = append(out, graphPredicateMutant{fixture: fixture, currentState: currentState})
+		}
+	}
+	return out
+}
+
+func safeGraphPredicateMutation(key, value string) (mutated string, currentState bool, ok bool) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	if key == "started_by" && strings.Contains(lower, "candidate") {
+		return "fixture-standard-marker", false, true
+	}
+	if !graphPredicateAttribute(key) {
+		return "", false, false
+	}
+	switch lower {
+	case "active":
+		return "INACTIVE", currentStateGraphAttribute(key), true
+	case "enabled":
+		return "DISABLED", currentStateGraphAttribute(key), true
+	case "running":
+		return "STOPPED", currentStateGraphAttribute(key), true
+	case "open":
+		return "CLOSED", currentStateGraphAttribute(key), true
+	case "true":
+		return "false", currentStateGraphAttribute(key), true
+	case "false":
+		return "true", false, true
+	case "execution":
+		return "task", false, true
+	case "runtask":
+		return "DescribeTasks", false, true
+	default:
+		if strings.HasSuffix(key, "_count") && lower != "0" {
+			return "0", false, true
+		}
+		return "", false, false
+	}
+}
+
+func currentStateGraphAttribute(key string) bool {
+	switch key {
+	case "status", "state", "last_status", "observed_last_status":
+		return true
+	default:
+		return false
+	}
+}
+
+func queryReferencesGraphPredicate(query, key, value string) bool {
+	query = strings.ToLower(query)
+	key = strings.ToLower(strings.TrimSpace(key))
+	value = strings.ToLower(strings.TrimSpace(value))
+	if strings.Contains(query, `"`+key+`":"`+value+`"`) {
+		return true
+	}
+	return key == "started_by" && strings.Contains(value, "candidate") &&
+		strings.Contains(query, `"started_by":"`) && strings.Contains(query, "candidate")
+}
+
+func queryReferencesGraphValue(query, value string) bool {
+	query = strings.ToLower(query)
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, pattern := range []string{
+		"relation: '" + value + "'",
+		"relation:'" + value + "'",
+		`relation: "` + value + `"`,
+		`relation:"` + value + `"`,
+	} {
+		if strings.Contains(query, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func graphFixtureWithoutEdge(finding *findingdsl.PolicyGraphFixture, edgeIndex int) *findingdsl.PolicyGraphFixture {
+	fixture := cloneGraphFixture(finding)
+	fixture.Edges = append(fixture.Edges[:edgeIndex], fixture.Edges[edgeIndex+1:]...)
+	return fixture
+}
+
+func graphNeighborIsolationFixture(finding *findingdsl.PolicyGraphFixture, criticalIndex int) (*findingdsl.PolicyGraphFixture, error) {
+	if finding == nil || criticalIndex < 0 || criticalIndex >= len(finding.Edges) {
+		return nil, errors.New("neighbor-isolation fixture requires a valid critical edge")
+	}
+	critical := finding.Edges[criticalIndex]
+	fixture := graphFixtureWithoutEdge(finding, criticalIndex)
+	fromURN := finding.TenantID + ":neighbor:node-1"
+	toURN := finding.TenantID + ":neighbor:node-2"
+	fixture.Nodes = append(fixture.Nodes,
+		findingdsl.PolicyGraphFixtureNode{URN: fromURN, SourceID: critical.SourceID, EntityType: "fixture.unrelated"},
+		findingdsl.PolicyGraphFixtureNode{URN: toURN, SourceID: critical.SourceID, EntityType: "fixture.unrelated"},
+	)
+	fixture.Edges = append(fixture.Edges, findingdsl.PolicyGraphFixtureEdge{
+		FromURN: fromURN, ToURN: toURN, SourceID: critical.SourceID, Relation: critical.Relation,
+	})
+	return fixture, nil
+}
+
+func cloneGraphFixture(fixture *findingdsl.PolicyGraphFixture) *findingdsl.PolicyGraphFixture {
+	return &findingdsl.PolicyGraphFixture{TenantID: fixture.TenantID, Nodes: cloneGraphNodes(fixture.Nodes), Edges: cloneGraphEdges(fixture.Edges)}
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func pseudonymizeGraphAttributes(attributes map[string]string, token string) map[string]string {

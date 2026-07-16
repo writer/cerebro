@@ -2,6 +2,8 @@ package policy
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,8 +42,8 @@ func TestArtifactsForRuleWithGraphEvidenceAuthorsCausalIdentifierSafeFixtures(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(artifacts.Suite.Cases) != 2 {
-		t.Fatalf("cases = %d, want 2", len(artifacts.Suite.Cases))
+	if len(artifacts.Suite.Cases) != 7 {
+		t.Fatalf("cases = %d, want canonical pair plus bounded proof battery", len(artifacts.Suite.Cases))
 	}
 	findingCase, passingCase := artifacts.Suite.Cases[0], artifacts.Suite.Cases[1]
 	if findingCase.GraphFixture == nil || passingCase.GraphFixture == nil {
@@ -53,6 +55,15 @@ func TestArtifactsForRuleWithGraphEvidenceAuthorsCausalIdentifierSafeFixtures(t 
 	if len(findingCase.GraphFixture.Edges) != len(passingCase.GraphFixture.Edges)+1 {
 		t.Fatalf("edge counts = %d and %d, want one critical edge removed", len(findingCase.GraphFixture.Edges), len(passingCase.GraphFixture.Edges))
 	}
+	caseNames := make([]string, 0, len(artifacts.Suite.Cases))
+	for _, testCase := range artifacts.Suite.Cases {
+		caseNames = append(caseNames, testCase.Name)
+	}
+	for _, required := range []string{graphCriticalEdgeCaseName, graphEdgeAblationCasePrefix, graphPredicateCasePrefix, graphNeighborIsolationCaseName} {
+		if !strings.Contains(strings.Join(caseNames, "\n"), required) {
+			t.Fatalf("authored cases = %#v, missing %q", caseNames, required)
+		}
+	}
 	yaml := string(artifacts.TestYAML)
 	for _, forbidden := range []string{"123456789012", "operator@example.test", "arn:aws:", "private-candidate"} {
 		if strings.Contains(yaml, forbidden) {
@@ -63,6 +74,81 @@ func TestArtifactsForRuleWithGraphEvidenceAuthorsCausalIdentifierSafeFixtures(t 
 		if !strings.Contains(yaml, required) {
 			t.Fatalf("authored fixture missing predicate evidence %q:\n%s", required, yaml)
 		}
+	}
+}
+
+func TestSuiteForGraphRuleAuthorsBoundedCurrentStateCloseout(t *testing.T) {
+	rule := authoredGraphRule()
+	rule.Spec.Graph.Query = strings.Replace(rule.Spec.Graph.Query,
+		`WHERE task_attrs CONTAINS 'candidate'`,
+		`WHERE task_attrs CONTAINS 'candidate' AND definition_attrs CONTAINS '"status":"active"'`, 1)
+	evidence := authoredGraphEvidence()
+	suite, err := SuiteForGraphRule(rule, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeouts := 0
+	for _, testCase := range suite.Cases {
+		if strings.HasPrefix(testCase.Name, graphCurrentStateCasePrefix) {
+			closeouts++
+			if got := testCase.GraphFixture.Nodes[2].Attributes["status"]; got != "INACTIVE" {
+				t.Fatalf("closeout status = %q, want INACTIVE", got)
+			}
+			if len(testCase.GraphFixture.Edges) != len(evidence.Edges) {
+				t.Fatalf("closeout edges = %d, want historical topology retained", len(testCase.GraphFixture.Edges))
+			}
+		}
+	}
+	if closeouts != 1 {
+		t.Fatalf("current-state closeouts = %d, want 1", closeouts)
+	}
+	if len(suite.Cases) > 2+maxGraphEdgeAblations+maxGraphPredicateMutants+1 {
+		t.Fatalf("suite cases = %d, exceeded proof budgets", len(suite.Cases))
+	}
+}
+
+func TestSuiteForGraphRuleRequiresTenantScopedQuery(t *testing.T) {
+	rule := authoredGraphRule()
+	rule.Spec.Graph.Query = strings.ReplaceAll(rule.Spec.Graph.Query, "$tenant_id", "fixture")
+	evidence := authoredGraphEvidence()
+	if _, err := SuiteForGraphRule(rule, evidence); !errors.Is(err, ErrGraphTenantScopeRequired) {
+		t.Fatalf("SuiteForGraphRule() error = %v, want tenant-scope error", err)
+	}
+}
+
+func TestSuiteForGraphRuleRejectsOneHopQueryOverMultiHopEvidence(t *testing.T) {
+	rule := authoredGraphRule()
+	rule.Spec.Graph.Query = `MATCH (definition:Entity {tenant_id: $tenant_id})-[role_use:RELATION {relation: 'runs_as'}]->(role:Entity)
+RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'one hop' AS summary, [definition.urn, role.urn] AS resource_urns
+LIMIT $row_limit`
+	if _, err := SuiteForGraphRule(rule, authoredGraphEvidence()); !errors.Is(err, ErrGraphMultiHopQueryRequired) {
+		t.Fatalf("SuiteForGraphRule() error = %v, want multi-hop query error", err)
+	}
+}
+
+func TestSuiteForGraphRuleBoundsEdgeAblations(t *testing.T) {
+	evidence := authoredGraphEvidence()
+	for index := 0; index < maxGraphEdgeAblations+3; index++ {
+		fromID := fmt.Sprintf("context-from-%d", index)
+		toID := fmt.Sprintf("context-to-%d", index)
+		evidence.Nodes = append(evidence.Nodes,
+			GraphEvidenceNode{ID: fromID, SourceID: "aws", EntityType: "aws.context"},
+			GraphEvidenceNode{ID: toID, SourceID: "aws", EntityType: "aws.context"},
+		)
+		evidence.Edges = append(evidence.Edges, GraphEvidenceEdge{FromID: fromID, ToID: toID, SourceID: "aws", Relation: "depends_on"})
+	}
+	suite, err := SuiteForGraphRule(authoredGraphRule(), evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ablations := 0
+	for _, testCase := range suite.Cases {
+		if testCase.Name == graphCriticalEdgeCaseName || strings.HasPrefix(testCase.Name, graphEdgeAblationCasePrefix) {
+			ablations++
+		}
+	}
+	if ablations != maxGraphEdgeAblations {
+		t.Fatalf("edge ablations = %d, want budget %d", ablations, maxGraphEdgeAblations)
 	}
 }
 

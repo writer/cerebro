@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/findingdsl"
@@ -36,8 +37,11 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	if !errors.Is(err, ErrGraphStoreRequired) {
 		t.Fatalf("Prove() error = %v, want ErrGraphStoreRequired", err)
 	}
-	if len(notRun.Receipts) != 2 || notRun.Receipts[1].Execution != "not_run" || notRun.Receipts[1].Passed {
+	if receipt := proofReceiptByGate(t, notRun, "graph_edge_ablation"); receipt.Execution != "not_run" || receipt.Passed {
 		t.Fatalf("not-run receipts = %#v", notRun.Receipts)
+	}
+	if receipt := proofReceiptByGate(t, notRun, "graph_tenant_scope"); receipt.Execution != "in_process" || !receipt.Passed {
+		t.Fatalf("tenant receipt = %#v", receipt)
 	}
 
 	store := newProofGraphStore()
@@ -45,18 +49,122 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.executions != 2 {
-		t.Fatalf("graph executions = %d, want finding and passing cases", store.executions)
+	if store.executions < len(artifacts.Suite.Cases) {
+		t.Fatalf("graph executions = %d, want every one of %d authored cases executed", store.executions, len(artifacts.Suite.Cases))
 	}
-	if len(result.Receipts) != 2 || !result.Receipts[0].Passed || !result.Receipts[1].Passed || result.Receipts[1].Execution != "graph_store" {
-		t.Fatalf("graph receipts = %#v", result.Receipts)
+	for _, gate := range []string{"graph_fixture_contract", "graph_multi_hop", "graph_tenant_scope", "graph_edge_ablation", "graph_predicate_mutation", "graph_neighbor_isolation", "graph_execution"} {
+		if receipt := proofReceiptByGate(t, result, gate); !receipt.Passed {
+			t.Fatalf("%s receipt = %#v; all receipts = %#v", gate, receipt, result.Receipts)
+		}
 	}
 }
 
+func TestProveGraphRejectsSuiteWithoutTwoCausalEdgeAblations(t *testing.T) {
+	evidence := authoredGraphEvidence()
+	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered := artifacts.Suite.Cases[:0]
+	for _, testCase := range artifacts.Suite.Cases {
+		if strings.HasPrefix(testCase.Name, graphEdgeAblationCasePrefix) {
+			continue
+		}
+		filtered = append(filtered, testCase)
+	}
+	artifacts.Suite.Cases = filtered
+	result, err := Prove(artifacts)
+	if !errors.Is(err, ErrGraphMultiHopQueryRequired) {
+		t.Fatalf("Prove() error = %v, want multi-hop query error", err)
+	}
+	if receipt := proofReceiptByGate(t, result, "graph_multi_hop"); receipt.Passed {
+		t.Fatalf("multi-hop receipt = %#v, want failed", receipt)
+	}
+}
+
+func TestProveGraphAttributesEachReceiptToItsExecutedSubSuite(t *testing.T) {
+	evidence := authoredGraphEvidence()
+	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newProofGraphStore()
+	store.ignorePredicates = true
+	result, err := ProveWithGraphStore(context.Background(), artifacts, store)
+	if err == nil {
+		t.Fatal("ProveWithGraphStore() error = nil")
+	}
+	if receipt := proofReceiptByGate(t, result, "graph_edge_ablation"); !receipt.Passed {
+		t.Fatalf("edge receipt = %#v, want independently passed", receipt)
+	}
+	if receipt := proofReceiptByGate(t, result, "graph_predicate_mutation"); receipt.Passed {
+		t.Fatalf("predicate receipt = %#v, want failed mutant suite", receipt)
+	}
+	if receipt := proofReceiptByGate(t, result, "graph_execution"); receipt.Passed {
+		t.Fatalf("aggregate receipt = %#v, want failed", receipt)
+	}
+}
+
+func TestGraphProofExecutionNamespacesCannotCollide(t *testing.T) {
+	evidence := authoredGraphEvidence()
+	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := isolateGraphProofSuite(artifacts.Suite, "execution-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := isolateGraphProofSuite(artifacts.Suite, "execution-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstURNs := map[string]struct{}{}
+	for _, testCase := range first.Cases {
+		if testCase.GraphFixture == nil {
+			continue
+		}
+		if !strings.HasSuffix(testCase.GraphFixture.TenantID, "-proof-execution-a") {
+			t.Fatalf("first tenant = %q", testCase.GraphFixture.TenantID)
+		}
+		for _, node := range testCase.GraphFixture.Nodes {
+			firstURNs[node.URN] = struct{}{}
+		}
+	}
+	for _, testCase := range second.Cases {
+		if testCase.GraphFixture == nil {
+			continue
+		}
+		if !strings.HasSuffix(testCase.GraphFixture.TenantID, "-proof-execution-b") {
+			t.Fatalf("second tenant = %q", testCase.GraphFixture.TenantID)
+		}
+		for _, node := range testCase.GraphFixture.Nodes {
+			if _, collision := firstURNs[node.URN]; collision {
+				t.Fatalf("proof execution URN collision: %q", node.URN)
+			}
+		}
+	}
+	if strings.Contains(artifacts.Suite.Cases[0].GraphFixture.TenantID, "-proof-") {
+		t.Fatalf("authored fixture was mutated: %q", artifacts.Suite.Cases[0].GraphFixture.TenantID)
+	}
+}
+
+func proofReceiptByGate(t *testing.T, result ProofResult, gate string) ProofReceipt {
+	t.Helper()
+	for _, receipt := range result.Receipts {
+		if receipt.Gate == gate {
+			return receipt
+		}
+	}
+	t.Fatalf("receipts = %#v, missing gate %q", result.Receipts, gate)
+	return ProofReceipt{}
+}
+
 type proofGraphStore struct {
-	entities   map[string]*ports.ProjectedEntity
-	links      map[string]*ports.ProjectedLink
-	executions int
+	entities         map[string]*ports.ProjectedEntity
+	links            map[string]*ports.ProjectedLink
+	executions       int
+	ignorePredicates bool
 }
 
 func newProofGraphStore() *proofGraphStore {
@@ -84,28 +192,65 @@ func (s *proofGraphStore) DeleteProjectedEntity(_ context.Context, urn string) e
 	}
 	return nil
 }
-func (s *proofGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *proofGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	s.executions++
-	var roleEdge *ports.ProjectedLink
-	for _, link := range s.links {
-		if link.Relation == "runs_as" {
-			roleEdge = link
-			break
+	query := strings.ToLower(request.Query)
+	for _, launch := range s.links {
+		if launch.Relation != "acted_on" {
+			continue
+		}
+		for _, dependency := range s.links {
+			if dependency.Relation != "depends_on" || dependency.FromURN != launch.ToURN {
+				continue
+			}
+			for _, roleEdge := range s.links {
+				if roleEdge.Relation != "runs_as" || roleEdge.FromURN != dependency.ToURN {
+					continue
+				}
+				task, definition := s.entities[launch.ToURN], s.entities[dependency.ToURN]
+				if task == nil || definition == nil || s.entities[roleEdge.ToURN] == nil {
+					continue
+				}
+				if !s.ignorePredicates && !proofGraphPredicatesMatch(query, launch, task, definition, roleEdge) {
+					continue
+				}
+				resourceURNs := []string{launch.FromURN, launch.ToURN, dependency.ToURN, roleEdge.ToURN}
+				evidence := make([]any, 0, len(resourceURNs))
+				for _, urn := range resourceURNs {
+					evidence = append(evidence, map[string]any{"urn": urn})
+				}
+				return []ports.CypherRow{{Values: map[string]any{
+					"primary_urn": roleEdge.FromURN, "fingerprint_key": roleEdge.FromURN + "|" + roleEdge.ToURN,
+					"summary": "causal ECS role path", "resource_urns": resourceURNs, "evidence": evidence,
+				}}}, nil
+			}
 		}
 	}
-	if roleEdge == nil {
-		return nil, nil
+	return nil, nil
+}
+
+func proofGraphPredicatesMatch(query string, launch *ports.ProjectedLink, task, definition *ports.ProjectedEntity, roleEdge *ports.ProjectedLink) bool {
+	checks := []struct {
+		queryToken string
+		attributes map[string]string
+		key        string
+		value      string
+	}{
+		{`"event_type":"runtask"`, launch.Attributes, "event_type", "runtask"},
+		{"candidate", task.Attributes, "started_by", "candidate"},
+		{`"status":"active"`, definition.Attributes, "status", "active"},
+		{`"has_secret_bindings":"true"`, definition.Attributes, "has_secret_bindings", "true"},
+		{`"role_usage":"execution"`, roleEdge.Attributes, "role_usage", "execution"},
 	}
-	evidence := make([]any, 0, len(s.entities))
-	resourceURNs := make([]string, 0, len(s.entities))
-	for urn := range s.entities {
-		evidence = append(evidence, map[string]any{"urn": urn})
-		resourceURNs = append(resourceURNs, urn)
+	for _, check := range checks {
+		if !strings.Contains(query, check.queryToken) {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(check.attributes[check.key]), check.value) {
+			return false
+		}
 	}
-	return []ports.CypherRow{{Values: map[string]any{
-		"primary_urn": roleEdge.FromURN, "fingerprint_key": roleEdge.FromURN + "|" + roleEdge.ToURN,
-		"summary": "causal ECS role path", "resource_urns": resourceURNs, "evidence": evidence,
-	}}}, nil
+	return true
 }
 
 func TestProveRejectsSuiteThatSurvivesMutation(t *testing.T) {
