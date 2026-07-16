@@ -33,7 +33,7 @@ func TestRootWorkspaceOwnsPublicApplicationsAndTypeScriptSDK(t *testing.T) {
 			t.Fatalf("root package.json missing workspace %q", workspace)
 		}
 	}
-	for _, script := range []string{"check:workspaces", "test:workspaces", "typecheck:workspaces"} {
+	for _, script := range []string{"build:workspaces", "check:workspaces", "test:workspaces", "typecheck:workspaces"} {
 		if strings.TrimSpace(manifest.Scripts[script]) == "" {
 			t.Fatalf("root package.json missing script %q", script)
 		}
