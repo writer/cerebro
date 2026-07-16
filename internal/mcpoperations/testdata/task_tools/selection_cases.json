@@ -30,6 +30,26 @@
     "maximum_call_count": 1
   },
   {
+    "id": "service-health-backend-availability",
+    "user_request": "Check service health and backend dependency availability.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.health",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "service-health-api-ready",
+    "user_request": "Is the API ready or is a backend unavailable?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.health",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
     "id": "version-running-build",
     "user_request": "Which Cerebro build is running?",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -52,6 +72,26 @@
   {
     "id": "version-release-identity",
     "user_request": "What release is this server running?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.version",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "version-running-build-commit",
+    "user_request": "Confirm the running build commit before triage.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.version",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "version-release-build-date",
+    "user_request": "Report the server release, build date, and API version.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
     "expected_tool": "cerebro.version",
     "allowed_followup_tools": [],
@@ -90,6 +130,26 @@
     "maximum_call_count": 2
   },
   {
+    "id": "findings-suppressed-rule-tenant",
+    "user_request": "Search suppressed findings for this rule in the tenant.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.findings.search",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.list"],
+    "require_partial_handling": false,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "findings-resolved-policy-event",
+    "user_request": "Find resolved security findings for a policy event.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.findings.search",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.list"],
+    "require_partial_handling": false,
+    "maximum_call_count": 2
+  },
+  {
     "id": "assets-database-urn",
     "user_request": "Find the database asset by URN.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -112,6 +172,26 @@
   {
     "id": "assets-runtime-entity-type",
     "user_request": "Which asset matches this runtime and entity type?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.assets.search",
+    "allowed_followup_tools": ["cerebro.investigation.context"],
+    "forbidden_tools": ["cerebro.assets.get"],
+    "require_partial_handling": false,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "assets-graph-tenant-runtime",
+    "user_request": "Search graph assets by tenant and runtime while ignoring findings.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.assets.search",
+    "allowed_followup_tools": ["cerebro.investigation.context"],
+    "forbidden_tools": ["cerebro.assets.get"],
+    "require_partial_handling": false,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "assets-inventory-entity-urn",
+    "user_request": "Find an inventory asset with this entity type and URN.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
     "expected_tool": "cerebro.assets.search",
     "allowed_followup_tools": ["cerebro.investigation.context"],
@@ -150,6 +230,26 @@
     "maximum_call_count": 2
   },
   {
+    "id": "graph-asset-finding-evidence",
+    "user_request": "Explain how this asset is connected to the finding, including graph evidence.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.graph.reason",
+    "allowed_followup_tools": ["cerebro.investigation.context"],
+    "forbidden_tools": ["cerebro.graph.paths"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "graph-internet-identity-path",
+    "user_request": "Which attack path connects the internet-facing resource to the identity?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.graph.reason",
+    "allowed_followup_tools": ["cerebro.investigation.context"],
+    "forbidden_tools": ["cerebro.graph.paths"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
     "id": "investigation-full-triage",
     "user_request": "Give me the full triage context for finding F-123.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -172,6 +272,26 @@
   {
     "id": "investigation-before-assignment",
     "user_request": "I need investigation context before assigning this finding.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.investigation.context",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.get"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "investigation-triage-assets-evidence",
+    "user_request": "Assemble triage context for finding F-9 with affected assets and evidence.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.investigation.context",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.get"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "investigation-runtime-graph-details",
+    "user_request": "Get runtime details and graph context for this finding investigation.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
     "expected_tool": "cerebro.investigation.context",
     "allowed_followup_tools": ["cerebro.risk.explain"],
@@ -210,6 +330,26 @@
     "maximum_call_count": 2
   },
   {
+    "id": "risk-exposure-before-remediation",
+    "user_request": "Explain why this exposure is risky before planning remediation.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.risk.explain",
+    "allowed_followup_tools": ["cerebro.action.plan"],
+    "forbidden_tools": ["cerebro.findings.action.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "risk-finding-evidence-assets",
+    "user_request": "Explain the risk of this finding using evidence and affected assets.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.risk.explain",
+    "allowed_followup_tools": ["cerebro.action.plan"],
+    "forbidden_tools": ["cerebro.findings.action.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
     "id": "evidence-packet-audit",
     "user_request": "Build an evidence packet for the audit review.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -240,6 +380,26 @@
     "maximum_call_count": 2
   },
   {
+    "id": "evidence-decision-control-packet",
+    "user_request": "Prepare a decision evidence packet for this control.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.evidence.packet",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "evidence-audit-coverage-packet",
+    "user_request": "Collect an audit evidence packet using current coverage, with no action approval.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.evidence.packet",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
     "id": "sources-connector-blind-spots",
     "user_request": "Where are our connector blind spots?",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -262,6 +422,26 @@
   {
     "id": "sources-coverage-gaps",
     "user_request": "Report source coverage gaps and unsupported dimensions.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.sources.health",
+    "allowed_followup_tools": ["cerebro.evidence.packet"],
+    "forbidden_tools": ["cerebro.source_runtimes.refresh.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "sources-connector-unsupported-gaps",
+    "user_request": "Report connector coverage gaps and unsupported sources.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.sources.health",
+    "allowed_followup_tools": ["cerebro.evidence.packet"],
+    "forbidden_tools": ["cerebro.source_runtimes.refresh.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "sources-health-stale-failed-data",
+    "user_request": "Check source health for stale data and failed runtimes.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
     "expected_tool": "cerebro.sources.health",
     "allowed_followup_tools": ["cerebro.evidence.packet"],
@@ -302,6 +482,16 @@
   {
     "id": "action-execution-stays-plan-only",
     "user_request": "Execute remediation after you identify the next action.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.action.plan",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.action.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "action-decide-remediation-candidate",
+    "user_request": "Decide which remediation candidate to fix next without execution.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
     "expected_tool": "cerebro.action.plan",
     "allowed_followup_tools": ["cerebro.risk.explain"],
