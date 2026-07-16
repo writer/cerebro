@@ -123,6 +123,49 @@ func TestRecordDecisionAndOutcomeRemainDurableWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedPacketDecisionClassification(t *testing.T) {
+	start := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	receipts := &receiptStore{receipt: &ports.DecisionPacketReceipt{
+		TenantID: "tenant-1", PacketID: "dpr_1", SchemaVersion: "2026-07-15",
+		Workflow:      string(decisionworkflow.WorkflowFindingToVerifiedFix),
+		DecisionState: string(decisionworkflow.DecisionSupported), PacketDigest: "sha256:packet",
+		ScopeURN: "urn:cerebro:tenant-1:finding:1",
+	}}
+	log := &replayLog{}
+	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start}})
+
+	legacy, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
+		ID: "decision-legacy", DecisionType: "change", Status: "recorded", SourceSystem: "legacy",
+		TargetIDs: []string{"urn:cerebro:tenant-1:resource:1"}, ObservedAt: start,
+		Metadata: map[string]any{"tenant_id": "tenant-1"},
+	})
+	if err != nil {
+		t.Fatalf("WriteDecision(legacy) error = %v", err)
+	}
+	trusted, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
+		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
+		Disposition: decisionworkflow.DispositionAccepted, Reason: decisionworkflow.DismissalNone,
+	})
+	if err != nil {
+		t.Fatalf("RecordDecision() error = %v", err)
+	}
+
+	legacyAuthenticated, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", legacy.DecisionID)
+	if err != nil || legacyAuthenticated {
+		t.Fatalf("legacy classification = %t, err = %v; want false, nil", legacyAuthenticated, err)
+	}
+	trustedAuthenticated, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", trusted.Record.ID)
+	if err != nil || !trustedAuthenticated {
+		t.Fatalf("trusted classification = %t, err = %v; want true, nil", trustedAuthenticated, err)
+	}
+
+	log.events = append(log.events, log.events[len(log.events)-1])
+	if _, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", trusted.Record.ID); !errors.Is(err, ErrDecisionNotFound) {
+		t.Fatalf("duplicate trusted decision error = %v, want %v", err, ErrDecisionNotFound)
+	}
+}
+
 func TestRecordOutcomeRejectsLegacyDecisionWithForgedPacketMetadata(t *testing.T) {
 	start := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	log := &replayLog{}

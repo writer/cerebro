@@ -89,13 +89,28 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 		metadata = request.GetMetadata().AsMap()
 	}
 	outcome := decisionworkflow.NormalizeOutcome(request.GetOutcomeType())
-	if outcome != decisionworkflow.OutcomeUnknown && outcome != decisionworkflow.OutcomeNone {
-		tenant, actor, err := decisionPacketIdentity(r.Context(), tenantIDFromMetadata(metadata), r.Header.Get("X-Cerebro-Actor"))
+	tenantID, err := effectiveTenantFilter(r.Context(), tenantIDFromMetadata(metadata))
+	if err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	outcomeService := newDecisionOutcomeService(a.deps)
+	packetDecision, err := outcomeService.IsAuthenticatedPacketDecision(r.Context(), tenantID, request.GetDecisionId())
+	if err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	if packetDecision {
+		if outcome == decisionworkflow.OutcomeUnknown || outcome == decisionworkflow.OutcomeNone {
+			writeKnowledgeError(w, decisionops.ErrInvalidRequest)
+			return
+		}
+		tenant, actor, err := decisionPacketIdentity(r.Context(), tenantID, r.Header.Get("X-Cerebro-Actor"))
 		if err != nil {
 			writeKnowledgeError(w, err)
 			return
 		}
-		result, err := newDecisionOutcomeService(a.deps).RecordOutcome(r.Context(), decisionops.RecordOutcomeRequest{
+		result, err := outcomeService.RecordOutcome(r.Context(), decisionops.RecordOutcomeRequest{
 			TenantID: tenant.ID, ActorID: actor.ID, DecisionID: request.GetDecisionId(), Outcome: outcome,
 			AuditPacketExportReceiptID: request.GetAuditPacketExportReceiptId(),
 		})

@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/decisionops"
 	"github.com/writer/cerebro/internal/decisionworkflow"
+	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -179,6 +182,118 @@ func TestDecisionPacketDispositionAndOutcomeConnect(t *testing.T) {
 	}
 	if outcomeResponse.Msg.GetDurabilityStatus() != "recorded" || len(log.events) != 2 {
 		t.Fatalf("outcome response = %+v events = %d", outcomeResponse.Msg, len(log.events))
+	}
+}
+
+func TestLegacyKnownOutcomesRetainKnowledgePath(t *testing.T) {
+	writeLegacyDecision := func(t *testing.T, log *decisionOutcomeLog, decisionID string) string {
+		t.Helper()
+		writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+		result, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
+			ID: decisionID, DecisionType: "change", Status: "recorded", SourceSystem: "legacy",
+			TargetIDs:  []string{"urn:cerebro:tenant-1:resource:1"},
+			ObservedAt: time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC),
+			Metadata:   map[string]any{"tenant_id": "tenant-1"},
+		})
+		if err != nil {
+			t.Fatalf("WriteDecision() error = %v", err)
+		}
+		return result.DecisionID
+	}
+
+	t.Run("HTTP", func(t *testing.T) {
+		log := &decisionOutcomeLog{}
+		decisionID := writeLegacyDecision(t, log, "decision-legacy-http")
+		app := &App{deps: Dependencies{AppendLog: log}}
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/platform/knowledge/outcomes", bytes.NewBufferString(`{
+			"decisionId":"`+decisionID+`","outcomeType":"accepted","verdict":"accepted",
+			"metadata":{"tenant_id":"tenant-1"}
+		}`))
+		recorder := httptest.NewRecorder()
+		app.handleWriteOutcome(recorder, request)
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("outcome status = %d body = %s", recorder.Code, recorder.Body.String())
+		}
+		if len(log.events) != 2 {
+			t.Fatalf("durable event count = %d, want 2", len(log.events))
+		}
+	})
+
+	t.Run("Connect", func(t *testing.T) {
+		log := &decisionOutcomeLog{}
+		decisionID := writeLegacyDecision(t, log, "decision-legacy-connect")
+		service := &bootstrapService{deps: Dependencies{AppendLog: log}}
+		metadata, err := structpb.NewStruct(map[string]any{"tenant_id": "tenant-1"})
+		if err != nil {
+			t.Fatalf("build metadata: %v", err)
+		}
+		response, err := service.WriteOutcome(context.Background(), connect.NewRequest(&cerebrov1.WriteOutcomeRequest{
+			DecisionId: decisionID, OutcomeType: "accepted", Verdict: "accepted", Metadata: metadata,
+		}))
+		if err != nil {
+			t.Fatalf("WriteOutcome() error = %v", err)
+		}
+		if response.Msg.GetDurabilityStatus() != "recorded" || len(log.events) != 2 {
+			t.Fatalf("outcome response = %+v events = %d", response.Msg, len(log.events))
+		}
+	})
+}
+
+func TestPacketDecisionsRejectNonterminalOutcomeVocabulary(t *testing.T) {
+	setup := func(t *testing.T) (Dependencies, *decisionOutcomeLog, string) {
+		t.Helper()
+		store := &decisionOutcomeStore{decisionPacketTestReceipts: decisionPacketTestReceipts{receipt: &ports.DecisionPacketReceipt{
+			TenantID: "tenant-1", PacketID: "dpr_1", SchemaVersion: "2026-07-15",
+			Workflow:      string(decisionworkflow.WorkflowFindingToVerifiedFix),
+			DecisionState: string(decisionworkflow.DecisionSupported), PacketDigest: "sha256:packet",
+			ScopeURN: "urn:cerebro:tenant-1:finding:1",
+		}}}
+		log := &decisionOutcomeLog{}
+		deps := Dependencies{StateStore: store, AppendLog: log}
+		result, err := newDecisionOutcomeService(deps).RecordDecision(context.Background(), decisionops.RecordDecisionRequest{
+			TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
+			Disposition: decisionworkflow.DispositionAccepted, Reason: decisionworkflow.DismissalNone,
+		})
+		if err != nil {
+			t.Fatalf("RecordDecision() error = %v", err)
+		}
+		return deps, log, result.Record.ID
+	}
+
+	for _, outcomeType := range []string{"custom", "none"} {
+		t.Run("HTTP/"+outcomeType, func(t *testing.T) {
+			deps, log, decisionID := setup(t)
+			app := &App{deps: deps}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/platform/knowledge/outcomes", bytes.NewBufferString(`{
+				"decisionId":"`+decisionID+`","outcomeType":"`+outcomeType+`","verdict":"custom",
+				"metadata":{"tenant_id":"tenant-1"}
+			}`))
+			recorder := httptest.NewRecorder()
+			app.handleWriteOutcome(recorder, request)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("outcome status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+			}
+			if len(log.events) != 1 {
+				t.Fatalf("durable event count = %d, want decision only", len(log.events))
+			}
+		})
+
+		t.Run("Connect/"+outcomeType, func(t *testing.T) {
+			deps, log, decisionID := setup(t)
+			metadata, err := structpb.NewStruct(map[string]any{"tenant_id": "tenant-1"})
+			if err != nil {
+				t.Fatalf("build metadata: %v", err)
+			}
+			_, err = (&bootstrapService{deps: deps}).WriteOutcome(context.Background(), connect.NewRequest(&cerebrov1.WriteOutcomeRequest{
+				DecisionId: decisionID, OutcomeType: outcomeType, Verdict: "custom", Metadata: metadata,
+			}))
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Fatalf("WriteOutcome() code = %s, err = %v; want invalid_argument", connect.CodeOf(err), err)
+			}
+			if len(log.events) != 1 {
+				t.Fatalf("durable event count = %d, want decision only", len(log.events))
+			}
+		})
 	}
 }
 

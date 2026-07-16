@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/decisionworkflow"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/observability"
@@ -178,6 +179,39 @@ type RecordOutcomeResult struct {
 	Write  knowledge.OutcomeWriteResult
 }
 
+// IsAuthenticatedPacketDecision reports whether the durable decision was
+// created through the authenticated packet workflow. A malformed decision that
+// carries the server-only trust marker fails closed instead of falling back to
+// the legacy outcome path.
+func (s *Service) IsAuthenticatedPacketDecision(ctx context.Context, tenantID, decisionID string) (bool, error) {
+	if s == nil || s.replayer == nil {
+		return false, ErrRuntimeUnavailable
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	decisionID = strings.TrimSpace(decisionID)
+	if decisionID == "" {
+		return false, ErrInvalidRequest
+	}
+	events, err := s.replayDecisionEvents(ctx, tenantID, decisionID)
+	if err != nil {
+		return false, err
+	}
+	trusted := false
+	for _, event := range events {
+		if event.GetAttributes()[workflowevents.EventAttributeDecisionTrust] == workflowevents.DecisionTrustAuthenticatedPacket {
+			trusted = true
+			break
+		}
+	}
+	if !trusted {
+		return false, nil
+	}
+	if _, err := resolveDecision(events, tenantID, decisionID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Service) RecordOutcome(ctx context.Context, request RecordOutcomeRequest) (RecordOutcomeResult, error) {
 	if s == nil || s.replayer == nil || s.writer == nil {
 		return RecordOutcomeResult{}, ErrRuntimeUnavailable
@@ -257,13 +291,21 @@ type resolvedDecision struct {
 }
 
 func (s *Service) loadDecision(ctx context.Context, tenantID, decisionID string) (resolvedDecision, error) {
-	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
-		KindPrefixes: []string{workflowevents.EventKindKnowledgeDecisionRecorded}, ExactKindFilters: true,
-		TenantID: tenantID, AttributeEquals: map[string]string{workflowevents.EventAttributeDecisionID: decisionID}, Limit: 2,
-	})
+	events, err := s.replayDecisionEvents(ctx, tenantID, decisionID)
 	if err != nil {
 		return resolvedDecision{}, err
 	}
+	return resolveDecision(events, tenantID, decisionID)
+}
+
+func (s *Service) replayDecisionEvents(ctx context.Context, tenantID, decisionID string) ([]*cerebrov1.EventEnvelope, error) {
+	return s.replayer.Replay(ctx, ports.ReplayRequest{
+		KindPrefixes: []string{workflowevents.EventKindKnowledgeDecisionRecorded}, ExactKindFilters: true,
+		TenantID: tenantID, AttributeEquals: map[string]string{workflowevents.EventAttributeDecisionID: decisionID}, Limit: 2,
+	})
+}
+
+func resolveDecision(events []*cerebrov1.EventEnvelope, tenantID, decisionID string) (resolvedDecision, error) {
 	if len(events) != 1 {
 		return resolvedDecision{}, ErrDecisionNotFound
 	}

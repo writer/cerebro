@@ -47,8 +47,8 @@ func OutcomeRequest(request *cerebrov1.WriteOutcomeRequest, metadata Metadata) k
 }
 
 func timestampValue(value *timestamppb.Timestamp) time.Time {
-	if value == nil {
+	if value == nil || (value.GetSeconds() == 0 && value.GetNanos() == 0) {
 		return time.Time{}
 	}
-	return value.AsTime()
+	return value.AsTime().UTC()
 }
