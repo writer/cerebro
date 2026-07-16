@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/mcpoperations"
+	"github.com/writer/cerebro/internal/mcptransport"
 	"github.com/writer/cerebro/internal/ports"
 	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -81,17 +82,8 @@ type mcpJSONRPCRequest struct {
 	Error   *mcpError       `json:"error,omitempty"`
 }
 
-type mcpJSONRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *mcpError       `json:"error,omitempty"`
-}
-
-type mcpError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
+type mcpJSONRPCResponse = mcptransport.Response
+type mcpError = mcptransport.Error
 
 type mcpGraphStoreNeighborhoodResult struct {
 	urn          string
@@ -322,6 +314,7 @@ type mcpTelemetryDetails struct {
 	JSONRPCIDPresent bool
 	ParamsPresent    bool
 	Response         *mcpJSONRPCResponse
+	ResponseBytes    int
 }
 
 func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -342,11 +335,11 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	decoder.UseNumber()
 	var request mcpJSONRPCRequest
 	if err := decoder.Decode(&request); err != nil {
-		mcpWriteJSONRPC(w, mcpJSONRPCResponse{
+		responseBytes := mcpWriteJSONRPC(w, mcpJSONRPCResponse{
 			JSONRPC: "2.0",
 			Error:   &mcpError{Code: -32700, Message: "parse error"},
 		})
-		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", "", time.Since(started), mcpTelemetryDetails{RequestKind: "parse_error"})
+		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", "", time.Since(started), mcpTelemetryDetails{RequestKind: "parse_error", ResponseBytes: responseBytes})
 		return
 	}
 	if request.Method == "" && (len(request.Result) != 0 || request.Error != nil) {
@@ -376,12 +369,13 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		clearLongRunningWriteDeadline(w)
 	}
 	response := app.handleMCPRequest(r, request)
-	mcpWriteJSONRPC(w, response)
+	responseBytes := mcpWriteJSONRPC(w, response)
 	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started), mcpTelemetryDetails{
 		RequestKind:      "request",
 		ParamsPresent:    len(request.Params) != 0,
 		JSONRPCIDPresent: len(request.ID) != 0,
 		Response:         &response,
+		ResponseBytes:    responseBytes,
 	})
 }
 
@@ -2434,7 +2428,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.assets.search",
 			Title:       "Search Assets",
-			Description: "Find visible inventory and graph assets by query, URN, entity type, tenant, or runtime.",
+			Description: "Find visible inventory and graph assets, including hosts, by query, URN, entity type, tenant, or runtime.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"query":       map[string]any{"type": "string"},
 				"urn":         map[string]any{"type": "string"},
@@ -2945,6 +2939,7 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		telemetry.Field{Key: "mcp.session_header_present", Value: strings.TrimSpace(r.Header.Get("Mcp-Session-Id")) != ""},
 		telemetry.Field{Key: "mcp.jsonrpc_id_present", Value: detail.JSONRPCIDPresent},
 		telemetry.Field{Key: "mcp.params_present", Value: detail.ParamsPresent},
+		telemetry.Field{Key: "mcp.response_bytes", Value: detail.ResponseBytes},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
 	if contentType := mcpMediaType(r.Header.Get("Content-Type")); contentType != "" {
@@ -3016,6 +3011,7 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		telemetry.Field{Key: "mcp.session_header_present", Value: strings.TrimSpace(r.Header.Get("Mcp-Session-Id")) != ""},
 		telemetry.Field{Key: "mcp.jsonrpc_id_present", Value: detail.JSONRPCIDPresent},
 		telemetry.Field{Key: "mcp.params_present", Value: detail.ParamsPresent},
+		telemetry.Field{Key: "mcp.response_bytes", Value: detail.ResponseBytes},
 		telemetry.Field{Key: "mcp.duration_ms", Value: duration.Milliseconds()},
 	)
 	if contentType := mcpMediaType(r.Header.Get("Content-Type")); contentType != "" {
@@ -4424,12 +4420,12 @@ func mcpUint32Arg(args map[string]any, key string) (uint32, error) {
 	return uint32(parsed), nil
 }
 
-func mcpWriteJSONRPC(w http.ResponseWriter, response mcpJSONRPCResponse) {
+func mcpWriteJSONRPC(w http.ResponseWriter, response mcpJSONRPCResponse) int {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	return mcptransport.WriteJSON(w, response)
 }
 
 func mcpNegotiatedProtocolVersion(r *http.Request, rawParams json.RawMessage) string {

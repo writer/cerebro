@@ -122,7 +122,14 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
-const bootstrapProductionGoLineBudget = 28289
+// Policy discovery candidates add only HTTP request/response mapping,
+// tenant/scope enforcement, safe transport views, and configured model/store
+// composition, including the narrow findings-registry coverage adapter.
+// Candidate lifecycle, graph grounding, duplicate-coverage decisions,
+// proof/shadow orchestration, redaction boundaries, and optimistic revisions
+// stay behind internal/policycandidate; durable persistence stays in the
+// concrete Postgres state-store package.
+const bootstrapProductionGoLineBudget = 28586
 
 type bootstrapFileLineCount struct {
 	path  string

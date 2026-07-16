@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -26,6 +27,17 @@ type Rule interface {
 type Registry struct {
 	rules map[string]Rule
 }
+
+// GraphRuleCatalogEntry is one server-registered, bounded graph rule query.
+// It is intended for internal duplicate-coverage checks, not API responses.
+type GraphRuleCatalogEntry struct {
+	RuleID            string
+	Request           ports.CypherQueryRequest
+	Signature         GraphRuleCoverageSignature
+	SemanticsComplete bool
+}
+
+var graphRuleEntityTypePattern = regexp.MustCompile(`(?i)entity_type\s*(?::|=)\s*['"]([^'"]+)['"]`)
 
 var builtinRegistry *Registry
 
@@ -121,4 +133,72 @@ func (r *Registry) ForRuntime(runtime *cerebrov1.SourceRuntime) []Rule {
 		rules = append(rules, rule)
 	}
 	return rules
+}
+
+// GraphRuleCatalog returns bounded QueryFor output for every registered graph
+// rule in deterministic rule-ID order. It fails closed instead of silently
+// omitting an unbounded rule from duplicate-coverage checks.
+func (r *Registry) GraphRuleCatalog(tenantID string, limit int) ([]GraphRuleCatalogEntry, error) {
+	if r == nil {
+		return nil, fmt.Errorf("finding rule registry is required")
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" || limit <= 0 {
+		return nil, fmt.Errorf("tenant id and positive catalog limit are required")
+	}
+	ids := make([]string, 0, len(r.rules))
+	for id := range r.rules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	entries := make([]GraphRuleCatalogEntry, 0, len(ids))
+	runtime := &cerebrov1.SourceRuntime{TenantId: tenantID}
+	for _, id := range ids {
+		graphRule, ok := r.rules[id].(GraphRule)
+		if !ok {
+			continue
+		}
+		request := graphRule.QueryFor(runtime)
+		if strings.TrimSpace(request.Query) == "" {
+			continue
+		}
+		if request.RowLimit <= 0 || request.RowLimit > ports.MaxCypherQueryRows {
+			return nil, fmt.Errorf("graph rule %q returned unbounded row limit %d", id, request.RowLimit)
+		}
+		signatures, complete := graphRuleCoverageSignatures(r.rules[id], request)
+		if len(signatures) == 0 {
+			return nil, fmt.Errorf("graph rule %q has no server-minted coverage semantics", id)
+		}
+		for index, signature := range signatures {
+			entries = append(entries, GraphRuleCatalogEntry{RuleID: fmt.Sprintf("%s:%d", id, index), Request: request, Signature: signature, SemanticsComplete: complete})
+			if len(entries) > limit {
+				return nil, fmt.Errorf("graph rule catalog exceeds limit %d", limit)
+			}
+		}
+	}
+	return entries, nil
+}
+
+func graphRuleCoverageSignatures(rule Rule, request ports.CypherQueryRequest) ([]GraphRuleCoverageSignature, bool) {
+	if provider, ok := rule.(GraphRuleCoverageSemantics); ok {
+		if signatures := provider.GraphRuleCoverageSignatures(); len(signatures) != 0 {
+			return signatures, true
+		}
+	}
+	seen := map[string]struct{}{}
+	var entityTypes []string
+	for _, match := range graphRuleEntityTypePattern.FindAllStringSubmatch(request.Query, -1) {
+		entityType := strings.ToLower(strings.TrimSpace(match[1]))
+		if entityType != "" {
+			if _, exists := seen[entityType]; !exists {
+				seen[entityType] = struct{}{}
+				entityTypes = append(entityTypes, entityType)
+			}
+		}
+	}
+	sort.Strings(entityTypes)
+	if len(entityTypes) == 0 {
+		return nil, false
+	}
+	return []GraphRuleCoverageSignature{{RequiredEntityTypes: entityTypes}}, false
 }
