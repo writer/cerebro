@@ -33,6 +33,7 @@ type wasmGuestProtocol struct {
 	malformedStatus    uint64
 	unknownFieldStatus uint64
 	staticValidator    bool
+	validPayload       []byte
 }
 
 func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
@@ -65,6 +66,12 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			exports:    wasmGuestExports{abi: "cerebro_panopticon_resources_abi_version", allocate: "cerebro_panopticon_resources_alloc", operation: "cerebro_panopticon_resources_extract"},
 			abiVersion: 2, resultBytes: 16, maxInputBytes: 8 << 20, invalidRangeStatus: 1, tooLargeStatus: 1, zeroInputStatus: 1, invalidUTF8Status: 0, malformedStatus: 0, unknownFieldStatus: 0,
 		},
+		{
+			name: "source event admission", artifact: "internal/sourceruntime/eventadmission/eventadmission.wasm",
+			exports:    wasmGuestExports{abi: "cerebro_event_admission_abi_version", allocate: "cerebro_event_admission_alloc", operation: "cerebro_event_admission_evaluate"},
+			abiVersion: 1, resultBytes: 16, maxInputBytes: 32 << 20, invalidRangeStatus: 3, tooLargeStatus: 3, zeroInputStatus: 3, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
+			validPayload: []byte(`{"schema_version":"source-event-admission.v1","contracts":[],"events":[]}`),
+		},
 	}
 
 	for _, protocol := range protocols {
@@ -73,8 +80,13 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			assertWasmGuestABI(t, ctx, module, protocol)
 			assertWasmGuestAllocationLimit(t, ctx, module, protocol)
 
-			inputPointer := allocateWasmGuestMemory(t, ctx, module, protocol, 32)
-			if !module.Memory().Write(inputPointer, []byte("{}")) {
+			validPayload := protocol.validPayload
+			if len(validPayload) == 0 {
+				validPayload = []byte("{}")
+			}
+			inputLength := uint32(len(validPayload)) // #nosec G115 -- fixed test payloads fit Wasm32.
+			inputPointer := allocateWasmGuestMemory(t, ctx, module, protocol, inputLength+protocol.resultBytes)
+			if !module.Memory().Write(inputPointer, validPayload) {
 				t.Fatal("write valid input memory")
 			}
 
@@ -115,7 +127,7 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			assertWasmGuestPayloadStatus(t, ctx, module, protocol, []byte("{"), protocol.malformedStatus)
 			assertWasmGuestPayloadStatus(t, ctx, module, protocol, []byte(`{"unknown":true}`), protocol.unknownFieldStatus)
 
-			adjacentStatus := callWasmGuest(t, ctx, module, protocol, inputPointer, 2, inputPointer+2)
+			adjacentStatus := callWasmGuest(t, ctx, module, protocol, inputPointer, inputLength, inputPointer+inputLength)
 			if adjacentStatus != 0 {
 				t.Fatalf("adjacent input and result status = %d, want 0", adjacentStatus)
 			}

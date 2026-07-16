@@ -22,6 +22,7 @@ AUDITED_UNSAFE_POLICIES = {
     "internal/mitre/evaluator/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/sourcecoverage/evaluator/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/sourceprojection/panopticonresources/src/wasm_abi.rs": ("attribute",) * 3,
+    "internal/sourceruntime/eventadmission/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/sourceruntime/recordkernel/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/wasmguest/src/lib.rs": ("block", "block"),
 }

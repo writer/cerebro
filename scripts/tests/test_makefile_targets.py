@@ -80,6 +80,8 @@ class MakefileTargetTests(unittest.TestCase):
             "sourcecoverage-evaluator",
             "panopticon-resource-extractor",
             "mitre-context-evaluator",
+            "sourceruntime-event-admission",
+            "sourceruntime-record-kernel",
         )
         for module in targets:
             with self.subTest(module=module):

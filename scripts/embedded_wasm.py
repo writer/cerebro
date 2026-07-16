@@ -133,6 +133,18 @@ EMBEDDED_WASM_MODULES = (
         changed_reason="MITRE context normalization source, host, or embedded module changed.",
     ),
     EmbeddedWasmModule(
+        name="sourceruntime-event-admission",
+        label="source event admission",
+        package="cerebro-sourceruntime-eventadmission",
+        build_artifact="cerebro_sourceruntime_eventadmission.wasm",
+        embedded_artifact="internal/sourceruntime/eventadmission/eventadmission.wasm",
+        generate_target="sourceruntime-event-admission-generate",
+        check_target="sourceruntime-event-admission-check",
+        changed_prefixes=("internal/sourceruntime/eventadmission/",),
+        changed_paths=frozenset(),
+        changed_reason="Source event admission kernel source, host, or embedded module changed.",
+    ),
+    EmbeddedWasmModule(
         name="sourceruntime-record-kernel",
         label="source record kernel",
         package="cerebro-sourceruntime-recordkernel",

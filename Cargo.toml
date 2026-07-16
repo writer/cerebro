@@ -5,6 +5,7 @@ members = [
     "internal/mitre/evaluator",
     "internal/sourcecoverage/evaluator",
     "internal/sourceprojection/panopticonresources",
+    "internal/sourceruntime/eventadmission",
     "internal/sourceruntime/recordkernel",
     "internal/wasmguest",
     "tools/graphactiongen",

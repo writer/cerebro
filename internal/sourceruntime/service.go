@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -395,15 +396,20 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventsRead := boundedUint32(len(pull.Events))
 		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
 		for _, event := range pull.Events {
-			if syncedEvent := materializeEvent(runtime, event); syncedEvent != nil {
-				materializedEvents = append(materializedEvents, syncedEvent)
+			syncedEvent := materializeEvent(runtime, event)
+			if syncedEvent == nil {
+				continue
 			}
+			materializedEvents = append(materializedEvents, syncedEvent)
 		}
-		materializedEvents = dedupeAcceptedEvents(materializedEvents)
-		acceptedEvents, quarantinedEvents, err := validateSourcePageEvents(materializedEvents, eventContracts)
-		if err != nil {
-			return nil, err
+		admission, admissionErr := eventadmission.Admit(ctx, materializedEvents, eventContracts)
+		if admissionErr != nil {
+			if errors.Is(admissionErr, eventadmission.ErrBatchRejected) {
+				return nil, fmt.Errorf("validate source event batch: %w: %w", sourcecdk.ErrInvalidEventEnvelope, admissionErr)
+			}
+			return nil, fmt.Errorf("admit source event batch: %w", admissionErr)
 		}
+		acceptedEvents := admission.Events
 		eventLimit := req.GetEventLimit()
 		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
 			eventLimitReached = true
@@ -447,29 +453,50 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "source_runtime.page.last_events_read", Value: eventsRead},
 			telemetry.Field{Key: "source_runtime.page.last_has_next_cursor", Value: pull.NextCursor != nil},
 		)))
+		for _, rejection := range admission.Quarantined {
+			if rejection.InputIndex == nil {
+				return nil, fmt.Errorf("validate source event batch: %w: quarantine is missing its input index", sourcecdk.ErrInvalidEventEnvelope)
+			}
+			recordsRejected++
+			category := rejection.Code
+			lastQuarantineCategory = category
+			syncedEvent := materializedEvents[*rejection.InputIndex]
+			recordRuntimeInvalidEventField(runtime, syncedEvent, category, rejection.Field, time.Now().UTC(), len(eventContracts) > 0)
+			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
+				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+				telemetry.Field{Key: "failure_category", Value: category},
+				telemetry.Field{Key: "retryable", Value: false},
+			))
+			telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
+			telemetry.AnnotateMain(ctx, telemetry.Attrs(
+				telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
+				telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
+			))
+			emitSourceRuntimeValidation(ctx, runtime, category)
+		}
+		admissionAttrs := telemetry.Attrs(
+			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "scanned", Value: admission.Receipt.Scanned},
+			telemetry.Field{Key: "accepted", Value: admission.Receipt.Accepted},
+			telemetry.Field{Key: "quarantined", Value: admission.Receipt.Quarantined},
+			telemetry.Field{Key: "duplicates", Value: admission.Receipt.Duplicates},
+			telemetry.Field{Key: "scanned_sha256", Value: admission.Receipt.ScannedSHA256},
+			telemetry.Field{Key: "accepted_sha256", Value: admission.Receipt.AcceptedSHA256},
+			telemetry.Field{Key: "result_sha256", Value: admission.Receipt.ResultSHA256},
+		)
+		telemetry.Event(ctx, "source_runtime.event_admission", admissionAttrs)
+		telemetry.IncrementMain(ctx, "source_runtime.event_admission.count", 1)
+		telemetry.AnnotateMain(ctx, admissionAttrs)
 		if pull.Checkpoint != nil {
 			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
-		for _, quarantined := range quarantinedEvents {
-			recordsRejected++
-			lastQuarantineCategory = quarantined.category
-			recordRuntimeInvalidEvent(runtime, quarantined.event, quarantined.category, quarantined.cause, time.Now().UTC(), len(eventContracts) > 0)
-			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
-				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
-				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
-				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
-				telemetry.Field{Key: "failure_category", Value: quarantined.category},
-				telemetry.Field{Key: "retryable", Value: false},
-			))
-			telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
-			telemetry.AnnotateMain(ctx, telemetry.Attrs(
-				telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: quarantined.category},
-				telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
-			))
-			emitSourceRuntimeValidation(ctx, runtime, quarantined.category)
-		}
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
@@ -479,8 +506,19 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				SourceID:       runtime.GetSourceId(),
 				TenantID:       runtime.GetTenantId(),
 				PageNumber:     pageNumber,
-				RecordsScanned: recordsScanned,
+				RecordsScanned: boundedUint32(admission.Receipt.Scanned),
 				Events:         acceptedEvents,
+				Admission: ports.SourceRuntimePageAdmission{
+					Kernel:         "sourceruntime-event-admission",
+					ABIVersion:     eventadmission.ABIVersion,
+					Scanned:        boundedUint32(admission.Receipt.Scanned),
+					Accepted:       boundedUint32(admission.Receipt.Accepted),
+					Quarantined:    boundedUint32(admission.Receipt.Quarantined),
+					Duplicates:     boundedUint32(admission.Receipt.Duplicates),
+					ScannedSHA256:  admission.Receipt.ScannedSHA256,
+					AcceptedSHA256: admission.Receipt.AcceptedSHA256,
+					ResultSHA256:   admission.Receipt.ResultSHA256,
+				},
 			}); err != nil {
 				return nil, err
 			}
@@ -614,35 +652,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}, nil
 }
 
-type quarantinedSourceEvent struct {
-	event    *cerebrov1.EventEnvelope
-	category string
-	cause    error
-}
-
-func validateSourcePageEvents(events []*cerebrov1.EventEnvelope, contracts []sourcecdk.EventContract) ([]*cerebrov1.EventEnvelope, []quarantinedSourceEvent, error) {
-	accepted := make([]*cerebrov1.EventEnvelope, 0, len(events))
-	quarantined := make([]quarantinedSourceEvent, 0)
-	for _, event := range events {
-		if err := sourcecdk.ValidateEventEnvelope(event); err != nil {
-			return nil, nil, fmt.Errorf("validate source event %q: %w", event.GetId(), err)
-		}
-		if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, contracts); err != nil {
-			if !quarantinableContractError(err) {
-				return nil, nil, fmt.Errorf("validate source event %q: %w", event.GetId(), err)
-			}
-			quarantined = append(quarantined, quarantinedSourceEvent{
-				event:    event,
-				category: invalidEventFailureCategory(err),
-				cause:    err,
-			})
-			continue
-		}
-		accepted = append(accepted, event)
-	}
-	return accepted, quarantined, nil
-}
-
 func sourceRuntimeTelemetryErrorKind(err error) string {
 	if err == nil {
 		return ""
@@ -651,6 +660,8 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
 	case errors.Is(err, ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, eventadmission.ErrKernelUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		return "runtime_not_found"
@@ -685,6 +696,8 @@ func sourceRuntimeFailureCategory(err error) string {
 	case errors.Is(err, sourcecdk.ErrInvalidEventEnvelope):
 		return "invalid_event"
 	case errors.Is(err, ErrRuntimeUnavailable):
+		return "dependency_error"
+	case errors.Is(err, eventadmission.ErrKernelUnavailable):
 		return "dependency_error"
 	}
 	message := strings.ToLower(err.Error())
@@ -827,11 +840,6 @@ func clearRuntimeInvalidEvent(config map[string]string) {
 	}
 }
 
-func quarantinableContractError(err error) bool {
-	message := err.Error()
-	return strings.Contains(message, "missing required attribute") || strings.Contains(message, "missing required payload field")
-}
-
 func invalidEventFailureCategory(err error) string {
 	message := err.Error()
 	switch {
@@ -893,14 +901,13 @@ func emitSourceRuntimeContractProbe(ctx context.Context, runtime *cerebrov1.Sour
 	)))
 }
 
-func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time, contractConfigured bool) {
+func recordRuntimeInvalidEventField(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, field string, observedAt time.Time, contractConfigured bool) {
 	if runtime == nil || event == nil {
 		return
 	}
 	if runtime.Config == nil {
 		runtime.Config = map[string]string{}
 	}
-	field := invalidEventFieldName(cause)
 	setRuntimeConfig(runtime.Config, runtimeLastFailureCategoryConfigKey, category)
 	setRuntimeConfig(runtime.Config, runtimeLastInvalidEventIDConfigKey, firstNonEmptyString(event.GetAttributes()["source_event_id"], event.GetId()))
 	setRuntimeConfig(runtime.Config, runtimeLastInvalidFieldConfigKey, field)
@@ -1114,25 +1121,6 @@ func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.
 		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 	}
 	return source.Read(ctx, cfg, cursor)
-}
-
-func dedupeAcceptedEvents(events []*cerebrov1.EventEnvelope) []*cerebrov1.EventEnvelope {
-	if len(events) < 2 {
-		return events
-	}
-	seen := make(map[string]struct{}, len(events))
-	deduped := events[:0]
-	for _, event := range events {
-		eventID := strings.TrimSpace(event.GetId())
-		if eventID != "" {
-			if _, ok := seen[eventID]; ok {
-				continue
-			}
-			seen[eventID] = struct{}{}
-		}
-		deduped = append(deduped, event)
-	}
-	return deduped
 }
 
 func pullShortCircuitReason(pull sourcecdk.Pull) sourcecdk.PullShortCircuitReason {

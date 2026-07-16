@@ -121,6 +121,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-sourceruntime-eventadmission"
+version = "0.1.0"
+dependencies = [
+ "cerebro-wasm-guest",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "cerebro-sourceruntime-recordkernel"
 version = "0.1.0"
 dependencies = [

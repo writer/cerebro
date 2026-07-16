@@ -23,6 +23,13 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   status TEXT NOT NULL,
   records_scanned INTEGER NOT NULL DEFAULT 0,
   records_accepted INTEGER NOT NULL DEFAULT 0,
+  records_quarantined INTEGER NOT NULL DEFAULT 0,
+  duplicate_events INTEGER NOT NULL DEFAULT 0,
+  admission_kernel TEXT NOT NULL DEFAULT '',
+  admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
+  admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
+  admission_result_sha256 TEXT NOT NULL DEFAULT '',
   entities_projected INTEGER NOT NULL DEFAULT 0,
   links_projected INTEGER NOT NULL DEFAULT 0,
   runtime_json JSONB,
@@ -32,6 +39,14 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   projected_at TIMESTAMPTZ,
   committed_at TIMESTAMPTZ
 )`,
+	`ALTER TABLE source_runtime_page_ledger
+  ADD COLUMN IF NOT EXISTS records_quarantined INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS duplicate_events INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS admission_kernel TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtime_page_ledger_runtime_status_idx ON source_runtime_page_ledger (runtime_id, status, updated_at ASC)`,
 	`CREATE TABLE IF NOT EXISTS source_runtime_page_outbox (
   attempt_id TEXT NOT NULL REFERENCES source_runtime_page_ledger(attempt_id) ON DELETE CASCADE,
@@ -63,14 +78,40 @@ func (s *Store) BeginSourceRuntimePage(ctx context.Context, attempt ports.Source
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO source_runtime_page_ledger (attempt_id, runtime_id, source_id, tenant_id, page_number, status, records_scanned, records_accepted)
-VALUES ($1, $2, $3, $4, $5, 'started', $6, $7)
+INSERT INTO source_runtime_page_ledger (
+  attempt_id, runtime_id, source_id, tenant_id, page_number, status,
+  records_scanned, records_accepted, records_quarantined, duplicate_events,
+  admission_kernel, admission_abi_version, admission_scanned_sha256,
+  admission_accepted_sha256, admission_result_sha256
+)
+VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (attempt_id)
 DO UPDATE SET status = 'started',
               records_scanned = EXCLUDED.records_scanned,
               records_accepted = EXCLUDED.records_accepted,
+              records_quarantined = EXCLUDED.records_quarantined,
+              duplicate_events = EXCLUDED.duplicate_events,
+              admission_kernel = EXCLUDED.admission_kernel,
+              admission_abi_version = EXCLUDED.admission_abi_version,
+              admission_scanned_sha256 = EXCLUDED.admission_scanned_sha256,
+              admission_accepted_sha256 = EXCLUDED.admission_accepted_sha256,
+              admission_result_sha256 = EXCLUDED.admission_result_sha256,
               updated_at = NOW()`,
-		attemptID, strings.TrimSpace(attempt.RuntimeID), strings.TrimSpace(attempt.SourceID), strings.TrimSpace(attempt.TenantID), attempt.PageNumber, attempt.RecordsScanned, len(attempt.Events)); err != nil {
+		attemptID,
+		strings.TrimSpace(attempt.RuntimeID),
+		strings.TrimSpace(attempt.SourceID),
+		strings.TrimSpace(attempt.TenantID),
+		attempt.PageNumber,
+		attempt.RecordsScanned,
+		len(attempt.Events),
+		attempt.Admission.Quarantined,
+		attempt.Admission.Duplicates,
+		strings.TrimSpace(attempt.Admission.Kernel),
+		attempt.Admission.ABIVersion,
+		strings.TrimSpace(attempt.Admission.ScannedSHA256),
+		strings.TrimSpace(attempt.Admission.AcceptedSHA256),
+		strings.TrimSpace(attempt.Admission.ResultSHA256),
+	); err != nil {
 		return fmt.Errorf("upsert source runtime page ledger %q: %w", attemptID, err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM source_runtime_page_outbox WHERE attempt_id = $1`, attemptID); err != nil {
