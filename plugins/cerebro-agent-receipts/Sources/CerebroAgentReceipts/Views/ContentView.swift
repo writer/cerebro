@@ -8,6 +8,10 @@ struct ContentView: View {
   var body: some View {
     NavigationSplitView {
       List(selection: $store.sidebarSelection) {
+        Section("Device") {
+          Label("Status", systemImage: "shield")
+            .tag(SidebarSelection.overview)
+        }
         Section("Evidence") {
           ForEach(ReceiptFilter.allCases) { filter in
             Label(filter.label, systemImage: filter.image)
@@ -26,36 +30,64 @@ struct ContentView: View {
         }
       }
       .listStyle(.sidebar)
-      .navigationTitle("Attribution")
+      .navigationTitle("Cerebro Shield")
       .navigationSplitViewColumnWidth(min: 170, ideal: 190)
     } content: {
-      List(selection: $store.selection) {
-        if store.showsProviderGaps {
-          ForEach(store.assessment.unmatchedProviderEvents) { event in
-            ProviderGapRow(event: event)
-              .tag("provider:\(event.id)")
+      Group {
+        if store.showsOverview {
+          List(store.shieldSnapshot.incidents) { incident in
+            VStack(alignment: .leading, spacing: 3) {
+              Text(incident.title)
+              Text(incident.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+            .padding(.vertical, 3)
+          }
+          .overlay {
+            if store.shieldSnapshot.incidents.isEmpty {
+              ContentUnavailableView(
+                "No items to review",
+                systemImage: "checkmark.shield",
+                description: Text("Detected adapters and local evidence are current.")
+              )
+            }
           }
         } else {
-          ForEach(store.filteredActions) { action in
-            ActionRow(action: action, match: store.assessment.actionMatches[action.id])
-              .tag("action:\(action.id)")
+          List(selection: $store.selection) {
+            if store.showsProviderGaps {
+              ForEach(store.assessment.unmatchedProviderEvents) { event in
+                ProviderGapRow(event: event)
+                  .tag("provider:\(event.id)")
+              }
+            } else {
+              ForEach(store.filteredActions) { action in
+                ActionRow(action: action, match: store.assessment.actionMatches[action.id])
+                  .tag("action:\(action.id)")
+              }
+            }
+          }
+          .overlay {
+            if (store.showsProviderGaps && store.assessment.unmatchedProviderEvents.isEmpty)
+              || (!store.showsProviderGaps && store.filteredActions.isEmpty)
+            {
+              ContentUnavailableView(
+                "No matching records",
+                systemImage: "checkmark.seal",
+                description: Text(emptyDescription)
+              )
+            }
           }
         }
       }
-      .navigationTitle(store.selectedProduct?.displayName ?? store.filter.label)
-      .overlay {
-        if (store.showsProviderGaps && store.assessment.unmatchedProviderEvents.isEmpty)
-          || (!store.showsProviderGaps && store.filteredActions.isEmpty)
-        {
-          ContentUnavailableView(
-            "No matching records",
-            systemImage: "checkmark.seal",
-            description: Text(emptyDescription)
-          )
-        }
-      }
+      .navigationTitle(
+        store.showsOverview ? "Items to review" : (store.selectedProduct?.displayName ?? store.filter.label)
+      )
     } detail: {
-      if let action = store.selectedAction {
+      if store.showsOverview {
+        ShieldOverviewView(store: store)
+      } else if let action = store.selectedAction {
         ActionDetailView(action: action, match: store.assessment.actionMatches[action.id])
       } else if let event = store.selectedProviderGap {
         ProviderGapDetailView(event: event)
@@ -77,10 +109,12 @@ struct ContentView: View {
         } label: {
           Label("Refresh", systemImage: "arrow.clockwise")
         }
-        Button {
-          store.showImporter = true
-        } label: {
-          Label("Import CloudTrail", systemImage: "square.and.arrow.down")
+        if store.canImportProviderEvidence {
+          Button {
+            store.showImporter = true
+          } label: {
+            Label("Import CloudTrail", systemImage: "square.and.arrow.down")
+          }
         }
       }
     }

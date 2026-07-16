@@ -1,0 +1,199 @@
+import CryptoKit
+import Darwin
+import Foundation
+
+public enum ShieldAdminRole: String, Codable, Sendable {
+  case read = "shield.read"
+  case repair = "shield.repair"
+  case policyOverride = "shield.policy.override"
+  case export = "shield.export"
+}
+
+public struct ShieldAdminCapabilityPayload: Codable, Equatable, Sendable {
+  public let schemaVersion: String
+  public let organizationID: String
+  public let subject: String
+  public let deviceID: String
+  public let roles: [ShieldAdminRole]
+  public let requestID: String
+  public let issuedAt: String
+  public let expiresAt: String
+
+  public init(
+    schemaVersion: String = "cerebro.shield-admin-capability.v1",
+    organizationID: String,
+    subject: String,
+    deviceID: String,
+    roles: [ShieldAdminRole],
+    requestID: String,
+    issuedAt: String,
+    expiresAt: String
+  ) {
+    self.schemaVersion = schemaVersion
+    self.organizationID = organizationID
+    self.subject = subject
+    self.deviceID = deviceID
+    self.roles = roles
+    self.requestID = requestID
+    self.issuedAt = issuedAt
+    self.expiresAt = expiresAt
+  }
+}
+
+public struct SignedShieldAdminCapability: Codable, Equatable, Sendable {
+  public let algorithm: String
+  public let payload: ShieldAdminCapabilityPayload
+  public let signature: String
+
+  public init(
+    algorithm: String = "P256-SHA256",
+    payload: ShieldAdminCapabilityPayload,
+    signature: String
+  ) {
+    self.algorithm = algorithm
+    self.payload = payload
+    self.signature = signature
+  }
+}
+
+public enum ShieldAdminAccess: Equatable, Sendable {
+  case unavailable
+  case authorized(ShieldAdminCapabilityPayload)
+  case denied(String)
+
+  public var isAuthorized: Bool {
+    if case .authorized = self { return true }
+    return false
+  }
+
+  public var subject: String? {
+    guard case .authorized(let capability) = self else { return nil }
+    return capability.subject
+  }
+}
+
+public enum ShieldAdminCapabilityVerifier {
+  public static func verify(
+    _ capability: SignedShieldAdminCapability,
+    organizationPublicKeyBase64: String,
+    expectedDeviceID: String,
+    requiredRole: ShieldAdminRole = .read,
+    now: Date = Date()
+  ) -> ShieldAdminAccess {
+    guard capability.algorithm == "P256-SHA256" else {
+      return .denied("The organization capability uses an unsupported signature algorithm.")
+    }
+    guard capability.payload.schemaVersion == "cerebro.shield-admin-capability.v1" else {
+      return .denied("The organization capability schema is not supported.")
+    }
+    guard capability.payload.deviceID == expectedDeviceID else {
+      return .denied("The organization capability was issued to another device.")
+    }
+    guard capability.payload.roles.contains(requiredRole) else {
+      return .denied("The organization capability does not grant (requiredRole.rawValue).")
+    }
+    guard
+      let issuedAt = ReceiptDate.parse(capability.payload.issuedAt),
+      let expiresAt = ReceiptDate.parse(capability.payload.expiresAt),
+      issuedAt <= now.addingTimeInterval(5 * 60),
+      expiresAt > now,
+      expiresAt.timeIntervalSince(issuedAt) <= 60 * 60
+    else {
+      return .denied("The organization capability is expired or outside its allowed lifetime.")
+    }
+    guard
+      let publicKeyData = Data(base64Encoded: organizationPublicKeyBase64),
+      let publicKey = try? P256.Signing.PublicKey(x963Representation: publicKeyData),
+      let signatureData = Data(base64Encoded: capability.signature),
+      let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
+      let payloadData = try? CanonicalJSON.encode(capability.payload),
+      publicKey.isValidSignature(signature, for: payloadData)
+    else {
+      return .denied("The organization capability signature is invalid.")
+    }
+    return .authorized(capability.payload)
+  }
+}
+
+public struct ManagedShieldConfiguration: Sendable {
+  public let organizationPublicKeyBase64: String
+  public let capabilityURL: URL
+  public let autoRepair: Bool
+
+  public init(
+    organizationPublicKeyBase64: String,
+    capabilityURL: URL,
+    autoRepair: Bool
+  ) {
+    self.organizationPublicKeyBase64 = organizationPublicKeyBase64
+    self.capabilityURL = capabilityURL
+    self.autoRepair = autoRepair
+  }
+
+  public static func load(
+    from url: URL = URL(
+      fileURLWithPath: "/Library/Managed Preferences/com.writer.cerebro.shield.plist")
+  ) throws -> ManagedShieldConfiguration? {
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value
+    let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0o777
+    guard owner == 0, permissions & 0o022 == 0 else {
+      throw ManagedShieldConfigurationError.insecureManagedConfiguration(url)
+    }
+    let propertyList = try PropertyListSerialization.propertyList(
+      from: Data(contentsOf: url), options: [], format: nil)
+    guard
+      let dictionary = propertyList as? [String: Any],
+      let key = dictionary["OrganizationPublicKey"] as? String,
+      !key.isEmpty,
+      let capabilityPath = dictionary["AdminCapabilityPath"] as? String,
+      capabilityPath.hasPrefix("/")
+    else {
+      throw ManagedShieldConfigurationError.invalidManagedConfiguration(url)
+    }
+    return ManagedShieldConfiguration(
+      organizationPublicKeyBase64: key,
+      capabilityURL: URL(fileURLWithPath: capabilityPath),
+      autoRepair: dictionary["AutoRepair"] as? Bool ?? true
+    )
+  }
+}
+
+public enum ManagedShieldConfigurationError: Error, LocalizedError {
+  case insecureManagedConfiguration(URL)
+  case invalidManagedConfiguration(URL)
+
+  public var errorDescription: String? {
+    switch self {
+    case .insecureManagedConfiguration(let url):
+      return "The managed shield configuration is not root-owned and read-only: \(url.path)"
+    case .invalidManagedConfiguration(let url):
+      return "The managed shield configuration is missing required values: \(url.path)"
+    }
+  }
+}
+
+public enum ShieldAdminCapabilityLoader {
+  public static func load(
+    configuration: ManagedShieldConfiguration?,
+    deviceID: String,
+    now: Date = Date()
+  ) -> ShieldAdminAccess {
+    guard let configuration else { return .unavailable }
+    do {
+      let capability = try JSONDecoder().decode(
+        SignedShieldAdminCapability.self,
+        from: Data(contentsOf: configuration.capabilityURL)
+      )
+      return ShieldAdminCapabilityVerifier.verify(
+        capability,
+        organizationPublicKeyBase64: configuration.organizationPublicKeyBase64,
+        expectedDeviceID: deviceID,
+        now: now
+      )
+    } catch {
+      return .denied("No valid organization capability is available on this device.")
+    }
+  }
+}

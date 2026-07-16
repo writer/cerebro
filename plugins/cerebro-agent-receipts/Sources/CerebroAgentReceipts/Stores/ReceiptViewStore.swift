@@ -10,8 +10,22 @@ final class ReceiptViewStore: ObservableObject {
   @Published private(set) var providerEvents: [ProviderEvent] = []
   @Published private(set) var adapterStatuses: [AgentAdapterStatus] = []
   @Published private(set) var latestValidEventByProduct: [String: Date] = [:]
+  @Published private(set) var binaryIdentities: [AgentBinaryIdentity] = []
+  @Published private(set) var reconciliations: [AgentAdapterReconciliation] = []
+  @Published private(set) var shieldSnapshot = ShieldSnapshot(
+    capturedAt: ReceiptDate.string(from: Date()),
+    level: .inactive,
+    trustBoundary: .development,
+    detectedAgents: 0,
+    conformingAdapters: 0,
+    recentAgentEvents: 0,
+    incidents: [],
+    binaryIdentities: []
+  )
+  @Published private(set) var adminAccess: ShieldAdminAccess = .unavailable
+  @Published private(set) var backgroundState: ShieldBackgroundState = .notRegistered
   @Published var selection: String?
-  @Published var sidebarSelection: SidebarSelection = .activity(.all) {
+  @Published var sidebarSelection: SidebarSelection = .overview {
     didSet { selectFirstVisibleItem() }
   }
   @Published var showImporter = false
@@ -24,10 +38,12 @@ final class ReceiptViewStore: ObservableObject {
   private var timer: Timer?
   private var reloadInProgress = false
   private var lastAdapterRefresh: Date?
+  private let automaticReconciliation: Bool
 
   init(
     receiptStore: ReceiptStore = ReceiptStore(),
-    adapterInstaller: AgentAdapterInstaller? = nil
+    adapterInstaller: AgentAdapterInstaller? = nil,
+    automaticReconciliation: Bool = true
   ) {
     self.receiptStore = receiptStore
     let bundledHelper = Bundle.main.bundleURL
@@ -36,6 +52,8 @@ final class ReceiptViewStore: ObservableObject {
     self.adapterInstaller =
       adapterInstaller
       ?? AgentAdapterInstaller(bundledHelperURL: bundledHelper)
+    self.automaticReconciliation = automaticReconciliation
+    self.backgroundState = ShieldBackgroundManager.ensureRegistered()
     reload()
     timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.reload(silently: true) }
@@ -87,11 +105,24 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   var showsProviderGaps: Bool { filter == .providerGaps }
+  var showsOverview: Bool {
+    if case .overview = sidebarSelection { return true }
+    return false
+  }
   var boundCount: Int { assessment.providerBoundCount }
   var candidateCount: Int { assessment.candidateCount }
   var capturedOnlyCount: Int { assessment.capturedOnlyCount }
   var providerGapCount: Int { assessment.unmatchedProviderEvents.count }
   var invalidCount: Int { actions.filter { !$0.integrityValid }.count }
+  var canRepairAdapters: Bool {
+    if shieldSnapshot.trustBoundary == .development { return true }
+    guard case .authorized(let capability) = adminAccess else { return false }
+    return capability.roles.contains(.repair)
+  }
+
+  var canImportProviderEvidence: Bool {
+    shieldSnapshot.trustBoundary == .development
+  }
 
   func actionCount(for product: AgentProduct) -> Int {
     actions.filter { $0.product == product.displayName }.count
@@ -146,6 +177,8 @@ final class ReceiptViewStore: ObservableObject {
       adapterStatuses.isEmpty || lastAdapterRefresh == nil
       || Date().timeIntervalSince(lastAdapterRefresh ?? .distantPast) >= 30
     let currentAdapterStatuses = adapterStatuses
+    let currentBinaryIdentities = binaryIdentities
+    let automaticReconciliation = self.automaticReconciliation
     Task {
       defer { reloadInProgress = false }
       do {
@@ -154,6 +187,8 @@ final class ReceiptViewStore: ObservableObject {
             receiptStore: receiptStore,
             adapterInstaller: adapterInstaller,
             currentAdapterStatuses: currentAdapterStatuses,
+            currentBinaryIdentities: currentBinaryIdentities,
+            automaticReconciliation: automaticReconciliation,
             refreshAdapters: refreshAdapters
           )
         }.value
@@ -163,6 +198,11 @@ final class ReceiptViewStore: ObservableObject {
         assessment = snapshot.assessment
         adapterStatuses = snapshot.adapterStatuses
         latestValidEventByProduct = snapshot.latestValidEventByProduct
+        binaryIdentities = snapshot.binaryIdentities
+        reconciliations = snapshot.reconciliations
+        shieldSnapshot = snapshot.shieldSnapshot
+        adminAccess = snapshot.adminAccess
+        backgroundState = ShieldBackgroundManager.state()
         if refreshAdapters { lastAdapterRefresh = Date() }
         isStale = false
         lastRefreshError = nil
@@ -192,6 +232,10 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   private func selectFirstVisibleItem() {
+    if showsOverview {
+      selection = nil
+      return
+    }
     if selectedProduct != nil {
       selection = nil
       return
@@ -207,6 +251,8 @@ final class ReceiptViewStore: ObservableObject {
     receiptStore: ReceiptStore,
     adapterInstaller: AgentAdapterInstaller,
     currentAdapterStatuses: [AgentAdapterStatus],
+    currentBinaryIdentities: [AgentBinaryIdentity],
+    automaticReconciliation: Bool,
     refreshAdapters: Bool
   ) throws -> ReceiptSnapshot {
     let receipts = try receiptStore.readReceipts()
@@ -233,13 +279,57 @@ final class ReceiptViewStore: ObservableObject {
       providerEvents: providerEvents,
       policy: bindingPolicyFromEnvironment()
     )
+    let managedConfiguration = try ManagedShieldConfiguration.load()
+    let reconciliations = refreshAdapters && automaticReconciliation
+      && (managedConfiguration?.autoRepair ?? true)
+      ? adapterInstaller.reconcileDetectedAgents()
+      : []
+    let adapterStatuses = refreshAdapters ? adapterInstaller.statuses() : currentAdapterStatuses
+    let binaryIdentities = refreshAdapters
+      ? AgentProduct.allCases.map {
+        AgentBinaryAttestor.inspect(
+          product: $0,
+          executableURL: adapterInstaller.executableURL(for: $0)
+        )
+      }
+      : currentBinaryIdentities
+    let priorBaseline = currentBinaryIdentities.isEmpty
+      ? nil
+      : AgentBinaryBaseline(
+        capturedAt: ReceiptDate.string(from: Date()), identities: currentBinaryIdentities)
+    let binaryDrift = AgentBinaryBaselineComparator.compare(
+      current: binaryIdentities, previous: priorBaseline)
+    let trustBoundary: ShieldTrustBoundary = managedConfiguration == nil
+      ? .development
+      : .organizationManaged
+    let shieldSnapshot = ShieldSnapshotBuilder.build(
+      statuses: adapterStatuses,
+      binaryIdentities: binaryIdentities,
+      binaryDrift: binaryDrift,
+      recentValidEventByProduct: latestValidEventByProduct,
+      invalidReceiptCount: actions.filter { !$0.integrityValid }.count,
+      trustBoundary: trustBoundary
+    )
+    let adminAccess: ShieldAdminAccess
+    if let managedConfiguration, let signer = try? DeviceKeySigner() {
+      adminAccess = ShieldAdminCapabilityLoader.load(
+        configuration: managedConfiguration, deviceID: signer.deviceID)
+    } else if managedConfiguration != nil {
+      adminAccess = .denied("The device identity is unavailable.")
+    } else {
+      adminAccess = .unavailable
+    }
     return ReceiptSnapshot(
       actions: actions,
       verifications: verifications,
       assessment: assessment,
       providerEvents: providerEvents,
-      adapterStatuses: refreshAdapters ? adapterInstaller.statuses() : currentAdapterStatuses,
-      latestValidEventByProduct: latestValidEventByProduct
+      adapterStatuses: adapterStatuses,
+      latestValidEventByProduct: latestValidEventByProduct,
+      binaryIdentities: binaryIdentities,
+      reconciliations: reconciliations,
+      shieldSnapshot: shieldSnapshot,
+      adminAccess: adminAccess
     )
   }
 
@@ -262,9 +352,14 @@ private struct ReceiptSnapshot: Sendable {
   let providerEvents: [ProviderEvent]
   let adapterStatuses: [AgentAdapterStatus]
   let latestValidEventByProduct: [String: Date]
+  let binaryIdentities: [AgentBinaryIdentity]
+  let reconciliations: [AgentAdapterReconciliation]
+  let shieldSnapshot: ShieldSnapshot
+  let adminAccess: ShieldAdminAccess
 }
 
 enum SidebarSelection: Hashable {
+  case overview
   case activity(ReceiptFilter)
   case agent(AgentProduct)
 }

@@ -18,8 +18,10 @@ struct AgentConnectionView: View {
         }
 
         HStack {
-          primaryAction
-          if status.state == .configured || status.state == .needsRepair {
+          if store.canRepairAdapters { primaryAction }
+          if store.canRepairAdapters
+            && (status.state == .configured || status.state == .needsRepair)
+          {
             Button("Remove capture", role: .destructive) {
               store.removeAdapter(status.product)
             }

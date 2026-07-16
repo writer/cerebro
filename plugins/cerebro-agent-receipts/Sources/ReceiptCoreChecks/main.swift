@@ -27,9 +27,13 @@ struct CheckRunner {
     do { try checkFailedAction() } catch { failures.append("failed action: \(error)") }
     do { try checkProductIsolation() } catch { failures.append("product isolation: \(error)") }
     do { try checkAdapterInstaller() } catch { failures.append("adapter installer: \(error)") }
+    do { try checkAutomaticReconciliation() } catch {
+      failures.append("automatic reconciliation: \(error)")
+    }
+    do { try checkAdminCapability() } catch { failures.append("admin capability: \(error)") }
 
     if failures.isEmpty {
-      print("PASS: 13 receipt security checks")
+      print("PASS: 15 receipt security checks")
       return
     }
     failures.forEach { FileHandle.standardError.write(Data("FAIL: \($0)\n".utf8)) }
@@ -493,6 +497,87 @@ struct CheckRunner {
         preservedOpenCodePlugin == unmanagedPlugin,
         "unmanaged OpenCode plugin changed after a refused install")
     }
+  }
+
+  private mutating func checkAutomaticReconciliation() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let executable = root.appendingPathComponent(".local/bin/droid")
+    try FileManager.default.createDirectory(
+      at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable, options: .atomic)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755], ofItemAtPath: executable.path)
+    let installed = root.appendingPathComponent("support/CerebroAgentReceiptHook")
+    let installer = AgentAdapterInstaller(
+      homeDirectory: root,
+      bundledHelperURL: URL(fileURLWithPath: "/usr/bin/true"),
+      installedHelperURL: installed
+    )
+    let first = installer.reconcileDetectedAgents().first { $0.product == .droid }
+    expect(first?.outcome == .installed, "detected Droid was not configured automatically")
+    expect(installer.status(for: .droid).state == .configured, "automatic install is not current")
+    try Data("stale".utf8).write(to: installed, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installed.path)
+    let repaired = installer.reconcileDetectedAgents().first { $0.product == .droid }
+    expect(repaired?.outcome == .repaired, "changed helper was not repaired automatically")
+    expect(installer.status(for: .droid).state == .configured, "automatic repair is not current")
+  }
+
+  private mutating func checkAdminCapability() throws {
+    let organizationKey = P256.Signing.PrivateKey()
+    let now = Date()
+    let payload = ShieldAdminCapabilityPayload(
+      organizationID: "org-test",
+      subject: "security@example.com",
+      deviceID: "device-test",
+      roles: [.read, .repair],
+      requestID: "request-test",
+      issuedAt: ReceiptDate.string(from: now.addingTimeInterval(-30)),
+      expiresAt: ReceiptDate.string(from: now.addingTimeInterval(15 * 60))
+    )
+    let signature = try organizationKey.signature(for: CanonicalJSON.encode(payload))
+    let capability = SignedShieldAdminCapability(
+      payload: payload,
+      signature: signature.derRepresentation.base64EncodedString()
+    )
+    let publicKey = organizationKey.publicKey.x963Representation.base64EncodedString()
+    let access = ShieldAdminCapabilityVerifier.verify(
+      capability,
+      organizationPublicKeyBase64: publicKey,
+      expectedDeviceID: "device-test",
+      requiredRole: .repair,
+      now: now
+    )
+    expect(access.isAuthorized, "a valid device-bound administrator capability was rejected")
+    let wrongDevice = ShieldAdminCapabilityVerifier.verify(
+      capability,
+      organizationPublicKeyBase64: publicKey,
+      expectedDeviceID: "another-device",
+      now: now
+    )
+    expect(!wrongDevice.isAuthorized, "an administrator capability crossed device boundaries")
+    let changedPayload = ShieldAdminCapabilityPayload(
+      organizationID: payload.organizationID,
+      subject: payload.subject,
+      deviceID: payload.deviceID,
+      roles: [.read, .repair, .policyOverride],
+      requestID: payload.requestID,
+      issuedAt: payload.issuedAt,
+      expiresAt: payload.expiresAt
+    )
+    let changedCapability = SignedShieldAdminCapability(
+      payload: changedPayload,
+      signature: capability.signature
+    )
+    let changedAccess = ShieldAdminCapabilityVerifier.verify(
+      changedCapability,
+      organizationPublicKeyBase64: publicKey,
+      expectedDeviceID: "device-test",
+      requiredRole: .policyOverride,
+      now: now
+    )
+    expect(!changedAccess.isAuthorized, "tampered administrator roles retained a valid signature")
   }
 
   private func signedCanaryAction(actionSummary: String) throws -> ExecutionAction {

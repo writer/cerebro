@@ -37,6 +37,34 @@ public struct AgentAdapterStatus: Identifiable, Sendable {
   }
 }
 
+public enum AgentAdapterReconciliationOutcome: String, Codable, Sendable {
+  case alreadyProtected = "already_protected"
+  case installed
+  case repaired
+  case managedByPlugin = "managed_by_plugin"
+  case agentNotDetected = "agent_not_detected"
+  case requiresOperator = "requires_operator"
+  case failed
+}
+
+public struct AgentAdapterReconciliation: Identifiable, Sendable {
+  public let product: AgentProduct
+  public let outcome: AgentAdapterReconciliationOutcome
+  public let detail: String
+
+  public var id: String { product.id }
+
+  public init(
+    product: AgentProduct,
+    outcome: AgentAdapterReconciliationOutcome,
+    detail: String
+  ) {
+    self.product = product
+    self.outcome = outcome
+    self.detail = detail
+  }
+}
+
 public enum AgentAdapterInstallError: Error, LocalizedError {
   case codexManagedByPlugin
   case invalidConfiguration(URL)
@@ -81,6 +109,65 @@ public struct AgentAdapterInstaller: Sendable {
   public func statuses() -> [AgentAdapterStatus] {
     let helperCurrent = helperIsCurrentAndValid()
     return AgentProduct.allCases.map { status(for: $0, helperCurrent: helperCurrent) }
+  }
+
+  public func reconcileDetectedAgents() -> [AgentAdapterReconciliation] {
+    AgentProduct.allCases.map { product in
+      let current = status(for: product)
+      if product == .codex {
+        return AgentAdapterReconciliation(
+          product: product,
+          outcome: .managedByPlugin,
+          detail: "Codex capture remains owned by the installed plugin."
+        )
+      }
+      guard current.executableAvailable else {
+        return AgentAdapterReconciliation(
+          product: product,
+          outcome: .agentNotDetected,
+          detail: "No local executable was detected."
+        )
+      }
+      switch current.state {
+      case .configured:
+        return AgentAdapterReconciliation(
+          product: product,
+          outcome: .alreadyProtected,
+          detail: "The native event adapter and bundled helper are current."
+        )
+      case .notInstalled, .needsRepair:
+        do {
+          try install(product)
+          return AgentAdapterReconciliation(
+            product: product,
+            outcome: current.state == .notInstalled ? .installed : .repaired,
+            detail: current.state == .notInstalled
+              ? "Native event capture was installed automatically."
+              : "Native event capture was restored automatically."
+          )
+        } catch {
+          return AgentAdapterReconciliation(
+            product: product,
+            outcome: .failed,
+            detail: error.localizedDescription
+          )
+        }
+      case .invalidConfiguration, .unmanagedConflict:
+        return AgentAdapterReconciliation(
+          product: product,
+          outcome: .requiresOperator,
+          detail: current.state == .invalidConfiguration
+            ? "The existing configuration is invalid and was not changed."
+            : "The managed plugin path contains an unrelated plugin and was not changed."
+        )
+      case .managedByPlugin:
+        return AgentAdapterReconciliation(
+          product: product,
+          outcome: .managedByPlugin,
+          detail: "Capture is owned by the product plugin."
+        )
+      }
+    }
   }
 
   public func status(for product: AgentProduct) -> AgentAdapterStatus {
@@ -360,18 +447,32 @@ public struct AgentAdapterInstaller: Sendable {
     "\"\(installedHelperURL.path)\" capture \(product.rawValue)"
   }
 
-  private func executableExists(for product: AgentProduct) -> Bool {
+  public func executableURL(for product: AgentProduct) -> URL? {
     let candidates: [String]
     switch product {
-    case .codex: candidates = [".local/bin/codex", ".cargo/bin/codex"]
-    case .droid: candidates = [".local/bin/droid"]
+    case .codex:
+      candidates = [
+        ".local/bin/codex", ".cargo/bin/codex", ".codex/bin/codex", "Applications/Codex.app",
+      ]
+    case .droid: candidates = [".local/bin/droid", ".factory/bin/droid"]
     case .claudeCode: candidates = [".local/bin/claude", ".claude/local/claude"]
-    case .openCode: candidates = [".local/bin/opencode", ".opencode/bin/opencode"]
+    case .openCode:
+      candidates = [
+        ".local/bin/opencode", ".opencode/bin/opencode", "Applications/OpenCode.app",
+      ]
     case .cursor: candidates = [".local/bin/cursor-agent", "Applications/Cursor.app"]
     }
-    let configuredPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+    let configuredPaths = Array(Set(
+      (ProcessInfo.processInfo.environment["PATH"] ?? "")
       .split(separator: ":")
       .map(String.init)
+        + [
+          "/opt/homebrew/bin", "/usr/local/bin",
+          homeDirectory.appendingPathComponent(".local/bin").path,
+          homeDirectory.appendingPathComponent(".bun/bin").path,
+          homeDirectory.appendingPathComponent("Library/pnpm").path,
+        ]
+    ))
     let commandNames: [String]
     switch product {
     case .codex: commandNames = ["codex"]
@@ -380,16 +481,30 @@ public struct AgentAdapterInstaller: Sendable {
     case .openCode: commandNames = ["opencode"]
     case .cursor: commandNames = ["cursor", "cursor-agent"]
     }
-    return candidates.contains {
-      FileManager.default.fileExists(atPath: homeDirectory.appendingPathComponent($0).path)
+    for candidate in candidates {
+      let url = homeDirectory.appendingPathComponent(candidate)
+      if FileManager.default.fileExists(atPath: url.path) { return url }
     }
-      || configuredPaths.contains { directory in
-        commandNames.contains { name in
-          FileManager.default.isExecutableFile(
-            atPath: URL(fileURLWithPath: directory).appendingPathComponent(name).path)
-        }
+    for directory in configuredPaths {
+      for name in commandNames {
+        let url = URL(fileURLWithPath: directory).appendingPathComponent(name)
+        if FileManager.default.isExecutableFile(atPath: url.path) { return url }
       }
-      || (product == .cursor && FileManager.default.fileExists(atPath: "/Applications/Cursor.app"))
+    }
+    let globalApplications: [AgentProduct: String] = [
+      .codex: "/Applications/Codex.app",
+      .openCode: "/Applications/OpenCode.app",
+      .cursor: "/Applications/Cursor.app",
+    ]
+    if let applicationPath = globalApplications[product] {
+      let application = URL(fileURLWithPath: applicationPath, isDirectory: true)
+      if FileManager.default.fileExists(atPath: application.path) { return application }
+    }
+    return nil
+  }
+
+  private func executableExists(for product: AgentProduct) -> Bool {
+    executableURL(for: product) != nil
   }
 
   private func validateHookSchema(
