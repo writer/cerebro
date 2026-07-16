@@ -56,11 +56,14 @@ Public tests should use neutral in-memory or fixture adapters. Operational repos
 
 ## Change Sequence
 
-1. Land shared public contracts and generated bindings.
-2. Land this workspace scaffold and repository boundary tests.
-3. Import the public web application and make it pass root workspace checks.
+1. Land this workspace scaffold and repository boundary tests.
+2. Import the public web application and make it pass root workspace checks.
+3. Review and land shared public contracts and generated bindings through their owner gate.
 4. Add the reviewed portable Slack companion skeleton and durable admission path.
 5. Move remaining portable Slack behavior onto the shared run, lease, checkpoint, delivery, and schedule semantics.
-6. Update environment deployment adapters only after public contract and application changes are available.
+6. Update environment deployment adapters only after the applicable public contract and application changes are available.
+
+Repository mechanics and applications that do not consume a proposed contract may land before that contract is
+approved. A contract consumer must not merge ahead of the contract version it reads.
 
 Each step remains independently reviewable and reversible. Consumer changes declare the exact contract version they read and write during a rolling upgrade.
