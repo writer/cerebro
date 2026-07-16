@@ -91,6 +91,7 @@ Plain Compose initializes the local Postgres volume with the compose-file passwo
 
 ## What Is In This Repo
 
+- `apps/`: independently built browser and companion clients that consume public contracts.
 - `cmd/cerebro`: the main Go binary. It defaults to `serve` and also exposes source, runtime, graph, finding, closeout, deploy, and orchestration commands.
 - `internal/bootstrap`: HTTP, Connect RPC, MCP, auth, rate-limit, and route wiring for the runtime.
 - `internal/sourcecdk`, `internal/sourceregistry`, and `sources/`: the source contract and built-in source catalog for cloud, SaaS, identity, endpoint, vulnerability, workflow, and compliance signals.
