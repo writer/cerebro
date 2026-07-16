@@ -1,22 +1,53 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: privileged account without owner fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_user:00u-ownerless
-        primary_label: platform-admin@example.com
-        primary_type: okta.user
-        fingerprint_key: urn:cerebro:writer:okta_user:00u-ownerless
-        resource_urns:
-          - urn:cerebro:writer:okta_user:00u-ownerless
-          - urn:cerebro:writer:okta_admin_role:super-admin
-        severity: HIGH
-        summary: Okta privileged account platform-admin@example.com has no lifecycle owner evidence
-        action: Add manager or owner evidence before accepting privileged access
-        evidence:
-          - urn: urn:cerebro:writer:okta_admin_role:super-admin
+  - name: ownerless user to privileged capability path produces a finding
+    graphFixture:
+      tenantId: test-missing-owner
+      nodes: &nodes
+        - urn: urn:cerebro:test-missing-owner:okta:user:break-glass
+          sourceId: okta
+          entityType: okta.user
+          label: break-glass@example.com
+          attributes:
+            status: active
+        - urn: urn:cerebro:test-missing-owner:okta:admin-role:super-admin
+          sourceId: okta
+          entityType: okta.admin_role
+          label: Super administrator
+        - urn: urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+          sourceId: okta
+          entityType: okta.entitlement
+          label: Tenant administrator
+        - urn: urn:cerebro:test-missing-owner:access:capability:identity-admin
+          sourceId: okta
+          entityType: access.capability
+          label: Identity administrator
+      edges:
+        - fromUrn: urn:cerebro:test-missing-owner:okta:user:break-glass
+          toUrn: urn:cerebro:test-missing-owner:okta:admin-role:super-admin
+          sourceId: okta
+          relation: can_admin
+        - fromUrn: urn:cerebro:test-missing-owner:okta:admin-role:super-admin
+          toUrn: urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+          toUrn: urn:cerebro:test-missing-owner:access:capability:identity-admin
+          sourceId: okta
+          relation: confers_capability
     wantFinding: true
-  - name: privileged account with owner evidence passes
-    resource:
-      placeholder: true
+  - name: privileged capability path without user role assignment passes
+    graphFixture:
+      tenantId: test-missing-owner
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-missing-owner:okta:admin-role:super-admin
+          toUrn: urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+          toUrn: urn:cerebro:test-missing-owner:access:capability:identity-admin
+          sourceId: okta
+          relation: confers_capability
     wantFinding: false

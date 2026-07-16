@@ -1,22 +1,54 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: dormant admin role assignment fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_user:00u-admin
-        primary_label: admin@example.com
-        primary_type: okta.user
-        fingerprint_key: urn:cerebro:writer:okta_user:00u-admin|urn:cerebro:writer:okta_admin_role:org-admin
-        resource_urns:
-          - urn:cerebro:writer:okta_user:00u-admin
-          - urn:cerebro:writer:okta_admin_role:org-admin
-        severity: HIGH
-        summary: Okta admin admin@example.com has stale login activity for role org-admin
-        action: Remove the admin role or document active break-glass review evidence
-        evidence:
-          - urn: urn:cerebro:writer:okta_admin_role:org-admin
+  - name: dormant user to admin capability path produces a finding
+    graphFixture:
+      tenantId: test-dormant-admin
+      nodes: &nodes
+        - urn: urn:cerebro:test-dormant-admin:okta:user:dormant-admin
+          sourceId: okta
+          entityType: okta.user
+          label: dormant-admin@example.com
+          attributes:
+            status: active
+            last_login_at: "2020-01-01T00:00:00Z"
+        - urn: urn:cerebro:test-dormant-admin:okta:admin-role:org-admin
+          sourceId: okta
+          entityType: okta.admin_role
+          label: Organization administrator
+        - urn: urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+          sourceId: okta
+          entityType: okta.entitlement
+          label: Organization administrator
+        - urn: urn:cerebro:test-dormant-admin:access:capability:identity-admin
+          sourceId: okta
+          entityType: access.capability
+          label: Identity administrator
+      edges:
+        - fromUrn: urn:cerebro:test-dormant-admin:okta:user:dormant-admin
+          toUrn: urn:cerebro:test-dormant-admin:okta:admin-role:org-admin
+          sourceId: okta
+          relation: can_admin
+        - fromUrn: urn:cerebro:test-dormant-admin:okta:admin-role:org-admin
+          toUrn: urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+          toUrn: urn:cerebro:test-dormant-admin:access:capability:identity-admin
+          sourceId: okta
+          relation: confers_capability
     wantFinding: true
-  - name: recent admin role assignment passes
-    resource:
-      placeholder: true
+  - name: admin capability path without dormant user assignment passes
+    graphFixture:
+      tenantId: test-dormant-admin
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-dormant-admin:okta:admin-role:org-admin
+          toUrn: urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+          toUrn: urn:cerebro:test-dormant-admin:access:capability:identity-admin
+          sourceId: okta
+          relation: confers_capability
     wantFinding: false

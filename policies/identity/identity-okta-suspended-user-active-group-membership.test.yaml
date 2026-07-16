@@ -1,22 +1,53 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: suspended user with active group membership fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_user:00u-suspended
-        primary_label: suspended@example.com
-        primary_type: okta.user
-        fingerprint_key: urn:cerebro:writer:okta_user:00u-suspended|urn:cerebro:writer:okta_group:finance-users
-        resource_urns:
-          - urn:cerebro:writer:okta_user:00u-suspended
-          - urn:cerebro:writer:okta_group:finance-users
-        severity: HIGH
-        summary: Okta suspended user suspended@example.com remains in group Finance Users
-        action: Remove stale group membership and verify downstream access removal
-        evidence:
-          - urn: urn:cerebro:writer:okta_group:finance-users
+  - name: suspended user through group to application path produces a finding
+    graphFixture:
+      tenantId: test-suspended-group
+      nodes: &nodes
+        - urn: urn:cerebro:test-suspended-group:okta:user:alice
+          sourceId: okta
+          entityType: okta.user
+          label: alice@example.com
+          attributes:
+            status: deprovisioned
+        - urn: urn:cerebro:test-suspended-group:okta:group:finance-admins
+          sourceId: okta
+          entityType: okta.group
+          label: Finance administrators
+        - urn: urn:cerebro:test-suspended-group:okta:application:payroll
+          sourceId: okta
+          entityType: okta.application
+          label: Payroll
+        - urn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
+          sourceId: okta
+          entityType: okta.entitlement
+          label: Payroll write
+      edges:
+        - fromUrn: urn:cerebro:test-suspended-group:okta:user:alice
+          toUrn: urn:cerebro:test-suspended-group:okta:group:finance-admins
+          sourceId: okta
+          relation: member_of
+        - fromUrn: urn:cerebro:test-suspended-group:okta:group:finance-admins
+          toUrn: urn:cerebro:test-suspended-group:okta:application:payroll
+          sourceId: okta
+          relation: assigned_to
+        - fromUrn: urn:cerebro:test-suspended-group:okta:application:payroll
+          toUrn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
+          sourceId: okta
+          relation: grants_entitlement
     wantFinding: true
-  - name: suspended user without group membership passes
-    resource:
-      placeholder: true
+  - name: group application path without suspended membership passes
+    graphFixture:
+      tenantId: test-suspended-group
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-suspended-group:okta:group:finance-admins
+          toUrn: urn:cerebro:test-suspended-group:okta:application:payroll
+          sourceId: okta
+          relation: assigned_to
+        - fromUrn: urn:cerebro:test-suspended-group:okta:application:payroll
+          toUrn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
+          sourceId: okta
+          relation: grants_entitlement
     wantFinding: false
