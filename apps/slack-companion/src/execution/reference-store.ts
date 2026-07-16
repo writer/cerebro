@@ -61,7 +61,11 @@ export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
       }
       return Promise.resolve(undefined);
     }
-    if (run.state !== "queued" && run.state !== "paused") {
+    if (
+      run.state !== "queued" &&
+      run.state !== "paused" &&
+      run.state !== "waiting"
+    ) {
       return Promise.resolve(undefined);
     }
 
@@ -163,6 +167,34 @@ export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
     return Promise.resolve({
       checkpoint: structuredClone(stored),
       run: structuredClone(paused),
+    });
+  }
+
+  waitWithCheckpoint(
+    lease: WorkLeaseV1,
+    draft: CheckpointDraft,
+    createdAt: string,
+  ): Promise<{ checkpoint: CheckpointV1; run: RunReceiptV1 }> {
+    this.assertLease(lease, createdAt);
+    if (draft.waiting_on_ref === undefined) {
+      throw new ExecutionInvariantError(
+        "a waiting checkpoint requires waiting_on_ref",
+      );
+    }
+    const checkpoint = this.buildCheckpoint(lease, draft, createdAt);
+    const waiting = updateRun(
+      this.requireRun(lease.run_id),
+      "waiting",
+      createdAt,
+    );
+
+    // This block models one transaction: checkpoint first, then waiting truth.
+    const stored = this.storeCheckpoint(checkpoint);
+    this.runs.set(lease.run_id, waiting);
+    this.leases.delete(lease.run_id);
+    return Promise.resolve({
+      checkpoint: structuredClone(stored),
+      run: structuredClone(waiting),
     });
   }
 

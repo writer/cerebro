@@ -103,6 +103,24 @@ export class ExecutionCoordinator {
     );
   }
 
+  waitForDependency(
+    session: ExecutionSession,
+    draft: CheckpointDraft,
+  ): Promise<{ checkpoint: CheckpointV1; run: RunReceiptV1 }> {
+    if (draft.waiting_on_ref === undefined) {
+      return Promise.reject(
+        new ExecutionInvariantError(
+          "a waiting checkpoint requires waiting_on_ref",
+        ),
+      );
+    }
+    return this.store.waitWithCheckpoint(
+      session.lease,
+      draft,
+      this.clock.now().toISOString(),
+    );
+  }
+
   finishExecution(session: ExecutionSession): Promise<RunReceiptV1> {
     return this.store.finishExecution(
       session.lease,

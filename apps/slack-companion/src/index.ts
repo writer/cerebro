@@ -19,4 +19,6 @@ export type {
 } from "./execution/ports.js";
 export * from "./installation.js";
 export * from "./lifecycle.js";
+export * from "./mission/coordinator.js";
+export * from "./mission/model.js";
 export * from "./ports.js";
