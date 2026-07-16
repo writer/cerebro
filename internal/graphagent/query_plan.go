@@ -13,6 +13,7 @@ import (
 
 const (
 	IntentRawCypher                 = "raw_cypher"
+	IntentGraphRows                 = "graph_rows"
 	IntentAggregateFindingsBySource = "aggregate_findings_by_source"
 	IntentTopRiskFindings           = "top_risk_findings"
 	IntentFailingControls           = "failing_controls"
@@ -215,7 +216,7 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 	switch intent {
 	case IntentTopRiskFindings:
 		plan.Filters = fastPathTopRiskFilters(question)
-	case IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
+	case IntentGraphRows, IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
 		plan.Filters = map[string]string{}
 	case IntentMITREAttackCoverage:
 		plan.Filters = fastPathMITREAttackCoverageFilters(question)
@@ -527,6 +528,8 @@ func canonicalIntent(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "raw", "cypher", "raw_cypher":
 		return IntentRawCypher
+	case "graph_rows", "entity_rows", "query_rows", "rows", "entities", "nodes", "graph_entities", "graph_nodes":
+		return IntentGraphRows
 	case "aggregate_findings_by_source", "finding_source_counts", "findings_by_source", "source_breakdown":
 		return IntentAggregateFindingsBySource
 	case "top_risk_findings", "high_risk_findings", "findings":
@@ -581,9 +584,21 @@ func inferIntent(question string, cypher string) string {
 		return IntentQuestionnaireEvidence
 	case looksLikeMITREAttackCoverageQuestion(haystack):
 		return IntentMITREAttackCoverage
+	case looksLikeGraphRowsQuestion(haystack):
+		return IntentGraphRows
 	default:
 		return IntentRawCypher
 	}
+}
+
+func looksLikeGraphRowsQuestion(haystack string) bool {
+	if !containsAny(haystack, "graph row", "graph rows", "entity row", "entity rows", "query row", "query rows", "list entities", "show entities", "list nodes", "show nodes", "list graph nodes", "show graph nodes", "list graph entities", "show graph entities") {
+		return false
+	}
+	return !containsAny(haystack,
+		"risk", "risky", "finding", "findings", "control", "controls", "evidence", "questionnaire",
+		"connector", "source health", "runtime health", "okta", "mitre", "attack", "bridge", "explain",
+	)
 }
 
 func looksLikeMITREAttackCoverageQuestion(haystack string) bool {
@@ -599,6 +614,17 @@ func renderDeterministicPlan(plan AskQueryPlan, defaultMaxRows int) (string, boo
 	}
 	limit := boundedLimit(plan.Limit, defaultMaxRows)
 	switch plan.Intent {
+	case IntentGraphRows:
+		return fmt.Sprintf(`MATCH (entity:Entity {tenant_id: $tenant_id})
+WHERE $scope_urn = '' OR entity.urn = $scope_urn
+RETURN entity.urn AS entity_urn,
+       coalesce(entity.label, entity.urn) AS entity_label,
+       entity.entity_type AS entity_type,
+       entity.source_id AS source_id,
+       entity.runtime_id AS runtime_id,
+       coalesce(entity.attributes_json, '') AS entity_attributes_json_internal
+ORDER BY entity_type, entity_label, entity_urn
+LIMIT %d`, limit), true
 	case IntentAggregateFindingsBySource:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn
@@ -1238,6 +1264,8 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 	for key := range plan.Filters {
 		normalized := strings.ToLower(strings.TrimSpace(key))
 		switch plan.Intent {
+		case IntentGraphRows:
+			return true
 		case IntentTopRiskFindings:
 			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
 				return true
