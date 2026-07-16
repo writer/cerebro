@@ -3,8 +3,11 @@ use std::{error::Error, fmt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActorId, AuthorizationDecision, AuthorizationRequest, DecisionReceipt, Mission, MissionId,
-    MissionInput, MissionState, RequestId, TenantId, VerificationReceipt,
+    ActorId, AuthorizationDecision, AuthorizationRequest, BeliefId, BeliefInput, BeliefRevision,
+    CommitmentId, CommitmentInput, CommitmentTransition, ConversationResolution, DecisionReceipt,
+    EncounterProfile, ExecutionDepth, Mission, MissionDirective, MissionId, MissionInput,
+    MissionReference, MissionState, PlanRevision, RequestId, SupervisorSnapshot, TenantId,
+    VerificationReceipt, WakeConditionId, WakeConditionKind, WakeSignal,
 };
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -43,6 +46,67 @@ pub enum ControlCommand {
         mission_id: MissionId,
         receipt: VerificationReceipt,
     },
+    RecordBelief {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        input: BeliefInput,
+    },
+    ReviseBelief {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        belief_id: BeliefId,
+        revision: BeliefRevision,
+    },
+    RevisePlan {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        revision: PlanRevision,
+    },
+    ProposeCommitment {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        input: CommitmentInput,
+    },
+    TransitionCommitment {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        commitment_id: CommitmentId,
+        transition: CommitmentTransition,
+    },
+    ArmWakeCondition {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        wake_condition_id: WakeConditionId,
+        kind: WakeConditionKind,
+        reason: String,
+    },
+    SatisfyWakeCondition {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        wake_condition_id: WakeConditionId,
+        signal: WakeSignal,
+    },
+    CancelWakeCondition {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        wake_condition_id: WakeConditionId,
+        reason: String,
+    },
+    RouteEncounter {
+        tenant_id: TenantId,
+        profile: EncounterProfile,
+    },
+    ResolveConversation {
+        tenant_id: TenantId,
+        explicit_mission_id: Option<MissionId>,
+        subject_urns: Vec<String>,
+        missions: Vec<MissionReference>,
+    },
+    EvaluateMission {
+        tenant_id: TenantId,
+        mission_id: MissionId,
+        snapshot: SupervisorSnapshot,
+    },
 }
 
 impl ControlCommand {
@@ -51,7 +115,18 @@ impl ControlCommand {
             Self::OpenMission { input } => &input.tenant_id,
             Self::AdvanceMission { tenant_id, .. }
             | Self::RecordDecision { tenant_id, .. }
-            | Self::RecordVerification { tenant_id, .. } => tenant_id,
+            | Self::RecordVerification { tenant_id, .. }
+            | Self::RecordBelief { tenant_id, .. }
+            | Self::ReviseBelief { tenant_id, .. }
+            | Self::RevisePlan { tenant_id, .. }
+            | Self::ProposeCommitment { tenant_id, .. }
+            | Self::TransitionCommitment { tenant_id, .. }
+            | Self::ArmWakeCondition { tenant_id, .. }
+            | Self::SatisfyWakeCondition { tenant_id, .. }
+            | Self::CancelWakeCondition { tenant_id, .. }
+            | Self::RouteEncounter { tenant_id, .. }
+            | Self::ResolveConversation { tenant_id, .. }
+            | Self::EvaluateMission { tenant_id, .. } => tenant_id,
             Self::Authorize { request } => &request.tenant_id,
         }
     }
@@ -62,6 +137,9 @@ impl ControlCommand {
 pub enum ControlResponse {
     Mission { mission: Mission },
     Authorization { decision: AuthorizationDecision },
+    ExecutionDepth { depth: ExecutionDepth },
+    Conversation { resolution: ConversationResolution },
+    Directive { directive: MissionDirective },
     Accepted { request_id: RequestId },
     Rejected { code: String, message: String },
 }
