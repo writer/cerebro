@@ -65,8 +65,15 @@ describe("proxy", () => {
     expect(response.status).toBe(200);
   });
 
-  it("passes requests without content-length", () => {
+  it("rejects write requests without content-length", () => {
     const response = proxy(request("POST", "/api/cerebro/grc/ask"));
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(411);
+  });
+
+  it("rejects malformed content-length", () => {
+    const response = proxy(request("POST", "/api/cerebro/grc/ask", {
+      "content-length": "1024garbage",
+    }));
+    expect(response.status).toBe(400);
   });
 });
