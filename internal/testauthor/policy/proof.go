@@ -31,9 +31,13 @@ type ProofResult struct {
 	Receipts     []ProofReceipt `json:"receipts"`
 }
 
-func Prove(ctx context.Context, artifacts Artifacts) (ProofResult, error) {
+func Prove(artifacts Artifacts) (ProofResult, error) {
 	if strings.TrimSpace(artifacts.Rule.Spec.Graph.Query) != "" {
-		return proveGraph(ctx, artifacts, nil)
+		result, err := validateGraphFixtureContract(artifacts)
+		if err != nil {
+			return result, err
+		}
+		return graphStoreRequired(result)
 	}
 	return proveScalar(artifacts)
 }
@@ -73,23 +77,12 @@ func ProveWithGraphStore(ctx context.Context, artifacts Artifacts, store finding
 }
 
 func proveGraph(ctx context.Context, artifacts Artifacts, store findingdsl.PolicyGraphTestStore) (ProofResult, error) {
-	result := ProofResult{
-		PolicyID: artifacts.Rule.Metadata.ID, PolicyPath: artifacts.PolicyPath, TestPath: artifacts.TestPath,
-		PolicyDigest: digest(artifacts.PolicyYAML), TestDigest: digest(artifacts.TestYAML),
-	}
-	issues := findingdsl.ValidatePolicyRuleTestSuite(artifacts.Suite)
-	contractPassed := len(issues) == 0
-	contractDetail := "finding and passing graph fixtures have identical topology except for one critical edge"
-	if !contractPassed {
-		contractDetail = "graph fixture contract failed: " + joinIssues(issues)
-	}
-	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_fixture_contract", Passed: contractPassed, Execution: "in_process", Detail: contractDetail})
-	if !contractPassed {
-		return result, errors.New("authored graph fixture contract failed")
+	result, err := validateGraphFixtureContract(artifacts)
+	if err != nil {
+		return result, err
 	}
 	if store == nil {
-		result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_execution", Passed: false, Execution: "not_run", Detail: "graph store was not injected; authored Cypher and topology were not executed"})
-		return result, ErrGraphStoreRequired
+		return graphStoreRequired(result)
 	}
 
 	root, err := os.MkdirTemp("", "cerebro-authored-graph-proof-")
@@ -118,6 +111,29 @@ func proveGraph(ctx context.Context, artifacts Artifacts, store findingdsl.Polic
 		return result, errors.New("authored graph tests failed against injected graph store")
 	}
 	return result, nil
+}
+
+func validateGraphFixtureContract(artifacts Artifacts) (ProofResult, error) {
+	result := ProofResult{
+		PolicyID: artifacts.Rule.Metadata.ID, PolicyPath: artifacts.PolicyPath, TestPath: artifacts.TestPath,
+		PolicyDigest: digest(artifacts.PolicyYAML), TestDigest: digest(artifacts.TestYAML),
+	}
+	issues := findingdsl.ValidatePolicyRuleTestSuite(artifacts.Suite)
+	contractPassed := len(issues) == 0
+	contractDetail := "finding and passing graph fixtures have identical topology except for one critical edge"
+	if !contractPassed {
+		contractDetail = "graph fixture contract failed: " + joinIssues(issues)
+	}
+	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_fixture_contract", Passed: contractPassed, Execution: "in_process", Detail: contractDetail})
+	if !contractPassed {
+		return result, errors.New("authored graph fixture contract failed")
+	}
+	return result, nil
+}
+
+func graphStoreRequired(result ProofResult) (ProofResult, error) {
+	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_execution", Passed: false, Execution: "not_run", Detail: "graph store was not injected; authored Cypher and topology were not executed"})
+	return result, ErrGraphStoreRequired
 }
 
 func writeProofArtifact(root string, rel string, content []byte) error {

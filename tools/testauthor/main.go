@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -38,7 +37,7 @@ func main() {
 	case "author-tests":
 		err = runAuthorTests(os.Args[2:])
 	case "prove-policy":
-		err = runProvePolicy(context.Background(), os.Args[2:])
+		err = runProvePolicy(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -96,7 +95,7 @@ func runAuthorPolicy(args []string) error {
 	return err
 }
 
-func runProvePolicy(ctx context.Context, args []string) error {
+func runProvePolicy(args []string) error {
 	flags := flag.NewFlagSet("testauthor prove-policy", flag.ContinueOnError)
 	intentPath := flags.String("intent", "", "policy intent YAML")
 	if err := flags.Parse(args); err != nil {
@@ -113,7 +112,7 @@ func runProvePolicy(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := policyauthor.Prove(ctx, artifacts)
+	result, err := policyauthor.Prove(artifacts)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if encodeErr := encoder.Encode(result); encodeErr != nil {
