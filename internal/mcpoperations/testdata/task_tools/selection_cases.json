@@ -548,5 +548,15 @@
     "forbidden_tools": ["cerebro.agent.control_plane"],
     "require_partial_handling": false,
     "maximum_call_count": 1
+  },
+  {
+    "id": "assets-host-inventory-language",
+    "user_request": "Which hosts are in our inventory?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.assets.search",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assets.get"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
   }
 ]
