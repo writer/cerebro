@@ -835,7 +835,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	}
 	exposed := make([]firewallRecord, 0, len(firewalls))
 	for _, firewall := range firewalls {
-		if firewallPublicIngress(firewall) {
+		if strings.EqualFold(firewall.Direction, "INGRESS") && !firewall.Disabled && sourcecdk.FirstOpenCIDR(firewall.SourceRanges) != "" && len(firewall.Allowed) != 0 {
 			exposed = append(exposed, firewall)
 		}
 	}

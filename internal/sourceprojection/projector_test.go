@@ -4761,6 +4761,39 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
 }
 
+func TestStampProjectionRuntimeAddsLinkProvenance(t *testing.T) {
+	observedAt := time.Date(2026, 7, 15, 8, 9, 10, 0, time.UTC)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cloud-event-1",
+		OccurredAt: timestamppb.New(observedAt),
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "runtime-aws"},
+	}
+	links := []*ports.ProjectedLink{{Attributes: map[string]string{}}, {
+		Attributes: map[string]string{"source_event_id": "preserved-event", "at": "2026-07-14T00:00:00Z"},
+	}}
+
+	stampProjectionRuntime(event, nil, links)
+
+	if got := links[0].RuntimeID; got != "runtime-aws" {
+		t.Fatalf("runtime id = %q, want runtime-aws", got)
+	}
+	if got := links[0].Attributes[ports.EventAttributeSourceRuntimeID]; got != "runtime-aws" {
+		t.Fatalf("source runtime attribute = %q, want runtime-aws", got)
+	}
+	if got := links[0].Attributes["source_event_id"]; got != "cloud-event-1" {
+		t.Fatalf("source event id = %q, want cloud-event-1", got)
+	}
+	if got := links[0].Attributes["at"]; got != observedAt.Format(time.RFC3339) {
+		t.Fatalf("observed at = %q, want %q", got, observedAt.Format(time.RFC3339))
+	}
+	if got := links[1].Attributes["source_event_id"]; got != "preserved-event" {
+		t.Fatalf("preserved source event id = %q", got)
+	}
+	if got := links[1].Attributes["at"]; got != "2026-07-14T00:00:00Z" {
+		t.Fatalf("preserved observed at = %q", got)
+	}
+}
+
 func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
