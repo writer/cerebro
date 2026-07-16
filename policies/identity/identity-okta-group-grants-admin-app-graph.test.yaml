@@ -12,12 +12,12 @@ cases:
         - urn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
           sourceId: okta
           entityType: okta.application
-          label: Cloud Console
+          label: Workforce Portal
         - urn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
           sourceId: okta
           entityType: okta.entitlement
           label: Console administrator
-        - urn: urn:cerebro:test-group-admin-path:access:capability:cloud-admin
+        - urn: urn:cerebro:test-group-admin-path:access:capability:cloud_admin
           sourceId: okta
           entityType: access.capability
           label: Cloud administrator
@@ -31,21 +31,21 @@ cases:
           sourceId: okta
           relation: grants_entitlement
         - fromUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
-          toUrn: urn:cerebro:test-group-admin-path:access:capability:cloud-admin
+          toUrn: urn:cerebro:test-group-admin-path:access:capability:cloud_admin
           sourceId: okta
           relation: confers_capability
     wantFinding: true
-  - name: downstream capability path without group assignment passes
+  - name: group application entitlement path without admin capability passes
     graphFixture:
       tenantId: test-group-admin-path
       nodes: *nodes
       edges:
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:group:security-operators
+          toUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          sourceId: okta
+          relation: assigned_to
         - fromUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
           toUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
           sourceId: okta
           relation: grants_entitlement
-        - fromUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
-          toUrn: urn:cerebro:test-group-admin-path:access:capability:cloud-admin
-          sourceId: okta
-          relation: confers_capability
     wantFinding: false
