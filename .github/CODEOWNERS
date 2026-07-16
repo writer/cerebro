@@ -6,6 +6,8 @@
 /Dockerfile @writer/security
 /Dockerfile.runtime @writer/security
 /Makefile @writer/security
+/package.json @writer/security
+/package-lock.json @writer/security
 /Cargo.toml @writer/security
 /Cargo.lock @writer/security
 /rust-toolchain.toml @writer/security
@@ -18,6 +20,7 @@
 /tools/ @writer/security
 /sdk/python/ @writer/security
 /sdk/typescript/ @writer/security
+/apps/ @writer/security
 
 # --- Per-domain ownership ---
 # Domain ownership mirrors the RBAC roles defined in internal/authz.
