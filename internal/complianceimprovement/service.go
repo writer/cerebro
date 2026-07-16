@@ -74,7 +74,7 @@ func (s *Service) Detect(ctx context.Context, request DetectRequest) (Improvemen
 	if err != nil {
 		return ImprovementRecord{}, false, err
 	}
-	return s.store.Create(ctx, CreateRecordRequest{Run: run, Revision: revision})
+	return s.store.CreateComplianceImprovement(ctx, CreateRecordRequest{Run: run, Revision: revision})
 }
 
 type ResearchRequest struct {
@@ -235,7 +235,7 @@ func (s *Service) PublishDraft(ctx context.Context, tenantID, runID string, requ
 		RequiredAction: "Review the evidence and draft changes. Merge or reject the pull request as the assigned human GRC owner.",
 		CreatedAt:      canonicalTime(s.now()),
 	}
-	updateReceipt, err := s.teamOutbox.EnqueueTeamUpdate(ctx, openRequest.IdempotencyKey, update)
+	updateReceipt, err := s.teamOutbox.EnqueueTeamUpdate(ctx, record.Run.TenantID, openRequest.IdempotencyKey, update)
 	if err != nil {
 		return ImprovementRecord{}, fmt.Errorf("enqueue team update: %w", err)
 	}
@@ -296,7 +296,7 @@ func (s *Service) Get(ctx context.Context, tenantID, runID string) (ImprovementR
 	if err := s.coreReady(); err != nil {
 		return ImprovementRecord{}, err
 	}
-	return s.store.Get(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(runID))
+	return s.store.GetComplianceImprovement(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(runID))
 }
 
 func (s *Service) coreReady() error {
@@ -310,7 +310,7 @@ func (s *Service) getForTransition(ctx context.Context, tenantID, runID string, 
 	if err := s.coreReady(); err != nil {
 		return ImprovementRecord{}, err
 	}
-	record, err := s.store.Get(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(runID))
+	record, err := s.store.GetComplianceImprovement(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(runID))
 	if err != nil {
 		return ImprovementRecord{}, err
 	}
@@ -346,7 +346,7 @@ func (s *Service) append(ctx context.Context, current ImprovementRecord, state s
 	if err != nil {
 		return ImprovementRecord{}, err
 	}
-	return s.store.AppendRevision(ctx, AppendRevisionRequest{
+	return s.store.AppendComplianceImprovementRevision(ctx, AppendRevisionRequest{
 		TenantID: next.TenantID, RunID: next.ID, ExpectedVersion: current.Run.AggregateVersion,
 		Run: next, Revision: revision,
 	})

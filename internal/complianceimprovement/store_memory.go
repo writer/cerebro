@@ -18,7 +18,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{records: map[string]ImprovementRecord{}}
 }
 
-func (s *MemoryStore) Create(_ context.Context, request CreateRecordRequest) (ImprovementRecord, bool, error) {
+func (s *MemoryStore) CreateComplianceImprovement(_ context.Context, request CreateRecordRequest) (ImprovementRecord, bool, error) {
 	if s == nil {
 		return ImprovementRecord{}, false, ErrUnavailable
 	}
@@ -36,7 +36,7 @@ func (s *MemoryStore) Create(_ context.Context, request CreateRecordRequest) (Im
 	return cloneRecord(record), true, nil
 }
 
-func (s *MemoryStore) Get(_ context.Context, tenantID, runID string) (ImprovementRecord, error) {
+func (s *MemoryStore) GetComplianceImprovement(_ context.Context, tenantID, runID string) (ImprovementRecord, error) {
 	if s == nil {
 		return ImprovementRecord{}, ErrUnavailable
 	}
@@ -49,7 +49,7 @@ func (s *MemoryStore) Get(_ context.Context, tenantID, runID string) (Improvemen
 	return cloneRecord(record), nil
 }
 
-func (s *MemoryStore) AppendRevision(_ context.Context, request AppendRevisionRequest) (ImprovementRecord, error) {
+func (s *MemoryStore) AppendComplianceImprovementRevision(_ context.Context, request AppendRevisionRequest) (ImprovementRecord, error) {
 	if s == nil {
 		return ImprovementRecord{}, ErrUnavailable
 	}

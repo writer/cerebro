@@ -251,9 +251,9 @@ type AppendRevisionRequest struct {
 }
 
 type Store interface {
-	Create(context.Context, CreateRecordRequest) (ImprovementRecord, bool, error)
-	Get(context.Context, string, string) (ImprovementRecord, error)
-	AppendRevision(context.Context, AppendRevisionRequest) (ImprovementRecord, error)
+	CreateComplianceImprovement(context.Context, CreateRecordRequest) (ImprovementRecord, bool, error)
+	GetComplianceImprovement(context.Context, string, string) (ImprovementRecord, error)
+	AppendComplianceImprovementRevision(context.Context, AppendRevisionRequest) (ImprovementRecord, error)
 }
 
 type InputRevisionVerifier interface {
@@ -284,5 +284,5 @@ type OpenDraftPullRequestRequest struct {
 }
 
 type TeamUpdateOutbox interface {
-	EnqueueTeamUpdate(context.Context, string, TeamUpdate) (TeamUpdateReceipt, error)
+	EnqueueTeamUpdate(context.Context, string, string, TeamUpdate) (TeamUpdateReceipt, error)
 }

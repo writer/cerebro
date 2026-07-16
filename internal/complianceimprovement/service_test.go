@@ -64,7 +64,7 @@ type testTeamOutbox struct {
 	calls  int
 }
 
-func (o *testTeamOutbox) EnqueueTeamUpdate(_ context.Context, _ string, update TeamUpdate) (TeamUpdateReceipt, error) {
+func (o *testTeamOutbox) EnqueueTeamUpdate(_ context.Context, _, _ string, update TeamUpdate) (TeamUpdateReceipt, error) {
 	o.calls++
 	o.update = update
 	return TeamUpdateReceipt{OutboxID: "outbox-1", ProposalDigest: update.ProposalDigest, QueuedAt: testNow}, nil
