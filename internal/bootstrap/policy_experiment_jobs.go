@@ -10,9 +10,6 @@ import (
 )
 
 type PolicyExperimentJobHandler = policycandidate.ExperimentJobHandler
-type PolicyExperimentJobHandlerFunc = policycandidate.ExperimentJobHandlerFunc
-type PolicyExperimentJobInput = policycandidate.ExperimentJobInput
-type PolicyExperimentJobOutput = policycandidate.ExperimentJobOutput
 
 func (a *App) runPolicyCandidateExperimentJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
 	checkpoints, _ := a.deps.GraphStore.(policycandidate.ExperimentCheckpointStore)
