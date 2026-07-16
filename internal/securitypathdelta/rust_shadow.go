@@ -409,6 +409,7 @@ func (hasher *decisionInputHasher) boolean(value bool) {
 }
 
 func (hasher *decisionInputHasher) unsigned(value int) {
+	// #nosec G115 -- callers provide validated nonnegative counts; conversion preserves the v1 digest encoding.
 	binary.BigEndian.PutUint64(hasher.encoded[:], uint64(value))
 	_, _ = hasher.writer.Write(hasher.encoded[:])
 }
