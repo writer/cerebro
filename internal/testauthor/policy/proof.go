@@ -33,8 +33,12 @@ type ProofResult struct {
 
 func Prove(artifacts Artifacts) (ProofResult, error) {
 	if strings.TrimSpace(artifacts.Rule.Spec.Graph.Query) != "" {
-		return proveGraph(nil, artifacts, nil)
+		return proveGraph(context.Background(), artifacts, nil)
 	}
+	return proveScalar(artifacts)
+}
+
+func proveScalar(artifacts Artifacts) (ProofResult, error) {
 	result := ProofResult{
 		PolicyID: artifacts.Rule.Metadata.ID, PolicyPath: artifacts.PolicyPath, TestPath: artifacts.TestPath,
 		PolicyDigest: digest(artifacts.PolicyYAML), TestDigest: digest(artifacts.TestYAML),
@@ -63,7 +67,7 @@ func Prove(artifacts Artifacts) (ProofResult, error) {
 // boundary. Scalar policies retain the existing in-process proof behavior.
 func ProveWithGraphStore(ctx context.Context, artifacts Artifacts, store findingdsl.PolicyGraphTestStore) (ProofResult, error) {
 	if strings.TrimSpace(artifacts.Rule.Spec.Graph.Query) == "" {
-		return Prove(artifacts)
+		return proveScalar(artifacts)
 	}
 	return proveGraph(ctx, artifacts, store)
 }
@@ -93,7 +97,7 @@ func proveGraph(ctx context.Context, artifacts Artifacts, store findingdsl.Polic
 		result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_execution", Passed: false, Execution: "not_run", Detail: "create isolated proof root: " + err.Error()})
 		return result, err
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	if err := writeProofArtifact(root, artifacts.PolicyPath, artifacts.PolicyYAML); err != nil {
 		result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_execution", Passed: false, Execution: "not_run", Detail: err.Error()})
 		return result, err
@@ -118,7 +122,7 @@ func proveGraph(ctx context.Context, artifacts Artifacts, store findingdsl.Polic
 
 func writeProofArtifact(root string, rel string, content []byte) error {
 	path := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("create proof artifact directory: %w", err)
 	}
 	if err := os.WriteFile(path, content, 0o600); err != nil {
