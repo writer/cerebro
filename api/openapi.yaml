@@ -5843,6 +5843,164 @@ paths:
               schema: {$ref: '#/components/schemas/PolicyCandidate'}
         '409': {description: Candidate has not passed proof.}
         '503': {description: Current graph reads are unavailable.}
+  /policy-candidates/{candidateID}/evaluation-datasets:
+    post:
+      operationId: createPolicyEvaluationDataset
+      summary: Create a versioned evaluation dataset from a proved candidate
+      description: Imports the candidate's current synthetic graph-fixture suite as immutable revision one. Authored fixture tenants, URNs, runtime IDs, case names, labels, and non-predicate values are canonicalized into durable fixture tokens before persistence. Live provider identifiers, query rows, resources, and untyped attributes are rejected.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePolicyEvaluationDatasetRequest'}
+      responses:
+        '201':
+          description: Dataset identity and immutable initial revision.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyEvaluationDatasetResult'}
+        '400': {description: Dataset labels or candidate-authored fixtures are invalid or not redacted.}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Candidate does not exist in the authorized tenant.}
+        '409': {description: The idempotency key was reused with different content.}
+        '503': {description: Durable dataset storage is unavailable.}
+    get:
+      operationId: listPolicyEvaluationDatasets
+      summary: List evaluation datasets for one candidate
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Candidate-scoped durable dataset identities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [datasets]
+                properties:
+                  datasets: {type: array, items: {$ref: '#/components/schemas/PolicyEvaluationDataset'}}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-evaluation-datasets/{datasetID}:
+    get:
+      operationId: getPolicyEvaluationDataset
+      summary: Get one durable evaluation dataset
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Current dataset identity and revision pointer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dataset]
+                properties:
+                  dataset: {$ref: '#/components/schemas/PolicyEvaluationDataset'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions:
+    post:
+      operationId: appendPolicyEvaluationDatasetRevision
+      summary: Append an immutable evaluation dataset revision
+      description: Appends a complete synthetic graph-fixture snapshot with optimistic aggregate-version and idempotency checks. Case names are replaced with the stable case ID before persistence; topology fields and scalar values must satisfy the typed synthetic fixture contract. No case update or delete operation exists.
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AppendPolicyEvaluationDatasetRevisionRequest'}
+      responses:
+        '201':
+          description: Current dataset identity and appended immutable revision.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyEvaluationDatasetResult'}
+        '400': {description: Revision fixtures or labels are invalid or not redacted.}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: 'Expected version, idempotency content, or immutable predecessor does not match.'}
+    get:
+      operationId: listPolicyEvaluationDatasetRevisions
+      summary: List immutable revisions for one evaluation dataset
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Ordered verified revision history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revisions]
+                properties:
+                  revisions: {type: array, items: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}:
+    get:
+      operationId: getPolicyEvaluationDatasetRevision
+      summary: Get one verified immutable dataset revision
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: revisionID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Verified immutable revision metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision]
+                properties:
+                  revision: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset revision does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}/cases:
+    get:
+      operationId: listPolicyEvaluationDatasetCases
+      summary: List cases in one verified immutable dataset revision
+      description: Returns only bounded synthetic fixtures. Live provider identifiers, raw query rows, and resource payloads are not accepted by the write boundary.
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: revisionID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Ordered verified case snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cases]
+                properties:
+                  cases:
+                    type: array
+                    items: {$ref: '#/components/schemas/PolicyEvaluationDatasetCase'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset revision does not exist in the authorized tenant.}
+        '409': {description: Stored case content no longer matches its immutable digest.}
   /policy-candidates/{candidateID}/experiments:
     post:
       operationId: createPolicyExperiment
@@ -15783,6 +15941,136 @@ components:
         pr_ready: {type: boolean, description: 'True only after current coverage-gap revalidation, proof, and current-state shadow execution succeed.'}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    CreatePolicyEvaluationDatasetRequest:
+      type: object
+      additionalProperties: false
+      required: [name, change_summary]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        change_summary: {type: string, minLength: 1, maxLength: 1000}
+    AppendPolicyEvaluationDatasetRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, change_summary, cases]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        change_summary: {type: string, minLength: 1, maxLength: 1000}
+        cases:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetCaseInput'}
+    PolicyEvaluationDatasetCaseInput:
+      type: object
+      additionalProperties: false
+      required: [id, test]
+      properties:
+        id: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$'}
+        test: {$ref: '#/components/schemas/PolicyEvaluationDatasetTestCase'}
+    PolicyEvaluationDatasetTestCase:
+      type: object
+      additionalProperties: false
+      required: [name, graphFixture, wantFinding]
+      properties:
+        name: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$', description: Canonical synthetic name; append requests must set this to the containing case ID.}
+        graphFixture: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphFixture'}
+        wantEvidenceUrns:
+          type: array
+          maxItems: 32
+          items: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        wantFinding: {type: boolean}
+    PolicyEvaluationDatasetGraphFixture:
+      type: object
+      additionalProperties: false
+      required: [tenantId, nodes, edges]
+      properties:
+        tenantId: {type: string, enum: [fixture, test]}
+        nodes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphNode'}
+        edges:
+          type: array
+          maxItems: 128
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphEdge'}
+    PolicyEvaluationDatasetGraphNode:
+      type: object
+      additionalProperties: false
+      required: [urn, sourceId, entityType]
+      properties:
+        urn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
+        entityType: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        label: {type: string, pattern: '^fixture-(?:(?:node|edge|ref|value)-[a-z0-9][a-z0-9-]{0,63}|candidate-marker)$'}
+        attributes:
+          type: object
+          maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must be fixture tokens, booleans for has_* keys, bounded integers for *_count keys, or identifier-free enums for the supported predicate keys.
+          additionalProperties: {type: string, maxLength: 256}
+    PolicyEvaluationDatasetGraphEdge:
+      type: object
+      additionalProperties: false
+      required: [fromUrn, toUrn, sourceId, relation]
+      properties:
+        fromUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        toUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
+        relation: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        attributes:
+          type: object
+          maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must satisfy the same typed synthetic scalar contract as node attributes.
+          additionalProperties: {type: string, maxLength: 256}
+    PolicyEvaluationDataset:
+      type: object
+      additionalProperties: false
+      required: [id, candidate_id, name, current_revision_id, aggregate_version, created_at, updated_at]
+      properties:
+        id: {type: string}
+        candidate_id: {type: string}
+        name: {type: string}
+        current_revision_id: {type: string}
+        aggregate_version: {type: integer, format: int64, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    PolicyEvaluationDatasetRevision:
+      type: object
+      additionalProperties: false
+      required: [id, dataset_id, version, policy_digest, source_test_digest, content_digest, case_count, change_summary, created_at]
+      properties:
+        id: {type: string}
+        dataset_id: {type: string}
+        version: {type: integer, format: int64, minimum: 1}
+        predecessor_id: {type: string}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        source_test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        content_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        case_count: {type: integer, minimum: 1, maximum: 100}
+        change_summary: {type: string}
+        created_at: {type: string, format: date-time}
+    PolicyEvaluationDatasetCase:
+      type: object
+      additionalProperties: false
+      required: [id, dataset_id, revision_id, ordinal, content_digest, test]
+      properties:
+        id: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$'}
+        dataset_id: {type: string}
+        revision_id: {type: string}
+        ordinal: {type: integer, minimum: 0}
+        content_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        test: {$ref: '#/components/schemas/PolicyEvaluationDatasetTestCase'}
+    PolicyEvaluationDatasetResult:
+      type: object
+      additionalProperties: false
+      required: [dataset, revision]
+      properties:
+        dataset: {$ref: '#/components/schemas/PolicyEvaluationDataset'}
+        revision: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}
     CreatePolicyExperimentRequest:
       type: object
       additionalProperties: false
