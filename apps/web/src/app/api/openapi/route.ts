@@ -4,6 +4,22 @@ import { parse } from "yaml";
 import { authHeadersFor, buildCerebroUrl, fetchCerebro, proxyFetchError } from "@/lib/cerebro-proxy";
 import { cerebroFixtureResponseFor } from "@/lib/cerebro-fixtures";
 
+export const parseOpenApiDocument = (raw: string): Record<string, unknown> | null => {
+  try {
+    const parsed = parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const invalidOpenApiResponse = () => NextResponse.json(
+  { error: "The OpenAPI specification is invalid." },
+  { status: 502 },
+);
+
 export async function GET(request: NextRequest) {
   const fixture = cerebroFixtureResponseFor({
     method: "GET",
@@ -11,7 +27,8 @@ export async function GET(request: NextRequest) {
     searchParams: request.nextUrl.searchParams,
   });
   if (fixture) {
-    return NextResponse.json(parse(fixture.body));
+    const spec = parseOpenApiDocument(fixture.body);
+    return spec ? NextResponse.json(spec) : invalidOpenApiResponse();
   }
 
   let response: Response;
@@ -32,7 +49,8 @@ export async function GET(request: NextRequest) {
   }
 
   const raw = await response.text();
-  const spec = parse(raw);
+  const spec = parseOpenApiDocument(raw);
+  if (!spec) return invalidOpenApiResponse();
 
   return NextResponse.json(spec);
 }

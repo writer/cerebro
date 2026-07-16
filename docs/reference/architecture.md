@@ -124,6 +124,17 @@ receipts remain behind `internal/policycandidate`; Postgres remains the only
 current-state persistence adapter. The experiment runner cannot write findings
 or activate policy.
 
+Policy evaluation datasets add route registration, auth policy, tenant and
+actor resolution, and state-store capability wiring in bootstrap. Bounded
+synthetic-fixture validation, immutable revision digests, optimistic append
+semantics, and read-time integrity verification remain behind
+`internal/policycandidate`; HTTP mapping lives in
+`internal/sourcehttp/policyevaluationdatasets`, and Postgres remains the durable
+persistence adapter. Dataset routes cannot execute fixtures, write findings, or
+activate policy. Dataset reads use a dedicated least-privilege scope, while
+proposal and approval scopes are reserved separately from candidate execution;
+direct dataset revision writes remain operator-only.
+
 The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
 grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in
 [docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
