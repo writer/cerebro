@@ -306,6 +306,9 @@ func validateTransportEvent(index int, event *cerebrov1.EventEnvelope) *Rejectio
 			return &Rejection{InputIndex: &index, Code: "invalid_event_envelope", Field: "attributes", Message: "attributes must be valid UTF-8"}
 		}
 	}
+	if !utf8.Valid(event.GetPayload()) {
+		return &Rejection{InputIndex: &index, Code: "invalid_event_envelope", Field: "payload", Message: "payload must be valid UTF-8"}
+	}
 	return nil
 }
 
