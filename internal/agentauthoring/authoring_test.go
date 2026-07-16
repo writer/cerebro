@@ -109,7 +109,7 @@ func TestDraftPolicyBundleAuthorsAndExecutesGraphEvidence(t *testing.T) {
 	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
 		ID: "agent-graph-path", Name: "Agent graph path", Description: "Finds a causal graph path.", Severity: "high",
 		Graph: findingdsl.PolicyRuleGraphFinding{
-			Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity)-[:RELATION {relation: 'depends_on'}]->(definition:Entity)-[:RELATION {relation: 'runs_as'}]->(role:Entity)
+			Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'depends_on'}]->(definition:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'runs_as'}]->(role:Entity {tenant_id: $tenant_id})
 RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'causal path' AS summary, [actor.urn, task.urn, definition.urn, role.urn] AS resource_urns, [{urn: actor.urn}, {urn: task.urn}, {urn: definition.urn}, {urn: role.urn}] AS evidence LIMIT $row_limit`,
 			RowLimit: 10, RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"},
 		}, Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}},

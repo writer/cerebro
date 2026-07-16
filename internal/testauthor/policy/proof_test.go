@@ -29,7 +29,7 @@ func TestProvePassesProtectedAndRejectsWeakenedPolicy(t *testing.T) {
 
 func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	evidence := authoredGraphEvidence()
-	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", authoredGraphRule(), &evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	if store.executions < len(artifacts.Suite.Cases) {
 		t.Fatalf("graph executions = %d, want every one of %d authored cases executed", store.executions, len(artifacts.Suite.Cases))
 	}
-	for _, gate := range []string{"graph_fixture_contract", "graph_multi_hop", "graph_tenant_scope", "graph_edge_ablation", "graph_predicate_mutation", "graph_neighbor_isolation", "graph_execution"} {
+	for _, gate := range []string{"graph_fixture_contract", "graph_multi_hop", "graph_query_safety", "graph_tenant_scope", "graph_edge_ablation", "graph_predicate_mutation", "graph_neighbor_isolation", "graph_execution"} {
 		if receipt := proofReceiptByGate(t, result, gate); !receipt.Passed {
 			t.Fatalf("%s receipt = %#v; all receipts = %#v", gate, receipt, result.Receipts)
 		}
@@ -61,7 +61,7 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 
 func TestProveGraphRejectsSuiteWithoutTwoCausalEdgeAblations(t *testing.T) {
 	evidence := authoredGraphEvidence()
-	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", authoredGraphRule(), &evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestProveGraphRejectsSuiteWithoutTwoCausalEdgeAblations(t *testing.T) {
 		filtered = append(filtered, testCase)
 	}
 	artifacts.Suite.Cases = filtered
-	result, err := Prove(artifacts)
+	result, err := Prove(context.Background(), artifacts)
 	if !errors.Is(err, ErrGraphMultiHopQueryRequired) {
 		t.Fatalf("Prove() error = %v, want multi-hop query error", err)
 	}
@@ -82,9 +82,29 @@ func TestProveGraphRejectsSuiteWithoutTwoCausalEdgeAblations(t *testing.T) {
 	}
 }
 
+func TestProveGraphRefusesUnsafeQueryBeforeGraphExecution(t *testing.T) {
+	evidence := authoredGraphEvidence()
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", authoredGraphRule(), &evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts.Rule.Spec.Graph.Query = `MATCH (actor:Entity {tenant_id: $tenant_id}) MATCH (other:Entity) RETURN other.urn AS primary_urn LIMIT $row_limit`
+	store := newProofGraphStore()
+	result, err := ProveWithGraphStore(context.Background(), artifacts, store)
+	if !errors.Is(err, ErrGraphTenantScopeRequired) {
+		t.Fatalf("ProveWithGraphStore() error = %v, want tenant-scope refusal", err)
+	}
+	if store.executions != 0 {
+		t.Fatalf("graph executions = %d, want none before refusal", store.executions)
+	}
+	if receipt := proofReceiptByGate(t, result, "graph_query_safety"); receipt.Passed {
+		t.Fatalf("query safety receipt = %#v, want failed", receipt)
+	}
+}
+
 func TestProveGraphAttributesEachReceiptToItsExecutedSubSuite(t *testing.T) {
 	evidence := authoredGraphEvidence()
-	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", authoredGraphRule(), &evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +127,7 @@ func TestProveGraphAttributesEachReceiptToItsExecutedSubSuite(t *testing.T) {
 
 func TestGraphProofExecutionNamespacesCannotCollide(t *testing.T) {
 	evidence := authoredGraphEvidence()
-	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", authoredGraphRule(), &evidence)
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", authoredGraphRule(), &evidence)
 	if err != nil {
 		t.Fatal(err)
 	}

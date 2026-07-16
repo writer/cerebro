@@ -2,6 +2,7 @@ package policy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -38,7 +39,7 @@ func TestAuthorWritesRunnablePolicyAndTestsDeterministically(t *testing.T) {
 func TestArtifactsForRuleWithGraphEvidenceAuthorsCausalIdentifierSafeFixtures(t *testing.T) {
 	rule := authoredGraphRule()
 	evidence := authoredGraphEvidence()
-	artifacts, err := ArtifactsForRuleWithGraphEvidence("aws", rule, &evidence)
+	artifacts, err := ArtifactsForRuleWithGraphEvidence(context.Background(), "aws", rule, &evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestSuiteForGraphRuleAuthorsBoundedCurrentStateCloseout(t *testing.T) {
 		`WHERE task_attrs CONTAINS 'candidate'`,
 		`WHERE task_attrs CONTAINS 'candidate' AND definition_attrs CONTAINS '"status":"active"'`, 1)
 	evidence := authoredGraphEvidence()
-	suite, err := SuiteForGraphRule(rule, evidence)
+	suite, err := SuiteForGraphRule(context.Background(), rule, evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,17 +112,35 @@ func TestSuiteForGraphRuleRequiresTenantScopedQuery(t *testing.T) {
 	rule := authoredGraphRule()
 	rule.Spec.Graph.Query = strings.ReplaceAll(rule.Spec.Graph.Query, "$tenant_id", "fixture")
 	evidence := authoredGraphEvidence()
-	if _, err := SuiteForGraphRule(rule, evidence); !errors.Is(err, ErrGraphTenantScopeRequired) {
+	if _, err := SuiteForGraphRule(context.Background(), rule, evidence); !errors.Is(err, ErrGraphTenantScopeRequired) {
 		t.Fatalf("SuiteForGraphRule() error = %v, want tenant-scope error", err)
+	}
+}
+
+func TestSuiteForGraphRuleRejectsScopeEscapes(t *testing.T) {
+	tests := map[string]string{
+		"unscoped second node":   `MATCH (actor:Entity {tenant_id: $tenant_id}) MATCH (task:Entity) RETURN task.urn AS primary_urn LIMIT $row_limit`,
+		"unscoped union branch":  `MATCH (actor:Entity {tenant_id: $tenant_id}) RETURN actor.urn AS primary_urn LIMIT $row_limit UNION MATCH (task) RETURN task.urn AS primary_urn LIMIT $row_limit`,
+		"unscoped comprehension": `MATCH (actor:Entity {tenant_id: $tenant_id}) RETURN [(task:Entity)-[:RELATION]->(definition:Entity) | task.urn] AS primary_urn LIMIT $row_limit`,
+		"scope dropping with":    `MATCH (actor:Entity {tenant_id: $tenant_id}) WITH count(*) AS total MATCH (actor) RETURN actor.urn AS primary_urn LIMIT $row_limit`,
+	}
+	for name, query := range tests {
+		t.Run(name, func(t *testing.T) {
+			rule := authoredGraphRule()
+			rule.Spec.Graph.Query = query
+			if _, err := SuiteForGraphRule(context.Background(), rule, authoredGraphEvidence()); !errors.Is(err, ErrGraphTenantScopeRequired) {
+				t.Fatalf("SuiteForGraphRule() error = %v, want tenant-scope refusal", err)
+			}
+		})
 	}
 }
 
 func TestSuiteForGraphRuleRejectsOneHopQueryOverMultiHopEvidence(t *testing.T) {
 	rule := authoredGraphRule()
-	rule.Spec.Graph.Query = `MATCH (definition:Entity {tenant_id: $tenant_id})-[role_use:RELATION {relation: 'runs_as'}]->(role:Entity)
+	rule.Spec.Graph.Query = `MATCH (definition:Entity {tenant_id: $tenant_id})-[role_use:RELATION {relation: 'runs_as'}]->(role:Entity {tenant_id: $tenant_id})
 RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'one hop' AS summary, [definition.urn, role.urn] AS resource_urns
 LIMIT $row_limit`
-	if _, err := SuiteForGraphRule(rule, authoredGraphEvidence()); !errors.Is(err, ErrGraphMultiHopQueryRequired) {
+	if _, err := SuiteForGraphRule(context.Background(), rule, authoredGraphEvidence()); !errors.Is(err, ErrGraphMultiHopQueryRequired) {
 		t.Fatalf("SuiteForGraphRule() error = %v, want multi-hop query error", err)
 	}
 }
@@ -137,7 +156,7 @@ func TestSuiteForGraphRuleBoundsEdgeAblations(t *testing.T) {
 		)
 		evidence.Edges = append(evidence.Edges, GraphEvidenceEdge{FromID: fromID, ToID: toID, SourceID: "aws", Relation: "depends_on"})
 	}
-	suite, err := SuiteForGraphRule(authoredGraphRule(), evidence)
+	suite, err := SuiteForGraphRule(context.Background(), authoredGraphRule(), evidence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +175,7 @@ func authoredGraphRule() findingdsl.PolicyFindingRule {
 	return findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
 		ID: "authored-ecs-path", Name: "Authored ECS path", Description: "Finds a causal ECS role path.", Severity: "high",
 		Graph: findingdsl.PolicyRuleGraphFinding{
-			Query: `MATCH (actor:Entity {tenant_id: $tenant_id, source_id: 'aws'})-[launch:RELATION {relation: 'acted_on'}]->(task:Entity)-[:RELATION {relation: 'depends_on'}]->(definition:Entity)-[role_use:RELATION {relation: 'runs_as'}]->(role:Entity)
+			Query: `MATCH (actor:Entity {tenant_id: $tenant_id, source_id: 'aws'})-[launch:RELATION {relation: 'acted_on'}]->(task:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'depends_on'}]->(definition:Entity {tenant_id: $tenant_id})-[role_use:RELATION {relation: 'runs_as'}]->(role:Entity {tenant_id: $tenant_id})
 WITH actor, launch, task, definition, role_use, role, toLower(coalesce(task.attributes_json, '')) AS task_attrs, toLower(coalesce(definition.attributes_json, '')) AS definition_attrs, toLower(coalesce(role_use.attributes_json, '')) AS role_attrs
 WHERE task_attrs CONTAINS 'candidate' AND definition_attrs CONTAINS '"has_secret_bindings":"true"' AND role_attrs CONTAINS '"role_usage":"execution"'
 RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'causal ECS role path' AS summary, [actor.urn, task.urn, definition.urn, role.urn] AS resource_urns, [{urn: actor.urn}, {urn: task.urn}, {urn: definition.urn}, {urn: role.urn}] AS evidence

@@ -325,6 +325,29 @@ func TestShadowSetsRuntimeBoundsAndReviewReadiness(t *testing.T) {
 	}
 }
 
+func TestShadowRefusesUnsafeStoredQueryBeforeExecution(t *testing.T) {
+	store := &memoryStore{}
+	graph := newGraphStore()
+	graph.useShadowRows = true
+	service := Service{Store: store, Graph: graph, Catalog: noOverlapCatalog()}
+	candidate := createProvedCandidate(t, service, store)
+	stored, err := store.GetPolicyCandidate(context.Background(), candidate.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.Artifacts.Rule.Spec.Graph.Query = `MATCH (actor:Entity {tenant_id: $tenant_id}) MATCH (other:Entity) RETURN other.urn AS primary_urn LIMIT $row_limit`
+	if err := store.SavePolicyCandidate(context.Background(), stored, stored.Revision); err != nil {
+		t.Fatal(err)
+	}
+	requestsBefore := len(graph.requests)
+	if _, err := service.Shadow(context.Background(), candidate.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Shadow() error = %v, want conflict for unsafe stored query", err)
+	}
+	if len(graph.requests) != requestsBefore {
+		t.Fatalf("graph requests grew from %d to %d after unsafe query refusal", requestsBefore, len(graph.requests))
+	}
+}
+
 func TestShadowZeroMatchesPreservesProvedState(t *testing.T) {
 	store := &memoryStore{}
 	graph := newGraphStore()
@@ -405,7 +428,7 @@ func noOverlapCatalog() *coverageCatalog {
 func graphRule() findingdsl.PolicyFindingRule {
 	return findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
 		ID: "candidate-graph-path", Name: "Candidate graph path", Description: "Finds a current causal graph path.", Severity: "high",
-		Graph:      findingdsl.PolicyRuleGraphFinding{Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity)-[:RELATION {relation: 'depends_on'}]->(definition:Entity) RETURN definition.urn AS primary_urn, definition.urn AS fingerprint_key, 'path' AS summary, [actor.urn, task.urn, definition.urn] AS resource_urns, [{urn: actor.urn}, {urn: definition.urn}] AS evidence LIMIT $row_limit`, RowLimit: 100, RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"}},
+		Graph:      findingdsl.PolicyRuleGraphFinding{Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'depends_on'}]->(definition:Entity {tenant_id: $tenant_id}) RETURN definition.urn AS primary_urn, definition.urn AS fingerprint_key, 'path' AS summary, [actor.urn, task.urn, definition.urn] AS resource_urns, [{urn: actor.urn}, {urn: definition.urn}] AS evidence LIMIT $row_limit`, RowLimit: 100, RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"}},
 		Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}},
 	})
 }

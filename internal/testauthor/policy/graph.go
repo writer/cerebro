@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -9,11 +10,13 @@ import (
 	"unicode"
 
 	"github.com/writer/cerebro/internal/findingdsl"
+	"github.com/writer/cerebro/internal/graphagent"
 )
 
 var (
 	ErrGraphEvidenceRequired      = errors.New("typed graph evidence is required for graph policy tests")
 	ErrGraphTenantScopeRequired   = errors.New("authored graph policy query must scope reads with $tenant_id")
+	ErrGraphQueryUnsafe           = errors.New("authored graph policy query failed static safety validation")
 	ErrGraphMultiHopQueryRequired = errors.New("authored graph policy query must depend on at least two causal edges")
 	safeGraphSourcePattern        = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]*$`)
 )
@@ -141,12 +144,12 @@ func GraphEvidenceModelContext(evidence GraphEvidence) (GraphEvidenceContext, er
 	}, nil
 }
 
-func SuiteForGraphRule(rule findingdsl.PolicyFindingRule, evidence GraphEvidence) (findingdsl.PolicyRuleTestSuite, error) {
+func SuiteForGraphRule(ctx context.Context, rule findingdsl.PolicyFindingRule, evidence GraphEvidence) (findingdsl.PolicyRuleTestSuite, error) {
 	if strings.TrimSpace(rule.Spec.Graph.Query) == "" {
 		return findingdsl.PolicyRuleTestSuite{}, errors.New("graph evidence requires spec.graph.query")
 	}
-	if !strings.Contains(strings.ToLower(rule.Spec.Graph.Query), "$tenant_id") {
-		return findingdsl.PolicyRuleTestSuite{}, ErrGraphTenantScopeRequired
+	if _, err := validateGraphPolicyQuery(ctx, rule.Spec.Graph.Query, rule.Spec.Graph.RowLimit); err != nil {
+		return findingdsl.PolicyRuleTestSuite{}, err
 	}
 	tenantID := "test-authored-" + fixtureSlug(rule.Metadata.ID)
 	if tenantID == "test-authored-" {
@@ -275,6 +278,20 @@ func SuiteForGraphRule(rule findingdsl.PolicyFindingRule, evidence GraphEvidence
 		return suite, fmt.Errorf("authored graph test suite is invalid: %s", joinIssues(issues))
 	}
 	return suite, nil
+}
+
+func validateGraphPolicyQuery(ctx context.Context, query string, maxRows int) (graphagent.ValidatorResult, error) {
+	result, _, err := graphagent.ValidateRuntimeBoundReadCypher(ctx, query, maxRows)
+	if err != nil {
+		return result, fmt.Errorf("validate authored graph query: %w", err)
+	}
+	if result.OK {
+		return result, nil
+	}
+	if result.Code == "tenant_scope_required" {
+		return result, fmt.Errorf("%w: %s", ErrGraphTenantScopeRequired, result.Reason)
+	}
+	return result, fmt.Errorf("%w (%s): %s", ErrGraphQueryUnsafe, result.Code, result.Reason)
 }
 
 type graphPredicateMutant struct {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/findingdsl"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
@@ -195,6 +196,13 @@ func (s Service) Shadow(ctx context.Context, id string) (*Candidate, error) {
 	}
 	fetchLimit := evaluationLimit + 1
 	params["row_limit"] = fetchLimit
+	validation, _, err := graphagent.ValidateRuntimeBoundReadCypher(ctx, rule.Spec.Graph.Query, fetchLimit)
+	if err != nil {
+		return nil, fmt.Errorf("%w: validate stored graph query: %w", ErrConflict, err)
+	}
+	if !validation.OK {
+		return nil, fmt.Errorf("%w: stored graph query refused (%s): %s", ErrConflict, validation.Code, validation.Reason)
+	}
 	rows, err := s.Graph.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: rule.Spec.Graph.Query, Params: params, RowLimit: fetchLimit})
 	if err != nil {
 		return nil, err

@@ -145,6 +145,11 @@ func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraf
 		"condition_shape": `cmp_eq(path(resource, "field"), scalar)`,
 		"required_cases":  []string{"finding", "passing"},
 		"proof":           "generated suite must reject a policy with its first condition removed",
+		"graph_query": map[string]any{
+			"tenant_scope":  "every node pattern must use the Entity label and include tenant_id: $tenant_id inline, including later MATCH, UNION, subquery, and comprehension patterns",
+			"runtime_limit": "every LIMIT clause must be exactly LIMIT $row_limit; do not hardcode a numeric limit",
+			"bounded_path":  "use fixed directed relationships; variable-length traversal, APOC, procedures, UNWIND, range, and collect are forbidden",
+		},
 		"grounding": map[string]any{
 			"input":         "source event attributes and projected entity and relation contracts",
 			"preserve":      []string{"source kinds", "entity types", "relations", "risk-relevant state"},
@@ -159,7 +164,7 @@ func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraf
 	}
 	var artifacts policyauthor.Artifacts
 	if request.GraphEvidence != nil {
-		artifacts, err = policyauthor.ArtifactsForRuleWithGraphEvidence(request.Domain, draft.Rule, request.GraphEvidence)
+		artifacts, err = policyauthor.ArtifactsForRuleWithGraphEvidence(ctx, request.Domain, draft.Rule, request.GraphEvidence)
 	} else {
 		artifacts, err = policyauthor.ArtifactsForRule(request.Domain, draft.Rule)
 	}

@@ -73,7 +73,7 @@ func ProveWithGraphStore(ctx context.Context, artifacts Artifacts, store finding
 }
 
 func proveGraph(ctx context.Context, artifacts Artifacts, store findingdsl.PolicyGraphTestStore) (ProofResult, error) {
-	result, groups, err := prepareGraphProof(artifacts)
+	result, groups, err := prepareGraphProof(ctx, artifacts)
 	if err != nil {
 		return result, err
 	}
@@ -186,7 +186,7 @@ func isolateGraphProofSuite(suite findingdsl.PolicyRuleTestSuite, namespace stri
 	return isolated, nil
 }
 
-func prepareGraphProof(artifacts Artifacts) (ProofResult, graphProofGroups, error) {
+func prepareGraphProof(ctx context.Context, artifacts Artifacts) (ProofResult, graphProofGroups, error) {
 	result := ProofResult{
 		PolicyID: artifacts.Rule.Metadata.ID, PolicyPath: artifacts.PolicyPath, TestPath: artifacts.TestPath,
 		PolicyDigest: digest(artifacts.PolicyYAML), TestDigest: digest(artifacts.TestYAML),
@@ -211,15 +211,19 @@ func prepareGraphProof(artifacts Artifacts) (ProofResult, graphProofGroups, erro
 	if !multiHop {
 		return result, groups, ErrGraphMultiHopQueryRequired
 	}
-	tenantScoped := strings.Contains(strings.ToLower(artifacts.Rule.Spec.Graph.Query), "$tenant_id")
-	tenantDetail := "policy query binds the runtime tenant parameter; fixture projection and query execution use the same isolated tenant"
-	if !tenantScoped {
-		tenantDetail = "policy query does not reference the runtime $tenant_id parameter"
+	validation, validationErr := validateGraphPolicyQuery(ctx, artifacts.Rule.Spec.Graph.Query, artifacts.Rule.Spec.Graph.RowLimit)
+	safetyDetail := "hardened static validation accepted a read-only, caller-bounded query"
+	if validationErr != nil {
+		safetyDetail = fmt.Sprintf("static validation refused the authored query (%s): %s", validation.Code, validation.Reason)
 	}
-	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_tenant_scope", Passed: tenantScoped, Execution: "in_process", Detail: tenantDetail})
-	if !tenantScoped {
-		return result, groups, ErrGraphTenantScopeRequired
+	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_query_safety", Passed: validationErr == nil, Execution: "in_process", Detail: safetyDetail})
+	if validationErr != nil {
+		if validation.Code == "tenant_scope_required" {
+			result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_tenant_scope", Passed: false, Execution: "in_process", Detail: validation.Reason})
+		}
+		return result, groups, validationErr
 	}
+	result.Receipts = append(result.Receipts, ProofReceipt{Gate: "graph_tenant_scope", Passed: true, Execution: "in_process", Detail: "every Entity node pattern has an inline $tenant_id binding"})
 	return result, groups, nil
 }
 
