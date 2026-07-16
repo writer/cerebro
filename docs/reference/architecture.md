@@ -116,6 +116,14 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
+Policy evaluation experiments add operator-scoped request mapping, generic
+platform-job normalization, and evaluator dependency wiring in bootstrap.
+Immutable candidate and checkpoint pins, lifecycle transitions, checkpoint
+verification, current-graph canary execution, and append-only observation
+receipts remain behind `internal/policycandidate`; Postgres remains the only
+current-state persistence adapter. The experiment runner cannot write findings
+or activate policy.
+
 The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
 grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in
 [docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
