@@ -21,11 +21,15 @@ struct CheckRunner {
       failures.append("imported binding rejection: \(error)")
     }
     do { try checkAgentAdapters() } catch { failures.append("agent adapters: \(error)") }
+    do { try checkMultiAgentLifecycle() } catch {
+      failures.append("multi-agent lifecycle: \(error)")
+    }
     do { try checkFailedAction() } catch { failures.append("failed action: \(error)") }
     do { try checkProductIsolation() } catch { failures.append("product isolation: \(error)") }
+    do { try checkAdapterInstaller() } catch { failures.append("adapter installer: \(error)") }
 
     if failures.isEmpty {
-      print("PASS: 11 receipt security checks")
+      print("PASS: 13 receipt security checks")
       return
     }
     failures.forEach { FileHandle.standardError.write(Data("FAIL: \($0)\n".utf8)) }
@@ -274,6 +278,62 @@ struct CheckRunner {
     expect(actions.first?.state == .failed, "failed tool result was not terminal")
   }
 
+  private mutating func checkMultiAgentLifecycle() throws {
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    let cases: [(AgentProduct, String, String)] = [
+      (
+        .codex,
+        #"{"session_id":"canary-codex","turn_id":"turn-1","cwd":"/tmp","hook_event_name":"PreToolUse","model":"canary","tool_name":"Bash","tool_use_id":"call-1","tool_input":{"command":"printf codex"}}"#,
+        #"{"session_id":"canary-codex","turn_id":"turn-1","cwd":"/tmp","hook_event_name":"PostToolUse","model":"canary","tool_name":"Bash","tool_use_id":"call-1","tool_input":{"command":"printf codex"},"tool_response":{"exit_code":0}}"#
+      ),
+      (
+        .droid,
+        #"{"session_id":"canary-droid","cwd":"/tmp","hook_event_name":"PreToolUse","permission_mode":"auto-low","tool_name":"Execute","tool_use_id":"call-2","tool_input":{"command":"printf droid"}}"#,
+        #"{"session_id":"canary-droid","cwd":"/tmp","hook_event_name":"PostToolUse","permission_mode":"auto-low","tool_name":"Execute","tool_use_id":"call-2","tool_input":{"command":"printf droid"},"tool_response":{"success":true}}"#
+      ),
+      (
+        .claudeCode,
+        #"{"session_id":"canary-claude","cwd":"/tmp","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"call-3","tool_input":{"command":"printf claude"}}"#,
+        #"{"session_id":"canary-claude","cwd":"/tmp","hook_event_name":"PostToolUse","tool_name":"Bash","tool_use_id":"call-3","tool_input":{"command":"printf claude"},"tool_response":{"exit_code":0}}"#
+      ),
+      (
+        .openCode,
+        #"{"session_id":"canary-opencode","directory":"/tmp","event":"tool.execute.before","tool":"bash","call_id":"call-4","args":{"command":"printf opencode"}}"#,
+        #"{"session_id":"canary-opencode","directory":"/tmp","event":"tool.execute.after","tool":"bash","call_id":"call-4","args":{"command":"printf opencode"},"result":{"output":"ok"}}"#
+      ),
+      (
+        .cursor,
+        #"{"conversation_id":"canary-cursor","generation_id":"turn-5","cwd":"/tmp","hook_event_name":"beforeShellExecution","command":"printf cursor"}"#,
+        #"{"conversation_id":"canary-cursor","generation_id":"turn-5","cwd":"/tmp","hook_event_name":"afterShellExecution","command":"printf cursor","result":{"exit_code":0}}"#
+      ),
+    ]
+
+    for (product, attempted, completed) in cases {
+      for event in [attempted, completed] {
+        let envelope = try AgentEventNormalizer.normalize(Data(event.utf8), product: product)
+        let draft = try HookCapture.draft(from: envelope, product: product)
+        _ = try store.append(draft: draft, signer: signer)
+      }
+    }
+
+    let receipts = try store.readReceipts()
+    let verification = ReceiptVerifier.verify(
+      receipts, trustedPublicKeyBase64: signer.publicKeyBase64)
+    let actions = ExecutionActionReducer.reduce(
+      receipts: receipts,
+      verifications: Dictionary(uniqueKeysWithValues: verification.map { ($0.receiptID, $0) })
+    )
+    expect(receipts.count == 10, "multi-agent canary did not create ten lifecycle receipts")
+    expect(actions.count == 5, "ten lifecycle receipts did not reduce to five actions")
+    expect(actions.allSatisfy { $0.state == .completed }, "a canary action did not complete")
+    expect(actions.allSatisfy(\.integrityValid), "a canary action failed integrity verification")
+    expect(
+      Set(actions.map(\.product)) == Set(AgentProduct.allCases.map(\.displayName)),
+      "the canary lost an agent product"
+    )
+  }
+
   private mutating func checkProductIsolation() throws {
     let (store, signer, cleanup) = try temporaryStore()
     defer { cleanup() }
@@ -314,6 +374,65 @@ struct CheckRunner {
       verifications: Dictionary(uniqueKeysWithValues: verification.map { ($0.receiptID, $0) })
     )
     expect(actions.count == 2, "two products with the same session and call collapsed together")
+  }
+
+  private mutating func checkAdapterInstaller() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let helper = root.appendingPathComponent("bundled/CerebroAgentReceiptHook")
+    try FileManager.default.createDirectory(
+      at: helper.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: helper)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+    let installed = root.appendingPathComponent("support/CerebroAgentReceiptHook")
+    let installer = AgentAdapterInstaller(
+      homeDirectory: root,
+      bundledHelperURL: helper,
+      installedHelperURL: installed
+    )
+
+    let factorySettings = root.appendingPathComponent(".factory/settings.json")
+    try FileManager.default.createDirectory(
+      at: factorySettings.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let existing: [String: Any] = [
+      "theme": "dark",
+      "hooks": [
+        "PreToolUse": [
+          [
+            "matcher": "Read",
+            "hooks": [["type": "command", "command": "/tmp/existing-hook"]],
+          ]
+        ]
+      ],
+    ]
+    try JSONSerialization.data(withJSONObject: existing).write(to: factorySettings)
+
+    try installer.install(.droid)
+    expect(installer.status(for: .droid).state == .installed, "Droid adapter was not installed")
+    let merged =
+      try JSONSerialization.jsonObject(with: Data(contentsOf: factorySettings))
+      as? [String: Any]
+    expect(merged?["theme"] as? String == "dark", "Droid settings were overwritten")
+    expect(FileManager.default.isExecutableFile(atPath: installed.path), "helper was not staged")
+    try installer.remove(.droid)
+    expect(
+      installer.status(for: .droid).state == .notInstalled,
+      "Droid adapter was not removed")
+    let preserved = try String(contentsOf: factorySettings, encoding: .utf8)
+    expect(preserved.contains("/tmp/existing-hook"), "unrelated Droid hook was removed")
+
+    for product in [AgentProduct.claudeCode, .cursor, .openCode] {
+      try installer.install(product)
+      let installedState = installer.status(for: product).state
+      expect(
+        installedState == .installed,
+        "\(product.displayName) adapter was not installed (\(installedState.rawValue))")
+      try installer.remove(product)
+      expect(
+        installer.status(for: product).state == .notInstalled,
+        "\(product.displayName) adapter was not removed")
+    }
   }
 
   private func signedCanaryAction(actionSummary: String) throws -> ExecutionAction {

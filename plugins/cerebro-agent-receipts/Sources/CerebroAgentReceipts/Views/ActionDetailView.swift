@@ -25,11 +25,17 @@ struct ActionDetailView: View {
         DetailCard(title: "Identity claims") {
           DetailRow(label: "Local user claim", value: action.localUserClaim)
           DetailRow(label: "Claim source", value: action.localUserClaimSource)
-          DetailRow(label: "Executor", value: "Codex")
+          DetailRow(label: "Executor", value: action.product)
           DetailRow(label: "Model", value: action.model)
           DetailRow(label: "Session", value: action.sessionID)
           DetailRow(label: "Turn", value: action.turnID ?? "Not supplied")
           DetailRow(label: "Tool call", value: action.toolCallID ?? "Not supplied")
+          DetailRow(label: "Adapter", value: action.collector?.adapterID ?? "Legacy receipt")
+          DetailRow(
+            label: "Integration",
+            value: action.collector?.integration.rawValue.replacingOccurrences(
+              of: "_", with: " ") ?? "Not supplied")
+          DetailRow(label: "Native event", value: action.collector?.eventName ?? "Not supplied")
         }
         DetailCard(title: "Authorization evidence") {
           DetailRow(
@@ -76,6 +82,7 @@ struct ActionDetailView: View {
 
   private var stateLabel: String {
     if !action.integrityValid { return "Invalid local evidence" }
+    if action.state == .failed { return "Agent action failed" }
     switch match?.level {
     case .providerBound: return "Provider bound"
     case .candidateCorrelation: return "Candidate correlation"
@@ -87,18 +94,23 @@ struct ActionDetailView: View {
     if !action.integrityValid {
       return "One or more receipt signatures, sequences, or chain links failed local verification."
     }
+    if action.state == .failed {
+      return "The agent reported that the tool call failed. No provider mutation is attributed."
+    }
     switch match?.level {
     case .providerBound:
       return
         "An authenticated provider event passed account, role, action ID, action, and time checks."
     case .candidateCorrelation:
       return "A provider event is a one-to-one candidate. It is not a verified binding."
-    default: return "The action has local Codex evidence but no allocated provider event."
+    default:
+      return "The action has local \(action.product) evidence but no allocated provider event."
     }
   }
 
   private var stateImage: String {
     if !action.integrityValid { return "xmark.shield.fill" }
+    if action.state == .failed { return "xmark.circle.fill" }
     switch match?.level {
     case .providerBound: return "link.circle.fill"
     case .candidateCorrelation: return "questionmark.circle.fill"
@@ -108,6 +120,7 @@ struct ActionDetailView: View {
 
   private var stateColor: Color {
     if !action.integrityValid { return .red }
+    if action.state == .failed { return .red }
     switch match?.level {
     case .providerBound: return .green
     case .candidateCorrelation: return .blue

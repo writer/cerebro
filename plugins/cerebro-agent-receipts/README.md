@@ -1,9 +1,25 @@
 # Cerebro Agent Receipts
 
-This plugin records local evidence for Codex tool executions and compares completed actions with AWS CloudTrail events. It is designed to answer two separate questions without conflating them:
+This plugin records local evidence for coding-agent tool executions and compares completed actions with AWS CloudTrail events. It is designed to answer two separate questions without conflating them:
 
-1. What action did Codex attempt and complete on this Mac?
+1. What action did a connected coding agent attempt and complete on this Mac?
 2. Which in-scope provider events do not have a one-to-one action match?
+
+## Agent connections
+
+The macOS app manages local event adapters for these agent products:
+
+| Agent | Local event source | Configuration |
+| --- | --- | --- |
+| Codex | Plugin lifecycle hooks | Installed with this plugin |
+| Droid | Native command hooks | `~/.factory/settings.json` |
+| Claude Code | Native command hooks | `~/.claude/settings.json` |
+| OpenCode | Native plugin event bus | `~/.config/opencode/plugins/cerebro-agent-receipts.js` |
+| Cursor | Native command hooks | `~/.cursor/hooks.json` |
+
+Open **Agent connections** in the app, select an agent, and choose **Install capture**. The installer copies the signed helper to Application Support and merges managed hook entries without replacing unrelated settings. Removing capture deletes only the managed entries.
+
+Each receipt records the agent product, adapter, native event name, session, tool call, input digest, and lifecycle state through one normalized contract. The raw event remains an agent-supplied claim; disabled hooks and commands run outside a connected agent are outside this evidence boundary. Cursor user hooks cover local sessions. Cloud sessions require a project-level hook configuration.
 
 ## Evidence states
 
@@ -23,7 +39,7 @@ swift run ReceiptCoreChecks
 ./script/build_and_run.sh --verify
 ```
 
-The Codex plugin calls `scripts/run-hook.sh`, which verifies and runs the bundled ad-hoc-signed universal helper without compiling in the hook path. Set `CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE=1` to rebuild into the plugin data directory for development. A managed deployment must replace the ad-hoc signature with an identified Developer ID or enterprise signature and verify the release artifact before enrollment.
+The Codex plugin calls `scripts/run-hook.sh`, which verifies and runs the bundled ad-hoc-signed universal helper without compiling in the hook path. Other connected agents invoke the same helper through their native local hook or plugin interface. Set `CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE=1` to rebuild into the plugin data directory for development. A managed deployment must replace the ad-hoc signature with an identified Developer ID or enterprise signature and verify the release artifact before enrollment.
 
 See `CANARY.md` for the measured fresh-session and authenticated-provider results.
 
@@ -55,7 +71,7 @@ The strict verification command fails on empty local evidence, invalid local rec
 
 ## Security boundary
 
-Codex hooks are evidence collection, not complete interception. They do not observe every possible tool path and plugin hooks can be disabled. The local username is labeled as a claim; it is not proof that a person authorized an action. A permission-request hook only proves that Codex reached an approval gate, not who decided or whether the decision was allowed.
+Agent hooks are evidence collection, not complete interception. They do not observe every possible tool path and hooks can be disabled. The local username is labeled as a claim; it is not proof that a person authorized an action. A permission-request hook only proves that an agent reached an approval gate, not who decided or whether the decision was allowed.
 
 The deployable role template in `assets/aws-canary-role.yaml` is limited to `/cerebro/canary/*`. Its trust principal must be a dedicated broker workload identity. Trusting an operator's normal SSO role would not prevent direct credential bypass.
 

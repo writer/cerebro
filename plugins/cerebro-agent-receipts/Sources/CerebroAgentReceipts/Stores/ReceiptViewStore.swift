@@ -8,18 +8,29 @@ final class ReceiptViewStore: ObservableObject {
   @Published private(set) var assessment = AttributionAssessment(
     actionMatches: [:], unmatchedProviderEvents: [])
   @Published private(set) var providerEvents: [ProviderEvent] = []
+  @Published private(set) var adapterStatuses: [AgentAdapterStatus] = []
   @Published var selection: String?
-  @Published var filter: ReceiptFilter = .all {
+  @Published var sidebarSelection: SidebarSelection = .activity(.all) {
     didSet { selectFirstVisibleItem() }
   }
   @Published var showImporter = false
   @Published var errorMessage: String?
 
   private let receiptStore: ReceiptStore
+  private let adapterInstaller: AgentAdapterInstaller
   private var timer: Timer?
 
-  init(receiptStore: ReceiptStore = ReceiptStore()) {
+  init(
+    receiptStore: ReceiptStore = ReceiptStore(),
+    adapterInstaller: AgentAdapterInstaller? = nil
+  ) {
     self.receiptStore = receiptStore
+    let bundledHelper = Bundle.main.bundleURL
+      .appendingPathComponent("Contents/Helpers", isDirectory: true)
+      .appendingPathComponent("CerebroAgentReceiptHook")
+    self.adapterInstaller =
+      adapterInstaller
+      ?? AgentAdapterInstaller(bundledHelperURL: bundledHelper)
     reload()
     timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.reload(silently: true) }
@@ -39,7 +50,10 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   var filteredActions: [ExecutionAction] {
-    actions.filter { action in
+    if let product = selectedProduct {
+      return actions.filter { $0.product == product.displayName }
+    }
+    return actions.filter { action in
       let match = assessment.actionMatches[action.id]
       switch filter {
       case .all: return true
@@ -52,12 +66,55 @@ final class ReceiptViewStore: ObservableObject {
     }
   }
 
+  var filter: ReceiptFilter {
+    guard case .activity(let filter) = sidebarSelection else { return .all }
+    return filter
+  }
+
+  var selectedProduct: AgentProduct? {
+    guard case .agent(let product) = sidebarSelection else { return nil }
+    return product
+  }
+
+  var selectedAdapterStatus: AgentAdapterStatus? {
+    guard let selectedProduct else { return nil }
+    return adapterStatuses.first { $0.product == selectedProduct }
+  }
+
   var showsProviderGaps: Bool { filter == .providerGaps }
   var boundCount: Int { assessment.providerBoundCount }
   var candidateCount: Int { assessment.candidateCount }
   var capturedOnlyCount: Int { assessment.capturedOnlyCount }
   var providerGapCount: Int { assessment.unmatchedProviderEvents.count }
   var invalidCount: Int { actions.filter { !$0.integrityValid }.count }
+
+  func actionCount(for product: AgentProduct) -> Int {
+    actions.filter { $0.product == product.displayName }.count
+  }
+
+  func lastSeen(for product: AgentProduct) -> Date? {
+    actions.first { $0.product == product.displayName }?.startedAt
+  }
+
+  func installAdapter(_ product: AgentProduct) {
+    do {
+      try adapterInstaller.install(product)
+      adapterStatuses = adapterInstaller.statuses()
+      errorMessage = nil
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  func removeAdapter(_ product: AgentProduct) {
+    do {
+      try adapterInstaller.remove(product)
+      adapterStatuses = adapterInstaller.statuses()
+      errorMessage = nil
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
 
   func reload(silently: Bool = false) {
     do {
@@ -75,6 +132,7 @@ final class ReceiptViewStore: ObservableObject {
         providerEvents: providerEvents,
         policy: bindingPolicyFromEnvironment()
       )
+      adapterStatuses = adapterInstaller.statuses()
       if selection == nil { selectFirstVisibleItem() }
       if !silently { errorMessage = nil }
     } catch {
@@ -98,6 +156,10 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   private func selectFirstVisibleItem() {
+    if selectedProduct != nil {
+      selection = nil
+      return
+    }
     if filter == .providerGaps {
       selection = assessment.unmatchedProviderEvents.first.map { "provider:\($0.id)" }
     } else {
@@ -115,6 +177,11 @@ final class ReceiptViewStore: ObservableObject {
     else { return nil }
     return ProviderBindingPolicy(expectedAccountID: account, expectedAgentRole: role)
   }
+}
+
+enum SidebarSelection: Hashable {
+  case activity(ReceiptFilter)
+  case agent(AgentProduct)
 }
 
 enum ReceiptFilter: String, CaseIterable, Identifiable {

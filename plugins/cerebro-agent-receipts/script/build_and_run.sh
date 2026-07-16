@@ -11,7 +11,9 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+HOOK_HELPER="$APP_HELPERS/CerebroAgentReceiptHook"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -20,9 +22,11 @@ swift build --package-path "$ROOT_DIR" --product "$APP_NAME"
 BUILD_BINARY="$(swift build --package-path "$ROOT_DIR" --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS"
+mkdir -p "$APP_MACOS" "$APP_HELPERS"
 cp "$BUILD_BINARY" "$APP_BINARY"
+cp "$ROOT_DIR/bin/CerebroAgentReceiptHook" "$HOOK_HELPER"
 chmod +x "$APP_BINARY"
+chmod +x "$HOOK_HELPER"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
