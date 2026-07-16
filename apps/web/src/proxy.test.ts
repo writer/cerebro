@@ -65,6 +65,11 @@ describe("proxy", () => {
     expect(response.status).toBe(200);
   });
 
+  it("passes bodyless DELETE requests without content-length", () => {
+    const response = proxy(request("DELETE", "/api/cerebro/grc/dashboards/dashboard-1"));
+    expect(response.status).toBe(200);
+  });
+
   it("rejects write requests without content-length", () => {
     const response = proxy(request("POST", "/api/cerebro/grc/ask"));
     expect(response.status).toBe(411);
