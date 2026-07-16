@@ -164,7 +164,11 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     this.requireRun(stored, request.lease);
     this.acceptLease(request.lease, request.occurred_at);
     for (const part of stored.receipt.parts) {
-      if (part.state === "delivered" || part.state === "abandoned") {
+      if (
+        part.state === "delivered" ||
+        part.state === "abandoned" ||
+        part.state === "paused"
+      ) {
         continue;
       }
       stored.pausedStates.set(
