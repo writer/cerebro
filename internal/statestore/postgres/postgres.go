@@ -36,6 +36,7 @@ type findingIntelReady struct {
 	candidate         bool
 	policyCandidate   bool
 	policyExperiment  bool
+	policyDataset     bool
 	memory            bool
 	riskScoringConfig bool
 	remediation       bool

@@ -65,6 +65,7 @@ type PolicyEvaluationDatasetCaseInput struct {
 }
 
 type CreatePolicyEvaluationDatasetRequest struct {
+	TenantID       string `json:"tenant_id"`
 	CandidateID    string `json:"candidate_id"`
 	Name           string `json:"name"`
 	ChangeSummary  string `json:"change_summary"`
@@ -85,6 +86,13 @@ type AppendPolicyEvaluationDatasetRevisionRequest struct {
 type PolicyEvaluationDatasetResult struct {
 	Dataset  *PolicyEvaluationDataset         `json:"dataset"`
 	Revision *PolicyEvaluationDatasetRevision `json:"revision"`
+}
+
+// PolicyEvaluationDatasetRevisionSnapshot is an atomically loaded immutable
+// revision and its complete ordered case set.
+type PolicyEvaluationDatasetRevisionSnapshot struct {
+	Revision *PolicyEvaluationDatasetRevision
+	Cases    []*PolicyEvaluationDatasetCase
 }
 
 type ListPolicyEvaluationDatasetsRequest struct {
@@ -135,6 +143,7 @@ type PolicyEvaluationDatasetStore interface {
 	ListPolicyEvaluationDatasets(context.Context, ListPolicyEvaluationDatasetsRequest) ([]*PolicyEvaluationDataset, error)
 	AppendPolicyEvaluationDatasetRevision(context.Context, AppendPolicyEvaluationDatasetRevisionRecord) (*PolicyEvaluationDataset, *PolicyEvaluationDatasetRevision, error)
 	GetPolicyEvaluationDatasetRevision(context.Context, GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevision, error)
+	GetPolicyEvaluationDatasetRevisionSnapshot(context.Context, GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevisionSnapshot, error)
 	ListPolicyEvaluationDatasetRevisions(context.Context, ListPolicyEvaluationDatasetRevisionsRequest) ([]*PolicyEvaluationDatasetRevision, error)
 	ListPolicyEvaluationDatasetCases(context.Context, ListPolicyEvaluationDatasetCasesRequest) ([]*PolicyEvaluationDatasetCase, error)
 }

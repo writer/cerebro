@@ -18,9 +18,16 @@ const (
 	maxEvaluationDatasetNameBytes          = 200
 	maxEvaluationDatasetChangeSummaryBytes = 1000
 	maxEvaluationDatasetActorBytes         = 256
+	maxEvaluationDatasetCaseBytes          = 64 << 10
+	maxEvaluationDatasetFixtureNodes       = 64
+	maxEvaluationDatasetFixtureEdges       = 128
+	maxEvaluationDatasetFixtureAttributes  = 32
+	maxEvaluationDatasetFixtureValueBytes  = 256
+	maxEvaluationDatasetEvidenceURNs       = 32
 )
 
 var evaluationDatasetCaseIDPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
+var syntheticEvaluationDatasetURNPattern = regexp.MustCompile(`^urn:(?:test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$`)
 
 func (s Service) CreatePolicyEvaluationDataset(ctx context.Context, request CreatePolicyEvaluationDatasetRequest) (*PolicyEvaluationDatasetResult, error) {
 	if s.Datasets == nil {
@@ -34,9 +41,12 @@ func (s Service) CreatePolicyEvaluationDataset(ctx context.Context, request Crea
 	if err != nil {
 		return nil, err
 	}
+	if candidate.TenantID != request.TenantID {
+		return nil, ErrNotFound
+	}
 	requestHash, err := canonicalDigest(struct {
-		Schema, CandidateID, Name, ChangeSummary, ActorID, IdempotencyKey string
-	}{"policy-evaluation-dataset-create/v1", request.CandidateID, request.Name, request.ChangeSummary, request.ActorID, request.IdempotencyKey})
+		Schema, TenantID, CandidateID, Name, ChangeSummary, ActorID, IdempotencyKey string
+	}{"policy-evaluation-dataset-create/v1", request.TenantID, request.CandidateID, request.Name, request.ChangeSummary, request.ActorID, request.IdempotencyKey})
 	if err != nil {
 		return nil, fmt.Errorf("digest policy evaluation dataset request: %w", err)
 	}
@@ -46,13 +56,13 @@ func (s Service) CreatePolicyEvaluationDataset(ctx context.Context, request Crea
 		if existing.CreateRequestHash != requestHash {
 			return nil, fmt.Errorf("%w: idempotency key was already used for a different dataset request", ErrConflict)
 		}
-		revision, revisionErr := s.Datasets.GetPolicyEvaluationDatasetRevision(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+		revision, _, revisionErr := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
 			TenantID: candidate.TenantID, DatasetID: datasetID, RevisionID: revisionID,
 		})
 		if revisionErr != nil {
 			return nil, revisionErr
 		}
-		return &PolicyEvaluationDatasetResult{Dataset: datasetAtRevision(existing, revision), Revision: revision}, nil
+		return &PolicyEvaluationDatasetResult{Dataset: existing, Revision: revision}, nil
 	} else if !errors.Is(getErr, ErrNotFound) {
 		return nil, getErr
 	}
@@ -120,13 +130,13 @@ func (s Service) AppendPolicyEvaluationDatasetRevision(ctx context.Context, requ
 		return nil, fmt.Errorf("digest policy evaluation dataset append request: %w", err)
 	}
 	revisionID := deterministicEvaluationDatasetRevisionID(dataset.TenantID, dataset.ID, request.IdempotencyKey)
-	if existing, getErr := s.Datasets.GetPolicyEvaluationDatasetRevision(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+	if existing, _, getErr := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
 		TenantID: dataset.TenantID, DatasetID: dataset.ID, RevisionID: revisionID,
 	}); getErr == nil {
 		if existing.RequestHash != requestHash {
 			return nil, fmt.Errorf("%w: idempotency key was already used for a different revision request", ErrConflict)
 		}
-		return &PolicyEvaluationDatasetResult{Dataset: datasetAtRevision(dataset, existing), Revision: existing}, nil
+		return &PolicyEvaluationDatasetResult{Dataset: dataset, Revision: existing}, nil
 	} else if !errors.Is(getErr, ErrNotFound) {
 		return nil, getErr
 	}
@@ -158,7 +168,7 @@ func (s Service) AppendPolicyEvaluationDatasetRevision(ctx context.Context, requ
 	if err != nil {
 		return nil, err
 	}
-	predecessor, err := s.Datasets.GetPolicyEvaluationDatasetRevision(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+	predecessor, _, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
 		TenantID: dataset.TenantID, DatasetID: dataset.ID, RevisionID: dataset.CurrentRevisionID,
 	})
 	if err != nil {
@@ -195,7 +205,19 @@ func (s Service) GetPolicyEvaluationDataset(ctx context.Context, tenantID, datas
 	if tenantID == "" || datasetID == "" {
 		return nil, fmt.Errorf("%w: tenant id and dataset id are required", ErrInvalidRequest)
 	}
-	return s.Datasets.GetPolicyEvaluationDataset(ctx, tenantID, datasetID)
+	dataset, err := s.Datasets.GetPolicyEvaluationDataset(ctx, tenantID, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	if dataset.TenantID != tenantID || dataset.ID != datasetID || dataset.CurrentRevisionID == "" {
+		return nil, fmt.Errorf("%w: dataset identity or current revision is invalid", ErrConflict)
+	}
+	if _, _, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+		TenantID: tenantID, DatasetID: datasetID, RevisionID: dataset.CurrentRevisionID,
+	}); err != nil {
+		return nil, err
+	}
+	return dataset, nil
 }
 
 func (s Service) ListPolicyEvaluationDatasets(ctx context.Context, request ListPolicyEvaluationDatasetsRequest) ([]*PolicyEvaluationDataset, error) {
@@ -212,7 +234,21 @@ func (s Service) ListPolicyEvaluationDatasets(ctx context.Context, request ListP
 	if request.Limit < 1 || request.Limit > MaxEvaluationDatasetListLimit {
 		return nil, fmt.Errorf("%w: dataset limit must be between 1 and %d", ErrInvalidRequest, MaxEvaluationDatasetListLimit)
 	}
-	return s.Datasets.ListPolicyEvaluationDatasets(ctx, request)
+	datasets, err := s.Datasets.ListPolicyEvaluationDatasets(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	for _, dataset := range datasets {
+		if dataset == nil || dataset.TenantID != request.TenantID || (request.CandidateID != "" && dataset.CandidateID != request.CandidateID) || dataset.CurrentRevisionID == "" {
+			return nil, fmt.Errorf("%w: dataset list identity changed", ErrConflict)
+		}
+		if _, _, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+			TenantID: request.TenantID, DatasetID: dataset.ID, RevisionID: dataset.CurrentRevisionID,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return datasets, nil
 }
 
 func (s Service) GetPolicyEvaluationDatasetRevision(ctx context.Context, request GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevision, error) {
@@ -223,7 +259,8 @@ func (s Service) GetPolicyEvaluationDatasetRevision(ctx context.Context, request
 	if request.TenantID == "" || request.DatasetID == "" || request.RevisionID == "" {
 		return nil, fmt.Errorf("%w: tenant id, dataset id, and revision id are required", ErrInvalidRequest)
 	}
-	return s.Datasets.GetPolicyEvaluationDatasetRevision(ctx, request)
+	revision, _, err := s.verifiedEvaluationDatasetSnapshot(ctx, request)
+	return revision, err
 }
 
 func (s Service) ListPolicyEvaluationDatasetRevisions(ctx context.Context, request ListPolicyEvaluationDatasetRevisionsRequest) ([]*PolicyEvaluationDatasetRevision, error) {
@@ -240,7 +277,24 @@ func (s Service) ListPolicyEvaluationDatasetRevisions(ctx context.Context, reque
 	if request.Limit < 1 || request.Limit > MaxEvaluationDatasetRevisionListLimit {
 		return nil, fmt.Errorf("%w: revision limit must be between 1 and %d", ErrInvalidRequest, MaxEvaluationDatasetRevisionListLimit)
 	}
-	return s.Datasets.ListPolicyEvaluationDatasetRevisions(ctx, request)
+	revisions, err := s.Datasets.ListPolicyEvaluationDatasetRevisions(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	verified := make([]*PolicyEvaluationDatasetRevision, 0, len(revisions))
+	for _, revision := range revisions {
+		if revision == nil {
+			return nil, fmt.Errorf("%w: dataset revision is missing", ErrConflict)
+		}
+		loaded, _, loadErr := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+			TenantID: request.TenantID, DatasetID: request.DatasetID, RevisionID: revision.ID,
+		})
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		verified = append(verified, loaded)
+	}
+	return verified, nil
 }
 
 func (s Service) ListPolicyEvaluationDatasetCases(ctx context.Context, request ListPolicyEvaluationDatasetCasesRequest) ([]*PolicyEvaluationDatasetCase, error) {
@@ -251,7 +305,53 @@ func (s Service) ListPolicyEvaluationDatasetCases(ctx context.Context, request L
 	if request.TenantID == "" || request.DatasetID == "" || request.RevisionID == "" {
 		return nil, fmt.Errorf("%w: tenant id, dataset id, and revision id are required", ErrInvalidRequest)
 	}
-	return s.Datasets.ListPolicyEvaluationDatasetCases(ctx, request)
+	_, cases, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
+		TenantID: request.TenantID, DatasetID: request.DatasetID, RevisionID: request.RevisionID,
+	})
+	return cases, err
+}
+
+func (s Service) verifiedEvaluationDatasetSnapshot(ctx context.Context, request GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevision, []*PolicyEvaluationDatasetCase, error) {
+	snapshot, err := s.Datasets.GetPolicyEvaluationDatasetRevisionSnapshot(ctx, request)
+	if err != nil {
+		return nil, nil, err
+	}
+	if snapshot == nil || snapshot.Revision == nil {
+		return nil, nil, fmt.Errorf("%w: dataset revision snapshot is missing", ErrConflict)
+	}
+	revision := snapshot.Revision
+	if revision.TenantID != request.TenantID || revision.DatasetID != request.DatasetID || revision.ID != request.RevisionID {
+		return nil, nil, fmt.Errorf("%w: dataset revision snapshot identity changed", ErrConflict)
+	}
+	dataset, err := s.Datasets.GetPolicyEvaluationDataset(ctx, request.TenantID, request.DatasetID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if dataset.TenantID != request.TenantID || dataset.ID != request.DatasetID || strings.TrimSpace(dataset.CandidateID) == "" {
+		return nil, nil, fmt.Errorf("%w: dataset identity changed", ErrConflict)
+	}
+	if revision.CaseCount != len(snapshot.Cases) {
+		return nil, nil, fmt.Errorf("%w: dataset revision case count changed", ErrConflict)
+	}
+	seen := make(map[string]struct{}, len(snapshot.Cases))
+	for index, testCase := range snapshot.Cases {
+		if testCase == nil || testCase.DatasetID != revision.DatasetID || testCase.RevisionID != revision.ID || testCase.Ordinal != index || !evaluationDatasetCaseIDPattern.MatchString(testCase.ID) {
+			return nil, nil, fmt.Errorf("%w: dataset revision case identity changed", ErrConflict)
+		}
+		if _, exists := seen[testCase.ID]; exists {
+			return nil, nil, fmt.Errorf("%w: dataset revision contains duplicate cases", ErrConflict)
+		}
+		seen[testCase.ID] = struct{}{}
+		digest, digestErr := DigestPolicyEvaluationDatasetCase(testCase.Test)
+		if digestErr != nil || digest != testCase.ContentDigest {
+			return nil, nil, fmt.Errorf("%w: dataset revision case digest changed", ErrConflict)
+		}
+	}
+	digest, err := DigestPolicyEvaluationDatasetRevision(dataset.CandidateID, revision.PolicyDigest, revision.SourceTestDigest, snapshot.Cases)
+	if err != nil || digest != revision.ContentDigest {
+		return nil, nil, fmt.Errorf("%w: dataset revision content digest changed", ErrConflict)
+	}
+	return revision, snapshot.Cases, nil
 }
 
 func DigestPolicyEvaluationDatasetCase(testCase findingdsl.PolicyRuleTestCase) (string, error) {
@@ -361,7 +461,121 @@ func normalizeEvaluationDatasetTestCase(testCase findingdsl.PolicyRuleTestCase) 
 			return left.FromURN+"\x00"+left.Relation+"\x00"+left.ToURN < right.FromURN+"\x00"+right.Relation+"\x00"+right.ToURN
 		})
 	}
+	if err := validateEvaluationDatasetTestCaseBoundary(normalized, len(payload)); err != nil {
+		return findingdsl.PolicyRuleTestCase{}, err
+	}
 	return normalized, nil
+}
+
+func validateEvaluationDatasetTestCaseBoundary(testCase findingdsl.PolicyRuleTestCase, encodedBytes int) error {
+	if encodedBytes > maxEvaluationDatasetCaseBytes {
+		return fmt.Errorf("%w: dataset case exceeds %d bytes", ErrInvalidRequest, maxEvaluationDatasetCaseBytes)
+	}
+	if len(testCase.Resource) != 0 || len(testCase.QueryRows) != 0 {
+		return fmt.Errorf("%w: durable evaluation cases require a synthetic graph fixture; resource and query rows are not accepted", ErrInvalidRequest)
+	}
+	if testCase.GraphFixture == nil {
+		return fmt.Errorf("%w: durable evaluation cases require a synthetic graph fixture", ErrInvalidRequest)
+	}
+	if len(testCase.Name) > maxEvaluationDatasetNameBytes || containsLiveIdentifier(testCase.Name) || containsSensitiveEvaluationDatasetValue(testCase.Name) {
+		return fmt.Errorf("%w: dataset case name must be bounded and redacted", ErrInvalidRequest)
+	}
+	fixture := testCase.GraphFixture
+	if fixture.TenantID != "fixture" && fixture.TenantID != "test" {
+		return fmt.Errorf("%w: dataset graph fixture tenant must be synthetic", ErrInvalidRequest)
+	}
+	if len(fixture.Nodes) < 1 || len(fixture.Nodes) > maxEvaluationDatasetFixtureNodes || len(fixture.Edges) > maxEvaluationDatasetFixtureEdges {
+		return fmt.Errorf("%w: dataset graph fixture exceeds its topology limit", ErrInvalidRequest)
+	}
+	if len(testCase.WantEvidenceURNs) > maxEvaluationDatasetEvidenceURNs {
+		return fmt.Errorf("%w: dataset case has too many evidence URNs", ErrInvalidRequest)
+	}
+	for _, urn := range testCase.WantEvidenceURNs {
+		if !syntheticEvaluationDatasetURNPattern.MatchString(urn) {
+			return fmt.Errorf("%w: dataset evidence URNs must use the urn:test or urn:fixture namespace", ErrInvalidRequest)
+		}
+	}
+	for index, node := range fixture.Nodes {
+		if !syntheticEvaluationDatasetURNPattern.MatchString(node.URN) {
+			return fmt.Errorf("%w: dataset fixture node %d must use a synthetic URN", ErrInvalidRequest, index)
+		}
+		if err := validateEvaluationDatasetFixtureToken(node.SourceID, "node source"); err != nil {
+			return err
+		}
+		if err := validateEvaluationDatasetFixtureToken(node.EntityType, "node entity type"); err != nil {
+			return err
+		}
+		if err := validateEvaluationDatasetRuntimeID(node.RuntimeID); err != nil {
+			return err
+		}
+		if len(node.Label) > maxEvaluationDatasetFixtureValueBytes || containsLiveIdentifier(node.Label) || containsSensitiveEvaluationDatasetValue(node.Label) {
+			return fmt.Errorf("%w: dataset fixture node label must be bounded and redacted", ErrInvalidRequest)
+		}
+		if err := validateEvaluationDatasetAttributes(node.Attributes); err != nil {
+			return err
+		}
+	}
+	for index, edge := range fixture.Edges {
+		if !syntheticEvaluationDatasetURNPattern.MatchString(edge.FromURN) || !syntheticEvaluationDatasetURNPattern.MatchString(edge.ToURN) {
+			return fmt.Errorf("%w: dataset fixture edge %d must use synthetic URNs", ErrInvalidRequest, index)
+		}
+		if err := validateEvaluationDatasetFixtureToken(edge.SourceID, "edge source"); err != nil {
+			return err
+		}
+		if err := validateEvaluationDatasetFixtureToken(edge.Relation, "edge relation"); err != nil {
+			return err
+		}
+		if err := validateEvaluationDatasetRuntimeID(edge.RuntimeID); err != nil {
+			return err
+		}
+		if err := validateEvaluationDatasetAttributes(edge.Attributes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateEvaluationDatasetFixtureToken(value, label string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 || containsLiveIdentifier(value) || containsSensitiveEvaluationDatasetValue(value) {
+		return fmt.Errorf("%w: dataset fixture %s must be bounded and redacted", ErrInvalidRequest, label)
+	}
+	return nil
+}
+
+func validateEvaluationDatasetRuntimeID(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len(value) > 128 || (!strings.HasPrefix(value, "runtime:test:") && !strings.HasPrefix(value, "runtime:fixture:")) {
+		return fmt.Errorf("%w: dataset fixture runtime ids must be synthetic", ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateEvaluationDatasetAttributes(attributes map[string]string) error {
+	if len(attributes) > maxEvaluationDatasetFixtureAttributes {
+		return fmt.Errorf("%w: dataset fixture has too many attributes", ErrInvalidRequest)
+	}
+	for key, value := range attributes {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || len(key) > 64 || len(value) > maxEvaluationDatasetFixtureValueBytes || containsLiveIdentifier(value) || containsSensitiveEvaluationDatasetValue(key) || containsSensitiveEvaluationDatasetValue(value) {
+			return fmt.Errorf("%w: dataset fixture attributes must be bounded and redacted", ErrInvalidRequest)
+		}
+	}
+	return nil
+}
+
+func containsSensitiveEvaluationDatasetValue(value string) bool {
+	normalized := strings.ToLower(value)
+	for _, marker := range []string{"password", "secret", "token", "credential", "private_key", "access_key", "-----begin", "akia", "asia", "ghp_", "github_pat_", "xoxb-", "xoxp-", "bearer "} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateEvaluationDatasetCandidate(candidate *Candidate) error {
@@ -391,18 +605,22 @@ func evaluationDatasetIssuesError(issues []findingdsl.Issue) error {
 }
 
 func normalizeCreatePolicyEvaluationDatasetRequest(request CreatePolicyEvaluationDatasetRequest) CreatePolicyEvaluationDatasetRequest {
-	request.CandidateID, request.Name = strings.TrimSpace(request.CandidateID), strings.TrimSpace(request.Name)
+	request.TenantID, request.CandidateID = strings.TrimSpace(request.TenantID), strings.TrimSpace(request.CandidateID)
+	request.Name = strings.TrimSpace(request.Name)
 	request.ChangeSummary, request.ActorID = strings.TrimSpace(request.ChangeSummary), strings.TrimSpace(request.ActorID)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	return request
 }
 
 func validateCreatePolicyEvaluationDatasetRequest(request CreatePolicyEvaluationDatasetRequest) error {
-	if request.CandidateID == "" || request.Name == "" || request.ChangeSummary == "" || request.ActorID == "" {
-		return fmt.Errorf("%w: candidate id, name, change summary, and actor id are required", ErrInvalidRequest)
+	if request.TenantID == "" || request.CandidateID == "" || request.Name == "" || request.ChangeSummary == "" || request.ActorID == "" {
+		return fmt.Errorf("%w: tenant id, candidate id, name, change summary, and actor id are required", ErrInvalidRequest)
 	}
 	if len(request.Name) > maxEvaluationDatasetNameBytes || len(request.ChangeSummary) > maxEvaluationDatasetChangeSummaryBytes || len(request.ActorID) > maxEvaluationDatasetActorBytes {
 		return fmt.Errorf("%w: dataset labels exceed their size limit", ErrInvalidRequest)
+	}
+	if containsLiveIdentifier(request.Name) || containsLiveIdentifier(request.ChangeSummary) || containsSensitiveEvaluationDatasetValue(request.Name) || containsSensitiveEvaluationDatasetValue(request.ChangeSummary) {
+		return fmt.Errorf("%w: dataset labels must be redacted", ErrInvalidRequest)
 	}
 	if len(request.IdempotencyKey) > MaxExperimentLabelBytes || !experimentIdempotencyKeyPattern.MatchString(request.IdempotencyKey) {
 		return fmt.Errorf("%w: idempotency key is required", ErrInvalidRequest)
@@ -423,6 +641,9 @@ func validateAppendPolicyEvaluationDatasetRevisionRequest(request AppendPolicyEv
 	}
 	if len(request.ChangeSummary) > maxEvaluationDatasetChangeSummaryBytes || len(request.ActorID) > maxEvaluationDatasetActorBytes {
 		return fmt.Errorf("%w: revision labels exceed their size limit", ErrInvalidRequest)
+	}
+	if containsLiveIdentifier(request.ChangeSummary) || containsSensitiveEvaluationDatasetValue(request.ChangeSummary) {
+		return fmt.Errorf("%w: revision labels must be redacted", ErrInvalidRequest)
 	}
 	if len(request.IdempotencyKey) > MaxExperimentLabelBytes || !experimentIdempotencyKeyPattern.MatchString(request.IdempotencyKey) {
 		return fmt.Errorf("%w: idempotency key is required", ErrInvalidRequest)
@@ -459,15 +680,4 @@ func canonicalDigest(value any) (string, error) {
 	}
 	hash := sha256.Sum256(payload)
 	return hex.EncodeToString(hash[:]), nil
-}
-
-func datasetAtRevision(dataset *PolicyEvaluationDataset, revision *PolicyEvaluationDatasetRevision) *PolicyEvaluationDataset {
-	if dataset == nil || revision == nil {
-		return dataset
-	}
-	cloned := *dataset
-	cloned.CurrentRevisionID = revision.ID
-	cloned.AggregateVersion = revision.Version
-	cloned.UpdatedAt = revision.CreatedAt
-	return &cloned
 }

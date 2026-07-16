@@ -82,6 +82,14 @@ func (s *memoryEvaluationDatasetStore) GetPolicyEvaluationDatasetRevision(_ cont
 	return cloneEvaluationDatasetRevision(revision), nil
 }
 
+func (s *memoryEvaluationDatasetStore) GetPolicyEvaluationDatasetRevisionSnapshot(_ context.Context, request GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevisionSnapshot, error) {
+	revision, err := s.GetPolicyEvaluationDatasetRevision(context.Background(), request)
+	if err != nil {
+		return nil, err
+	}
+	return &PolicyEvaluationDatasetRevisionSnapshot{Revision: revision, Cases: cloneEvaluationDatasetCases(s.cases[request.RevisionID])}, nil
+}
+
 func (s *memoryEvaluationDatasetStore) ListPolicyEvaluationDatasetRevisions(_ context.Context, request ListPolicyEvaluationDatasetRevisionsRequest) ([]*PolicyEvaluationDatasetRevision, error) {
 	var out []*PolicyEvaluationDatasetRevision
 	for _, revision := range s.revisions {
@@ -111,7 +119,7 @@ func TestPolicyEvaluationDatasetCreateAppendReplayAndCAS(t *testing.T) {
 	datasetStore := newMemoryEvaluationDatasetStore()
 	service := Service{Store: candidateStore, Datasets: datasetStore, Now: func() time.Time { return now }}
 	createRequest := CreatePolicyEvaluationDatasetRequest{
-		CandidateID: candidate.ID, Name: "Multi-hop access path", ChangeSummary: "Import the authored proof suite.",
+		TenantID: candidate.TenantID, CandidateID: candidate.ID, Name: "Multi-hop access path", ChangeSummary: "Import the authored proof suite.",
 		ActorID: "slack-agent", IdempotencyKey: "dataset-create-1",
 	}
 	created, err := service.CreatePolicyEvaluationDataset(context.Background(), createRequest)
@@ -174,10 +182,80 @@ func TestPolicyEvaluationDatasetCreateAppendReplayAndCAS(t *testing.T) {
 	if err != nil || appendReplay.Revision.ID != appended.Revision.ID || appendReplay.Dataset.AggregateVersion != 2 {
 		t.Fatalf("append replay = %#v, %v", appendReplay, err)
 	}
+	thirdRequest := AppendPolicyEvaluationDatasetRevisionRequest{
+		TenantID: candidate.TenantID, DatasetID: created.Dataset.ID, ExpectedVersion: 2,
+		ChangeSummary: "Refine the second passing mutation.", ActorID: "slack-agent", IdempotencyKey: "dataset-append-2",
+		Cases: []PolicyEvaluationDatasetCaseInput{
+			{ID: datasetStore.cases[appended.Revision.ID][0].ID, Test: datasetStore.cases[appended.Revision.ID][0].Test},
+			{ID: datasetStore.cases[appended.Revision.ID][1].ID, Test: datasetStore.cases[appended.Revision.ID][1].Test},
+			{ID: datasetStore.cases[appended.Revision.ID][2].ID, Test: datasetStore.cases[appended.Revision.ID][2].Test},
+		},
+	}
+	thirdRequest.Cases[2].Test.Name = "passes after the same edge remains absent"
+	third, err := service.AppendPolicyEvaluationDatasetRevision(context.Background(), thirdRequest)
+	if err != nil || third.Dataset.AggregateVersion != 3 {
+		t.Fatalf("third revision = %#v, %v", third, err)
+	}
+	appendReplay, err = service.AppendPolicyEvaluationDatasetRevision(context.Background(), appendRequest)
+	if err != nil || appendReplay.Revision.ID != appended.Revision.ID || appendReplay.Dataset.AggregateVersion != 3 || appendReplay.Dataset.CurrentRevisionID != third.Revision.ID {
+		t.Fatalf("old append replay after advance = %#v, %v", appendReplay, err)
+	}
 	stale := appendRequest
 	stale.IdempotencyKey = "dataset-append-stale"
 	if _, err := service.AppendPolicyEvaluationDatasetRevision(context.Background(), stale); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale append error = %v, want conflict", err)
+	}
+}
+
+func TestPolicyEvaluationDatasetRejectsCrossTenantCreateAndTamperedSnapshot(t *testing.T) {
+	candidate := evaluationDatasetCandidate()
+	candidateStore := &memoryStore{records: map[string]*Candidate{candidate.ID: candidate}}
+	datasetStore := newMemoryEvaluationDatasetStore()
+	service := Service{Store: candidateStore, Datasets: datasetStore}
+	request := CreatePolicyEvaluationDatasetRequest{
+		TenantID: "tenant-b", CandidateID: candidate.ID, Name: "Multi-hop access path",
+		ChangeSummary: "Import the authored proof suite.", ActorID: "agent", IdempotencyKey: "cross-tenant-create",
+	}
+	if _, err := service.CreatePolicyEvaluationDataset(context.Background(), request); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-tenant create error = %v, want not found", err)
+	}
+	if len(datasetStore.datasets) != 0 {
+		t.Fatal("cross-tenant create wrote a dataset")
+	}
+	request.TenantID = candidate.TenantID
+	created, err := service.CreatePolicyEvaluationDataset(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	datasetStore.cases[created.Revision.ID][0].Test.Name = "tampered case"
+	_, err = service.ListPolicyEvaluationDatasetCases(context.Background(), ListPolicyEvaluationDatasetCasesRequest{
+		TenantID: candidate.TenantID, DatasetID: created.Dataset.ID, RevisionID: created.Revision.ID,
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("tampered snapshot error = %v, want conflict", err)
+	}
+}
+
+func TestPolicyEvaluationDatasetRejectsUnsafeCasePayloads(t *testing.T) {
+	valid := evaluationDatasetSuite().Cases[0]
+	tests := map[string]func(*findingdsl.PolicyRuleTestCase){
+		"resource rows": func(testCase *findingdsl.PolicyRuleTestCase) { testCase.Resource = map[string]any{"id": "live"} },
+		"query rows":    func(testCase *findingdsl.PolicyRuleTestCase) { testCase.QueryRows = []map[string]any{{"id": "live"}} },
+		"live urn": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].URN = "arn:aws:iam::123456789012:role/live"
+		},
+		"secret value": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"access_token": "value"}
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			testCase := cloneEvaluationDatasetTestCase(valid)
+			mutate(&testCase)
+			if _, err := DigestPolicyEvaluationDatasetCase(testCase); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("unsafe case error = %v, want invalid request", err)
+			}
+		})
 	}
 }
 
@@ -224,17 +302,17 @@ func evaluationDatasetCandidate() *Candidate {
 
 func evaluationDatasetSuite() findingdsl.PolicyRuleTestSuite {
 	nodes := []findingdsl.PolicyGraphFixtureNode{
-		{URN: "urn:actor", SourceID: "aws", EntityType: "aws.session"},
-		{URN: "urn:task", SourceID: "aws", EntityType: "aws.task"},
-		{URN: "urn:definition", SourceID: "aws", EntityType: "aws.task_definition"},
+		{URN: "urn:test:actor", SourceID: "aws", EntityType: "aws.session"},
+		{URN: "urn:test:task", SourceID: "aws", EntityType: "aws.task"},
+		{URN: "urn:test:definition", SourceID: "aws", EntityType: "aws.task_definition"},
 	}
 	edges := []findingdsl.PolicyGraphFixtureEdge{
-		{FromURN: "urn:actor", ToURN: "urn:task", SourceID: "aws", Relation: "acted_on"},
-		{FromURN: "urn:task", ToURN: "urn:definition", SourceID: "aws", Relation: "depends_on"},
+		{FromURN: "urn:test:actor", ToURN: "urn:test:task", SourceID: "aws", Relation: "acted_on"},
+		{FromURN: "urn:test:task", ToURN: "urn:test:definition", SourceID: "aws", Relation: "depends_on"},
 	}
 	passingEdges := append([]findingdsl.PolicyGraphFixtureEdge(nil), edges[:1]...)
 	return findingdsl.PolicyRuleTestSuite{APIVersion: findingdsl.APIVersion, Kind: findingdsl.KindPolicyFindingRuleTest, Cases: []findingdsl.PolicyRuleTestCase{
-		{Name: "finds the complete two-hop path", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: edges}, WantEvidenceURNs: []string{"urn:actor", "urn:definition"}, WantFinding: true},
+		{Name: "finds the complete two-hop path", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: edges}, WantEvidenceURNs: []string{"urn:test:actor", "urn:test:definition"}, WantFinding: true},
 		{Name: "passes when the critical edge is absent", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: passingEdges}, WantFinding: false},
 	}}
 }
@@ -264,6 +342,13 @@ func cloneEvaluationDatasetRevision(revision *PolicyEvaluationDatasetRevision) *
 func cloneEvaluationDatasetCases(cases []*PolicyEvaluationDatasetCase) []*PolicyEvaluationDatasetCase {
 	payload, _ := json.Marshal(cases)
 	var cloned []*PolicyEvaluationDatasetCase
+	_ = json.Unmarshal(payload, &cloned)
+	return cloned
+}
+
+func cloneEvaluationDatasetTestCase(testCase findingdsl.PolicyRuleTestCase) findingdsl.PolicyRuleTestCase {
+	payload, _ := json.Marshal(testCase)
+	var cloned findingdsl.PolicyRuleTestCase
 	_ = json.Unmarshal(payload, &cloned)
 	return cloned
 }
