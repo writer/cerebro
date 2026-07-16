@@ -274,12 +274,14 @@ func minimizeAgentAction(value string) string {
 		return "agent_tool_execution"
 	}
 	safe[0] = path.Base(safe[0])
-	limit := 1
+	limit := 0
 	switch strings.ToLower(safe[0]) {
 	case "aws":
 		limit = 3
 	case "git", "gh", "kubectl", "docker", "terraform", "brew", "npm", "pnpm", "yarn", "go", "swift":
 		limit = 2
+	default:
+		return "agent_tool_execution"
 	}
 	if len(safe) < limit {
 		limit = len(safe)

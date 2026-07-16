@@ -152,6 +152,20 @@ func TestNormalizeAgentExecutionReceiptMinimizesActionAndStabilizesIdentity(t *t
 	}
 }
 
+func TestNormalizeAgentExecutionReceiptDoesNotRetainUnknownActionTokens(t *testing.T) {
+	receipt := `{"type":"agent_execution_receipt","receipt_id":"receipt-unknown","receipt_digest":"sha256:receipt","sequence":1,"captured_at":"2026-07-16T12:00:00Z","phase":"completed","agent_product":"Codex","session_id":"session-1","action_summary":"--token super-secret","evidence_integrity":"signature_valid"}`
+	events, err := Normalize([]byte(`{"events":[`+receipt+`]}`), Principal{TenantID: "tenant-1", DeviceID: "device-1"}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if got := events[0].GetAttributes()["action"]; got != "agent_tool_execution" {
+		t.Fatalf("minimized action = %q, want agent_tool_execution", got)
+	}
+	if strings.Contains(string(events[0].GetPayload()), "super-secret") {
+		t.Fatal("normalized payload retained an unknown action token")
+	}
+}
+
 func TestNormalizeRejectsIncompleteAgentExecutionReceipt(t *testing.T) {
 	body := []byte(`{"events":[{"type":"agent_execution_receipt","receipt_id":"receipt-1","session_id":"session-1"}]}`)
 	if _, err := Normalize(body, Principal{TenantID: "writer", DeviceID: "dev_123"}, time.Now()); err == nil {
