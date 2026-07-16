@@ -25,6 +25,9 @@ const (
 	securityPathEvaluatorMaxInput   = 8 << 20
 	securityPathEvaluatorMaxOutput  = 8 << 20
 	securityPathDecisionInputV1     = "security-path-decision-input/v1"
+	securityPathDecisionDigestSize  = len("sha256:") + sha256.Size*2
+	securityPathEnvelopeOverhead    = len(`{"schema_version":"`) + len(securityPathDecisionInputV1) +
+		len(`","input_digest":"`) + securityPathDecisionDigestSize + len(`","request":`) + 1
 
 	RustShadowMatch          = "match"
 	RustShadowEvaluatorError = "rust_error"
@@ -362,15 +365,21 @@ func marshalRustEvaluationRequest(request any) ([]byte, string, []string, error)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("%w: encode request: %w", ErrRustEvaluatorUnavailable, err)
 	}
+	if len(requestPayload) > securityPathEvaluatorMaxInput-securityPathEnvelopeOverhead {
+		return nil, "", nil, fmt.Errorf("%w: encoded request exceeds %d-byte input limit", ErrRustEvaluatorUnavailable, securityPathEvaluatorMaxInput)
+	}
 	inputDigest, err := rustDecisionInputDigest(request)
 	if err != nil {
 		return nil, "", nil, err
+	}
+	if len(inputDigest) != securityPathDecisionDigestSize {
+		return nil, "", nil, fmt.Errorf("%w: invalid decision input digest length", ErrRustEvaluatorUnavailable)
 	}
 	sourceSnapshotDigests, err := rustSourceSnapshotDigests(request)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	payload := make([]byte, 0, len(requestPayload)+len(inputDigest)+96)
+	payload := make([]byte, 0, len(requestPayload)+securityPathEnvelopeOverhead)
 	payload = append(payload, `{"schema_version":"`...)
 	payload = append(payload, securityPathDecisionInputV1...)
 	payload = append(payload, `","input_digest":"`...)
