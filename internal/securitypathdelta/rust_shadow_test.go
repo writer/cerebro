@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -115,6 +116,17 @@ func TestRustDecisionInputDigestChangesWithDecisionField(t *testing.T) {
 	}
 	if firstDigest == secondDigest {
 		t.Fatalf("decision input digests are equal: %s", firstDigest)
+	}
+}
+
+func TestRustDecisionEnvelopeRejectsOversizedInputBeforeAllocation(t *testing.T) {
+	t.Parallel()
+	request := rustCandidateCutsRequest{
+		Operation: "rank_candidate_cuts",
+		Paths:     []rustSecurityPathInput{{ID: strings.Repeat("x", securityPathEvaluatorMaxInput)}},
+	}
+	if _, _, _, err := marshalRustEvaluationRequest(request); err == nil || !strings.Contains(err.Error(), "input limit") {
+		t.Fatalf("marshalRustEvaluationRequest() error = %v, want input limit", err)
 	}
 }
 
