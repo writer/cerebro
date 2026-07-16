@@ -2230,7 +2230,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:         "cerebro.version",
 			Title:        "Running Cerebro Build",
-			Description:  "Identify the release running on this server, including service version, commit, build date, and API version.",
+			Description:  "Identify which Cerebro revision is deployed and running on this server, including release, service version, commit, build date, and API version.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Version"),

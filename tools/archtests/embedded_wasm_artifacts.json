@@ -52,8 +52,8 @@
     {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
-      "sha256": "0d5132c6ae38def42265c3a4c9077e8551e9d36497dfed34fe3a096719cfaebd",
-      "size_bytes": 344751,
+      "sha256": "fdae86c18cd54f2b4e30481cf24ce6a673e0392d7c3c257f2dd24714c21fc3a5",
+      "size_bytes": 342821,
       "max_size_bytes": 400000,
       "abi_version": 1
     }
