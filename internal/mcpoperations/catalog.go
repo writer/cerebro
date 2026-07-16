@@ -73,6 +73,7 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.agent.preflight", "agent-platform", "agent preflight"),
 		expertRead("cerebro.agent.claims.verify", "agent-platform", "claim verification"),
 		expertRead("cerebro.agent.work.contract", "agent-platform", "agent work contract"),
+		expertRead("cerebro.agent.missions.contract", "agent-platform", "mission operating contract"),
 		expertRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace"),
 		expertRead("cerebro.investigation.context", "findings", "finding investigation context"),
 		expertExecute("cerebro.assessments.plan.create", "compliance-assessment", "persisted assessment plan draft"),

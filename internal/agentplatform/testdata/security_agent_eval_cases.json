@@ -3,7 +3,7 @@
     "id": "evidence-packet-high-confidence",
     "scenario_id": "tenant-isolation",
     "description": "A fully scoped read-only packet carries all required blocks without warnings.",
-    "covered_strategy_ids": ["agent-evidence-packets", "specialized-agents", "security-memory", "agent-work-ledger"],
+    "covered_strategy_ids": ["agent-evidence-packets", "specialized-agents", "security-memory", "agent-work-ledger", "native-mission-operating-contract"],
     "request": {
       "tenant_id": "tenant-1",
       "actor_id": "eval-analyst",

@@ -512,6 +512,19 @@ export type AgentPlatformInvariant = {
   statement: string;
 };
 
+export type AgentPlatformMissionOperatingContract = {
+  close_conditions: string[];
+  durable_records: { id?: string; purpose?: string; required?: string[] }[];
+  execution_depths: string[];
+  first_mandate: string;
+  id: string;
+  interruption_triggers: string[];
+  purpose: string;
+  schema_version: string;
+  supervisor_directives: string[];
+  wake_conditions: string[];
+};
+
 export type AgentPlatformPolicyCheck = {
   fields?: string[];
   id: string;
@@ -589,10 +602,13 @@ export type AgentPlatformRuntimeEvent = {
 export type AgentPlatformSecurityControlPlane = {
   action_ladder: Record<string, unknown>[];
   agent_profiles: Record<string, unknown>[];
+  agent_work: Record<string, unknown>;
+  claim_verification: Record<string, unknown>;
   connector_tool_gates: Record<string, unknown>[];
   eval_suite: Record<string, unknown>;
   evidence_packet: Record<string, unknown>;
   integration_strategies: Record<string, unknown>[];
+  mission_operating: AgentPlatformMissionOperatingContract;
   security_memory: Record<string, unknown>;
   simulation_harness: Record<string, unknown>;
   verifier_layer: Record<string, unknown>[];

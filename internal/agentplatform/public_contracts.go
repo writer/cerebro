@@ -315,11 +315,12 @@ func a2AContractMessage(card A2AAgentCard) map[string]any {
 			"text": "Cerebro exposes governed agent-platform, event subscription, and idempotency contracts. Use the links in metadata for the canonical JSON contracts.",
 		}},
 		"metadata": map[string]any{
-			"contractVersion":           ContractVersion,
-			"agentPlatformContractPath": "/api/v1/agent-platform/contract",
-			"eventSubscriptionContract": EventSubscriptionContractPath,
-			"idempotencyContract":       IdempotencyContractPath,
-			"skills":                    card.Skills,
+			"contractVersion":              ContractVersion,
+			"agentPlatformContractPath":    "/api/v1/agent-platform/contract",
+			"missionOperatingContractPath": "/api/v1/agent-platform/missions/contract",
+			"eventSubscriptionContract":    EventSubscriptionContractPath,
+			"idempotencyContract":          IdempotencyContractPath,
+			"skills":                       card.Skills,
 		},
 	}
 }

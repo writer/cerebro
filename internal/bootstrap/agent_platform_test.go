@@ -627,6 +627,27 @@ func TestHandleAgentPlatformSecurityControlPlane(t *testing.T) {
 	if len(controlPlane.AgentProfiles) == 0 || len(controlPlane.VerifierLayer) == 0 || len(controlPlane.ActionLadder) == 0 {
 		t.Fatalf("control plane missing core registries: %+v", controlPlane)
 	}
+	if controlPlane.MissionOperating.ID != "native-mission-operating-contract" || len(controlPlane.MissionOperating.DurableRecords) != 6 {
+		t.Fatalf("control plane missing mission operating contract: %+v", controlPlane.MissionOperating)
+	}
+}
+
+func TestHandleAgentPlatformMissionContract(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agent-platform/missions/contract", nil)
+
+	(&App{}).handleAgentPlatformMissionContract(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var contract agentplatform.MissionOperatingContract
+	if err := json.Unmarshal(recorder.Body.Bytes(), &contract); err != nil {
+		t.Fatalf("decode mission contract: %v", err)
+	}
+	if contract.ID != "native-mission-operating-contract" || len(contract.DurableRecords) != 6 {
+		t.Fatalf("mission contract = %+v", contract)
+	}
 }
 
 func TestHandleAgentPlatformCapabilities(t *testing.T) {

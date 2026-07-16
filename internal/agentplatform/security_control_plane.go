@@ -21,6 +21,7 @@ type SecurityControlPlane struct {
 	EvidencePacket        EvidencePacketContract     `json:"evidence_packet"`
 	ClaimVerification     ClaimVerificationContract  `json:"claim_verification"`
 	AgentWork             AgentWorkContract          `json:"agent_work"`
+	MissionOperating      MissionOperatingContract   `json:"mission_operating"`
 	AgentProfiles         []SecurityAgentProfile     `json:"agent_profiles"`
 	VerifierLayer         []AgentVerifier            `json:"verifier_layer"`
 	RubricVerifiers       []AgentRubricVerifier      `json:"rubric_verifiers"`
@@ -258,6 +259,7 @@ func SecurityControlPlaneSnapshot() SecurityControlPlane {
 		EvidencePacket:        evidencePacketContract(),
 		ClaimVerification:     cloneClaimVerificationContract(claimVerificationContract()),
 		AgentWork:             cloneAgentWorkContract(agentWorkContract()),
+		MissionOperating:      cloneMissionOperatingContract(missionOperatingContract()),
 		AgentProfiles:         cloneSecurityAgentProfiles(securityAgentProfiles()),
 		VerifierLayer:         cloneAgentVerifiers(agentVerifiers()),
 		RubricVerifiers:       cloneAgentRubricVerifiers(agentRubricVerifiers()),
@@ -590,6 +592,7 @@ func integrationStrategies() []IntegrationStrategy {
 		{ID: "public-idempotency-contract", Purpose: "Make retry-safe mutating API behavior and webhook delivery dedupe a documented public API contract.", Benefits: []string{"safe retries", "SDK consistency"}, Controls: []string{"Idempotency-Key", "key scope", "409 conflict", "replay headers"}},
 		{ID: "security-memory", Purpose: "Promote accepted risks, false positives, prior investigations, remediation outcomes, and detector learnings into typed memory.", Benefits: []string{"operational learning", "less repeated triage"}, Controls: []string{"TTL", "required fields", "no raw transcripts"}},
 		{ID: "agent-work-ledger", Purpose: "Track investigation state as a durable work object rather than relying on agent context windows.", Benefits: []string{"resumable work", "audit trail", "closed-loop handoff"}, Controls: []string{"state model", "claim links", "trace links", "closure conditions"}},
+		{ID: "native-mission-operating-contract", Purpose: "Continue bounded work across agent runs using one mandate, mission, belief, plan, commitment, wake, and verification contract.", Benefits: []string{"continuing intent", "bounded interruptions", "verified closure"}, Controls: []string{"optimistic revisions", "scoped authority", "wake conditions", "independent verification"}},
 		{ID: "connector-oauth-agent-infra", Purpose: "Make connector readiness, OAuth ownership, scopes, and MCP exposure first-class agent preconditions.", Benefits: []string{"safe tool use", "clear token boundaries"}, Controls: []string{"connector gates", "scope gates", "credential boundaries"}},
 		{ID: "defensive-simulation-harness", Purpose: "Let agents simulate paths and remediation effects from graph data and fixtures only.", Benefits: []string{"proactive defense", "no live exploit risk"}, Controls: []string{"graph-only mode", "forbidden inputs", "verifier outputs"}},
 	}

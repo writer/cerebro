@@ -103,6 +103,9 @@ counterevidence, missing evidence, freshness state, coverage caveats, a verdict,
 and the highest allowed next action stage. `cerebro.agent.work.contract` returns
 the `agent-work-ledger` state model and closure contract for resumable
 investigations.
+`cerebro.agent.missions.contract` returns the mandate, mission, belief, plan
+revision, commitment, wake condition, interruption, and verified-closure
+contract that agent work projects from.
 
 ## Native Droid client configuration
 

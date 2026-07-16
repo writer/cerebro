@@ -81,6 +81,7 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/security-control-plane", routeSurfacePlatformHTTP, app.handleAgentPlatformSecurityControlPlane)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/missions/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformMissionContract)
 	registerHTTPRoute(mux, "GET /api/v1/event-subscriptions/contract", routeSurfacePlatformHTTP, app.handleEventSubscriptionContract)
 	registerHTTPRoute(mux, "GET /api/v1/idempotency-contract", routeSurfacePlatformHTTP, app.handleIdempotencyContract)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/capability-decisions", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilityDecision)

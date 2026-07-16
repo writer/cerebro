@@ -172,7 +172,7 @@
       "required_capability_ids": ["agent-work-ledger"],
       "required_runtime_events": ["agent.work.created", "agent.work.updated", "claim.verification.completed", "agent.work.closed"],
       "required_provenance_surfaces": ["agent-work", "claim-verification", "replay-record", "security-memory"],
-      "required_integration_strategy_ids": ["agent-work-ledger", "security-memory"]
+      "required_integration_strategy_ids": ["agent-work-ledger", "security-memory", "native-mission-operating-contract"]
     }
   }
 ]
