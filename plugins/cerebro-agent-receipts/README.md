@@ -7,7 +7,7 @@ This plugin records local evidence for Codex tool executions and compares comple
 
 ## Evidence states
 
-- **Local evidence only:** chained receipts exist and verify against the key currently enrolled in this Mac's Keychain.
+- **Local evidence only:** chained receipts exist and verify against the public-key pin stored with this Mac's receipt ledger.
 - **Candidate correlation:** one provider event matches one completed action by time plus action or local-user claim. This is not a verified binding.
 - **Provider bound:** an event fetched through an authenticated AWS API call matches the expected account, dedicated agent role, action ID, action name, and time window.
 - **Provider gap:** an imported in-scope provider event was not allocated to a completed local action.
@@ -19,10 +19,13 @@ JSON selected through the file importer is always marked `user_imported_json` an
 ```bash
 swift build
 swift run ReceiptCoreChecks
+./script/build_hook_release.sh
 ./script/build_and_run.sh --verify
 ```
 
-The Codex plugin calls `scripts/run-hook.sh`. On first use that script compiles the hook into the plugin data directory. A managed deployment should ship a signed universal helper instead of compiling on the endpoint.
+The Codex plugin calls `scripts/run-hook.sh`, which verifies and runs the bundled ad-hoc-signed universal helper without compiling in the hook path. Set `CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE=1` to rebuild into the plugin data directory for development. A managed deployment must replace the ad-hoc signature with an identified Developer ID or enterprise signature and verify the release artifact before enrollment.
+
+See `CANARY.md` for the measured fresh-session and authenticated-provider results.
 
 ## Provider evidence
 

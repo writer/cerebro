@@ -6,10 +6,16 @@ DATA_DIR="${PLUGIN_DATA:-${TMPDIR:-/tmp}/cerebro-agent-receipts-plugin}"
 SCRATCH_DIR="$DATA_DIR/swift-build"
 BIN_DIR="$DATA_DIR/bin"
 APP_BINARY="$BIN_DIR/CerebroAgentReceiptHook"
+BUNDLED_BINARY="$ROOT_DIR/bin/CerebroAgentReceiptHook"
+
+if [[ "${CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE:-0}" != "1" ]] && [[ -x "$BUNDLED_BINARY" ]]; then
+  codesign --verify --strict "$BUNDLED_BINARY"
+  exec "$BUNDLED_BINARY" "$@"
+fi
 
 mkdir -p "$BIN_DIR" "$SCRATCH_DIR"
 
-if [[ ! -x "$APP_BINARY" ]] || find "$ROOT_DIR/Package.swift" "$ROOT_DIR/Sources/ReceiptCore" "$ROOT_DIR/Sources/CerebroAgentReceiptHook" -newer "$APP_BINARY" -print -quit | grep -q .; then
+if [[ ! -x "$APP_BINARY" ]] || [[ "${CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   swift build \
     --package-path "$ROOT_DIR" \
     --scratch-path "$SCRATCH_DIR" \
