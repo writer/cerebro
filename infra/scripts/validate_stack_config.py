@@ -41,7 +41,8 @@ RESERVED_EVENTBRIDGE_RULES_BY_STACK = {
     "go-prod": 6,
 }
 COSMO_REQUIRED_STACKS = {"sec-dev"}
-COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
+COSMO_BASE_URL_SECRET = "CEREBRO_SOURCE_COSMO_BASE_URL"
+COSMO_USER_TOKEN_SECRET = "CEREBRO_SOURCE_COSMO_TOKEN"
 COSMO_MESSAGE_EXPORT_SECRET = "CEREBRO_SOURCE_COSMO_EXPORT_SECRET"
 COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-session": "session",
@@ -653,6 +654,12 @@ def _validate_cosmo_gitops(
     disabled_runtime_ids: set[str],
     findings: list[Finding],
 ) -> None:
+    cosmo_token_secret = COSMO_MESSAGE_EXPORT_SECRET if stack == "go-prod" else COSMO_USER_TOKEN_SECRET
+    cosmo_message_since = (
+        "2026-01-01T00:00:00.000Z"
+        if stack == "go-prod"
+        else "2026-01-01T00:00:00Z"
+    )
     unknown_disabled_runtime_ids = disabled_runtime_ids - TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES
     if unknown_disabled_runtime_ids:
         findings.append(
@@ -709,7 +716,7 @@ def _validate_cosmo_gitops(
                 )
             )
 
-    for secret_name in sorted(COSMO_REQUIRED_SECRETS):
+    for secret_name in sorted({COSMO_BASE_URL_SECRET, cosmo_token_secret}):
         if secret_name not in source_secret_names:
             findings.append(
                 _finding(
@@ -725,7 +732,7 @@ def _validate_cosmo_gitops(
                 "error",
                 stack,
                 "cerebro:sourceSecretKeys",
-                "Cosmo survey feedback must use CEREBRO_SOURCE_COSMO_TOKEN, not the legacy webhook secret",
+                f"Cosmo survey feedback must use {cosmo_token_secret}, not the legacy webhook secret",
             )
         )
 
@@ -750,8 +757,8 @@ def _validate_cosmo_gitops(
             runtime_config = runtime.get("config") or {}
             if isinstance(runtime_config, dict):
                 expected_values = {
-                    "base_url": "env:CEREBRO_SOURCE_COSMO_BASE_URL",
-                    "token": "env:CEREBRO_SOURCE_COSMO_TOKEN",
+                    "base_url": f"env:{COSMO_BASE_URL_SECRET}",
+                    "token": f"env:{cosmo_token_secret}",
                     "tenant_id": "writer",
                     "family": family,
                 }
@@ -763,7 +770,7 @@ def _validate_cosmo_gitops(
                             "export_secret": "env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET",
                             "max_window_hours": "24",
                             "per_page": "100",
-                            "since": "2026-01-01T00:00:00Z",
+                            "since": cosmo_message_since,
                         }
                     )
                 for key, expected in expected_values.items():

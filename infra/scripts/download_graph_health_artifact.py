@@ -27,7 +27,12 @@ def _request_json(url: str, token: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _request_bytes(url: str, token: str) -> bytes:
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _request_artifact_bytes(url: str, token: str) -> bytes:
     request = urllib.request.Request(
         url,
         headers={
@@ -36,7 +41,29 @@ def _request_bytes(url: str, token: str) -> bytes:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    location = ""
+    opener = urllib.request.build_opener(_NoRedirect())
+    try:
+        with opener.open(request, timeout=30) as response:
+            if 300 <= response.status < 400:
+                location = str(response.headers.get("Location") or "")
+            else:
+                return response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in {301, 302, 303, 307, 308}:
+            raise
+        location = str(exc.headers.get("Location") or "")
+        exc.close()
+
+    if not location:
+        raise urllib.error.URLError("GitHub artifact download redirect did not include a location")
+
+    signed_url = urllib.parse.urljoin(url, location)
+    signed_request = urllib.request.Request(
+        signed_url,
+        headers={"Accept": "application/zip"},
+    )
+    with urllib.request.urlopen(signed_request, timeout=30) as response:
         return response.read()
 
 
@@ -134,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         if not matches:
             continue
         try:
-            archive = _request_bytes(str(artifact["archive_download_url"]), token)
+            archive = _request_artifact_bytes(str(artifact["archive_download_url"]), token)
         except urllib.error.URLError as exc:
             print(
                 f"Graph health cache artifact download unavailable: {exc}",

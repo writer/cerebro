@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import urllib.error
+import urllib.request
 from unittest.mock import patch
 from zipfile import ZipFile
 
@@ -69,7 +70,7 @@ class DownloadGraphHealthArtifactTest(unittest.TestCase):
                     side_effect=request_json,
                 ),
                 patch(
-                    "scripts.download_graph_health_artifact._request_bytes",
+                    "scripts.download_graph_health_artifact._request_artifact_bytes",
                     return_value=archive.getvalue(),
                 ) as request_bytes,
             ):
@@ -124,7 +125,7 @@ class DownloadGraphHealthArtifactTest(unittest.TestCase):
                     return_value={"artifacts": [artifact]},
                 ),
                 patch(
-                    "scripts.download_graph_health_artifact._request_bytes",
+                    "scripts.download_graph_health_artifact._request_artifact_bytes",
                     side_effect=error,
                 ),
             ):
@@ -141,6 +142,56 @@ class DownloadGraphHealthArtifactTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertFalse(output.exists())
+
+    def test_artifact_redirect_does_not_forward_github_authorization(self) -> None:
+        redirect_url = "https://signed.example.invalid/archive.zip?signature=value"
+
+        class RedirectingOpener:
+            request: urllib.request.Request | None = None
+
+            def open(self, request: urllib.request.Request, timeout: int):
+                self.request = request
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    302,
+                    "Found",
+                    hdrs={"Location": redirect_url},
+                    fp=io.BytesIO(),
+                )
+
+        class ArchiveResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self) -> bytes:
+                return b"archive"
+
+        opener = RedirectingOpener()
+        signed_request: urllib.request.Request | None = None
+
+        def open_signed(request: urllib.request.Request, timeout: int):
+            nonlocal signed_request
+            signed_request = request
+            return ArchiveResponse()
+
+        with (
+            patch("urllib.request.build_opener", return_value=opener),
+            patch("urllib.request.urlopen", side_effect=open_signed),
+        ):
+            payload = download_graph_health_artifact._request_artifact_bytes(
+                "https://api.github.com/repos/WriterInternal/cerebro/actions/artifacts/42/zip",
+                "github-token",
+            )
+
+        self.assertEqual(payload, b"archive")
+        self.assertIsNotNone(opener.request)
+        self.assertEqual(opener.request.get_header("Authorization"), "Bearer github-token")
+        self.assertIsNotNone(signed_request)
+        self.assertEqual(signed_request.full_url, redirect_url)
+        self.assertIsNone(signed_request.get_header("Authorization"))
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from scripts.validate_stack_config import validate_cross_stack, validate_stack
 TOKEN_SUFFIX = "TOK" + "EN"
 SECRET_SUFFIX = "SEC" + "RET"
 COSMO_TOKEN_KEY = "CEREBRO_SOURCE_COSMO_" + TOKEN_SUFFIX
+COSMO_EXPORT_SECRET_KEY = "CEREBRO_SOURCE_COSMO_EXPORT_" + SECRET_SUFFIX
 COSMO_WEBHOOK_SECRET_KEY = "CEREBRO_SOURCE_COSMO_WEBHOOK_" + SECRET_SUFFIX
 API_TOKEN_KEY = "API_" + TOKEN_SUFFIX
 TOKEN_FIELD = "tok" + "en"
@@ -23,8 +24,7 @@ WEBHOOK_SECRET_FIELD = "webhook_" + "secret"
 
 COSMO_SECRET_KEYS = f"""\
     - CEREBRO_SOURCE_COSMO_BASE_URL
-    - CEREBRO_SOURCE_COSMO_EXPORT_{SECRET_SUFFIX}
-    - {COSMO_TOKEN_KEY}
+    - {COSMO_EXPORT_SECRET_KEY}
 """
 
 COSMO_SCHEDULES = """\
@@ -67,7 +67,7 @@ COSMO_RUNTIMES = f"""\
         family: session
         per_page: "100"
         tenant_id: writer
-        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}
     - id: writer-cosmo-fact
       sourceId: cosmo
       tenantId: writer
@@ -76,7 +76,7 @@ COSMO_RUNTIMES = f"""\
         family: fact
         per_page: "100"
         tenant_id: writer
-        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}
     - id: writer-cosmo-message
       sourceId: cosmo
       tenantId: writer
@@ -84,13 +84,13 @@ COSMO_RUNTIMES = f"""\
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
         client_id: cerebro-runtime
         event_types: "message,completion"
-        export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_{SECRET_SUFFIX}
+        export_secret: env:{COSMO_EXPORT_SECRET_KEY}
         family: message
         max_window_hours: "24"
         per_page: "100"
-        since: "2026-01-01T00:00:00Z"
+        since: "2026-01-01T00:00:00.000Z"
         tenant_id: writer
-        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}
     - id: writer-cosmo-survey-feedback
       sourceId: cosmo
       tenantId: writer
@@ -99,7 +99,7 @@ COSMO_RUNTIMES = f"""\
         family: survey_feedback
         per_page: "100"
         tenant_id: writer
-        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}
 """
 
 BASE_STACK = f"""
@@ -1667,15 +1667,19 @@ class ValidateStackConfigTest(unittest.TestCase):
             )
         )
 
-    def test_cosmo_must_use_dedicated_token_secret(self) -> None:
-        content = BASE_STACK.replace(f"{TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}", f"{TOKEN_FIELD}: env:GITHUB_{TOKEN_SUFFIX}", 1)
+    def test_go_prod_cosmo_must_use_export_service_secret(self) -> None:
+        content = BASE_STACK.replace(f"{TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}", f"{TOKEN_FIELD}: env:GITHUB_{TOKEN_SUFFIX}", 1)
         findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and COSMO_EXPORT_SECRET_KEY in finding.message for finding in findings))
+
+    def test_sec_dev_cosmo_requires_user_token_secret(self) -> None:
+        findings = self._validate(BASE_STACK, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and COSMO_TOKEN_KEY in finding.message for finding in findings))
 
     def test_cosmo_legacy_webhook_secret_is_rejected(self) -> None:
         content = BASE_STACK.replace(
-            f"        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}\n    - id: writer-okta-audit",
-            f"        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}\n        {WEBHOOK_SECRET_FIELD}: env:{COSMO_WEBHOOK_SECRET_KEY}\n    - id: writer-okta-audit",
+            f"        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}\n    - id: writer-okta-audit",
+            f"        {TOKEN_FIELD}: env:{COSMO_EXPORT_SECRET_KEY}\n        {WEBHOOK_SECRET_FIELD}: env:{COSMO_WEBHOOK_SECRET_KEY}\n    - id: writer-okta-audit",
         )
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and WEBHOOK_SECRET_FIELD in finding.path for finding in findings))

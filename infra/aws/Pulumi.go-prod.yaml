@@ -119,7 +119,6 @@ config:
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_EXPORT_SECRET
-    - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_PANOPTICON_BASE_URL
     - CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST
     - CEREBRO_SOURCE_PANOPTICON_TOKEN
@@ -230,7 +229,7 @@ config:
         - vulnerability
     - sourceId: cosmo
       runtimePrefix: writer-cosmo
-      tokenKey: CEREBRO_SOURCE_COSMO_TOKEN
+      tokenKey: CEREBRO_SOURCE_COSMO_EXPORT_SECRET
       commonConfig:
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
         tenant_id: writer
@@ -258,7 +257,7 @@ config:
             export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET
             max_window_hours: "24"
             per_page: "100"
-            since: "2026-01-01T00:00:00Z"
+            since: "2026-01-01T00:00:00.000Z"
         - name: survey_feedback
           schedule:
             name: cosmo-survey-feedback
