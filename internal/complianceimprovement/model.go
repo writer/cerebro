@@ -286,3 +286,12 @@ type OpenDraftPullRequestRequest struct {
 type TeamUpdateOutbox interface {
 	EnqueueTeamUpdate(context.Context, string, string, TeamUpdate) (TeamUpdateReceipt, error)
 }
+
+type TeamUpdateDeliveryStore interface {
+	TeamUpdateOutbox
+	MarkTeamUpdateDelivered(context.Context, string, string, time.Time) error
+}
+
+type TeamUpdateSink interface {
+	DeliverTeamUpdate(context.Context, string, TeamUpdate) error
+}

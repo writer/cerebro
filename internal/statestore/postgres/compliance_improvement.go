@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/complianceimprovement"
 )
@@ -16,8 +17,9 @@ import (
 const maxComplianceImprovementJSONBytes = 1024 * 1024
 
 var (
-	_ complianceimprovement.Store            = (*Store)(nil)
-	_ complianceimprovement.TeamUpdateOutbox = (*Store)(nil)
+	_ complianceimprovement.Store                   = (*Store)(nil)
+	_ complianceimprovement.TeamUpdateOutbox        = (*Store)(nil)
+	_ complianceimprovement.TeamUpdateDeliveryStore = (*Store)(nil)
 )
 
 func (s *Store) CreateComplianceImprovement(ctx context.Context, request complianceimprovement.CreateRecordRequest) (complianceimprovement.ImprovementRecord, bool, error) {
@@ -181,6 +183,32 @@ RETURNING outbox_id, proposal_digest, created_at`,
 		return complianceimprovement.TeamUpdateReceipt{}, fmt.Errorf("%w: team update idempotency key already binds another proposal", complianceimprovement.ErrConflict)
 	}
 	return receipt, nil
+}
+
+func (s *Store) MarkTeamUpdateDelivered(ctx context.Context, tenantID, outboxID string, deliveredAt time.Time) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureComplianceImprovementTables(ctx); err != nil {
+		return err
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	outboxID = strings.TrimSpace(outboxID)
+	if tenantID == "" || outboxID == "" || deliveredAt.IsZero() {
+		return fmt.Errorf("%w: tenant, outbox ID, and delivery time are required", complianceimprovement.ErrInvalidRequest)
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE compliance_improvement_team_outbox
+SET delivered_at = COALESCE(delivered_at, $1)
+WHERE tenant_id = $2 AND outbox_id = $3`, deliveredAt, tenantID, outboxID)
+	if err != nil {
+		return fmt.Errorf("mark compliance improvement team update delivered: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil || rows != 1 {
+		return complianceimprovement.ErrNotFound
+	}
+	return nil
 }
 
 type improvementQueryer interface {
