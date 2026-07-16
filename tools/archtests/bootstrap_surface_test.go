@@ -138,7 +138,10 @@ import (
 // revisions, digest verification, and append semantics stay behind
 // internal/policycandidate; transport mapping stays in
 // internal/sourcehttp/policyevaluationdatasets.
-const bootstrapProductionGoLineBudget = 28947
+// Dedicated evaluation-dataset read, proposal, and approval scope constants
+// keep future agent credentials separate from candidate execution. Bootstrap
+// owns only their route-policy and OAuth discovery catalog entries.
+const bootstrapProductionGoLineBudget = 28954
 
 type bootstrapFileLineCount struct {
 	path  string
