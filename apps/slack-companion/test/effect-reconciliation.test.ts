@@ -63,6 +63,29 @@ describe("ExternalEffectReconciler", () => {
     );
   });
 
+  test("rejects missing approval before persistence and preserves the idempotency key", async () => {
+    const fixture = makeFixture();
+    const session = await fixture.session(1);
+    const input = effectDraft();
+    const invalid = { ...input, approval_ref: undefined };
+
+    await assert.rejects(
+      fixture.reconciler.execute(session, effectJob(session, invalid), invalid),
+      /required effect approval is missing/,
+    );
+    assert.equal(
+      await fixture.store.getEffectIntent(session.run.run_id, input.idempotency_key),
+      undefined,
+    );
+
+    const result = await fixture.reconciler.execute(
+      session,
+      effectJob(session, input),
+      input,
+    );
+    assert.equal(result.status, "applied");
+  });
+
   test("rejects a changed request under the same durable effect identity", async () => {
     const fixture = makeFixture();
     const session = await fixture.session(1);

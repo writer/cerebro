@@ -316,6 +316,9 @@ function assertCandidateVersion(
 }
 
 function validateDraft(draft: ExternalEffectDraft): void {
+  if (draft.approval_required && draft.approval_ref === undefined) {
+    throw new ExecutionInvariantError("required effect approval is missing");
+  }
   for (const [field, value] of [
     ["candidate_version", draft.candidate_version],
     ["effect_id", draft.effect_id],
