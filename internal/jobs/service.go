@@ -47,6 +47,7 @@ const (
 	KindProactiveFindingTriage    = "proactive_finding_triage"
 	KindGRCUpload                 = "grc_upload"
 	KindComplianceAssessment      = "compliance_assessment"
+	KindPolicyCandidateExperiment = "policy_candidate_experiment"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)

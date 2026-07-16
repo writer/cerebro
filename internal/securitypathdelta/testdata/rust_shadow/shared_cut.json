@@ -1,0 +1,31 @@
+{
+  "operation": "rank_candidate_cuts",
+  "paths": [
+    {
+      "id": "path-a",
+      "route_id": "route-a",
+      "proof_edges": [
+        {
+          "id": "edge-shared",
+          "from": {"urn": "node-a"},
+          "relation": "can_reach",
+          "to": {"urn": "node-b"},
+          "direction": "forward"
+        }
+      ]
+    },
+    {
+      "id": "path-b",
+      "route_id": "route-b",
+      "proof_edges": [
+        {
+          "id": "edge-shared",
+          "from": {"urn": "node-a"},
+          "relation": "can_reach",
+          "to": {"urn": "node-b"},
+          "direction": "forward"
+        }
+      ]
+    }
+  ]
+}

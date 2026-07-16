@@ -4,6 +4,8 @@
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -14,6 +16,8 @@ RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
 RUST_VALIDATOR_FUZZ_DIR := internal/graphagent/staticvalidator/fuzz
 RUST_VALIDATOR_FUZZ_CORPUS ?= tmp/rust-validator-fuzz-corpus
+RUST_SECURITY_PATH_FUZZ_DIR := crates/security-path-kernel/fuzz
+RUST_SECURITY_PATH_FUZZ_CORPUS ?= tmp/rust-security-path-fuzz-corpus
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -476,6 +480,15 @@ rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record th
 	@mkdir -p tmp
 	@go test ./internal/wasmhost ./internal/graphagent ./internal/sourcecoverage ./internal/mitre ./internal/sourceprojection -run '^$$' -bench '^(BenchmarkRuntimeRun|BenchmarkStaticValidator|BenchmarkCoverageEvaluator|BenchmarkContextEvaluator|BenchmarkPanopticonResourceExtractor)$$' -benchtime=20x -count=1 > tmp/rust-wasm-benchmark.txt 2>&1; status=$$?; cat tmp/rust-wasm-benchmark.txt; exit $$status
 
+rust-security-path-properties: ## Run deterministic security path kernel properties.
+	$(CARGO) test --locked -p cerebro-security-path-kernel --test properties
+
+rust-security-path-fuzz-smoke: ## Run a bounded security path kernel fuzz session (requires cargo-fuzz).
+	rm -rf "$(RUST_SECURITY_PATH_FUZZ_CORPUS)"
+	mkdir -p "$(RUST_SECURITY_PATH_FUZZ_CORPUS)"
+	cp $(RUST_SECURITY_PATH_FUZZ_DIR)/corpus/evaluate/* "$(RUST_SECURITY_PATH_FUZZ_CORPUS)/"
+	$(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run evaluate --fuzz-dir $(RUST_SECURITY_PATH_FUZZ_DIR) "$(RUST_SECURITY_PATH_FUZZ_CORPUS)" -- -runs=$(RUST_FUZZ_RUNS) -max_len=$(RUST_FUZZ_MAX_LEN)
+
 graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
@@ -502,6 +515,12 @@ mitre-context-evaluator-generate: ## Rebuild the embedded MITRE context evaluato
 
 mitre-context-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded MITRE context evaluator is current.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check mitre-context-evaluator
+
+security-path-evaluator-generate: ## Rebuild the embedded security path evaluator.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate security-path-evaluator
+
+security-path-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded security path evaluator is current.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check security-path-evaluator
 
 rust-wasm-manifest-generate: ## Regenerate embedded Wasm artifact evidence and size budgets.
 	go run ./tools/wasmartifactmanifest -write
