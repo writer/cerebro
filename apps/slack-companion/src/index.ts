@@ -6,6 +6,10 @@ export * from "./delivery/ports.js";
 export * from "./distributed/contracts.js";
 export * from "./distributed/ports.js";
 export * from "./distributed/validation.js";
+export * from "./distributed/workcells/contracts.js";
+export * from "./distributed/workcells/coordinator.js";
+export * from "./distributed/workcells/ports.js";
+export * from "./distributed/workcells/reference-store.js";
 export {
   ExecutionCoordinator,
   ExecutionInvariantError,
