@@ -87,6 +87,12 @@ func normalizePacket(packet Packet) Packet {
 	for index := range packet.Claim.VerifierResults {
 		packet.Claim.VerifierResults[index].Status = strings.ToLower(packet.Claim.VerifierResults[index].Status)
 	}
+	packet.Inputs.FindingIDs = normalizeStrings(packet.Inputs.FindingIDs)
+	packet.Inputs.ClaimIDs = normalizeStrings(packet.Inputs.ClaimIDs)
+	packet.Inputs.EvidenceURNs = normalizeStrings(packet.Inputs.EvidenceURNs)
+	packet.Inputs.AuditPacketIDs = normalizeStrings(packet.Inputs.AuditPacketIDs)
+	packet.Inputs.RequiredSources = normalizeStrings(packet.Inputs.RequiredSources)
+	packet.Inputs.RequestedAction = strings.TrimSpace(packet.Inputs.RequestedAction)
 	packet.Decision.State = strings.ToLower(strings.TrimSpace(packet.Decision.State))
 	packet.Decision.Rationale = strings.TrimSpace(packet.Decision.Rationale)
 	packet.Decision.Reasons = normalizeStrings(packet.Decision.Reasons)

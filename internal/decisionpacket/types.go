@@ -86,6 +86,7 @@ type Packet struct {
 	GeneratedAt    time.Time                             `json:"generated_at"`
 	Workflow       Workflow                              `json:"workflow"`
 	Scope          Scope                                 `json:"scope"`
+	Inputs         Inputs                                `json:"inputs"`
 	Guardrails     agentplatform.AgentDecisionGuardrails `json:"guardrails"`
 	Claim          agentplatform.ClaimVerification       `json:"claim"`
 	Decision       Decision                              `json:"decision"`
@@ -100,6 +101,17 @@ type Packet struct {
 	Actions        []ActionProposal                      `json:"actions"`
 	Provenance     Provenance                            `json:"provenance"`
 	Limits         ResultLimits                          `json:"limits"`
+}
+
+// Inputs preserves the normalized resolver references required to re-evaluate
+// a receipt. Identity and derived conclusions remain outside caller control.
+type Inputs struct {
+	FindingIDs      []string `json:"finding_ids"`
+	ClaimIDs        []string `json:"claim_ids"`
+	EvidenceURNs    []string `json:"evidence_urns"`
+	AuditPacketIDs  []string `json:"audit_packet_ids"`
+	RequiredSources []string `json:"required_sources"`
+	RequestedAction string   `json:"requested_action,omitempty"`
 }
 
 type Workflow struct {

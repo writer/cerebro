@@ -39,6 +39,10 @@ type AuditPacketReader interface {
 	GetGRCAuditPacket(context.Context, string) (*ports.GRCAuditPacketReceipt, error)
 }
 
+type EvidenceVersionReader interface {
+	GetEvidenceVersion(context.Context, string, string) (ports.EvidenceVersion, error)
+}
+
 type GraphReader interface {
 	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
 }
@@ -49,6 +53,7 @@ type PortsResolver struct {
 	Findings        FindingReader
 	FindingEvidence FindingEvidenceReader
 	Claims          ClaimReader
+	Evidence        EvidenceVersionReader
 	AuditPackets    AuditPacketReader
 	Graph           GraphReader
 	Coverage        CoverageReader
@@ -68,6 +73,9 @@ func (r PortsResolver) Resolve(ctx context.Context, tenant AuthorizedTenant, req
 	if err := r.addClaims(ctx, &result, tenant.ID, request.ClaimIDs); err != nil {
 		return ResolvedFacts{}, err
 	}
+	if err := r.addEvidenceVersions(ctx, &result, tenant.ID, request.EvidenceURNs); err != nil {
+		return ResolvedFacts{}, err
+	}
 	if err := r.addAuditPackets(ctx, &result, tenant.ID, request.AuditPacketIDs); err != nil {
 		return ResolvedFacts{}, err
 	}
@@ -77,6 +85,37 @@ func (r PortsResolver) Resolve(ctx context.Context, tenant AuthorizedTenant, req
 		return ResolvedFacts{}, err
 	}
 	return result, nil
+}
+
+func (r PortsResolver) addEvidenceVersions(ctx context.Context, result *ResolvedFacts, tenantID string, urns []string) error {
+	if len(urns) == 0 {
+		return nil
+	}
+	if r.Evidence == nil {
+		return fmt.Errorf("%w: evidence ledger", ErrResolverUnavailable)
+	}
+	for _, urn := range urns {
+		if !tenantScopedURN(tenantID, urn) {
+			return ErrProtectedReference
+		}
+		versionID := urnLastComponent(urn)
+		version, err := r.Evidence.GetEvidenceVersion(ctx, tenantID, versionID)
+		if err != nil || version.TenantID != tenantID || version.ID != versionID {
+			return ErrProtectedReference
+		}
+		result.Evidence = append(result.Evidence, EvidenceReference{
+			ID: version.ID, URN: urn, Kind: "evidence_version",
+			SourceID: version.Provenance.SourceRuntimeID, ObservedAt: version.Provenance.CollectedAt,
+			ValidFrom: version.ValidFrom, ValidTo: version.ValidUntil, Digest: version.Content.ContentDigest,
+		})
+		result.SourceIDs = append(result.SourceIDs, version.Provenance.SourceRuntimeID)
+		for _, subject := range version.Subjects {
+			if strings.HasPrefix(subject.ID, "urn:cerebro:") {
+				result.Affected = append(result.Affected, SubjectReference{URN: subject.ID, Kind: subject.Type})
+			}
+		}
+	}
+	return nil
 }
 
 func (r PortsResolver) resolveFindings(ctx context.Context, tenantID string, ids []string) ([]*ports.FindingRecord, error) {
@@ -327,6 +366,14 @@ func tenantFromURN(urn string) string {
 		return ""
 	}
 	return parts[2]
+}
+
+func urnLastComponent(urn string) string {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[len(parts)-1])
 }
 
 func protobufTime(value interface {

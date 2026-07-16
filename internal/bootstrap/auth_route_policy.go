@@ -39,6 +39,8 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/claims/verify", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/graph/reason", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/platform/decision-packets", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Prefix: "/api/v1/platform/decision-packets/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/explain", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/triage", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/api/v1/agent/tasks/findings/", Suffix: "/audit-packet", Scope: scopeCosmoSecurityRead, Static: true},
