@@ -54,7 +54,7 @@ updates:
           - "patch"
 
   - package-ecosystem: "npm"
-    directory: "/sdk/typescript"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -62,9 +62,8 @@ updates:
     labels:
       - "dependencies"
       - "typescript"
-      - "sdk"
     groups:
-      typescript-sdk:
+      npm-workspaces:
         patterns:
           - "*"
 

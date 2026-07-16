@@ -5,9 +5,9 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Cerebro is Writer's public Go runtime for turning security, identity, cloud, SaaS, workflow, policy, and compliance data into evidence-backed context that coding agents and automation can query. It is a source integration, evidence, findings, controls, and graph runtime exposed through a CLI, JSON HTTP API, Connect RPC, MCP, and SDK helpers.
+Cerebro is Writer's public monorepo for turning security, identity, cloud, SaaS, workflow, policy, and compliance data into evidence-backed context that people, coding agents, and automation can use. The Go runtime exposes source integration, evidence, findings, controls, and graph capabilities through a CLI, JSON HTTP API, Connect RPC, MCP, and SDK helpers. Independently built clients live under `apps/` and consume those typed contracts.
 
-Cerebro is not an end-user web UI, SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. It is the runtime and contract layer that lets agents ask grounded questions such as:
+Cerebro is not a SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. Its runtime and contract layer lets clients ask grounded questions such as:
 
 - What evidence exists for this repo, asset, identity, control, or workflow?
 - Which policies, controls, findings, approvals, and owners apply?
@@ -91,6 +91,7 @@ Plain Compose initializes the local Postgres volume with the compose-file passwo
 
 ## What Is In This Repo
 
+- `apps/`: independently built browser and companion clients that consume public contracts.
 - `cmd/cerebro`: the main Go binary. It defaults to `serve` and also exposes source, runtime, graph, finding, closeout, deploy, and orchestration commands.
 - `internal/bootstrap`: HTTP, Connect RPC, MCP, auth, rate-limit, and route wiring for the runtime.
 - `internal/sourcecdk`, `internal/sourceregistry`, and `sources/`: the source contract and built-in source catalog for cloud, SaaS, identity, endpoint, vulnerability, workflow, and compliance signals.
