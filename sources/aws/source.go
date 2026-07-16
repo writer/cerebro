@@ -1044,6 +1044,10 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 
+func (s *Source) SupportsAuthoritativeProjectionReconciliation(config sourcecdk.Config) bool {
+	return sourcecdk.IsAuthoritativeProjectionFamily(config, defaultFamily, familyCloudTrail)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	families := []sourcecdk.Family[settings]{
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.AccessKeyMetadata]{

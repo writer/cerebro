@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/runtimeorchestration"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
@@ -315,60 +316,42 @@ func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *pl
 	return protoToMap(response), nil, nil
 }
 
-func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (result map[string]any, refs map[string]string, runErr error) {
 	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	syncResponse, err := a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        runtimeID,
-		PageLimit: uint32Payload(job.Payload, "page_limit"),
-	}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
+	service, err := a.runtimeOrchestrationService()
 	if err != nil {
 		return nil, nil, err
 	}
-	graphResult, err := a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID: runtimeID,
-		PageLimit: uint32Payload(job.Payload, "graph_page_limit"),
-		Trigger:   "platform_orchestration_job",
+	orchestration, runErr := service.Orchestrate(ctx, a.findingService(), runtimeorchestration.OrchestrationRequest{
+		RuntimeID: runtimeID, SourcePageLimit: uint32Payload(job.Payload, "page_limit"), GraphPageLimit: uint32Payload(job.Payload, "graph_page_limit"),
+		RuleIDs: stringSlicePayload(job.Payload, "rule_ids"), EventLimit: uint32Payload(job.Payload, "event_limit"),
+		CaptureSecurityPathDelta: boolPayload(job.Payload, "capture_security_path_delta"), SecurityPathAccountID: stringPayload(job.Payload, "security_path_account_id", ""),
+		ObservationID: strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
-	if err != nil {
-		return nil, nil, err
-	}
-	ruleResult, ruleErr := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
-		RuntimeID:  runtimeID,
-		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
-	})
-	graphPayload, err := json.Marshal(graphResult)
-	if err != nil {
-		return nil, nil, err
-	}
-	graphOut := map[string]any{}
-	_ = json.Unmarshal(graphPayload, &graphOut)
-	rulePayload, err := json.Marshal(ruleResult)
-	if err != nil {
-		return nil, nil, err
-	}
-	ruleOut := map[string]any{}
-	_ = json.Unmarshal(rulePayload, &ruleOut)
-	result := map[string]any{
-		"sync":          protoToMap(syncResponse),
-		"graph_ingest":  graphOut,
-		"finding_rules": ruleOut,
-	}
-	refs := map[string]string{}
-	if graphResult.Run.ID != "" {
-		refs["graph_ingest_run_id"] = graphResult.Run.ID
+	result, refs, mapErr := orchestration.JobPayload()
+	if mapErr != nil {
+		return nil, nil, mapErr
 	}
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
-	if ruleResult != nil {
+	if orchestration.FindingRules != nil {
 		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	}
-	if ruleErr != nil {
-		return result, refs, ruleErr
+	return result, refs, runErr
+}
+
+func (a *App) runtimeOrchestrationService() (*runtimeorchestration.SecurityPathService, error) {
+	runtimeStore, runtimeOK := a.deps.StateStore.(ports.SourceRuntimeStore)
+	checkpoints, checkpointOK := a.deps.GraphStore.(runtimeorchestration.CheckpointStore)
+	if !runtimeOK || isNilInterface(runtimeStore) || !checkpointOK || isNilInterface(checkpoints) {
+		return nil, fmt.Errorf("%w: runtime orchestration storage is unavailable", platformjobs.ErrRuntimeUnavailable)
 	}
-	return result, refs, nil
+	return runtimeorchestration.NewSecurityPathService(runtimeorchestration.SecurityPathDependencies{
+		GraphQueries: graphQueryStore(a.deps.GraphStore), GraphIngest: a.graphIngestService(), Checkpoints: checkpoints,
+		RuntimeStore: runtimeStore, LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore), RuntimeSync: a.runtimeService(),
+	}), nil
 }
 
 func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -605,6 +588,22 @@ func uint32Payload(payload map[string]any, key string) uint32 {
 		return uint32(parsed)
 	}
 	return 0
+}
+
+func boolPayload(payload map[string]any, key string) bool {
+	value, ok := payload[key]
+	if !ok {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		return err == nil && parsed
+	default:
+		return false
+	}
 }
 
 func stringSlicePayload(payload map[string]any, key string) []string {
