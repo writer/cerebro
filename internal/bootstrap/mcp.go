@@ -638,6 +638,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpAgentClaimVerify(r, args)
 	case "cerebro.agent.work.contract":
 		return app.mcpAgentWorkContract(r, args)
+	case "cerebro.agent.missions.contract":
+		return app.mcpAgentMissionContract(r, args)
 	case "cerebro.graph.reason":
 		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
@@ -1938,6 +1940,18 @@ func (app *App) mcpAgentWorkContract(_ *http.Request, _ map[string]any) (any, er
 	return value, nil
 }
 
+func (app *App) mcpAgentMissionContract(_ *http.Request, _ map[string]any) (any, error) {
+	contract := agentplatform.SecurityControlPlaneSnapshot().MissionOperating
+	value, err := jsonValue(contract)
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, len(contract.DurableRecords), nil)), nil
+	}
+	return value, nil
+}
+
 func mcpClaimVerificationRequest(args map[string]any) (agentplatform.ClaimVerificationRequest, error) {
 	request := agentplatform.ClaimVerificationRequest{
 		TenantID:               mcpStringArg(args, "tenant_id"),
@@ -2713,6 +2727,14 @@ func mcpTools() []mcpTool {
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"id": map[string]any{"type": "string"}, "state_model": map[string]any{"type": "array"}, "required_artifacts": map[string]any{"type": "array"}, "event_vocabulary": map[string]any{"type": "array"}, "close_conditions": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("Agent Work Contract"),
+		},
+		{
+			Name:         "cerebro.agent.missions.contract",
+			Title:        "Mission Operating Contract",
+			Description:  "Return the durable mandate, mission, belief, plan, commitment, wake, interruption, and verified-closure contract used across agent runs.",
+			InputSchema:  mcpObjectSchema(nil, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"id": map[string]any{"type": "string"}, "schema_version": map[string]any{"type": "string"}, "durable_records": map[string]any{"type": "array"}, "execution_depths": map[string]any{"type": "array"}, "supervisor_directives": map[string]any{"type": "array"}, "wake_conditions": map[string]any{"type": "array"}, "interruption_triggers": map[string]any{"type": "array"}, "close_conditions": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("Mission Operating Contract"),
 		},
 		{
 			Name:        "cerebro.graph.reason",

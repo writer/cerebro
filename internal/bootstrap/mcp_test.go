@@ -271,6 +271,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.agent.preflight",
 		"cerebro.agent.claims.verify",
 		"cerebro.agent.work.contract",
+		"cerebro.agent.missions.contract",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
@@ -571,6 +572,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.agent.claims.verify":             {Markers: []string{"agent-claim-verification"}},
 	"cerebro.agent.work.contract":             {Markers: []string{"agent-work-ledger"}},
+	"cerebro.agent.missions.contract":         {Markers: []string{"/api/v1/agent-platform/missions/contract"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
 	"cerebro.assessments.plan.create":         {Markers: []string{"POST /grc/assessment-plans"}},
@@ -2661,8 +2663,8 @@ func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
 		t.Fatalf("agent.control_plane error = %#v", controlPlaneResp["error"])
 	}
 	controlPlane := controlPlaneResp["result"].(map[string]any)["structuredContent"].(map[string]any)
-	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil {
-		t.Fatalf("control plane missing claim/work contracts: %#v", controlPlane)
+	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil || controlPlane["mission_operating"] == nil {
+		t.Fatalf("control plane missing claim/work/mission contracts: %#v", controlPlane)
 	}
 
 	workResp, _ := postMCP(t, server, "", map[string]any{
@@ -2680,6 +2682,23 @@ func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
 	work := workResp["result"].(map[string]any)["structuredContent"].(map[string]any)
 	if work["id"] != "agent-work-ledger" || len(work["state_model"].([]any)) == 0 {
 		t.Fatalf("work contract = %#v", work)
+	}
+
+	missionResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.missions.contract",
+			"arguments": map[string]any{},
+		},
+	})
+	if missionResp["error"] != nil {
+		t.Fatalf("agent.missions.contract error = %#v", missionResp["error"])
+	}
+	mission := missionResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if mission["id"] != "native-mission-operating-contract" || len(mission["durable_records"].([]any)) != 6 {
+		t.Fatalf("mission contract = %#v", mission)
 	}
 }
 

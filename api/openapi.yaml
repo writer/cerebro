@@ -380,6 +380,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/agent-platform/missions/contract:
+    get:
+      operationId: getAgentPlatformMissionOperatingContract
+      summary: Get mission operating contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Durable mandate, mission, belief, plan revision, commitment, wake, interruption, and verified-closure contract.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
   /api/v1/event-subscriptions/contract:
     get:
       operationId: getEventSubscriptionContract
@@ -8915,6 +8928,9 @@ components:
       required:
         - version
         - evidence_packet
+        - claim_verification
+        - agent_work
+        - mission_operating
         - agent_profiles
         - verifier_layer
         - action_ladder
@@ -8929,6 +8945,14 @@ components:
         evidence_packet:
           type: object
           additionalProperties: true
+        claim_verification:
+          type: object
+          additionalProperties: true
+        agent_work:
+          type: object
+          additionalProperties: true
+        mission_operating:
+          $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
         agent_profiles:
           type: array
           items:
@@ -8963,6 +8987,62 @@ components:
           items:
             type: object
             additionalProperties: true
+    AgentPlatformMissionOperatingContract:
+      type: object
+      required:
+        - id
+        - purpose
+        - schema_version
+        - durable_records
+        - execution_depths
+        - supervisor_directives
+        - wake_conditions
+        - interruption_triggers
+        - close_conditions
+        - first_mandate
+      properties:
+        id:
+          type: string
+        purpose:
+          type: string
+        schema_version:
+          type: string
+        durable_records:
+          type: array
+          items:
+            type: object
+            required: [id, purpose, required]
+            properties:
+              id:
+                type: string
+              purpose:
+                type: string
+              required:
+                type: array
+                items:
+                  type: string
+        execution_depths:
+          type: array
+          items:
+            type: string
+        supervisor_directives:
+          type: array
+          items:
+            type: string
+        wake_conditions:
+          type: array
+          items:
+            type: string
+        interruption_triggers:
+          type: array
+          items:
+            type: string
+        close_conditions:
+          type: array
+          items:
+            type: string
+        first_mandate:
+          type: string
     AgentPlatformEvidencePacketRequest:
       type: object
       properties:
