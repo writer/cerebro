@@ -132,6 +132,34 @@ definition-driven coverage, failure isolation, and live differential evidence.
 If it cannot, Cerebro keeps provider transport in Go and expands only the
 credential-free record kernel.
 
+## Current native event-admission slice
+
+Source sync now uses a smaller native Rust process before the broader provider
+runtime described by this ADR exists. After Go materializes a source page, the
+native event-admission worker validates contracts, quarantines bounded missing
+fields, rejects conflicting event identities, deduplicates the page, and
+returns deterministic receipts before append.
+
+This worker has no provider, network, credential, append-log, database, or
+projection capability. Go starts a bounded pool of release-pinned child
+processes and communicates over parent-owned stdin and stdout pipes with
+length-delimited CBOR frames. A canceled or malformed exchange terminates that
+worker; the next page starts a clean process. Admission fails closed when the
+worker cannot return a valid result. It does not fall back to Go or Wasm after
+an execution failure.
+
+The embedded Wasm build remains the differential oracle. The benchmark corpus
+runs the same Rust implementation through JSON/Wasm, JSON/native, and
+CBOR/native transports and compares the complete outcomes. This preserves the
+existing JSON contract for the embedded artifact while removing JSON and fresh
+Wasm instantiation from the production source-sync path.
+
+The pipe protocol is deliberately narrower than the authenticated local RPC
+planned for provider execution. The child inherits no listening socket and can
+only exchange framed admission requests with its parent. Moving provider HTTP,
+credentials, or runtime capabilities into Rust still requires the later
+versioned protobuf and authenticated Unix-socket boundary below.
+
 ## Why Rust, and where Rust is not the reason
 
 The decision is narrower than “Rust is safer”:
@@ -159,9 +187,8 @@ stored SourceRuntime
   -> resolve secret-backed config
   -> Read or ReadWithCheckpoint
   -> materialize tenant/runtime fields
-  -> validate the EventEnvelope
-  -> validate catalog event contracts
-  -> quarantine contract-invalid records
+  -> admit the page through the native Rust worker
+  -> validate the returned decisions and deterministic receipt
   -> begin page-attempt ledger entry
   -> append the accepted event page to JetStream
   -> project each event into current state and graph
@@ -201,6 +228,11 @@ distributed worker requires a later decision covering workload identity, the
 credential-broker location, the authenticated secret-byte channel, and failure
 semantics before Connect or gRPC transport is enabled. Both modes use the same
 versioned protobuf contract and require a short-lived runtime capability.
+
+The current capability-free admission child described above is not that
+provider worker: it uses parent-owned pipes because it has no independent
+caller, credential channel, network capability, or long-lived runtime
+identity.
 
 ## Ownership boundaries
 

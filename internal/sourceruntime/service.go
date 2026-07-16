@@ -75,6 +75,7 @@ type Service struct {
 	appendLog       ports.AppendLog
 	projector       ports.SourceProjector
 	resolver        sourceconfig.Resolver
+	eventAdmitter   eventadmission.Admitter
 }
 
 type connectorDefinitionProjectorRegistrar interface {
@@ -93,7 +94,36 @@ type PutRuntimesResponse struct {
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
-	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+	return &Service{
+		registry:      registry,
+		store:         store,
+		appendLog:     appendLog,
+		projector:     projector,
+		eventAdmitter: eventadmission.NewWasmAdmitter(),
+	}
+}
+
+// WithEventAdmitter configures the isolated event admission engine.
+func (s *Service) WithEventAdmitter(admitter eventadmission.Admitter) *Service {
+	if s == nil {
+		return nil
+	}
+	if admitter != nil {
+		s.eventAdmitter = admitter
+	}
+	return s
+}
+
+// Close releases an owned event admission engine when it has process resources.
+func (s *Service) Close() error {
+	if s == nil {
+		return nil
+	}
+	closer, ok := s.eventAdmitter.(interface{ Close() error })
+	if !ok {
+		return nil
+	}
+	return closer.Close()
 }
 
 // WithConfigResolver configures runtime source config secret resolution.
@@ -402,7 +432,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 			materializedEvents = append(materializedEvents, syncedEvent)
 		}
-		admission, admissionErr := eventadmission.Admit(ctx, materializedEvents, eventContracts)
+		admission, admissionErr := s.eventAdmitter.Admit(ctx, materializedEvents, eventContracts)
 		if admissionErr != nil {
 			if errors.Is(admissionErr, eventadmission.ErrBatchRejected) {
 				return nil, fmt.Errorf("validate source event batch: %w: %w", sourcecdk.ErrInvalidEventEnvelope, admissionErr)

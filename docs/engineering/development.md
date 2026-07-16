@@ -134,6 +134,7 @@ Run these lanes directly with:
 ```bash
 make rust-coverage
 make rust-benchmark-smoke
+make rust-event-admission-benchmark
 ```
 
 The benchmark smoke lane covers the static validator, source coverage, MITRE,
@@ -141,6 +142,12 @@ Panopticon extraction, and the shared Go host invocation path. It writes the
 complete Go benchmark output to `tmp/rust-wasm-benchmark.txt`. CI checks that
 the harnesses compile and finish; latency numbers remain evidence for
 comparison and are not pass/fail thresholds.
+
+`make build` places `cerebro` and `cerebro-event-admission-worker` together in
+`bin/`. Source sync resolves the worker beside the running `cerebro` binary by
+default. `make rust-event-admission-benchmark` builds the release worker,
+checks native CBOR and JSON outcomes against the embedded Wasm corpus, and
+records boundary-specific Go and Rust results under `tmp/`.
 
 Focused validation:
 

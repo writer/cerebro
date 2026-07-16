@@ -3,6 +3,7 @@ package sourceruntime
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -2279,6 +2280,57 @@ func TestSyncRuntimeAdmissionQuarantineNeverReachesBatchAppend(t *testing.T) {
 	}
 	if got := store.runtimes["writer-admission-quarantine"].GetConfig()[runtimeRecordsRejectedConfigKey]; got != "1" {
 		t.Fatalf("records rejected = %q, want 1", got)
+	}
+}
+
+func TestSyncRuntimeNativeAdmissionCommitsOnlyAcceptedEvents(t *testing.T) {
+	workerPath := os.Getenv(eventadmission.NativeWorkerPathEnv)
+	if workerPath == "" {
+		t.Skipf("%s is not configured", eventadmission.NativeWorkerPathEnv)
+	}
+	admitter, err := eventadmission.NewNativeAdmitter(context.Background(), workerPath, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := admitter.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+
+	accepted := runtimeTestEvent("event-1", "native_admission", "native_admission.event")
+	quarantined := runtimeTestEvent("event-2", "native_admission", "native_admission.event")
+	quarantined.Payload = []byte(`{}`)
+	source := admissionTestSource{
+		id:     "native_admission",
+		events: []*cerebrov1.EventEnvelope{accepted, quarantined},
+		contracts: []sourcecdk.EventContract{{
+			Kind:                  "native_admission.event",
+			SchemaRef:             "native_admission/event/v1",
+			RequiredAttributes:    []string{"event_type"},
+			RequiredPayloadFields: []string{"fixture"},
+		}},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-native-admission": {Id: "writer-native-admission", SourceId: source.id, TenantId: "writer"},
+	}}
+	log := &batchAppendLog{}
+	service := New(registry, store, log, nil).WithEventAdmitter(admitter)
+
+	response, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-native-admission"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	appendedID := ""
+	if len(log.events) == 1 {
+		appendedID = log.events[0].GetId()
+	}
+	if response.GetEventsAppended() != 1 || log.batchCalls != 1 || len(log.events) != 1 || appendedID != "event-1" {
+		t.Fatalf("native sync appended/batches/event_count/event_id = %d/%d/%d/%q, want 1/1/1/event-1", response.GetEventsAppended(), log.batchCalls, len(log.events), appendedID)
 	}
 }
 

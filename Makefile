@@ -11,6 +11,7 @@ CARGO ?= cargo
 CARGO_DENY ?= cargo deny
 ADMISSION_BENCH_SAMPLE_MS ?= 500
 ADMISSION_BENCH_SAMPLES ?= 5
+EVENT_ADMISSION_WORKER := target/release/cerebro-event-admission-worker
 RUST_FUZZ_TOOLCHAIN ?= nightly-2026-06-09
 RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
@@ -158,7 +159,10 @@ help: ## Show this help message.
 
 # ==== Build ====
 ##@ Build
-build: ## Build the Cerebro CLI binary.
+build: ## Build the Cerebro CLI and native source event admission worker.
+	$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+	mkdir -p bin
+	cp $(EVENT_ADMISSION_WORKER) bin/cerebro-event-admission-worker
 	go build -o bin/cerebro ./cmd/cerebro
 
 serve: build ## Build and run the local HTTP server.
@@ -465,7 +469,9 @@ rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record th
 
 rust-event-admission-benchmark: ## Measure admission cost by boundary and representative workload.
 	@mkdir -p tmp
-	@go test ./internal/sourceruntime/eventadmission -run '^TestAdmissionBenchmarkGoReferenceMatchesRustCorpus$$' -bench '^BenchmarkAdmission(EndToEnd|HostRequestEncoding|WasmEvaluation|HostResponseDecoding|EquivalentGoJSON|WasmIsolationFloor|ColdWasmEvaluation)$$' -benchmem -benchtime=$(ADMISSION_BENCH_SAMPLE_MS)ms -count=$(ADMISSION_BENCH_SAMPLES) > tmp/rust-event-admission-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-benchmark.txt; test $$status -eq 0
+	@$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+	@CEREBRO_EVENT_ADMISSION_WORKER="$(abspath $(EVENT_ADMISSION_WORKER))" go test ./internal/sourceruntime/eventadmission -run '^TestAdmission(NativeWorkerMatchesWasmCorpus|NativePoolHandlesConcurrentPages|BenchmarkGoReferenceMatchesRustCorpus)$$' -bench '^BenchmarkAdmission(EndToEnd|NativeEndToEnd|HostRequestEncoding|WasmEvaluation|NativeEvaluation|NativeCBOREvaluation|HostResponseDecoding|EquivalentGoJSON|WasmIsolationFloor|ColdWasmEvaluation)$$' -benchmem -benchtime=$(ADMISSION_BENCH_SAMPLE_MS)ms -count=$(ADMISSION_BENCH_SAMPLES) > tmp/rust-event-admission-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-benchmark.txt; test $$status -eq 0
+	@CEREBRO_EVENT_ADMISSION_WORKER="$(abspath $(EVENT_ADMISSION_WORKER))" go test ./internal/sourceruntime -run '^TestSyncRuntimeNativeAdmissionCommitsOnlyAcceptedEvents$$'
 	@ADMISSION_BENCH_SAMPLE_MS=$(ADMISSION_BENCH_SAMPLE_MS) ADMISSION_BENCH_SAMPLES=$(ADMISSION_BENCH_SAMPLES) $(CARGO) bench --locked -p cerebro-sourceruntime-eventadmission --bench admission > tmp/rust-event-admission-native-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-native-benchmark.txt; exit $$status
 
 graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.

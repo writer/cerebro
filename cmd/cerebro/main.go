@@ -30,6 +30,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -521,6 +522,20 @@ func runSourceRuntime(args []string) error {
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
 	))
+	admitter, err := eventadmission.NewNativeAdmitter(
+		ctx,
+		cfg.SourceRuntime.EventAdmissionWorkerPath,
+		cfg.SourceRuntime.EventAdmissionWorkers,
+	)
+	if err != nil {
+		return fmt.Errorf("configure source event admission: %w", err)
+	}
+	defer func() {
+		if err := admitter.Close(); err != nil {
+			log.Printf("close source event admission: %v", err)
+		}
+	}()
+	service.WithEventAdmitter(admitter)
 
 	switch args[0] {
 	case "bootstrap":
