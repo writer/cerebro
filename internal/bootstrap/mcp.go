@@ -2222,7 +2222,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:         "cerebro.health",
 			Title:        "Cerebro Health",
-			Description:  "Check whether the Cerebro service is healthy and ready, including failed or unavailable backend dependencies.",
+			Description:  "Check whether the Cerebro service is healthy, ready, and acceptable for use, including failed or unavailable backend dependencies.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Health"),
