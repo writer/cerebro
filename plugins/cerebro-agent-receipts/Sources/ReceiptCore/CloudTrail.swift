@@ -45,7 +45,7 @@ public struct ProviderEvent: Codable, Equatable, Identifiable, Sendable {
   }
 
   public var eventDate: Date? {
-    ReceiptDate.parser.date(from: eventTime) ?? ISO8601DateFormatter().date(from: eventTime)
+    ReceiptDate.parse(eventTime) ?? ISO8601DateFormatter().date(from: eventTime)
   }
 }
 

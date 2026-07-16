@@ -167,6 +167,6 @@ struct AgentConnectionView: View {
   }
 
   private var hasObservedEvent: Bool {
-    store.actionCount(for: status.product) > 0
+    store.recentValidEvent(for: status.product) != nil
   }
 }

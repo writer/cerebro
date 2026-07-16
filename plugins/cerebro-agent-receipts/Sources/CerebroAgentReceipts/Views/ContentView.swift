@@ -18,7 +18,8 @@ struct ContentView: View {
           ForEach(store.adapterStatuses) { status in
             AdapterSidebarRow(
               status: status,
-              actionCount: store.actionCount(for: status.product)
+              actionCount: store.actionCount(for: status.product),
+              eventObserved: store.recentValidEvent(for: status.product) != nil
             )
             .tag(SidebarSelection.agent(status.product))
           }
@@ -127,6 +128,7 @@ struct ContentView: View {
 private struct AdapterSidebarRow: View {
   let status: AgentAdapterStatus
   let actionCount: Int
+  let eventObserved: Bool
 
   var body: some View {
     HStack(spacing: 10) {
@@ -145,7 +147,7 @@ private struct AdapterSidebarRow: View {
   }
 
   private var statusLabel: String {
-    if actionCount > 0 { return "Observed" }
+    if eventObserved { return "Recent event" }
     switch status.state {
     case .managedByPlugin: return "Plugin · no event"
     case .configured: return "Configured · no event"
@@ -159,7 +161,7 @@ private struct AdapterSidebarRow: View {
   private var statusImage: String {
     switch status.state {
     case .managedByPlugin, .configured:
-      return actionCount > 0 ? "checkmark.circle.fill" : "circle.dashed"
+      return eventObserved ? "checkmark.circle.fill" : "circle.dashed"
     case .needsRepair: return "wrench.and.screwdriver.fill"
     case .invalidConfiguration, .unmanagedConflict: return "exclamationmark.triangle.fill"
     case .notInstalled: return "circle"
@@ -168,7 +170,7 @@ private struct AdapterSidebarRow: View {
 
   private var statusColor: Color {
     switch status.state {
-    case .managedByPlugin, .configured: return actionCount > 0 ? .green : .blue
+    case .managedByPlugin, .configured: return eventObserved ? .green : .blue
     case .needsRepair: return .orange
     case .invalidConfiguration, .unmanagedConflict: return .red
     case .notInstalled: return .secondary

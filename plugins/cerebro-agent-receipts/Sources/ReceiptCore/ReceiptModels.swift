@@ -156,7 +156,7 @@ public struct ExecutionReceiptPayload: Codable, Equatable, Identifiable, Sendabl
     self.git = git
   }
 
-  public var capturedDate: Date? { ReceiptDate.parser.date(from: capturedAt) }
+  public var capturedDate: Date? { ReceiptDate.parse(capturedAt) }
 }
 
 public struct ReceiptSignature: Codable, Equatable, Sendable {
@@ -186,13 +186,15 @@ public struct ExecutionReceipt: Codable, Equatable, Identifiable, Sendable {
 }
 
 public enum ReceiptDate {
-  public static let parser: ISO8601DateFormatter = {
+  public static func parse(_ value: String) -> Date? {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter
-  }()
+    return formatter.date(from: value)
+  }
 
   public static func string(from date: Date) -> String {
-    parser.string(from: date)
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.string(from: date)
   }
 }

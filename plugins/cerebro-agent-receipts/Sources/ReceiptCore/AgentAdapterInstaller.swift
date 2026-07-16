@@ -16,6 +16,7 @@ public struct AgentAdapterStatus: Identifiable, Sendable {
   public let executableAvailable: Bool
   public let configurationPath: String?
   public let helperCurrent: Bool?
+  public let configurationModifiedAt: Date?
 
   public var id: String { product.id }
 
@@ -24,13 +25,15 @@ public struct AgentAdapterStatus: Identifiable, Sendable {
     state: AdapterInstallState,
     executableAvailable: Bool,
     configurationPath: String?,
-    helperCurrent: Bool? = nil
+    helperCurrent: Bool? = nil,
+    configurationModifiedAt: Date? = nil
   ) {
     self.product = product
     self.state = state
     self.executableAvailable = executableAvailable
     self.configurationPath = configurationPath
     self.helperCurrent = helperCurrent
+    self.configurationModifiedAt = configurationModifiedAt
   }
 }
 
@@ -147,7 +150,8 @@ public struct AgentAdapterInstaller: Sendable {
       state: state,
       executableAvailable: executableExists(for: product),
       configurationPath: configuration.path,
-      helperCurrent: state == .configured ? true : (state == .needsRepair ? false : nil)
+      helperCurrent: state == .configured ? true : (state == .needsRepair ? false : nil),
+      configurationModifiedAt: configurationModificationDate(configuration)
     )
   }
 
@@ -444,6 +448,11 @@ public struct AgentAdapterInstaller: Sendable {
   private func readJSONObjectIfPresent(at url: URL) throws -> [String: Any] {
     guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
     return try readJSONObject(at: url)
+  }
+
+  private func configurationModificationDate(_ url: URL) -> Date? {
+    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+    return attributes?[.modificationDate] as? Date
   }
 
   private func readJSONObject(at url: URL) throws -> [String: Any] {

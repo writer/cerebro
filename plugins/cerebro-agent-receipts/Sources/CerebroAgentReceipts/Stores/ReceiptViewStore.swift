@@ -9,6 +9,7 @@ final class ReceiptViewStore: ObservableObject {
     actionMatches: [:], unmatchedProviderEvents: [])
   @Published private(set) var providerEvents: [ProviderEvent] = []
   @Published private(set) var adapterStatuses: [AgentAdapterStatus] = []
+  @Published private(set) var latestValidEventByProduct: [String: Date] = [:]
   @Published var selection: String?
   @Published var sidebarSelection: SidebarSelection = .activity(.all) {
     didSet { selectFirstVisibleItem() }
@@ -22,6 +23,7 @@ final class ReceiptViewStore: ObservableObject {
   private let adapterInstaller: AgentAdapterInstaller
   private var timer: Timer?
   private var reloadInProgress = false
+  private var lastAdapterRefresh: Date?
 
   init(
     receiptStore: ReceiptStore = ReceiptStore(),
@@ -99,10 +101,25 @@ final class ReceiptViewStore: ObservableObject {
     actions.first { $0.product == product.displayName }?.startedAt
   }
 
+  func recentValidEvent(for product: AgentProduct, now: Date = Date()) -> Date? {
+    guard
+      let status = adapterStatuses.first(where: { $0.product == product }),
+      status.state == .configured || status.state == .managedByPlugin,
+      let eventDate = latestValidEventByProduct[product.displayName],
+      now.timeIntervalSince(eventDate) >= -30,
+      now.timeIntervalSince(eventDate) <= 5 * 60
+    else { return nil }
+    if let configuredAt = status.configurationModifiedAt, eventDate < configuredAt {
+      return nil
+    }
+    return eventDate
+  }
+
   func installAdapter(_ product: AgentProduct) {
     do {
       try adapterInstaller.install(product)
       adapterStatuses = adapterInstaller.statuses()
+      lastAdapterRefresh = Date()
       errorMessage = nil
     } catch {
       errorMessage = error.localizedDescription
@@ -113,6 +130,7 @@ final class ReceiptViewStore: ObservableObject {
     do {
       try adapterInstaller.remove(product)
       adapterStatuses = adapterInstaller.statuses()
+      lastAdapterRefresh = Date()
       errorMessage = nil
     } catch {
       errorMessage = error.localizedDescription
@@ -124,13 +142,19 @@ final class ReceiptViewStore: ObservableObject {
     reloadInProgress = true
     let receiptStore = self.receiptStore
     let adapterInstaller = self.adapterInstaller
+    let refreshAdapters =
+      adapterStatuses.isEmpty || lastAdapterRefresh == nil
+      || Date().timeIntervalSince(lastAdapterRefresh ?? .distantPast) >= 30
+    let currentAdapterStatuses = adapterStatuses
     Task {
       defer { reloadInProgress = false }
       do {
         let snapshot = try await Task.detached(priority: .utility) {
           try Self.loadSnapshot(
             receiptStore: receiptStore,
-            adapterInstaller: adapterInstaller
+            adapterInstaller: adapterInstaller,
+            currentAdapterStatuses: currentAdapterStatuses,
+            refreshAdapters: refreshAdapters
           )
         }.value
         providerEvents = snapshot.providerEvents
@@ -138,6 +162,8 @@ final class ReceiptViewStore: ObservableObject {
         actions = snapshot.actions
         assessment = snapshot.assessment
         adapterStatuses = snapshot.adapterStatuses
+        latestValidEventByProduct = snapshot.latestValidEventByProduct
+        if refreshAdapters { lastAdapterRefresh = Date() }
         isStale = false
         lastRefreshError = nil
         if selection == nil { selectFirstVisibleItem() }
@@ -179,7 +205,9 @@ final class ReceiptViewStore: ObservableObject {
 
   nonisolated private static func loadSnapshot(
     receiptStore: ReceiptStore,
-    adapterInstaller: AgentAdapterInstaller
+    adapterInstaller: AgentAdapterInstaller,
+    currentAdapterStatuses: [AgentAdapterStatus],
+    refreshAdapters: Bool
   ) throws -> ReceiptSnapshot {
     let receipts = try receiptStore.readReceipts()
     let providerEvents = try receiptStore.readProviderEvents()
@@ -190,6 +218,16 @@ final class ReceiptViewStore: ObservableObject {
         receipts, trustedPublicKeyBase64: try receiptStore.readTrustedPublicKey())
     let verifications = Dictionary(uniqueKeysWithValues: results.map { ($0.receiptID, $0) })
     let actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verifications)
+    let validReceiptIDs = Set(results.filter(\.valid).map(\.receiptID))
+    var latestValidEventByProduct: [String: Date] = [:]
+    for receipt in receipts
+    where validReceiptIDs.contains(receipt.id) && receipt.payload.collector != nil {
+      guard let capturedAt = receipt.payload.capturedDate else { continue }
+      let product = receipt.payload.agent.product
+      if capturedAt > (latestValidEventByProduct[product] ?? .distantPast) {
+        latestValidEventByProduct[product] = capturedAt
+      }
+    }
     let assessment = ReceiptCorrelator.assess(
       actions: actions,
       providerEvents: providerEvents,
@@ -200,7 +238,8 @@ final class ReceiptViewStore: ObservableObject {
       verifications: verifications,
       assessment: assessment,
       providerEvents: providerEvents,
-      adapterStatuses: adapterInstaller.statuses()
+      adapterStatuses: refreshAdapters ? adapterInstaller.statuses() : currentAdapterStatuses,
+      latestValidEventByProduct: latestValidEventByProduct
     )
   }
 
@@ -222,6 +261,7 @@ private struct ReceiptSnapshot: Sendable {
   let assessment: AttributionAssessment
   let providerEvents: [ProviderEvent]
   let adapterStatuses: [AgentAdapterStatus]
+  let latestValidEventByProduct: [String: Date]
 }
 
 enum SidebarSelection: Hashable {

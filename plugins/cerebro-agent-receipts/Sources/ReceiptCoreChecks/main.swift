@@ -54,7 +54,7 @@ struct CheckRunner {
         "command": .string("aws ecs register-task-definition --token super-secret")
       ])
     )
-    guard let date = ReceiptDate.parser.date(from: "2026-07-15T08:41:04.855Z") else {
+    guard let date = ReceiptDate.parse("2026-07-15T08:41:04.855Z") else {
       failures.append("test timestamp did not parse")
       return
     }
@@ -593,8 +593,8 @@ struct CheckRunner {
       permissionMode: "default",
       state: .completed,
       authorizationEvidence: .notObserved,
-      startedAt: ReceiptDate.parser.date(from: "2026-07-15T08:41:04.855Z"),
-      completedAt: ReceiptDate.parser.date(from: "2026-07-15T08:41:30.000Z"),
+      startedAt: ReceiptDate.parse("2026-07-15T08:41:04.855Z"),
+      completedAt: ReceiptDate.parse("2026-07-15T08:41:30.000Z"),
       receiptIDs: ["pre-\(call)", "post-\(call)"],
       integrityValid: true,
       repositoryRoot: "/redacted",
