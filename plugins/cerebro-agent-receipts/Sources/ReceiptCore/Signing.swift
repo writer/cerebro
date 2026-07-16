@@ -32,24 +32,24 @@ public enum SigningError: Error, LocalizedError {
 public struct DeviceKeySigner: ReceiptSigning {
   private static let service = "com.writer.cerebro.agent-receipts"
   private static let account = "device-signing-key.v1"
-  private let key: P256.Signing.PrivateKey
+  private let material: P256.Signing.PrivateKey
 
   public let hardwareBacked = false
 
   public init() throws {
     if let data = try Self.loadKey() {
-      guard let key = try? P256.Signing.PrivateKey(rawRepresentation: data) else {
+      guard let material = try? P256.Signing.PrivateKey(rawRepresentation: data) else {
         throw SigningError.invalidStoredKey
       }
-      self.key = key
+      self.material = material
     } else {
       let generated = P256.Signing.PrivateKey()
       if try Self.storeKey(generated.rawRepresentation) {
-        self.key = generated
+        self.material = generated
       } else if let winningData = try Self.loadKey(),
         let winningKey = try? P256.Signing.PrivateKey(rawRepresentation: winningData)
       {
-        self.key = winningKey
+        self.material = winningKey
       } else {
         throw SigningError.invalidStoredKey
       }
@@ -57,19 +57,19 @@ public struct DeviceKeySigner: ReceiptSigning {
   }
 
   public init(rawKey: Data) throws {
-    self.key = try P256.Signing.PrivateKey(rawRepresentation: rawKey)
+    self.material = try P256.Signing.PrivateKey(rawRepresentation: rawKey)
   }
 
   public var publicKeyBase64: String {
-    key.publicKey.x963Representation.base64EncodedString()
+    material.publicKey.x963Representation.base64EncodedString()
   }
 
   public var deviceID: String {
-    "sha256:" + SHA256Digest.hex(key.publicKey.x963Representation)
+    "sha256:" + SHA256Digest.hex(material.publicKey.x963Representation)
   }
 
   public func sign(_ data: Data) throws -> Data {
-    try key.signature(for: data).derRepresentation
+    try material.signature(for: data).derRepresentation
   }
 
   public static func verify(_ receipt: ExecutionReceipt) -> Bool {
