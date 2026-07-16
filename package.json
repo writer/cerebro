@@ -13,6 +13,7 @@
     "sdk/typescript"
   ],
   "scripts": {
+    "build:workspaces": "npm run build --workspaces --if-present",
     "check:workspaces": "npm run check --workspaces --if-present",
     "test:workspaces": "npm test --workspaces --if-present",
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present"

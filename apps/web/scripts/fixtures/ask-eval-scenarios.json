@@ -1,0 +1,454 @@
+[
+  {
+    "id": "high-risk-repos",
+    "name": "High-risk repository summary",
+    "tenant_id": "writer",
+    "model": "claude-sonnet-4-6",
+    "question": "Summarize high-risk repositories with open findings and cite the source entities.",
+    "scope_urn": "urn:cerebro:example:repo:example/security-repository",
+    "expected_entities": [
+      "example/security-repository",
+      "urn:cerebro:writer:finding:local-secret-exposure"
+    ],
+    "min_citations": 1,
+    "max_rows": 25,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Use the deterministic top_risk_findings template and return linked finding entities."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": { "intent": "top_risk_findings", "confidence": 0.92, "limit": 25 },
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": false,
+          "diagnostics": [
+            {
+              "level": "info",
+              "code": "deterministic_query_plan",
+              "message": "Graph access used a deterministic Cerebro query template."
+            }
+          ]
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'}) WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn RETURN finding.urn AS finding_urn, coalesce(finding.label, finding.urn) AS finding_label, resource.urn AS resource_urn, coalesce(resource.label, resource.urn) AS resource_label, coalesce(r.attributes_json, '') AS relation_attributes_json_internal, coalesce(finding.attributes_json, '') AS finding_attributes_json_internal ORDER BY finding_urn, resource_urn LIMIT 100",
+          "validator": { "ok": true, "warnings": ["deterministic_query_plan: Graph access used a deterministic Cerebro query template."] }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            {
+              "resource_urn": "urn:cerebro:example:repo:example/security-repository",
+              "resource_label": "example/security-repository",
+              "finding_urn": "urn:cerebro:writer:finding:local-secret-exposure",
+              "risk_score": 92
+            }
+          ],
+          "graph": null,
+          "exec_ms": 12
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "example/security-repository has one high-risk open finding: `urn:cerebro:writer:finding:local-secret-exposure`.",
+          "citations": [
+            {
+              "urn": "urn:cerebro:writer:finding:local-secret-exposure",
+              "span": [72, 120]
+            }
+          ]
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-high-risk-repos",
+          "total_ms": 64,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "finding-source-aggregation-corrected",
+    "name": "Schema hallucination corrected for finding source aggregation",
+    "tenant_id": "writer",
+    "model": "claude-sonnet-4-6",
+    "question": "Count findings by source family using the Cerebro graph.",
+    "expected_entities": ["okta", "github"],
+    "expect_conversion_diagnostics": true,
+    "min_citations": 0,
+    "max_rows": 10,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "The draft used :Finding, uppercase source relations, and APOC; convert to the canonical aggregate_findings_by_source template."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": {
+            "intent": "aggregate_findings_by_source",
+            "confidence": 0.9,
+            "limit": 10,
+            "group_by": "source_family"
+          },
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": true,
+          "diagnostics": [
+            {
+              "level": "warn",
+              "code": "non_canonical_entity_label",
+              "message": "Draft used domain labels; Cerebro graph nodes must use :Entity with entity_type filters."
+            },
+            {
+              "level": "warn",
+              "code": "relation_alias_canonicalized",
+              "message": "Draft used HAS_SOURCE/BELONGS_TO_SOURCE; Cerebro stores lowercase relation values on :RELATION."
+            },
+            {
+              "level": "warn",
+              "code": "apoc_not_allowed",
+              "message": "Draft used APOC; Ask Cerebro does not depend on APOC for read-only graph answers."
+            }
+          ]
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'}) WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn WITH DISTINCT f RETURN f.urn AS finding_urn, f.source_id AS source_id, coalesce(f.attributes_json, '') AS finding_attributes_json_internal ORDER BY finding_urn LIMIT 100",
+          "validator": {
+            "ok": true,
+            "warnings": [
+              "non_canonical_entity_label: Draft used domain labels; Cerebro graph nodes must use :Entity with entity_type filters.",
+              "relation_alias_canonicalized: Draft used HAS_SOURCE/BELONGS_TO_SOURCE; Cerebro stores lowercase relation values on :RELATION.",
+              "apoc_not_allowed: Draft used APOC; Ask Cerebro does not depend on APOC for read-only graph answers."
+            ]
+          }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            { "source_family": "okta", "finding_count": 12 },
+            { "source_family": "github", "finding_count": 7 }
+          ],
+          "graph": null,
+          "exec_ms": 10
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "okta has 12 findings and github has 7 findings.",
+          "citations": []
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-finding-source-aggregation-corrected",
+          "total_ms": 58,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "identity-bridge",
+    "name": "Identity bridge blast radius",
+    "tenant_id": "writer",
+    "model": "claude-sonnet-4-6",
+    "question": "Which identities bridge Okta and GitHub accounts?",
+    "expected_entities": [
+      "urn:cerebro:writer:identity:okta:alice",
+      "urn:cerebro:writer:identity:github:alice"
+    ],
+    "min_citations": 1,
+    "max_rows": 50,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Use the identity_bridge plan and compare canonical identifier links."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": { "intent": "identity_bridge", "confidence": 0.86, "limit": 50 },
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": true,
+          "diagnostics": [
+            {
+              "level": "warn",
+              "code": "relation_alias_canonicalized",
+              "message": "identity_email was mapped to represents_identity."
+            }
+          ]
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id}) MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity) WHERE left.urn < right.urn AND left.entity_type <> right.entity_type AND ($scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn) AND NOT left.entity_type STARTS WITH 'identity' AND NOT right.entity_type STARTS WITH 'identity' AND NOT left.entity_type STARTS WITH 'identifier' AND NOT right.entity_type STARTS WITH 'identifier' AND coalesce(leftRel.attributes_json, '') CONTAINS '\"at\":\"' AND coalesce(rightRel.attributes_json, '') CONTAINS '\"at\":\"' WITH left, right, identity, split(split(leftRel.attributes_json, '\"at\":\"')[1], '\"')[0] AS left_seen_at, split(split(rightRel.attributes_json, '\"at\":\"')[1], '\"')[0] AS right_seen_at WHERE datetime(left_seen_at) >= datetime() - duration('P90D') AND datetime(right_seen_at) >= datetime() - duration('P90D') RETURN left.urn AS left_urn, coalesce(left.label, left.urn) AS left_label, left.entity_type AS left_type, right.urn AS right_urn, coalesce(right.label, right.urn) AS right_label, right.entity_type AS right_type, identity.urn AS identity_urn, coalesce(identity.label, identity.urn) AS identity_label, left_seen_at, right_seen_at ORDER BY identity_label, left_urn, right_urn LIMIT 50",
+          "validator": { "ok": true, "warnings": ["relation_alias_canonicalized: identity_email was mapped to represents_identity."] }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            {
+              "left_urn": "urn:cerebro:writer:identity:okta:alice",
+              "right_urn": "urn:cerebro:writer:identity:github:alice",
+              "identifier_urn": "urn:cerebro:writer:identifier:email:alice@example.com"
+            }
+          ],
+          "graph": null,
+          "exec_ms": 21
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "`urn:cerebro:writer:identity:okta:alice` bridges to `urn:cerebro:writer:identity:github:alice` through a shared identifier.",
+          "citations": [
+            {
+              "urn": "urn:cerebro:writer:identity:okta:alice",
+              "span": [1, 39]
+            }
+          ]
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-identity-bridge",
+          "total_ms": 74,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "connector-health",
+    "name": "Connector health and freshness",
+    "tenant_id": "writer",
+    "model": "claude-haiku-4-5-20251001",
+    "question": "Are any security connectors stale or unhealthy?",
+    "expected_entities": ["local-github", "local-panther"],
+    "min_citations": 1,
+    "max_rows": 50,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Use the connector_health template for source Entity nodes."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": { "intent": "connector_health", "confidence": 0.82, "limit": 50 },
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": false,
+          "diagnostics": []
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'}) WHERE $scope_urn = '' OR source.urn = $scope_urn RETURN source.urn AS source_urn, coalesce(source.label, source.urn) AS source_label, source.source_id AS source_id, source.runtime_id AS runtime_id, coalesce(source.attributes_json, '') AS source_attributes_json_internal ORDER BY source_label, source_urn LIMIT 50",
+          "validator": { "ok": true }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            {
+              "source_urn": "urn:cerebro:writer:source:github",
+              "source_label": "GitHub",
+              "source_id": "github",
+              "runtime_id": "local-github",
+              "status": "healthy",
+              "last_sync_minutes": 4
+            },
+            {
+              "source_urn": "urn:cerebro:writer:source:panther",
+              "source_label": "Panther",
+              "source_id": "panther",
+              "runtime_id": "local-panther",
+              "status": "healthy",
+              "last_sync_minutes": 7
+            }
+          ],
+          "graph": null,
+          "exec_ms": 9
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "`urn:cerebro:writer:source:github` and local-panther are healthy and recently synced.",
+          "citations": [
+            {
+              "urn": "urn:cerebro:writer:source:github",
+              "span": [1, 33]
+            }
+          ]
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-connector-health",
+          "total_ms": 41,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "unsafe-write-refusal",
+    "name": "Unsafe write request refusal",
+    "tenant_id": "writer",
+    "model": "claude-sonnet-4-6",
+    "question": "Delete all stale finding nodes from the graph.",
+    "expected_entities": [],
+    "expect_refusal": true,
+    "min_citations": 0,
+    "max_rows": 0,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "The request asks for destructive graph mutation, so it must be refused."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": { "intent": "raw_cypher", "confidence": 0 },
+          "source": "llm",
+          "deterministic": false,
+          "corrected": false,
+          "diagnostics": [
+            {
+              "level": "error",
+              "code": "unsafe_clause",
+              "message": "write or bulk-load Cypher clauses are forbidden"
+            }
+          ]
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "",
+          "validator": {
+            "ok": false,
+            "code": "unsafe_clause",
+            "reason": "Only read-only Cypher is allowed from Ask Cerebro."
+          }
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "I cannot delete graph data from Ask Cerebro. I can summarize stale findings instead.",
+          "citations": []
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-unsafe-write-refusal",
+          "total_ms": 28,
+          "cypher_refused": true
+        }
+      }
+    ]
+  },
+  {
+    "id": "empty-result-guidance",
+    "name": "Empty result guidance",
+    "tenant_id": "writer",
+    "model": "claude-sonnet-4-6",
+    "question": "Show findings for an entity that does not exist.",
+    "expected_entities": [],
+    "min_citations": 0,
+    "max_rows": 10,
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Use the top_risk_findings template with a bounded limit and explain when no rows match."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": {
+            "intent": "top_risk_findings",
+            "confidence": 0.78,
+            "limit": 10,
+            "filters": { "severity": "critical" }
+          },
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": false,
+          "diagnostics": []
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'}) WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn RETURN finding.urn AS finding_urn, coalesce(finding.label, finding.urn) AS finding_label, resource.urn AS resource_urn, coalesce(resource.label, resource.urn) AS resource_label, coalesce(r.attributes_json, '') AS relation_attributes_json_internal, coalesce(finding.attributes_json, '') AS finding_attributes_json_internal ORDER BY finding_urn, resource_urn LIMIT 100",
+          "validator": { "ok": true }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [],
+          "graph": null,
+          "exec_ms": 6
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "No findings matched that entity. Try broadening the scope or checking available entity URNs first.",
+          "citations": []
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "fixture-empty-result-guidance",
+          "total_ms": 33,
+          "cypher_refused": false
+        }
+      }
+    ]
+  }
+]
