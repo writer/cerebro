@@ -77,9 +77,8 @@ This gate is a deterministic metadata check, not a substitute for model and
 runtime evaluation. Validate promoted changes with representative MCP clients,
 then compare task request counts, errors, latency, partial states, and blocked
 states by tool. Cerebro telemetry records the bounded task result state as
-`mcp.task_state` and increments `mcp.task.response.<state>.count`, alongside
-tool classification, behavior, and owner domain. It does not record the user
-request.
+`mcp.task_state`, alongside tool classification, behavior, and owner domain.
+It does not record the user request.
 
 ## Assessment operations
 

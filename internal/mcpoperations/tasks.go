@@ -40,6 +40,17 @@ type TaskResponse struct {
 	GeneratedAt    string           `json:"generated_at"`
 }
 
+// TaskResponseState returns the bounded state for a task response.
+func TaskResponseState(response TaskResponse) string {
+	state := strings.TrimSpace(response.State)
+	switch state {
+	case TaskStateComplete, TaskStatePartial, TaskStateBlocked:
+		return state
+	default:
+		return ""
+	}
+}
+
 type OutputSchema map[string]any
 
 type StructuredContent map[string]any

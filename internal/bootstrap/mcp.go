@@ -3002,9 +3002,6 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		if mcpoperations.TelemetryOutcomeFailed(outcome) {
 			telemetry.IncrementMain(r.Context(), "mcp.task.request.error.count", 1)
 		}
-		if taskState := mcpTaskStateFromResponse(detail.Response); taskState != "" {
-			telemetry.IncrementMain(r.Context(), "mcp.task.response."+taskState+".count", 1)
-		}
 	}
 	mainAttrs := telemetry.Attrs(
 		telemetry.Field{Key: "mcp.status_code", Value: statusCode},
@@ -3117,13 +3114,9 @@ func mcpResponseTelemetryFields(response *mcpJSONRPCResponse) []telemetry.Field 
 	}
 	switch result := response.Result.(type) {
 	case mcpToolResult:
-		fields := []telemetry.Field{
-			{Key: "mcp.response_shape", Value: "tool_result"},
-			{Key: "mcp.tool_result_error", Value: result.IsError},
-			{Key: "mcp.tool_result_content_count", Value: len(result.Content)},
-			{Key: "mcp.structured_content_present", Value: result.StructuredContent != nil},
-		}
-		if taskState := mcpTaskStateFromResponse(response); taskState != "" {
+		fields := []telemetry.Field{{Key: "mcp.response_shape", Value: "tool_result"}, {Key: "mcp.tool_result_error", Value: result.IsError}, {Key: "mcp.tool_result_content_count", Value: len(result.Content)}, {Key: "mcp.structured_content_present", Value: result.StructuredContent != nil}}
+		taskResponse, isTaskResponse := result.StructuredContent.(mcpoperations.TaskResponse)
+		if taskState := mcpoperations.TaskResponseState(taskResponse); !result.IsError && isTaskResponse && taskState != "" {
 			fields = append(fields, telemetry.Field{Key: "mcp.task_state", Value: taskState})
 		}
 		return fields
@@ -3142,32 +3135,6 @@ func mcpResponseTelemetryFields(response *mcpJSONRPCResponse) []telemetry.Field 
 		return fields
 	default:
 		return []telemetry.Field{{Key: "mcp.response_shape", Value: "other"}}
-	}
-}
-
-func mcpTaskStateFromResponse(response *mcpJSONRPCResponse) string {
-	if response == nil || response.Error != nil {
-		return ""
-	}
-	result, ok := response.Result.(mcpToolResult)
-	if !ok || result.IsError {
-		return ""
-	}
-	state := ""
-	switch structured := result.StructuredContent.(type) {
-	case mcpoperations.TaskResponse:
-		state = structured.State
-	case *mcpoperations.TaskResponse:
-		if structured != nil {
-			state = structured.State
-		}
-	}
-	state = strings.TrimSpace(state)
-	switch state {
-	case mcpoperations.TaskStateComplete, mcpoperations.TaskStatePartial, mcpoperations.TaskStateBlocked:
-		return state
-	default:
-		return ""
 	}
 }
 

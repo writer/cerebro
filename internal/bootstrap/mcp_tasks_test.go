@@ -270,29 +270,6 @@ func TestMCPTaskTelemetryRecordsOperationStateWithoutPrompt(t *testing.T) {
 	}
 }
 
-func TestMCPTaskStateFromResponseAllowsKnownStatesOnly(t *testing.T) {
-	tests := []struct {
-		name       string
-		structured any
-		want       string
-	}{
-		{name: "value response", structured: mcpoperations.TaskResponse{State: mcpoperations.TaskStateComplete}, want: mcpoperations.TaskStateComplete},
-		{name: "pointer response", structured: &mcpoperations.TaskResponse{State: mcpoperations.TaskStatePartial}, want: mcpoperations.TaskStatePartial},
-		{name: "blocked response", structured: mcpoperations.TaskResponse{State: mcpoperations.TaskStateBlocked}, want: mcpoperations.TaskStateBlocked},
-		{name: "unknown state", structured: mcpoperations.TaskResponse{State: "running"}},
-		{name: "generic state map", structured: map[string]any{"state": mcpoperations.TaskStateComplete}},
-		{name: "missing state", structured: map[string]any{"result": "ok"}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			response := &mcpJSONRPCResponse{Result: mcpToolResult{StructuredContent: test.structured}}
-			if got := mcpTaskStateFromResponse(response); got != test.want {
-				t.Fatalf("mcpTaskStateFromResponse() = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
 func postMCPWithTaskProfile(t *testing.T, server *httptest.Server, payload map[string]any) map[string]any {
 	t.Helper()
 	return postMCPWithToolset(t, server, "task", payload)
