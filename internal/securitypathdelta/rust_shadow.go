@@ -34,7 +34,10 @@ const (
 	RustShadowResultMismatch = "result_mismatch"
 )
 
-var ErrRustEvaluatorUnavailable = errors.New("rust security path evaluator is unavailable")
+var (
+	ErrRustEvaluatorUnavailable   = errors.New("rust security path evaluator is unavailable")
+	errRustEvaluatorInputTooLarge = errors.New("rust security path evaluator input exceeds limit")
+)
 
 //go:embed evaluator.wasm
 var securityPathEvaluatorWasm []byte
@@ -366,7 +369,7 @@ func marshalRustEvaluationRequest(request any) ([]byte, string, []string, error)
 		return nil, "", nil, fmt.Errorf("%w: encode request: %w", ErrRustEvaluatorUnavailable, err)
 	}
 	if len(requestPayload) > securityPathEvaluatorMaxInput-securityPathEnvelopeOverhead {
-		return nil, "", nil, fmt.Errorf("%w: encoded request exceeds %d-byte input limit", ErrRustEvaluatorUnavailable, securityPathEvaluatorMaxInput)
+		return nil, "", nil, fmt.Errorf("%w: %w (%d bytes)", ErrRustEvaluatorUnavailable, errRustEvaluatorInputTooLarge, securityPathEvaluatorMaxInput)
 	}
 	inputDigest, err := rustDecisionInputDigest(request)
 	if err != nil {

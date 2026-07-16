@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -125,7 +126,7 @@ func TestRustDecisionEnvelopeRejectsOversizedInputBeforeAllocation(t *testing.T)
 		Operation: "rank_candidate_cuts",
 		Paths:     []rustSecurityPathInput{{ID: strings.Repeat("x", securityPathEvaluatorMaxInput)}},
 	}
-	if _, _, _, err := marshalRustEvaluationRequest(request); err == nil || !strings.Contains(err.Error(), "input limit") {
+	if _, _, _, err := marshalRustEvaluationRequest(request); !errors.Is(err, errRustEvaluatorInputTooLarge) {
 		t.Fatalf("marshalRustEvaluationRequest() error = %v, want input limit", err)
 	}
 }
