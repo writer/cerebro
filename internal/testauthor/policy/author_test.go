@@ -37,3 +37,10 @@ func TestAuthorRejectsUnsupportedPolicySemantics(t *testing.T) {
 		t.Fatal("Author() error = nil")
 	}
 }
+
+func TestAuthorRejectsDomainOutsidePolicyDirectory(t *testing.T) {
+	intent := Intent{ID: "example", Domain: "../docs", Name: "Example", Description: "Example policy.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "enabled"), false)`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}}
+	if _, err := Author(intent); err == nil {
+		t.Fatal("Author() error = nil")
+	}
+}

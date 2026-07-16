@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/writer/cerebro/internal/findingdsl"
 )
+
+var domainPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type Intent struct {
 	ID               string                       `json:"id" yaml:"id"`
@@ -36,8 +39,12 @@ type Artifacts struct {
 }
 
 func Author(intent Intent) (Artifacts, error) {
+	domain := strings.TrimSpace(intent.Domain)
+	if !domainPattern.MatchString(domain) {
+		return Artifacts{}, fmt.Errorf("policy domain %q must use lowercase dash-separated alphanumeric segments", intent.Domain)
+	}
 	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
-		ID: intent.ID, Domain: intent.Domain, Name: intent.Name, Description: intent.Description,
+		ID: intent.ID, Domain: domain, Name: intent.Name, Description: intent.Description,
 		Severity: intent.Severity, Resource: intent.Resource, Conditions: intent.Conditions,
 		References: intent.References, Tags: intent.Tags, RiskCategories: intent.RiskCategories,
 		Frameworks: intent.Frameworks, Remediation: intent.Remediation, RemediationStep: intent.RemediationSteps,
