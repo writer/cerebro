@@ -7,8 +7,8 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.753
-  cerebro:imageDigest: sha256:6b91b3f7012736044575a459356a36334b388abf46a4022c01ef898537c22a96
+  cerebro:imageTag: v2.1.754
+  cerebro:imageDigest: sha256:cec015da7612a983c5848673e5ebeea52c83f9f47969e7795256fa14f00a8960
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-18a048aa5433
