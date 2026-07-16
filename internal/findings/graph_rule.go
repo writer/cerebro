@@ -27,6 +27,30 @@ type GraphRule interface {
 	EvaluateRows(context.Context, *cerebrov1.SourceRuntime, []ports.CypherRow) ([]*ports.FindingRecord, error)
 }
 
+type GraphRuleCoverageEdge struct {
+	FromEntityType string
+	Relation       string
+	ToEntityType   string
+}
+
+type GraphRuleCoveragePredicate struct {
+	EntityType string
+	Key        string
+	Value      string
+}
+
+type GraphRuleCoverageSignature struct {
+	RequiredEntityTypes []string
+	RequiredEdges       []GraphRuleCoverageEdge
+	RequiredPredicates  []GraphRuleCoveragePredicate
+}
+
+// GraphRuleCoverageSemantics exposes EvaluateRows predicates that cannot be
+// reconstructed from Cypher alone. Multiple signatures represent OR branches.
+type GraphRuleCoverageSemantics interface {
+	GraphRuleCoverageSignatures() []GraphRuleCoverageSignature
+}
+
 // asGraphRule narrows a registered Rule into a GraphRule when supported.
 func asGraphRule(rule Rule) (GraphRule, bool) {
 	if rule == nil {

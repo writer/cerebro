@@ -109,7 +109,7 @@ func TestDraftPolicyBundleAuthorsAndExecutesGraphEvidence(t *testing.T) {
 	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
 		ID: "agent-graph-path", Name: "Agent graph path", Description: "Finds a causal graph path.", Severity: "high",
 		Graph: findingdsl.PolicyRuleGraphFinding{
-			Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity)-[:RELATION {relation: 'depends_on'}]->(definition:Entity)-[:RELATION {relation: 'runs_as'}]->(role:Entity)
+			Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'depends_on'}]->(definition:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'runs_as'}]->(role:Entity {tenant_id: $tenant_id})
 RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'causal path' AS summary, [actor.urn, task.urn, definition.urn, role.urn] AS resource_urns, [{urn: actor.urn}, {urn: task.urn}, {urn: definition.urn}, {urn: role.urn}] AS evidence LIMIT $row_limit`,
 			RowLimit: 10, RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"},
 		}, Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}},
@@ -133,7 +133,7 @@ RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerp
 		CriticalEdge:    policyauthor.GraphEvidenceEdgeRef{FromID: "private-definition", ToID: "private-role", Relation: "runs_as"},
 		EvidenceNodeIDs: []string{"private-actor", "private-task", "private-definition", "private-role"},
 	}
-	store := &agentGraphStore{}
+	store := newAgentGraphStore()
 	model := &stubDraftModel{raw: raw}
 	result, err := (Service{Model: model, PolicyGraphStore: store}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{
 		Prompt: "author a causal graph policy", Domain: "aws", GraphEvidence: evidence,
@@ -141,10 +141,10 @@ RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerp
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.executions != 2 {
-		t.Fatalf("graph executions = %d, want 2", store.executions)
+	if store.executions < len(result.Suite.Cases) {
+		t.Fatalf("graph executions = %d, want all %d authored cases executed", store.executions, len(result.Suite.Cases))
 	}
-	if len(result.Proof.Receipts) != 2 || result.Proof.Receipts[1].Execution != "graph_store" || !result.Proof.Receipts[1].Passed {
+	if len(result.Proof.Receipts) < 4 || result.Proof.Receipts[len(result.Proof.Receipts)-1].Execution != "graph_store" || !result.Proof.Receipts[len(result.Proof.Receipts)-1].Passed {
 		t.Fatalf("graph proof = %#v", result.Proof.Receipts)
 	}
 	modelGraphContext, err := json.Marshal(model.req.Context["graph_evidence"])
@@ -168,8 +168,13 @@ RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerp
 }
 
 type agentGraphStore struct {
-	entities   []*ports.ProjectedEntity
+	entities   map[string]*ports.ProjectedEntity
+	links      map[string]*ports.ProjectedLink
 	executions int
+}
+
+func newAgentGraphStore() *agentGraphStore {
+	return &agentGraphStore{entities: map[string]*ports.ProjectedEntity{}, links: map[string]*ports.ProjectedLink{}}
 }
 
 func (s *agentGraphStore) Ping(context.Context) error { return nil }
@@ -177,28 +182,49 @@ func (s *agentGraphStore) GetEntityNeighborhood(context.Context, string, int) (*
 	return nil, nil
 }
 func (s *agentGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
-	s.entities = append(s.entities, entity)
+	s.entities[entity.URN] = entity
 	return nil
 }
-func (s *agentGraphStore) UpsertProjectedLink(context.Context, *ports.ProjectedLink) error {
+func (s *agentGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
 	return nil
 }
-func (s *agentGraphStore) DeleteProjectedEntity(context.Context, string) error { return nil }
+func (s *agentGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
+	delete(s.entities, urn)
+	for key, link := range s.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(s.links, key)
+		}
+	}
+	return nil
+}
 func (s *agentGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	s.executions++
-	if s.executions != 1 {
-		return nil, nil
+	for _, launch := range s.links {
+		if launch.Relation != "acted_on" {
+			continue
+		}
+		for _, dependency := range s.links {
+			if dependency.Relation != "depends_on" || dependency.FromURN != launch.ToURN {
+				continue
+			}
+			for _, role := range s.links {
+				if role.Relation != "runs_as" || role.FromURN != dependency.ToURN {
+					continue
+				}
+				resourceURNs := []string{launch.FromURN, launch.ToURN, dependency.ToURN, role.ToURN}
+				evidence := make([]any, 0, len(resourceURNs))
+				for _, urn := range resourceURNs {
+					evidence = append(evidence, map[string]any{"urn": urn})
+				}
+				return []ports.CypherRow{{Values: map[string]any{
+					"primary_urn": dependency.ToURN, "fingerprint_key": dependency.ToURN + "|" + role.ToURN,
+					"summary": "causal path", "resource_urns": resourceURNs, "evidence": evidence,
+				}}}, nil
+			}
+		}
 	}
-	evidence := make([]any, 0, len(s.entities))
-	resourceURNs := make([]string, 0, len(s.entities))
-	for _, entity := range s.entities {
-		evidence = append(evidence, map[string]any{"urn": entity.URN})
-		resourceURNs = append(resourceURNs, entity.URN)
-	}
-	return []ports.CypherRow{{Values: map[string]any{
-		"primary_urn": resourceURNs[2], "fingerprint_key": resourceURNs[2] + "|" + resourceURNs[3],
-		"summary": "causal path", "resource_urns": resourceURNs, "evidence": evidence,
-	}}}, nil
+	return nil, nil
 }
 
 func TestDraftPolicyBundleRedactsSourceEvidenceBeforeModelCall(t *testing.T) {
