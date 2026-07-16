@@ -4032,11 +4032,21 @@ export type SourceRuntimeHealthSummary = {
 };
 
 export type SourceRuntimeInvalidEventRecord = {
+  admission_abi_version?: number;
+  admission_contracts_sha256?: string;
+  admission_result_sha256?: string;
   diagnostic?: string;
+  event_kind?: string;
+  event_sha256?: string;
   failure_category?: string;
   fields?: string[];
+  first_observed_at?: string;
+  id?: string;
+  last_observed_at?: string;
   observed_at?: string;
   occurred_at?: string;
+  occurrence_count?: number;
+  queue_state?: "pending" | "resolved" | "discarded";
   retryable?: boolean;
   runtime_id?: string;
   source_event_id?: string;
