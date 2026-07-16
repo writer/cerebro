@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        policy_document:
+            Statement:
+                Action: '*'
+                Effect: Allow
+                Resource: '*'
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        policy_document:
+            Statement:
+                Action: '*'
+                Effect: Allow-passing
+                Resource: '*'
+      wantFinding: false

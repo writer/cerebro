@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        is_enrolled_in_2sv: false
+        suspended: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        is_enrolled_in_2sv: true
+        suspended: false
+      wantFinding: false

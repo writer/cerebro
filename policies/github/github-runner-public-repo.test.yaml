@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        repository:
+            visibility: public
+        runner_group:
+            allows_public_repositories: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        repository:
+            visibility: public-passing
+        runner_group:
+            allows_public_repositories: true
+      wantFinding: false

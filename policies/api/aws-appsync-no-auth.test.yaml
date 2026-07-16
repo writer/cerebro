@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        additional_authentication_providers:
+            length: 0
+        authentication_type: API_KEY
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        additional_authentication_providers:
+            length: 0
+        authentication_type: API_KEY-passing
+      wantFinding: false

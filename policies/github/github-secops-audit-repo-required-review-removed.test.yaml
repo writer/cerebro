@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        required_review_removed: "true"
+        resource_type: protected_branch
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        required_review_removed: "true"
+        resource_type: protected_branch-passing
+      wantFinding: false

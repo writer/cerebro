@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        logs_config:
+            cloud_watch_logs:
+                status: ENABLED
+            s3_logs:
+                encryption_disabled: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        logs_config:
+            cloud_watch_logs:
+                status: ENABLED-passing
+            s3_logs:
+                encryption_disabled: true
+      wantFinding: false
