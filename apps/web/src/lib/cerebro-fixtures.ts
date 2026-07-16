@@ -3213,8 +3213,8 @@ const connectorLibraryFixture = () => ({
   credential_transport: { available: true, algorithm: "RSA-OAEP-256+A256GCM", key_url: "/connectors/credential-key" },
   credential_vault: { available: true, detail: "Fixture credential vault only." },
   credential_stores: [
-    { id: "env", label: "Environment variables", available: true, reference_namespace_template: "CEREBRO_SOURCE_<SOURCE>_*" },
-    { id: "external_vault", label: "External vault", available: true, reference_namespace_template: "cerebro/<tenant>/<source>/<runtime>/credentials" },
+    { id: "environment_managed", label: "Environment variables", available: true, reference_namespace_template: "CEREBRO_SOURCE_<SOURCE>_*" },
+    { id: "hashicorp_vault", label: "External vault", available: true, reference_namespace_template: "cerebro/<tenant>/<source>/<runtime>/credentials" },
   ],
 });
 
@@ -4447,15 +4447,10 @@ export const cerebroFixtureResponseFor = ({
     return jsonFixture(connectorLibraryFixture());
   }
 
-  const connectorDetailMatch = /^connectors\/([^/]+)$/.exec(normalizedPath);
-  if (connectorDetailMatch) {
-    return jsonFixture(connectorDetailFixture(safeDecode(connectorDetailMatch[1])));
-  }
-
   if (normalizedPath === "connectors/credential-key") {
     return jsonFixture({
       key_id: "fixture-key",
-      algorithm: "RSA-OAEP-256",
+      algorithm: "RSA-OAEP-256+A256GCM",
       jwk: {
         kty: "RSA",
         kid: "fixture-key",
@@ -4465,6 +4460,11 @@ export const cerebroFixtureResponseFor = ({
         n: "s-gSaEY7V_7tfx6vcYvSjlRV0LL3wuBligs-qKFEjF8KG7j-bUlOI6SI9GUdpWqAnoP0PZL8jFOgaaAt9096UoVUd3A9EheGrRU_dAHDxmbY1BENlqk_CVibNtxb8Cni1M2GJRW_Q2cAcXKhCzA-DKGyJtViKXXTe22jypT-7GO1zED45kb4FNXpTzNHnZVOruVK49Adv2f3e51-4SXTbT9NKHHL97uIoQynwRNqevx4H9dLbNVXTZRs06vKMjnYKvRIgtuY9t6G2F7daC6IahnwF-kYo4nuHlCdamBbxzoXT5pOofFMzPfHr_nqY2GnS9YMBOFFMaeX2ptEc9-lDw",
       },
     });
+  }
+
+  const connectorDetailMatch = /^connectors\/([^/]+)$/.exec(normalizedPath);
+  if (connectorDetailMatch) {
+    return jsonFixture(connectorDetailFixture(safeDecode(connectorDetailMatch[1])));
   }
 
   const credentialListMatch = /^connectors\/([^/]+)\/credentials$/.exec(normalizedPath);

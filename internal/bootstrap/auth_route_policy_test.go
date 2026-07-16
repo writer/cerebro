@@ -86,6 +86,51 @@ func TestGraphActionHTTPRoutesRequireDedicatedScope(t *testing.T) {
 	}
 }
 
+func TestPolicyEvaluationDatasetReadsUseDedicatedScope(t *testing.T) {
+	for _, path := range []string{
+		"/policy-candidates/candidate-1/evaluation-datasets",
+		"/policy-evaluation-datasets/dataset-1",
+		"/policy-evaluation-datasets/dataset-1/revisions",
+		"/policy-evaluation-datasets/dataset-1/revisions/revision-1",
+		"/policy-evaluation-datasets/dataset-1/revisions/revision-1/cases",
+	} {
+		policy := httpRoutePolicyFor(http.MethodGet, path)
+		if policy.Scope != scopePolicyEvaluationDatasetsRead || policy.AdminOnly {
+			t.Fatalf("GET %s policy = %#v, want evaluation dataset read scope", path, policy)
+		}
+	}
+
+	reader := authPrincipal{Scopes: []string{scopePolicyEvaluationDatasetsRead}}
+	if err := authorizePrincipalHTTPPolicy(reader, httpRoutePolicyFor(http.MethodGet, "/policy-evaluation-datasets/dataset-1")); err != nil {
+		t.Fatalf("evaluation dataset reader rejected: %v", err)
+	}
+}
+
+func TestPolicyEvaluationProposalCredentialCannotExecuteCandidatesOrExperiments(t *testing.T) {
+	proposalCredential := authPrincipal{Scopes: []string{
+		scopePolicyEvaluationDatasetsRead,
+		scopePolicyEvaluationDatasetsPropose,
+	}}
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/policy-candidates/candidate-1/prove"},
+		{method: http.MethodPost, path: "/policy-candidates/candidate-1/shadow"},
+		{method: http.MethodPost, path: "/policy-candidates/candidate-1/experiments"},
+		{method: http.MethodPost, path: "/policy-experiments/experiment-1/run"},
+		{method: http.MethodPost, path: "/policy-evaluation-datasets/dataset-1/revisions"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopePolicyCandidatesWrite {
+			t.Fatalf("%s %s policy = %#v, want candidate operator scope", tt.method, tt.path, policy)
+		}
+		if err := authorizePrincipalHTTPPolicy(proposalCredential, policy); !errors.Is(err, errScopeForbidden) {
+			t.Fatalf("proposal credential authorized for %s %s: %v", tt.method, tt.path, err)
+		}
+	}
+}
+
 func TestAgentTaskHTTPRoutesPlanWithReadScope(t *testing.T) {
 	for _, tt := range []struct {
 		method string
