@@ -1,11 +1,39 @@
 package securitypathdelta
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/attackpath"
 )
+
+func TestCollectionProjectionReceiptsKeepFlatJSONContract(t *testing.T) {
+	t.Parallel()
+	encoded, err := json.Marshal(CollectionReceipt{
+		ID:                                "receipt-a",
+		CollectionSourceProjectionReceipt: CollectionSourceProjectionReceipt{SourcePagesRead: 3},
+		CollectionGraphReceipt: CollectionGraphReceipt{
+			GraphPagesRead: 4, GraphMaterialLinkReconciliationCompleted: true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire["source_pages_read"] != float64(3) || wire["graph_pages_read"] != float64(4) || wire["graph_material_link_reconciliation_completed"] != true {
+		t.Fatalf("projection metrics are not flat: %s", encoded)
+	}
+	if _, exists := wire["collection_source_projection_receipt"]; exists {
+		t.Fatalf("embedded source projection receipt leaked a nested JSON field: %s", encoded)
+	}
+	if _, exists := wire["collection_graph_receipt"]; exists {
+		t.Fatalf("embedded graph receipt leaked a nested JSON field: %s", encoded)
+	}
+}
 
 func TestSnapshotPathIdentityIgnoresInputOrderAndLabels(t *testing.T) {
 	observedAt := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
