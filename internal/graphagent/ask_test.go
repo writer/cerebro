@@ -131,6 +131,55 @@ func TestServiceUsesDeterministicFastPathForCommonTopRiskAsk(t *testing.T) {
 	}
 }
 
+func TestServiceUsesDeterministicFastPathForGenericGraphRows(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"entity_urn":                      "urn:cerebro:writer:asset:alpha",
+				"entity_label":                    "Asset Alpha",
+				"entity_type":                     "asset",
+				"source_id":                       "github",
+				"runtime_id":                      "github-runtime",
+				"entity_attributes_json_internal": `{"owner":"security"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftErr: errors.New("draft should be skipped"),
+		Summary:  "Asset Alpha is present at `urn:cerebro:writer:asset:alpha`.",
+	}
+	service := NewServiceWithOptions(store, llm, ValidatorOptions{}, ServiceOptions{EnableDeterministicFastPath: true})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "show graph rows",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("DraftCypher called %#v, want deterministic graph rows fast path to skip drafting", llm.DraftRequests)
+	}
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Source != "deterministic_fast_path" || !planEvent.Deterministic || planEvent.Plan.Intent != IntentGraphRows {
+		t.Fatalf("query plan event = %#v, want deterministic graph rows plan", planEvent)
+	}
+	if len(store.requests) != 1 || strings.Contains(store.requests[0].Query, "MATCH (n)") || !strings.Contains(store.requests[0].Query, "tenant_id: $tenant_id") {
+		t.Fatalf("store query = %q, want tenant-scoped Entity template", store.requests[0].Query)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 1 || rowsEvent.Rows[0]["entity_urn"] != "urn:cerebro:writer:asset:alpha" {
+		t.Fatalf("rows = %#v, want graph entity row", rowsEvent.Rows)
+	}
+	if _, leaked := rowsEvent.Rows[0]["entity_attributes_json_internal"]; leaked {
+		t.Fatalf("rows leaked raw internal attributes: %#v", rowsEvent.Rows[0])
+	}
+}
+
 func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	store := &askStore{
 		rows: []ports.CypherRow{{
