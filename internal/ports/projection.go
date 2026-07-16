@@ -129,6 +129,35 @@ type ProjectionLinkCleanupResult struct {
 	LinksDeleted uint32
 }
 
+// ProjectionRuntimeLinkReconciliationRequest removes material links that were
+// not observed during one complete authoritative runtime collection.
+type ProjectionRuntimeLinkReconciliationRequest struct {
+	TenantID         string
+	SourceID         string
+	RuntimeID        string
+	ReconciliationID string
+	Relations        []string
+	Limit            uint32
+	DryRun           bool
+}
+
+// ProjectionAssertionMigrationRequest scopes an idempotent migration of
+// legacy logical material links into source-runtime assertions.
+type ProjectionAssertionMigrationRequest struct {
+	TenantID  string
+	Relations []string
+	Limit     uint32
+	DryRun    bool
+}
+
+// ProjectionAssertionMigrationResult reports legacy links considered,
+// migrated, and quarantined because their recorded provenance is incomplete.
+type ProjectionAssertionMigrationResult struct {
+	LinksMatched     uint32
+	LinksMigrated    uint32
+	LinksQuarantined uint32
+}
+
 // ProjectionStateStore persists normalized current-state entities and links.
 type ProjectionStateStore interface {
 	StateStore
@@ -186,6 +215,24 @@ type ProjectionCleaner interface {
 // EndpointOwnerIDLinkCleaner removes stale endpoint owner_id/user_id canonical identity links.
 type EndpointOwnerIDLinkCleaner interface {
 	CleanupEndpointOwnerIDLinks(context.Context, ProjectionLinkCleanupRequest) (ProjectionLinkCleanupResult, error)
+}
+
+// ProjectionRuntimeLinkReconciler performs the mark-and-sweep step after a
+// complete authoritative source-to-graph projection.
+type ProjectionRuntimeLinkReconciler interface {
+	CleanupProjectedRuntimeLinks(context.Context, ProjectionRuntimeLinkReconciliationRequest) (ProjectionLinkCleanupResult, error)
+}
+
+// ProjectionAssertionCoverageStore reports material logical links that have
+// not yet been migrated to independent source-runtime assertions.
+type ProjectionAssertionCoverageStore interface {
+	CountProjectedLinksMissingAssertions(context.Context, string, []string) (uint32, error)
+}
+
+// ProjectionAssertionMigrator converges legacy material links onto independent
+// source-runtime assertions without converting links whose provenance is incomplete.
+type ProjectionAssertionMigrator interface {
+	MigrateProjectedLinkAssertions(context.Context, ProjectionAssertionMigrationRequest) (ProjectionAssertionMigrationResult, error)
 }
 
 // SourceProjector materializes source events into current-state and graph stores.
