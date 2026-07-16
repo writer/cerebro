@@ -1,7 +1,11 @@
 package decisionpacket
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,9 +13,11 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 var ErrInvalidRequest = errors.New("invalid decision packet request")
+var ErrReceiptIntegrity = errors.New("decision packet receipt integrity check failed")
 
 type Clock interface {
 	Now() time.Time
@@ -22,8 +28,10 @@ type SystemClock struct{}
 func (SystemClock) Now() time.Time { return time.Now().UTC() }
 
 type Service struct {
-	resolver Resolver
-	clock    Clock
+	resolver         Resolver
+	clock            Clock
+	receipts         ports.DecisionPacketReceiptStore
+	receiptRetention time.Duration
 }
 
 func NewService(resolver Resolver, clock Clock) *Service {
@@ -31,6 +39,42 @@ func NewService(resolver Resolver, clock Clock) *Service {
 		clock = SystemClock{}
 	}
 	return &Service{resolver: resolver, clock: clock}
+}
+
+func NewPersistentService(resolver Resolver, clock Clock, receipts ports.DecisionPacketReceiptStore, retention time.Duration) *Service {
+	service := NewService(resolver, clock)
+	service.receipts = receipts
+	service.receiptRetention = retention
+	return service
+}
+
+func (s *Service) GetReceipt(ctx context.Context, tenant AuthorizedTenant, packetID string) (*Packet, error) {
+	if s == nil || s.receipts == nil {
+		return nil, fmt.Errorf("%w: receipt store is required", ErrResolverUnavailable)
+	}
+	tenant.ID = strings.TrimSpace(tenant.ID)
+	packetID = strings.TrimSpace(packetID)
+	if tenant.ID == "" || packetID == "" {
+		return nil, fmt.Errorf("%w: tenant and packet id are required", ErrInvalidRequest)
+	}
+	receipt, err := s.receipts.GetDecisionPacketReceipt(ctx, tenant.ID, packetID)
+	if err != nil {
+		return nil, err
+	}
+	var packet Packet
+	decoder := json.NewDecoder(bytes.NewReader(receipt.PacketJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&packet); err != nil {
+		return nil, fmt.Errorf("%w: decode packet: %w", ErrReceiptIntegrity, err)
+	}
+	verified, canonical, err := CanonicalizePacket(packet)
+	if err != nil {
+		return nil, fmt.Errorf("%w: canonicalize packet: %w", ErrReceiptIntegrity, err)
+	}
+	if verified.ID != packetID || verified.Scope.TenantID != tenant.ID || digestBytes(canonical) != receipt.PacketDigest {
+		return nil, ErrReceiptIntegrity
+	}
+	return &verified, nil
 }
 
 func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor AuthorizedActor, request Request) (*Packet, error) {
@@ -89,6 +133,14 @@ func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor Auth
 		OptionalGapMatters: optionalGapMatters, OutcomeTruncated: truncated,
 		GuardrailsPassed: guardrails.Readiness.State != agentplatform.AgentReadinessBlocked,
 	})
+	evidenceDigest, err := digestCanonicalJSON(facts.Evidence)
+	if err != nil {
+		return nil, err
+	}
+	coverageDigest, err := digestCanonicalJSON(facts.CoverageGaps)
+	if err != nil {
+		return nil, err
+	}
 	packet := Packet{
 		SchemaVersion: SchemaVersion, GeneratedAt: now,
 		Workflow:   Workflow{ID: request.Workflow, Question: request.Question},
@@ -97,14 +149,46 @@ func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor Auth
 		Freshness: deriveFreshness(facts.Evidence, requiredStale), Evidence: facts.Evidence,
 		Contradictions: contradictions, CoverageGaps: facts.CoverageGaps, Affected: facts.Affected,
 		Controls: facts.Controls, AuditPackets: facts.AuditPackets, Actions: safeActions(facts.Actions, decision.State),
-		Provenance: Provenance{ResolverIDs: facts.ResolverIDs, SourceIDs: facts.SourceIDs},
-		Limits:     resultLimits(rawFacts, len(allContradictions), request.Budgets),
+		Provenance: Provenance{
+			ResolverIDs: facts.ResolverIDs, SourceIDs: facts.SourceIDs,
+			EvidenceDigest: evidenceDigest, CoverageDigest: coverageDigest,
+		},
+		Limits: resultLimits(rawFacts, len(allContradictions), request.Budgets),
 	}
-	packet, _, err = CanonicalizePacket(packet)
+	packet, canonical, err := CanonicalizePacket(packet)
 	if err != nil {
 		return nil, err
 	}
+	if s.receipts != nil {
+		receipt := &ports.DecisionPacketReceipt{
+			TenantID: tenant.ID, PacketID: packet.ID, SchemaVersion: packet.SchemaVersion,
+			Workflow: packet.Workflow.ID, ScopeURN: packet.Scope.URN, DecisionState: packet.Decision.State,
+			Confidence: packet.Confidence.Level, PacketDigest: digestBytes(canonical),
+			EvidenceDigest: packet.Provenance.EvidenceDigest, CoverageDigest: packet.Provenance.CoverageDigest,
+			PacketJSON: canonical, CreatedAt: packet.GeneratedAt,
+		}
+		if s.receiptRetention > 0 {
+			expiresAt := packet.GeneratedAt.Add(s.receiptRetention)
+			receipt.ExpiresAt = &expiresAt
+		}
+		if err := s.receipts.PutDecisionPacketReceipt(ctx, receipt); err != nil {
+			return nil, fmt.Errorf("persist decision packet receipt: %w", err)
+		}
+	}
 	return &packet, nil
+}
+
+func digestCanonicalJSON(value any) (string, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("marshal decision packet digest input: %w", err)
+	}
+	return digestBytes(encoded), nil
+}
+
+func digestBytes(value []byte) string {
+	digest := sha256.Sum256(value)
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func validateResolvedFacts(tenantID string, facts ResolvedFacts) error {
