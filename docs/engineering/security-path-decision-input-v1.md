@@ -39,7 +39,7 @@ Unknown fields and unknown schema versions fail closed. Duplicate stable identif
 The V1 decoder enforces limits below the generic Wasm transport limits:
 
 - at most 100 attack paths per snapshot;
-- at most 64 proof edges per path;
+- at most 64 proof edges and ownership proofs combined per path;
 - at most 256 runtime receipts per snapshot;
 - at most 256 requested path identifiers;
 - at most 4,096 bytes per decision-relevant string.
