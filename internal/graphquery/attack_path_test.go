@@ -44,9 +44,33 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 			"reach_relation":         "can_reach",
 			"access_relation":        "can_perform",
 			"relation_chain":         []any{"attached_to", "runs_as"},
+			"exposure_edge": map[string]any{
+				"from_urn": "urn:cerebro:writer:aws_public_principal:public_internet", "from_entity_type": "aws.public_principal", "from_label": "public internet",
+				"relation": "can_reach",
+				"to_urn":   "urn:cerebro:writer:aws_network_interface:eni-1", "to_entity_type": "aws.network.interface", "to_label": "prod-web",
+				"direction": "forward",
+			},
+			"resource_account_edge": map[string]any{
+				"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_entity_type": "aws.network.interface", "from_label": "prod-web",
+				"relation": "belongs_to",
+				"to_urn":   "urn:cerebro:writer:cloud_account:123456789012", "to_entity_type": "cloud.account", "to_label": "123456789012",
+				"direction": "forward",
+			},
 			"traversal_edges": []any{
 				map[string]any{"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_entity_type": "aws.network.interface", "from_label": "prod-web", "relation": "attached_to", "to_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "to_entity_type": "aws.ec2.instance", "to_label": "prod-web", "direction": "forward"},
 				map[string]any{"from_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "from_entity_type": "aws.ec2.instance", "from_label": "prod-web", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "to_entity_type": "aws.user", "to_label": "admin@writer.com", "direction": "forward"},
+			},
+			"privilege_edge": map[string]any{
+				"from_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "from_entity_type": "aws.user", "from_label": "admin@writer.com",
+				"relation": "can_perform",
+				"to_urn":   "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess", "to_entity_type": "aws.aws.iam.policy", "to_label": "AdministratorAccess",
+				"direction": "forward",
+			},
+			"permission_account_edge": map[string]any{
+				"from_urn": "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess", "from_entity_type": "aws.aws.iam.policy", "from_label": "AdministratorAccess",
+				"relation": "belongs_to",
+				"to_urn":   "urn:cerebro:writer:cloud_account:123456789012", "to_entity_type": "cloud.account", "to_label": "123456789012",
+				"direction": "forward",
 			},
 		}}},
 	}}

@@ -34,6 +34,7 @@ func postgresAdvisoryLockKey(parts ...string) string {
 // still giving each table a persistent, process-lifetime readiness flag.
 type findingIntelReady struct {
 	candidate         bool
+	policyCandidate   bool
 	memory            bool
 	riskScoringConfig bool
 	remediation       bool

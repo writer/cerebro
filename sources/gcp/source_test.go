@@ -30,6 +30,19 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestProjectionReconciliationRequiresAuthoritativeInventoryFamily(t *testing.T) {
+	source := &Source{}
+	if source.SupportsAuthoritativeProjectionReconciliation(sourcecdk.NewConfig(nil)) {
+		t.Fatal("default audit family must not reconcile current graph links")
+	}
+	if source.SupportsAuthoritativeProjectionReconciliation(sourcecdk.NewConfig(map[string]string{"family": familyAudit})) {
+		t.Fatal("audit family must not reconcile current graph links")
+	}
+	if !source.SupportsAuthoritativeProjectionReconciliation(sourcecdk.NewConfig(map[string]string{"family": familyResourceExposure})) {
+		t.Fatal("resource exposure inventory must support current graph link reconciliation")
+	}
+}
+
 func TestCheckRequiresProjectAndAuth(t *testing.T) {
 	source, err := New()
 	if err != nil {

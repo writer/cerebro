@@ -522,8 +522,8 @@ function createMockApi({ bounded, recordCount: count, stats }) {
         });
       }
       return sendJSON(response, stats, normalizedPath, { ok: true, path: normalizedPath, generated_at: generatedAt });
-    } catch (error) {
-      const body = JSON.stringify({ error: error instanceof Error ? error.message : String(error), generated_at: generatedAt });
+    } catch {
+      const body = JSON.stringify({ error: "benchmark_request_failed", generated_at: generatedAt });
       response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
       response.end(body);
     }
@@ -1886,7 +1886,7 @@ async function waitFor(label, action, timeoutMs) {
       await sleep(500);
     }
   }
-  const logs = currentWebProcess ? await tailLog(`${currentWebProcess.spawnargs?.[0] ?? "web"}`).catch(() => "") : "";
+  const logs = currentWebProcess ? await tailLog().catch(() => "") : "";
   throw new Error(`${label} timed out after ${timeoutMs}ms: ${lastError?.message ?? "unknown error"}${logs ? `\n${logs}` : ""}`);
 }
 

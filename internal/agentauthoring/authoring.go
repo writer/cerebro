@@ -21,6 +21,7 @@ var (
 
 type StructuredDraftRequest struct {
 	Kind       string         `json:"kind"`
+	TenantID   string         `json:"-"`
 	Prompt     string         `json:"prompt"`
 	SchemaJSON string         `json:"schema_json,omitempty"`
 	Context    map[string]any `json:"context,omitempty"`
@@ -31,13 +32,15 @@ type StructuredDraftModel interface {
 }
 
 type Service struct {
-	Model     StructuredDraftModel
-	OutputDir string
+	Model            StructuredDraftModel
+	OutputDir        string
+	PolicyGraphStore findingdsl.PolicyGraphTestStore
 }
 
 type PolicyRuleDraftRequest struct {
-	Prompt  string
-	Context map[string]any
+	Prompt   string
+	TenantID string
+	Context  map[string]any
 }
 
 type PolicyRuleDraftResult struct {
@@ -48,9 +51,11 @@ type PolicyRuleDraftResult struct {
 }
 
 type PolicyBundleDraftRequest struct {
-	Prompt  string
-	Domain  string
-	Context map[string]any
+	Prompt        string
+	TenantID      string
+	Domain        string
+	Context       map[string]any
+	GraphEvidence *policyauthor.GraphEvidence
 }
 
 type PolicyBundleDraftResult struct {
@@ -91,6 +96,7 @@ func (s Service) DraftPolicyRule(ctx context.Context, request PolicyRuleDraftReq
 	}
 	raw, err := s.Model.DraftJSON(ctx, StructuredDraftRequest{
 		Kind:       "policy_finding_rule",
+		TenantID:   strings.TrimSpace(request.TenantID),
 		Prompt:     prompt,
 		SchemaJSON: string(schema),
 		Context:    request.Context,
@@ -122,27 +128,154 @@ func (s Service) DraftPolicyRule(ctx context.Context, request PolicyRuleDraftReq
 func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraftRequest) (*PolicyBundleDraftResult, error) {
 	contextValues := make(map[string]any, len(request.Context)+1)
 	for key, value := range request.Context {
+		if key == "source_evidence" {
+			contextValues[key] = newPolicyAuthoringEvidenceRedactor().redact(normalizePolicyAuthoringEvidence(value), "")
+			continue
+		}
 		contextValues[key] = value
+	}
+	if request.GraphEvidence != nil {
+		graphContext, err := policyauthor.GraphEvidenceModelContext(*request.GraphEvidence)
+		if err != nil {
+			return nil, fmt.Errorf("%w: graph evidence: %w", ErrInvalidRequest, err)
+		}
+		contextValues["graph_evidence"] = graphContext
 	}
 	contextValues["test_author_contract"] = map[string]any{
 		"condition_shape": `cmp_eq(path(resource, "field"), scalar)`,
 		"required_cases":  []string{"finding", "passing"},
 		"proof":           "generated suite must reject a policy with its first condition removed",
+		"graph_query": map[string]any{
+			"tenant_scope":  "every node pattern must use the Entity label and include tenant_id: $tenant_id inline, including later MATCH, UNION, subquery, and comprehension patterns",
+			"runtime_limit": "every LIMIT clause must be exactly LIMIT $row_limit; do not hardcode a numeric limit",
+			"bounded_path":  "use fixed directed relationships; variable-length traversal, APOC, procedures, UNWIND, range, and collect are forbidden",
+		},
+		"grounding": map[string]any{
+			"input":         "source event attributes and projected entity and relation contracts",
+			"preserve":      []string{"source kinds", "entity types", "relations", "risk-relevant state"},
+			"redact":        []string{"tenant IDs", "account IDs", "resource ARNs", "session names", "endpoints", "secret names", "secret references"},
+			"current_state": "stateful findings must use authoritative inventory state; historical audit state supplies provenance only",
+			"causality":     "graph passing fixtures must retain the same nodes and remove exactly one policy-critical edge",
+		},
 	}
-	draft, err := s.DraftPolicyRule(ctx, PolicyRuleDraftRequest{Prompt: request.Prompt, Context: contextValues})
+	draft, err := s.DraftPolicyRule(ctx, PolicyRuleDraftRequest{Prompt: request.Prompt, TenantID: request.TenantID, Context: contextValues})
 	if err != nil {
 		return nil, err
 	}
-	artifacts, err := policyauthor.ArtifactsForRule(request.Domain, draft.Rule)
+	var artifacts policyauthor.Artifacts
+	if request.GraphEvidence != nil {
+		artifacts, err = policyauthor.ArtifactsForRuleWithGraphEvidence(ctx, request.Domain, draft.Rule, request.GraphEvidence)
+	} else {
+		artifacts, err = policyauthor.ArtifactsForRule(request.Domain, draft.Rule)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: author policy bundle: %w", ErrDraftValidationFail, err)
 	}
-	proof, err := policyauthor.Prove(artifacts)
+	proof, err := policyauthor.ProveWithGraphStore(ctx, artifacts, s.PolicyGraphStore)
 	result := &PolicyBundleDraftResult{Rule: artifacts.Rule, PolicyPath: artifacts.PolicyPath, PolicyYAML: artifacts.PolicyYAML, Suite: artifacts.Suite, TestPath: artifacts.TestPath, TestYAML: artifacts.TestYAML, Proof: proof}
 	if err != nil {
 		return result, fmt.Errorf("%w: prove policy bundle: %w", ErrDraftValidationFail, err)
 	}
 	return result, nil
+}
+
+func normalizePolicyAuthoringEvidence(value any) any {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "<redacted>"
+	}
+	var normalized any
+	if err := json.Unmarshal(encoded, &normalized); err != nil {
+		return "<redacted>"
+	}
+	return normalized
+}
+
+type policyAuthoringEvidenceRedactor struct {
+	identifiers map[string]string
+	nextID      int
+	nextKey     int
+}
+
+func newPolicyAuthoringEvidenceRedactor() *policyAuthoringEvidenceRedactor {
+	return &policyAuthoringEvidenceRedactor{identifiers: map[string]string{}}
+}
+
+func (r *policyAuthoringEvidenceRedactor) redact(value any, key string) any {
+	normalizedKey := strings.ToLower(strings.TrimSpace(key))
+	if policyAuthoringEvidenceIdentifierKey(normalizedKey) {
+		canonical, err := json.Marshal(value)
+		if err != nil {
+			return "<redacted>"
+		}
+		raw := string(canonical)
+		if token, ok := r.identifiers[raw]; ok {
+			return token
+		}
+		r.nextID++
+		token := fmt.Sprintf("aws-ref-%d", r.nextID)
+		r.identifiers[raw] = token
+		return token
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		redacted := make(map[string]any, len(typed))
+		for childKey, childValue := range typed {
+			redacted[r.redactKey(childKey)] = r.redact(childValue, childKey)
+		}
+		return redacted
+	case []any:
+		redacted := make([]any, 0, len(typed))
+		for _, childValue := range typed {
+			redacted = append(redacted, r.redact(childValue, key))
+		}
+		return redacted
+	default:
+		if policyAuthoringEvidenceSafeKey(normalizedKey) {
+			return typed
+		}
+		return "<redacted>"
+	}
+}
+
+func (r *policyAuthoringEvidenceRedactor) redactKey(key string) string {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if strings.Contains(normalized, "arn:") || strings.Contains(normalized, "@") || hasTwelveDigitSequence(normalized) {
+		r.nextKey++
+		return fmt.Sprintf("evidence-key-%d", r.nextKey)
+	}
+	return key
+}
+
+func hasTwelveDigitSequence(value string) bool {
+	digits := 0
+	for _, character := range value {
+		if character >= '0' && character <= '9' {
+			digits++
+			if digits >= 12 {
+				return true
+			}
+			continue
+		}
+		digits = 0
+	}
+	return false
+}
+
+func policyAuthoringEvidenceSafeKey(key string) bool {
+	if strings.HasPrefix(key, "has_") || strings.HasSuffix(key, "_count") {
+		return true
+	}
+	switch key {
+	case "provider", "source_kind", "source_kinds", "entity_type", "entity_types", "relation", "relations", "event_type", "resource_type", "status", "state", "last_status", "observed_last_status", "role_usage":
+		return true
+	default:
+		return false
+	}
+}
+
+func policyAuthoringEvidenceIdentifierKey(key string) bool {
+	return key == "urn" || key == "arn" || key == "tenant_id" || key == "account_id" || key == "resource_id" || key == "actor_id" || strings.HasSuffix(key, "_urn") || strings.HasSuffix(key, "_arn") || strings.HasSuffix(key, "_id")
 }
 
 func (s Service) DraftConnectorDefinition(ctx context.Context, request ConnectorDefinitionDraftRequest) (*ConnectorDefinitionDraftResult, error) {
