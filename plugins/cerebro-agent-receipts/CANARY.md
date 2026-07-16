@@ -20,6 +20,22 @@ Verification result:
 
 The ledger connected the action to one Codex session ID, turn ID, and tool-call ID. The attempt and completion produced two receipts but one action. The ledger stored command and result digests instead of raw command output.
 
+## Background collector recovery
+
+The registered LaunchAgent was tested independently of the status app with four local session receipts.
+
+- Frozen collector: the hook returned successfully and queued one bounded fallback record.
+- Collector resumed: the queue drained from one record to zero and produced exactly one receipt for the canary session.
+- Status app terminated: the collector retained its PID and captured another session.
+- Collector terminated: launchd restarted it under a new PID and the next session was captured.
+- Final verification: 4 receipts, 4 valid signatures, integrity passed.
+
+These results prove persistence and local recovery on this development Mac. They do not prove that a local user cannot disable the LaunchAgent or that a provider mutation was prevented.
+
+The v3 login-item package was then rebuilt and registered in place with an unchanged collector binary. The second registration passed nested code-signature validation, launchd reported the collector running, and the XPC health probe succeeded. A new frozen-collector canary queued one record; after recovery the queue returned to zero and the session occurred exactly once in the ledger. Terminating collector PID `7275` caused launchd to start PID `12202`; the health probe recovered and the final collector ledger contained 5 receipts with 5 valid signatures.
+
+This repeat-upgrade result is a development packaging check, not release-signing evidence. The release gate still requires a Developer ID or enterprise-signed, hardened, notarized universal app and an upgrade test from the prior shipped version.
+
 ## Authenticated provider lookup
 
 The helper queried AWS CloudTrail through an authenticated CLI profile for a three-minute window containing the earlier `RegisterTaskDefinition` canary.

@@ -3,6 +3,14 @@ import ReceiptCore
 
 do {
   let arguments = Array(CommandLine.arguments.dropFirst())
+  if arguments.first == "ping" {
+    guard arguments.count == 1, ShieldServiceClient.isReachable(timeout: 1) else {
+      throw CLIError.provider("The Cerebro Shield background collector is not reachable.")
+    }
+    print("Cerebro Shield background collector is reachable.")
+    exit(0)
+  }
+
   if arguments.first == "import-cloudtrail" {
     guard arguments.count == 2 else {
       throw CLIError.usage("usage: CerebroAgentReceiptHook import-cloudtrail <lookup-events.json>")
@@ -42,13 +50,20 @@ do {
       throw CLIError.usage("usage: CerebroAgentReceiptHook verify [--require-provider-bound]")
     }
     let store = ReceiptStore()
-    let receipts = try store.readReceipts()
+    var receipts: [ExecutionReceipt] = []
+    var verification: [ReceiptVerification] = []
+    for receiptStore in receiptStores() {
+      let chain = try receiptStore.readReceipts()
+      guard !chain.isEmpty else { continue }
+      receipts.append(contentsOf: chain)
+      verification.append(
+        contentsOf: ReceiptVerifier.verify(
+          chain, trustedPublicKeyBase64: try receiptStore.readTrustedPublicKey()))
+    }
+    receipts.sort {
+      ($0.payload.capturedDate ?? .distantPast) < ($1.payload.capturedDate ?? .distantPast)
+    }
     let providerEvents = try store.readProviderEvents()
-    let verification =
-      receipts.isEmpty
-      ? []
-      : ReceiptVerifier.verify(
-        receipts, trustedPublicKeyBase64: try store.readTrustedPublicKey())
     let verificationMap = Dictionary(uniqueKeysWithValues: verification.map { ($0.receiptID, $0) })
     let actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verificationMap)
     let assessment = ReceiptCorrelator.assess(
@@ -88,16 +103,25 @@ do {
     product = selected
   } else {
     throw CLIError.usage(
-      "usage: CerebroAgentReceiptHook [capture <codex|droid|claude-code|opencode|cursor>|verify|import-cloudtrail|fetch-cloudtrail]"
+      "usage: CerebroAgentReceiptHook [capture <codex|droid|claude-code|opencode|cursor>|ping|verify|import-cloudtrail|fetch-cloudtrail]"
     )
   }
   let input = FileHandle.standardInput.readDataToEndOfFile()
   guard !input.isEmpty else { exit(0) }
   let envelope = try AgentEventNormalizer.normalize(input, product: product)
   let draft = try HookCapture.draft(from: envelope, product: product)
-  let signer = try DeviceKeySigner()
-  let store = ReceiptStore()
-  try store.append(draft: draft, signer: signer)
+  if !ShieldServiceClient.submit(draft) {
+    let identity = AgentBinaryAttestor.inspect(
+      product: product,
+      executableURL: ProcessExecutable.url()
+    )
+    guard identity.trust == .validAdHocSignature else {
+      throw CLIError.provider(
+        "The managed background collector rejected the event; no user-writable fallback was accepted."
+      )
+    }
+    try ShieldFallbackSpool().enqueue(draft)
+  }
 } catch {
   FileHandle.standardError.write(
     Data("Cerebro receipt capture failed: \(error.localizedDescription)\n".utf8))
@@ -131,6 +155,10 @@ private func saveMerged(_ events: [ProviderEvent], to store: ReceiptStore) throw
   var merged: [String: ProviderEvent] = [:]
   for event in try store.readProviderEvents() + events { merged[event.id] = event }
   try store.saveProviderEvents(Array(merged.values))
+}
+
+private func receiptStores() -> [ReceiptStore] {
+  [ReceiptStore(), ReceiptStore(directory: ReceiptStore.shieldAgentDirectory())]
 }
 
 private func bindingPolicyFromEnvironment() -> ProviderBindingPolicy? {

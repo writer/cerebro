@@ -89,6 +89,7 @@ public enum ShieldSnapshotBuilder {
     binaryDrift: [AgentProduct: AgentBinaryDrift] = [:],
     recentValidEventByProduct: [String: Date],
     invalidReceiptCount: Int,
+    collectorReachable: Bool = true,
     trustBoundary: ShieldTrustBoundary,
     now: Date = Date()
   ) -> ShieldSnapshot {
@@ -101,27 +102,29 @@ public enum ShieldSnapshotBuilder {
     for status in detected {
       switch status.state {
       case .notInstalled, .needsRepair:
-        incidents.append(ShieldIncident(
-          id: "adapter:\(status.product.rawValue)",
-          kind: .adapterCoverage,
-          severity: .warning,
-          product: status.product,
-          title: "\(status.product.displayName) capture is not current",
-          detail: status.state == .notInstalled
-            ? "The agent is installed but its native event adapter is missing."
-            : "The agent adapter or receipt helper changed and requires repair."
-        ))
+        incidents.append(
+          ShieldIncident(
+            id: "adapter:\(status.product.rawValue)",
+            kind: .adapterCoverage,
+            severity: .warning,
+            product: status.product,
+            title: "\(status.product.displayName) capture is not current",
+            detail: status.state == .notInstalled
+              ? "The agent is installed but its native event adapter is missing."
+              : "The agent adapter or receipt helper changed and requires repair."
+          ))
       case .invalidConfiguration, .unmanagedConflict:
-        incidents.append(ShieldIncident(
-          id: "adapter-conflict:\(status.product.rawValue)",
-          kind: .adapterConflict,
-          severity: .critical,
-          product: status.product,
-          title: "\(status.product.displayName) configuration needs an operator",
-          detail: status.state == .invalidConfiguration
-            ? "The existing configuration is invalid and was left unchanged."
-            : "The managed plugin path contains an unrelated plugin and was left unchanged."
-        ))
+        incidents.append(
+          ShieldIncident(
+            id: "adapter-conflict:\(status.product.rawValue)",
+            kind: .adapterConflict,
+            severity: .critical,
+            product: status.product,
+            title: "\(status.product.displayName) configuration needs an operator",
+            detail: status.state == .invalidConfiguration
+              ? "The existing configuration is invalid and was left unchanged."
+              : "The managed plugin path contains an unrelated plugin and was left unchanged."
+          ))
       case .configured, .managedByPlugin:
         break
       }
@@ -129,36 +132,53 @@ public enum ShieldSnapshotBuilder {
 
     for identity in binaryIdentities where identity.path != nil {
       if identity.trust == .invalidSignature {
-        incidents.append(ShieldIncident(
-          id: "binary-integrity:\(identity.product.rawValue)",
-          kind: .binaryIntegrity,
-          severity: .critical,
-          product: identity.product,
-          title: "\(identity.product.displayName) has an invalid code signature",
-          detail: "The executable at \(identity.path ?? "the detected path") failed static code validation."
-        ))
+        incidents.append(
+          ShieldIncident(
+            id: "binary-integrity:\(identity.product.rawValue)",
+            kind: .binaryIntegrity,
+            severity: .critical,
+            product: identity.product,
+            title: "\(identity.product.displayName) has an invalid code signature",
+            detail:
+              "The executable at \(identity.path ?? "the detected path") failed static code validation."
+          ))
       }
       if case .changed = binaryDrift[identity.product] {
-        incidents.append(ShieldIncident(
-          id: "binary-drift:\(identity.product.rawValue)",
-          kind: .binaryDrift,
-          severity: .warning,
-          product: identity.product,
-          title: "\(identity.product.displayName) executable changed",
-          detail: "Publisher identity and content measurements were recorded for investigation."
-        ))
+        incidents.append(
+          ShieldIncident(
+            id: "binary-drift:\(identity.product.rawValue)",
+            kind: .binaryDrift,
+            severity: .warning,
+            product: identity.product,
+            title: "\(identity.product.displayName) executable changed",
+            detail: "Publisher identity and content measurements were recorded for investigation."
+          ))
       }
     }
 
     if invalidReceiptCount > 0 {
-      incidents.append(ShieldIncident(
-        id: "receipt-integrity",
-        kind: .receiptIntegrity,
-        severity: .critical,
-        product: nil,
-        title: "Local evidence integrity failed",
-        detail: "\(invalidReceiptCount) receipt records failed signature, chain, or sequence validation."
-      ))
+      incidents.append(
+        ShieldIncident(
+          id: "receipt-integrity",
+          kind: .receiptIntegrity,
+          severity: .critical,
+          product: nil,
+          title: "Local evidence integrity failed",
+          detail:
+            "\(invalidReceiptCount) receipt records failed signature, chain, or sequence validation."
+        ))
+    }
+
+    if !collectorReachable {
+      incidents.append(
+        ShieldIncident(
+          id: "background-service",
+          kind: .backgroundService,
+          severity: .critical,
+          product: nil,
+          title: "Background collector is not reachable",
+          detail: "The native collection service did not answer its local health check."
+        ))
     }
 
     let recentEvents = detected.filter { status in

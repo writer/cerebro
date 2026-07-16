@@ -8,6 +8,7 @@ let package = Package(
   products: [
     .library(name: "ReceiptCore", targets: ["ReceiptCore"]),
     .executable(name: "CerebroAgentReceiptHook", targets: ["CerebroAgentReceiptHook"]),
+    .executable(name: "CerebroShieldAgent", targets: ["CerebroShieldAgent"]),
     .executable(name: "CerebroAgentReceipts", targets: ["CerebroAgentReceipts"]),
     .executable(name: "ReceiptCoreChecks", targets: ["ReceiptCoreChecks"]),
   ],
@@ -18,6 +19,10 @@ let package = Package(
     ),
     .executableTarget(
       name: "CerebroAgentReceiptHook",
+      dependencies: ["ReceiptCore"]
+    ),
+    .executableTarget(
+      name: "CerebroShieldAgent",
       dependencies: ["ReceiptCore"]
     ),
     .executableTarget(

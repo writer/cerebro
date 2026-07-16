@@ -82,7 +82,8 @@ struct ContentView: View {
         }
       }
       .navigationTitle(
-        store.showsOverview ? "Items to review" : (store.selectedProduct?.displayName ?? store.filter.label)
+        store.showsOverview
+          ? "Items to review" : (store.selectedProduct?.displayName ?? store.filter.label)
       )
     } detail: {
       if store.showsOverview {

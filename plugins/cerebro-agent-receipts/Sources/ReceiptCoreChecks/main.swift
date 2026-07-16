@@ -31,12 +31,21 @@ struct CheckRunner {
       failures.append("automatic reconciliation: \(error)")
     }
     do { try checkAdminCapability() } catch { failures.append("admin capability: \(error)") }
+    do { try checkFallbackSpool() } catch { failures.append("fallback spool: \(error)") }
+    do { try checkDevelopmentKeyFile() } catch {
+      failures.append("development key file: \(error)")
+    }
+    do { try checkShieldFalseGreen() } catch {
+      failures.append("shield false green: \(error)")
+    }
 
     if failures.isEmpty {
-      print("PASS: 15 receipt security checks")
+      print("PASS: 18 receipt security checks")
       return
     }
-    failures.forEach { FileHandle.standardError.write(Data("FAIL: \($0)\n".utf8)) }
+    for failure in failures {
+      FileHandle.standardError.write(Data("FAIL: \(failure)\n".utf8))
+    }
     exit(1)
   }
 
@@ -71,6 +80,96 @@ struct CheckRunner {
     expect(
       !draft.actionSummary.contains("super-secret"), "action summary leaked a command argument")
     expect(draft.inputDigest != nil, "input digest is missing")
+  }
+
+  private mutating func checkDevelopmentKeyFile() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("development-signing-key")
+    let first = try DeviceKeySigner(developmentKeyFileURL: url)
+    let second = try DeviceKeySigner(developmentKeyFileURL: url)
+    let permissions =
+      try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+      as? NSNumber
+    expect(permissions?.uint16Value == 0o600, "development key permissions are not 0600")
+    expect(first.deviceID == second.deviceID, "development key identity changed after reload")
+    expect(
+      DeviceKeySigner.deviceID(publicKeyBase64: first.publicKeyBase64) == first.deviceID,
+      "public key did not reproduce the collector device identity")
+    expect(
+      DeviceKeySigner.deviceID(publicKeyBase64: "not-a-key") == nil,
+      "invalid public key produced a device identity")
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+    do {
+      _ = try DeviceKeySigner(developmentKeyFileURL: url)
+      failures.append("development key accepted group-readable permissions")
+    } catch SigningError.keyFilePermissions {
+      // Expected.
+    }
+  }
+
+  private mutating func checkShieldFalseGreen() throws {
+    let status = AgentAdapterStatus(
+      product: .codex,
+      state: .configured,
+      executableAvailable: true,
+      configurationPath: "/redacted"
+    )
+    let unreachable = ShieldSnapshotBuilder.build(
+      statuses: [status],
+      binaryIdentities: [],
+      recentValidEventByProduct: [:],
+      invalidReceiptCount: 0,
+      collectorReachable: false,
+      trustBoundary: .development
+    )
+    expect(unreachable.level == .attention, "unreachable collector retained an active shield")
+    expect(
+      unreachable.incidents.contains { $0.kind == .backgroundService },
+      "unreachable collector did not create a background-service incident")
+    let invalidSession = ShieldSnapshotBuilder.build(
+      statuses: [status],
+      binaryIdentities: [],
+      recentValidEventByProduct: [:],
+      invalidReceiptCount: 1,
+      trustBoundary: .development
+    )
+    expect(invalidSession.level == .attention, "invalid non-action receipt retained active shield")
+    expect(
+      invalidSession.incidents.contains { $0.kind == .receiptIntegrity },
+      "invalid non-action receipt did not create an integrity incident")
+
+    let configuration = ManagedShieldConfiguration(
+      organizationPublicKeyBase64: "public-key",
+      expectedTeamIdentifier: "WRITERTEAM",
+      expectedSigningIdentifier: "com.writer.cerebro.agent-receipts",
+      capabilityURL: URL(fileURLWithPath: "/managed/capability.json"),
+      autoRepair: true
+    )
+    let approved = AgentBinaryIdentity(
+      product: .codex,
+      path: "/Applications/Cerebro Shield.app",
+      trust: .verifiedPublisher,
+      signingIdentifier: "com.writer.cerebro.agent-receipts",
+      teamIdentifier: "WRITERTEAM",
+      cdHash: nil,
+      contentDigest: nil,
+      modifiedAt: nil
+    )
+    expect(configuration.accepts(applicationIdentity: approved), "approved publisher was rejected")
+    let wrongPublisher = AgentBinaryIdentity(
+      product: .codex,
+      path: approved.path,
+      trust: .verifiedPublisher,
+      signingIdentifier: approved.signingIdentifier,
+      teamIdentifier: "OTHERTEAM",
+      cdHash: nil,
+      contentDigest: nil,
+      modifiedAt: nil
+    )
+    expect(
+      !configuration.accepts(applicationIdentity: wrongPublisher),
+      "another valid publisher was accepted as organization managed")
   }
 
   private mutating func checkSignedChain() throws {
@@ -578,6 +677,33 @@ struct CheckRunner {
       now: now
     )
     expect(!changedAccess.isAuthorized, "tampered administrator roles retained a valid signature")
+  }
+
+  private mutating func checkFallbackSpool() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let spool = ShieldFallbackSpool(
+      directory: directory,
+      maximumRecords: 2,
+      maximumBytes: 100_000
+    )
+    try spool.enqueue(draft(id: "first-fallback", phase: .attempted))
+    try spool.enqueue(draft(id: "second-fallback", phase: .completed))
+    expect(spool.queuedCount() == 2, "fallback records were not queued")
+    do {
+      try spool.enqueue(draft(id: "overflow-fallback", phase: .completed))
+      failures.append("fallback queue exceeded its record bound")
+    } catch ShieldFallbackSpoolError.capacityExceeded {
+      // Expected.
+    }
+    var drainedIDs: [String] = []
+    let count = try spool.drain { drainedIDs.append($0.id) }
+    expect(count == 2, "fallback queue did not drain both records")
+    expect(
+      drainedIDs == ["first-fallback", "second-fallback"],
+      "fallback queue did not preserve event order")
+    let secondDrain = try spool.drain { _ in }
+    expect(secondDrain == 0, "fallback queue delivered a record twice")
   }
 
   private func signedCanaryAction(actionSummary: String) throws -> ExecutionAction {

@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ReceiptDraft: Sendable {
+public struct ReceiptDraft: Codable, Equatable, Sendable {
   public let id: String
   public let capturedAt: String
   public let phase: ReceiptPhase

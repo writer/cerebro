@@ -1,0 +1,161 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260716_cerebro_shield",
+  "sourceEvidence": {
+    "kind": "source_and_experiment_collection",
+    "label": "Cerebro Shield endpoint source and background recovery canary",
+    "collectionSha256": "bfa4bc59097fda4e450a4f9cb8a4b69b6ff46fa790d44eb10b29f11107889a6b",
+    "artifactCount": 8,
+    "sourceDrift": "present",
+    "targetRevision": "67ddd5ee4dcfa5580e81e3e03509473f4c45f371"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "The per-user collector now recovers local evidence, but trust must move off the user-controlled endpoint before the control can attest fleet coverage or prevent protected mutations."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": ["incremental", "medium_term", "foundational"],
+    "nonNegotiables": [
+      "Do not describe local hook evidence as proof of human authorization.",
+      "Do not use binary hashes or identity-provider groups as local privilege grants.",
+      "Preserve native agent integrations and bounded offline capture."
+    ],
+    "assumptions": [
+      "A managed deployment can provide stable code signing, device enrollment, and an organization verification key.",
+      "No production latency, memory, fleet availability, or provider-deny measurements were supplied."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "move-shield-trust-off-endpoint",
+      "title": "Move shield trust off the user-controlled endpoint",
+      "summary": "Add remote device attestation and checkpoints, then place protected provider mutations behind an independently enforced broker.",
+      "diagnosis": "A same-user process can disable or feed the per-user collector, so local continuity and signatures protect stored evidence after capture but cannot prove complete capture or prevent a provider mutation.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "experiment",
+          "evidenceId": "E001",
+          "path": "plugins/cerebro-agent-receipts/CANARY.md",
+          "claim": "The LaunchAgent recovered one queued event exactly once, stayed active without the status app, and restarted after termination."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E002",
+          "path": "plugins/cerebro-agent-receipts/Sources/CerebroShieldAgent/main.swift",
+          "claim": "XPC admission is limited to the same effective user and the collector remains a per-user LaunchAgent."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E003",
+          "path": "plugins/cerebro-agent-receipts/Sources/ReceiptCore/AdminCapability.swift",
+          "claim": "Investigation access is short-lived, signed, device-bound, role-scoped, and loaded from root-controlled configuration; its current request ID is audit correlation only."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "threat_model",
+          "evidenceId": "E004",
+          "path": "plugins/cerebro-agent-receipts/README.md",
+          "claim": "Complete capture and mutation prevention require an authority outside the same-user endpoint boundary."
+        }
+      ],
+      "desiredInvariants": [
+        "Every enrolled device emits a signed heartbeat and monotonic receipt-chain checkpoint within policy freshness.",
+        "Missing, rolled-back, or conflicting checkpoints create an organization-visible incident.",
+        "Investigation actions require a short-lived capability bound to organization, device, subject, request, actions, and expiry.",
+        "Protected provider mutations are denied unless they traverse a broker that carries a unique action identity."
+      ],
+      "proposalPath": "proposals/move-shield-trust-off-endpoint.md",
+      "options": [
+        {
+          "optionId": "managed-remote-attestation",
+          "title": "Managed endpoint attestation",
+          "kind": "incremental",
+          "summary": "Keep the per-user collector and add managed enrollment, signed heartbeats, remote chain checkpoints, and scoped investigation capabilities.",
+          "diagramPaths": {
+            "before": "diagrams/move-shield-trust-off-endpoint-before.mmd",
+            "after": "diagrams/move-shield-trust-off-endpoint-managed-remote-attestation-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E001",
+              "effect": "mitigates",
+              "tacticalFixRequired": false,
+              "rationale": "Remote freshness turns collector continuity into a fleet-visible state instead of a local observation."
+            },
+            {
+              "evidenceId": "E002",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "Attestation detects disappearance but does not prevent a same-user bypass; the UI and policy must retain that limitation."
+            }
+          ],
+          "tradeoffs": [
+            {"dimension":"security","direction":"improves","confidence":"high","basis":"source-derived","assessment":"Remote monotonic checkpoints expose missing, stale, or rolled-back endpoint evidence but do not prevent direct provider access.","validationPlan":"Disable one enrolled collector, replay an old checkpoint, and require distinct stale and rollback incidents."},
+            {"dimension":"performance","direction":"neutral","confidence":"medium","basis":"hypothetical","assessment":"Checkpointing adds one small asynchronous network request per interval outside the hook critical path.","validationPlan":"Compare hook p95 latency and agent CPU with 60-second checkpoints; accept under 5 ms hook delta and under 1 percent average CPU."},
+            {"dimension":"memory","direction":"neutral","confidence":"medium","basis":"source-derived","assessment":"The existing process needs only one bounded checkpoint envelope and retry record.","validationPlan":"Measure steady-state RSS before and after enrollment; accept under 10 MiB increase."},
+            {"dimension":"reliability","direction":"improves","confidence":"medium","basis":"source-derived","assessment":"The existing fallback queue preserves local capture during service outages; remote retries need independent bounds and jitter.","validationPlan":"Run a 24-hour offline and reconnect test and require ordered checkpoint convergence without duplicate chain heads."},
+            {"dimension":"operability","direction":"regresses","confidence":"high","basis":"source-derived","assessment":"The organization must operate enrollment, freshness policy, incident routing, key rotation, and device retirement.","validationPlan":"Pilot with 20 managed Macs and measure false stale alerts and time to explain an incident."},
+            {"dimension":"migration","direction":"neutral","confidence":"medium","basis":"source-derived","assessment":"The local receipt schema can remain; managed configuration and a server enrollment protocol are additive.","validationPlan":"Enroll development and signed builds side by side while accepting checkpoints only from signed managed devices."}
+          ],
+          "residualRisks": [
+            "A user can still bypass hooks between checkpoints.",
+            "Direct provider credentials still permit mutations outside the endpoint evidence path."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              "plugins/cerebro-agent-receipts/Sources/CerebroShieldAgent/main.swift",
+              "plugins/cerebro-agent-receipts/Sources/ReceiptCore/AdminCapability.swift",
+              "plugins/cerebro-agent-receipts/Sources/ReceiptCore/ReceiptStore.swift"
+            ],
+            "workPackages": ["Define enrollment and checkpoint contracts.", "Add bounded checkpoint delivery.", "Add fleet freshness and rollback incidents."],
+            "acceptanceCriteria": ["Every enrolled test device reports freshness, chain head, and binary identity.", "Disable and rollback canaries produce organization-visible incidents within policy time."],
+            "migrationNotes": ["Reject organization-managed status for ad-hoc builds."],
+            "rollback": "Disable remote checkpoint delivery while retaining the local collector and ledger."
+          }
+        },
+        {
+          "optionId": "brokered-provider-enforcement",
+          "title": "Brokered provider enforcement",
+          "kind": "foundational",
+          "summary": "Add remote attestation, a privileged local policy boundary where needed, and provider-side deny rules that allow protected mutations only through a dedicated broker.",
+          "diagramPaths": {
+            "before": "diagrams/move-shield-trust-off-endpoint-before.mmd",
+            "after": "diagrams/move-shield-trust-off-endpoint-brokered-provider-enforcement-after.mmd"
+          },
+          "evidenceCoverage": [
+            {"evidenceId":"E002","effect":"addresses","tacticalFixRequired":true,"rationale":"A separately authorized boundary can resist same-user disablement for the protected paths it owns."},
+            {"evidenceId":"E004","effect":"addresses","tacticalFixRequired":false,"rationale":"Provider deny policy makes the independent authority own mutation prevention rather than endpoint observation."}
+          ],
+          "tradeoffs": [
+            {"dimension":"security","direction":"improves","confidence":"high","basis":"source-derived","assessment":"Provider deny removes direct protected mutation paths and the broker binds each allowed mutation to an action identity.","validationPlan":"Attempt protected mutations through broker, normal user credentials, stale device state, forged action IDs, and break-glass roles."},
+            {"dimension":"performance","direction":"regresses","confidence":"medium","basis":"hypothetical","assessment":"Protected actions gain a network authorization and broker hop.","validationPlan":"Benchmark provider action p50 and p95; set a service-specific latency budget before rollout."},
+            {"dimension":"memory","direction":"regresses","confidence":"low","basis":"hypothetical","assessment":"Broker and optional privileged endpoint service add process and queue memory.","validationPlan":"Load-test broker concurrency and measure privileged service steady-state RSS."},
+            {"dimension":"reliability","direction":"regresses","confidence":"high","basis":"source-derived","assessment":"Broker unavailability can deny protected work by design, so bounded fail-closed behavior and break-glass controls become production dependencies.","validationPlan":"Run regional outage, retry, duplicate request, and break-glass exercises."},
+            {"dimension":"operability","direction":"regresses","confidence":"high","basis":"source-derived","assessment":"This option adds provider policy rollout, broker on-call, audit retention, exception governance, and privileged software distribution.","validationPlan":"Complete a service ownership and incident-response review before enabling denies."},
+            {"dimension":"migration","direction":"regresses","confidence":"high","basis":"source-derived","assessment":"Credentials and automation must move behind the broker before provider deny can be enabled safely.","validationPlan":"Inventory protected call paths, run report-only policy, then canary deny one non-production scope."}
+          ],
+          "residualRisks": ["Break-glass identities can bypass the broker and must remain in the provider-event denominator.", "Unprotected local and provider actions remain observable rather than prevented."],
+          "implementationReadiness": {
+            "affectedComponents": ["Provider IAM policy", "Credential broker", "Managed macOS deployment"],
+            "workPackages": ["Inventory protected mutations.", "Build action-bound broker.", "Deploy report-only then enforced provider policy."],
+            "acceptanceCriteria": ["All protected brokered mutations bind one-to-one.", "All deliberate direct-role canaries are denied or appear as governed break-glass events."],
+            "migrationNotes": ["Begin with one sandbox resource family and preserve emergency access."],
+            "rollback": "Disable the deny statement and revoke broker issuance while retaining audit events."
+          }
+        }
+      ],
+      "recommendedOptionId": "managed-remote-attestation",
+      "recommendation": "Ship managed remote attestation first to measure fleet coverage; require brokered provider enforcement before claiming prevention for any protected mutation."
+    }
+  ],
+  "openQuestions": [
+    "Which provider mutations and local processes are important enough to justify fail-closed enforcement?",
+    "What freshness window and offline allowance match the managed Mac population?",
+    "Who owns broker availability and break-glass review?"
+  ]
+}

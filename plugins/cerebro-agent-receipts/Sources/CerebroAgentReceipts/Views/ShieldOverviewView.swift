@@ -43,6 +43,10 @@ struct ShieldOverviewView: View {
         DetailCard(title: "Background collection") {
           DetailRow(label: "Login item", value: store.backgroundState.label)
           DetailRow(
+            label: "Collector",
+            value: store.shieldSnapshot.incidents.contains { $0.kind == .backgroundService }
+              ? "Not reachable" : "Running")
+          DetailRow(
             label: "Operation",
             value: "Native adapters are discovered and repaired every 30 seconds")
           Text(
@@ -51,7 +55,7 @@ struct ShieldOverviewView: View {
           .foregroundStyle(.secondary)
         }
 
-        DetailCard(title: "Agent coverage") {
+        DetailCard(title: "Detected agent integrations") {
           ForEach(store.adapterStatuses) { status in
             AgentProtectionRow(
               status: status,
@@ -62,7 +66,7 @@ struct ShieldOverviewView: View {
           }
         }
 
-        DetailCard(title: "Administration") {
+        DetailCard(title: "Investigation access") {
           adminStatus
         }
 
@@ -70,10 +74,12 @@ struct ShieldOverviewView: View {
           DetailCard(title: "Items to review") {
             ForEach(store.shieldSnapshot.incidents) { incident in
               HStack(alignment: .top, spacing: 10) {
-                Image(systemName: incident.severity == .critical
-                  ? "exclamationmark.octagon.fill"
-                  : "exclamationmark.triangle.fill")
-                  .foregroundStyle(incident.severity == .critical ? .red : .orange)
+                Image(
+                  systemName: incident.severity == .critical
+                    ? "exclamationmark.octagon.fill"
+                    : "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(incident.severity == .critical ? .red : .orange)
                 VStack(alignment: .leading, spacing: 2) {
                   Text(incident.title).fontWeight(.medium)
                   Text(incident.detail).foregroundStyle(.secondary)
@@ -93,18 +99,21 @@ struct ShieldOverviewView: View {
   private var adminStatus: some View {
     switch store.adminAccess {
     case .authorized(let capability):
-      DetailRow(label: "Security administrator", value: capability.subject)
+      DetailRow(label: "Investigator", value: capability.subject)
       DetailRow(label: "Organization", value: capability.organizationID)
-      DetailRow(label: "Request", value: capability.requestID)
+      DetailRow(
+        label: "Roles",
+        value: capability.roles.map(\.rawValue).sorted().joined(separator: ", "))
+      DetailRow(label: "Grant ID", value: capability.requestID)
       DetailRow(label: "Expires", value: capability.expiresAt)
     case .unavailable:
-      Text("Organization administration is not configured on this device.")
+      Text("Organization investigation access is not configured on this device.")
       Text(
-        "Managed deployments grant short-lived access after enterprise sign-in and bind it to this device. A local switch cannot enable administrator actions."
+        "Managed deployments issue short-lived roles after enterprise sign-in and bind them to this device. Local settings cannot grant access."
       )
       .foregroundStyle(.secondary)
     case .denied(let reason):
-      Text("Administrator access is unavailable.").fontWeight(.medium)
+      Text("Investigation access is unavailable.").fontWeight(.medium)
       Text(reason).foregroundStyle(.red)
     }
   }
@@ -120,7 +129,8 @@ struct ShieldOverviewView: View {
   private var statusDetail: String {
     switch store.shieldSnapshot.level {
     case .active:
-      return "Detected agent adapters are current. Recent activity is shown separately from device health."
+      return
+        "Detected agent adapters are current. Recent activity is shown separately from device health."
     case .attention:
       return "One or more adapters, binaries, or evidence records require review."
     case .inactive:

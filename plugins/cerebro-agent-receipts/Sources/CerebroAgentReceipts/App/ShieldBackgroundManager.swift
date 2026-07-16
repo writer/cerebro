@@ -1,7 +1,8 @@
 import Foundation
+import ReceiptCore
 import ServiceManagement
 
-enum ShieldBackgroundState: Equatable {
+enum ShieldBackgroundState: Equatable, Sendable {
   case enabled
   case requiresApproval
   case notRegistered
@@ -14,22 +15,40 @@ enum ShieldBackgroundState: Equatable {
     case .requiresApproval: return "Login approval required"
     case .notRegistered: return "Not registered at login"
     case .unavailable: return "Background registration unavailable"
-    case .failed: return "Background registration failed"
+    case .failed(let message): return "Background registration failed: \(message)"
     }
   }
 }
 
 @MainActor
 enum ShieldBackgroundManager {
-  static func ensureRegistered() -> ShieldBackgroundState {
-    let service = SMAppService.mainApp
+  private static var service: SMAppService {
+    SMAppService.agent(plistName: ShieldServiceContract.launchAgentPlistName)
+  }
+
+  static func ensureRegistered(forceUpdate: Bool = false) -> ShieldBackgroundState {
+    let service = self.service
+    if forceUpdate && service.status != .notRegistered {
+      do {
+        try service.unregister()
+        try service.register()
+      } catch {
+        return .failed(error.localizedDescription)
+      }
+      return state()
+    }
     switch service.status {
     case .enabled:
       return .enabled
     case .requiresApproval:
       return .requiresApproval
     case .notFound:
-      return .unavailable
+      do {
+        try service.register()
+      } catch {
+        return .failed(error.localizedDescription)
+      }
+      return state()
     case .notRegistered:
       do {
         try service.register()
@@ -43,12 +62,23 @@ enum ShieldBackgroundManager {
   }
 
   static func state() -> ShieldBackgroundState {
-    switch SMAppService.mainApp.status {
+    switch service.status {
     case .enabled: return .enabled
     case .requiresApproval: return .requiresApproval
     case .notFound: return .unavailable
     case .notRegistered: return .notRegistered
     @unknown default: return .unavailable
     }
+  }
+
+  static func unregisterForUpdate(
+    completionHandler: @escaping @Sendable (Error?) -> Void
+  ) {
+    let service = self.service
+    guard service.status != .notRegistered else {
+      completionHandler(nil)
+      return
+    }
+    service.unregister(completionHandler: completionHandler)
   }
 }

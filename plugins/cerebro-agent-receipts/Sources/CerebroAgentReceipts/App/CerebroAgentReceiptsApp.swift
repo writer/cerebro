@@ -4,6 +4,19 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
+    if CommandLine.arguments.contains("--unregister-agent-and-quit") {
+      ShieldBackgroundManager.unregisterForUpdate { error in
+        if let error {
+          FileHandle.standardError.write(
+            Data("Could not unregister Cerebro Shield Agent: \(error.localizedDescription)\n".utf8))
+          exit(1)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+          NSApplication.shared.terminate(nil)
+        }
+      }
+      return
+    }
     let showStatus = CommandLine.arguments.contains("--show-status")
     NSApp.setActivationPolicy(showStatus ? .regular : .accessory)
     NotificationCenter.default.addObserver(
@@ -16,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if showStatus {
         NSApp.activate(ignoringOtherApps: true)
       } else {
-        NSApp.windows.forEach { $0.close() }
+        for window in NSApp.windows { window.close() }
       }
     }
   }
@@ -55,7 +68,7 @@ struct CerebroAgentReceiptsApp: App {
     MenuBarExtra {
       ReceiptMenu(store: store)
     } label: {
-      Label("Cerebro Shield", systemImage: shieldImage)
+      ShieldMenuLabel(systemImage: shieldImage)
     }
   }
 
@@ -65,5 +78,20 @@ struct CerebroAgentReceiptsApp: App {
     case .attention: return "exclamationmark.shield.fill"
     case .inactive: return "shield.slash"
     }
+  }
+}
+
+private struct ShieldMenuLabel: View {
+  @Environment(\.openWindow) private var openWindow
+  let systemImage: String
+
+  var body: some View {
+    Label("Cerebro Shield", systemImage: systemImage)
+      .task {
+        guard CommandLine.arguments.contains("--show-status") else { return }
+        if !NSApp.windows.contains(where: { $0.canBecomeMain }) {
+          openWindow(id: "main")
+        }
+      }
   }
 }

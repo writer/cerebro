@@ -17,11 +17,11 @@ The macOS app manages local event adapters for these agent products:
 | OpenCode | Native plugin event bus | `~/.config/opencode/plugins/cerebro-agent-receipts.js` |
 | Cursor | Native command hooks | `~/.cursor/hooks.json` |
 
-The macOS app runs as a menu-bar accessory, discovers supported local executables, and reconciles their managed adapters every 30 seconds. The installer verifies and copies the bundled helper to Application Support, then merges managed hook entries without replacing unrelated settings. Invalid JSON and an unrelated OpenCode plugin at the managed path are left unchanged for an operator. Closing the status window does not stop the running app; login-item registration remains subject to macOS approval.
+The macOS app registers a per-user LaunchAgent that owns receipt signing, the ledger, adapter reconciliation, and recovery of a bounded fallback queue. The visible app is a menu-bar status and investigation surface; quitting it does not stop the collector. The collector discovers supported local executables and reconciles their managed adapters every 30 seconds. Invalid JSON and an unrelated OpenCode plugin at the managed path are left unchanged for an operator. Login-item registration remains subject to macOS approval.
 
 Device status separates four facts that must not be collapsed into one green state: executable detected, adapter current, recent integrity-valid agent event, and executable identity. Static code validation records the signing identifier, Team ID, CDHash, and content digest where available. Team ID and signing identifier are publisher identity signals; CDHash and content digest are drift evidence, not administrator authorization.
 
-Managed administrator actions require a signed capability bound to the organization, device key, subject, scopes, request, issue time, and expiry. The organization verification key is accepted only from a root-owned, non-writable managed preferences file. There is no local administrator toggle. An enterprise identity provider can authorize the server-side capability issuance, but a group claim alone does not grant local macOS privilege.
+Organization investigation access is represented by a signed capability bound to the organization, collector device key, subject, roles, issue time, and expiry. The organization verification key, expected Team ID, and expected signing identifier are accepted only from a root-owned, non-writable managed preferences file. There is no local administrator toggle. An enterprise identity provider can authorize server-side capability issuance, but a group claim alone does not grant local macOS privilege. The current request ID is audit correlation, not operation binding or replay prevention, and this app does not yet authorize remote mutations. Executable CDHashes are recorded for drift analysis and never used as authorization.
 
 Each receipt records the agent product, adapter, native event name, session, tool call, input digest, and lifecycle state through one normalized contract. The raw event remains an agent-supplied claim; disabled hooks and commands run outside a connected agent are outside this evidence boundary. Cursor user hooks cover local sessions. Cloud sessions require a project-level hook configuration.
 
@@ -44,6 +44,10 @@ swift run ReceiptCoreChecks
 ```
 
 The Codex plugin calls `scripts/run-hook.sh`, which verifies and runs the bundled ad-hoc-signed universal helper without compiling in the hook path. Other connected agents invoke the same helper through their native local hook or plugin interface. Set `CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE=1` to rebuild into the plugin data directory for development. A managed deployment must replace the ad-hoc signature with an identified Developer ID or enterprise signature and verify the release artifact before enrollment. The app labels this build as **Development trust** because an ad-hoc signature does not establish a durable publisher boundary.
+
+The checked-in hook helper is universal. The local development script builds the menu app and collector for the current Mac architecture; release packaging must archive universal binaries, apply the managed signing identity, enable hardened runtime, notarize the app, and exercise an in-place upgrade. Ad-hoc development rebuilds cannot prove the launch constraints used by a managed signature.
+
+The runtime canary currently covers Codex end to end. Droid, Claude Code, OpenCode, and Cursor are covered by adapter contract checks and fixture validation; each still needs a fresh native session canary before release qualification.
 
 See `CANARY.md` for the measured fresh-session and authenticated-provider results.
 
@@ -79,7 +83,7 @@ Agent hooks are evidence collection, not complete interception. They do not obse
 
 The deployable role template in `assets/aws-canary-role.yaml` is limited to `/cerebro/canary/*`. Its trust principal must be a dedicated broker workload identity. Trusting an operator's normal SSO role would not prevent direct credential bypass.
 
-The current background process remains per-user and can be quit or disabled by that user. The next trust boundary is a separately registered background agent that owns the device key and ledger, plus remote enrollment, heartbeats, and receipt-chain checkpoints. A later privileged broker and provider-side deny policy must own protected cloud mutations. Until those boundaries are deployed, this plugin provides local execution evidence, adapter drift recovery, executable identity inventory, and provider-first gap detection—not an enforcement claim.
+The current collector is a separately registered per-user LaunchAgent and can still be disabled by that user. In a development build it stores its signing key in a user-owned 0600 file because ad-hoc rebuilds do not have a stable Keychain code requirement; a signed managed build uses Keychain custody. The next trust boundary is remote enrollment, device heartbeats, and receipt-chain checkpoints. A later privileged broker and provider-side deny policy must own protected cloud mutations. Endpoint Security is reserved for a later system extension if protected local process interception is required. Until those boundaries are deployed, this plugin provides persistent local execution evidence, adapter drift recovery, executable identity inventory, and provider-first gap detection—not an enforcement claim.
 
 ## Canary acceptance test
 

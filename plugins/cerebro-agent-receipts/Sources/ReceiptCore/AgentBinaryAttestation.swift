@@ -93,7 +93,8 @@ public enum AgentBinaryAttestor {
     var rawInformation: CFDictionary?
     let informationStatus = SecCodeCopySigningInformation(
       staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &rawInformation)
-    let information = informationStatus == errSecSuccess
+    let information =
+      informationStatus == errSecSuccess
       ? rawInformation as? [String: Any]
       : nil
     let signingIdentifier = information?[kSecCodeInfoIdentifier as String] as? String
@@ -148,17 +149,20 @@ public enum AgentBinaryBaselineComparator {
     current: [AgentBinaryIdentity],
     previous: AgentBinaryBaseline?
   ) -> [AgentProduct: AgentBinaryDrift] {
-    let old = Dictionary(uniqueKeysWithValues: (previous?.identities ?? []).map { ($0.product, $0) })
-    return Dictionary(uniqueKeysWithValues: current.map { identity in
-      guard let prior = old[identity.product] else {
-        return (identity.product, .firstObservation)
-      }
-      let same = prior.path == identity.path
-        && prior.teamIdentifier == identity.teamIdentifier
-        && prior.signingIdentifier == identity.signingIdentifier
-        && prior.cdHash == identity.cdHash
-        && prior.contentDigest == identity.contentDigest
-      return (identity.product, same ? .unchanged : .changed(previous: prior, current: identity))
-    })
+    let old = Dictionary(
+      uniqueKeysWithValues: (previous?.identities ?? []).map { ($0.product, $0) })
+    return Dictionary(
+      uniqueKeysWithValues: current.map { identity in
+        guard let prior = old[identity.product] else {
+          return (identity.product, .firstObservation)
+        }
+        let same =
+          prior.path == identity.path
+          && prior.teamIdentifier == identity.teamIdentifier
+          && prior.signingIdentifier == identity.signingIdentifier
+          && prior.cdHash == identity.cdHash
+          && prior.contentDigest == identity.contentDigest
+        return (identity.product, same ? .unchanged : .changed(previous: prior, current: identity))
+      })
   }
 }

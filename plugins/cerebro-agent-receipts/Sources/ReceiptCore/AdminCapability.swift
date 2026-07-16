@@ -117,15 +117,21 @@ public enum ShieldAdminCapabilityVerifier {
 
 public struct ManagedShieldConfiguration: Sendable {
   public let organizationPublicKeyBase64: String
+  public let expectedTeamIdentifier: String
+  public let expectedSigningIdentifier: String
   public let capabilityURL: URL
   public let autoRepair: Bool
 
   public init(
     organizationPublicKeyBase64: String,
+    expectedTeamIdentifier: String,
+    expectedSigningIdentifier: String,
     capabilityURL: URL,
     autoRepair: Bool
   ) {
     self.organizationPublicKeyBase64 = organizationPublicKeyBase64
+    self.expectedTeamIdentifier = expectedTeamIdentifier
+    self.expectedSigningIdentifier = expectedSigningIdentifier
     self.capabilityURL = capabilityURL
     self.autoRepair = autoRepair
   }
@@ -147,6 +153,10 @@ public struct ManagedShieldConfiguration: Sendable {
       let dictionary = propertyList as? [String: Any],
       let key = dictionary["OrganizationPublicKey"] as? String,
       !key.isEmpty,
+      let teamIdentifier = dictionary["ExpectedTeamIdentifier"] as? String,
+      !teamIdentifier.isEmpty,
+      let signingIdentifier = dictionary["ExpectedSigningIdentifier"] as? String,
+      !signingIdentifier.isEmpty,
       let capabilityPath = dictionary["AdminCapabilityPath"] as? String,
       capabilityPath.hasPrefix("/")
     else {
@@ -154,9 +164,17 @@ public struct ManagedShieldConfiguration: Sendable {
     }
     return ManagedShieldConfiguration(
       organizationPublicKeyBase64: key,
+      expectedTeamIdentifier: teamIdentifier,
+      expectedSigningIdentifier: signingIdentifier,
       capabilityURL: URL(fileURLWithPath: capabilityPath),
       autoRepair: dictionary["AutoRepair"] as? Bool ?? true
     )
+  }
+
+  public func accepts(applicationIdentity: AgentBinaryIdentity) -> Bool {
+    applicationIdentity.trust == .verifiedPublisher
+      && applicationIdentity.teamIdentifier == expectedTeamIdentifier
+      && applicationIdentity.signingIdentifier == expectedSigningIdentifier
   }
 }
 

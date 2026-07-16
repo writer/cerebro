@@ -33,7 +33,8 @@ final class ReceiptViewStore: ObservableObject {
   @Published private(set) var isStale = false
   @Published private(set) var lastRefreshError: String?
 
-  private let receiptStore: ReceiptStore
+  private let receiptStores: [ReceiptStore]
+  private let providerStore: ReceiptStore
   private let adapterInstaller: AgentAdapterInstaller
   private var timer: Timer?
   private var reloadInProgress = false
@@ -41,19 +42,31 @@ final class ReceiptViewStore: ObservableObject {
   private let automaticReconciliation: Bool
 
   init(
-    receiptStore: ReceiptStore = ReceiptStore(),
+    receiptStore: ReceiptStore? = nil,
     adapterInstaller: AgentAdapterInstaller? = nil,
     automaticReconciliation: Bool = true
   ) {
-    self.receiptStore = receiptStore
+    let localStore = receiptStore ?? ReceiptStore()
+    self.providerStore = localStore
+    self.receiptStores =
+      receiptStore == nil
+      ? [localStore, ReceiptStore(directory: ReceiptStore.shieldAgentDirectory())]
+      : [localStore]
     let bundledHelper = Bundle.main.bundleURL
       .appendingPathComponent("Contents/Helpers", isDirectory: true)
       .appendingPathComponent("CerebroAgentReceiptHook")
     self.adapterInstaller =
       adapterInstaller
       ?? AgentAdapterInstaller(bundledHelperURL: bundledHelper)
-    self.automaticReconciliation = automaticReconciliation
-    self.backgroundState = ShieldBackgroundManager.ensureRegistered()
+    let unregistering = CommandLine.arguments.contains("--unregister-agent-and-quit")
+    let backgroundState =
+      unregistering
+      ? ShieldBackgroundState.notRegistered
+      : ShieldBackgroundManager.ensureRegistered(
+        forceUpdate: CommandLine.arguments.contains("--reregister-agent"))
+    self.backgroundState = backgroundState
+    self.automaticReconciliation =
+      !unregistering && automaticReconciliation && backgroundState != .enabled
     reload()
     timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.reload(silently: true) }
@@ -171,7 +184,8 @@ final class ReceiptViewStore: ObservableObject {
   func reload(silently: Bool = false) {
     guard !reloadInProgress else { return }
     reloadInProgress = true
-    let receiptStore = self.receiptStore
+    let receiptStores = self.receiptStores
+    let providerStore = self.providerStore
     let adapterInstaller = self.adapterInstaller
     let refreshAdapters =
       adapterStatuses.isEmpty || lastAdapterRefresh == nil
@@ -179,16 +193,19 @@ final class ReceiptViewStore: ObservableObject {
     let currentAdapterStatuses = adapterStatuses
     let currentBinaryIdentities = binaryIdentities
     let automaticReconciliation = self.automaticReconciliation
+    let backgroundState = ShieldBackgroundManager.state()
     Task {
       defer { reloadInProgress = false }
       do {
         let snapshot = try await Task.detached(priority: .utility) {
           try Self.loadSnapshot(
-            receiptStore: receiptStore,
+            receiptStores: receiptStores,
+            providerStore: providerStore,
             adapterInstaller: adapterInstaller,
             currentAdapterStatuses: currentAdapterStatuses,
             currentBinaryIdentities: currentBinaryIdentities,
             automaticReconciliation: automaticReconciliation,
+            backgroundState: backgroundState,
             refreshAdapters: refreshAdapters
           )
         }.value
@@ -202,7 +219,7 @@ final class ReceiptViewStore: ObservableObject {
         reconciliations = snapshot.reconciliations
         shieldSnapshot = snapshot.shieldSnapshot
         adminAccess = snapshot.adminAccess
-        backgroundState = ShieldBackgroundManager.state()
+        self.backgroundState = ShieldBackgroundManager.state()
         if refreshAdapters { lastAdapterRefresh = Date() }
         isStale = false
         lastRefreshError = nil
@@ -223,7 +240,7 @@ final class ReceiptViewStore: ObservableObject {
       let imported = try CloudTrailImporter.parse(Data(contentsOf: url), provenance: .userImported)
       var merged: [String: ProviderEvent] = [:]
       for event in providerEvents + imported { merged[event.id] = event }
-      try receiptStore.saveProviderEvents(
+      try providerStore.saveProviderEvents(
         Array(merged.values).sorted { $0.eventTime < $1.eventTime })
       reload()
     } catch {
@@ -248,20 +265,29 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   nonisolated private static func loadSnapshot(
-    receiptStore: ReceiptStore,
+    receiptStores: [ReceiptStore],
+    providerStore: ReceiptStore,
     adapterInstaller: AgentAdapterInstaller,
     currentAdapterStatuses: [AgentAdapterStatus],
     currentBinaryIdentities: [AgentBinaryIdentity],
     automaticReconciliation: Bool,
+    backgroundState: ShieldBackgroundState,
     refreshAdapters: Bool
   ) throws -> ReceiptSnapshot {
-    let receipts = try receiptStore.readReceipts()
-    let providerEvents = try receiptStore.readProviderEvents()
-    let results =
-      receipts.isEmpty
-      ? []
-      : ReceiptVerifier.verify(
-        receipts, trustedPublicKeyBase64: try receiptStore.readTrustedPublicKey())
+    var receipts: [ExecutionReceipt] = []
+    var results: [ReceiptVerification] = []
+    for store in receiptStores {
+      let chain = try store.readReceipts()
+      guard !chain.isEmpty else { continue }
+      receipts.append(contentsOf: chain)
+      results.append(
+        contentsOf: ReceiptVerifier.verify(
+          chain, trustedPublicKeyBase64: try store.readTrustedPublicKey()))
+    }
+    receipts.sort {
+      ($0.payload.capturedDate ?? .distantPast) < ($1.payload.capturedDate ?? .distantPast)
+    }
+    let providerEvents = try providerStore.readProviderEvents()
     let verifications = Dictionary(uniqueKeysWithValues: results.map { ($0.receiptID, $0) })
     let actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verifications)
     let validReceiptIDs = Set(results.filter(\.valid).map(\.receiptID))
@@ -280,12 +306,14 @@ final class ReceiptViewStore: ObservableObject {
       policy: bindingPolicyFromEnvironment()
     )
     let managedConfiguration = try ManagedShieldConfiguration.load()
-    let reconciliations = refreshAdapters && automaticReconciliation
-      && (managedConfiguration?.autoRepair ?? true)
+    let reconciliations =
+      refreshAdapters && automaticReconciliation
+        && (managedConfiguration?.autoRepair ?? true)
       ? adapterInstaller.reconcileDetectedAgents()
       : []
     let adapterStatuses = refreshAdapters ? adapterInstaller.statuses() : currentAdapterStatuses
-    let binaryIdentities = refreshAdapters
+    let binaryIdentities =
+      refreshAdapters
       ? AgentProduct.allCases.map {
         AgentBinaryAttestor.inspect(
           product: $0,
@@ -293,27 +321,40 @@ final class ReceiptViewStore: ObservableObject {
         )
       }
       : currentBinaryIdentities
-    let priorBaseline = currentBinaryIdentities.isEmpty
+    let priorBaseline =
+      currentBinaryIdentities.isEmpty
       ? nil
       : AgentBinaryBaseline(
         capturedAt: ReceiptDate.string(from: Date()), identities: currentBinaryIdentities)
     let binaryDrift = AgentBinaryBaselineComparator.compare(
       current: binaryIdentities, previous: priorBaseline)
-    let trustBoundary: ShieldTrustBoundary = managedConfiguration == nil
-      ? .development
-      : .organizationManaged
+    let appIdentity = AgentBinaryAttestor.inspect(
+      product: .codex,
+      executableURL: Bundle.main.executableURL
+    )
+    let trustBoundary: ShieldTrustBoundary =
+      managedConfiguration?.accepts(applicationIdentity: appIdentity) == true
+      ? .organizationManaged
+      : .development
     let shieldSnapshot = ShieldSnapshotBuilder.build(
       statuses: adapterStatuses,
       binaryIdentities: binaryIdentities,
       binaryDrift: binaryDrift,
       recentValidEventByProduct: latestValidEventByProduct,
-      invalidReceiptCount: actions.filter { !$0.integrityValid }.count,
+      invalidReceiptCount: results.filter { !$0.valid }.count,
+      collectorReachable: backgroundState == .enabled && ShieldServiceClient.isReachable(),
       trustBoundary: trustBoundary
     )
     let adminAccess: ShieldAdminAccess
-    if let managedConfiguration, let signer = try? DeviceKeySigner() {
+    if managedConfiguration != nil && trustBoundary != .organizationManaged {
+      adminAccess = .denied("This build does not have an identified publisher signature.")
+    } else if let managedConfiguration,
+      let shieldStore = receiptStores.last,
+      let publicKey = try? shieldStore.readTrustedPublicKey(),
+      let deviceID = DeviceKeySigner.deviceID(publicKeyBase64: publicKey)
+    {
       adminAccess = ShieldAdminCapabilityLoader.load(
-        configuration: managedConfiguration, deviceID: signer.deviceID)
+        configuration: managedConfiguration, deviceID: deviceID)
     } else if managedConfiguration != nil {
       adminAccess = .denied("The device identity is unavailable.")
     } else {

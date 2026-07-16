@@ -462,17 +462,18 @@ public struct AgentAdapterInstaller: Sendable {
       ]
     case .cursor: candidates = [".local/bin/cursor-agent", "Applications/Cursor.app"]
     }
-    let configuredPaths = Array(Set(
-      (ProcessInfo.processInfo.environment["PATH"] ?? "")
-      .split(separator: ":")
-      .map(String.init)
-        + [
-          "/opt/homebrew/bin", "/usr/local/bin",
-          homeDirectory.appendingPathComponent(".local/bin").path,
-          homeDirectory.appendingPathComponent(".bun/bin").path,
-          homeDirectory.appendingPathComponent("Library/pnpm").path,
-        ]
-    ))
+    let configuredPaths = Array(
+      Set(
+        (ProcessInfo.processInfo.environment["PATH"] ?? "")
+          .split(separator: ":")
+          .map(String.init)
+          + [
+            "/opt/homebrew/bin", "/usr/local/bin",
+            homeDirectory.appendingPathComponent(".local/bin").path,
+            homeDirectory.appendingPathComponent(".bun/bin").path,
+            homeDirectory.appendingPathComponent("Library/pnpm").path,
+          ]
+      ))
     let commandNames: [String]
     switch product {
     case .codex: commandNames = ["codex"]

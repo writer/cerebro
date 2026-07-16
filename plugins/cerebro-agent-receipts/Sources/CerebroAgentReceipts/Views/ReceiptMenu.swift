@@ -18,7 +18,7 @@ struct ReceiptMenu: View {
     }
     Button("Refresh") { store.reload() }
     Divider()
-    Button("Quit Cerebro Shield") { NSApplication.shared.terminate(nil) }
+    Button("Quit Status App") { NSApplication.shared.terminate(nil) }
   }
 
   private var statusTitle: String {

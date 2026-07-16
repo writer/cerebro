@@ -44,6 +44,16 @@ public struct ReceiptStore: Sendable {
       "com.writer.cerebro.agent-receipts", isDirectory: true)
   }
 
+  public static func shieldAgentDirectory(
+    environment: [String: String] = ProcessInfo.processInfo.environment
+  ) -> URL {
+    if let override = environment["CEREBRO_SHIELD_AGENT_RECEIPTS_DIR"], !override.isEmpty {
+      return URL(fileURLWithPath: override, isDirectory: true)
+    }
+    return defaultDirectory(environment: environment)
+      .appendingPathComponent("shield-agent-v1", isDirectory: true)
+  }
+
   @discardableResult
   public func append(draft: ReceiptDraft, signer: ReceiptSigning) throws -> ExecutionReceipt {
     try prepareDirectory()
