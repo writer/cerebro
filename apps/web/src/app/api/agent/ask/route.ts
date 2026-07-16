@@ -18,6 +18,7 @@ import {
   normalizeAskError,
   normalizeAskModel,
 } from "@/lib/ask";
+import { mcpUrlFromApiBase } from "@/lib/ask-agent-config";
 import { ASK_AGENT_FALLBACK_STATUS } from "@/lib/ask-agent-status";
 import { securityProducerResponseCandidateHint } from "@/lib/security-producer-response";
 import {
@@ -429,11 +430,7 @@ const getMcpUrl = () => {
   const configured = process.env.CEREBRO_MCP_URL?.trim();
   if (configured) return configured;
   const { apiBase } = getCerebroProxyConfig();
-  try {
-    return new URL("/api/v1/mcp", apiBase).toString();
-  } catch {
-    return "";
-  }
+  return mcpUrlFromApiBase(apiBase);
 };
 
 const headersForMcp = (request: NextRequest) => {

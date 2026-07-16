@@ -266,14 +266,14 @@ const configuredTrustedHeaderNames = () => {
 
 const allowedHeaderNames = (names: string[]) => {
   const trusted = configuredTrustedHeaderNames();
-  if (trusted.length === 0) return names;
+  if (trusted.length === 0) return [];
   const trustedSet = new Set(trusted);
   return names.filter((name) => trustedSet.has(name.toLowerCase()));
 };
 
 const identityHeaderAllowed = (name: string) => {
   const trusted = configuredTrustedHeaderNames();
-  if (trusted.length === 0) return true;
+  if (trusted.length === 0) return false;
   return trusted.includes(name.toLowerCase());
 };
 
@@ -980,7 +980,7 @@ const directHeaderCandidate = (headers: Headers): CurrentUser | null => {
     claims: {
       email: decodeURIComponentSafe(matches[0]?.value ?? ""),
       name: decodeURIComponentSafe(matches[1]?.value ?? ""),
-      subject: matches[2]?.value ?? "",
+      subject: decodeURIComponentSafe(matches[2]?.value ?? ""),
       username: decodeURIComponentSafe(matches[3]?.value ?? ""),
     },
     confidence: "trusted-proxy",

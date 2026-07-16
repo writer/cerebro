@@ -86,6 +86,12 @@ export const getCerebroProxyConfig = () => ({
   forwardRequestAuth,
 });
 
+export const getCerebroPublicConfig = () => ({
+  apiBase: "/api/cerebro",
+  serverAuthConfigured: Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION),
+  forwardRequestAuth,
+});
+
 export const buildCerebroUrl = (path: string, search = "") => {
   const base = new URL(API_BASE.replace(/\/$/, "/"));
   const basePath = base.pathname.replace(/\/$/, "");
