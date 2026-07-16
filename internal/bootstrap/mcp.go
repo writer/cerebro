@@ -3161,10 +3161,6 @@ func mcpTaskStateFromResponse(response *mcpJSONRPCResponse) string {
 		if structured != nil {
 			state = structured.State
 		}
-	case mcpoperations.StructuredContent:
-		state = mcpAnyString(structured["state"])
-	case map[string]any:
-		state = mcpAnyString(structured["state"])
 	}
 	state = strings.TrimSpace(state)
 	switch state {

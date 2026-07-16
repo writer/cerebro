@@ -278,9 +278,9 @@ func TestMCPTaskStateFromResponseAllowsKnownStatesOnly(t *testing.T) {
 	}{
 		{name: "value response", structured: mcpoperations.TaskResponse{State: mcpoperations.TaskStateComplete}, want: mcpoperations.TaskStateComplete},
 		{name: "pointer response", structured: &mcpoperations.TaskResponse{State: mcpoperations.TaskStatePartial}, want: mcpoperations.TaskStatePartial},
-		{name: "structured map", structured: mcpoperations.StructuredContent{"state": mcpoperations.TaskStateBlocked}, want: mcpoperations.TaskStateBlocked},
-		{name: "generic map", structured: map[string]any{"state": mcpoperations.TaskStateComplete}, want: mcpoperations.TaskStateComplete},
-		{name: "unknown state", structured: map[string]any{"state": "running"}},
+		{name: "blocked response", structured: mcpoperations.TaskResponse{State: mcpoperations.TaskStateBlocked}, want: mcpoperations.TaskStateBlocked},
+		{name: "unknown state", structured: mcpoperations.TaskResponse{State: "running"}},
+		{name: "generic state map", structured: map[string]any{"state": mcpoperations.TaskStateComplete}},
 		{name: "missing state", structured: map[string]any{"result": "ok"}},
 	}
 	for _, test := range tests {
