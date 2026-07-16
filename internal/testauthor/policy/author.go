@@ -100,8 +100,11 @@ func SuiteForRule(rule findingdsl.PolicyFindingRule) (findingdsl.PolicyRuleTestS
 	}
 	for _, testCase := range suite.Cases {
 		got, evalErr := findingdsl.EvaluatePolicyRuleTestCase(rule, testCase)
-		if evalErr != nil || got != testCase.WantFinding {
-			return suite, fmt.Errorf("prove authored case %q: finding=%t want=%t: %w", testCase.Name, got, testCase.WantFinding, evalErr)
+		if evalErr != nil {
+			return suite, fmt.Errorf("prove authored case %q: %w", testCase.Name, evalErr)
+		}
+		if got != testCase.WantFinding {
+			return suite, fmt.Errorf("prove authored case %q: finding=%t want=%t", testCase.Name, got, testCase.WantFinding)
 		}
 	}
 	return suite, nil

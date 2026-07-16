@@ -44,3 +44,20 @@ func TestAuthorRejectsDomainOutsidePolicyDirectory(t *testing.T) {
 		t.Fatal("Author() error = nil")
 	}
 }
+
+func TestAuthorBuildsNestedResourceFixtures(t *testing.T) {
+	intent := Intent{ID: "nested", Domain: "aws", Name: "Nested", Description: "Nested policy.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "authentication.type"), "API_KEY")`, `cmp_eq(path(resource, "providers.length"), 0)`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}}
+	artifacts, err := Author(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range artifacts.Suite.Cases {
+		got, err := findingdsl.EvaluatePolicyRuleTestCase(artifacts.Rule, testCase)
+		if err != nil || got != testCase.WantFinding {
+			t.Fatalf("case %q got %t want %t err %v", testCase.Name, got, testCase.WantFinding, err)
+		}
+	}
+	if _, flat := artifacts.Suite.Cases[0].Resource["authentication.type"]; flat {
+		t.Fatalf("fixture used a flat nested path: %#v", artifacts.Suite.Cases[0].Resource)
+	}
+}

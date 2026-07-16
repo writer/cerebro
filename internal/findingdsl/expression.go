@@ -260,20 +260,79 @@ func SynthesizeEqualityConditionFixtures(conditions []string) (PolicyResource, P
 		if !rootOK || root.name != "resource" || !fieldOK || !stringOK || strings.TrimSpace(field) == "" || !valueOK {
 			return nil, nil, fmt.Errorf("condition[%d] must compare path(resource, field) with a scalar literal", idx)
 		}
-		if _, exists := finding[field]; exists {
-			return nil, nil, fmt.Errorf("condition[%d] repeats resource field %q", idx, field)
-		}
 		if _, err := alternatePolicyFixtureValue(valueExpr.value); err != nil {
 			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
 		}
-		finding[field] = valueExpr.value
-		passing[field] = valueExpr.value
+		if err := setPolicyFixturePath(finding, field, valueExpr.value); err != nil {
+			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
+		}
+		if err := setPolicyFixturePath(passing, field, valueExpr.value); err != nil {
+			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
+		}
 		if firstField == "" {
 			firstField = field
 		}
 	}
-	passing[firstField], _ = alternatePolicyFixtureValue(finding[firstField])
+	alternate, _ := alternatePolicyFixtureValue(policyFixturePathValue(finding, firstField))
+	if err := replacePolicyFixturePath(passing, firstField, alternate); err != nil {
+		return nil, nil, err
+	}
 	return finding, passing, nil
+}
+
+func replacePolicyFixturePath(resource PolicyResource, path string, value any) error {
+	parts := strings.Split(path, ".")
+	current := map[string]any(resource)
+	for idx, part := range parts {
+		if idx == len(parts)-1 {
+			if _, exists := current[part]; !exists {
+				return fmt.Errorf("resource path %q does not exist", path)
+			}
+			current[part] = value
+			return nil
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			return fmt.Errorf("resource path %q does not exist", path)
+		}
+		current = next
+	}
+	return nil
+}
+
+func setPolicyFixturePath(resource PolicyResource, path string, value any) error {
+	parts := strings.Split(path, ".")
+	current := map[string]any(resource)
+	for idx, part := range parts {
+		if part == "" {
+			return fmt.Errorf("resource path contains an empty segment")
+		}
+		if idx == len(parts)-1 {
+			if _, exists := current[part]; exists {
+				return fmt.Errorf("resource path repeats or conflicts with another condition")
+			}
+			current[part] = value
+			return nil
+		}
+		next, exists := current[part]
+		if !exists {
+			child := map[string]any{}
+			current[part] = child
+			current = child
+			continue
+		}
+		child, ok := next.(map[string]any)
+		if !ok {
+			return fmt.Errorf("resource path conflicts with scalar parent %q", strings.Join(parts[:idx+1], "."))
+		}
+		current = child
+	}
+	return nil
+}
+
+func policyFixturePathValue(resource PolicyResource, path string) any {
+	value, _, _ := pathLookupArgs([]any{resource, path})
+	return value
 }
 
 func alternatePolicyFixtureValue(value any) (any, error) {
