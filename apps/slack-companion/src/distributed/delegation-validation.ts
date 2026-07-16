@@ -23,6 +23,8 @@ import type {
   SignedDistributedWorkDelegationV1,
 } from "./delegation-contracts.js";
 import type {
+  DistributedWorkDelegationClockPort,
+  DistributedWorkDelegationCurrentLeasePort,
   DistributedWorkDelegationRevocationPort,
   DistributedWorkDelegationSigningPort,
   DistributedWorkDelegationVerificationPort,
@@ -36,7 +38,10 @@ import {
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 const DELEGATION_ID =
   /^distributed-work-delegation:\/\/sha256\/[a-f0-9]{64}$/;
-const OPAQUE_REFERENCE = /^[a-z][a-z0-9+.-]*:\/\/\S+$/;
+const OPAQUE_REFERENCE = /^[a-z][a-z0-9+.-]*:\/\/[\x21-\x7e]+$/;
+const PRINTABLE_ASCII_IDENTIFIER = /^[\x21-\x7e]+$/;
+const RFC3339_UTC_MILLISECONDS =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const MAX_ID_LENGTH = 256;
 const MAX_REF_LENGTH = 1_024;
 const MAX_SIGNATURE_LENGTH = 16_384;
@@ -150,16 +155,13 @@ export async function authorizeSignedDistributedWorkDelegation(
   use: DistributedWorkDelegationUse,
   verifier: DistributedWorkDelegationVerificationPort,
   revocations: DistributedWorkDelegationRevocationPort,
+  currentLeases: DistributedWorkDelegationCurrentLeasePort,
+  clock: DistributedWorkDelegationClockPort,
 ): Promise<void> {
   validateSignedEnvelope(signed);
   validateDistributedWorkPacket(use.packet);
-  validateLeaseForPacket(use.packet, use.lease);
-  requireTimestamp(use.now, "now");
-  if (Date.parse(use.now) >= Date.parse(use.lease.lease_expires_at)) {
-    throw new DistributedWorkContractError(
-      "signed delegation requires an active work lease",
-    );
-  }
+  const observedAt = clock.now();
+  requireTimestamp(observedAt, "clock.now");
 
   const canonicalManifest = canonicalDistributedWorkDelegationManifest(
     signed.manifest,
@@ -183,17 +185,37 @@ export async function authorizeSignedDistributedWorkDelegation(
     );
   }
 
+  validateManifestPacketScope(signed.manifest, use.packet);
+  validateDelegationWindow(signed.manifest, observedAt);
+  const currentLease = await currentLeases.getCurrentLease({
+    delegation_id: signed.manifest.delegation_id,
+    observed_at: observedAt,
+    packet_id: signed.manifest.packet_id,
+    run_id: signed.manifest.child_run_id,
+    tenant_id: signed.manifest.tenant_id,
+  });
+  if (currentLease === undefined) {
+    throw new DistributedWorkContractError(
+      "signed delegation requires an authoritative current work lease",
+    );
+  }
+  validateLeaseForPacket(use.packet, currentLease);
+  if (Date.parse(observedAt) >= Date.parse(currentLease.lease_expires_at)) {
+    throw new DistributedWorkContractError(
+      "signed delegation requires an active work lease",
+    );
+  }
+  validateManifestLeaseScope(signed.manifest, currentLease);
+
   const revoked = await revocations.isRevoked({
     delegation_id: signed.manifest.delegation_id,
-    observed_at: use.now,
+    observed_at: observedAt,
     revocation_ref: signed.manifest.revocation_ref,
   });
   if (revoked) {
     throw new DistributedWorkContractError("signed delegation is revoked");
   }
 
-  validateDelegationWindow(signed.manifest, use.now);
-  validateManifestScope(signed.manifest, use.packet, use.lease);
   validateRequestedAuthority(signed.manifest, use);
 }
 
@@ -322,10 +344,9 @@ function validateAuthorityAgainstPacket(
   }
 }
 
-function validateManifestScope(
+function validateManifestPacketScope(
   manifest: DistributedWorkDelegationManifestV1,
   packet: DistributedWorkPacketV1,
-  lease: WorkLeaseV1,
 ): void {
   if (
     manifest.tenant_id !== packet.tenant_id ||
@@ -341,6 +362,12 @@ function validateManifestScope(
     );
   }
   validateAuthorityAgainstPacket(packet, manifest);
+}
+
+function validateManifestLeaseScope(
+  manifest: DistributedWorkDelegationManifestV1,
+  lease: WorkLeaseV1,
+): void {
   if (
     manifest.generation !== lease.generation ||
     manifest.fencing_token !== lease.fencing_token ||
@@ -501,12 +528,17 @@ function canonicalDelegationIdentity(
     allowed_capabilities: [...input.allowed_capabilities]
       .map((capability) => ({ ...capability }))
       .sort((left, right) =>
-        capabilityIdentity(left).localeCompare(capabilityIdentity(right)),
+        compareCanonicalStrings(
+          capabilityIdentity(left),
+          capabilityIdentity(right),
+        ),
       ),
     allowed_deliverables: [...input.allowed_deliverables]
       .map((deliverable) => ({ ...deliverable }))
       .sort((left, right) => left.sequence - right.sequence),
-    allowed_tool_refs: [...input.allowed_tool_refs].sort(),
+    allowed_tool_refs: [...input.allowed_tool_refs].sort(
+      compareCanonicalStrings,
+    ),
     child_run_id: input.child_run_id,
     fencing_token: input.fencing_token,
     generation: input.generation,
@@ -556,10 +588,12 @@ function requireArrayBound(
 
 function validateIdentifier(value: string, label: string): void {
   if (
-    value.trim() === "" ||
+    !PRINTABLE_ASCII_IDENTIFIER.test(value) ||
     Buffer.byteLength(value, "utf8") > MAX_ID_LENGTH
   ) {
-    throw new DistributedWorkContractError(`${label} must be a bounded identifier`);
+    throw new DistributedWorkContractError(
+      `${label} must be a bounded printable ASCII identifier`,
+    );
   }
 }
 
@@ -581,8 +615,15 @@ function requirePattern(value: string, pattern: RegExp, label: string): void {
 }
 
 function requireTimestamp(value: string, label: string): void {
-  if (!Number.isFinite(Date.parse(value))) {
-    throw new DistributedWorkContractError(`${label} must be a timestamp`);
+  const parsed = Date.parse(value);
+  if (
+    !RFC3339_UTC_MILLISECONDS.test(value) ||
+    !Number.isFinite(parsed) ||
+    new Date(parsed).toISOString() !== value
+  ) {
+    throw new DistributedWorkContractError(
+      `${label} must use YYYY-MM-DDTHH:mm:ss.SSSZ UTC`,
+    );
   }
 }
 
@@ -614,9 +655,19 @@ function stableStringify(value: unknown): string {
   if (value !== null && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, nested]) => nested !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => compareCanonicalStrings(left, right))
       .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
+}
+
+function compareCanonicalStrings(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }

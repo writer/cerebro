@@ -18,6 +18,9 @@ import type {
   DistributedWorkDelegationUse,
 } from "../src/distributed/delegation-contracts.js";
 import type {
+  DistributedWorkDelegationClockPort,
+  DistributedWorkDelegationCurrentLeaseInput,
+  DistributedWorkDelegationCurrentLeasePort,
   DistributedWorkDelegationRevocationInput,
   DistributedWorkDelegationRevocationPort,
   DistributedWorkDelegationSigningInput,
@@ -73,15 +76,21 @@ describe("signed distributed work delegations", () => {
     await assert.doesNotReject(() =>
       authorizeSignedDistributedWorkDelegation(
         signed,
-        authorizedUse(packet, lease),
+        authorizedUse(packet),
         signer,
         new TestRevocationPort(),
+        new TestCurrentLeasePort(lease),
+        new TestClockPort(ACTIVE_AT),
       ),
     );
     assert.equal(signer.signCount, 1);
     assert.equal(signer.verifyCount, 1);
     assert.equal(signed.signature.key_ref, TEST_KEY_REF);
     assert.equal(signed.canonicalization, "sorted-json/v1");
+    assert.equal(
+      first.delegation_intent_digest,
+      "sha256:4742ef6365c27388f7ff6caf92e97e7ae2e97ad24f087619347b4f3d013e84e7",
+    );
   });
 
   test("permits a delegation with no tool authority", async () => {
@@ -102,11 +111,13 @@ describe("signed distributed work delegations", () => {
       authorizeSignedDistributedWorkDelegation(
         signed,
         {
-          ...authorizedUse(packet, lease),
+          ...authorizedUse(packet),
           requested_tool_refs: [],
         },
         signer,
         new TestRevocationPort(),
+        new TestCurrentLeasePort(lease),
+        new TestClockPort(ACTIVE_AT),
       ),
     );
   });
@@ -123,9 +134,11 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           changedManifest,
-          authorizedUse(packet, lease),
+          authorizedUse(packet),
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(lease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /manifest digest does not match/,
     );
@@ -136,9 +149,11 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           changedSignature,
-          authorizedUse(packet, lease),
+          authorizedUse(packet),
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(lease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /signature is invalid/,
     );
@@ -159,9 +174,11 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          authorizedUse(otherSubjectPacket, otherSubjectLease),
+          authorizedUse(otherSubjectPacket),
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(otherSubjectLease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /does not match the admitted packet scope and intent/,
     );
@@ -183,9 +200,11 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          authorizedUse(changedIntentPacket, changedIntentLease),
+          authorizedUse(changedIntentPacket),
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(changedIntentLease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /does not match the admitted packet scope and intent/,
     );
@@ -200,7 +219,7 @@ describe("signed distributed work delegations", () => {
 
     for (const use of [
       {
-        ...authorizedUse(packet, lease),
+        ...authorizedUse(packet),
         requested_capabilities: [
           {
             capability_id: "effect.write",
@@ -210,11 +229,11 @@ describe("signed distributed work delegations", () => {
         ],
       },
       {
-        ...authorizedUse(packet, lease),
+        ...authorizedUse(packet),
         requested_tool_refs: ["capability-tool://effect-write/1"],
       },
       {
-        ...authorizedUse(packet, lease),
+        ...authorizedUse(packet),
         requested_deliverable_ids: ["deliverable-not-delegated"],
       },
     ]) {
@@ -225,13 +244,15 @@ describe("signed distributed work delegations", () => {
             use,
             signer,
             revocations,
+            new TestCurrentLeasePort(lease),
+            new TestClockPort(ACTIVE_AT),
           ),
         /requested authority exceeds/,
       );
     }
   });
 
-  test("rejects stale fences, expiry, and revocation", async () => {
+  test("uses authoritative lease and clock state for authorization", async () => {
     const packet = packetFixture();
     const lease = leaseFixture(packet.child_run.run_id);
     const signer = new DeterministicTestSignaturePort();
@@ -247,9 +268,15 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          authorizedUse(packet, newerLease),
+          {
+            ...authorizedUse(packet),
+            lease,
+            now: ACTIVE_AT,
+          } as unknown as DistributedWorkDelegationUse,
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(newerLease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /active lease generation and fence/,
     );
@@ -258,12 +285,14 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          authorizedUse(packet, {
-            ...lease,
-            lease_expires_at: "2026-07-16T12:04:00.000Z",
-          }),
+          authorizedUse(packet),
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort({
+            ...lease,
+            lease_expires_at: ACTIVE_AT,
+          }),
+          new TestClockPort(ACTIVE_AT),
         ),
       /requires an active work lease/,
     );
@@ -272,12 +301,12 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          {
-            ...authorizedUse(packet, lease),
-            now: EXPIRES_AT,
-          },
+          { ...authorizedUse(packet), now: ACTIVE_AT } as unknown as
+            DistributedWorkDelegationUse,
           signer,
           new TestRevocationPort(),
+          new TestCurrentLeasePort(lease),
+          new TestClockPort(EXPIRES_AT),
         ),
       /not active/,
     );
@@ -286,11 +315,126 @@ describe("signed distributed work delegations", () => {
       () =>
         authorizeSignedDistributedWorkDelegation(
           signed,
-          authorizedUse(packet, lease),
+          authorizedUse(packet),
+          signer,
+          new TestRevocationPort(),
+          new TestCurrentLeasePort(lease),
+          new TestClockPort("07/16/2026"),
+        ),
+      /clock.now must use YYYY-MM-DDTHH:mm:ss.SSSZ UTC/,
+    );
+
+    await assert.rejects(
+      () =>
+        authorizeSignedDistributedWorkDelegation(
+          signed,
+          authorizedUse(packet),
+          signer,
+          new TestRevocationPort(),
+          new TestCurrentLeasePort({
+            ...lease,
+            lease_expires_at: "07/16/2026",
+          }),
+          new TestClockPort(ACTIVE_AT),
+        ),
+      /lease.lease_expires_at must use YYYY-MM-DDTHH:mm:ss.SSSZ UTC/,
+    );
+
+    await assert.rejects(
+      () =>
+        authorizeSignedDistributedWorkDelegation(
+          signed,
+          authorizedUse(packet),
+          signer,
+          new TestRevocationPort(),
+          new TestCurrentLeasePort(undefined),
+          new TestClockPort(ACTIVE_AT),
+        ),
+      /authoritative current work lease/,
+    );
+
+    const trustedRevocations = new TestRevocationPort();
+    const trustedCurrentLease = new TestCurrentLeasePort(lease);
+    await assert.doesNotReject(() =>
+      authorizeSignedDistributedWorkDelegation(
+        signed,
+        authorizedUse(packet),
+        signer,
+        trustedRevocations,
+        trustedCurrentLease,
+        new TestClockPort(ISSUED_AT),
+      ),
+    );
+    assert.equal(trustedCurrentLease.lookups[0]?.observed_at, ISSUED_AT);
+    assert.equal(trustedCurrentLease.lookups[0]?.run_id, packet.child_run.run_id);
+    assert.equal(trustedRevocations.observations[0]?.observed_at, ISSUED_AT);
+
+    await assert.rejects(
+      () =>
+        authorizeSignedDistributedWorkDelegation(
+          signed,
+          authorizedUse(packet),
           signer,
           new TestRevocationPort([signed.manifest.delegation_id]),
+          new TestCurrentLeasePort(lease),
+          new TestClockPort(ACTIVE_AT),
         ),
       /is revoked/,
+    );
+  });
+
+  test("requires one canonical UTC timestamp form", () => {
+    const packet = packetFixture();
+    const lease = leaseFixture(packet.child_run.run_id);
+
+    for (const issuedAt of [
+      "07/16/2026",
+      "2026-07-16T12:00:00Z",
+      "2026-07-16T12:00:00.000+00:00",
+      "2026-02-30T12:00:00.000Z",
+    ]) {
+      assert.throws(
+        () =>
+          createDistributedWorkDelegationManifest({
+            ...manifestDraft(packet, lease),
+            issued_at: issuedAt,
+          }),
+        /must use YYYY-MM-DDTHH:mm:ss.SSSZ UTC/,
+      );
+    }
+  });
+
+  test("rejects non-ASCII signed identifiers and references", () => {
+    const packetWithUnicodeCapability = packetFixture({
+      ...identityInput(),
+      required_capabilities: [
+        {
+          capability_id: "knowledge.réad",
+          level: "required",
+          version: "v1",
+        },
+      ],
+    });
+    const unicodeLease = leaseFixture(
+      packetWithUnicodeCapability.child_run.run_id,
+    );
+    assert.throws(
+      () =>
+        createDistributedWorkDelegationManifest(
+          manifestDraft(packetWithUnicodeCapability, unicodeLease),
+        ),
+      /printable ASCII identifier/,
+    );
+
+    const packet = packetFixture();
+    const lease = leaseFixture(packet.child_run.run_id);
+    assert.throws(
+      () =>
+        createDistributedWorkDelegationManifest({
+          ...manifestDraft(packet, lease),
+          allowed_tool_refs: ["capability-tool://réad/1"],
+        }),
+      /bounded opaque reference/,
     );
   });
 });
@@ -326,6 +470,7 @@ class DeterministicTestSignaturePort
 }
 
 class TestRevocationPort implements DistributedWorkDelegationRevocationPort {
+  readonly observations: DistributedWorkDelegationRevocationInput[] = [];
   private readonly revoked: Set<string>;
 
   constructor(revoked: string[] = []) {
@@ -335,7 +480,31 @@ class TestRevocationPort implements DistributedWorkDelegationRevocationPort {
   async isRevoked(
     input: DistributedWorkDelegationRevocationInput,
   ): Promise<boolean> {
+    this.observations.push(structuredClone(input));
     return this.revoked.has(input.delegation_id);
+  }
+}
+
+class TestClockPort implements DistributedWorkDelegationClockPort {
+  constructor(private readonly value: string) {}
+
+  now(): string {
+    return this.value;
+  }
+}
+
+class TestCurrentLeasePort
+  implements DistributedWorkDelegationCurrentLeasePort
+{
+  readonly lookups: DistributedWorkDelegationCurrentLeaseInput[] = [];
+
+  constructor(private readonly lease: WorkLeaseV1 | undefined) {}
+
+  async getCurrentLease(
+    input: DistributedWorkDelegationCurrentLeaseInput,
+  ): Promise<WorkLeaseV1 | undefined> {
+    this.lookups.push(structuredClone(input));
+    return this.lease === undefined ? undefined : structuredClone(this.lease);
   }
 }
 
@@ -384,11 +553,8 @@ function manifestDraft(
 
 function authorizedUse(
   packet: DistributedWorkPacketV1,
-  lease: WorkLeaseV1,
 ): DistributedWorkDelegationUse {
   return {
-    lease,
-    now: ACTIVE_AT,
     packet,
     requested_capabilities: [structuredClone(packet.required_capabilities[0]!)],
     requested_deliverable_ids: [packet.deliverables[0]!.deliverable_id],

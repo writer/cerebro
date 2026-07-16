@@ -11,6 +11,10 @@ export const DISTRIBUTED_WORK_DELEGATION_SCHEMA_VERSION =
   "distributed-work-delegation/v1" as const;
 export const SIGNED_DISTRIBUTED_WORK_DELEGATION_SCHEMA_VERSION =
   "signed-distributed-work-delegation/v1" as const;
+/**
+ * Object keys and set-like signed arrays use ascending ASCII byte order.
+ * Signed identifiers and opaque references are restricted to printable ASCII.
+ */
 export const DISTRIBUTED_WORK_DELEGATION_CANONICALIZATION =
   "sorted-json/v1" as const;
 
@@ -84,8 +88,6 @@ export interface SignedDistributedWorkDelegationV1 {
 
 /** The exact authority a worker is asking to exercise for this attempt. */
 export interface DistributedWorkDelegationUse {
-  lease: WorkLeaseV1;
-  now: string;
   packet: DistributedWorkPacketV1;
   requested_capabilities: CapabilityRequirement[];
   requested_deliverable_ids: string[];

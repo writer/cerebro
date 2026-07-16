@@ -1,3 +1,4 @@
+import type { WorkLeaseV1 } from "@writer/cerebro-sdk";
 import type {
   DistributedWorkDelegationSignatureV1,
 } from "./delegation-contracts.js";
@@ -37,4 +38,24 @@ export interface DistributedWorkDelegationRevocationInput {
 
 export interface DistributedWorkDelegationRevocationPort {
   isRevoked(input: DistributedWorkDelegationRevocationInput): Promise<boolean>;
+}
+
+/** Supplies authorization time from a trusted process boundary. */
+export interface DistributedWorkDelegationClockPort {
+  now(): string;
+}
+
+export interface DistributedWorkDelegationCurrentLeaseInput {
+  delegation_id: string;
+  observed_at: string;
+  packet_id: string;
+  run_id: string;
+  tenant_id: string;
+}
+
+/** Reads the authoritative lease that currently owns the delegated run. */
+export interface DistributedWorkDelegationCurrentLeasePort {
+  getCurrentLease(
+    input: DistributedWorkDelegationCurrentLeaseInput,
+  ): Promise<WorkLeaseV1 | undefined>;
 }
