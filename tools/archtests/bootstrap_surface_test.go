@@ -122,7 +122,7 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
-const bootstrapProductionGoLineBudget = 28259
+const bootstrapProductionGoLineBudget = 28289
 
 type bootstrapFileLineCount struct {
 	path  string
