@@ -16,7 +16,7 @@ export const productErrorCopy = (
   if (/cerebro request failed/i.test(message)) {
     return fallback;
   }
-  if (/openapi|resource/i.test(message)) {
+  if (/openapi|resource metadata/i.test(message)) {
     return "API resource metadata could not load.";
   }
   return message;
