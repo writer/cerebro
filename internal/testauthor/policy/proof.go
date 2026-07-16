@@ -31,9 +31,9 @@ type ProofResult struct {
 	Receipts     []ProofReceipt `json:"receipts"`
 }
 
-func Prove(artifacts Artifacts) (ProofResult, error) {
+func Prove(ctx context.Context, artifacts Artifacts) (ProofResult, error) {
 	if strings.TrimSpace(artifacts.Rule.Spec.Graph.Query) != "" {
-		return proveGraph(context.Background(), artifacts, nil)
+		return proveGraph(ctx, artifacts, nil)
 	}
 	return proveScalar(artifacts)
 }
