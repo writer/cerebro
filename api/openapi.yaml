@@ -284,6 +284,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformContract'
+  /api/v1/agent-platform/service-lifecycle/contract:
+    get:
+      operationId: getAgentServiceLifecycleContract
+      summary: Get the proposed agent service lifecycle contract
+      description: Returns the cloud- and interaction-surface-neutral lifecycle proposal. Runtime adoption remains gated on lifecycle owner approval.
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Lifecycle states, transitions, ports, records, health surfaces, compatibility rules, invariants, and legacy adapters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentServiceLifecycleContract'
   /api/v1/agent-platform/capabilities:
     get:
       operationId: listAgentPlatformCapabilities
@@ -16108,3 +16122,630 @@ components:
           type: object
           additionalProperties:
             type: string
+    AgentServiceLifecycleContract:
+      x-cerebro-skip-typescript: true
+      allOf:
+        -
+          {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://github.com/writer/cerebro/schemas/agent-service-lifecycle-contract.schema.json",
+            "title": "AgentServiceLifecycleContract",
+            "description": "Cloud- and chat-neutral lifecycle, continuity, and compatibility contracts for an agent service.",
+            "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/AgentServiceLifecycleContract",
+            "$defs": {
+              "AgentServiceLifecycleContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "The public contract an agent service implements independently of transport and deployment topology.",
+                "properties": {
+                  "schema_version": { "type": "string", "minLength": 1 },
+                  "contract_version": { "type": "string", "minLength": 1 },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/SchemaCompatibility" },
+                  "installation_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationStateDefinition" },
+                    "minItems": 1
+                  },
+                  "deployment_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentStateDefinition" },
+                    "minItems": 1
+                  },
+                  "service_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceStateDefinition" },
+                    "minItems": 1
+                  },
+                  "run_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunStateDefinition" },
+                    "minItems": 1
+                  },
+                  "transitions": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/StateTransition" },
+                    "minItems": 1
+                  },
+                  "ports": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/PortContract" },
+                    "minItems": 1
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RecordContract" },
+                    "minItems": 1
+                  },
+                  "health_surfaces": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/HealthSurface" },
+                    "minItems": 1
+                  },
+                  "invariants": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/LifecycleInvariant" },
+                    "minItems": 1
+                  },
+                  "legacy_adapters": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/LegacyAdapter" }
+                  }
+                },
+                "required": [
+                  "schema_version",
+                  "contract_version",
+                  "compatibility",
+                  "installation_states",
+                  "deployment_states",
+                  "service_states",
+                  "run_states",
+                  "transitions",
+                  "ports",
+                  "records",
+                  "health_surfaces",
+                  "invariants",
+                  "legacy_adapters"
+                ]
+              },
+              "SchemaCompatibility": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "current_version": { "type": "string", "minLength": 1 },
+                  "read_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "write_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "rolling_upgrade_rule": { "type": "string", "minLength": 1 },
+                  "capability_decisions": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["current_version", "read_versions", "write_versions", "rolling_upgrade_rule", "capability_decisions"]
+              },
+              "CapabilityCompatibilityDecision": {
+                "type": "string",
+                "enum": ["supported", "degraded", "blocked", "incompatible"]
+              },
+              "InstallationLifecycleState": {
+                "type": "string",
+                "enum": ["authorizing", "binding", "verifying", "active", "suspended", "revoked", "retired"]
+              },
+              "DeploymentGenerationState": {
+                "type": "string",
+                "enum": ["proposed", "provisioning", "validating", "active", "failed", "rolled_back", "superseded", "retired"]
+              },
+              "ServiceAvailabilityState": {
+                "type": "string",
+                "enum": ["booting", "warming", "ready", "degraded", "draining", "offline", "recovering", "stopped"]
+              },
+              "RunLifecycleState": {
+                "type": "string",
+                "enum": ["received", "admitted", "rejected", "queued", "leased", "running", "waiting", "paused", "delivering", "completed", "cancelled", "expired", "blocked"]
+              },
+              "RunKind": {
+                "type": "string",
+                "enum": ["interactive", "scheduled", "autonomy", "triage", "risk_attestation", "reconciliation"]
+              },
+              "ScheduledOccurrenceState": {
+                "type": "string",
+                "enum": ["admitted", "queued", "leased", "running", "completed", "failed", "cancelled", "skipped"]
+              },
+              "ScheduleMisfirePolicy": {
+                "type": "string",
+                "enum": ["coalesce_once", "skip", "run_all_bounded"]
+              },
+              "EffectExecutionState": {
+                "type": "string",
+                "enum": ["planned", "executing", "succeeded", "failed", "unknown"]
+              },
+              "CapabilityRequirementLevel": {
+                "type": "string",
+                "enum": ["required", "optional"]
+              },
+              "InstallationStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                  "admission_allowed": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "admission_allowed", "meaning"]
+              },
+              "DeploymentStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "may_own_routes": { "type": "boolean" },
+                  "may_own_leases": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "may_own_routes", "may_own_leases", "meaning"]
+              },
+              "ServiceStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                  "admission": { "type": "string", "minLength": 1 },
+                  "new_leases": { "type": "boolean" },
+                  "existing_work": { "type": "string", "minLength": 1 },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "admission", "new_leases", "existing_work", "meaning"]
+              },
+              "RunStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" },
+                  "terminal": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "terminal", "meaning"]
+              },
+              "StateTransition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "machine": { "type": "string", "enum": ["installation", "deployment", "service", "run"] },
+                  "from": { "type": "string", "minLength": 1 },
+                  "to": { "type": "string", "minLength": 1 },
+                  "condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["machine", "from", "to", "condition"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "machine": { "const": "installation" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "deployment" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "service" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "run" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" }
+                      }
+                    }
+                  }
+                ]
+              },
+              "PortContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "purpose": { "type": "string", "minLength": 1 },
+                  "required_operations": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "production_durability_required": { "type": "boolean" }
+                },
+                "required": ["id", "purpose", "required_operations", "production_durability_required"]
+              },
+              "RecordContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "type": "string", "minLength": 1 },
+                  "schema_version": { "type": "string", "minLength": 1 },
+                  "schema_ref": { "type": "string", "pattern": "^(#/\\$defs/|[a-z0-9-]+\\.schema\\.json$)" },
+                  "identity_fields": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "fencing_fields": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["kind", "schema_version", "schema_ref", "identity_fields", "fencing_fields"]
+              },
+              "HealthSurface": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "type": "string", "pattern": "^/" },
+                  "responsibility": { "type": "string", "minLength": 1 },
+                  "success_condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["path", "responsibility", "success_condition"]
+              },
+              "LifecycleInvariant": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "statement": { "type": "string", "minLength": 1 }
+                },
+                "required": ["id", "statement"]
+              },
+              "LegacyAdapter": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "target_schema": { "type": "string", "minLength": 1 },
+                  "write_authority": { "type": "boolean" },
+                  "retirement_condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["id", "target_schema", "write_authority", "retirement_condition"]
+              },
+              "CapabilityRequirement": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "capability_id": { "type": "string", "minLength": 1 },
+                  "version": { "type": "string", "minLength": 1 },
+                  "level": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirementLevel" }
+                },
+                "required": ["capability_id", "version", "level"]
+              },
+              "AgentServiceBindingV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "agent-service-binding/v1" },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "tenant_id": { "type": "string", "minLength": 1 },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "installation_generation": { "type": "integer", "minimum": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                  "retention_policy_ref": { "type": "string", "minLength": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "binding_id", "tenant_id", "service_id", "route_generation", "installation_generation", "state", "retention_policy_ref", "created_at", "updated_at"]
+              },
+              "DeploymentGenerationV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "deployment-generation/v1" },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "release_version": { "type": "string", "minLength": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "capability_manifest_digest": { "type": "string", "minLength": 1 },
+                  "contract_version": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "service_id", "generation", "release_version", "state", "capability_manifest_digest", "contract_version", "fencing_token", "created_at", "updated_at"]
+              },
+              "CapabilityManifestV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "capability-manifest/v1" },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "contract_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirement" },
+                    "uniqueItems": true
+                  },
+                  "produced_at": { "type": "string", "format": "date-time" },
+                  "digest": { "type": "string", "minLength": 1 }
+                },
+                "required": ["schema_version", "service_id", "generation", "contract_versions", "capabilities", "produced_at", "digest"]
+              },
+              "RunReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "run-receipt/v1" },
+                  "receipt_id": { "type": "string", "minLength": 1 },
+                  "tenant_id": { "type": "string", "minLength": 1 },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "run_kind": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunKind" },
+                  "subject_ref": { "type": "string", "minLength": 1 },
+                  "input_digest": { "type": "string", "minLength": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "state": {
+                    "type": "string",
+                    "enum": ["admitted", "queued", "leased", "running", "waiting", "paused", "delivering", "completed", "cancelled", "expired", "blocked"]
+                  },
+                  "revision": { "type": "integer", "minimum": 1 },
+                  "required_capabilities": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirement" }
+                  },
+                  "retention_policy_ref": { "type": "string", "minLength": 1 },
+                  "received_at": { "type": "string", "format": "date-time" },
+                  "admitted_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "receipt_id", "tenant_id", "binding_id", "run_id", "run_kind", "subject_ref", "input_digest", "idempotency_key", "state", "revision", "required_capabilities", "retention_policy_ref", "received_at", "admitted_at", "updated_at"]
+              },
+              "ScheduledOccurrenceV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "scheduled-occurrence/v1" },
+                  "occurrence_id": { "type": "string", "minLength": 1 },
+                  "schedule_id": { "type": "string", "minLength": 1 },
+                  "schedule_revision": { "type": "integer", "minimum": 1 },
+                  "due_at": { "type": "string", "format": "date-time" },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "misfire_policy": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ScheduleMisfirePolicy" },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ScheduledOccurrenceState" },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "owner_id": { "type": "string", "minLength": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "lease_expires_at": { "type": "string", "format": "date-time" },
+                  "heartbeat_at": { "type": "string", "format": "date-time" },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "occurrence_id", "schedule_id", "schedule_revision", "due_at", "run_id", "idempotency_key", "misfire_policy", "state", "generation", "created_at", "updated_at"],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": { "state": { "enum": ["leased", "running"] } },
+                      "required": ["state"]
+                    },
+                    "then": { "required": ["owner_id", "lease_token", "fencing_token", "lease_expires_at", "heartbeat_at"] }
+                  }
+                ]
+              },
+              "WorkLeaseV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "work-lease/v1" },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "owner_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "lease_expires_at": { "type": "string", "format": "date-time" },
+                  "heartbeat_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "run_id", "owner_id", "generation", "lease_token", "fencing_token", "lease_expires_at", "heartbeat_at"]
+              },
+              "CheckpointV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "checkpoint/v1" },
+                  "checkpoint_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "run_revision": { "type": "integer", "minimum": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "sequence": { "type": "integer", "minimum": 1 },
+                  "resume_cursor": { "type": "string", "minLength": 1 },
+                  "completed_step_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "effect_receipt_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "waiting_on_ref": { "type": "string" },
+                  "payload_ref": { "type": "string", "minLength": 1 },
+                  "payload_digest": { "type": "string", "minLength": 1 },
+                  "created_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "checkpoint_id", "run_id", "run_revision", "generation", "sequence", "resume_cursor", "completed_step_ids", "effect_receipt_ids", "payload_ref", "payload_digest", "created_at"]
+              },
+              "EffectReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "effect-receipt/v1" },
+                  "effect_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "step_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "target_ref": { "type": "string", "minLength": 1 },
+                  "request_digest": { "type": "string", "minLength": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/EffectExecutionState" },
+                  "result_ref": { "type": "string", "minLength": 1 },
+                  "result_digest": { "type": "string", "minLength": 1 },
+                  "approval_required": { "type": "boolean" },
+                  "approval_ref": { "type": "string", "minLength": 1 },
+                  "rollback_plan_ref": { "type": "string", "minLength": 1 },
+                  "verification_receipt_ref": { "type": "string", "minLength": 1 },
+                  "verification_state": { "type": "string", "enum": ["pending", "verified", "failed"] },
+                  "recorded_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "effect_id", "run_id", "step_id", "generation", "lease_token", "fencing_token", "idempotency_key", "target_ref", "request_digest", "state", "approval_required", "verification_state", "recorded_at"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "approval_required": { "const": true } }, "required": ["approval_required"] },
+                    "then": { "required": ["approval_ref"] }
+                  },
+                  {
+                    "if": { "properties": { "verification_state": { "enum": ["verified", "failed"] } }, "required": ["verification_state"] },
+                    "then": { "required": ["verification_receipt_ref"] }
+                  },
+                  {
+                    "if": { "properties": { "state": { "enum": ["succeeded", "failed"] } }, "required": ["state"] },
+                    "then": { "required": ["result_ref", "result_digest"] }
+                  }
+                ]
+              },
+              "DeliveryPartV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "part_id": { "type": "string", "minLength": 1 },
+                  "sequence": { "type": "integer", "minimum": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "payload_ref": { "type": "string", "minLength": 1 },
+                  "payload_digest": { "type": "string", "minLength": 1 },
+                  "state": { "type": "string", "enum": ["pending", "delivering", "delivered", "paused", "failed", "abandoned"] },
+                  "destination_receipt": { "type": "string", "minLength": 1 },
+                  "delivered_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["part_id", "sequence", "idempotency_key", "payload_ref", "payload_digest", "state"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "state": { "const": "delivered" } }, "required": ["state"] },
+                    "then": { "required": ["destination_receipt", "delivered_at"] }
+                  }
+                ]
+              },
+              "DeliveryReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "delivery-receipt/v1" },
+                  "delivery_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "destination_ref": { "type": "string", "minLength": 1 },
+                  "state": { "type": "string", "enum": ["pending", "delivering", "paused", "completed", "failed", "abandoned"] },
+                  "parts": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeliveryPartV1" },
+                    "minItems": 1
+                  },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "delivery_id", "run_id", "destination_ref", "state", "parts", "created_at", "updated_at"]
+              },
+              "PresenceSnapshotV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "presence-snapshot/v1" },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "service_state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "active_generation": { "type": "integer", "minimum": 1 },
+                  "reason_code": { "type": "string" },
+                  "observed_at": { "type": "string", "format": "date-time" },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "binding_id", "service_state", "compatibility", "route_generation", "active_generation", "reason_code", "observed_at", "expires_at"]
+              },
+              "ReleaseReceiptV2": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "release-receipt/v2" },
+                  "release_id": { "type": "string", "minLength": 1 },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                  "active_lease_count": { "type": "integer", "minimum": 0 },
+                  "recoverable_run_count": { "type": "integer", "minimum": 0 },
+                  "orphaned_run_count": { "type": "integer", "minimum": 0 },
+                  "drained_run_count": { "type": "integer", "minimum": 0 },
+                  "resumed_run_count": { "type": "integer", "minimum": 0 },
+                  "pending_delivery_count": { "type": "integer", "minimum": 0 },
+                  "stuck_delivery_count": { "type": "integer", "minimum": 0 },
+                  "verification_receipt_refs": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "release_id", "service_id", "generation", "state", "compatibility", "active_lease_count", "recoverable_run_count", "orphaned_run_count", "drained_run_count", "resumed_run_count", "pending_delivery_count", "stuck_delivery_count", "verification_receipt_refs", "created_at", "updated_at"]
+              },
+              "MigrationReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "migration-receipt/v1" },
+                  "migration_id": { "type": "string", "minLength": 1 },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "source_generation": { "type": "integer", "minimum": 1 },
+                  "target_generation": { "type": "integer", "minimum": 1 },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "state": { "type": "string", "enum": ["proposed", "validating", "draining", "cutting_over", "recovering", "completed", "rolling_back", "rolled_back", "failed"] },
+                  "checkpoint_count": { "type": "integer", "minimum": 0 },
+                  "pending_delivery_count": { "type": "integer", "minimum": 0 },
+                  "rollback_generation": { "type": "integer", "minimum": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "migration_id", "binding_id", "source_generation", "target_generation", "route_generation", "state", "checkpoint_count", "pending_delivery_count", "rollback_generation", "created_at", "updated_at"]
+              }
+            }
+          }

@@ -122,7 +122,10 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
-const bootstrapProductionGoLineBudget = 28289
+// Agent service lifecycle discovery adds only authenticated route registration
+// and response mapping; the state machines, records, validation, and generated
+// bindings remain behind internal/agentplatform.
+const bootstrapProductionGoLineBudget = 28295
 
 type bootstrapFileLineCount struct {
 	path  string

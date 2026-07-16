@@ -229,6 +229,13 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Enforced in: absence of cloud-specific runtime dependencies in `internal/bootstrap`.
 - What would change this: a deployment shape that demonstrably cannot be served by Postgres, NATS, and Neo4j running in the operator's environment of choice.
 
+### The agent service lifecycle contract is not a deployment controller.
+
+- The public lifecycle contract names service states, generations, durable runs, leases, checkpoints, effects, deliveries, capabilities, and adapter ports. It does not provision infrastructure, select an orchestrator, store environment configuration, resolve private routes, or define concrete rollout and disaster-recovery thresholds.
+- Why: portable continuity semantics must survive a deployment-topology change. Combining those semantics with one operator's placement and rollout policy would make service identity and durable work depend on private infrastructure.
+- Enforced in: [`agent-service-lifecycle-contract.md`](../domains/agent-service-lifecycle-contract.md), generated bindings under `internal/agentplatform/lifecyclecontract`, and `tools/archtests/agent_service_lifecycle_test.go`.
+- What would change this: nothing inside the portable contract. Concrete deployment adapters and operational policy belong to the operator's deployment repository.
+
 ### Cerebro will not maintain undocumented compatibility aliases indefinitely.
 
 - Legacy `/graph/*` aliases for routes that have moved to `/platform/graph/*` exist only when there are real consumers. When no known consumer exists, the alias is removed quickly rather than preserved as silent drift.

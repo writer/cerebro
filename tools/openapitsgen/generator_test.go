@@ -96,3 +96,34 @@ components:
 		t.Error("expected error for empty schemas")
 	}
 }
+
+func TestGenerateSkipsSchemasWithDedicatedBinding(t *testing.T) {
+	spec := `
+components:
+  schemas:
+    DedicatedContract:
+      x-cerebro-skip-typescript: true
+      type: object
+      properties:
+        version:
+          type: string
+    IncludedContract:
+      type: object
+      properties:
+        version:
+          type: string
+`
+	result, err := Generate([]byte(spec))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if result.TypeCount != 1 {
+		t.Fatalf("TypeCount = %d, want 1", result.TypeCount)
+	}
+	if strings.Contains(result.TypeScript, "DedicatedContract") {
+		t.Fatalf("generated dedicated contract despite skip marker:\n%s", result.TypeScript)
+	}
+	if !strings.Contains(result.TypeScript, "IncludedContract") {
+		t.Fatalf("generated output missing included contract:\n%s", result.TypeScript)
+	}
+}

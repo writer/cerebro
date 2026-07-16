@@ -79,6 +79,7 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/a2a", routeSurfacePlatformHTTP, app.handleA2AJSONRPC)
 	registerHTTPRoute(mux, "GET /api/v1/agent/context", routeSurfacePlatformHTTP, agentTasks.Context)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/service-lifecycle/contract", routeSurfacePlatformHTTP, app.handleAgentServiceLifecycleContract)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/security-control-plane", routeSurfacePlatformHTTP, app.handleAgentPlatformSecurityControlPlane)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/missions/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformMissionContract)

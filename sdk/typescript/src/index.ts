@@ -19,6 +19,9 @@ export type {
   SourceRuntime,
 } from "./generated/openapi-types.ts";
 
+export type * from "./generated/agent-service-lifecycle-contract.ts";
+export type * from "./generated/agent-service-lifecycle.ts";
+
 export interface ClientConfig {
   baseUrl: string;
   apiKey?: string;
