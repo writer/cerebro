@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        runtime_default_seccomp_missing: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        runtime_default_seccomp_missing: false
+      wantFinding: false

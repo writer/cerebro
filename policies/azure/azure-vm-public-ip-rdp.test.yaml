@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        network_security_group:
+            rules:
+                access: Allow
+                destination_port: "3389"
+                source_address_prefix: '*'
+        public_ip_address: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        network_security_group:
+            rules:
+                access: Allow
+                destination_port: "3389"
+                source_address_prefix: '*'
+        public_ip_address: null
+      wantFinding: false

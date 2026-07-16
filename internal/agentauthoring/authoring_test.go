@@ -88,7 +88,7 @@ func TestDraftPolicyBundleAuthorsRunnableTestsAndProof(t *testing.T) {
 }
 
 func TestDraftPolicyBundleRejectsPolicyWithoutSafeFixtureContract(t *testing.T) {
-	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-complex", Name: "Agent complex", Description: "Complex agent policy.", Severity: "high", Conditions: []string{`cmp_ne(path(resource, "state"), "safe")`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}})
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-complex", Name: "Agent complex", Description: "Complex agent policy.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "state"), path(resource, "expected_state"))`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}})
 	raw, err := json.Marshal(rule)
 	if err != nil {
 		t.Fatal(err)

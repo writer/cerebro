@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        plan_tier: enterprise
+        uptime_pct_30d: 98.9
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        plan_tier: enterprise-passing
+        uptime_pct_30d: 98.9
+      wantFinding: false

@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        labels:
+            allow_public_ip: true-passing
+        network_interfaces:
+            access_configs: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        labels:
+            allow_public_ip: true-passing
+        network_interfaces:
+            access_configs: null
+      wantFinding: false

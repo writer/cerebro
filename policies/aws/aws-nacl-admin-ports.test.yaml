@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        allows_admin_ports_from_internet: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        allows_admin_ports_from_internet: false
+      wantFinding: false

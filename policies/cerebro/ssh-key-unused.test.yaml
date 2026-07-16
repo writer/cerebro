@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        associated_instances_count: 0
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        associated_instances_count: 1
+      wantFinding: false

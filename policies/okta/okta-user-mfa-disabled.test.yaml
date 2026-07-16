@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        mfa_factors_count: 0
+        status: ACTIVE
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        mfa_factors_count: 0
+        status: ACTIVE-passing
+      wantFinding: false

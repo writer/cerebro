@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        resource_type: hook
+        webhook_destination_non_allowlisted: "true"
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        resource_type: hook-passing
+        webhook_destination_non_allowlisted: "true"
+      wantFinding: false

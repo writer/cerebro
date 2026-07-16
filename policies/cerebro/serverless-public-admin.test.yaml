@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        execution_role:
+            has_admin_role: true
+        is_public: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        execution_role:
+            has_admin_role: true
+        is_public: false
+      wantFinding: false

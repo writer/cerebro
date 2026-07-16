@@ -1,0 +1,19 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        dependency_scope: runtime
+        ecosystem: npm
+        first_patched_version: null
+        severity: critical
+        state: open
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        dependency_scope: runtime
+        ecosystem: npm
+        first_patched_version: null
+        severity: critical
+        state: open-passing
+      wantFinding: false

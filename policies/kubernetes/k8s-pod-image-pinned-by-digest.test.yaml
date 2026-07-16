@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        spec:
+            all_images_pinned_by_digest: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        spec:
+            all_images_pinned_by_digest: true
+      wantFinding: false
