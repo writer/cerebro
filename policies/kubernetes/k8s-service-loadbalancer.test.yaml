@@ -1,0 +1,29 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        metadata:
+            annotations['cloud:
+                google:
+                    com/load-balancer-type']: Internal-passing
+            annotations['service:
+                beta:
+                    kubernetes:
+                        io/aws-load-balancer-internal']: true-passing
+        spec:
+            type: LoadBalancer
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        metadata:
+            annotations['cloud:
+                google:
+                    com/load-balancer-type']: Internal-passing
+            annotations['service:
+                beta:
+                    kubernetes:
+                        io/aws-load-balancer-internal']: true-passing
+        spec:
+            type: LoadBalancer-passing
+      wantFinding: false

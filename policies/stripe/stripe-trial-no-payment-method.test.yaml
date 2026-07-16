@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        days_until_trial_end: 6
+        default_payment_method: null
+        status: trialing
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        days_until_trial_end: 6
+        default_payment_method: null
+        status: trialing-passing
+      wantFinding: false

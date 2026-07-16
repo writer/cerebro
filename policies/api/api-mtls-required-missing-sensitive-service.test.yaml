@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        mtls_required_missing_sensitive_service: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        mtls_required_missing_sensitive_service: true
+      wantFinding: false

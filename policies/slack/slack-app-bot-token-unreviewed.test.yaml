@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        app_bot_token_unreviewed_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        app_bot_token_unreviewed_compliant: true
+      wantFinding: false

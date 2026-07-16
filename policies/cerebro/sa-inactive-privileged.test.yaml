@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_high_privilege: true
+        last_activity_days_ago: 91
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_high_privilege: false
+        last_activity_days_ago: 91
+      wantFinding: false
