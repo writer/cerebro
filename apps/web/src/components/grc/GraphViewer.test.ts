@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { graphHiddenScopeCopy } from "./GraphViewer";
+import { graphHiddenScopeCopy, graphViewSignature } from "./GraphViewer";
 
 describe("graphHiddenScopeCopy", () => {
   it("describes nodes and edges hidden by scale caps and filters", () => {
@@ -21,5 +21,14 @@ describe("graphHiddenScopeCopy", () => {
 
   it("omits empty hidden-scope copy", () => {
     expect(graphHiddenScopeCopy({ filteredEdges: 0, filteredNodes: 0, hiddenEdges: 0, hiddenNodes: 0 })).toEqual([]);
+  });
+});
+
+describe("graphViewSignature", () => {
+  it("changes when filters change the visible graph", () => {
+    const full = graphViewSignature(["node-a", "node-b"], ["edge-a"], "concentric", "light");
+    const filtered = graphViewSignature(["node-a"], [], "concentric", "light");
+
+    expect(filtered).not.toBe(full);
   });
 });

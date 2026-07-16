@@ -12,7 +12,12 @@ const GRC_UPLOAD_PATHS = new Set([
 export function proxy(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
 
-  if (isApiRoute && request.method !== "GET" && request.method !== "HEAD") {
+  if (
+    isApiRoute &&
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.method !== "DELETE"
+  ) {
     const contentLength = request.headers.get("content-length")?.trim();
     if (!contentLength) {
       return NextResponse.json(
