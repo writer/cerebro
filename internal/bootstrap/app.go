@@ -1144,41 +1144,28 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
 	}
-	outcome := decisionworkflow.NormalizeOutcome(req.Msg.GetOutcomeType())
-	tenantID, err := effectiveTenantFilter(ctx, tenantIDFromMetadata(metadata))
+	tenant, actor, err := decisionPacketIdentity(ctx, tenantIDFromMetadata(metadata), req.Header().Get("X-Cerebro-Actor"))
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	outcomeService := newDecisionOutcomeService(s.deps)
-	packetDecision, err := outcomeService.IsAuthenticatedPacketDecision(ctx, tenantID, req.Msg.GetDecisionId())
+	result, recorded, err := newDecisionOutcomeService(s.deps).RecordPacketOutcome(ctx, decisionops.RecordPacketOutcomeRequest{
+		TenantID: tenant.ID, ActorID: actor.ID, DecisionID: req.Msg.GetDecisionId(), OutcomeType: req.Msg.GetOutcomeType(),
+		AuditPacketExportReceiptID: req.Msg.GetAuditPacketExportReceiptId(),
+	})
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	if packetDecision {
-		if outcome == decisionworkflow.OutcomeUnknown || outcome == decisionworkflow.OutcomeNone {
-			return nil, knowledgeConnectError(decisionops.ErrInvalidRequest)
-		}
-		tenant, actor, err := decisionPacketIdentity(ctx, tenantID, req.Header().Get("X-Cerebro-Actor"))
-		if err != nil {
-			return nil, knowledgeConnectError(err)
-		}
-		result, err := outcomeService.RecordOutcome(ctx, decisionops.RecordOutcomeRequest{
-			TenantID: tenant.ID, ActorID: actor.ID, DecisionID: req.Msg.GetDecisionId(), Outcome: outcome,
-			AuditPacketExportReceiptID: req.Msg.GetAuditPacketExportReceiptId(),
-		})
-		if err != nil {
-			return nil, knowledgeConnectError(err)
-		}
+	if recorded {
 		return connect.NewResponse(knowledgetransport.OutcomeResponse(&result.Write)), nil
 	}
 	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteOutcome(ctx, knowledgetransport.OutcomeRequest(req.Msg, metadata))
+	legacyResult, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteOutcome(ctx, knowledgetransport.OutcomeRequest(req.Msg, metadata))
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(knowledgetransport.OutcomeResponse(result)), nil
+	return connect.NewResponse(knowledgetransport.OutcomeResponse(legacyResult)), nil
 }
 
 func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[cerebrov1.ReplayWorkflowEventsRequest]) (*connect.Response[cerebrov1.ReplayWorkflowEventsResponse], error) {

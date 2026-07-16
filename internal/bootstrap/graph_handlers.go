@@ -88,36 +88,20 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 	if request.GetMetadata() != nil {
 		metadata = request.GetMetadata().AsMap()
 	}
-	outcome := decisionworkflow.NormalizeOutcome(request.GetOutcomeType())
-	tenantID, err := effectiveTenantFilter(r.Context(), tenantIDFromMetadata(metadata))
+	tenant, actor, err := decisionPacketIdentity(r.Context(), tenantIDFromMetadata(metadata), r.Header.Get("X-Cerebro-Actor"))
 	if err != nil {
 		writeKnowledgeError(w, err)
 		return
 	}
-	outcomeService := newDecisionOutcomeService(a.deps)
-	packetDecision, err := outcomeService.IsAuthenticatedPacketDecision(r.Context(), tenantID, request.GetDecisionId())
+	result, recorded, err := newDecisionOutcomeService(a.deps).RecordPacketOutcome(r.Context(), decisionops.RecordPacketOutcomeRequest{
+		TenantID: tenant.ID, ActorID: actor.ID, DecisionID: request.GetDecisionId(), OutcomeType: request.GetOutcomeType(),
+		AuditPacketExportReceiptID: request.GetAuditPacketExportReceiptId(),
+	})
 	if err != nil {
 		writeKnowledgeError(w, err)
 		return
 	}
-	if packetDecision {
-		if outcome == decisionworkflow.OutcomeUnknown || outcome == decisionworkflow.OutcomeNone {
-			writeKnowledgeError(w, decisionops.ErrInvalidRequest)
-			return
-		}
-		tenant, actor, err := decisionPacketIdentity(r.Context(), tenantID, r.Header.Get("X-Cerebro-Actor"))
-		if err != nil {
-			writeKnowledgeError(w, err)
-			return
-		}
-		result, err := outcomeService.RecordOutcome(r.Context(), decisionops.RecordOutcomeRequest{
-			TenantID: tenant.ID, ActorID: actor.ID, DecisionID: request.GetDecisionId(), Outcome: outcome,
-			AuditPacketExportReceiptID: request.GetAuditPacketExportReceiptId(),
-		})
-		if err != nil {
-			writeKnowledgeError(w, err)
-			return
-		}
+	if recorded {
 		writeProtoJSON(w, http.StatusCreated, knowledgetransport.OutcomeResponse(&result.Write))
 		return
 	}
@@ -125,12 +109,12 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 		writeKnowledgeError(w, err)
 		return
 	}
-	result, err := a.knowledgeService().WriteOutcome(r.Context(), knowledgetransport.OutcomeRequest(request, metadata))
+	legacyResult, err := a.knowledgeService().WriteOutcome(r.Context(), knowledgetransport.OutcomeRequest(request, metadata))
 	if err != nil {
 		writeKnowledgeError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusCreated, knowledgetransport.OutcomeResponse(result))
+	writeProtoJSON(w, http.StatusCreated, knowledgetransport.OutcomeResponse(legacyResult))
 }
 
 func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request) {

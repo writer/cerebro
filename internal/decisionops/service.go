@@ -179,6 +179,33 @@ type RecordOutcomeResult struct {
 	Write  knowledge.OutcomeWriteResult
 }
 
+type RecordPacketOutcomeRequest struct {
+	TenantID                   string
+	ActorID                    string
+	DecisionID                 string
+	OutcomeType                string
+	AuditPacketExportReceiptID string
+}
+
+// RecordPacketOutcome records an outcome only when the durable decision belongs
+// to the authenticated packet workflow. The handled result is false for a
+// single durable legacy decision and true for a packet decision.
+func (s *Service) RecordPacketOutcome(ctx context.Context, request RecordPacketOutcomeRequest) (RecordOutcomeResult, bool, error) {
+	packetDecision, err := s.IsAuthenticatedPacketDecision(ctx, request.TenantID, request.DecisionID)
+	if err != nil || !packetDecision {
+		return RecordOutcomeResult{}, false, err
+	}
+	outcome := decisionworkflow.NormalizeOutcome(request.OutcomeType)
+	if outcome == decisionworkflow.OutcomeUnknown || outcome == decisionworkflow.OutcomeNone {
+		return RecordOutcomeResult{}, true, ErrInvalidRequest
+	}
+	result, err := s.RecordOutcome(ctx, RecordOutcomeRequest{
+		TenantID: request.TenantID, ActorID: request.ActorID, DecisionID: request.DecisionID, Outcome: outcome,
+		AuditPacketExportReceiptID: request.AuditPacketExportReceiptID,
+	})
+	return result, true, err
+}
+
 // IsAuthenticatedPacketDecision reports whether the durable decision was
 // created through the authenticated packet workflow. A malformed decision that
 // carries the server-only trust marker fails closed instead of falling back to
