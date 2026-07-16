@@ -75,7 +75,11 @@ func TestPublicApplicationsExcludeOperationalOverlays(t *testing.T) {
 		}
 		if filepath.Dir(path) == appsRoot {
 			manifestPath := filepath.Join(path, "package.json")
-			manifest := readWorkspaceManifest(t, manifestPath)
+			manifest, err := readWorkspaceManifestFile(manifestPath)
+			if err != nil {
+				t.Errorf("read application workspace manifest %s: %v", filepath.ToSlash(manifestPath), err)
+				return filepath.SkipDir
+			}
 			if !manifest.Private {
 				t.Errorf("%s must set private=true", filepath.ToSlash(manifestPath))
 			}
@@ -90,15 +94,30 @@ func TestPublicApplicationsExcludeOperationalOverlays(t *testing.T) {
 	}
 }
 
+func TestReadWorkspaceManifestFileReportsMissingManifest(t *testing.T) {
+	_, err := readWorkspaceManifestFile(filepath.Join(t.TempDir(), "package.json"))
+	if !os.IsNotExist(err) {
+		t.Fatalf("read missing workspace manifest error = %v, want os.ErrNotExist", err)
+	}
+}
+
 func readWorkspaceManifest(t *testing.T, path string) workspaceManifest {
 	t.Helper()
+	manifest, err := readWorkspaceManifestFile(path)
+	if err != nil {
+		t.Fatalf("read workspace manifest %s: %v", filepath.ToSlash(path), err)
+	}
+	return manifest
+}
+
+func readWorkspaceManifestFile(path string) (workspaceManifest, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read %s: %v", filepath.ToSlash(path), err)
+		return workspaceManifest{}, err
 	}
 	var manifest workspaceManifest
 	if err := json.Unmarshal(payload, &manifest); err != nil {
-		t.Fatalf("decode %s: %v", filepath.ToSlash(path), err)
+		return workspaceManifest{}, err
 	}
-	return manifest
+	return manifest, nil
 }
