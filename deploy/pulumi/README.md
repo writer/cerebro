@@ -96,7 +96,7 @@ The shared config keys are the same across clouds:
 | `cerebro:image` | required | Runtime image, usually `ghcr.io/writer/cerebro:<release-tag>` or a cloud-registry mirror. |
 | `cerebro:containerPort` | `8080` | Container port. |
 | `cerebro:minReplicas` | `1` | Minimum running replicas where supported. |
-| `cerebro:maxReplicas` | `1` | Maximum replicas where supported. Raise carefully because backing stores and source cursors need matching capacity. |
+| `cerebro:maxReplicas` | `1` | Maximum replicas where supported. Device authentication currently requires `1` because DPoP replay protection is process-local. The deployment exports this value as `CEREBRO_REPLICA_COUNT` so the runtime fails closed if the boundary is violated. |
 | `cerebro:cpu` | `1` | vCPU count for GCP/Azure; AWS converts this to ECS CPU units. |
 | `cerebro:memoryMiB` | `2048` | Container memory. |
 | `cerebro:publicOrigin` | unset | Set to the external HTTPS origin for shared deployments. |
