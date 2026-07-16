@@ -7,7 +7,7 @@ struct ReceiptMenu: View {
 
   var body: some View {
     Label(statusTitle, systemImage: statusImage)
-    Text("\(store.shieldSnapshot.detectedAgents) agents detected")
+    Text("\(store.shieldSnapshot.detectedIntegrations) integrations detected")
     Text("\(store.shieldSnapshot.incidents.count) items to review")
     Text(store.backgroundState.label)
     Divider()
@@ -23,9 +23,9 @@ struct ReceiptMenu: View {
 
   private var statusTitle: String {
     switch store.shieldSnapshot.level {
-    case .active: return "Background monitoring active"
-    case .attention: return "Device coverage needs attention"
-    case .inactive: return "No supported agents detected"
+    case .active: return "Collector running"
+    case .attention: return "Collection needs attention"
+    case .inactive: return "No supported integrations detected"
     }
   }
 

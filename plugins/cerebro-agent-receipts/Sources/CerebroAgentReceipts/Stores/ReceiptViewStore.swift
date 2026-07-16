@@ -16,8 +16,8 @@ final class ReceiptViewStore: ObservableObject {
     capturedAt: ReceiptDate.string(from: Date()),
     level: .inactive,
     trustBoundary: .development,
-    detectedAgents: 0,
-    conformingAdapters: 0,
+    detectedIntegrations: 0,
+    currentIntegrations: 0,
     recentAgentEvents: 0,
     incidents: [],
     binaryIdentities: []
@@ -160,6 +160,7 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   func installAdapter(_ product: AgentProduct) {
+    guard authorizeAdapterRepair() else { return }
     do {
       try adapterInstaller.install(product)
       adapterStatuses = adapterInstaller.statuses()
@@ -171,6 +172,7 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   func removeAdapter(_ product: AgentProduct) {
+    guard authorizeAdapterRepair() else { return }
     do {
       try adapterInstaller.remove(product)
       adapterStatuses = adapterInstaller.statuses()
@@ -178,6 +180,40 @@ final class ReceiptViewStore: ObservableObject {
       errorMessage = nil
     } catch {
       errorMessage = error.localizedDescription
+    }
+  }
+
+  private func authorizeAdapterRepair() -> Bool {
+    guard shieldSnapshot.trustBoundary == .organizationManaged else { return true }
+    do {
+      guard
+        let configuration = try ManagedShieldConfiguration.load(),
+        let shieldStore = receiptStores.last,
+        let publicKey = try? shieldStore.readTrustedPublicKey(),
+        let deviceID = DeviceKeySigner.deviceID(publicKeyBase64: publicKey)
+      else {
+        errorMessage = "The managed device identity is unavailable."
+        return false
+      }
+      let access = ShieldAdminCapabilityLoader.authorize(
+        configuration: configuration,
+        deviceID: deviceID,
+        request: .device(operation: .repairAdapters, deviceID: deviceID),
+        requiredRole: .repair,
+        replayStore: ShieldCapabilityReplayStore(
+          ledgerURL: ReceiptStore.shieldAgentDirectory()
+            .appendingPathComponent("capability-use.json"))
+      )
+      guard access.isAuthorized else {
+        adminAccess = access
+        if case .denied(let reason) = access { errorMessage = reason }
+        return false
+      }
+      adminAccess = .denied("This organization capability has been used.")
+      return true
+    } catch {
+      errorMessage = error.localizedDescription
+      return false
     }
   }
 
@@ -354,7 +390,11 @@ final class ReceiptViewStore: ObservableObject {
       let deviceID = DeviceKeySigner.deviceID(publicKeyBase64: publicKey)
     {
       adminAccess = ShieldAdminCapabilityLoader.load(
-        configuration: managedConfiguration, deviceID: deviceID)
+        configuration: managedConfiguration,
+        deviceID: deviceID,
+        request: .device(operation: .repairAdapters, deviceID: deviceID),
+        requiredRole: .repair
+      )
     } else if managedConfiguration != nil {
       adminAccess = .denied("The device identity is unavailable.")
     } else {

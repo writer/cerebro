@@ -53,7 +53,7 @@
           "sourceKind": "source",
           "evidenceId": "E003",
           "path": "plugins/cerebro-agent-receipts/Sources/ReceiptCore/AdminCapability.swift",
-          "claim": "Investigation access is short-lived, signed, device-bound, role-scoped, and loaded from root-controlled configuration; its current request ID is audit correlation only."
+          "claim": "Investigation access is short-lived, signed, device-bound, role-scoped, operation-bound, target-bound, and loaded from root-controlled configuration; adapter mutations reject a repeated local grant ID."
         },
         {
           "claimType": "inferred",
@@ -66,7 +66,7 @@
       "desiredInvariants": [
         "Every enrolled device emits a signed heartbeat and monotonic receipt-chain checkpoint within policy freshness.",
         "Missing, rolled-back, or conflicting checkpoints create an organization-visible incident.",
-        "Investigation actions require a short-lived capability bound to organization, device, subject, request, actions, and expiry.",
+        "Investigation actions require a short-lived capability bound to organization, device, subject, grant ID, canonical operation, canonical target, and expiry.",
         "Protected provider mutations are denied unless they traverse a broker that carries a unique action identity."
       ],
       "proposalPath": "proposals/move-shield-trust-off-endpoint.md",

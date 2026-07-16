@@ -140,11 +140,43 @@ struct CheckRunner {
     expect(
       unreachable.incidents.contains { $0.kind == .backgroundService },
       "unreachable collector did not create a background-service incident")
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    let sessionReceipt = try store.append(
+      draft: draft(id: "session-only", phase: .session), signer: signer)
+    let original = sessionReceipt.payload
+    let corruptedSession = ExecutionReceipt(
+      payload: ExecutionReceiptPayload(
+        id: original.id,
+        sequence: original.sequence,
+        previousReceiptDigest: original.previousReceiptDigest,
+        capturedAt: original.capturedAt,
+        phase: original.phase,
+        localUserClaim: original.localUserClaim,
+        localUserClaimSource: original.localUserClaimSource,
+        agent: original.agent,
+        collector: original.collector,
+        deviceID: original.deviceID,
+        permissionMode: original.permissionMode,
+        toolName: original.toolName,
+        actionSummary: "corrupted session",
+        inputDigest: original.inputDigest,
+        resultDigest: original.resultDigest,
+        cwd: original.cwd,
+        git: original.git
+      ),
+      signature: sessionReceipt.signature
+    )
+    let sessionResults = ReceiptVerifier.verify(
+      [corruptedSession], trustedPublicKeyBase64: signer.publicKeyBase64)
+    expect(
+      sessionResults.filter { !$0.valid }.count == 1,
+      "corrupted SessionStart receipt was not counted as invalid")
     let invalidSession = ShieldSnapshotBuilder.build(
       statuses: [status],
       binaryIdentities: [],
       recentValidEventByProduct: [:],
-      invalidReceiptCount: 1,
+      invalidReceiptCount: sessionResults.filter { !$0.valid }.count,
       trustBoundary: .development
     )
     expect(invalidSession.level == .attention, "invalid non-action receipt retained active shield")
@@ -183,6 +215,32 @@ struct CheckRunner {
     expect(
       !configuration.accepts(applicationIdentity: wrongPublisher),
       "another valid publisher was accepted as organization managed")
+    let wrongSigningIdentifier = AgentBinaryIdentity(
+      product: .codex,
+      path: approved.path,
+      trust: .verifiedPublisher,
+      signingIdentifier: "com.writer.another-app",
+      teamIdentifier: approved.teamIdentifier,
+      cdHash: nil,
+      contentDigest: nil,
+      modifiedAt: nil
+    )
+    expect(
+      !configuration.accepts(applicationIdentity: wrongSigningIdentifier),
+      "another signing identifier was accepted as organization managed")
+    let adHocBuild = AgentBinaryIdentity(
+      product: .codex,
+      path: approved.path,
+      trust: .validAdHocSignature,
+      signingIdentifier: approved.signingIdentifier,
+      teamIdentifier: approved.teamIdentifier,
+      cdHash: nil,
+      contentDigest: nil,
+      modifiedAt: nil
+    )
+    expect(
+      !configuration.accepts(applicationIdentity: adHocBuild),
+      "an ad-hoc build was accepted as organization managed")
   }
 
   private mutating func checkSignedChain() throws {
@@ -644,6 +702,8 @@ struct CheckRunner {
       subject: "security@example.com",
       deviceID: "device-test",
       roles: [.read, .repair],
+      operation: .repairAdapters,
+      target: "device:device-test",
       requestID: "request-test",
       issuedAt: ReceiptDate.string(from: now.addingTimeInterval(-30)),
       expiresAt: ReceiptDate.string(from: now.addingTimeInterval(15 * 60))
@@ -658,6 +718,7 @@ struct CheckRunner {
       capability,
       organizationPublicKeyBase64: publicKey,
       expectedDeviceID: "device-test",
+      expectedRequest: .device(operation: .repairAdapters, deviceID: "device-test"),
       requiredRole: .repair,
       now: now
     )
@@ -666,14 +727,35 @@ struct CheckRunner {
       capability,
       organizationPublicKeyBase64: publicKey,
       expectedDeviceID: "another-device",
+      expectedRequest: .device(operation: .repairAdapters, deviceID: "another-device"),
       now: now
     )
     expect(!wrongDevice.isAuthorized, "an administrator capability crossed device boundaries")
+    let wrongOperation = ShieldAdminCapabilityVerifier.verify(
+      capability,
+      organizationPublicKeyBase64: publicKey,
+      expectedDeviceID: "device-test",
+      expectedRequest: .device(operation: .exportReceipts, deviceID: "device-test"),
+      requiredRole: .repair,
+      now: now
+    )
+    expect(!wrongOperation.isAuthorized, "a capability authorized another operation")
+    let wrongTarget = ShieldAdminCapabilityVerifier.verify(
+      capability,
+      organizationPublicKeyBase64: publicKey,
+      expectedDeviceID: "device-test",
+      expectedRequest: .device(operation: .repairAdapters, deviceID: "another-device"),
+      requiredRole: .repair,
+      now: now
+    )
+    expect(!wrongTarget.isAuthorized, "a capability authorized another target")
     let changedPayload = ShieldAdminCapabilityPayload(
       organizationID: payload.organizationID,
       subject: payload.subject,
       deviceID: payload.deviceID,
       roles: [.read, .repair, .policyOverride],
+      operation: payload.operation,
+      target: payload.target,
       requestID: payload.requestID,
       issuedAt: payload.issuedAt,
       expiresAt: payload.expiresAt
@@ -686,10 +768,55 @@ struct CheckRunner {
       changedCapability,
       organizationPublicKeyBase64: publicKey,
       expectedDeviceID: "device-test",
+      expectedRequest: .device(operation: .repairAdapters, deviceID: "device-test"),
       requiredRole: .policyOverride,
       now: now
     )
     expect(!changedAccess.isAuthorized, "tampered administrator roles retained a valid signature")
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let capabilityURL = directory.appendingPathComponent("capability.json")
+    try JSONEncoder().encode(capability).write(to: capabilityURL, options: .atomic)
+    let configuration = ManagedShieldConfiguration(
+      organizationPublicKeyBase64: publicKey,
+      expectedTeamIdentifier: "WRITERTEAM",
+      expectedSigningIdentifier: "com.writer.cerebro.agent-receipts",
+      capabilityURL: capabilityURL,
+      autoRepair: true
+    )
+    let replayStore = ShieldCapabilityReplayStore(
+      ledgerURL: directory.appendingPathComponent("used-capabilities.json"))
+    let firstUse = ShieldAdminCapabilityLoader.authorize(
+      configuration: configuration,
+      deviceID: "device-test",
+      request: .device(operation: .repairAdapters, deviceID: "device-test"),
+      requiredRole: .repair,
+      replayStore: replayStore,
+      now: now
+    )
+    expect(firstUse.isAuthorized, "a fresh administrator capability was rejected")
+    let replay = ShieldAdminCapabilityLoader.authorize(
+      configuration: configuration,
+      deviceID: "device-test",
+      request: .device(operation: .repairAdapters, deviceID: "device-test"),
+      requiredRole: .repair,
+      replayStore: replayStore,
+      now: now
+    )
+    expect(!replay.isAuthorized, "an administrator capability was accepted twice")
+    try Data("not-json".utf8).write(to: replayStore.ledgerURL, options: .atomic)
+    do {
+      _ = try replayStore.consume(
+        requestID: "another-request",
+        expiresAt: ReceiptDate.string(from: now.addingTimeInterval(15 * 60)),
+        now: now
+      )
+      failures.append("a corrupt capability-use ledger failed open")
+    } catch ShieldCapabilityReplayError.invalidLedger {
+      // Expected.
+    }
   }
 
   private mutating func checkFallbackSpool() throws {

@@ -57,7 +57,7 @@ Pilot 20 managed Macs without paging, then enable ticket-only stale incidents, t
 - Collector disablement creates a stale state within the policy window.
 - Replayed and forked checkpoints create distinct rollback and conflict incidents.
 - Status-app termination has no effect on freshness or capture.
-- Investigation actions are accepted only with a valid device-bound capability and are audit logged by request ID.
+- Investigation actions are accepted only with a valid device-, operation-, and target-bound capability. The grant ID is accepted once and audit logged by the independent authority.
 
 ## Open Decisions
 

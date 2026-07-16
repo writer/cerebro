@@ -16,7 +16,7 @@ I inspected the source locations below and ran the experiment recorded in E001. 
 | --- | --- | --- |
 | `E001` | [Background collector recovery](../../../CANARY.md) | The collector queues during a freeze, recovers exactly once, survives the status app, and restarts under launchd. |
 | `E002` | [LaunchAgent runtime](../../../Sources/CerebroShieldAgent/main.swift) | XPC admits the same effective user; the collection boundary is per-user. |
-| `E003` | [Investigation capability verifier](../../../Sources/ReceiptCore/AdminCapability.swift) | Organization access can be signed, short-lived, device-bound, and role-scoped; the current request ID is audit correlation only. |
+| `E003` | [Investigation capability verifier](../../../Sources/ReceiptCore/AdminCapability.swift) | Organization access is signed, short-lived, device-bound, role-scoped, operation-bound, and target-bound; adapter mutations also record the grant ID in a local single-use ledger. |
 | `E004` | [Documented security boundary](../../../README.md) | Hook evidence is an agent-supplied claim and provider prevention requires an independent authority. |
 
 The observed claims are E001 through E003. The structural conclusion in E004 is inferred from those ownership boundaries: a signer inside the same user's session can make stored records tamper-evident after capture, but it cannot prove that every relevant action reached capture.
@@ -31,7 +31,7 @@ What gives me pause is authority, not process uptime. The same user can invoke a
 
 - Every enrolled device reports a signed, monotonic chain head and heartbeat within policy freshness.
 - A missing, replayed, rolled-back, or conflicting checkpoint creates an organization-visible incident.
-- Investigation actions require a server-issued capability bound to organization, device, subject, request, action scopes, and an expiry of at most one hour.
+- Investigation actions require a server-issued capability bound to organization, device, subject, grant ID, canonical operation, canonical target, and an expiry of at most one hour.
 - Protected provider mutations are denied unless a dedicated broker supplies the required action identity.
 - Break-glass actions remain visible in the provider-event denominator and receive explicit review.
 

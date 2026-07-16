@@ -55,8 +55,8 @@ public struct ShieldSnapshot: Codable, Equatable, Sendable {
   public let capturedAt: String
   public let level: ShieldLevel
   public let trustBoundary: ShieldTrustBoundary
-  public let detectedAgents: Int
-  public let conformingAdapters: Int
+  public let detectedIntegrations: Int
+  public let currentIntegrations: Int
   public let recentAgentEvents: Int
   public let incidents: [ShieldIncident]
   public let binaryIdentities: [AgentBinaryIdentity]
@@ -65,8 +65,8 @@ public struct ShieldSnapshot: Codable, Equatable, Sendable {
     capturedAt: String,
     level: ShieldLevel,
     trustBoundary: ShieldTrustBoundary,
-    detectedAgents: Int,
-    conformingAdapters: Int,
+    detectedIntegrations: Int,
+    currentIntegrations: Int,
     recentAgentEvents: Int,
     incidents: [ShieldIncident],
     binaryIdentities: [AgentBinaryIdentity]
@@ -74,8 +74,8 @@ public struct ShieldSnapshot: Codable, Equatable, Sendable {
     self.capturedAt = capturedAt
     self.level = level
     self.trustBoundary = trustBoundary
-    self.detectedAgents = detectedAgents
-    self.conformingAdapters = conformingAdapters
+    self.detectedIntegrations = detectedIntegrations
+    self.currentIntegrations = currentIntegrations
     self.recentAgentEvents = recentAgentEvents
     self.incidents = incidents
     self.binaryIdentities = binaryIdentities
@@ -197,8 +197,8 @@ public enum ShieldSnapshotBuilder {
       capturedAt: ReceiptDate.string(from: now),
       level: level,
       trustBoundary: trustBoundary,
-      detectedAgents: detected.count,
-      conformingAdapters: conforming.count,
+      detectedIntegrations: detected.count,
+      currentIntegrations: conforming.count,
       recentAgentEvents: recentEvents,
       incidents: incidents,
       binaryIdentities: binaryIdentities

@@ -27,11 +27,11 @@ struct ShieldOverviewView: View {
 
         HStack(spacing: 12) {
           MetricTile(
-            value: "\(store.shieldSnapshot.detectedAgents)",
-            label: "Agents detected")
+            value: "\(store.shieldSnapshot.detectedIntegrations)",
+            label: "Integrations detected")
           MetricTile(
-            value: "\(store.shieldSnapshot.conformingAdapters)",
-            label: "Adapters current")
+            value: "\(store.shieldSnapshot.currentIntegrations)",
+            label: "Integrations current")
           MetricTile(
             value: "\(store.shieldSnapshot.recentAgentEvents)",
             label: "Recently active")
@@ -101,6 +101,8 @@ struct ShieldOverviewView: View {
     case .authorized(let capability):
       DetailRow(label: "Investigator", value: capability.subject)
       DetailRow(label: "Organization", value: capability.organizationID)
+      DetailRow(label: "Operation", value: capability.operation.rawValue)
+      DetailRow(label: "Target", value: capability.target)
       DetailRow(
         label: "Roles",
         value: capability.roles.map(\.rawValue).sorted().joined(separator: ", "))
@@ -120,9 +122,9 @@ struct ShieldOverviewView: View {
 
   private var statusTitle: String {
     switch store.shieldSnapshot.level {
-    case .active: return "Background monitoring is active"
-    case .attention: return "Device coverage needs attention"
-    case .inactive: return "No supported agents detected"
+    case .active: return "Collector is running"
+    case .attention: return "Collection needs attention"
+    case .inactive: return "No supported integrations detected"
     }
   }
 
@@ -130,11 +132,11 @@ struct ShieldOverviewView: View {
     switch store.shieldSnapshot.level {
     case .active:
       return
-        "Detected agent adapters are current. Recent activity is shown separately from device health."
+        "All detected integrations are current. Recent events are reported separately."
     case .attention:
       return "One or more adapters, binaries, or evidence records require review."
     case .inactive:
-      return "Cerebro will configure supported agents when they appear on this Mac."
+      return "Supported agent tools will appear here after they are detected on this Mac."
     }
   }
 
