@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   cachedResponseHeaders,
+  cerebroProxyCacheKey,
   fetchCerebro,
+  getCerebroPublicConfig,
   isCacheableCerebroPath,
   responseHeadersFor,
   shouldBypassCerebroProxyCache,
@@ -15,6 +17,26 @@ afterEach(() => {
 });
 
 describe("cerebro proxy cache headers", () => {
+  it("partitions cached responses by the resolved user request context", () => {
+    const target = new URL("https://api.example.com/grc/findings");
+    const first = cerebroProxyCacheKey(target, {
+      "x-cerebro-api-key": "shared-key",
+      "x-cerebro-user-id": "user-one",
+    });
+    const second = cerebroProxyCacheKey(target, {
+      "x-cerebro-api-key": "shared-key",
+      "x-cerebro-user-id": "user-two",
+    });
+
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(second).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("keeps internal upstream addresses out of the browser config", () => {
+    expect(getCerebroPublicConfig().apiBase).toBe("/api/cerebro");
+  });
+
   it("recognizes explicit cache bypass requests", () => {
     expect(shouldBypassCerebroProxyCache(new Headers({ "cache-control": "max-age=0, no-cache" }))).toBe(true);
     expect(shouldBypassCerebroProxyCache(new Headers({ pragma: "no-cache" }))).toBe(true);

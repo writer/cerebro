@@ -4,6 +4,8 @@ The TypeScript helpers target the current Cerebro bootstrap API. They are mainta
 
 ## Install For Local Development
 
+From the repository root:
+
 ```bash
 npm ci
 npm run check --workspace @writer/cerebro-sdk

@@ -20,7 +20,7 @@ describe("ask agent runtime config", () => {
       CEREBRO_API_BASE: "https://api.example.com",
     })).toMatchObject({
       canRunAgent: true,
-      mcpUrl: "https://api.example.com/mcp",
+      mcpUrl: "https://api.example.com/api/v1/mcp",
     });
   });
 

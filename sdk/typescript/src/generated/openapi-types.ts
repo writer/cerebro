@@ -694,6 +694,13 @@ export type AgentWorkflow = {
   state_check: AgentNextAction;
 };
 
+export type AppendPolicyEvaluationDatasetRevisionRequest = {
+  cases: PolicyEvaluationDatasetCaseInput[];
+  change_summary: string;
+  expected_version: number;
+  [key: string]: unknown;
+};
+
 export type AssessmentControlRef = {
   control_id: string;
   framework?: string;
@@ -1151,6 +1158,12 @@ export type CreatePolicyCandidateRequest = {
   hypothesis: string;
   origin: PolicyCandidateOriginInput;
   tenant_id: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyEvaluationDatasetRequest = {
+  change_summary: string;
+  name: string;
   [key: string]: unknown;
 };
 
@@ -3707,6 +3720,88 @@ export type PolicyCandidateShadowReceipt = {
   observed_at: string;
   receipt_id: string;
   truncated: boolean;
+};
+
+export type PolicyEvaluationDataset = {
+  aggregate_version: number;
+  candidate_id: string;
+  created_at: string;
+  current_revision_id: string;
+  id: string;
+  name: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCase = {
+  content_digest: string;
+  dataset_id: string;
+  id: string;
+  ordinal: number;
+  revision_id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCaseInput = {
+  id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphEdge = {
+  attributes?: Record<string, string>;
+  fromUrn: string;
+  relation: string;
+  runtimeId?: string;
+  sourceId: string;
+  toUrn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphFixture = {
+  edges: PolicyEvaluationDatasetGraphEdge[];
+  nodes: PolicyEvaluationDatasetGraphNode[];
+  tenantId: "fixture" | "test";
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphNode = {
+  attributes?: Record<string, string>;
+  entityType: string;
+  label?: string;
+  runtimeId?: string;
+  sourceId: string;
+  urn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetResult = {
+  dataset: PolicyEvaluationDataset;
+  revision: PolicyEvaluationDatasetRevision;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetRevision = {
+  case_count: number;
+  change_summary: string;
+  content_digest: string;
+  created_at: string;
+  dataset_id: string;
+  id: string;
+  policy_digest: string;
+  predecessor_id?: string;
+  source_test_digest: string;
+  version: number;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetTestCase = {
+  graphFixture: PolicyEvaluationDatasetGraphFixture;
+  name: string;
+  wantEvidenceUrns?: string[];
+  wantFinding: boolean;
+  [key: string]: unknown;
 };
 
 export type PolicyExperiment = {

@@ -26,6 +26,10 @@ const (
 	ScopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	ScopeUserPreferencesWrite      = "cerebro.user_preferences.write"
 
+	ScopePolicyEvaluationDatasetsRead    = "cerebro.policy_evaluation_datasets.read"
+	ScopePolicyEvaluationDatasetsPropose = "cerebro.policy_evaluation_datasets.propose"
+	ScopePolicyEvaluationDatasetsApprove = "cerebro.policy_evaluation_datasets.approve"
+
 	RoleCerebroAdmin            = "cerebro.admin"
 	RoleCerebroViewer           = "cerebro.viewer"
 	RoleCerebroAnalyst          = "cerebro.analyst"
@@ -59,6 +63,9 @@ var allScopes = []string{
 	ScopeDashboardsWrite,
 	ScopeRiskScoringWrite,
 	ScopePolicyCandidatesWrite,
+	ScopePolicyEvaluationDatasetsRead,
+	ScopePolicyEvaluationDatasetsPropose,
+	ScopePolicyEvaluationDatasetsApprove,
 	ScopeUserPreferencesWrite,
 }
 
@@ -100,7 +107,7 @@ var roleScopes = map[string][]string{
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
 	},
-	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite, ScopePolicyCandidatesWrite},
+	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite, ScopePolicyCandidatesWrite, ScopePolicyEvaluationDatasetsRead, ScopePolicyEvaluationDatasetsPropose, ScopePolicyEvaluationDatasetsApprove},
 	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite},
 	RoleCerebroConnectorManager: {
 		ScopeCosmoSecurityRead,
