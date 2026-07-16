@@ -297,6 +297,82 @@ func TestPacketDecisionsRejectNonterminalOutcomeVocabulary(t *testing.T) {
 	}
 }
 
+func TestPacketDecisionOutcomePreplayIsRejected(t *testing.T) {
+	setup := func() (Dependencies, *decisionOutcomeLog) {
+		store := &decisionOutcomeStore{decisionPacketTestReceipts: decisionPacketTestReceipts{receipt: &ports.DecisionPacketReceipt{
+			TenantID: "tenant-1", PacketID: "dpr_1", SchemaVersion: "2026-07-15",
+			Workflow:      string(decisionworkflow.WorkflowFindingToVerifiedFix),
+			DecisionState: string(decisionworkflow.DecisionSupported), PacketDigest: "sha256:packet",
+			ScopeURN: "urn:cerebro:tenant-1:finding:1",
+		}}}
+		log := &decisionOutcomeLog{}
+		return Dependencies{StateStore: store, AppendLog: log}, log
+	}
+	futureDecisionID := workflowevents.CanonicalWorkflowID(
+		"tenant-1", "packet_decision", "dpr_1:accepted", "", nil, time.Time{},
+	)
+	assertDecisionCanBeRecorded := func(t *testing.T, deps Dependencies, log *decisionOutcomeLog) {
+		t.Helper()
+		result, err := newDecisionOutcomeService(deps).RecordDecision(context.Background(), decisionops.RecordDecisionRequest{
+			TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
+			Disposition: decisionworkflow.DispositionAccepted, Reason: decisionworkflow.DismissalNone,
+		})
+		if err != nil {
+			t.Fatalf("RecordDecision() error = %v", err)
+		}
+		if result.Record.ID != futureDecisionID || len(log.events) != 1 {
+			t.Fatalf("recorded decision = %q events = %d, want %q and one decision event", result.Record.ID, len(log.events), futureDecisionID)
+		}
+	}
+
+	t.Run("HTTP", func(t *testing.T) {
+		deps, log := setup()
+		app := &App{deps: deps}
+		squatRequest := httptest.NewRequest(http.MethodPost, "/api/v1/platform/knowledge/decisions", bytes.NewBufferString(`{
+			"id":"`+futureDecisionID+`","decisionType":"change","status":"recorded",
+			"targetIds":["urn:cerebro:tenant-1:resource:1"],"metadata":{"tenant_id":"tenant-1"}
+		}`))
+		squatRecorder := httptest.NewRecorder()
+		app.handleWriteDecision(squatRecorder, squatRequest)
+		if squatRecorder.Code != http.StatusBadRequest || len(log.events) != 0 {
+			t.Fatalf("squat status = %d events = %d body = %s, want 400 and no events", squatRecorder.Code, len(log.events), squatRecorder.Body.String())
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/platform/knowledge/outcomes", bytes.NewBufferString(`{
+			"decisionId":"`+futureDecisionID+`","outcomeType":"verified_closed","verdict":"verified_closed",
+			"metadata":{"tenant_id":"tenant-1"}
+		}`))
+		recorder := httptest.NewRecorder()
+		app.handleWriteOutcome(recorder, request)
+		if recorder.Code != http.StatusNotFound || len(log.events) != 0 {
+			t.Fatalf("preplay status = %d events = %d body = %s, want 404 and no events", recorder.Code, len(log.events), recorder.Body.String())
+		}
+		assertDecisionCanBeRecorded(t, deps, log)
+	})
+
+	t.Run("Connect", func(t *testing.T) {
+		deps, log := setup()
+		metadata, err := structpb.NewStruct(map[string]any{"tenant_id": "tenant-1"})
+		if err != nil {
+			t.Fatalf("build metadata: %v", err)
+		}
+		service := &bootstrapService{deps: deps}
+		_, err = service.WriteDecision(context.Background(), connect.NewRequest(&cerebrov1.WriteDecisionRequest{
+			Id: futureDecisionID, DecisionType: "change", Status: "recorded",
+			TargetIds: []string{"urn:cerebro:tenant-1:resource:1"}, Metadata: metadata,
+		}))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument || len(log.events) != 0 {
+			t.Fatalf("squat code = %s events = %d err = %v, want invalid_argument and no events", connect.CodeOf(err), len(log.events), err)
+		}
+		_, err = service.WriteOutcome(context.Background(), connect.NewRequest(&cerebrov1.WriteOutcomeRequest{
+			DecisionId: futureDecisionID, OutcomeType: "verified_closed", Verdict: "verified_closed", Metadata: metadata,
+		}))
+		if connect.CodeOf(err) != connect.CodeNotFound || len(log.events) != 0 {
+			t.Fatalf("preplay code = %s events = %d err = %v, want not_found and no events", connect.CodeOf(err), len(log.events), err)
+		}
+		assertDecisionCanBeRecorded(t, deps, log)
+	})
+}
+
 func decisionOutcomeContains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

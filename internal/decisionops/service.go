@@ -196,14 +196,10 @@ func (s *Service) IsAuthenticatedPacketDecision(ctx context.Context, tenantID, d
 	if err != nil {
 		return false, err
 	}
-	trusted := false
-	for _, event := range events {
-		if event.GetAttributes()[workflowevents.EventAttributeDecisionTrust] == workflowevents.DecisionTrustAuthenticatedPacket {
-			trusted = true
-			break
-		}
+	if len(events) != 1 {
+		return false, ErrDecisionNotFound
 	}
-	if !trusted {
+	if events[0].GetAttributes()[workflowevents.EventAttributeDecisionTrust] != workflowevents.DecisionTrustAuthenticatedPacket {
 		return false, nil
 	}
 	if _, err := resolveDecision(events, tenantID, decisionID); err != nil {

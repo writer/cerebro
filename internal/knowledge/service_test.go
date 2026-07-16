@@ -452,6 +452,42 @@ func TestDecisionRetryKeepsLogicalEventIdentity(t *testing.T) {
 	}
 }
 
+func TestPacketDecisionIdentityNamespaceIsServerOwned(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	store := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{
+		targetURN: {URN: targetURN, TenantID: "writer", SourceID: "test", EntityType: "resource", Label: "Service 1"},
+	}}
+	service := New(store, store).WithAppendLog(appendLog)
+	request := DecisionWriteRequest{
+		ID:           "urn:cerebro:writer:packet_decision:dpr-1-accepted",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+		Metadata:     map[string]any{"tenant_id": "writer"},
+	}
+	if _, err := service.WriteDecision(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("WriteDecision(reserved id) error = %v, want %v", err, ErrInvalidRequest)
+	}
+	result, err := service.WriteAuthenticatedPacketDecision(context.Background(), DecisionWriteRequest{
+		ID:           "dpr_1:accepted",
+		DecisionType: "finding-triage",
+		TargetIDs:    request.TargetIDs,
+		Metadata:     request.Metadata,
+	})
+	if err != nil {
+		t.Fatalf("WriteAuthenticatedPacketDecision() error = %v", err)
+	}
+	if got, want := result.DecisionID, "urn:cerebro:writer:packet_decision:dpr-1-accepted"; got != want {
+		t.Fatalf("packet decision id = %q, want %q", got, want)
+	}
+	if entity := store.entities[result.DecisionID]; entity == nil || entity.EntityType != decisionEntityType {
+		t.Fatalf("projected packet decision = %+v, want decision entity", entity)
+	}
+	if _, ok := store.links[result.DecisionID+"|"+relationTargets+"|"+targetURN]; !ok {
+		t.Fatal("projected packet decision target link missing")
+	}
+}
+
 func TestKnowledgeValidationErrorsAreInvalidRequests(t *testing.T) {
 	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{

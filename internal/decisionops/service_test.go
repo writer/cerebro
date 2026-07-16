@@ -134,6 +134,9 @@ func TestAuthenticatedPacketDecisionClassification(t *testing.T) {
 	log := &replayLog{}
 	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start}})
+	if _, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", "urn:cerebro:tenant-1:decision:future"); !errors.Is(err, ErrDecisionNotFound) {
+		t.Fatalf("missing decision error = %v, want %v", err, ErrDecisionNotFound)
+	}
 
 	legacy, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
 		ID: "decision-legacy", DecisionType: "change", Status: "recorded", SourceSystem: "legacy",
@@ -160,7 +163,7 @@ func TestAuthenticatedPacketDecisionClassification(t *testing.T) {
 		t.Fatalf("trusted classification = %t, err = %v; want true, nil", trustedAuthenticated, err)
 	}
 
-	log.events = append(log.events, log.events[len(log.events)-1])
+	log.events = append(log.events, log.events[1])
 	if _, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", trusted.Record.ID); !errors.Is(err, ErrDecisionNotFound) {
 		t.Fatalf("duplicate trusted decision error = %v, want %v", err, ErrDecisionNotFound)
 	}

@@ -17,25 +17,26 @@ import (
 )
 
 const (
-	defaultSourceSystem     = "platform.knowledge"
-	defaultDecisionStatus   = "proposed"
-	defaultActionType       = "recommendation"
-	defaultActionStatus     = "recorded"
-	decisionEntityType      = "decision"
-	outcomeEntityType       = "outcome"
-	actionEntityType        = "action"
-	relationTargets         = fabriccontract.RelationTargets
-	relationBasedOn         = fabriccontract.RelationBasedOn
-	relationExecutedBy      = fabriccontract.RelationExecutedBy
-	relationEvaluates       = fabriccontract.RelationEvaluates
-	defaultPlatformTenant   = "platform"
-	DurabilityRecorded      = "recorded"
-	DurabilityNotRecorded   = "not_recorded"
-	ProjectionProjected     = "projected"
-	ProjectionPending       = "pending"
-	ProjectionNotConfigured = "not_configured"
-	ProjectionFailed        = "failed"
-	ProjectionErrorGraph    = "graph_projection_failed"
+	defaultSourceSystem      = "platform.knowledge"
+	defaultDecisionStatus    = "proposed"
+	defaultActionType        = "recommendation"
+	defaultActionStatus      = "recorded"
+	decisionEntityType       = "decision"
+	packetDecisionEntityType = "packet_decision"
+	outcomeEntityType        = "outcome"
+	actionEntityType         = "action"
+	relationTargets          = fabriccontract.RelationTargets
+	relationBasedOn          = fabriccontract.RelationBasedOn
+	relationExecutedBy       = fabriccontract.RelationExecutedBy
+	relationEvaluates        = fabriccontract.RelationEvaluates
+	defaultPlatformTenant    = "platform"
+	DurabilityRecorded       = "recorded"
+	DurabilityNotRecorded    = "not_recorded"
+	ProjectionProjected      = "projected"
+	ProjectionPending        = "pending"
+	ProjectionNotConfigured  = "not_configured"
+	ProjectionFailed         = "failed"
+	ProjectionErrorGraph     = "graph_projection_failed"
 )
 
 type DurabilityMode string
@@ -199,11 +200,17 @@ func (s *Service) writeDecision(ctx context.Context, request DecisionWriteReques
 		return nil, fmt.Errorf("%w: decision target ids are required", ErrInvalidRequest)
 	}
 	tenantID := inferTenantID(request.Metadata, targetIDs...)
-	if err := validateTenantScopedIDs(tenantID, append(append(targetIDs, request.EvidenceIDs...), request.ActionIDs...)...); err != nil {
+	if err := validateTenantScopedIDs(tenantID, append(append(append([]string{request.ID}, targetIDs...), request.EvidenceIDs...), request.ActionIDs...)...); err != nil {
 		return nil, err
 	}
+	entityType := decisionEntityType
+	if authenticatedPacket {
+		entityType = packetDecisionEntityType
+	} else if strings.HasPrefix(strings.TrimSpace(request.ID), "urn:cerebro:"+tenantID+":"+packetDecisionEntityType+":") {
+		return nil, fmt.Errorf("%w: packet decision id namespace is server-owned", ErrInvalidRequest)
+	}
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.ID, decisionType, targetIDs, request.ObservedAt)
+	decisionID := workflowevents.CanonicalWorkflowID(tenantID, entityType, request.ID, decisionType, targetIDs, request.ObservedAt)
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	status := firstNonEmpty(strings.TrimSpace(request.Status), defaultDecisionStatus)
