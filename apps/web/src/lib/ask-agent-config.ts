@@ -27,10 +27,10 @@ export const askAgentRuntimeConfig = (env: NodeJS.ProcessEnv = process.env): Ask
   };
 };
 
-const mcpUrlFromApiBase = (apiBase: string) => {
+export const mcpUrlFromApiBase = (apiBase: string) => {
   if (!apiBase) return "";
   try {
-    return new URL("/mcp", apiBase).toString();
+    return new URL("/api/v1/mcp", apiBase).toString();
   } catch {
     return "";
   }
