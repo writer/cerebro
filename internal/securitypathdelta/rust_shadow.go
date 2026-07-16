@@ -382,8 +382,9 @@ func marshalRustEvaluationRequest(request any) ([]byte, string, []string, error)
 }
 
 type decisionInputHasher struct {
-	digest hash.Hash
-	writer *bufio.Writer
+	digest  hash.Hash
+	writer  *bufio.Writer
+	encoded [8]byte
 }
 
 func newDecisionInputHasher() *decisionInputHasher {
@@ -408,9 +409,8 @@ func (hasher *decisionInputHasher) boolean(value bool) {
 }
 
 func (hasher *decisionInputHasher) unsigned(value int) {
-	var encoded [8]byte
-	binary.BigEndian.PutUint64(encoded[:], uint64(value))
-	_, _ = hasher.writer.Write(encoded[:])
+	binary.BigEndian.PutUint64(hasher.encoded[:], uint64(value))
+	_, _ = hasher.writer.Write(hasher.encoded[:])
 }
 
 func (hasher *decisionInputHasher) timestamp(value time.Time) {
