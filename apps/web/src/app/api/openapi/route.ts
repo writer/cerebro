@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parse } from "yaml";
 
+import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { authHeadersFor, buildCerebroUrl, fetchCerebro, proxyFetchError } from "@/lib/cerebro-proxy";
 import { cerebroFixtureResponseFor } from "@/lib/cerebro-fixtures";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
 
 export const parseOpenApiDocument = (raw: string): Record<string, unknown> | null => {
   try {
@@ -21,6 +23,19 @@ const invalidOpenApiResponse = () => NextResponse.json(
 );
 
 export async function GET(request: NextRequest) {
+  const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);
+  if (!currentUser) {
+    return NextResponse.json(
+      {
+        code: "identity_missing",
+        error: "Current user identity is required.",
+        permission: "cerebro:read",
+      },
+      { status: 401 },
+    );
+  }
+  const decision = authorizeCurrentUser(currentUser, "cerebro:read");
+  if (!decision.allowed) return authorizationErrorResponse(decision);
   const fixture = cerebroFixtureResponseFor({
     method: "GET",
     path: "openapi.yaml",
