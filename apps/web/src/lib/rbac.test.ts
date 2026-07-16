@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   authorizationRoleLabelsForUser,
   effectiveAuthorizationPermissionsForUser,
+  hasExplicitCerebroRoleOrScope,
   permissionForCerebroProxyRequest,
 } from "./rbac";
 import type { CurrentUser } from "./identity";
@@ -56,9 +57,20 @@ describe("RBAC permissions", () => {
       "source-runtimes:write",
     ]);
   });
+
+  it.each(["constructor", "__proto__"])("ignores inherited entitlement bundle name %s", (name) => {
+    const currentUser = user([name], [name]);
+
+    expect(effectiveAuthorizationPermissionsForUser(currentUser)).toEqual([]);
+    expect(hasExplicitCerebroRoleOrScope(currentUser)).toBe(false);
+  });
 });
 
 describe("Cerebro proxy route permissions", () => {
+  it("rejects paths whose dot segments would change the forwarded target", () => {
+    expect(() => permissionForCerebroProxyRequest("GET", "other/../sources/preview")).toThrow(/dot segments/);
+  });
+
   it("keeps read and ask routes read-scoped", () => {
     expect(permissionForCerebroProxyRequest("GET", "findings/finding-1")).toBe("cerebro:read");
     expect(permissionForCerebroProxyRequest("GET", "user/preferences")).toBe("cerebro:read");

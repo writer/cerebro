@@ -44,28 +44,29 @@ const redactAttributes = (attributes: Record<string, string> | undefined, mode: 
 export const redactReportGraph = (graph: GRCGraph | undefined, mode: ReportRedactionMode): GRCGraph | undefined => {
   if (!graph || mode === "internal") return graph;
 
-  const urnPlaceholders = new Map<string, string>();
+  const urnPlaceholders = new Map<string, { index: number; urn: string }>();
   const placeholderURN = (urn: string, type?: string) => {
     const existing = urnPlaceholders.get(urn);
     if (existing) return existing;
-    const next = placeholderFor(type, urnPlaceholders.size + 1);
+    const index = urnPlaceholders.size + 1;
+    const next = { index, urn: placeholderFor(type, index) };
     urnPlaceholders.set(urn, next);
     return next;
   };
   const redactNode = (node: GRCGraphNode | undefined): GRCGraphNode | undefined => {
     if (!node) return undefined;
-    const urn = placeholderURN(node.urn, node.entity_type);
+    const placeholder = placeholderURN(node.urn, node.entity_type);
     return {
       ...node,
-      urn,
-      label: placeholderFor(node.entity_type, Number(urn.match(/\d+/)?.[0] ?? urnPlaceholders.size)),
+      urn: placeholder.urn,
+      label: placeholderFor(node.entity_type, placeholder.index),
       attributes: redactAttributes(node.attributes, mode),
     };
   };
   const redactRelation = (relation: GRCGraphRelation): GRCGraphRelation => ({
     ...relation,
-    from_urn: placeholderURN(relation.from_urn),
-    to_urn: placeholderURN(relation.to_urn),
+    from_urn: placeholderURN(relation.from_urn).urn,
+    to_urn: placeholderURN(relation.to_urn).urn,
     attributes: redactAttributes(relation.attributes, mode),
   });
 

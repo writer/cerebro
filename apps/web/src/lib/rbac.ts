@@ -1,4 +1,5 @@
 import type { CurrentUser } from "@/lib/identity";
+import { normalizeProxyPath } from "@/lib/identity-write-stamp";
 
 export type AuthorizationPermission =
   | "agent:ask"
@@ -189,7 +190,10 @@ export const effectiveAuthorizationPermissionsForUser = (
 ): AuthorizationPermission[] => {
   const permissions = new Set<AuthorizationPermission>();
   for (const role of cleanList(user?.entitlements?.roles)) {
-    for (const permission of rolePermissionBundles[role] ?? []) {
+    const rolePermissions = Object.hasOwn(rolePermissionBundles, role)
+      ? rolePermissionBundles[role]
+      : undefined;
+    for (const permission of Array.isArray(rolePermissions) ? rolePermissions : []) {
       permissions.add(permission);
     }
   }
@@ -197,7 +201,10 @@ export const effectiveAuthorizationPermissionsForUser = (
     if (hasPermissionScope(scope)) {
       permissions.add(scope);
     }
-    for (const permission of scopePermissionBundles[scope] ?? []) {
+    const scopePermissions = Object.hasOwn(scopePermissionBundles, scope)
+      ? scopePermissionBundles[scope]
+      : undefined;
+    for (const permission of Array.isArray(scopePermissions) ? scopePermissions : []) {
       permissions.add(permission);
     }
   }
@@ -209,7 +216,8 @@ export const authorizationRoleLabelsForUser = (user: CurrentUser | null | undefi
 
 export const hasExplicitCerebroRoleOrScope = (user: CurrentUser | null | undefined) =>
   cleanList(user?.entitlements?.roles).some((role) => explicitCerebroRoles.has(role)) ||
-  cleanList(user?.entitlements?.scopes).some((scope) => hasPermissionScope(scope) || scope in scopePermissionBundles);
+  cleanList(user?.entitlements?.scopes).some((scope) =>
+    hasPermissionScope(scope) || Object.hasOwn(scopePermissionBundles, scope));
 
 export const userHasAuthorizationPermission = (
   user: CurrentUser | null | undefined,
@@ -221,7 +229,7 @@ export const permissionForCerebroProxyRequest = (
   path: string,
 ): AuthorizationPermission => {
   const normalizedMethod = method.trim().toUpperCase();
-  const normalizedPath = normalizeCerebroProxyPath(path);
+  const normalizedPath = normalizeProxyPath(path);
 
   if (normalizedMethod === "GET") {
     if (matchesConnectorCredentialPath(normalizedPath)) return "connector-credentials:read";
@@ -290,9 +298,6 @@ export const permissionForCerebroProxyRequest = (
   if (matchesSourceRuntimeWritePath(normalizedPath)) return "source-runtimes:write";
   return "cerebro:write";
 };
-
-const normalizeCerebroProxyPath = (path: string) =>
-  path.trim().replace(/^\/+/, "").replace(/\/+$/, "");
 
 const matchesReportRunPath = (path: string) =>
   path.startsWith("reports/") && path.endsWith("/runs");

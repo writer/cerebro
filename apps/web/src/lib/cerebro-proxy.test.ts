@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildCerebroUrl,
   cachedResponseHeaders,
   cerebroProxyCacheKey,
   fetchCerebro,
@@ -17,6 +18,11 @@ afterEach(() => {
 });
 
 describe("cerebro proxy cache headers", () => {
+  it("rejects dot segments before constructing an upstream URL", () => {
+    expect(() => buildCerebroUrl("other/../sources/preview")).toThrow(/dot segments/);
+    expect(() => buildCerebroUrl("../sources/preview")).toThrow(/dot segments/);
+  });
+
   it("partitions cached responses by the resolved user request context", () => {
     const target = new URL("https://api.example.com/grc/findings");
     const first = cerebroProxyCacheKey(target, {

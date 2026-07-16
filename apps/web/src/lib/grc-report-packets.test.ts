@@ -71,6 +71,21 @@ describe("GRC report packet helpers", () => {
     expect(redactReportGraph(graph, "internal")).toBe(graph);
   });
 
+  it("keeps placeholder labels aligned when entity types contain digits", () => {
+    const graph = {
+      root: {
+        urn: "urn:cerebro:tenant:standard:control-1",
+        entity_type: "iso27001",
+        label: "control-1",
+      },
+    };
+
+    expect(redactReportGraph(graph, "share_safe")?.root).toMatchObject({
+      urn: "[iso27001-1]",
+      label: "[iso27001-1]",
+    });
+  });
+
   it("maps readiness statuses to review intent", () => {
     expect(reportReadinessIntent("ready")).toBe("success");
     expect(reportReadinessIntent("needs_attention")).toBe("warning");

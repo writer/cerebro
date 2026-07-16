@@ -353,21 +353,38 @@ async function streamLegacyAsk(
     return;
   }
 
-  const reader = response.body.getReader();
-  let chunkCount = 0;
-  let streamedBytes = 0;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    chunkCount += 1;
-    streamedBytes += value.byteLength;
+  const { chunkCount, streamedBytes } = await forwardLegacyAskBody(response.body, (value) => {
     controller.enqueue(value);
-  }
+  });
   span.annotate({
     legacy_ask_chunk_count: chunkCount,
     legacy_ask_streamed_bytes: streamedBytes,
     legacy_ask_status_code: response.status,
   });
+}
+
+export async function forwardLegacyAskBody(
+  body: ReadableStream<Uint8Array>,
+  enqueue: (value: Uint8Array) => void,
+) {
+  const reader = body.getReader();
+  let chunkCount = 0;
+  let streamedBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunkCount += 1;
+      streamedBytes += value.byteLength;
+      enqueue(value);
+    }
+    return { chunkCount, streamedBytes };
+  } catch (error) {
+    await reader.cancel(error).catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 const legacyAskPayload = (payload: NormalizedAgentRequest) => ({

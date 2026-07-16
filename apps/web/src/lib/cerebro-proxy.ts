@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 
 import { headersWithTrace, startWebSpan } from "./observability";
+import { normalizeProxyPath } from "./identity-write-stamp";
 
 const API_BASE =
   process.env.CEREBRO_API_BASE ??
@@ -95,7 +96,7 @@ export const getCerebroPublicConfig = () => ({
 export const buildCerebroUrl = (path: string, search = "") => {
   const base = new URL(API_BASE.replace(/\/$/, "/"));
   const basePath = base.pathname.replace(/\/$/, "");
-  const pathSegments = path
+  const pathSegments = normalizeProxyPath(path)
     .split("/")
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment));

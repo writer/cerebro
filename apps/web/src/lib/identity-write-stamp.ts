@@ -3,7 +3,11 @@ const ASSET_REPORT_TRIAGE_PATH = /^grc\/inventory\/asset-reports\/[^/]+\/triage$
 export type CurrentUserWriteField = "reporter" | "triaged_by";
 
 export function normalizeProxyPath(path: string) {
-  return path.replace(/^\/+|\/+$/g, "");
+  const normalized = path.trim().replace(/^\/+|\/+$/g, "");
+  if (normalized.split("/").some((segment) => segment === "." || segment === "..")) {
+    throw new TypeError("Cerebro proxy paths cannot contain dot segments.");
+  }
+  return normalized;
 }
 
 export function currentUserWriteFieldForPath(path: string): CurrentUserWriteField | null {
