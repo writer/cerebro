@@ -6,10 +6,12 @@ import type {
   ReleaseReceiptV2,
   RunReceiptV1,
   SchemaCompatibility,
+  WorkLeaseV1,
 } from "@writer/cerebro-sdk";
 import {
   assessCompatibility,
   newLeaseGate,
+  packetLeaseGate,
   readinessGate,
 } from "../src/operations/compatibility.js";
 import {
@@ -310,10 +312,87 @@ describe("compatibility and service gates", () => {
       { allowed: false, reason: "presence_expired" },
     );
   });
+
+  test("blocks packet leases for incompatible, incapable, or draining workers", () => {
+    const compatible = compatibilityAssessment();
+    assert.deepEqual(packetLeaseGate(packetLeaseInput()), {
+      allowed: true,
+      reason: "packet_lease_allowed",
+    });
+    assert.deepEqual(
+      packetLeaseGate({
+        ...packetLeaseInput(),
+        assessment: { decision: "incompatible", reasons: ["schema"] },
+      }),
+      { allowed: false, reason: "compatibility_blocked" },
+    );
+    assert.deepEqual(
+      packetLeaseGate({
+        ...packetLeaseInput(),
+        assessment: compatible,
+        worker_manifest: manifest("worker", ["v1"], []),
+      }),
+      { allowed: false, reason: "worker_missing_turns@1" },
+    );
+    assert.deepEqual(
+      packetLeaseGate({
+        ...packetLeaseInput(),
+        assessment: compatible,
+        presence: presence({ service_state: "draining" }),
+      }),
+      { allowed: false, reason: "service_draining" },
+    );
+  });
+
+  test("allows only expired packet leases to be reclaimed by a compatible newer generation and fence", () => {
+    const input = packetLeaseInput({
+      presence: presence({ active_generation: 2 }),
+      prior_lease: workLease(),
+      proposed_fencing_token: 12,
+      proposed_generation: 2,
+      worker_manifest: { ...manifest("worker", ["v1"]), generation: 2 },
+    });
+    assert.deepEqual(packetLeaseGate(input), {
+      allowed: true,
+      reason: "packet_reclaim_allowed",
+    });
+    assert.deepEqual(
+      packetLeaseGate({
+        ...input,
+        prior_lease: {
+          ...workLease(),
+          lease_expires_at: "2026-07-16T12:01:00.000Z",
+        },
+      }),
+      { allowed: false, reason: "prior_lease_active" },
+    );
+    assert.deepEqual(
+      packetLeaseGate({ ...input, proposed_fencing_token: 11 }),
+      { allowed: false, reason: "reclaim_fence_not_newer" },
+    );
+    assert.deepEqual(
+      packetLeaseGate(
+        packetLeaseInput({
+          prior_lease: workLease(),
+        }),
+      ),
+      { allowed: false, reason: "reclaim_generation_not_newer" },
+    );
+    assert.deepEqual(
+      packetLeaseGate({
+        ...input,
+        presence: presence({
+          active_generation: 2,
+          service_state: "recovering",
+        }),
+      }),
+      { allowed: true, reason: "packet_reclaim_allowed" },
+    );
+  });
 });
 
 describe("Slack-visible continuity status", () => {
-  test("derives queued, degraded, and partial-source facts with expiry", () => {
+  test("derives queued, reduced-capacity, and partial-source facts with expiry", () => {
     const statuses = deriveSlackVisibleStatuses(
       run(),
       presence({ service_state: "degraded" }),
@@ -323,7 +402,7 @@ describe("Slack-visible continuity status", () => {
 
     assert.deepEqual(
       statuses.map((status) => status.code),
-      ["queued", "degraded", "partial_source"],
+      ["queued", "reduced_capacity", "partial_source"],
     );
     assert.equal(statuses.every((status) => status.expires_at === "2026-07-16T12:05:00.000Z"), true);
     assert.equal(new Set(statuses.map((status) => status.idempotency_key)).size, 3);
@@ -338,6 +417,45 @@ describe("Slack-visible continuity status", () => {
           service_state: "recovering",
         }),
         now,
+      ),
+      [],
+    );
+  });
+
+  test("shows checkpoint recovery only for matching durable evidence", () => {
+    const paused = { ...run(), state: "paused" as const };
+    const recoveryPresence = presence({
+      active_generation: 3,
+      service_state: "recovering",
+    });
+    const statuses = deriveSlackVisibleStatuses(
+      paused,
+      recoveryPresence,
+      now,
+      undefined,
+      {
+        checkpoint_ref: "checkpoint://run-1/4",
+        generation: 3,
+        run_id: paused.run_id,
+      },
+    );
+
+    assert.deepEqual(statuses.map((status) => status.code), [
+      "checkpoint_recovery",
+    ]);
+    assert.equal(statuses[0]?.evidence_ref, "checkpoint://run-1/4");
+    assert.equal(statuses[0]?.expires_at, recoveryPresence.expires_at);
+    assert.deepEqual(
+      deriveSlackVisibleStatuses(
+        paused,
+        recoveryPresence,
+        now,
+        undefined,
+        {
+          checkpoint_ref: "checkpoint://run-1/3",
+          generation: 2,
+          run_id: paused.run_id,
+        },
       ),
       [],
     );
@@ -380,6 +498,10 @@ describe("maintenance and release continuity", () => {
       deliveries: [{ delivery_id: "delivery-1", state: "pending" }],
       mode: "forced",
       now,
+      packet_recovery: {
+        orphaned_packet_count: 0,
+        stuck_outcome_count: 0,
+      },
     });
 
     assert.equal(plan.safe_to_stop, false);
@@ -395,6 +517,78 @@ describe("maintenance and release continuity", () => {
       plan.actions.some((action) => action.action === "pause_delivery"),
       true,
     );
+  });
+
+  test("checkpoints active packets and fails forced maintenance closed on incomplete recovery", () => {
+    const checkpointable = planMaintenance({
+      active_packets: [
+        {
+          checkpointable: true,
+          packet_id: "distributed-work-packet://opaque/1",
+          run_id: "run-1",
+          state: "running",
+        },
+      ],
+      active_runs: [],
+      compatibility: "supported",
+      deliveries: [],
+      mode: "forced",
+      now,
+      packet_recovery: {
+        orphaned_packet_count: 0,
+        stuck_outcome_count: 0,
+      },
+    });
+    assert.equal(checkpointable.forced_stop_permitted_after_actions, true);
+    assert.equal(checkpointable.safe_to_stop, false);
+    assert.equal(
+      checkpointable.actions.some(
+        (action) =>
+          action.action === "checkpoint_and_pause" &&
+          action.run_id === "run-1" &&
+          action.subject_id === "distributed-work-packet://opaque/1",
+      ),
+      true,
+    );
+
+    const unsafe = planMaintenance({
+      active_packets: [
+        {
+          checkpointable: false,
+          packet_id: "distributed-work-packet://opaque/2",
+          run_id: "run-2",
+          state: "running",
+        },
+      ],
+      active_runs: [],
+      compatibility: "supported",
+      deliveries: [],
+      mode: "forced",
+      now,
+      packet_recovery: {
+        orphaned_packet_count: 1,
+        stuck_outcome_count: 2,
+      },
+    });
+    assert.equal(unsafe.forced_stop_permitted_after_actions, false);
+    assert.equal(unsafe.safe_to_stop, false);
+    assert.deepEqual(unsafe.blockers, [
+      "packet_not_checkpointable:distributed-work-packet://opaque/2",
+      "orphaned_packets_present",
+      "stuck_packet_outcomes_present",
+    ]);
+
+    const unverified = planMaintenance({
+      active_runs: [],
+      compatibility: "supported",
+      deliveries: [],
+      mode: "forced",
+      now,
+    });
+    assert.equal(unverified.forced_stop_permitted_after_actions, false);
+    assert.deepEqual(unverified.blockers, [
+      "packet_recovery_evidence_missing",
+    ]);
   });
 
   test("marks a clean graceful drain safe after replacement readiness", () => {
@@ -534,6 +728,49 @@ function manifest(
     produced_at: now,
     schema_version: "capability-manifest/v1",
     service_id: serviceId,
+  };
+}
+
+function compatibilityAssessment() {
+  return {
+    decision: "supported" as const,
+    negotiated_write_version: "v1",
+    reasons: [],
+  };
+}
+
+function packetLeaseInput(
+  changes: Partial<Parameters<typeof packetLeaseGate>[0]> = {},
+): Parameters<typeof packetLeaseGate>[0] {
+  return {
+    assessment: compatibilityAssessment(),
+    expected_route_generation: 2,
+    now,
+    packet_required_capabilities: [
+      { capability_id: "turns", level: "required", version: "1" },
+    ],
+    presence: presence(),
+    proposed_fencing_token: 12,
+    proposed_generation: 1,
+    run_id: "run-1",
+    worker_manifest: manifest("worker", ["v1"]),
+    ...changes,
+  };
+}
+
+function workLease(
+  changes: Partial<WorkLeaseV1> = {},
+): WorkLeaseV1 {
+  return {
+    fencing_token: 11,
+    generation: 1,
+    heartbeat_at: "2026-07-16T11:58:00.000Z",
+    lease_expires_at: "2026-07-16T11:59:00.000Z",
+    lease_token: "lease-1",
+    owner_id: "worker-1",
+    run_id: "run-1",
+    schema_version: "work-lease/v1",
+    ...changes,
   };
 }
 
