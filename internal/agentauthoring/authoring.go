@@ -162,12 +162,7 @@ func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraf
 	if err != nil {
 		return nil, fmt.Errorf("%w: author policy bundle: %w", ErrDraftValidationFail, err)
 	}
-	var proof policyauthor.ProofResult
-	if request.GraphEvidence != nil && s.PolicyGraphStore != nil {
-		proof, err = policyauthor.ProveWithGraphStore(ctx, artifacts, s.PolicyGraphStore)
-	} else {
-		proof, err = policyauthor.Prove(artifacts)
-	}
+	proof, err := policyauthor.ProveWithGraphStore(ctx, artifacts, s.PolicyGraphStore)
 	result := &PolicyBundleDraftResult{Rule: artifacts.Rule, PolicyPath: artifacts.PolicyPath, PolicyYAML: artifacts.PolicyYAML, Suite: artifacts.Suite, TestPath: artifacts.TestPath, TestYAML: artifacts.TestYAML, Proof: proof}
 	if err != nil {
 		return result, fmt.Errorf("%w: prove policy bundle: %w", ErrDraftValidationFail, err)
