@@ -1,14 +1,64 @@
 package awsevidence
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 )
+
+type taskDefinitionClient interface {
+	ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error)
+	DescribeTaskDefinition(context.Context, *ecs.DescribeTaskDefinitionInput, ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error)
+}
+
+// ListTaskDefinitions enumerates both ACTIVE and INACTIVE revisions so
+// deregistration is projected as current state instead of leaving stale ACTIVE
+// graph evidence behind.
+func ListTaskDefinitions(ctx context.Context, client taskDefinitionClient, cursor string, limit int) ([]ecstypes.TaskDefinition, string, error) {
+	status, nextToken := ecstypes.TaskDefinitionStatusActive, strings.TrimSpace(cursor)
+	if strings.HasPrefix(nextToken, "active:") {
+		nextToken = strings.TrimPrefix(nextToken, "active:")
+	} else if strings.HasPrefix(nextToken, "inactive:") {
+		status, nextToken = ecstypes.TaskDefinitionStatusInactive, strings.TrimPrefix(nextToken, "inactive:")
+	}
+	if limit < 1 {
+		limit = 1
+	} else if limit > 100 {
+		limit = 100
+	}
+	input := &ecs.ListTaskDefinitionsInput{MaxResults: awssdk.Int32(int32(limit)), Status: status}
+	if nextToken != "" {
+		input.NextToken = awssdk.String(nextToken)
+	}
+	output, err := client.ListTaskDefinitions(ctx, input)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]ecstypes.TaskDefinition, 0, len(output.TaskDefinitionArns))
+	for _, arn := range output.TaskDefinitionArns {
+		describe, err := client.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{TaskDefinition: awssdk.String(arn)})
+		if err != nil {
+			return nil, "", fmt.Errorf("describe task definition %q: %w", arn, err)
+		}
+		if describe.TaskDefinition != nil {
+			records = append(records, *describe.TaskDefinition)
+		}
+	}
+	if nextToken = awssdk.ToString(output.NextToken); nextToken != "" {
+		return records, strings.ToLower(string(status)) + ":" + nextToken, nil
+	}
+	if status == ecstypes.TaskDefinitionStatusActive {
+		return records, "inactive:", nil
+	}
+	return records, "", nil
+}
 
 type CloudTrailDetail struct {
 	EventName         string                  `json:"eventName"`

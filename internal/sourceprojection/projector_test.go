@@ -3779,6 +3779,21 @@ func TestProjectAWSCloudTrailECSLaunchBuildsCausalRolePath(t *testing.T) {
 	if got := state.links[definitionURN+"|"+relationRunsAs+"|"+roleURN].Attributes["role_usage"]; got != "execution" {
 		t.Fatalf("runs_as role_usage = %q, want execution", got)
 	}
+	for _, status := range []string{"ACTIVE", "INACTIVE"} {
+		if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id: "aws-ecs-task-definition-" + strings.ToLower(status), TenantId: "test", SourceId: "aws", Kind: "aws.ecs_task_definition",
+			Attributes: map[string]string{
+				"resource_id": definitionARN, "resource_name": "release-candidate", "resource_type": "ecs_task_definition",
+				"task_definition_arn": definitionARN, "execution_role_arn": executionRoleARN, "status": status,
+				"has_candidate_marker": "true", "has_secret_bindings": "true", "secret_binding_count": "2",
+			},
+		}); err != nil {
+			t.Fatalf("Project(inventory %q) error = %v", status, err)
+		}
+	}
+	if got := state.entities[definitionURN].Attributes["status"]; got != "INACTIVE" {
+		t.Fatalf("current task definition status = %q, want INACTIVE after deregistration inventory", got)
+	}
 }
 
 func TestProjectGCPAuditResourceLinksProject(t *testing.T) {

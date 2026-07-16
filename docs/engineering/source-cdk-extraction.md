@@ -31,7 +31,7 @@ A Deep source is exempt from the flat LOC ceiling but is instead held to the **D
 | Source | Current LOC Budget | Extraction Pressure |
 | --- | ---: | --- |
 | `aurelius` | 619 | Split source orchestration from record mapping and shared request plumbing. |
-| `aws` | 19063 | Extract common AWS client/session, pagination, ARN parsing, and resource-family traversal helpers. |
+| `aws` | 19046 | Extract common AWS client/session, pagination, ARN parsing, and resource-family traversal helpers. |
 | `azure` | 2858 | Extract subscription traversal, client factories, and paginated resource readers. |
 | `cosmo` | 1006 | Move shared API pagination and response normalization into reusable source helpers. |
 | `gcp` | 2130 | Extract project traversal, service clients, and resource-family pagination helpers. |

@@ -5688,6 +5688,26 @@ func TestECSTaskDefinitionEvidenceKeepsSecretBindingsRedacted(t *testing.T) {
 	}
 }
 
+func TestListECSTaskDefinitionsIncludesInactiveInventory(t *testing.T) {
+	activeARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/active:1"
+	inactiveARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/inactive:2"
+	fake := fakeAWS{}
+	fake.compute.ecsTaskDefinitionARNs = []string{activeARN, inactiveARN}
+	fake.compute.ecsTaskDefinitions = map[string]ecstypes.TaskDefinition{
+		activeARN:   {TaskDefinitionArn: awssdk.String(activeARN), Status: ecstypes.TaskDefinitionStatusActive},
+		inactiveARN: {TaskDefinitionArn: awssdk.String(inactiveARN), Status: ecstypes.TaskDefinitionStatusInactive},
+	}
+	clients := awsClients{awsPlatformClients: awsPlatformClients{ecs: fake}}
+	active, cursor, err := listECSTaskDefinitions(context.Background(), clients, settings{}, "", 100)
+	if err != nil || len(active) != 1 || active[0].Status != ecstypes.TaskDefinitionStatusActive || cursor != "inactive:" {
+		t.Fatalf("active page = %#v, cursor = %q, error = %v", active, cursor, err)
+	}
+	inactive, cursor, err := listECSTaskDefinitions(context.Background(), clients, settings{}, cursor, 100)
+	if err != nil || len(inactive) != 1 || inactive[0].Status != ecstypes.TaskDefinitionStatusInactive || cursor != "" {
+		t.Fatalf("inactive page = %#v, cursor = %q, error = %v", inactive, cursor, err)
+	}
+}
+
 func TestCloudTrailECSTransitionsExposeCausalJoins(t *testing.T) {
 	definitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/release-candidate:7"
 	taskARN := "arn:aws:ecs:us-east-1:123456789012:task/operations/abc123"
@@ -9323,8 +9343,19 @@ func (f fakeAWS) DescribeTasks(_ context.Context, input *ecs.DescribeTasksInput,
 	return &ecs.DescribeTasksOutput{Tasks: tasks}, nil
 }
 
-func (f fakeAWS) ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
-	return &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: f.compute.ecsTaskDefinitionARNs}, nil
+func (f fakeAWS) ListTaskDefinitions(_ context.Context, input *ecs.ListTaskDefinitionsInput, _ ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
+	arns := make([]string, 0, len(f.compute.ecsTaskDefinitionARNs))
+	for _, arn := range f.compute.ecsTaskDefinitionARNs {
+		status := f.compute.ecsTaskDefinitions[arn].Status
+		if input.Status == ecstypes.TaskDefinitionStatusInactive && status != ecstypes.TaskDefinitionStatusInactive {
+			continue
+		}
+		if input.Status == ecstypes.TaskDefinitionStatusActive && status == ecstypes.TaskDefinitionStatusInactive {
+			continue
+		}
+		arns = append(arns, arn)
+	}
+	return &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: arns}, nil
 }
 
 func (f fakeAWS) DescribeTaskDefinition(_ context.Context, input *ecs.DescribeTaskDefinitionInput, _ ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error) {
