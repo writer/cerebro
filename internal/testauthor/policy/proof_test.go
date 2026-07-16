@@ -14,7 +14,7 @@ func TestProvePassesProtectedAndRejectsWeakenedPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := Prove(artifacts)
+	result, err := Prove(t.Context(), artifacts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notRun, err := Prove(artifacts)
+	notRun, err := Prove(t.Context(), artifacts)
 	if !errors.Is(err, ErrGraphStoreRequired) {
 		t.Fatalf("Prove() error = %v, want ErrGraphStoreRequired", err)
 	}
@@ -41,7 +41,7 @@ func TestProveGraphRequiresAndExecutesInjectedStore(t *testing.T) {
 	}
 
 	store := newProofGraphStore()
-	result, err := ProveWithGraphStore(context.Background(), artifacts, store)
+	result, err := ProveWithGraphStore(t.Context(), artifacts, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestProveRejectsSuiteThatSurvivesMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifacts.Suite.Cases = artifacts.Suite.Cases[:1]
-	result, err := Prove(artifacts)
+	result, err := Prove(t.Context(), artifacts)
 	if err == nil {
 		t.Fatal("Prove() error = nil")
 	}

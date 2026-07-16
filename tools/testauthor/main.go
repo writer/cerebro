@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -112,7 +113,7 @@ func runProvePolicy(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := policyauthor.Prove(artifacts)
+	result, err := policyauthor.Prove(context.Background(), artifacts)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if encodeErr := encoder.Encode(result); encodeErr != nil {
