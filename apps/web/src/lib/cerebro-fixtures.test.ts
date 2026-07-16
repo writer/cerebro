@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { cerebroFixtureResponseFor, isCerebroFixtureMode, resetCerebroFixtureStateForTests } from "./cerebro-fixtures";
+import { normalizeCredentialStores, type ConnectorLibraryResponse } from "./connectors";
 
 const originalFixtureMode = process.env.CEREBRO_WEB_FIXTURE_MODE;
 const originalApiBase = process.env.CEREBRO_API_BASE;
@@ -41,6 +42,23 @@ describe("cerebro fixture proxy responses", () => {
     expect(payload.summary).toMatchObject({ open_findings: 3, critical_findings: 1 });
     expect(payload.findings).toHaveLength(3);
     expect(payload).not.toHaveProperty("product_areas");
+  });
+
+  it("uses credential algorithms and store IDs recognized by the connector contract", () => {
+    withFixtureMode();
+    const libraryResponse = cerebroFixtureResponseFor({ method: "GET", path: "connectors" });
+    const keyResponse = cerebroFixtureResponseFor({ method: "GET", path: "connectors/credential-key" });
+    const library = parseFixture(libraryResponse!) as ConnectorLibraryResponse;
+    const key = parseFixture(keyResponse!);
+    const availableStoreIDs = normalizeCredentialStores(library)
+      .filter((store) => store.available)
+      .map((store) => store.id);
+
+    expect(key.algorithm).toBe("RSA-OAEP-256+A256GCM");
+    expect(availableStoreIDs).toEqual(expect.arrayContaining([
+      "environment_managed",
+      "hashicorp_vault",
+    ]));
   });
 
   it("rejects fixture writes without an explicit handler", () => {
