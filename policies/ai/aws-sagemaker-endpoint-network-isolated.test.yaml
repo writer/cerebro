@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        sagemaker_endpoint_network_isolated_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        sagemaker_endpoint_network_isolated_compliant: true
+      wantFinding: false

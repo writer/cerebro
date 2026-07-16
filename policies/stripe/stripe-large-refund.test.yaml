@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        amount_refunded: 500001
+        metadata:
+            approved: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        amount_refunded: 500000
+        metadata:
+            approved: false
+      wantFinding: false

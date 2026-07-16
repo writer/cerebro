@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        ecosystem: maven
+        severity: medium
+        state: open
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        ecosystem: maven
+        severity: medium
+        state: open-passing
+      wantFinding: false

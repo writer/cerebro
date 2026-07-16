@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        output_data_config:
+            kms_key_id: null
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        output_data_config:
+            kms_key_id: true
+      wantFinding: false

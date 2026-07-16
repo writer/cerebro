@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        sso_required_for_saas_admins: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        sso_required_for_saas_admins: true
+      wantFinding: false

@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        failed_payment_count: 3
+        past_due: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        failed_payment_count: 3
+        past_due: false
+      wantFinding: false

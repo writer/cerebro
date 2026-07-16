@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        allows_unauthenticated_invocation: true
+        execution_role:
+            has_high_privilege: true
+        is_public: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        allows_unauthenticated_invocation: true
+        execution_role:
+            has_high_privilege: true
+        is_public: false
+      wantFinding: false

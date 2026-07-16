@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_admin_role: true
+        mfa_enabled_count: 0
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_admin_role: false
+        mfa_enabled_count: 0
+      wantFinding: false

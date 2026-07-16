@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        runner_group_name: Default
+        runner_status: active
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        runner_group_name: Default
+        runner_status: active-passing
+      wantFinding: false
