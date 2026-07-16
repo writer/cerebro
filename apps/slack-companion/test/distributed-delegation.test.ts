@@ -84,6 +84,33 @@ describe("signed distributed work delegations", () => {
     assert.equal(signed.canonicalization, "sorted-json/v1");
   });
 
+  test("permits a delegation with no tool authority", async () => {
+    const packet = packetFixture();
+    const lease = leaseFixture(packet.child_run.run_id);
+    const signer = new DeterministicTestSignaturePort();
+    const manifest = createDistributedWorkDelegationManifest({
+      ...manifestDraft(packet, lease),
+      allowed_tool_refs: [],
+    });
+    const signed = await signDistributedWorkDelegation(
+      manifest,
+      TEST_KEY_REF,
+      signer,
+    );
+
+    await assert.doesNotReject(() =>
+      authorizeSignedDistributedWorkDelegation(
+        signed,
+        {
+          ...authorizedUse(packet, lease),
+          requested_tool_refs: [],
+        },
+        signer,
+        new TestRevocationPort(),
+      ),
+    );
+  });
+
   test("rejects signed-content and signature tampering", async () => {
     const packet = packetFixture();
     const lease = leaseFixture(packet.child_run.run_id);

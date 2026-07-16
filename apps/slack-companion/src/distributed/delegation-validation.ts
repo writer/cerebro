@@ -447,7 +447,7 @@ function validateCapabilities(
 }
 
 function validateTools(toolRefs: string[]): void {
-  requireArrayBound(toolRefs, 1, MAX_DELEGATION_TOOL_REFS, "tool_refs");
+  requireArrayBound(toolRefs, 0, MAX_DELEGATION_TOOL_REFS, "tool_refs");
   const unique = new Set<string>();
   for (const toolRef of toolRefs) {
     requireOpaqueRef(toolRef, "tool_ref");
