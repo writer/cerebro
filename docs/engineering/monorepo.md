@@ -63,7 +63,7 @@ private run identifiers, tenant values, or secret-like input in branch names, dr
 
 ## History Migration
 
-- Public repository history may be imported under its final `apps/` prefix.
+- Public repository history may be imported under its final `apps/` prefix only when every historical object passes the current public-boundary scan. Otherwise, import a reviewed current snapshot and retain the source mapping outside the public repository.
 - Private repository history is never imported into this public repository.
 - A private application contributes only a reviewed portable snapshot whose files pass secret, tenant-data, configuration, and provenance scans.
 - Redirect commits in former repositories land only after the corresponding application is available from this repository.
