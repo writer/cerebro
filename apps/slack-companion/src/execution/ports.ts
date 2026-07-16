@@ -61,6 +61,13 @@ export interface DurableExecutionPort {
     createdAt: string,
   ): Promise<{ checkpoint: CheckpointV1; run: RunReceiptV1 }>;
 
+  /** Atomically appends a checkpoint, waits the run, and releases its lease. */
+  waitWithCheckpoint(
+    lease: WorkLeaseV1,
+    draft: CheckpointDraft,
+    createdAt: string,
+  ): Promise<{ checkpoint: CheckpointV1; run: RunReceiptV1 }>;
+
   /**
    * Atomically finishes execution, advances the run to durable delivery, and
    * releases its lease. An external intent without a succeeded, independently
