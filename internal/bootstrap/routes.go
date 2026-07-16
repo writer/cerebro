@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
+	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -62,13 +63,21 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerDeviceRoutes(mux)
 }
 func (app *App) registerPolicyCandidateRoutes(mux *http.ServeMux) {
+	datasets := policyevaluationdatasets.NewHandler(app.policyCandidateService(), effectiveTenantFilter, authorizeTenantID, customDashboardActorID, writePolicyCandidateError)
 	registerHTTPRoute(mux, "POST /policy-candidates", routeSurfacePlatformHTTP, app.handleCreatePolicyCandidate)
 	registerHTTPRoute(mux, "GET /policy-candidates", routeSurfacePlatformHTTP, app.handleListPolicyCandidates)
 	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}", routeSurfacePlatformHTTP, app.handleGetPolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.Create)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.List)
 	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleCreatePolicyExperiment)
 	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleListPolicyExperiments)
 	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/prove", routeSurfacePlatformHTTP, app.handleProvePolicyCandidate)
 	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/shadow", routeSurfacePlatformHTTP, app.handleShadowPolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}", routeSurfacePlatformHTTP, datasets.Get)
+	registerHTTPRoute(mux, "POST /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.AppendRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.ListRevisions)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}", routeSurfacePlatformHTTP, datasets.GetRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}/cases", routeSurfacePlatformHTTP, datasets.ListCases)
 	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}", routeSurfacePlatformHTTP, app.handleGetPolicyExperiment)
 	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}/observations", routeSurfacePlatformHTTP, app.handleListPolicyExperimentObservations)
 	registerHTTPRoute(mux, "POST /policy-experiments/{experimentID}/run", routeSurfacePlatformHTTP, app.handleRunPolicyExperiment)
