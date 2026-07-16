@@ -7,6 +7,7 @@ public struct ReceiptDraft: Sendable {
   public let localUserClaim: String
   public let localUserClaimSource: String
   public let agent: AgentIdentity
+  public let collector: CollectorIdentity?
   public let permissionMode: String?
   public let toolName: String?
   public let actionSummary: String
@@ -22,6 +23,7 @@ public struct ReceiptDraft: Sendable {
     localUserClaim: String,
     localUserClaimSource: String,
     agent: AgentIdentity,
+    collector: CollectorIdentity? = nil,
     permissionMode: String?,
     toolName: String?,
     actionSummary: String,
@@ -36,6 +38,7 @@ public struct ReceiptDraft: Sendable {
     self.localUserClaim = localUserClaim
     self.localUserClaimSource = localUserClaimSource
     self.agent = agent
+    self.collector = collector
     self.permissionMode = permissionMode
     self.toolName = toolName
     self.actionSummary = actionSummary
@@ -49,6 +52,7 @@ public struct ReceiptDraft: Sendable {
 public enum HookCapture {
   public static func draft(
     from envelope: HookEnvelope,
+    product: AgentProduct = .codex,
     capturedAt: Date = Date(),
     environment: [String: String] = ProcessInfo.processInfo.environment
   ) throws -> ReceiptDraft {
@@ -61,16 +65,18 @@ public enum HookCapture {
       localUserClaim: override ?? NSUserName(),
       localUserClaimSource: override == nil ? "macos_account" : "environment_override",
       agent: AgentIdentity(
-        product: "Codex",
+        product: product.displayName,
         model: envelope.model,
         sessionID: envelope.sessionID,
         turnID: envelope.turnID,
         toolCallID: envelope.toolUseID
       ),
+      collector: AgentEventNormalizer.collector(
+        product: product, eventName: envelope.hookEventName),
       permissionMode: envelope.permissionMode,
       toolName: envelope.toolName,
       actionSummary: actionSummary(
-        command: command, toolName: envelope.toolName, source: envelope.source),
+        command: command, toolName: envelope.toolName, source: envelope.source, product: product),
       inputDigest: try envelope.toolInput.map(CanonicalJSON.digest),
       resultDigest: try envelope.toolResponse.map(CanonicalJSON.digest),
       cwd: envelope.cwd,
@@ -83,15 +89,18 @@ public enum HookCapture {
     case "SessionStart": return .session
     case "PermissionRequest": return .approvalRequested
     case "PostToolUse": return .completed
+    case "PostToolUseFailure": return .failed
     default: return .attempted
     }
   }
 
-  public static func actionSummary(command: String?, toolName: String?, source: String?) -> String {
+  public static func actionSummary(
+    command: String?, toolName: String?, source: String?, product: AgentProduct = .codex
+  ) -> String {
     guard let command, !command.isEmpty else {
       if let toolName, !toolName.isEmpty { return toolName }
-      if let source, !source.isEmpty { return "Codex session \(source)" }
-      return "Codex lifecycle event"
+      if let source, !source.isEmpty { return "\(product.displayName) session \(source)" }
+      return "\(product.displayName) lifecycle event"
     }
 
     let safe =

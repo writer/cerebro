@@ -3,6 +3,7 @@ import Foundation
 public enum ExecutionState: String, Sendable {
   case attempted
   case completed
+  case failed
 }
 
 public enum AuthorizationEvidence: String, Sendable {
@@ -14,9 +15,9 @@ public enum AuthorizationEvidence: String, Sendable {
     switch self {
     case .approvalGateObserved:
       return
-        "Codex requested approval. The hook does not identify who decided or what the decision was."
+        "The agent requested approval. The hook does not identify who decided or what the decision was."
     case .nonInteractiveMode:
-      return "Codex reported a non-interactive permission mode."
+      return "The agent reported a non-interactive permission mode."
     case .notObserved:
       return "No authorization decision was observed."
     }
@@ -34,6 +35,8 @@ public struct ExecutionAction: Identifiable, Sendable {
   public let resultDigest: String?
   public let localUserClaim: String
   public let localUserClaimSource: String
+  public let product: String
+  public let collector: CollectorIdentity?
   public let model: String
   public let permissionMode: String?
   public let state: ExecutionState
@@ -56,6 +59,8 @@ public struct ExecutionAction: Identifiable, Sendable {
     resultDigest: String?,
     localUserClaim: String,
     localUserClaimSource: String,
+    product: String = "Codex",
+    collector: CollectorIdentity? = nil,
     model: String,
     permissionMode: String?,
     state: ExecutionState,
@@ -77,6 +82,8 @@ public struct ExecutionAction: Identifiable, Sendable {
     self.resultDigest = resultDigest
     self.localUserClaim = localUserClaim
     self.localUserClaimSource = localUserClaimSource
+    self.product = product
+    self.collector = collector
     self.model = model
     self.permissionMode = permissionMode
     self.state = state
@@ -97,15 +104,19 @@ public enum ExecutionActionReducer {
   ) -> [ExecutionAction] {
     let actionable = receipts.filter {
       $0.payload.phase == .attempted || $0.payload.phase == .completed
+        || $0.payload.phase == .failed
     }
     let approvals = receipts.filter { $0.payload.phase == .approvalRequested }
     let groups = Dictionary(grouping: actionable, by: actionKey)
     return groups.values.compactMap { group in
       guard let attempted = group.first(where: { $0.payload.phase == .attempted }) ?? group.first
       else { return nil }
-      let completed = group.first(where: { $0.payload.phase == .completed })
+      let terminal = group.first {
+        $0.payload.phase == .completed || $0.payload.phase == .failed
+      }
       let approvalObserved = approvals.contains { approval in
         approval.payload.agent.sessionID == attempted.payload.agent.sessionID
+          && approval.payload.agent.product == attempted.payload.agent.product
           && approval.payload.agent.turnID == attempted.payload.agent.turnID
           && approval.payload.toolName == attempted.payload.toolName
       }
@@ -128,15 +139,17 @@ public enum ExecutionActionReducer {
         toolName: attempted.payload.toolName,
         actionSummary: attempted.payload.actionSummary,
         inputDigest: attempted.payload.inputDigest,
-        resultDigest: completed?.payload.resultDigest,
+        resultDigest: terminal?.payload.resultDigest,
         localUserClaim: attempted.payload.localUserClaim,
         localUserClaimSource: attempted.payload.localUserClaimSource,
+        product: attempted.payload.agent.product,
+        collector: attempted.payload.collector,
         model: attempted.payload.agent.model,
         permissionMode: mode,
-        state: completed == nil ? .attempted : .completed,
+        state: terminal.map { $0.payload.phase == .failed ? .failed : .completed } ?? .attempted,
         authorizationEvidence: authorization,
         startedAt: attempted.payload.capturedDate,
-        completedAt: completed?.payload.capturedDate,
+        completedAt: terminal?.payload.capturedDate,
         receiptIDs: group.sorted { $0.payload.sequence < $1.payload.sequence }.map(\.id),
         integrityValid: group.allSatisfy { verifications[$0.id]?.valid == true },
         repositoryRoot: attempted.payload.git.repositoryRoot,
@@ -148,11 +161,13 @@ public enum ExecutionActionReducer {
   private static func actionKey(_ receipt: ExecutionReceipt) -> String {
     let agent = receipt.payload.agent
     if let call = agent.toolCallID {
-      return [agent.sessionID, agent.turnID ?? "", call, receipt.payload.inputDigest ?? ""].joined(
+      return [
+        agent.product, agent.sessionID, agent.turnID ?? "", call, receipt.payload.inputDigest ?? "",
+      ].joined(
         separator: "|")
     }
     return [
-      agent.sessionID, agent.turnID ?? "", receipt.payload.toolName ?? "",
+      agent.product, agent.sessionID, agent.turnID ?? "", receipt.payload.toolName ?? "",
       receipt.payload.inputDigest ?? receipt.id,
     ].joined(separator: "|")
   }

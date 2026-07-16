@@ -78,6 +78,7 @@ public struct ReceiptStore: Sendable {
       localUserClaim: draft.localUserClaim,
       localUserClaimSource: draft.localUserClaimSource,
       agent: draft.agent,
+      collector: draft.collector,
       deviceID: signer.deviceID,
       permissionMode: draft.permissionMode,
       toolName: draft.toolName,

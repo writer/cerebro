@@ -20,9 +20,12 @@ struct CheckRunner {
     do { try checkImportedBindingIsRejected() } catch {
       failures.append("imported binding rejection: \(error)")
     }
+    do { try checkAgentAdapters() } catch { failures.append("agent adapters: \(error)") }
+    do { try checkFailedAction() } catch { failures.append("failed action: \(error)") }
+    do { try checkProductIsolation() } catch { failures.append("product isolation: \(error)") }
 
     if failures.isEmpty {
-      print("PASS: 8 receipt security checks")
+      print("PASS: 11 receipt security checks")
       return
     }
     failures.forEach { FileHandle.standardError.write(Data("FAIL: \($0)\n".utf8)) }
@@ -212,6 +215,105 @@ struct CheckRunner {
     let match = ReceiptCorrelator.assess(actions: [action], providerEvents: [event], policy: policy)
       .actionMatches[action.id]
     expect(match?.level != .providerBound, "user-imported JSON created a provider binding")
+  }
+
+  private mutating func checkAgentAdapters() throws {
+    let cases: [(AgentProduct, String, String, String, AgentIntegration)] = [
+      (
+        .codex,
+        #"{"session_id":"codex-session","cwd":"/tmp","hook_event_name":"PreToolUse","model":"gpt-test","tool_name":"Bash","tool_use_id":"codex-call","tool_input":{"command":"printf codex"}}"#,
+        "codex-session", "Bash", .nativeHook
+      ),
+      (
+        .droid,
+        #"{"session_id":"droid-session","cwd":"/tmp","hook_event_name":"PreToolUse","permission_mode":"auto-low","tool_name":"Execute","tool_use_id":"droid-call","tool_input":{"command":"printf droid"}}"#,
+        "droid-session", "Execute", .nativeHook
+      ),
+      (
+        .claudeCode,
+        #"{"session_id":"claude-session","cwd":"/tmp","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_use_id":"claude-call","tool_input":{"command":"false"},"tool_response":{"error":"exit 1"}}"#,
+        "claude-session", "Bash", .nativeHook
+      ),
+      (
+        .openCode,
+        #"{"session_id":"opencode-session","directory":"/tmp","event":"tool.execute.before","tool":"bash","call_id":"opencode-call","args":{"command":"printf opencode"}}"#,
+        "opencode-session", "bash", .pluginEvent
+      ),
+      (
+        .cursor,
+        #"{"conversation_id":"cursor-session","generation_id":"cursor-turn","cwd":"/tmp","hook_event_name":"beforeShellExecution","command":"printf cursor"}"#,
+        "cursor-session", "Shell", .nativeHook
+      ),
+    ]
+
+    for (product, json, sessionID, toolName, integration) in cases {
+      let envelope = try AgentEventNormalizer.normalize(Data(json.utf8), product: product)
+      let draft = try HookCapture.draft(from: envelope, product: product)
+      expect(envelope.sessionID == sessionID, "\(product.displayName) session was not normalized")
+      expect(envelope.toolName == toolName, "\(product.displayName) tool was not normalized")
+      expect(draft.agent.product == product.displayName, "\(product.displayName) product was lost")
+      expect(
+        draft.collector?.integration == integration, "\(product.displayName) integration was lost")
+      expect(draft.inputDigest != nil, "\(product.displayName) input digest is missing")
+    }
+  }
+
+  private mutating func checkFailedAction() throws {
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    _ = try store.append(draft: draft(id: "failed-pre", phase: .attempted), signer: signer)
+    _ = try store.append(draft: draft(id: "failed-post", phase: .failed), signer: signer)
+    let receipts = try store.readReceipts()
+    let verification = ReceiptVerifier.verify(
+      receipts, trustedPublicKeyBase64: signer.publicKeyBase64)
+    let actions = ExecutionActionReducer.reduce(
+      receipts: receipts,
+      verifications: Dictionary(uniqueKeysWithValues: verification.map { ($0.receiptID, $0) })
+    )
+    expect(actions.count == 1, "failed tool phases did not reduce to one action")
+    expect(actions.first?.state == .failed, "failed tool result was not terminal")
+  }
+
+  private mutating func checkProductIsolation() throws {
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    for product in ["Codex", "Droid"] {
+      for phase in [ReceiptPhase.attempted, .completed] {
+        let base = draft(id: "\(product)-\(phase.rawValue)", phase: phase)
+        _ = try store.append(
+          draft: ReceiptDraft(
+            id: base.id,
+            capturedAt: base.capturedAt,
+            phase: base.phase,
+            localUserClaim: base.localUserClaim,
+            localUserClaimSource: base.localUserClaimSource,
+            agent: AgentIdentity(
+              product: product,
+              model: base.agent.model,
+              sessionID: base.agent.sessionID,
+              turnID: base.agent.turnID,
+              toolCallID: base.agent.toolCallID
+            ),
+            permissionMode: base.permissionMode,
+            toolName: base.toolName,
+            actionSummary: base.actionSummary,
+            inputDigest: base.inputDigest,
+            resultDigest: base.resultDigest,
+            cwd: base.cwd,
+            git: base.git
+          ),
+          signer: signer
+        )
+      }
+    }
+    let receipts = try store.readReceipts()
+    let verification = ReceiptVerifier.verify(
+      receipts, trustedPublicKeyBase64: signer.publicKeyBase64)
+    let actions = ExecutionActionReducer.reduce(
+      receipts: receipts,
+      verifications: Dictionary(uniqueKeysWithValues: verification.map { ($0.receiptID, $0) })
+    )
+    expect(actions.count == 2, "two products with the same session and call collapsed together")
   }
 
   private func signedCanaryAction(actionSummary: String) throws -> ExecutionAction {

@@ -79,14 +79,22 @@ do {
     exit(integrityPassed && (!requireProvider || providerPolicyPassed) ? 0 : 1)
   }
 
-  guard arguments.isEmpty else {
+  let product: AgentProduct
+  if arguments.isEmpty {
+    product = .codex
+  } else if arguments.count == 2, arguments.first == "capture",
+    let selected = AgentProduct(rawValue: arguments[1])
+  {
+    product = selected
+  } else {
     throw CLIError.usage(
-      "usage: CerebroAgentReceiptHook [verify|import-cloudtrail|fetch-cloudtrail]")
+      "usage: CerebroAgentReceiptHook [capture <codex|droid|claude-code|opencode|cursor>|verify|import-cloudtrail|fetch-cloudtrail]"
+    )
   }
   let input = FileHandle.standardInput.readDataToEndOfFile()
   guard !input.isEmpty else { exit(0) }
-  let envelope = try JSONDecoder().decode(HookEnvelope.self, from: input)
-  let draft = try HookCapture.draft(from: envelope)
+  let envelope = try AgentEventNormalizer.normalize(input, product: product)
+  let draft = try HookCapture.draft(from: envelope, product: product)
   let signer = try DeviceKeySigner()
   let store = ReceiptStore()
   try store.append(draft: draft, signer: signer)

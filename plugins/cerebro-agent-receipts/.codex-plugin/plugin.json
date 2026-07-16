@@ -1,6 +1,6 @@
 {
   "name": "cerebro-agent-receipts",
-  "version": "0.1.0+codex.20260716085818",
+  "version": "0.1.0+codex.20260716090905",
   "description": "Capture signed local evidence for Codex tool executions and compare it with provider audit events.",
   "author": {
     "name": "Writer"

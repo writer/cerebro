@@ -63,6 +63,7 @@ public enum ReceiptPhase: String, Codable, Sendable {
   case attempted
   case approvalRequested = "approval_requested"
   case completed
+  case failed
 }
 
 public struct GitContext: Codable, Equatable, Sendable {
@@ -105,6 +106,7 @@ public struct ExecutionReceiptPayload: Codable, Equatable, Identifiable, Sendabl
   public let localUserClaim: String
   public let localUserClaimSource: String
   public let agent: AgentIdentity
+  public let collector: CollectorIdentity?
   public let deviceID: String
   public let permissionMode: String?
   public let toolName: String?
@@ -124,6 +126,7 @@ public struct ExecutionReceiptPayload: Codable, Equatable, Identifiable, Sendabl
     localUserClaim: String,
     localUserClaimSource: String,
     agent: AgentIdentity,
+    collector: CollectorIdentity? = nil,
     deviceID: String,
     permissionMode: String?,
     toolName: String?,
@@ -142,6 +145,7 @@ public struct ExecutionReceiptPayload: Codable, Equatable, Identifiable, Sendabl
     self.localUserClaim = localUserClaim
     self.localUserClaimSource = localUserClaimSource
     self.agent = agent
+    self.collector = collector
     self.deviceID = deviceID
     self.permissionMode = permissionMode
     self.toolName = toolName

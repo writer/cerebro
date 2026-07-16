@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\"",
+            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\" capture codex",
             "timeout": 120,
             "statusMessage": "Starting execution receipt capture"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\"",
+            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\" capture codex",
             "timeout": 30,
             "statusMessage": "Recording execution receipt"
           }
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\"",
+            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\" capture codex",
             "timeout": 30,
             "statusMessage": "Recording approval request"
           }
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\"",
+            "command": "\"$PLUGIN_ROOT/scripts/run-hook.sh\" capture codex",
             "timeout": 30,
             "statusMessage": "Completing execution receipt"
           }
