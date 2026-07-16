@@ -5,8 +5,8 @@ The TypeScript helpers target the current Cerebro bootstrap API. They are mainta
 ## Install For Local Development
 
 ```bash
-cd sdk/typescript
 npm ci
+npm run check --workspace @writer/cerebro-sdk
 ```
 
 The package is ESM and exports the base client plus the Jira posture helper entrypoint.

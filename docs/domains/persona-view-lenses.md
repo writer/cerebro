@@ -125,6 +125,7 @@ marketing copy, card ordering, or default tabs.
 
 Persona lenses reinforce the platform/application boundary in
 [`non-goals.md`](../engineering/non-goals.md): Cerebro is not exclusively a
-security product, and this repository does not ship an end-user web UI. Runtime
-contracts remain shared primitives; product-specific clients decide which
-routes, summaries, and report profiles should be prominent for each audience.
+security product, and the Go service does not embed or serve end-user clients.
+Runtime contracts remain shared primitives; product-specific clients decide
+which routes, summaries, and report profiles should be prominent for each
+audience.
