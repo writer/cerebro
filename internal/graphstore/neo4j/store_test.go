@@ -167,7 +167,7 @@ func TestMigrateProjectedLinkAssertionsValidatesScopeBeforeConnection(t *testing
 		{TenantID: "writer"},
 	} {
 		_, err := store.MigrateProjectedLinkAssertions(context.Background(), request)
-		if err == nil || !strings.Contains(err.Error(), "tenant_id and relations are required") {
+		if !errors.Is(err, errProjectionAssertionMigrationScopeRequired) {
 			t.Fatalf("MigrateProjectedLinkAssertions(%#v) error = %v, want scope validation", request, err)
 		}
 	}

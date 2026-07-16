@@ -48,39 +48,59 @@ type ObservedPath struct {
 	Provenance []ProvenanceRef
 }
 
-type CollectionReceiptInput struct {
-	SourceRuntimeID string
-	SourceID        string
+// CollectionSourceReceipt identifies the source state used by one collection.
+type CollectionSourceReceipt struct {
+	SourceRuntimeID string `json:"source_runtime_id,omitempty"`
+	SourceID        string `json:"source_id,omitempty"`
 	// ProviderFamily identifies the normalized provider collection family.
-	ProviderFamily string
+	ProviderFamily string `json:"provider_family,omitempty"`
 	// ConfigRevision is a stable non-secret revision; callers must not pass raw configuration.
-	ConfigRevision                           string
-	RuntimeWatermark                         time.Time
-	LastSyncedAt                             time.Time
-	CollectionMode                           string
-	SourcePagesRead                          int
-	SourceEventsAppended                     int
-	SourceEntitiesProjected                  int
-	SourceLinksProjected                     int
-	GraphCheckpointID                        string
-	GraphRunID                               string
-	GraphRunStartedAt                        time.Time
-	GraphRunFinishedAt                       time.Time
-	GraphPagesRead                           int
-	GraphEventsRead                          int
-	GraphEntitiesProjected                   int
-	GraphLinksProjected                      int
-	GraphMaterialLinkReconciliationRequested bool
-	GraphMaterialLinkReconciliationSupported bool
-	GraphMaterialLinkReconciliationCompleted bool
-	GraphStaleMaterialLinksDeleted           int
-	GraphCheckpointComplete                  bool
-	GraphCheckpointCurrent                   bool
-	ObservedPathCount                        int
-	TotalPathCount                           int
-	LeaseHeld                                bool
-	Limitations                              []string
-	RuntimeReceipts                          []RuntimeCollectionReceiptInput
+	ConfigRevision   string    `json:"config_revision,omitempty"`
+	RuntimeWatermark time.Time `json:"runtime_watermark,omitempty"`
+	LastSyncedAt     time.Time `json:"last_synced_at,omitempty"`
+	CollectionMode   string    `json:"collection_mode"`
+}
+
+// CollectionSourceProjectionReceipt records source-side collection volume.
+type CollectionSourceProjectionReceipt struct {
+	SourcePagesRead         int `json:"source_pages_read,omitempty"`
+	SourceEventsAppended    int `json:"source_events_appended,omitempty"`
+	SourceEntitiesProjected int `json:"source_entities_projected,omitempty"`
+	SourceLinksProjected    int `json:"source_links_projected,omitempty"`
+}
+
+// CollectionGraphReceipt records the graph checkpoint and projection state.
+type CollectionGraphReceipt struct {
+	GraphCheckpointID                        string    `json:"graph_checkpoint_id,omitempty"`
+	GraphRunID                               string    `json:"graph_run_id,omitempty"`
+	GraphRunStartedAt                        time.Time `json:"graph_run_started_at,omitempty"`
+	GraphRunFinishedAt                       time.Time `json:"graph_run_finished_at,omitempty"`
+	GraphPagesRead                           int       `json:"graph_pages_read,omitempty"`
+	GraphEventsRead                          int       `json:"graph_events_read,omitempty"`
+	GraphEntitiesProjected                   int       `json:"graph_entities_projected,omitempty"`
+	GraphLinksProjected                      int       `json:"graph_links_projected,omitempty"`
+	GraphMaterialLinkReconciliationRequested bool      `json:"graph_material_link_reconciliation_requested,omitempty"`
+	GraphMaterialLinkReconciliationSupported bool      `json:"graph_material_link_reconciliation_supported,omitempty"`
+	GraphMaterialLinkReconciliationCompleted bool      `json:"graph_material_link_reconciliation_completed,omitempty"`
+	GraphStaleMaterialLinksDeleted           int       `json:"graph_stale_material_links_deleted,omitempty"`
+	GraphCheckpointComplete                  bool      `json:"graph_checkpoint_complete"`
+	GraphCheckpointCurrent                   bool      `json:"graph_checkpoint_current"`
+}
+
+// CollectionPathReceipt records the observed path coverage and collection limits.
+type CollectionPathReceipt struct {
+	ObservedPathCount int      `json:"observed_path_count"`
+	TotalPathCount    int      `json:"total_path_count"`
+	LeaseHeld         bool     `json:"lease_held"`
+	Limitations       []string `json:"limitations,omitempty"`
+}
+
+type CollectionReceiptInput struct {
+	CollectionSourceReceipt
+	CollectionSourceProjectionReceipt
+	CollectionGraphReceipt
+	CollectionPathReceipt
+	RuntimeReceipts []RuntimeCollectionReceiptInput
 }
 
 // RuntimeCollectionReceiptInput records the latest source and graph state for
@@ -120,39 +140,14 @@ type RuntimeCollectionReceipt struct {
 }
 
 type CollectionReceipt struct {
-	ID                                       string                     `json:"id"`
-	SourceRuntimeID                          string                     `json:"source_runtime_id,omitempty"`
-	SourceID                                 string                     `json:"source_id,omitempty"`
-	ProviderFamily                           string                     `json:"provider_family,omitempty"`
-	ConfigRevision                           string                     `json:"config_revision,omitempty"`
-	RuntimeWatermark                         time.Time                  `json:"runtime_watermark,omitempty"`
-	LastSyncedAt                             time.Time                  `json:"last_synced_at,omitempty"`
-	CollectionMode                           string                     `json:"collection_mode"`
-	SourcePagesRead                          int                        `json:"source_pages_read,omitempty"`
-	SourceEventsAppended                     int                        `json:"source_events_appended,omitempty"`
-	SourceEntitiesProjected                  int                        `json:"source_entities_projected,omitempty"`
-	SourceLinksProjected                     int                        `json:"source_links_projected,omitempty"`
-	GraphCheckpointID                        string                     `json:"graph_checkpoint_id,omitempty"`
-	GraphRunID                               string                     `json:"graph_run_id,omitempty"`
-	GraphRunStartedAt                        time.Time                  `json:"graph_run_started_at,omitempty"`
-	GraphRunFinishedAt                       time.Time                  `json:"graph_run_finished_at,omitempty"`
-	GraphPagesRead                           int                        `json:"graph_pages_read,omitempty"`
-	GraphEventsRead                          int                        `json:"graph_events_read,omitempty"`
-	GraphEntitiesProjected                   int                        `json:"graph_entities_projected,omitempty"`
-	GraphLinksProjected                      int                        `json:"graph_links_projected,omitempty"`
-	GraphMaterialLinkReconciliationRequested bool                       `json:"graph_material_link_reconciliation_requested,omitempty"`
-	GraphMaterialLinkReconciliationSupported bool                       `json:"graph_material_link_reconciliation_supported,omitempty"`
-	GraphMaterialLinkReconciliationCompleted bool                       `json:"graph_material_link_reconciliation_completed,omitempty"`
-	GraphStaleMaterialLinksDeleted           int                        `json:"graph_stale_material_links_deleted,omitempty"`
-	GraphCheckpointComplete                  bool                       `json:"graph_checkpoint_complete"`
-	GraphCheckpointCurrent                   bool                       `json:"graph_checkpoint_current"`
-	ObservedPathCount                        int                        `json:"observed_path_count"`
-	TotalPathCount                           int                        `json:"total_path_count"`
-	LeaseHeld                                bool                       `json:"lease_held"`
-	Limitations                              []string                   `json:"limitations,omitempty"`
-	ProofRuntimeIDs                          []string                   `json:"proof_runtime_ids,omitempty"`
-	RuntimeReceipts                          []RuntimeCollectionReceipt `json:"runtime_receipts,omitempty"`
-	Digest                                   string                     `json:"digest"`
+	ID string `json:"id"`
+	CollectionSourceReceipt
+	CollectionSourceProjectionReceipt
+	CollectionGraphReceipt
+	CollectionPathReceipt
+	ProofRuntimeIDs []string                   `json:"proof_runtime_ids,omitempty"`
+	RuntimeReceipts []RuntimeCollectionReceipt `json:"runtime_receipts,omitempty"`
+	Digest          string                     `json:"digest"`
 }
 
 type SnapshotInput struct {

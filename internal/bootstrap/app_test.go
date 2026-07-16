@@ -4962,10 +4962,12 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 				EventsRead:        8,
 				EntitiesProjected: 12,
 				LinksProjected:    16,
-				GraphNodesBefore:  100,
-				GraphNodesAfter:   109,
-				GraphLinksBefore:  200,
-				GraphLinksAfter:   211,
+				IngestRunGraphCounts: graphstore.IngestRunGraphCounts{
+					GraphNodesBefore: 100,
+					GraphNodesAfter:  109,
+					GraphLinksBefore: 200,
+					GraphLinksAfter:  211,
+				},
 			},
 		},
 	}

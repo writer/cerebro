@@ -97,6 +97,14 @@ const (
 	IngestRunStatusFailed    = "failed"
 )
 
+// IngestRunGraphCounts records graph topology before and after one ingest.
+type IngestRunGraphCounts struct {
+	GraphNodesBefore int64 `json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore int64 `json:"graph_links_before,omitempty"`
+	GraphNodesAfter  int64 `json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter  int64 `json:"graph_links_after,omitempty"`
+}
+
 // IngestRun records one operational graph ingest attempt.
 type IngestRun struct {
 	ID                 string `json:"id"`
@@ -120,13 +128,10 @@ type IngestRun struct {
 	MaterialLinkReconciliationCompleted bool   `json:"material_link_reconciliation_completed,omitempty"`
 	ProjectionReconciliationID          string `json:"projection_reconciliation_id,omitempty"`
 	StaleMaterialLinksDeleted           int64  `json:"stale_material_links_deleted,omitempty"`
-	GraphNodesBefore                    int64  `json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore                    int64  `json:"graph_links_before,omitempty"`
-	GraphNodesAfter                     int64  `json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter                     int64  `json:"graph_links_after,omitempty"`
-	StartedAt                           string `json:"started_at,omitempty"`
-	FinishedAt                          string `json:"finished_at,omitempty"`
-	Error                               string `json:"error,omitempty"`
+	IngestRunGraphCounts
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // CheckpointCompleteValue returns nil when a legacy run has no persisted
