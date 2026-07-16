@@ -1,6 +1,6 @@
 # Security Path Decision Input V1
 
-Status: implementation plan
+Status: implemented
 
 Base revision: `0fcf22bc2067ba361df4a89ac829e0a7b99535aa`
 
@@ -26,7 +26,7 @@ The existing Go comparison remains the response returned to callers. A Rust vali
 
 - an exact schema version;
 - the requested operation;
-- an input digest computed over the normalized, decision-relevant fields;
+- an input digest computed over a length-delimited structural encoding of the decision-relevant fields;
 - the source snapshot digests used by the operation;
 - bounded snapshots, paths, proof edges, runtime receipts, and requested identifiers.
 
@@ -41,10 +41,10 @@ The V1 decoder enforces limits below the generic Wasm transport limits:
 - at most 100 attack paths per snapshot;
 - at most 64 proof edges per path;
 - at most 256 runtime receipts per snapshot;
-- at most 256 requested runtime identifiers;
+- at most 256 requested path identifiers;
 - at most 4,096 bytes per decision-relevant string.
 
-The implementation will reject a limit violation with a typed validation error. Limits are part of the versioned contract; changing them requires a new contract revision or an explicit compatible revision to this document and its tests.
+The implementation rejects a limit violation with a typed validation error. Limits are part of the versioned contract; changing them requires a new contract revision or an explicit compatible revision to this document and its tests.
 
 ## Work Packages
 

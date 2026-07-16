@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
-use crate::{ABI_VERSION, EvaluationRequest, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES, evaluate};
+use crate::evaluation::evaluate;
+use crate::{ABI_VERSION, EvaluationRequest, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES};
 use cerebro_wasm_guest::{BoundedOutput, MemoryError};
 
 #[unsafe(no_mangle)]

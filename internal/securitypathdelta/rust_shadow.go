@@ -1,14 +1,19 @@
 package securitypathdelta
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"reflect"
+	"slices"
 	"sort"
 	"time"
 
@@ -19,6 +24,7 @@ const (
 	securityPathEvaluatorABIVersion = 1
 	securityPathEvaluatorMaxInput   = 8 << 20
 	securityPathEvaluatorMaxOutput  = 8 << 20
+	securityPathDecisionInputV1     = "security-path-decision-input/v1"
 
 	RustShadowMatch          = "match"
 	RustShadowEvaluatorError = "rust_error"
@@ -46,10 +52,32 @@ var securityPathEvaluator = wasmjson.New(wasmjson.Config{
 
 // RustShadowResult records bounded parity evidence without exposing path or tenant data.
 type RustShadowResult struct {
-	Operation  string `json:"operation"`
-	Status     string `json:"status"`
-	GoDigest   string `json:"go_digest,omitempty"`
-	RustDigest string `json:"rust_digest,omitempty"`
+	Operation             string   `json:"operation"`
+	Status                string   `json:"status"`
+	SchemaVersion         string   `json:"schema_version,omitempty"`
+	InputDigest           string   `json:"input_digest,omitempty"`
+	SourceSnapshotDigests []string `json:"source_snapshot_digests,omitempty"`
+	GoDigest              string   `json:"go_digest,omitempty"`
+	RustDigest            string   `json:"rust_digest,omitempty"`
+}
+
+type rustEvaluationRequest struct {
+	SchemaVersion string          `json:"schema_version"`
+	InputDigest   string          `json:"input_digest"`
+	Request       json.RawMessage `json:"request"`
+}
+
+type rustEvaluationResponse[T any] struct {
+	SchemaVersion         string   `json:"schema_version"`
+	InputDigest           string   `json:"input_digest"`
+	SourceSnapshotDigests []string `json:"source_snapshot_digests"`
+	Response              T        `json:"response"`
+}
+
+type rustDecisionReceipt struct {
+	SchemaVersion         string
+	InputDigest           string
+	SourceSnapshotDigests []string
 }
 
 type rustComparisonRequest struct {
@@ -182,12 +210,16 @@ func CompareRustShadow(ctx context.Context, before *Snapshot, after Snapshot, or
 	want := comparisonDecisionFromDelta(oracle)
 	result := RustShadowResult{Operation: "compare", GoDigest: want.Digest}
 	var response rustComparisonResponse
-	if err := evaluateRustSecurityPath(ctx, rustComparisonRequest{
+	receipt, err := evaluateRustSecurityPath(ctx, rustComparisonRequest{
 		Operation: "compare", Before: rustSnapshotPointer(before), After: rustSnapshotFromSnapshot(after),
-	}, &response); err != nil {
+	}, &response)
+	if err != nil {
 		result.Status = RustShadowEvaluatorError
 		return result
 	}
+	result.SchemaVersion = receipt.SchemaVersion
+	result.InputDigest = receipt.InputDigest
+	result.SourceSnapshotDigests = receipt.SourceSnapshotDigests
 	result.RustDigest = response.Result.Digest
 	if response.Operation != "compare" || !reflect.DeepEqual(response.Result, want) {
 		result.Status = RustShadowResultMismatch
@@ -202,13 +234,17 @@ func VerifyObservedAbsentRustShadow(ctx context.Context, reference Snapshot, aft
 	want := verificationDecisionFromResult(oracle)
 	result := RustShadowResult{Operation: "verify_observed_absent", GoDigest: want.Digest}
 	var response rustVerificationResponse
-	if err := evaluateRustSecurityPath(ctx, rustVerificationRequest{
+	receipt, err := evaluateRustSecurityPath(ctx, rustVerificationRequest{
 		Operation: "verify_observed_absent", Reference: rustSnapshotFromSnapshot(reference),
-		After: rustSnapshotFromSnapshot(after), RequestedPathIDs: requestedPathIDs,
-	}, &response); err != nil {
+		After: rustSnapshotFromSnapshot(after), RequestedPathIDs: normalizedStrings(requestedPathIDs),
+	}, &response)
+	if err != nil {
 		result.Status = RustShadowEvaluatorError
 		return result
 	}
+	result.SchemaVersion = receipt.SchemaVersion
+	result.InputDigest = receipt.InputDigest
+	result.SourceSnapshotDigests = receipt.SourceSnapshotDigests
 	result.RustDigest = response.Result.Digest
 	if response.Operation != "verify_observed_absent" || !reflect.DeepEqual(response.Result, want) {
 		result.Status = RustShadowResultMismatch
@@ -220,7 +256,7 @@ func VerifyObservedAbsentRustShadow(ctx context.Context, reference Snapshot, aft
 
 func rankCandidateCutsRust(ctx context.Context, paths []SecurityPath) ([]CandidateEdgeCut, error) {
 	var response rustCandidateCutsResponse
-	if err := evaluateRustSecurityPath(ctx, rustCandidateCutsRequest{
+	if _, err := evaluateRustSecurityPath(ctx, rustCandidateCutsRequest{
 		Operation: "rank_candidate_cuts", Paths: rustSecurityPaths(paths),
 	}, &response); err != nil {
 		return nil, err
@@ -297,19 +333,238 @@ func rustProofEdge(edge ProofEdge) rustProofEdgeInput {
 	}
 }
 
-func evaluateRustSecurityPath(ctx context.Context, request any, response any) error {
-	payload, err := json.Marshal(request)
+func evaluateRustSecurityPath[T any](ctx context.Context, request any, response *T) (rustDecisionReceipt, error) {
+	payload, inputDigest, sourceSnapshotDigests, err := marshalRustEvaluationRequest(request)
 	if err != nil {
-		return fmt.Errorf("%w: encode request: %w", ErrRustEvaluatorUnavailable, err)
+		return rustDecisionReceipt{}, err
 	}
 	output, err := securityPathEvaluator.Evaluate(ctx, payload)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrRustEvaluatorUnavailable, err)
+		return rustDecisionReceipt{}, fmt.Errorf("%w: %w", ErrRustEvaluatorUnavailable, err)
 	}
-	if err := decodeStrictRustResponse(output, response); err != nil {
-		return fmt.Errorf("%w: decode response: %w", ErrRustEvaluatorUnavailable, err)
+	var envelope rustEvaluationResponse[T]
+	if err := decodeStrictRustResponse(output, &envelope); err != nil {
+		return rustDecisionReceipt{}, fmt.Errorf("%w: decode response: %w", ErrRustEvaluatorUnavailable, err)
 	}
-	return nil
+	if envelope.SchemaVersion != securityPathDecisionInputV1 || envelope.InputDigest != inputDigest ||
+		!slices.Equal(envelope.SourceSnapshotDigests, sourceSnapshotDigests) {
+		return rustDecisionReceipt{}, fmt.Errorf("%w: decision receipt binding mismatch", ErrRustEvaluatorUnavailable)
+	}
+	*response = envelope.Response
+	return rustDecisionReceipt{
+		SchemaVersion: envelope.SchemaVersion, InputDigest: envelope.InputDigest,
+		SourceSnapshotDigests: append([]string(nil), envelope.SourceSnapshotDigests...),
+	}, nil
+}
+
+func marshalRustEvaluationRequest(request any) ([]byte, string, []string, error) {
+	requestPayload, err := json.Marshal(request)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("%w: encode request: %w", ErrRustEvaluatorUnavailable, err)
+	}
+	inputDigest, err := rustDecisionInputDigest(request)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	sourceSnapshotDigests, err := rustSourceSnapshotDigests(request)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	payload := make([]byte, 0, len(requestPayload)+len(inputDigest)+96)
+	payload = append(payload, `{"schema_version":"`...)
+	payload = append(payload, securityPathDecisionInputV1...)
+	payload = append(payload, `","input_digest":"`...)
+	payload = append(payload, inputDigest...)
+	payload = append(payload, `","request":`...)
+	payload = append(payload, requestPayload...)
+	payload = append(payload, '}')
+	return payload, inputDigest, sourceSnapshotDigests, nil
+}
+
+type decisionInputHasher struct {
+	digest hash.Hash
+	writer *bufio.Writer
+}
+
+func newDecisionInputHasher() *decisionInputHasher {
+	digest := sha256.New()
+	writer := bufio.NewWriterSize(digest, 64<<10)
+	_, _ = writer.WriteString(securityPathDecisionInputV1)
+	_ = writer.WriteByte(0)
+	return &decisionInputHasher{digest: digest, writer: writer}
+}
+
+func (hasher *decisionInputHasher) string(value string) {
+	hasher.unsigned(len(value))
+	_, _ = hasher.writer.WriteString(value)
+}
+
+func (hasher *decisionInputHasher) boolean(value bool) {
+	encoded := byte(0)
+	if value {
+		encoded = 1
+	}
+	_ = hasher.writer.WriteByte(encoded)
+}
+
+func (hasher *decisionInputHasher) unsigned(value int) {
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], uint64(value))
+	_, _ = hasher.writer.Write(encoded[:])
+}
+
+func (hasher *decisionInputHasher) timestamp(value time.Time) {
+	hasher.string(value.Format(time.RFC3339Nano))
+}
+
+func (hasher *decisionInputHasher) finish() string {
+	_ = hasher.writer.Flush()
+	return fmt.Sprintf("sha256:%x", hasher.digest.Sum(nil))
+}
+
+func rustDecisionInputDigest(request any) (string, error) {
+	hasher := newDecisionInputHasher()
+	switch value := request.(type) {
+	case rustComparisonRequest:
+		hasher.string("compare")
+		hasher.boolean(value.Before != nil)
+		if value.Before != nil {
+			hashRustSnapshot(hasher, *value.Before)
+		}
+		hashRustSnapshot(hasher, value.After)
+	case rustVerificationRequest:
+		hasher.string("verify_observed_absent")
+		hashRustSnapshot(hasher, value.Reference)
+		hashRustSnapshot(hasher, value.After)
+		hashRustStrings(hasher, value.RequestedPathIDs)
+	case rustCandidateCutsRequest:
+		hasher.string("rank_candidate_cuts")
+		hasher.unsigned(len(value.Paths))
+		for _, path := range value.Paths {
+			hashRustSecurityPath(hasher, path)
+		}
+	default:
+		return "", fmt.Errorf("%w: unsupported decision request", ErrRustEvaluatorUnavailable)
+	}
+	return hasher.finish(), nil
+}
+
+func hashRustSnapshot(hasher *decisionInputHasher, snapshot rustSnapshotInput) {
+	for _, value := range []string{
+		snapshot.ID,
+		snapshot.TenantID,
+		snapshot.ScopeID,
+		snapshot.DetectorID,
+		snapshot.DetectorRevision,
+		snapshot.ObservationID,
+	} {
+		hasher.string(value)
+	}
+	hasher.timestamp(snapshot.ObservedAt)
+	receipt := snapshot.Receipt
+	for _, value := range []string{receipt.SourceRuntimeID, receipt.SourceID} {
+		hasher.string(value)
+	}
+	hasher.timestamp(receipt.RuntimeWatermark)
+	hasher.timestamp(receipt.LastSyncedAt)
+	for _, value := range []string{
+		receipt.CollectionMode,
+		receipt.GraphCheckpointID,
+		receipt.GraphRunID,
+	} {
+		hasher.string(value)
+	}
+	hasher.boolean(receipt.GraphCheckpointComplete)
+	hasher.boolean(receipt.GraphCheckpointCurrent)
+	hasher.unsigned(receipt.ObservedPathCount)
+	hasher.unsigned(receipt.TotalPathCount)
+	hasher.boolean(receipt.LeaseHeld)
+	hashRustStrings(hasher, receipt.Limitations)
+	hashRustStrings(hasher, receipt.ProofRuntimeIDs)
+	hasher.unsigned(len(receipt.RuntimeReceipts))
+	for _, runtimeReceipt := range receipt.RuntimeReceipts {
+		hashRustRuntimeReceipt(hasher, runtimeReceipt)
+	}
+	hasher.string(string(snapshot.Completeness.State))
+	hashRustStrings(hasher, snapshot.Completeness.Reasons)
+	hasher.unsigned(len(snapshot.Paths))
+	for _, path := range snapshot.Paths {
+		hashRustSecurityPath(hasher, path)
+	}
+	hasher.string(snapshot.Digest)
+}
+
+func hashRustRuntimeReceipt(hasher *decisionInputHasher, receipt rustRuntimeCollectionReceiptInput) {
+	for _, value := range []string{
+		receipt.SourceRuntimeID,
+		receipt.SourceID,
+		receipt.ProviderFamily,
+		receipt.ConfigRevision,
+	} {
+		hasher.string(value)
+	}
+	for _, value := range []time.Time{
+		receipt.RuntimeWatermark,
+		receipt.LastSyncedAt,
+	} {
+		hasher.timestamp(value)
+	}
+	for _, value := range []string{receipt.GraphCheckpointID, receipt.GraphRunID} {
+		hasher.string(value)
+	}
+	for _, value := range []time.Time{
+		receipt.GraphRunStartedAt,
+		receipt.GraphRunFinishedAt,
+	} {
+		hasher.timestamp(value)
+	}
+	hasher.boolean(receipt.GraphCheckpointComplete)
+	hasher.boolean(receipt.GraphCheckpointCurrent)
+	hashRustStrings(hasher, receipt.Limitations)
+}
+
+func hashRustSecurityPath(hasher *decisionInputHasher, path rustSecurityPathInput) {
+	hasher.string(path.ID)
+	hasher.string(path.RouteID)
+	hasher.unsigned(len(path.ProofEdges))
+	for _, edge := range path.ProofEdges {
+		hashRustProofEdge(hasher, edge)
+	}
+	hasher.unsigned(len(path.Ownerships))
+	for _, ownership := range path.Ownerships {
+		hashRustProofEdge(hasher, ownership.Edge)
+	}
+}
+
+func hashRustProofEdge(hasher *decisionInputHasher, edge rustProofEdgeInput) {
+	hasher.string(edge.ID)
+	hasher.string(edge.Relation)
+	hasher.string(edge.SourceRuntimeID)
+	hashRustStrings(hasher, edge.AssertionRuntimeIDs)
+}
+
+func hashRustStrings(hasher *decisionInputHasher, values []string) {
+	hasher.unsigned(len(values))
+	for _, value := range values {
+		hasher.string(value)
+	}
+}
+
+func rustSourceSnapshotDigests(request any) ([]string, error) {
+	switch value := request.(type) {
+	case rustComparisonRequest:
+		result := make([]string, 0, 2)
+		if value.Before != nil {
+			result = append(result, value.Before.Digest)
+		}
+		return append(result, value.After.Digest), nil
+	case rustVerificationRequest:
+		return []string{value.Reference.Digest, value.After.Digest}, nil
+	case rustCandidateCutsRequest:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("%w: unsupported decision request", ErrRustEvaluatorUnavailable)
+	}
 }
 
 func decodeStrictRustResponse(payload []byte, target any) error {

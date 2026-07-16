@@ -70,7 +70,7 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			name: "security path evaluator", artifact: "internal/securitypathdelta/evaluator.wasm",
 			exports:    wasmGuestExports{abi: "cerebro_security_path_abi_version", allocate: "cerebro_security_path_alloc", operation: "cerebro_security_path_evaluate"},
 			abiVersion: 1, resultBytes: 16, maxInputBytes: 8 << 20, invalidRangeStatus: 4, tooLargeStatus: 4, zeroInputStatus: 4, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
-			validInput: `{"operation":"rank_candidate_cuts","paths":[]}`,
+			validInput: `{"schema_version":"security-path-decision-input/v1","input_digest":"sha256:858b1b55eb85a9d599ae5f9925e65bf8f3509229e5430f153e5d93e3f4c6708f","request":{"operation":"rank_candidate_cuts","paths":[]}}`,
 		},
 	}
 

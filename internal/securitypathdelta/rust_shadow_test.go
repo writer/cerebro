@@ -36,6 +36,10 @@ func TestCompareRustShadowMatchesGoDecision(t *testing.T) {
 	if result.Status != RustShadowMatch || result.GoDigest == "" || result.GoDigest != result.RustDigest {
 		t.Fatalf("CompareRustShadow() = %#v, want matching non-empty digests", result)
 	}
+	if result.SchemaVersion != securityPathDecisionInputV1 || result.InputDigest == "" ||
+		len(result.SourceSnapshotDigests) != 2 || result.SourceSnapshotDigests[0] != before.Digest || result.SourceSnapshotDigests[1] != after.Digest {
+		t.Fatalf("CompareRustShadow() receipt = %#v, want bound input and snapshots", result)
+	}
 }
 
 func TestCompareRustShadowReportsBoundedMismatch(t *testing.T) {
@@ -54,6 +58,81 @@ func TestCompareRustShadowReportsBoundedMismatch(t *testing.T) {
 	}
 }
 
+func TestRustDecisionEnvelopeRejectsWrongVersionAndDigest(t *testing.T) {
+	t.Parallel()
+	request := rustCandidateCutsRequest{Operation: "rank_candidate_cuts", Paths: []rustSecurityPathInput{}}
+	payload, _, _, err := marshalRustEvaluationRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope rustEvaluationRequest
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatal(err)
+	}
+
+	envelope.SchemaVersion = "security-path-decision-input/v2"
+	unsupported, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := securityPathEvaluator.Evaluate(context.Background(), unsupported); err == nil {
+		t.Fatal("unsupported schema version evaluated successfully")
+	}
+
+	envelope.SchemaVersion = securityPathDecisionInputV1
+	envelope.InputDigest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	tampered, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := securityPathEvaluator.Evaluate(context.Background(), tampered); err == nil {
+		t.Fatal("tampered input digest evaluated successfully")
+	}
+}
+
+func TestRustDecisionInputDigestChangesWithDecisionField(t *testing.T) {
+	t.Parallel()
+	first := rustCandidateCutsRequest{Operation: "rank_candidate_cuts", Paths: []rustSecurityPathInput{{
+		ID: "path-a", RouteID: "route-a", ProofEdges: []rustProofEdgeInput{{
+			ID: "edge-a", Relation: "CAN_ACCESS", SourceRuntimeID: "runtime-a",
+			AssertionRuntimeIDs: []string{"runtime-a"},
+		}},
+	}}}
+	second := first
+	second.Paths = append([]rustSecurityPathInput(nil), first.Paths...)
+	second.Paths[0].ProofEdges = append([]rustProofEdgeInput(nil), first.Paths[0].ProofEdges...)
+	second.Paths[0].ProofEdges[0].Relation = "CAN_ASSUME"
+	_, firstDigest, _, err := marshalRustEvaluationRequest(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstDigest != "sha256:40c2ec2e9d328dd86013f22d0de984902d70d248a2d1780d1b63d2c1166fa1a8" {
+		t.Fatalf("unexpected V1 digest: %s", firstDigest)
+	}
+	_, secondDigest, _, err := marshalRustEvaluationRequest(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstDigest == secondDigest {
+		t.Fatalf("decision input digests are equal: %s", firstDigest)
+	}
+}
+
+func TestRustDecisionRejectsPathOverflow(t *testing.T) {
+	t.Parallel()
+	paths := make([]SecurityPath, 0, 101)
+	for index := range 101 {
+		id := benchmarkIndex(index)
+		paths = append(paths, SecurityPath{
+			ID: "path-" + id, RouteID: "route-" + id,
+			ProofEdges: []ProofEdge{{ID: "edge-" + id, Relation: "can_reach"}},
+		})
+	}
+	if _, err := rankCandidateCutsRust(context.Background(), paths); err == nil {
+		t.Fatal("101-path request evaluated successfully")
+	}
+}
+
 func TestVerifyObservedAbsentRustShadowMatchesGoDecision(t *testing.T) {
 	t.Parallel()
 	beforeAt := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
@@ -69,7 +148,7 @@ func TestVerifyObservedAbsentRustShadowMatchesGoDecision(t *testing.T) {
 	result := VerifyObservedAbsentRustShadow(context.Background(), reference, after, requested, verification)
 	if result.Status != RustShadowMatch || result.GoDigest == "" || result.GoDigest != result.RustDigest {
 		var response rustVerificationResponse
-		if err := evaluateRustSecurityPath(context.Background(), rustVerificationRequest{
+		if _, err := evaluateRustSecurityPath(context.Background(), rustVerificationRequest{
 			Operation: "verify_observed_absent", Reference: rustSnapshotFromSnapshot(reference),
 			After: rustSnapshotFromSnapshot(after), RequestedPathIDs: requested,
 		}, &response); err != nil {
@@ -116,7 +195,7 @@ func BenchmarkRustSecurityPathComparisonWarm(b *testing.B) {
 
 func BenchmarkRustSecurityPathEvaluatorWarm(b *testing.B) {
 	before, after, _ := benchmarkSnapshots(b)
-	payload, err := json.Marshal(rustComparisonRequest{
+	payload, _, _, err := marshalRustEvaluationRequest(rustComparisonRequest{
 		Operation: "compare", Before: rustSnapshotPointer(&before), After: rustSnapshotFromSnapshot(after),
 	})
 	if err != nil {
@@ -136,7 +215,7 @@ func BenchmarkRustSecurityPathEvaluatorEmptyWarm(b *testing.B) {
 	observedAt := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
 	before := mustSnapshotBenchmark(b, snapshotInput("before-empty", observedAt, true))
 	after := mustSnapshotBenchmark(b, snapshotInput("after-empty", observedAt.Add(time.Minute), true))
-	payload, err := json.Marshal(rustComparisonRequest{
+	payload, _, _, err := marshalRustEvaluationRequest(rustComparisonRequest{
 		Operation: "compare", Before: rustSnapshotPointer(&before), After: rustSnapshotFromSnapshot(after),
 	})
 	if err != nil {

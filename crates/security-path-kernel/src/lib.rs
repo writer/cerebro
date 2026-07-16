@@ -9,11 +9,15 @@ mod model;
 #[cfg(target_arch = "wasm32")]
 mod wasm_abi;
 
-pub use evaluation::{ABI_VERSION, compare, evaluate, rank_candidate_cuts, verify_observed_absent};
+pub use evaluation::{
+    ABI_VERSION, bind_decision_input, compare, evaluate, rank_candidate_cuts,
+    verify_observed_absent,
+};
 #[cfg(target_arch = "wasm32")]
 pub(crate) use evaluation::{MAX_INPUT_BYTES, MAX_OUTPUT_BYTES};
 pub use model::{
-    CandidateEdgeCut, CollectionReceipt, ComparisonDecision, Completeness, EvaluationRequest,
-    EvaluationResponse, KernelError, NodeRef, OwnerRef, OwnershipProof, ProofChange, ProofEdge,
-    ProvenanceRef, RuntimeCollectionReceipt, SecurityPath, Snapshot, VerificationDecision,
+    CandidateEdgeCut, CollectionReceipt, ComparisonDecision, Completeness, DECISION_INPUT_V1,
+    DecisionRequest, DecisionResponse, EvaluationRequest, EvaluationResponse, KernelError, NodeRef,
+    OwnerRef, OwnershipProof, ProofChange, ProofEdge, ProvenanceRef, RuntimeCollectionReceipt,
+    SecurityPath, Snapshot, VerificationDecision,
 };
