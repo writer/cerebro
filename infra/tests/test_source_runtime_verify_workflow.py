@@ -4,10 +4,27 @@ from pathlib import Path
 import unittest
 
 
-WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-verify.yml"
-INFRA_DEPLOY_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "infra-deploy.yml"
-DRIFT_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-drift.yml"
-BACKFILL_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-backfill.yml"
+WORKFLOW = (
+    Path(__file__).resolve().parents[2]
+    / ".github"
+    / "workflows"
+    / "source-runtime-verify.yml"
+)
+INFRA_DEPLOY_WORKFLOW = (
+    Path(__file__).resolve().parents[2] / ".github" / "workflows" / "infra-deploy.yml"
+)
+DRIFT_WORKFLOW = (
+    Path(__file__).resolve().parents[2]
+    / ".github"
+    / "workflows"
+    / "source-runtime-drift.yml"
+)
+BACKFILL_WORKFLOW = (
+    Path(__file__).resolve().parents[2]
+    / ".github"
+    / "workflows"
+    / "source-runtime-backfill.yml"
+)
 
 
 class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
@@ -20,7 +37,9 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertIn("family:", workflow)
         self.assertIn("target_concurrency:", workflow)
 
-    def test_manual_source_runtime_workflow_uses_live_go_prod_panopticon_api_verification(self) -> None:
+    def test_manual_source_runtime_workflow_uses_live_go_prod_panopticon_api_verification(
+        self,
+    ) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         go_prod_block = workflow.split("verify-go-prod:", 1)[1]
 
@@ -36,14 +55,22 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertNotIn("GO_PROD_PANOPTICON_READINESS_ONLY", workflow)
         self.assertNotIn("not_configured/dry_run", workflow)
         self.assertNotIn("--exclude-source-id panopticon", workflow)
-        self.assertIn("scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only", workflow)
-        self.assertIn("--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4", workflow)
+        self.assertIn(
+            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only",
+            workflow,
+        )
+        self.assertIn(
+            "--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4",
+            workflow,
+        )
         self.assertIn(
             "--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 2",
             workflow,
         )
         self.assertNotIn("--source-runtime-dry-run", workflow)
-        self.assertNotIn("--source-runtime-allow-missing-targets --source-id panopticon", workflow)
+        self.assertNotIn(
+            "--source-runtime-allow-missing-targets --source-id panopticon", workflow
+        )
 
     def test_scan_role_guards_do_not_special_case_panopticon_api_runtimes(self) -> None:
         manual_workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -62,15 +89,31 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertNotIn("--exclude-source-id panopticon", infra_workflow)
         self.assertNotIn("--exclude-source-id panopticon", drift_workflow)
 
-    def test_backfill_workflow_uses_planner_and_graph_ingest_verification(self) -> None:
+    def test_backfill_workflow_uses_approval_bound_source_lanes(self) -> None:
         workflow = BACKFILL_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("scripts/plan_graph_backfill.py", workflow)
         self.assertIn("source-runtime-backfill-plan.tsv", workflow)
         self.assertIn("--format run-json", workflow)
-        self.assertIn("failed_run_retry_seconds:", workflow)
-        self.assertIn("--failed-run-retry-seconds", workflow)
+        self.assertIn("latest-graph-health", workflow)
+        self.assertIn("scripts/download_graph_health_artifact.py", workflow)
+        self.assertIn('--workflow-name "Graph Health Insight"', workflow)
+        self.assertIn("--head-branch main", workflow)
+        self.assertIn("--require-success", workflow)
+        self.assertIn("max_targets:", workflow)
+        self.assertIn("max_targets_per_source:", workflow)
+        self.assertIn("source_parallelism:", workflow)
+        self.assertIn("source_cooldown_seconds:", workflow)
+        self.assertIn("resume_run_id:", workflow)
+        self.assertIn("matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}", workflow)
+        self.assertIn(
+            "group: source-runtime-backfill-${{ inputs.stack }}-${{ matrix.source_key }}",
+            workflow,
+        )
         self.assertIn("scripts/execute_graph_backfill_plan.py", workflow)
+        self.assertEqual(workflow.count("--validate-only"), 2)
+        self.assertIn("scripts/summarize_graph_backfill.py", workflow)
+        self.assertIn("source-runtime-backfill-state-", workflow)
         self.assertIn("environment: production", workflow)
 
 

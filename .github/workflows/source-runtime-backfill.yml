@@ -12,7 +12,7 @@ on:
           - sec-dev
           - go-prod
       mode:
-        description: Plan only, dry-run target discovery, or run source runtimes
+        description: Create a plan, inspect deployed targets, or run bounded backfills
         required: true
         default: plan
         type: choice
@@ -20,44 +20,78 @@ on:
           - plan
           - dry-run
           - run
-      runtime_ids:
-        description: Newline, comma, or space-separated runtime IDs
+      selection:
+        description: Select explicit runtimes or read missing runtimes from the latest graph-health artifact
         required: true
-        type: string
-      target_concurrency:
-        description: Maximum runtime targets per source verifier
+        default: latest-graph-health
+        type: choice
+        options:
+          - latest-graph-health
+          - explicit
+      runtime_ids:
+        description: Newline, comma, or space-separated runtime IDs when selection is explicit
         required: false
-        default: '4'
+        default: ''
+        type: string
+      graph_health_max_age_seconds:
+        description: Maximum age of the graph-health artifact used for target selection
+        required: false
+        default: '21600'
+        type: string
+      max_targets:
+        description: Maximum runtimes allowed in one approved plan
+        required: false
+        default: '20'
+        type: string
+      max_targets_per_source:
+        description: Maximum runtimes allowed in one source lane
+        required: false
+        default: '5'
+        type: string
+      source_parallelism:
+        description: Maximum source lanes running at the same time
+        required: false
+        default: '2'
+        type: string
+      source_cooldown_seconds:
+        description: Delay between runtimes that share one source
+        required: false
+        default: '60'
+        type: string
+      max_attempts:
+        description: Maximum attempts for one runtime in this execution
+        required: false
+        default: '2'
+        type: string
+      retry_backoff_seconds:
+        description: Initial retry delay; later retries use exponential backoff
+        required: false
+        default: '60'
         type: string
       run_page_limit:
-        description: Optional page_limit override for run mode
+        description: Maximum source pages read by each runtime attempt
         required: false
-        default: ''
+        default: '25'
         type: string
       run_graph_page_limit:
-        description: Optional graph_page_limit override for run mode
+        description: Maximum graph-ingest pages processed by each runtime attempt
         required: false
-        default: ''
+        default: '25'
         type: string
       run_event_limit:
-        description: Optional event_limit override for run mode
+        description: Maximum source events appended by each runtime attempt
         required: false
-        default: ''
+        default: '250'
         type: string
       wait_timeout_seconds:
-        description: Optional verifier wait timeout per command
+        description: Maximum verifier wait for one runtime attempt
         required: false
-        default: ''
+        default: '1800'
         type: string
       run_attempt_timeout_seconds:
-        description: Optional timeout for each run attempt before stopping and failing/retrying
+        description: Maximum ECS runtime duration before an attempt is stopped
         required: false
-        default: ''
-        type: string
-      failed_run_retry_seconds:
-        description: Optional retry window for failed run attempts
-        required: false
-        default: ''
+        default: '900'
         type: string
       stop_running_before_run:
         description: Stop active matching runtime tasks before run mode
@@ -65,24 +99,33 @@ on:
         default: false
         type: boolean
       expected_plan_hash:
-        description: Required for dry-run/run. Copy the plan_hash from a prior plan run for the same inputs.
+        description: Required for dry-run and run. Copy the plan_hash from a plan run with the same inputs and commit.
+        required: false
+        default: ''
+        type: string
+      resume_run_id:
+        description: Optional prior workflow run ID whose completed source checkpoints should be reused
         required: false
         default: ''
         type: string
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
-  group: source-runtime-backfill-${{ github.event.inputs.stack }}
+  group: source-runtime-backfill-plan-${{ inputs.stack }}
   cancel-in-progress: false
 
 jobs:
-  backfill-sec-dev:
-    name: Backfill sec-dev source runtimes
+  plan:
+    name: Build approval-bound backfill plan
     runs-on: ubuntu-latest
-    if: github.event.inputs.stack == 'sec-dev'
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -95,68 +138,147 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.6"
       - name: Install dependencies
         shell: bash
         working-directory: infra
         run: uv sync
-      - name: Configure AWS credentials (sec-dev)
-        if: github.event.inputs.mode != 'plan'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
-      - name: Plan and run backfill
+      - name: Select runtime targets
         shell: bash
         working-directory: infra
         env:
-          MODE: ${{ github.event.inputs.mode }}
-          RUNTIME_IDS: ${{ github.event.inputs.runtime_ids }}
-          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
-          RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
-          RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
-          RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
-          WAIT_TIMEOUT_SECONDS: ${{ github.event.inputs.wait_timeout_seconds }}
-          RUN_ATTEMPT_TIMEOUT_SECONDS: ${{ github.event.inputs.run_attempt_timeout_seconds }}
-          FAILED_RUN_RETRY_SECONDS: ${{ github.event.inputs.failed_run_retry_seconds }}
-          STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
-          EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RUNTIME_IDS: ${{ inputs.runtime_ids }}
+          SELECTION: ${{ inputs.selection }}
+          STACK: ${{ inputs.stack }}
+          GRAPH_HEALTH_MAX_AGE_SECONDS: ${{ inputs.graph_health_max_age_seconds }}
         run: |
           set -euo pipefail
-          printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
-          planner=(uv run python scripts/plan_graph_backfill.py --stack-file aws/Pulumi.sec-dev.yaml --runtime-id-file runtime-ids.txt --target-concurrency "${TARGET_CONCURRENCY}")
-          if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
-          if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
-          if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
-          if [ -n "${WAIT_TIMEOUT_SECONDS}" ]; then planner+=(--wait-timeout-seconds "${WAIT_TIMEOUT_SECONDS}"); fi
-          if [ -n "${RUN_ATTEMPT_TIMEOUT_SECONDS}" ]; then planner+=(--run-attempt-timeout-seconds "${RUN_ATTEMPT_TIMEOUT_SECONDS}"); fi
-          if [ -n "${FAILED_RUN_RETRY_SECONDS}" ]; then planner+=(--failed-run-retry-seconds "${FAILED_RUN_RETRY_SECONDS}"); fi
-          if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
-          "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
-          "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json
-          cat source-runtime-backfill-plan.tsv
-          cat source-runtime-backfill-run.json
-          uv run python -c 'import json; print("plan_hash=" + json.load(open("source-runtime-backfill-run.json", encoding="utf-8"))["plan_hash"])'
-          if [ "${MODE}" != "plan" ]; then
-            uv run python scripts/execute_graph_backfill_plan.py source-runtime-backfill-run.json --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          if [ "${SELECTION}" = "explicit" ]; then
+            if [ -z "${RUNTIME_IDS//[[:space:],]/}" ]; then
+              echo "runtime_ids is required when selection is explicit" >&2
+              exit 1
+            fi
+            printf '%s\n' "${RUNTIME_IDS}" > backfill-runtime-ids.txt
+            exit 0
           fi
+          uv run python scripts/download_graph_health_artifact.py \
+            --artifact-name "graph-health-${STACK}" \
+            --output backfill-graph-health.tsv \
+            --max-age-seconds "${GRAPH_HEALTH_MAX_AGE_SECONDS}" \
+            --workflow-name "Graph Health Insight" \
+            --head-branch main \
+            --require-success
+          if [ ! -s backfill-graph-health.tsv ]; then
+            echo "No recent graph-health artifact is available for ${STACK}. Run Graph Health Insight or use explicit selection." >&2
+            exit 1
+          fi
+      - name: Create plan
+        id: plan
+        shell: bash
+        working-directory: infra
+        env:
+          CONTROL_PLANE_REF: ${{ github.sha }}
+          EXPECTED_PLAN_HASH: ${{ inputs.expected_plan_hash }}
+          MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+          MAX_TARGETS: ${{ inputs.max_targets }}
+          MAX_TARGETS_PER_SOURCE: ${{ inputs.max_targets_per_source }}
+          MODE: ${{ inputs.mode }}
+          RETRY_BACKOFF_SECONDS: ${{ inputs.retry_backoff_seconds }}
+          RUN_ATTEMPT_TIMEOUT_SECONDS: ${{ inputs.run_attempt_timeout_seconds }}
+          RUN_EVENT_LIMIT: ${{ inputs.run_event_limit }}
+          RUN_GRAPH_PAGE_LIMIT: ${{ inputs.run_graph_page_limit }}
+          RUN_PAGE_LIMIT: ${{ inputs.run_page_limit }}
+          SELECTION: ${{ inputs.selection }}
+          SOURCE_COOLDOWN_SECONDS: ${{ inputs.source_cooldown_seconds }}
+          SOURCE_PARALLELISM: ${{ inputs.source_parallelism }}
+          STACK: ${{ inputs.stack }}
+          STOP_RUNNING_BEFORE_RUN: ${{ inputs.stop_running_before_run }}
+          WAIT_TIMEOUT_SECONDS: ${{ inputs.wait_timeout_seconds }}
+        run: |
+          set -euo pipefail
+          if [ "${MODE}" != "plan" ] && [ -z "${EXPECTED_PLAN_HASH}" ]; then
+            echo "expected_plan_hash is required for ${MODE} mode" >&2
+            exit 1
+          fi
+          stack_file="aws/Pulumi.${STACK}.yaml"
+          planner=(
+            uv run python scripts/plan_graph_backfill.py
+            --stack-file "${stack_file}"
+            --control-plane-ref "${CONTROL_PLANE_REF}"
+            --max-targets "${MAX_TARGETS}"
+            --max-targets-per-source "${MAX_TARGETS_PER_SOURCE}"
+            --source-parallelism "${SOURCE_PARALLELISM}"
+            --source-cooldown-seconds "${SOURCE_COOLDOWN_SECONDS}"
+            --max-attempts "${MAX_ATTEMPTS}"
+            --retry-backoff-seconds "${RETRY_BACKOFF_SECONDS}"
+            --run-page-limit "${RUN_PAGE_LIMIT}"
+            --run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"
+            --run-event-limit "${RUN_EVENT_LIMIT}"
+            --wait-timeout-seconds "${WAIT_TIMEOUT_SECONDS}"
+            --run-attempt-timeout-seconds "${RUN_ATTEMPT_TIMEOUT_SECONDS}"
+          )
+          if [ "${SELECTION}" = "explicit" ]; then
+            planner+=(--runtime-id-file backfill-runtime-ids.txt)
+          else
+            planner+=(--diagnostics-file backfill-graph-health.tsv)
+          fi
+          if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then
+            planner+=(--stop-running-before-run)
+          fi
+          "${planner[@]}" --mode plan --format tsv > source-runtime-backfill-plan.tsv
+          "${planner[@]}" --mode "${MODE}" --format run-json > source-runtime-backfill-run.json
+          cat source-runtime-backfill-plan.tsv
+          python3 - <<'PY' >> "${GITHUB_OUTPUT}"
+          import json
+
+          with open("source-runtime-backfill-run.json", encoding="utf-8") as handle:
+              plan = json.load(handle)
+          print("plan_hash=" + plan["plan_hash"])
+          print("matrix=" + json.dumps({"include": plan["source_groups"]}, separators=(",", ":"), sort_keys=True))
+          PY
+          python3 - <<'PY'
+          import json
+
+          with open("source-runtime-backfill-run.json", encoding="utf-8") as handle:
+              plan = json.load(handle)
+          print("plan_hash=" + plan["plan_hash"])
+          print("source_lanes=" + str(len(plan["source_groups"])))
+          print("runtime_targets=" + str(len(plan["targets"])))
+          PY
       - name: Upload backfill plan
-        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: source-runtime-backfill-sec-dev
+          name: source-runtime-backfill-plan-${{ inputs.stack }}
           path: |
             infra/source-runtime-backfill-plan.tsv
             infra/source-runtime-backfill-run.json
 
-  backfill-go-prod:
-    name: Backfill go-prod source runtimes
+  execute-sec-dev:
+    name: Backfill sec-dev / ${{ matrix.source_id }}
+    needs: [plan]
+    if: inputs.mode != 'plan' && inputs.stack == 'sec-dev'
     runs-on: ubuntu-latest
-    if: github.event.inputs.stack == 'go-prod'
-    environment: production
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.source_parallelism) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: source-runtime-backfill-${{ inputs.stack }}-${{ matrix.source_key }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: source-runtime-backfill-plan-${{ inputs.stack }}
+          path: infra
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
@@ -165,55 +287,220 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.6"
       - name: Install dependencies
         shell: bash
         working-directory: infra
         run: uv sync
-      - name: Configure AWS credentials (sec-prod)
-        if: github.event.inputs.mode != 'plan'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
-      - name: Plan and run backfill
+      - name: Validate approved plan
         shell: bash
         working-directory: infra
         env:
-          MODE: ${{ github.event.inputs.mode }}
-          RUNTIME_IDS: ${{ github.event.inputs.runtime_ids }}
-          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
-          RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
-          RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
-          RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
-          WAIT_TIMEOUT_SECONDS: ${{ github.event.inputs.wait_timeout_seconds }}
-          RUN_ATTEMPT_TIMEOUT_SECONDS: ${{ github.event.inputs.run_attempt_timeout_seconds }}
-          FAILED_RUN_RETRY_SECONDS: ${{ github.event.inputs.failed_run_retry_seconds }}
-          STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
-          EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
+          EXPECTED_PLAN_HASH: ${{ inputs.expected_plan_hash }}
+        run: >-
+          uv run python scripts/execute_graph_backfill_plan.py
+          source-runtime-backfill-run.json
+          --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          --validate-only
+      - name: Download prior checkpoint
+        if: inputs.resume_run_id != ''
+        shell: bash
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          SOURCE_KEY: ${{ matrix.source_key }}
+          STACK: ${{ inputs.stack }}
         run: |
           set -euo pipefail
-          printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
-          planner=(uv run python scripts/plan_graph_backfill.py --stack-file aws/Pulumi.go-prod.yaml --runtime-id-file runtime-ids.txt --target-concurrency "${TARGET_CONCURRENCY}")
-          if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
-          if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
-          if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
-          if [ -n "${WAIT_TIMEOUT_SECONDS}" ]; then planner+=(--wait-timeout-seconds "${WAIT_TIMEOUT_SECONDS}"); fi
-          if [ -n "${RUN_ATTEMPT_TIMEOUT_SECONDS}" ]; then planner+=(--run-attempt-timeout-seconds "${RUN_ATTEMPT_TIMEOUT_SECONDS}"); fi
-          if [ -n "${FAILED_RUN_RETRY_SECONDS}" ]; then planner+=(--failed-run-retry-seconds "${FAILED_RUN_RETRY_SECONDS}"); fi
-          if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
-          "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
-          "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json
-          cat source-runtime-backfill-plan.tsv
-          cat source-runtime-backfill-run.json
-          uv run python -c 'import json; print("plan_hash=" + json.load(open("source-runtime-backfill-run.json", encoding="utf-8"))["plan_hash"])'
-          if [ "${MODE}" != "plan" ]; then
-            uv run python scripts/execute_graph_backfill_plan.py source-runtime-backfill-run.json --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          mkdir -p resume-state
+          gh run download "${RESUME_RUN_ID}" \
+            --name "source-runtime-backfill-state-${STACK}-${SOURCE_KEY}" \
+            --dir resume-state
+      - name: Configure AWS credentials
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+      - name: Execute source lane
+        id: execute
+        shell: bash
+        working-directory: infra
+        env:
+          EXPECTED_PLAN_HASH: ${{ inputs.expected_plan_hash }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          SOURCE_ID: ${{ matrix.source_id }}
+          SOURCE_KEY: ${{ matrix.source_key }}
+        run: |
+          set +e
+          args=(
+            uv run python scripts/execute_graph_backfill_plan.py
+            source-runtime-backfill-run.json
+            --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+            --source-id "${SOURCE_ID}"
+            --state-output "source-runtime-backfill-state-${SOURCE_KEY}.json"
+          )
+          if [ -n "${RESUME_RUN_ID}" ]; then
+            args+=(--resume-state "resume-state/source-runtime-backfill-state-${SOURCE_KEY}.json")
           fi
-      - name: Upload backfill plan
+          "${args[@]}"
+          status=$?
+          echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+          exit 0
+      - name: Upload source checkpoint
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: source-runtime-backfill-go-prod
+          name: source-runtime-backfill-state-${{ inputs.stack }}-${{ matrix.source_key }}
+          path: infra/source-runtime-backfill-state-${{ matrix.source_key }}.json
+          if-no-files-found: warn
+      - name: Enforce source result
+        if: steps.execute.outputs.exit_code != '0'
+        shell: bash
+        run: exit 1
+
+  execute-go-prod:
+    name: Backfill go-prod / ${{ matrix.source_id }}
+    needs: [plan]
+    if: inputs.mode != 'plan' && inputs.stack == 'go-prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: production
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.source_parallelism) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: source-runtime-backfill-${{ inputs.stack }}-${{ matrix.source_key }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: source-runtime-backfill-plan-${{ inputs.stack }}
+          path: infra
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.14.6"
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+      - name: Validate approved plan
+        shell: bash
+        working-directory: infra
+        env:
+          EXPECTED_PLAN_HASH: ${{ inputs.expected_plan_hash }}
+        run: >-
+          uv run python scripts/execute_graph_backfill_plan.py
+          source-runtime-backfill-run.json
+          --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          --validate-only
+      - name: Download prior checkpoint
+        if: inputs.resume_run_id != ''
+        shell: bash
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          SOURCE_KEY: ${{ matrix.source_key }}
+          STACK: ${{ inputs.stack }}
+        run: |
+          set -euo pipefail
+          mkdir -p resume-state
+          gh run download "${RESUME_RUN_ID}" \
+            --name "source-runtime-backfill-state-${STACK}-${SOURCE_KEY}" \
+            --dir resume-state
+      - name: Configure AWS credentials
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+      - name: Execute source lane
+        id: execute
+        shell: bash
+        working-directory: infra
+        env:
+          EXPECTED_PLAN_HASH: ${{ inputs.expected_plan_hash }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          SOURCE_ID: ${{ matrix.source_id }}
+          SOURCE_KEY: ${{ matrix.source_key }}
+        run: |
+          set +e
+          args=(
+            uv run python scripts/execute_graph_backfill_plan.py
+            source-runtime-backfill-run.json
+            --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+            --source-id "${SOURCE_ID}"
+            --state-output "source-runtime-backfill-state-${SOURCE_KEY}.json"
+          )
+          if [ -n "${RESUME_RUN_ID}" ]; then
+            args+=(--resume-state "resume-state/source-runtime-backfill-state-${SOURCE_KEY}.json")
+          fi
+          "${args[@]}"
+          status=$?
+          echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+          exit 0
+      - name: Upload source checkpoint
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-backfill-state-${{ inputs.stack }}-${{ matrix.source_key }}
+          path: infra/source-runtime-backfill-state-${{ matrix.source_key }}.json
+          if-no-files-found: warn
+      - name: Enforce source result
+        if: steps.execute.outputs.exit_code != '0'
+        shell: bash
+        run: exit 1
+
+  summarize:
+    name: Summarize backfill checkpoints
+    needs: [plan, execute-sec-dev, execute-go-prod]
+    if: always() && inputs.mode != 'plan'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: source-runtime-backfill-state-${{ inputs.stack }}-*
+          path: infra/backfill-states
+          merge-multiple: true
+      - name: Build completion report
+        shell: bash
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          states=(backfill-states/source-runtime-backfill-state-*.json)
+          if [ ! -e "${states[0]}" ]; then
+            echo "No source checkpoint artifacts were produced." >&2
+            exit 1
+          fi
+          python3 scripts/summarize_graph_backfill.py \
+            "${states[@]}" \
+            --json-output source-runtime-backfill-summary.json \
+            --markdown-output source-runtime-backfill-summary.md
+          cat source-runtime-backfill-summary.md >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload completion report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-backfill-summary-${{ inputs.stack }}
           path: |
-            infra/source-runtime-backfill-plan.tsv
-            infra/source-runtime-backfill-run.json
+            infra/source-runtime-backfill-summary.json
+            infra/source-runtime-backfill-summary.md
+          if-no-files-found: warn

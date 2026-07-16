@@ -2,20 +2,45 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any
 
 try:
-    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_ids_from_command, runtime_source_id
-except ModuleNotFoundError:  # pragma: no cover
+    from aws.source_runtime_scope import (
+        load_cerebro_config,
+        runtime_family,
+        runtime_ids_from_command,
+        runtime_source_id,
+    )
+    from scripts.graph_backfill_contract import (
+        EXECUTABLE_TARGET_STATES,
+        PLAN_SCHEMA_VERSION,
+        compute_plan_hash,
+        file_sha256,
+        validate_plan,
+    )
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_runtime_scope import load_cerebro_config, runtime_family, runtime_ids_from_command, runtime_source_id
+    from aws.source_runtime_scope import (
+        load_cerebro_config,
+        runtime_family,
+        runtime_ids_from_command,
+        runtime_source_id,
+    )
+    from scripts.graph_backfill_contract import (
+        EXECUTABLE_TARGET_STATES,
+        PLAN_SCHEMA_VERSION,
+        compute_plan_hash,
+        file_sha256,
+        validate_plan,
+    )
 
 
 @dataclass(frozen=True)
@@ -30,20 +55,40 @@ class BackfillTarget:
 
 
 @dataclass(frozen=True)
-class BackfillRun:
-    stack_file: str
-    mode: str
-    requested_runtime_ids: list[str]
-    target_concurrency: int
+class BackfillPolicy:
+    max_targets: int
+    max_targets_per_source: int
+    source_parallelism: int
+    source_cooldown_seconds: int
+    max_attempts: int
+    retry_backoff_seconds: int
     run_page_limit: int
     run_graph_page_limit: int
     run_event_limit: int
     wait_timeout_seconds: int
     run_attempt_timeout_seconds: int
-    failed_run_retry_seconds: int
     stop_running_before_run: bool
+
+
+@dataclass(frozen=True)
+class BackfillSourceGroup:
+    source_id: str
+    source_key: str
+    runtime_ids: list[str]
+
+
+@dataclass(frozen=True)
+class BackfillRun:
+    schema_version: int
+    control_plane_ref: str
+    stack_file: str
+    stack_name: str
+    stack_config_sha256: str
+    mode: str
+    requested_runtime_ids: list[str]
+    policy: BackfillPolicy
     targets: list[BackfillTarget]
-    commands: list[list[str]]
+    source_groups: list[BackfillSourceGroup]
     plan_hash: str
 
 
@@ -69,22 +114,16 @@ def _missing_runtime_ids_from_diagnostics(text: str) -> list[str]:
 
 
 def _dedupe(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            result.append(value)
-    return result
+    return list(dict.fromkeys(values))
 
 
-def _schedule_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    mapped: dict[str, dict[str, Any]] = {}
+def _schedule_map(config: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    mapped: dict[str, list[dict[str, Any]]] = {}
     for schedule in config.get("orchestratorSchedules") or []:
         if not isinstance(schedule, dict):
             continue
         for runtime_id in runtime_ids_from_command(schedule.get("command")):
-            mapped[runtime_id] = schedule
+            mapped.setdefault(runtime_id, []).append(schedule)
     return mapped
 
 
@@ -107,39 +146,82 @@ def _disabled_runtime_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        runtime_id = str(entry.get("runtimeId") or entry.get("runtime_id") or entry.get("sourceRuntimeId") or "").strip()
+        runtime_id = str(
+            entry.get("runtimeId")
+            or entry.get("runtime_id")
+            or entry.get("sourceRuntimeId")
+            or ""
+        ).strip()
         if runtime_id:
             mapped[runtime_id] = entry
     return mapped
 
 
-def plan_backfill(config: dict[str, Any], runtime_ids: list[str], source_id: str = "") -> list[BackfillTarget]:
+def plan_backfill(
+    config: dict[str, Any], runtime_ids: list[str], source_id: str = ""
+) -> list[BackfillTarget]:
     runtimes = _runtime_map(config)
     disabled = _disabled_runtime_map(config)
     schedules = _schedule_map(config)
     targets: list[BackfillTarget] = []
-    for runtime_id in _dedupe(runtime_ids):
+    for runtime_id in sorted(_dedupe(runtime_ids)):
         disabled_entry = disabled.get(runtime_id)
         if disabled_entry is not None:
             reason = str(disabled_entry.get("reason") or "temporarily disabled").strip()
-            if review_deadline := str(disabled_entry.get("reviewDeadline") or "").strip():
+            if review_deadline := str(
+                disabled_entry.get("reviewDeadline") or ""
+            ).strip():
                 reason = f"{reason}; review_deadline={review_deadline}"
-            targets.append(BackfillTarget(runtime_id, "", "", "", "", "quarantined", reason))
+            targets.append(
+                BackfillTarget(runtime_id, "", "", "", "", "quarantined", reason)
+            )
             continue
         runtime = runtimes.get(runtime_id)
         if runtime is None:
-            targets.append(BackfillTarget(runtime_id, "", "", "", "", "not_declared", "runtime is not declared in stack config"))
+            targets.append(
+                BackfillTarget(
+                    runtime_id,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "not_declared",
+                    "runtime is not declared in stack config",
+                )
+            )
             continue
         runtime_source = runtime_source_id(runtime)
         if source_id and runtime_source != source_id:
-            targets.append(BackfillTarget(runtime_id, runtime_source, runtime_family(runtime), "", "", "skipped", "source_id filter mismatch"))
+            targets.append(
+                BackfillTarget(
+                    runtime_id,
+                    runtime_source,
+                    runtime_family(runtime),
+                    "",
+                    "",
+                    "skipped",
+                    "source_id filter mismatch",
+                )
+            )
             continue
-        schedule = schedules.get(runtime_id)
+        runtime_schedules = schedules.get(runtime_id) or []
+        schedule = runtime_schedules[0] if len(runtime_schedules) == 1 else None
         schedule_name = str((schedule or {}).get("name") or "").strip()
-        schedule_expression = str((schedule or {}).get("scheduleExpression") or "").strip()
-        if not schedule:
-            state = "manual_backfill"
+        schedule_expression = str(
+            (schedule or {}).get("scheduleExpression") or ""
+        ).strip()
+        if not runtime_schedules:
+            state = "missing_schedule"
             reason = "runtime is declared without an orchestrator schedule"
+        elif len(runtime_schedules) > 1:
+            state = "ambiguous_schedule"
+            reason = f"runtime is declared in {len(runtime_schedules)} orchestrator schedules"
+        elif (
+            str((schedule or {}).get("state") or "ENABLED").strip().upper()
+            == "DISABLED"
+        ):
+            state = "schedule_disabled"
+            reason = "runtime orchestrator schedule is disabled"
         else:
             state = "backfillable"
             reason = "runtime is declared and scheduled"
@@ -157,97 +239,159 @@ def plan_backfill(config: dict[str, Any], runtime_ids: list[str], source_id: str
     return targets
 
 
-def _group_backfillable(targets: list[BackfillTarget]) -> dict[str, list[str]]:
-    grouped: dict[str, list[str]] = defaultdict(list)
+def _source_key(source_id: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", source_id.lower()).strip("-")[:40] or "source"
+    digest = hashlib.sha256(source_id.encode("utf-8")).hexdigest()[:10]
+    return f"{slug}-{digest}"
+
+
+def _source_groups(targets: list[BackfillTarget]) -> list[BackfillSourceGroup]:
+    grouped: dict[str, list[str]] = {}
     for target in targets:
-        if target.state in {"backfillable", "manual_backfill"} and target.source_id:
-            grouped[target.source_id].append(target.runtime_id)
-    return dict(sorted(grouped.items()))
+        if target.state in EXECUTABLE_TARGET_STATES and target.source_id:
+            grouped.setdefault(target.source_id, []).append(target.runtime_id)
+    return [
+        BackfillSourceGroup(source_id, _source_key(source_id), sorted(runtime_ids))
+        for source_id, runtime_ids in sorted(grouped.items())
+    ]
 
 
-def _verify_command(args: argparse.Namespace, source_id: str, runtime_ids: list[str]) -> list[str]:
+def _policy(args: argparse.Namespace) -> BackfillPolicy:
+    return BackfillPolicy(
+        max_targets=args.max_targets,
+        max_targets_per_source=args.max_targets_per_source,
+        source_parallelism=args.source_parallelism,
+        source_cooldown_seconds=args.source_cooldown_seconds,
+        max_attempts=args.max_attempts,
+        retry_backoff_seconds=args.retry_backoff_seconds,
+        run_page_limit=args.run_page_limit,
+        run_graph_page_limit=args.run_graph_page_limit,
+        run_event_limit=args.run_event_limit,
+        wait_timeout_seconds=args.wait_timeout_seconds,
+        run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+        stop_running_before_run=args.stop_running_before_run,
+    )
+
+
+def _stack_name(stack_file: Path) -> str:
+    name = stack_file.name
+    if name.startswith("Pulumi.") and name.endswith(".yaml"):
+        return name.removeprefix("Pulumi.").removesuffix(".yaml")
+    return stack_file.stem
+
+
+def _control_plane_ref(explicit: str) -> str:
+    if explicit.strip():
+        return explicit.strip()
+    if github_sha := os.environ.get("GITHUB_SHA", "").strip():
+        return github_sha
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "local-uncommitted"
+    return completed.stdout.strip() or "local-uncommitted"
+
+
+def backfill_run(
+    args: argparse.Namespace, runtime_ids: list[str], targets: list[BackfillTarget]
+) -> BackfillRun:
+    normalized_runtime_ids = sorted(_dedupe(runtime_ids))
+    if len(normalized_runtime_ids) > args.max_targets:
+        raise ValueError(
+            f"requested {len(normalized_runtime_ids)} runtimes; max_targets is {args.max_targets}"
+        )
+    if args.mode != "plan":
+        blocked = [
+            target.runtime_id
+            for target in targets
+            if target.state not in EXECUTABLE_TARGET_STATES
+        ]
+        if blocked:
+            raise ValueError(
+                f"requested backfill contains non-executable runtime(s): {', '.join(blocked)}"
+            )
+
+    policy = _policy(args)
+    source_groups = _source_groups(targets)
+    hash_payload: dict[str, Any] = {
+        "schema_version": PLAN_SCHEMA_VERSION,
+        "control_plane_ref": _control_plane_ref(args.control_plane_ref),
+        "stack_file": args.stack_file.as_posix(),
+        "stack_name": _stack_name(args.stack_file),
+        "stack_config_sha256": file_sha256(args.stack_file),
+        "requested_runtime_ids": normalized_runtime_ids,
+        "policy": asdict(policy),
+        "targets": [asdict(target) for target in targets],
+        "source_groups": [asdict(group) for group in source_groups],
+    }
+    return BackfillRun(
+        schema_version=PLAN_SCHEMA_VERSION,
+        control_plane_ref=hash_payload["control_plane_ref"],
+        stack_file=hash_payload["stack_file"],
+        stack_name=hash_payload["stack_name"],
+        stack_config_sha256=hash_payload["stack_config_sha256"],
+        mode=args.mode,
+        requested_runtime_ids=normalized_runtime_ids,
+        policy=policy,
+        targets=targets,
+        source_groups=source_groups,
+        plan_hash=compute_plan_hash(hash_payload),
+    )
+
+
+def _verify_command(run: BackfillRun, source_id: str, runtime_id: str) -> list[str]:
+    policy = run.policy
     command = [
         "uv",
         "run",
         "python",
         "scripts/verify_source_runtime_ecs.py",
         "--stack-file",
-        str(args.stack_file),
+        run.stack_file,
         "--source-id",
         source_id,
+        "--runtime-id",
+        runtime_id,
         "--target-concurrency",
-        str(args.target_concurrency),
+        "1",
         "--succeed-after-graph-ingest",
-        "--allow-lease-contention-skip",
+        "--run-page-limit",
+        str(policy.run_page_limit),
+        "--run-graph-page-limit",
+        str(policy.run_graph_page_limit),
+        "--run-event-limit",
+        str(policy.run_event_limit),
+        "--wait-timeout-seconds",
+        str(policy.wait_timeout_seconds),
+        "--run-attempt-timeout-seconds",
+        str(policy.run_attempt_timeout_seconds),
     ]
-    if args.mode == "run":
+    if run.mode == "run":
         command.append("--run")
-    elif args.mode == "dry-run":
+    elif run.mode == "dry-run":
         command.append("--dry-run")
-    if args.run_page_limit:
-        command.extend(["--run-page-limit", str(args.run_page_limit)])
-    if args.run_graph_page_limit:
-        command.extend(["--run-graph-page-limit", str(args.run_graph_page_limit)])
-    if args.run_event_limit:
-        command.extend(["--run-event-limit", str(args.run_event_limit)])
-    if args.wait_timeout_seconds:
-        command.extend(["--wait-timeout-seconds", str(args.wait_timeout_seconds)])
-    if args.run_attempt_timeout_seconds:
-        command.extend(["--run-attempt-timeout-seconds", str(args.run_attempt_timeout_seconds)])
-    if args.failed_run_retry_seconds:
-        command.extend(["--failed-run-retry-seconds", str(args.failed_run_retry_seconds)])
-    if args.stop_running_before_run:
+    if policy.stop_running_before_run:
         command.append("--stop-running-before-run")
-    for runtime_id in runtime_ids:
-        command.extend(["--runtime-id", runtime_id])
     return command
 
 
 def _write_tsv(targets: list[BackfillTarget]) -> None:
-    print("runtime_id\tsource_id\tfamily\tschedule_name\tschedule_expression\tstate\treason")
+    print(
+        "runtime_id\tsource_id\tfamily\tschedule_name\tschedule_expression\tstate\treason"
+    )
     for target in targets:
         print("\t".join(str(value) for value in asdict(target).values()))
 
 
-def _write_commands(args: argparse.Namespace, targets: list[BackfillTarget]) -> None:
-    for command in _commands(args, targets):
-        print(json.dumps(command))
-
-
-def _command_groups(args: argparse.Namespace, targets: list[BackfillTarget]) -> list[tuple[str, list[str]]]:
-    groups: list[tuple[str, list[str]]] = []
-    for source_id, runtime_ids in _group_backfillable(targets).items():
-        runtime_groups = [[runtime_id] for runtime_id in runtime_ids] if args.target_concurrency == 1 else [runtime_ids]
-        groups.extend((source_id, runtime_group) for runtime_group in runtime_groups)
-    return groups
-
-
-def _commands(args: argparse.Namespace, targets: list[BackfillTarget]) -> list[list[str]]:
-    return [_verify_command(args, source_id, runtime_ids) for source_id, runtime_ids in _command_groups(args, targets)]
-
-
-def _plan_hash(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
-
-
-def backfill_run(args: argparse.Namespace, runtime_ids: list[str], targets: list[BackfillTarget]) -> BackfillRun:
-    commands = _commands(args, targets)
-    hash_payload = {
-        "stack_file": str(args.stack_file),
-        "requested_runtime_ids": runtime_ids,
-        "target_concurrency": args.target_concurrency,
-        "run_page_limit": args.run_page_limit,
-        "run_graph_page_limit": args.run_graph_page_limit,
-        "run_event_limit": args.run_event_limit,
-        "wait_timeout_seconds": args.wait_timeout_seconds,
-        "run_attempt_timeout_seconds": args.run_attempt_timeout_seconds,
-        "failed_run_retry_seconds": args.failed_run_retry_seconds,
-        "stop_running_before_run": args.stop_running_before_run,
-        "targets": [asdict(target) for target in targets],
-    }
-    payload = {"mode": args.mode, "commands": commands, **hash_payload}
-    return BackfillRun(plan_hash=_plan_hash(hash_payload), **payload)
+def _write_commands(run: BackfillRun) -> None:
+    for group in run.source_groups:
+        for runtime_id in group.runtime_ids:
+            print(json.dumps(_verify_command(run, group.source_id, runtime_id)))
 
 
 def _load_runtime_ids(args: argparse.Namespace) -> list[str]:
@@ -256,43 +400,92 @@ def _load_runtime_ids(args: argparse.Namespace) -> list[str]:
         if str(args.runtime_id_file) == "-":
             values.extend(_runtime_ids_from_text(sys.stdin.read()))
         else:
-            values.extend(_runtime_ids_from_text(args.runtime_id_file.read_text(encoding="utf-8")))
+            values.extend(
+                _runtime_ids_from_text(args.runtime_id_file.read_text(encoding="utf-8"))
+            )
     if args.diagnostics_file:
-        values.extend(_missing_runtime_ids_from_diagnostics(args.diagnostics_file.read_text(encoding="utf-8", errors="replace")))
-    return _dedupe(values)
+        values.extend(
+            _missing_runtime_ids_from_diagnostics(
+                args.diagnostics_file.read_text(encoding="utf-8", errors="replace")
+            )
+        )
+    return sorted(_dedupe(values))
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Plan graph source-runtime backfills from missing ingest history.")
+    parser = argparse.ArgumentParser(
+        description="Create an approval-bound source-runtime backfill plan."
+    )
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--runtime-id", action="append", default=[])
     parser.add_argument("--runtime-id-file", type=Path)
     parser.add_argument("--diagnostics-file", type=Path)
     parser.add_argument("--source-id", default="")
     parser.add_argument("--mode", choices=["plan", "dry-run", "run"], default="plan")
-    parser.add_argument("--format", choices=["tsv", "json", "commands", "run-json"], default="tsv")
-    parser.add_argument("--target-concurrency", type=int, default=4)
-    parser.add_argument("--run-page-limit", type=int, default=0)
-    parser.add_argument("--run-graph-page-limit", type=int, default=0)
-    parser.add_argument("--run-event-limit", type=int, default=0)
-    parser.add_argument("--wait-timeout-seconds", type=int, default=0)
-    parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0)
-    parser.add_argument("--failed-run-retry-seconds", type=int, default=0)
+    parser.add_argument(
+        "--format",
+        choices=["tsv", "json", "commands", "run-json", "matrix-json"],
+        default="tsv",
+    )
+    parser.add_argument("--control-plane-ref", default="")
+    parser.add_argument("--max-targets", type=_positive_int, default=20)
+    parser.add_argument("--max-targets-per-source", type=_positive_int, default=5)
+    parser.add_argument("--source-parallelism", type=_positive_int, default=2)
+    parser.add_argument("--source-cooldown-seconds", type=_non_negative_int, default=60)
+    parser.add_argument("--max-attempts", type=_positive_int, default=2)
+    parser.add_argument("--retry-backoff-seconds", type=_non_negative_int, default=60)
+    parser.add_argument("--run-page-limit", type=_positive_int, default=25)
+    parser.add_argument("--run-graph-page-limit", type=_positive_int, default=25)
+    parser.add_argument("--run-event-limit", type=_positive_int, default=250)
+    parser.add_argument("--wait-timeout-seconds", type=_positive_int, default=1800)
+    parser.add_argument(
+        "--run-attempt-timeout-seconds", type=_positive_int, default=900
+    )
     parser.add_argument("--stop-running-before-run", action="store_true")
     args = parser.parse_args(argv)
 
     runtime_ids = _load_runtime_ids(args)
-    if not runtime_ids:
-        raise SystemExit("no runtime ids provided")
+    if not runtime_ids and args.mode != "plan":
+        raise SystemExit("no runtime ids were selected")
+    if len(runtime_ids) > args.max_targets:
+        raise SystemExit(
+            f"requested {len(runtime_ids)} runtimes; max_targets is {args.max_targets}"
+        )
     config = load_cerebro_config(args.stack_file)
     targets = plan_backfill(config, runtime_ids, args.source_id)
+    run = backfill_run(args, runtime_ids, targets)
+    validate_plan(asdict(run))
 
     if args.format == "json":
-        print(json.dumps([asdict(target) for target in targets], indent=2, sort_keys=True))
+        print(
+            json.dumps([asdict(target) for target in targets], indent=2, sort_keys=True)
+        )
     elif args.format == "commands":
-        _write_commands(args, targets)
+        _write_commands(run)
     elif args.format == "run-json":
-        print(json.dumps(asdict(backfill_run(args, runtime_ids, targets)), indent=2, sort_keys=True))
+        print(json.dumps(asdict(run), indent=2, sort_keys=True))
+    elif args.format == "matrix-json":
+        print(
+            json.dumps(
+                {"include": [asdict(group) for group in run.source_groups]},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
     else:
         _write_tsv(targets)
     return 0
