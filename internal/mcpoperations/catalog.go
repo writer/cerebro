@@ -35,15 +35,14 @@ type Operation struct {
 	Classification   Classification
 	ResponseContract string
 	Deprecated       bool
-	SelectionTerms   []string
 }
 
 var operationRegistry = buildOperationRegistry()
 
 func buildOperationRegistry() map[string]Operation {
 	operations := []Operation{
-		taskRead("cerebro.health", "runtime", "service health", "health", "dependency"),
-		taskRead("cerebro.version", "runtime", "build and API version", "version", "build"),
+		taskRead("cerebro.health", "runtime", "service health"),
+		taskRead("cerebro.version", "runtime", "build and API version"),
 		expertRead("cerebro.sources.list", "sources", "source catalog"),
 		expertRead("cerebro.connectors.list", "connectors", "connector certification list"),
 		expertRead("cerebro.sources.check", "sources", "live source check"),
@@ -54,11 +53,11 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.connector_definitions.validate", "connectors", "connector definition validation"),
 		expertRead("cerebro.findings.list", "findings", "runtime finding list"),
 		expertRead("cerebro.findings.get", "findings", "finding record"),
-		expertRead("cerebro.findings.search", "findings", "finding search results"),
+		taskRead("cerebro.findings.search", "findings", "finding search results"),
 		expertRead("cerebro.runtimes.status", "source-runtime", "runtime status and risk summary"),
 		expertRead("cerebro.evidence.list", "findings", "finding evidence list"),
 		expertRead("cerebro.evidence.get", "findings", "finding evidence record"),
-		expertRead("cerebro.assets.search", "graph", "asset search results"),
+		taskRead("cerebro.assets.search", "graph", "asset search results"),
 		expertRead("cerebro.assets.get", "graph", "asset record"),
 		expertRead("cerebro.risk.summary", "risk", "finding risk summary"),
 		expertRead("cerebro.risk.actions.list", "risk", "risk action plan"),
@@ -73,8 +72,9 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.agent.preflight", "agent-platform", "agent preflight"),
 		expertRead("cerebro.agent.claims.verify", "agent-platform", "claim verification"),
 		expertRead("cerebro.agent.work.contract", "agent-platform", "agent work contract"),
-		expertRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace"),
-		expertRead("cerebro.investigation.context", "findings", "finding investigation context"),
+		expertRead("cerebro.agent.missions.contract", "agent-platform", "mission operating contract"),
+		taskRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace"),
+		taskRead("cerebro.investigation.context", "findings", "finding investigation context"),
 		expertExecute("cerebro.assessments.plan.create", "compliance-assessment", "persisted assessment plan draft"),
 		expertExecute("cerebro.assessments.plan.publish", "compliance-assessment", "published assessment plan revision"),
 		expertRead("cerebro.assessments.plan.get", "compliance-assessment", "assessment plan revision"),
@@ -86,10 +86,10 @@ func buildOperationRegistry() map[string]Operation {
 		expertPropose("cerebro.assessments.remediation.propose", "compliance-assessment", "approval-gated remediation work proposal"),
 		expertPropose("cerebro.findings.action.propose", "findings", "finding action proposal"),
 		expertPropose("cerebro.source_runtimes.refresh.propose", "source-runtime", "runtime refresh proposal"),
-		taskRead("cerebro.risk.explain", "findings", "task result with finding, evidence, assets, and optional graph context", "explain risk", "investigate finding", "why is this risky", "finding evidence"),
-		taskRead("cerebro.evidence.packet", "agent-platform", "task result with an agent evidence packet and coverage state", "evidence packet", "collect evidence", "prepare evidence", "decision evidence"),
-		taskRead("cerebro.sources.health", "source-runtime", "task result with source coverage and blind spots", "source health", "connector health", "blind spot", "coverage gap", "stale source"),
-		taskPropose("cerebro.action.plan", "risk", "task result with ranked non-mutating action candidates", "plan remediation", "recommend action", "what should we fix", "next action", "execute remediation"),
+		taskRead("cerebro.risk.explain", "findings", "task result with finding, evidence, assets, and optional graph context"),
+		taskRead("cerebro.evidence.packet", "agent-platform", "task result with an agent evidence packet and coverage state"),
+		taskRead("cerebro.sources.health", "source-runtime", "task result with source coverage and blind spots"),
+		taskPropose("cerebro.action.plan", "risk", "task result with ranked non-mutating action candidates"),
 	}
 	registry := make(map[string]Operation, len(operations))
 	for _, operation := range operations {
@@ -98,29 +98,29 @@ func buildOperationRegistry() map[string]Operation {
 	return registry
 }
 
-func taskRead(name string, domain string, response string, terms ...string) Operation {
-	return operation(name, domain, BehaviorRead, ClassificationTask, response, terms)
+func taskRead(name string, domain string, response string) Operation {
+	return operation(name, domain, BehaviorRead, ClassificationTask, response)
 }
 
-func taskPropose(name string, domain string, response string, terms ...string) Operation {
-	return operation(name, domain, BehaviorPropose, ClassificationTask, response, terms)
+func taskPropose(name string, domain string, response string) Operation {
+	return operation(name, domain, BehaviorPropose, ClassificationTask, response)
 }
 
 func expertRead(name string, domain string, response string) Operation {
-	return operation(name, domain, BehaviorRead, ClassificationExpert, response, nil)
+	return operation(name, domain, BehaviorRead, ClassificationExpert, response)
 }
 
 func expertPropose(name string, domain string, response string) Operation {
-	return operation(name, domain, BehaviorPropose, ClassificationExpert, response, nil)
+	return operation(name, domain, BehaviorPropose, ClassificationExpert, response)
 }
 
 func expertExecute(name string, domain string, response string) Operation {
-	result := operation(name, domain, BehaviorExecute, ClassificationExpert, response, nil)
+	result := operation(name, domain, BehaviorExecute, ClassificationExpert, response)
 	result.RequiredScopes = []string{ScopeSecurityRead, ScopeGRCInventoryWrite}
 	return result
 }
 
-func operation(name string, domain string, behavior Behavior, classification Classification, response string, terms []string) Operation {
+func operation(name string, domain string, behavior Behavior, classification Classification, response string) Operation {
 	return Operation{
 		Name:             name,
 		OwnerDomain:      domain,
@@ -128,7 +128,6 @@ func operation(name string, domain string, behavior Behavior, classification Cla
 		RequiredScopes:   []string{ScopeSecurityRead},
 		Classification:   classification,
 		ResponseContract: response,
-		SelectionTerms:   append([]string(nil), terms...),
 	}
 }
 
@@ -138,7 +137,6 @@ func Lookup(name string) (Operation, bool) {
 		return Operation{}, false
 	}
 	operation.RequiredScopes = append([]string(nil), operation.RequiredScopes...)
-	operation.SelectionTerms = append([]string(nil), operation.SelectionTerms...)
 	return operation, true
 }
 
@@ -196,7 +194,10 @@ func ParseToolsets(header string, rawParams []byte) Toolsets {
 	toolsets := Toolsets{}
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value != "" && value != "all" && value != "full" {
+		if value == "all" {
+			value = "full"
+		}
+		if value != "" {
 			toolsets[value] = true
 		}
 	}
@@ -204,6 +205,9 @@ func ParseToolsets(header string, rawParams []byte) Toolsets {
 }
 
 func EnabledForToolsets(name string, enabled Toolsets) bool {
+	if enabled["full"] {
+		return true
+	}
 	operation, known := Lookup(name)
 	if enabled["task"] && known && operation.Classification == ClassificationTask {
 		return true

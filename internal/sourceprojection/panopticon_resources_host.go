@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson"
 )
 
@@ -38,10 +39,10 @@ var panopticonResourcesEvaluator = wasmjson.New(wasmjson.Config{
 
 func panopticonResourceObjectsWasm(ctx context.Context, payload []byte) ([]map[string]any, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("%w: context is required", errPanopticonResourceExtractorUnavailable)
+		return nil, wasmhost.Diagnose(wasmhost.DiagnosticInvalidInput, fmt.Errorf("%w: context is required", errPanopticonResourceExtractorUnavailable))
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %w", errPanopticonResourceExtractorUnavailable, err)
+		return nil, wasmhost.DiagnoseContext(ctx, fmt.Errorf("%w: %w", errPanopticonResourceExtractorUnavailable, err))
 	}
 	if len(payload) == 0 {
 		return nil, nil
@@ -52,10 +53,17 @@ func panopticonResourceObjectsWasm(ctx context.Context, payload []byte) ([]map[s
 	}
 	var resources []map[string]any
 	if err := json.Unmarshal(output, &resources); err != nil {
-		return nil, fmt.Errorf("%w: decode response: %w", errPanopticonResourceExtractorUnavailable, err)
+		return nil, wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, fmt.Errorf("%w: decode response: %w", errPanopticonResourceExtractorUnavailable, err))
 	}
-	if len(resources) > maxPanopticonResourceObjects {
-		return nil, fmt.Errorf("%w: returned %d objects; maximum is %d", errPanopticonResourceExtractorUnavailable, len(resources), maxPanopticonResourceObjects)
+	if err := validatePanopticonResourceCount(resources); err != nil {
+		return nil, err
 	}
 	return resources, nil
+}
+
+func validatePanopticonResourceCount(resources []map[string]any) error {
+	if len(resources) <= maxPanopticonResourceObjects {
+		return nil
+	}
+	return wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, fmt.Errorf("%w: returned %d objects; maximum is %d", errPanopticonResourceExtractorUnavailable, len(resources), maxPanopticonResourceObjects))
 }

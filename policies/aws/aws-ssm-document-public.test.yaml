@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        ssm_document_public: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        ssm_document_public: false
+      wantFinding: false

@@ -30,6 +30,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
+	"github.com/writer/cerebro/internal/decisionpacket"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findingapi"
@@ -93,27 +94,29 @@ type App struct {
 }
 
 type appServices struct {
-	sourceOps      *sourceops.Service
-	reports        *reports.Service
-	runtimeOps     *sourceruntime.Service
-	claims         *claims.Service
-	findings       *findings.Service
-	knowledgeOps   *knowledge.Service
-	graphQueries   *graphquery.Service
-	graphFacts     *graphfacts.Service
-	graphActions   *graphactions.Service
-	graphIngestOps *graphingest.Service
-	workflowReplay *workflowprojection.Replayer
-	jobs           *platformjobs.Service
-	assessments    *complianceassessment.Service
-	remediation    *complianceremediation.Service
+	sourceOps       *sourceops.Service
+	reports         *reports.Service
+	runtimeOps      *sourceruntime.Service
+	claims          *claims.Service
+	findings        *findings.Service
+	knowledgeOps    *knowledge.Service
+	graphQueries    *graphquery.Service
+	graphFacts      *graphfacts.Service
+	graphActions    *graphactions.Service
+	graphIngestOps  *graphingest.Service
+	workflowReplay  *workflowprojection.Replayer
+	jobs            *platformjobs.Service
+	assessments     *complianceassessment.Service
+	remediation     *complianceremediation.Service
+	decisionPackets *decisionpacket.Service
 }
 
 type bootstrapService struct {
-	cfg          config.Config
-	deps         Dependencies
-	sources      *sourcecdk.Registry
-	graphActions *graphactions.Service
+	cfg             config.Config
+	deps            Dependencies
+	sources         *sourcecdk.Registry
+	graphActions    *graphactions.Service
+	decisionPackets *decisionpacket.Service
 }
 
 const (
@@ -254,6 +257,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
 	}
 	app.services.remediation = app.newComplianceRemediationService()
+	app.services.decisionPackets = app.newDecisionPacketService()
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)

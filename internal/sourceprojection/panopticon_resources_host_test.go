@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson"
 	"github.com/writer/cerebro/internal/wasmjson/wasmjsontest"
 )
@@ -148,6 +149,18 @@ func TestPanopticonResourceObjectsWasmAcceptsEmptyPayloadWithLiveContext(t *test
 	}
 }
 
+func TestValidatePanopticonResourceCountClassifiesOversizedOutput(t *testing.T) {
+	t.Parallel()
+	resources := make([]map[string]any, maxPanopticonResourceObjects+1)
+	err := validatePanopticonResourceCount(resources)
+	if !errors.Is(err, errPanopticonResourceExtractorUnavailable) {
+		t.Fatalf("validatePanopticonResourceCount() error = %v, want extractor unavailable", err)
+	}
+	if !errors.Is(err, wasmhost.ErrOutputInvalid) {
+		t.Fatalf("validatePanopticonResourceCount() error = %v, want output invalid", err)
+	}
+}
+
 func TestPanopticonResourceObjectsWasmHonorsCanceledContextForEmptyPayload(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -156,6 +169,24 @@ func TestPanopticonResourceObjectsWasmHonorsCanceledContextForEmptyPayload(t *te
 	_, err := panopticonResourceObjectsWasm(ctx, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled extraction error = %v, want %v", err, context.Canceled)
+	}
+	if !errors.Is(err, wasmhost.ErrCanceled) {
+		t.Fatalf("canceled extraction error = %v, want Wasm cancellation diagnostic", err)
+	}
+}
+
+func BenchmarkPanopticonResourceExtractor(b *testing.B) {
+	ctx := context.Background()
+	payload := []byte(`{"alerts":[{"resourceResults":[{"ResourceID":"resource-1","ResourceName":"audit"}]}],"affectedResources":["arn:aws:s3:::audit"]}`)
+	if _, err := panopticonResourceObjectsWasm(ctx, payload); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := panopticonResourceObjectsWasm(ctx, payload); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

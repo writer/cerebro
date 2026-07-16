@@ -67,10 +67,10 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### The CDK is not a plugin marketplace yet.
 
-- Sources are in-process Go modules vendored in this repository. There is no first-party expectation that third parties drop binary plugins in at runtime, distribute sources via container images, or load them from a registry.
-- Why: an in-process CDK is the smallest thing that proves the contract. Out-of-process plugins are a separate operational surface (signing, sandboxing, auth, blast radius) and should land only when the in-process surface has stabilized and the operational case is concrete.
-- Enforced in: the in-process source registry in `internal/sourcecdk` and built-in source layout under `sources/`.
-- What would change this: a documented operational threshold (source count, deploy blast radius, third-party authoring need) that justifies the cost of an out-of-process plugin contract, with a separate design doc covering signing, sandboxing, and lifecycle.
+- Cerebro does not accept arbitrary third-party binaries, container images, native libraries, or runtime-downloaded source code. Source definitions and deep adapters remain first-party, repository-owned, versioned, and release-provenanced. The current Rust record helper is a vendored, first-party, zero-import Wasm module behind a fixed host ABI; it does not discover sources, perform provider I/O, receive credentials, or change source lifecycle.
+- Why: source execution receives credentials and controlled egress. An open plugin marketplace adds signing, sandboxing, revocation, compatibility, and incident-response obligations that a connector catalog does not need. A capability-free deterministic helper narrows one computation without creating a distribution surface.
+- Enforced in: the built-in source layout under `sources/`, connector-definition validation, release provenance, zero-import ABI validation in `internal/wasmjson`, and the absence of native dynamic-library or remote image loading. [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md) proposes one first-party out-of-process worker for compiled declarative plans if it passes the documented parity and operational gates; it does not permit third-party code loading.
+- What would change this: a concrete third-party authoring and distribution requirement, followed by a separate design that covers artifact signing, capability-scoped host calls, sandboxing, resource limits, revocation, compatibility, and lifecycle. Source count and compile-time wiring may justify the gated first-party worker described in the ADR, not a marketplace.
 
 ### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
 

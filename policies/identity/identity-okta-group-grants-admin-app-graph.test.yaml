@@ -1,22 +1,55 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: group grants admin app access fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_group:admins
-        primary_label: Finance Admins
-        primary_type: okta.group
-        fingerprint_key: urn:cerebro:writer:okta_group:admins|urn:cerebro:writer:okta_application:admin-console
-        resource_urns:
-          - urn:cerebro:writer:okta_group:admins
-          - urn:cerebro:writer:okta_application:admin-console
-        severity: HIGH
-        summary: Okta group Finance Admins grants admin-like access to Admin Console
-        action: Review group membership and split broad admin application access
-        evidence:
-          - urn: urn:cerebro:writer:okta_application:admin-console
+  - name: group to admin capability path produces a finding
+    graphFixture:
+      tenantId: test-group-admin-path
+      nodes: &nodes
+        - urn: urn:cerebro:test-group-admin-path:okta:group:security-operators
+          sourceId: okta
+          entityType: okta.group
+          label: Security Operators
+        - urn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          sourceId: okta
+          entityType: okta.application
+          label: Workforce Portal
+        - urn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+          sourceId: okta
+          entityType: okta.entitlement
+          label: Console administrator
+        - urn: urn:cerebro:test-group-admin-path:access:capability:cloud_admin
+          sourceId: okta
+          entityType: access.capability
+          label: Cloud administrator
+      edges:
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:group:security-operators
+          toUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          sourceId: okta
+          relation: assigned_to
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          toUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+          toUrn: urn:cerebro:test-group-admin-path:access:capability:cloud_admin
+          sourceId: okta
+          relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-group-admin-path:okta:application:cloud-console
+      - urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+      - urn:cerebro:test-group-admin-path:access:capability:cloud_admin
     wantFinding: true
-  - name: group scoped away from admin app passes
-    resource:
-      placeholder: true
+  - name: group application entitlement path without admin capability passes
+    graphFixture:
+      tenantId: test-group-admin-path
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:group:security-operators
+          toUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          sourceId: okta
+          relation: assigned_to
+        - fromUrn: urn:cerebro:test-group-admin-path:okta:application:cloud-console
+          toUrn: urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+          sourceId: okta
+          relation: grants_entitlement
     wantFinding: false

@@ -8,6 +8,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 - Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, Clippy, and the Wasm build target.
 - `cargo-deny` 0.20.2 for local Rust dependency-policy checks.
 - The `nightly-2026-06-09` toolchain and `cargo-fuzz` 0.13.1 only when running the static validator fuzz target locally.
+- `cargo-llvm-cov` 0.8.7 plus the `llvm-tools-preview` Rust component for the Rust coverage gate.
 - Docker and Docker Compose for the durable local stack.
 - Make.
 
@@ -108,6 +109,39 @@ New fuzz crashes are written under
 into `internal/graphagent/staticvalidator/fuzz/corpus/validate/` and add a
 deterministic regression assertion before fixing the parser.
 
+The source record kernel has two focused checks:
+
+```bash
+make sourceruntime-record-kernel-check
+make rust-source-kernel-evidence
+```
+
+The first compiles the native tests and the embedded `wasm32-unknown-unknown`
+guest. The second reports the guest's imports, exports, and byte size next to
+the runtime floor produced by the repository's pinned standard Go toolchain.
+The comparison is a capability-surface check, not a throughput benchmark.
+
+`make rust-wasm-check` also enforces a 90% Rust workspace line-coverage floor
+and runs 20 fixed iterations of each embedded Wasm benchmark. The coverage
+floor was set below the measured 90.09% workspace baseline so the gate catches
+meaningful regressions without treating rounding noise as a failure.
+`wasm_abi.rs` files are excluded because they are target-specific allocation
+and descriptor glue exercised by the Go/Wasm integration tests, not by native
+Rust coverage. No validator or evaluator logic is excluded.
+
+Run these lanes directly with:
+
+```bash
+make rust-coverage
+make rust-benchmark-smoke
+```
+
+The benchmark smoke lane covers the static validator, source coverage, MITRE,
+Panopticon extraction, and the shared Go host invocation path. It writes the
+complete Go benchmark output to `tmp/rust-wasm-benchmark.txt`. CI checks that
+the harnesses compile and finish; latency numbers remain evidence for
+comparison and are not pass/fail thresholds.
+
 Focused validation:
 
 ```bash
@@ -137,6 +171,12 @@ the Wasm files on `Linux-x86_64`, run `make rust-wasm-manifest-generate` and
 commit the manifest update. `make rust-wasm-manifest-check` reports digest,
 ABI, size, or budget drift; increasing a budget requires an intentional change
 to `internal/wasmartifacts/manifest.go`.
+
+Embedded host failures expose a typed diagnostic through
+`wasmhost.DiagnosticKindOf` and `errors.Is` sentinels for invalid input, ABI or
+memory violations, guest status, invalid output, timeout, and cancellation.
+The diagnostic wrapper preserves the existing error text and wrapped causes so
+operator output and caller fallback behavior do not change.
 
 ## Architecture Notes
 

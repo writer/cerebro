@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        storage_profile:
+            os_disk:
+                encryption_settings:
+                    enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        storage_profile:
+            os_disk:
+                encryption_settings:
+                    enabled: true
+      wantFinding: false

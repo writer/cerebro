@@ -196,6 +196,59 @@ mod tests {
     }
 
     #[test]
+    fn grants_fail_closed_for_every_binding() {
+        let mut invalid = grant();
+        invalid.actions.clear();
+        assert_eq!(
+            invalid.authorize(&request()),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::InvalidGrant
+            }
+        );
+
+        let mut wrong_actor = request();
+        wrong_actor.actor_id = ActorId::parse("worker-2").unwrap();
+        assert_eq!(
+            grant().authorize(&wrong_actor),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::ActorMismatch
+            }
+        );
+        let mut early = request();
+        early.observed_at_unix_ms = 99;
+        assert_eq!(
+            grant().authorize(&early),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::NotYetValid
+            }
+        );
+        let mut revoked = grant();
+        revoked.revoked_at_unix_ms = Some(150);
+        assert_eq!(
+            revoked.authorize(&request()),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::Revoked
+            }
+        );
+        let mut wrong_action = request();
+        wrong_action.action = "identity.delete".into();
+        assert_eq!(
+            grant().authorize(&wrong_action),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::ActionNotGranted
+            }
+        );
+        let mut wrong_resource = request();
+        wrong_resource.resource_urn = "urn:database:1".into();
+        assert_eq!(
+            grant().authorize(&wrong_resource),
+            AuthorizationDecision::Denied {
+                reason: AuthorizationDenial::ResourceNotGranted
+            }
+        );
+    }
+
+    #[test]
     fn decisions_bind_the_exact_proposal() {
         let receipt = DecisionReceipt {
             decision_id: DecisionId::parse("decision-1").unwrap(),

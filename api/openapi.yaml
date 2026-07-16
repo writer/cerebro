@@ -380,6 +380,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/agent-platform/missions/contract:
+    get:
+      operationId: getAgentPlatformMissionOperatingContract
+      summary: Get mission operating contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Durable mandate, mission, belief, plan revision, commitment, wake, interruption, and verified-closure contract.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
   /api/v1/event-subscriptions/contract:
     get:
       operationId: getEventSubscriptionContract
@@ -429,6 +442,59 @@ paths:
           description: Invalid evidence packet request.
         '403':
           description: Tenant or graph scope is not allowed.
+  /api/v1/platform/decision-packets:
+    post:
+      operationId: buildDecisionPacket
+      summary: Build an evidence-backed decision packet
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDecisionPacketRequest'
+      responses:
+        '201':
+          description: Persisted decision-time receipt with resolved evidence, gaps, contradictions, and deterministic confidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionPacket'
+        '400':
+          description: Invalid workflow, scope, or result budget.
+        '403':
+          description: The authenticated principal cannot use the requested tenant.
+        '404':
+          description: A protected input could not be resolved.
+        '503':
+          description: A required decision resolver or receipt store is unavailable.
+  /api/v1/platform/decision-packets/{packetID}:
+    get:
+      operationId: getDecisionPacket
+      summary: Reopen a decision packet receipt
+      tags:
+        - Platform
+      parameters:
+        - name: packetID
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^dpr_[0-9a-f]{32}$'
+      responses:
+        '200':
+          description: The immutable tenant-scoped decision packet receipt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionPacket'
+        '403':
+          description: The authenticated principal cannot use the requested tenant.
+        '404':
+          description: The packet receipt is not available for the authenticated tenant.
+        '503':
+          description: The receipt store is unavailable.
   /api/v1/agent-platform/claims/verify:
     post:
       operationId: verifyAgentPlatformClaim
@@ -8915,6 +8981,9 @@ components:
       required:
         - version
         - evidence_packet
+        - claim_verification
+        - agent_work
+        - mission_operating
         - agent_profiles
         - verifier_layer
         - action_ladder
@@ -8929,6 +8998,14 @@ components:
         evidence_packet:
           type: object
           additionalProperties: true
+        claim_verification:
+          type: object
+          additionalProperties: true
+        agent_work:
+          type: object
+          additionalProperties: true
+        mission_operating:
+          $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
         agent_profiles:
           type: array
           items:
@@ -8963,6 +9040,464 @@ components:
           items:
             type: object
             additionalProperties: true
+    AgentPlatformMissionOperatingContract:
+      type: object
+      required:
+        - id
+        - purpose
+        - schema_version
+        - durable_records
+        - execution_depths
+        - supervisor_directives
+        - wake_conditions
+        - interruption_triggers
+        - close_conditions
+        - first_mandate
+      properties:
+        id:
+          type: string
+        purpose:
+          type: string
+        schema_version:
+          type: string
+        durable_records:
+          type: array
+          items:
+            type: object
+            required: [id, purpose, required]
+            properties:
+              id:
+                type: string
+              purpose:
+                type: string
+              required:
+                type: array
+                items:
+                  type: string
+        execution_depths:
+          type: array
+          items:
+            type: string
+        supervisor_directives:
+          type: array
+          items:
+            type: string
+        wake_conditions:
+          type: array
+          items:
+            type: string
+        interruption_triggers:
+          type: array
+          items:
+            type: string
+        close_conditions:
+          type: array
+          items:
+            type: string
+        first_mandate:
+          type: string
+    BuildDecisionPacketRequest:
+      type: object
+      required: [workflow, question]
+      properties:
+        workflow:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        audit_packet_ids:
+          type: array
+          items:
+            type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        requested_action:
+          type: string
+        budgets:
+          $ref: '#/components/schemas/DecisionPacketBudgets'
+    DecisionPacketBudgets:
+      type: object
+      properties:
+        evidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+        contradictions:
+          type: integer
+          minimum: 0
+          maximum: 25
+        coverage_gaps:
+          type: integer
+          minimum: 0
+          maximum: 25
+        affected:
+          type: integer
+          minimum: 0
+          maximum: 100
+        controls:
+          type: integer
+          minimum: 0
+          maximum: 100
+        audit_packets:
+          type: integer
+          minimum: 0
+          maximum: 25
+        actions:
+          type: integer
+          minimum: 0
+          maximum: 10
+        graph_rows:
+          type: integer
+          minimum: 0
+          maximum: 100
+        graph_depth:
+          type: integer
+          minimum: 0
+          maximum: 3
+    DecisionPacket:
+      type: object
+      required: [schema_version, id, generated_at, workflow, scope, inputs, guardrails, claim, decision, confidence, freshness, evidence, contradictions, coverage_gaps, affected, controls, audit_packets, actions, provenance, limits]
+      properties:
+        schema_version:
+          type: string
+        id:
+          type: string
+          pattern: '^dpr_[0-9a-f]{32}$'
+        generated_at:
+          type: string
+          format: date-time
+        workflow:
+          $ref: '#/components/schemas/DecisionPacketWorkflow'
+        scope:
+          $ref: '#/components/schemas/DecisionPacketScope'
+        inputs:
+          $ref: '#/components/schemas/DecisionPacketInputs'
+        guardrails:
+          type: object
+          additionalProperties: true
+        claim:
+          type: object
+          additionalProperties: true
+        decision:
+          $ref: '#/components/schemas/DecisionPacketDecision'
+        confidence:
+          $ref: '#/components/schemas/DecisionPacketConfidence'
+        freshness:
+          $ref: '#/components/schemas/DecisionPacketFreshness'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        contradictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketContradiction'
+        coverage_gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketCoverageGap'
+        affected:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketSubjectReference'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketControlReference'
+        audit_packets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketAuditPacketReference'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketActionProposal'
+        provenance:
+          $ref: '#/components/schemas/DecisionPacketProvenance'
+        limits:
+          $ref: '#/components/schemas/DecisionPacketResultLimits'
+    DecisionPacketWorkflow:
+      type: object
+      required: [id, question]
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+    DecisionPacketInputs:
+      type: object
+      required: [finding_ids, claim_ids, evidence_urns, audit_packet_ids, required_sources]
+      properties:
+        finding_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        audit_packet_ids:
+          type: array
+          items:
+            type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        requested_action:
+          type: string
+    DecisionPacketScope:
+      type: object
+      required: [tenant_id, actor_id]
+      properties:
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        urn:
+          type: string
+    DecisionPacketDecision:
+      type: object
+      required: [state, reasons]
+      properties:
+        state:
+          type: string
+          enum: [supported, supported_with_gaps, blocked, insufficient_evidence, not_applicable]
+        rationale:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+    DecisionPacketConfidence:
+      type: object
+      required: [level, basis]
+      properties:
+        level:
+          type: string
+          enum: [high, medium, low, unknown]
+        basis:
+          type: array
+          items:
+            type: string
+    DecisionPacketFreshness:
+      type: object
+      required: [state, required_stale]
+      properties:
+        state:
+          type: string
+          enum: [fresh, stale, unknown]
+        oldest_observed_at:
+          type: string
+          format: date-time
+        newest_observed_at:
+          type: string
+          format: date-time
+        required_stale:
+          type: boolean
+    DecisionPacketEvidenceReference:
+      type: object
+      required: [id, kind]
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        kind:
+          type: string
+        source_id:
+          type: string
+        subject_urn:
+          type: string
+        predicate:
+          type: string
+        value:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        digest:
+          type: string
+    DecisionPacketContradiction:
+      type: object
+      required: [id, subject_urn, predicate, left, right, resolution_state, primary_claim]
+      properties:
+        id:
+          type: string
+        subject_urn:
+          type: string
+        predicate:
+          type: string
+        left:
+          $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        right:
+          $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        resolution_state:
+          type: string
+          enum: [unresolved, resolved]
+        primary_claim:
+          type: boolean
+    DecisionPacketCoverageGap:
+      type: object
+      required: [id, state, required, could_change_conclusion, reason]
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+        dimension:
+          type: string
+        state:
+          type: string
+          enum: [complete, partial, stale, failed, unconfigured, unsupported, unverified]
+        required:
+          type: boolean
+        could_change_conclusion:
+          type: boolean
+        reason:
+          type: string
+    DecisionPacketSubjectReference:
+      type: object
+      required: [urn, kind]
+      properties:
+        urn:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+    DecisionPacketControlReference:
+      type: object
+      required: [id, applicability]
+      properties:
+        id:
+          type: string
+        framework:
+          type: string
+        applicability:
+          type: string
+    DecisionPacketAuditPacketReference:
+      type: object
+      required: [id, digest, generated_at, freshness]
+      properties:
+        id:
+          type: string
+        scope_urn:
+          type: string
+        digest:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+    DecisionPacketActionProposal:
+      type: object
+      required: [id, action_id, state, target_urns, rationale]
+      properties:
+        id:
+          type: string
+        action_id:
+          type: string
+        state:
+          type: string
+          enum: [informational, proposal, approval_required]
+        target_urns:
+          type: array
+          items:
+            type: string
+        rationale:
+          type: string
+        approval_requirements:
+          type: array
+          items:
+            type: string
+        catalog_version:
+          type: string
+        proposal_digest:
+          type: string
+    DecisionPacketProvenance:
+      type: object
+      required: [resolver_ids, source_ids, evidence_digest, coverage_digest]
+      properties:
+        trace_id:
+          type: string
+        resolver_ids:
+          type: array
+          items:
+            type: string
+        source_ids:
+          type: array
+          items:
+            type: string
+        evidence_digest:
+          type: string
+        coverage_digest:
+          type: string
+    DecisionPacketResultLimits:
+      type: object
+      properties:
+        evidence:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        contradictions:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        coverage_gaps:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        affected:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        controls:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        audit_packets:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        actions:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        graph_rows:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        graph_depth:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+    DecisionPacketResultLimit:
+      type: object
+      required: [requested, applied, returned, truncated]
+      properties:
+        requested:
+          type: integer
+          minimum: 0
+        applied:
+          type: integer
+          minimum: 0
+        returned:
+          type: integer
+          minimum: 0
+        total_known:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
     AgentPlatformEvidencePacketRequest:
       type: object
       properties:

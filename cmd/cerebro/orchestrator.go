@@ -45,6 +45,7 @@ const (
 type orchestratorOptions struct {
 	Filter          ports.SourceRuntimeFilter `json:"filter"`
 	PageLimit       uint32                    `json:"page_limit,omitempty"`
+	SyncEventLimit  uint32                    `json:"sync_event_limit,omitempty"`
 	EventLimit      uint32                    `json:"event_limit,omitempty"`
 	GraphPageLimit  uint32                    `json:"graph_page_limit,omitempty"`
 	PhaseTimeout    time.Duration             `json:"-"`
@@ -69,27 +70,28 @@ type orchestratorIterationResult struct {
 }
 
 type orchestratorRuntimeResult struct {
-	RuntimeID            string              `json:"runtime_id"`
-	SourceID             string              `json:"source_id,omitempty"`
-	TenantID             string              `json:"tenant_id,omitempty"`
-	Sync                 string              `json:"sync"`
-	PagesRead            uint32              `json:"pages_read,omitempty"`
-	EventsAppended       uint32              `json:"events_appended,omitempty"`
-	ShortCircuitReason   string              `json:"short_circuit_reason,omitempty"`
-	ReconciliationReason string              `json:"reconciliation_reason,omitempty"`
-	DownstreamSkipReason string              `json:"downstream_skip_reason,omitempty"`
-	FindingRules         string              `json:"finding_rules"`
-	EventsEvaluated      uint32              `json:"events_evaluated,omitempty"`
-	FindingEvaluations   int                 `json:"finding_evaluations,omitempty"`
-	GraphIngest          string              `json:"graph_ingest"`
-	EntitiesProjected    uint32              `json:"entities_projected,omitempty"`
-	LinksProjected       uint32              `json:"links_projected,omitempty"`
-	GraphRules           string              `json:"graph_rules"`
-	GraphRuleEvaluations int                 `json:"graph_rule_evaluations,omitempty"`
-	GraphRuleFindings    int                 `json:"graph_rule_findings,omitempty"`
-	GraphRuleRowsRead    uint32              `json:"graph_rule_rows_read,omitempty"`
-	Error                string              `json:"error,omitempty"`
-	Health               sourcehealth.Record `json:"-"`
+	RuntimeID             string              `json:"runtime_id"`
+	SourceID              string              `json:"source_id,omitempty"`
+	TenantID              string              `json:"tenant_id,omitempty"`
+	Sync                  string              `json:"sync"`
+	PagesRead             uint32              `json:"pages_read,omitempty"`
+	EventsAppended        uint32              `json:"events_appended,omitempty"`
+	SyncEventLimitReached bool                `json:"sync_event_limit_reached,omitempty"`
+	ShortCircuitReason    string              `json:"short_circuit_reason,omitempty"`
+	ReconciliationReason  string              `json:"reconciliation_reason,omitempty"`
+	DownstreamSkipReason  string              `json:"downstream_skip_reason,omitempty"`
+	FindingRules          string              `json:"finding_rules"`
+	EventsEvaluated       uint32              `json:"events_evaluated,omitempty"`
+	FindingEvaluations    int                 `json:"finding_evaluations,omitempty"`
+	GraphIngest           string              `json:"graph_ingest"`
+	EntitiesProjected     uint32              `json:"entities_projected,omitempty"`
+	LinksProjected        uint32              `json:"links_projected,omitempty"`
+	GraphRules            string              `json:"graph_rules"`
+	GraphRuleEvaluations  int                 `json:"graph_rule_evaluations,omitempty"`
+	GraphRuleFindings     int                 `json:"graph_rule_findings,omitempty"`
+	GraphRuleRowsRead     uint32              `json:"graph_rule_rows_read,omitempty"`
+	Error                 string              `json:"error,omitempty"`
+	Health                sourcehealth.Record `json:"-"`
 }
 
 type orchestratorJobMetadataContextKey struct{}
@@ -104,7 +106,7 @@ type orchestratorJobMetadata struct {
 
 func runOrchestrator(args []string) error {
 	if len(args) == 0 || args[0] != "run" {
-		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [runtime_ids=<runtime-id>,<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [phase_timeout=15m] [graph_timeout=45m] [interval=30s] [iterations=N|forever]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [runtime_ids=<runtime-id>,<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [sync_event_limit=N] [event_limit=N] [graph_page_limit=N] [phase_timeout=15m] [graph_timeout=45m] [interval=30s] [iterations=N|forever]", os.Args[0]))
 	}
 	options, err := parseOrchestratorOptions(args[1:])
 	if err != nil {
@@ -182,6 +184,12 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 				return orchestratorOptions{}, fmt.Errorf("parse event_limit: %w", err)
 			}
 			options.EventLimit = uint32(parsed)
+		case "sync_event_limit":
+			parsed, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return orchestratorOptions{}, fmt.Errorf("parse sync_event_limit: %w", err)
+			}
+			options.SyncEventLimit = uint32(parsed)
 		case "graph_page_limit":
 			parsed, err := strconv.ParseUint(value, 10, 32)
 			if err != nil {
@@ -281,9 +289,11 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		telemetryField("source_id", options.Filter.SourceID),
 		telemetryField("limit", options.Filter.Limit),
 		telemetryField("page_limit", options.PageLimit),
+		telemetryField("sync_event_limit", options.SyncEventLimit),
 		telemetryField("event_limit", options.EventLimit),
 		telemetryField("graph_page_limit", options.GraphPageLimit),
 		telemetryField("effective_page_limit", options.PageLimit),
+		telemetryField("effective_sync_event_limit", options.SyncEventLimit),
 		telemetryField("effective_event_limit", options.EventLimit),
 		telemetryField("effective_graph_page_limit", options.GraphPageLimit),
 		telemetryField("orchestrator.schedule.name", orchestratorScheduleName(options)),
@@ -584,6 +594,7 @@ func runOrchestratorIteration(
 			telemetryField("source_id", runtime.GetSourceId()),
 			telemetryField("tenant_id", runtime.GetTenantId()),
 			telemetryField("effective_page_limit", options.PageLimit),
+			telemetryField("effective_sync_event_limit", options.SyncEventLimit),
 			telemetryField("effective_event_limit", options.EventLimit),
 		)
 		runtimeResult := &orchestratorRuntimeResult{
@@ -623,7 +634,11 @@ func runOrchestratorIteration(
 		syncStartCursorOpaque := orchestratorRuntimeStartCursorOpaque(runtime)
 		syncStarted := time.Now()
 		emitOrchestratorJobPhaseStarted(runtimeCtx, "source_runtime.sync", iteration, runtime, 0)
-		syncResult, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit})
+		syncResult, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{
+			Id:         runtime.GetId(),
+			PageLimit:  options.PageLimit,
+			EventLimit: options.SyncEventLimit,
+		})
 		if err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
@@ -656,6 +671,7 @@ func runOrchestratorIteration(
 			runtimeResult.Sync = "completed"
 			runtimeResult.PagesRead = syncResult.GetPagesRead()
 			runtimeResult.EventsAppended = syncResult.GetEventsAppended()
+			runtimeResult.SyncEventLimitReached = syncResult.GetEventLimitReached()
 			runtimeResult.ShortCircuitReason = strings.TrimSpace(syncResult.GetShortCircuitReason())
 			runtimeResult.ReconciliationReason = strings.TrimSpace(syncResult.GetReconciliationReason())
 			if syncResult.GetRuntime() != nil {
@@ -664,11 +680,13 @@ func runOrchestratorIteration(
 			}
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_event_limit_reached", runtimeResult.SyncEventLimitReached)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "short_circuit_reason", runtimeResult.ShortCircuitReason)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reconciliation_reason", runtimeResult.ReconciliationReason)
 			emitOrchestratorJobPhaseEnded(runtimeCtx, "source_runtime.sync", "completed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
 				telemetryField("pages_read", runtimeResult.PagesRead),
 				telemetryField("events_appended", runtimeResult.EventsAppended),
+				telemetryField("sync_event_limit_reached", runtimeResult.SyncEventLimitReached),
 				telemetryField("short_circuit_reason", runtimeResult.ShortCircuitReason),
 				telemetryField("reconciliation_reason", runtimeResult.ReconciliationReason),
 			))
@@ -1482,6 +1500,7 @@ func orchestratorRuntimeEventAttrs(status string, iteration uint32, runtime *cer
 			telemetryField("graph_rules.status", result.GraphRules),
 			telemetryField("pages_read", result.PagesRead),
 			telemetryField("events_appended", result.EventsAppended),
+			telemetryField("sync_event_limit_reached", result.SyncEventLimitReached),
 			telemetryField("events_evaluated", result.EventsEvaluated),
 			telemetryField("entities_projected", result.EntitiesProjected),
 			telemetryField("links_projected", result.LinksProjected),

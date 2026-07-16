@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        security_rules:
+            access: Allow
+            destination_port_range: "22"
+            source_address_prefix: '*'
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        security_rules:
+            access: Allow
+            destination_port_range: 22-passing
+            source_address_prefix: '*'
+      wantFinding: false

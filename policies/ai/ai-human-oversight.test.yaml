@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        human_oversight_enabled: false
+        risk_level: high
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        human_oversight_enabled: false
+        risk_level: high-passing
+      wantFinding: false

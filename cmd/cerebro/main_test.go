@@ -1001,11 +1001,11 @@ func TestSourceRuntimeListJSONUsesProtoJSON(t *testing.T) {
 }
 
 func TestParseOrchestratorOptions(t *testing.T) {
-	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "event_limit=4", "graph_page_limit=5", "phase_timeout=10m", "graph_timeout=45m"})
+	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "sync_event_limit=6", "event_limit=4", "graph_page_limit=5", "phase_timeout=10m", "graph_timeout=45m"})
 	if err != nil {
 		t.Fatalf("parseOrchestratorOptions() error = %v", err)
 	}
-	if options.Filter.TenantID != "writer" || options.Filter.SourceID != "github" || options.Filter.Limit != 2 || options.PageLimit != 3 || options.EventLimit != 4 || options.GraphPageLimit != 5 {
+	if options.Filter.TenantID != "writer" || options.Filter.SourceID != "github" || options.Filter.Limit != 2 || options.PageLimit != 3 || options.SyncEventLimit != 6 || options.EventLimit != 4 || options.GraphPageLimit != 5 {
 		t.Fatalf("options = %#v", options)
 	}
 	if options.PhaseTimeout != 10*time.Minute || options.GraphTimeout != 45*time.Minute {

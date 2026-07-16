@@ -809,6 +809,33 @@ var Capabilities = []Capability{
 			RequiredApprovers: []string{"platform", "security"},
 		},
 	},
+	{
+		ID:              "native-mission-operating-contract",
+		Name:            "Native mission operating contract",
+		DomainID:        "streaming-replay",
+		Kind:            "mission-control-contract",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "high",
+		DefaultOn:       true,
+		Summary:         "Defines durable mandates, missions, beliefs, plan revisions, commitments, wake conditions, supervisor directives, and verified closure.",
+		ConsoleSurfaces: []string{"Agent platform API", "MCP", "workflow replay"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/agentplatform -run TestMissionOperatingContract"},
+			ScenarioSets:  []string{"agent-work-ledger", "trace-replay", "remediation-safety"},
+			Rubrics:       []string{"continuing intent", "belief provenance", "plan revision", "commitment authority", "wake semantics", "verified closure"},
+		},
+		RuntimeEvents: []string{"agent.work.created", "agent.work.updated", "claim.verification.completed", "verifier.completed", "agent.work.closed"},
+		Provenance:    []string{"agent-work", "claim-verification", "replay-record", "verifier-result", "evidence-record"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before mission state, authority, wake, or closure semantics change",
+			RequiredApprovers: []string{"platform", "security"},
+		},
+	},
 }
 
 var RuntimeEvents = []RuntimeEvent{
