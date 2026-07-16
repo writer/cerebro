@@ -79,6 +79,10 @@ func TestDraftPolicyBundleAuthorsRunnableTestsAndProof(t *testing.T) {
 	if model.req.Kind != "policy_finding_rule" || model.req.Context["source_kind"] != "aws.s3.bucket" || model.req.Context["test_author_contract"] == nil {
 		t.Fatalf("model request = %#v", model.req)
 	}
+	contract, ok := model.req.Context["test_author_contract"].(map[string]any)
+	if !ok || contract["grounding"] == nil {
+		t.Fatalf("test author contract grounding = %#v, want source-backed redaction and causality requirements", contract["grounding"])
+	}
 	if result.PolicyPath != "policies/aws/agent-public-bucket.yaml" || result.TestPath != "policies/aws/agent-public-bucket.test.yaml" {
 		t.Fatalf("paths = %q %q", result.PolicyPath, result.TestPath)
 	}
@@ -96,6 +100,47 @@ func TestDraftPolicyBundleRejectsPolicyWithoutSafeFixtureContract(t *testing.T) 
 	result, err := (Service{Model: &stubDraftModel{raw: raw}}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{Prompt: "author complex policy", Domain: "aws"})
 	if !errors.Is(err, ErrDraftValidationFail) || result != nil {
 		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
+func TestDraftPolicyBundleRedactsSourceEvidenceBeforeModelCall(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-grounded-aws", Name: "Agent grounded AWS", Description: "Flags a source-grounded AWS state.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "has_secret_bindings"), true)`, `cmp_eq(path(resource, "status"), "ACTIVE")`}, Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &stubDraftModel{raw: raw}
+	_, err = (Service{Model: model}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{
+		Prompt: "author from source evidence",
+		Domain: "aws",
+		Context: map[string]any{"source_evidence": []map[string]any{
+			map[string]any{
+				"source_kind": "aws.cloudtrail", "event_type": "RunTask", "account_id": "123456789012",
+				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/private-candidate:7", "started_by": "operator@example.test",
+			},
+			map[string]any{
+				"source_kind": "aws.ecs_task_definition", "status": "ACTIVE", "has_candidate_marker": "true", "has_secret_bindings": "true", "secret_binding_count": 2,
+				"resource_id": "arn:aws:ecs:us-east-1:123456789012:task-definition/private-candidate:7", "container_images": "123456789012.dkr.ecr.us-east-1.amazonaws.com/private:candidate-7", "secret_name": "DATABASE_TOKEN",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(model.req.Context["source_evidence"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextJSON := string(encoded)
+	for _, forbidden := range []string{"123456789012", "private-candidate", "operator@example.test", "DATABASE_TOKEN", "dkr.ecr"} {
+		if strings.Contains(contextJSON, forbidden) {
+			t.Fatalf("source evidence sent to model contains %q: %s", forbidden, contextJSON)
+		}
+	}
+	for _, required := range []string{`"event_type":"RunTask"`, `"status":"ACTIVE"`, `"has_secret_bindings":"true"`, `"secret_binding_count":2`, "aws-ref-"} {
+		if !strings.Contains(contextJSON, required) {
+			t.Fatalf("source evidence sent to model missing %q: %s", required, contextJSON)
+		}
 	}
 }
 

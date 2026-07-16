@@ -3729,6 +3729,58 @@ func TestProjectAWSCloudTrailRoleResourceLinksCanonicalRole(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationRepresents, roleURN)
 }
 
+func TestProjectAWSCloudTrailECSLaunchBuildsCausalRolePath(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	definitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/release-candidate:7"
+	taskARN := "arn:aws:ecs:us-east-1:123456789012:task/operations/abc123"
+	executionRoleARN := "arn:aws:iam::123456789012:role/ExecutionRole"
+	actorARN := "arn:aws:sts::123456789012:assumed-role/OperatorRole/operator@example.test"
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id: "aws-cloudtrail-register-task-definition", TenantId: "test", SourceId: "aws", Kind: "aws.cloudtrail",
+			Attributes: map[string]string{
+				"actor_id": actorARN, "actor_type": "AssumedRole", "domain": "123456789012", "event_type": "RegisterTaskDefinition",
+				"resource_id": definitionARN, "resource_name": "release-candidate", "resource_type": "ecs_task_definition", "task_definition_arn": definitionARN,
+				"task_family": "release-candidate", "execution_role_arn": executionRoleARN, "execution_role_name": "ExecutionRole",
+				"container_images": "123456789012.dkr.ecr.us-east-1.amazonaws.com/service:candidate-7", "has_candidate_marker": "true", "has_secret_bindings": "true", "secret_binding_count": "2",
+			},
+		},
+		{
+			Id: "aws-cloudtrail-run-task", TenantId: "test", SourceId: "aws", Kind: "aws.cloudtrail",
+			Attributes: map[string]string{
+				"actor_id": actorARN, "actor_type": "AssumedRole", "domain": "123456789012", "event_type": "RunTask",
+				"resource_id": taskARN, "resource_name": "abc123", "resource_type": "ecs_task", "task_arn": taskARN,
+				"task_definition_arn": definitionARN, "started_by": "automation-candidate-7",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+	actorURN := projectionURN("test", "aws_assumed_role_session", actorARN)
+	taskURN := projectionURN("test", "aws_ecs_task", taskARN)
+	definitionURN := projectionURN("test", "aws_ecs_task_definition", definitionARN)
+	roleURN := identityPrincipalURN("test", "aws", "role", executionRoleARN, "")
+	assertProjectedEntityType(t, state, taskURN, "aws.ecs.task")
+	assertProjectedEntityType(t, state, definitionURN, "aws.ecs.task_definition")
+	assertProjectedEntityType(t, state, roleURN, "aws.role")
+	assertProjectedLink(t, state, actorURN, relationActedOn, taskURN)
+	assertProjectedLink(t, state, taskURN, relationDependsOn, definitionURN)
+	assertProjectedLink(t, state, definitionURN, relationRunsAs, roleURN)
+	if got := state.entities[definitionURN].Attributes["has_secret_bindings"]; got != "true" {
+		t.Fatalf("task definition has_secret_bindings = %q, want true", got)
+	}
+	if _, ok := state.entities[definitionURN].Attributes["status"]; ok {
+		t.Fatalf("historical registration projection must not set current task definition status: %#v", state.entities[definitionURN].Attributes)
+	}
+	if got := state.links[definitionURN+"|"+relationRunsAs+"|"+roleURN].Attributes["role_usage"]; got != "execution" {
+		t.Fatalf("runs_as role_usage = %q, want execution", got)
+	}
+}
+
 func TestProjectGCPAuditResourceLinksProject(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

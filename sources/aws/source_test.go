@@ -5650,6 +5650,114 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 	}
 }
 
+func TestECSTaskDefinitionEvidenceKeepsSecretBindingsRedacted(t *testing.T) {
+	definitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/release-candidate:7"
+	taskRoleARN := "arn:aws:iam::123456789012:role/WorkloadRole"
+	executionRoleARN := "arn:aws:iam::123456789012:role/ExecutionRole"
+	definition, err := ecsTaskDefinitionEvent(settings{accountID: "123456789012", region: "us-east-1"}, ecstypes.TaskDefinition{
+		TaskDefinitionArn: awssdk.String(definitionARN),
+		Family:            awssdk.String("release-candidate"),
+		Status:            ecstypes.TaskDefinitionStatusActive,
+		TaskRoleArn:       awssdk.String(taskRoleARN),
+		ExecutionRoleArn:  awssdk.String(executionRoleARN),
+		ContainerDefinitions: []ecstypes.ContainerDefinition{{
+			Name:  awssdk.String("candidate"),
+			Image: awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/service:candidate-7"),
+			Secrets: []ecstypes.Secret{
+				{Name: awssdk.String("DATABASE_TOKEN"), ValueFrom: awssdk.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:database-token")},
+				{Name: awssdk.String("API_TOKEN"), ValueFrom: awssdk.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:api-token")},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := definition.Attributes["secret_binding_count"]; got != "2" {
+		t.Fatalf("secret_binding_count = %q, want 2", got)
+	}
+	if got := definition.Attributes["has_secret_bindings"]; got != "true" {
+		t.Fatalf("has_secret_bindings = %q, want true", got)
+	}
+	if got := definition.Attributes["has_candidate_marker"]; got != "true" {
+		t.Fatalf("has_candidate_marker = %q, want true", got)
+	}
+	for key, value := range definition.Attributes {
+		if strings.Contains(value, "DATABASE_TOKEN") || strings.Contains(value, "database-token") {
+			t.Fatalf("attribute %q exposes a secret binding identifier: %q", key, value)
+		}
+	}
+}
+
+func TestCloudTrailECSTransitionsExposeCausalJoins(t *testing.T) {
+	definitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/release-candidate:7"
+	taskARN := "arn:aws:ecs:us-east-1:123456789012:task/operations/abc123"
+	registerDetail, err := json.Marshal(map[string]any{
+		"eventName": "RegisterTaskDefinition",
+		"requestParameters": map[string]any{
+			"family":           "release-candidate",
+			"taskRoleArn":      "arn:aws:iam::123456789012:role/WorkloadRole",
+			"executionRoleArn": "arn:aws:iam::123456789012:role/ExecutionRole",
+			"containerDefinitions": []map[string]any{{
+				"name": "candidate", "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/service:candidate-7",
+				"secrets": []map[string]any{{"name": "DATABASE_TOKEN", "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:database-token"}},
+			}},
+		},
+		"responseElements": map[string]any{"taskDefinition": map[string]any{
+			"taskDefinitionArn": definitionARN,
+			"family":            "release-candidate",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	register, err := cloudTrailEvent(settings{accountID: "123456789012", region: "us-east-1"}, cloudtrailtypes.Event{
+		EventId: awssdk.String("event-register"), EventName: awssdk.String("RegisterTaskDefinition"), CloudTrailEvent: awssdk.String(string(registerDetail)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := register.Attributes["task_definition_arn"]; got != definitionARN {
+		t.Fatalf("register task_definition_arn = %q, want %q", got, definitionARN)
+	}
+	if got := register.Attributes["resource_type"]; got != "ecs_task_definition" {
+		t.Fatalf("register resource_type = %q, want ecs_task_definition", got)
+	}
+	if got := register.Attributes["has_secret_bindings"]; got != "true" {
+		t.Fatalf("register has_secret_bindings = %q, want true", got)
+	}
+	if got := register.Attributes["status"]; got != "" {
+		t.Fatalf("historical register event must not set current status, got %q", got)
+	}
+
+	runDetail, err := json.Marshal(map[string]any{
+		"eventName": "RunTask",
+		"requestParameters": map[string]any{
+			"cluster": "arn:aws:ecs:us-east-1:123456789012:cluster/operations", "taskDefinition": definitionARN, "startedBy": "automation-candidate-7",
+		},
+		"responseElements": map[string]any{"tasks": []map[string]any{{
+			"taskArn": taskARN, "taskDefinitionArn": definitionARN, "clusterArn": "arn:aws:ecs:us-east-1:123456789012:cluster/operations", "startedBy": "automation-candidate-7", "lastStatus": "PROVISIONING",
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := cloudTrailEvent(settings{accountID: "123456789012", region: "us-east-1"}, cloudtrailtypes.Event{
+		EventId: awssdk.String("event-run"), EventName: awssdk.String("RunTask"), CloudTrailEvent: awssdk.String(string(runDetail)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := run.Attributes["task_arn"]; got != taskARN {
+		t.Fatalf("run task_arn = %q, want %q", got, taskARN)
+	}
+	if got := run.Attributes["task_definition_arn"]; got != definitionARN {
+		t.Fatalf("run task_definition_arn = %q, want %q", got, definitionARN)
+	}
+	if got := run.Attributes["started_by"]; got != "automation-candidate-7" {
+		t.Fatalf("run started_by = %q, want automation-candidate-7", got)
+	}
+}
+
 func TestSSMDocumentEventSuppressesAccountIDOwner(t *testing.T) {
 	baseSettings := settings{accountID: "123456789012", region: "us-east-1"}
 	for _, tt := range []struct {

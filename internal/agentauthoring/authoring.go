@@ -2,6 +2,7 @@ package agentauthoring
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,12 +123,23 @@ func (s Service) DraftPolicyRule(ctx context.Context, request PolicyRuleDraftReq
 func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraftRequest) (*PolicyBundleDraftResult, error) {
 	contextValues := make(map[string]any, len(request.Context)+1)
 	for key, value := range request.Context {
+		if key == "source_evidence" {
+			contextValues[key] = redactPolicyAuthoringEvidence(normalizePolicyAuthoringEvidence(value), "")
+			continue
+		}
 		contextValues[key] = value
 	}
 	contextValues["test_author_contract"] = map[string]any{
 		"condition_shape": `cmp_eq(path(resource, "field"), scalar)`,
 		"required_cases":  []string{"finding", "passing"},
 		"proof":           "generated suite must reject a policy with its first condition removed",
+		"grounding": map[string]any{
+			"input":         "source event attributes and projected entity and relation contracts",
+			"preserve":      []string{"source kinds", "entity types", "relations", "risk-relevant state"},
+			"redact":        []string{"tenant IDs", "account IDs", "resource ARNs", "session names", "endpoints", "secret names", "secret references"},
+			"current_state": "stateful findings must use authoritative inventory state; historical audit state supplies provenance only",
+			"causality":     "graph passing fixtures must retain the same nodes and remove exactly one policy-critical edge",
+		},
 	}
 	draft, err := s.DraftPolicyRule(ctx, PolicyRuleDraftRequest{Prompt: request.Prompt, Context: contextValues})
 	if err != nil {
@@ -143,6 +155,75 @@ func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraf
 		return result, fmt.Errorf("%w: prove policy bundle: %w", ErrDraftValidationFail, err)
 	}
 	return result, nil
+}
+
+func normalizePolicyAuthoringEvidence(value any) any {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "<redacted>"
+	}
+	var normalized any
+	if err := json.Unmarshal(encoded, &normalized); err != nil {
+		return "<redacted>"
+	}
+	return normalized
+}
+
+func redactPolicyAuthoringEvidence(value any, key string) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		redacted := make(map[string]any, len(typed))
+		for childKey, childValue := range typed {
+			redacted[childKey] = redactPolicyAuthoringEvidence(childValue, childKey)
+		}
+		return redacted
+	case map[string]string:
+		redacted := make(map[string]any, len(typed))
+		for childKey, childValue := range typed {
+			redacted[childKey] = redactPolicyAuthoringEvidence(childValue, childKey)
+		}
+		return redacted
+	case []any:
+		redacted := make([]any, 0, len(typed))
+		for _, childValue := range typed {
+			redacted = append(redacted, redactPolicyAuthoringEvidence(childValue, key))
+		}
+		return redacted
+	case []string:
+		redacted := make([]any, 0, len(typed))
+		for _, childValue := range typed {
+			redacted = append(redacted, redactPolicyAuthoringEvidence(childValue, key))
+		}
+		return redacted
+	case string:
+		normalizedKey := strings.ToLower(strings.TrimSpace(key))
+		if policyAuthoringEvidenceSafeKey(normalizedKey) {
+			return typed
+		}
+		if policyAuthoringEvidenceIdentifierKey(normalizedKey) {
+			digest := sha256.Sum256([]byte(typed))
+			return fmt.Sprintf("aws-ref-%x", digest[:6])
+		}
+		return "<redacted>"
+	default:
+		return value
+	}
+}
+
+func policyAuthoringEvidenceSafeKey(key string) bool {
+	if strings.HasPrefix(key, "has_") || strings.HasSuffix(key, "_count") {
+		return true
+	}
+	switch key {
+	case "provider", "source_kind", "source_kinds", "entity_type", "entity_types", "relation", "relations", "event_type", "resource_type", "status", "state", "last_status", "observed_last_status", "role_usage":
+		return true
+	default:
+		return false
+	}
+}
+
+func policyAuthoringEvidenceIdentifierKey(key string) bool {
+	return key == "urn" || key == "arn" || key == "tenant_id" || key == "account_id" || key == "resource_id" || key == "actor_id" || strings.HasSuffix(key, "_urn") || strings.HasSuffix(key, "_arn") || strings.HasSuffix(key, "_id")
 }
 
 func (s Service) DraftConnectorDefinition(ctx context.Context, request ConnectorDefinitionDraftRequest) (*ConnectorDefinitionDraftResult, error) {
