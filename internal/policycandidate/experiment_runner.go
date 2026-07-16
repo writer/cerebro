@@ -42,7 +42,15 @@ type ExperimentRunner struct {
 	Handler     ExperimentJobHandler
 }
 
-func (r ExperimentRunner) Run(ctx context.Context, job *ports.Job) (map[string]any, map[string]string, error) {
+// JobRunner adapts the typed experiment runner to the generic leased-job
+// boundary without exposing an untyped result from the domain API.
+func (r ExperimentRunner) JobRunner() platformjobs.Runner {
+	return func(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+		return r.run(ctx, job)
+	}
+}
+
+func (r ExperimentRunner) run(ctx context.Context, job *ports.Job) (map[string]any, map[string]string, error) {
 	if job == nil || strings.TrimSpace(job.ID) == "" {
 		return nil, nil, fmt.Errorf("%w: policy experiment job is required", platformjobs.ErrInvalidRequest)
 	}

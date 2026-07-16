@@ -23,7 +23,7 @@ func (a *App) runPolicyCandidateExperimentJob(ctx context.Context, job *ports.Jo
 	runner := policycandidate.ExperimentRunner{
 		Service: a.policyCandidateService(), Checkpoints: checkpoints, Statuses: statuses, Handler: a.deps.PolicyExperiments,
 	}
-	return runner.Run(ctx, job)
+	return runner.JobRunner()(ctx, job, nil)
 }
 
 type policyExperimentCheckpointStatusAdapter struct{ service *graphingest.Service }

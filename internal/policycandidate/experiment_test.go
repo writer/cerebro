@@ -185,7 +185,7 @@ func TestExperimentRunnerCancellationTerminatesRunningExperiment(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := runner.Run(ctx, &ports.Job{ID: "job-cancel", TenantID: "tenant-a", SubjectID: experiment.ID}); !errors.Is(err, context.Canceled) {
+	if _, _, err := runner.run(ctx, &ports.Job{ID: "job-cancel", TenantID: "tenant-a", SubjectID: experiment.ID}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("runner error = %v, want canceled", err)
 	}
 	stored, err := experiments.GetPolicyExperiment(context.Background(), experiment.ID)
