@@ -64,8 +64,14 @@ func validatePolicyGraphFixture(path string, caseIndex int, testCase PolicyRuleT
 }
 
 func containsTwoEdgePath(adjacency map[string][]string) bool {
-	for _, neighbors := range adjacency {
-		if len(neighbors) >= 2 {
+	for node, neighbors := range adjacency {
+		distinct := map[string]struct{}{}
+		for _, neighbor := range neighbors {
+			if neighbor != node {
+				distinct[neighbor] = struct{}{}
+			}
+		}
+		if len(distinct) >= 2 {
 			return true
 		}
 	}
@@ -111,23 +117,24 @@ func graphFixtureSingleEdgeMutation(finding, passing *PolicyGraphFixture) bool {
 	if !sameGraphFixtureNodes(findingNodes, passingNodes) {
 		return false
 	}
-	findingEdges, passingEdges := graphFixtureEdgeSet(finding.Edges), graphFixtureEdgeSet(passing.Edges)
+	findingEdges, passingEdges := graphFixtureEdgeMap(finding.Edges), graphFixtureEdgeMap(passing.Edges)
 	if len(findingEdges) != len(passingEdges)+1 {
 		return false
 	}
-	for edge := range passingEdges {
-		if _, ok := findingEdges[edge]; !ok {
+	for key, passingEdge := range passingEdges {
+		findingEdge, ok := findingEdges[key]
+		if !ok || findingEdge.SourceID != passingEdge.SourceID || findingEdge.RuntimeID != passingEdge.RuntimeID || !maps.Equal(findingEdge.Attributes, passingEdge.Attributes) {
 			return false
 		}
 	}
 	return true
 }
 
-func graphFixtureEdgeSet(edges []PolicyGraphFixtureEdge) map[string]struct{} {
-	out := make(map[string]struct{}, len(edges))
+func graphFixtureEdgeMap(edges []PolicyGraphFixtureEdge) map[string]PolicyGraphFixtureEdge {
+	out := make(map[string]PolicyGraphFixtureEdge, len(edges))
 	for _, edge := range edges {
 		key := strings.TrimSpace(edge.FromURN) + "\x00" + strings.TrimSpace(edge.Relation) + "\x00" + strings.TrimSpace(edge.ToURN)
-		out[key] = struct{}{}
+		out[key] = edge
 	}
 	return out
 }

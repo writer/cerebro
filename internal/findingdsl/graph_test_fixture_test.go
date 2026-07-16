@@ -18,13 +18,15 @@ type recordingPolicyGraphStore struct {
 	entityErrAt int
 }
 
+var errFixtureProjection = errors.New("fixture projection failed")
+
 func (s *recordingPolicyGraphStore) Ping(context.Context) error { return nil }
 func (s *recordingPolicyGraphStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, nil
 }
 func (s *recordingPolicyGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
 	if s.entityErrAt > 0 && len(s.entities)+1 == s.entityErrAt {
-		return errors.New("projection failed")
+		return errFixtureProjection
 	}
 	s.entities = append(s.entities, entity)
 	return nil
@@ -38,7 +40,7 @@ func TestRunPolicyGraphFixtureCleansUpPartialProjection(t *testing.T) {
 	}}
 	store := &recordingPolicyGraphStore{entityErrAt: 2}
 	err := runPolicyGraphFixture(context.Background(), store, PolicyFindingRule{}, PolicyRuleTestCase{GraphFixture: fixture})
-	if err == nil || !strings.Contains(err.Error(), "projection failed") {
+	if !errors.Is(err, errFixtureProjection) {
 		t.Fatalf("runPolicyGraphFixture() error = %v, want projection failure", err)
 	}
 	if len(store.deleted) != 1 || store.deleted[0] != "a" {
@@ -158,5 +160,22 @@ func TestValidatePolicyGraphFixtureRejectsDuplicateEdges(t *testing.T) {
 	issues := ValidatePolicyRuleTestSuite(suite)
 	if !issuesContain(issues, "duplicates an earlier edge") {
 		t.Fatalf("ValidatePolicyRuleTestSuite() issues = %#v, want duplicate-edge issue", issues)
+	}
+}
+
+func TestValidatePolicyGraphFixtureRejectsParallelEdgesAsTwoHopPath(t *testing.T) {
+	suite := PolicyRuleTestSuite{APIVersion: APIVersion, Kind: KindPolicyFindingRuleTest, Cases: []PolicyRuleTestCase{{
+		Name: "parallel edges", GraphFixture: &PolicyGraphFixture{TenantID: "fixture", Nodes: []PolicyGraphFixtureNode{
+			{URN: "a", SourceID: "okta", EntityType: "okta.user"},
+			{URN: "b", SourceID: "okta", EntityType: "okta.group"},
+			{URN: "c", SourceID: "okta", EntityType: "okta.application"},
+		}, Edges: []PolicyGraphFixtureEdge{
+			{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"},
+			{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "assigned_to"},
+		}}, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true,
+	}}}
+	issues := ValidatePolicyRuleTestSuite(suite)
+	if !issuesContain(issues, "must contain a connected path spanning two edges") {
+		t.Fatalf("ValidatePolicyRuleTestSuite() issues = %#v, want connected-path issue", issues)
 	}
 }
