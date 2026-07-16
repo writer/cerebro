@@ -122,8 +122,8 @@ type ledgerRuntimeStore struct {
 func (s *ledgerRuntimeStore) BeginSourceRuntimePage(_ context.Context, attempt ports.SourceRuntimePageAttempt) error {
 	s.calls = append(s.calls, "begin")
 	s.attempts = append(s.attempts, attempt)
-	if len(attempt.Events) == 0 {
-		return errors.New("ledger attempt events are required")
+	if len(attempt.Events) == 0 && len(attempt.Quarantines) == 0 {
+		return errors.New("ledger attempt evidence is required")
 	}
 	return nil
 }
@@ -2378,6 +2378,70 @@ func TestSyncRuntimeAdmissionQuarantineNeverReachesBatchAppend(t *testing.T) {
 	}
 	if got := store.runtimes["writer-admission-quarantine"].GetConfig()[runtimeRecordsRejectedConfigKey]; got != "1" {
 		t.Fatalf("records rejected = %q, want 1", got)
+	}
+}
+
+func TestSyncRuntimePageLedgerCapturesExactQuarantineProof(t *testing.T) {
+	accepted := runtimeTestEvent("event-1", "admission_quarantine_ledger", "admission_quarantine_ledger.event")
+	quarantined := runtimeTestEvent("event-2", "admission_quarantine_ledger", "admission_quarantine_ledger.event")
+	quarantined.Payload = []byte(`{}`)
+	source := admissionTestSource{
+		id:     "admission_quarantine_ledger",
+		events: []*cerebrov1.EventEnvelope{accepted, quarantined},
+		contracts: []sourcecdk.EventContract{{
+			Kind:                  "admission_quarantine_ledger.event",
+			SchemaRef:             "admission_quarantine_ledger/event/v1",
+			RequiredAttributes:    []string{"event_type"},
+			RequiredPayloadFields: []string{"fixture"},
+		}},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &ledgerRuntimeStore{runtimeStore: runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-admission-quarantine-ledger": {Id: "writer-admission-quarantine-ledger", SourceId: source.id, TenantId: "writer"},
+	}}}
+	service := New(registry, store, &batchAppendLog{}, &projector{result: ports.ProjectionResult{EntitiesProjected: 1}})
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-quarantine-ledger"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if len(store.attempts) != 1 {
+		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))
+	}
+	if len(store.attempts[0].Quarantines) != 1 {
+		t.Fatalf("ledger quarantines = %d, want 1", len(store.attempts[0].Quarantines))
+	}
+	attempt := store.attempts[0]
+	proof := attempt.Quarantines[0]
+	if proof.InputIndex != 1 || proof.EventID != "event-2" || proof.Event.GetId() != "event-2" || !strings.HasPrefix(proof.EventSHA256, "sha256:") {
+		t.Fatalf("quarantine proof = %#v, want exact event-2 identity at input 1", proof)
+	}
+	wantID := sourceRuntimeQuarantineID("writer", "writer-admission-quarantine-ledger", proof.EventSHA256, proof.Code, proof.Field)
+	if proof.ID != wantID || proof.Code != "missing_required_payload_field" || proof.Field != "fixture" {
+		t.Fatalf("quarantine proof identity = %#v, want stable missing-field proof", proof)
+	}
+	if len(attempt.Admission.ContractsJSON) == 0 || !strings.HasPrefix(attempt.Admission.ContractsSHA256, "sha256:") {
+		t.Fatalf("admission contract proof = %#v, want snapshot and digest", attempt.Admission)
+	}
+}
+
+func TestSourceRuntimeQuarantineIDBindsTenantRuntimeEventAndDecision(t *testing.T) {
+	base := sourceRuntimeQuarantineID("tenant-1", "runtime-1", "sha256:event", "missing_required_attribute", "resource_id")
+	if base != sourceRuntimeQuarantineID("tenant-1", "runtime-1", "sha256:event", "missing_required_attribute", "resource_id") {
+		t.Fatal("sourceRuntimeQuarantineID() is not deterministic")
+	}
+	for _, changed := range []string{
+		sourceRuntimeQuarantineID("tenant-2", "runtime-1", "sha256:event", "missing_required_attribute", "resource_id"),
+		sourceRuntimeQuarantineID("tenant-1", "runtime-2", "sha256:event", "missing_required_attribute", "resource_id"),
+		sourceRuntimeQuarantineID("tenant-1", "runtime-1", "sha256:other", "missing_required_attribute", "resource_id"),
+		sourceRuntimeQuarantineID("tenant-1", "runtime-1", "sha256:event", "missing_required_payload_field", "resource_id"),
+		sourceRuntimeQuarantineID("tenant-1", "runtime-1", "sha256:event", "missing_required_attribute", "other"),
+	} {
+		if changed == base {
+			t.Fatalf("sourceRuntimeQuarantineID() did not bind all identity fields: %q", base)
+		}
 	}
 }
 

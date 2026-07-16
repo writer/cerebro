@@ -33,7 +33,19 @@ type SourceRuntimePageAttempt struct {
 	PageNumber     uint32
 	RecordsScanned uint32
 	Events         []*cerebrov1.EventEnvelope
+	Quarantines    []SourceRuntimePageQuarantine
 	Admission      SourceRuntimePageAdmission
+}
+
+// SourceRuntimePageQuarantine binds one captured envelope to its kernel proof.
+type SourceRuntimePageQuarantine struct {
+	ID          string
+	InputIndex  uint32
+	Event       *cerebrov1.EventEnvelope
+	EventID     string
+	EventSHA256 string
+	Code        string
+	Field       string
 }
 
 // SourceRuntimePageAdmission records the exact kernel decision made before append.
@@ -44,6 +56,7 @@ type SourceRuntimePageAdmission struct {
 	Accepted        uint32
 	Quarantined     uint32
 	Duplicates      uint32
+	ContractsJSON   []byte
 	ContractsSHA256 string
 	ScannedSHA256   string
 	AcceptedSHA256  string

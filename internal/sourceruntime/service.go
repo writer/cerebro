@@ -454,6 +454,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "source_runtime.page.last_events_read", Value: eventsRead},
 			telemetry.Field{Key: "source_runtime.page.last_has_next_cursor", Value: pull.NextCursor != nil},
 		)))
+		pageQuarantines := make([]ports.SourceRuntimePageQuarantine, 0, len(admission.Quarantined))
 		for _, rejection := range admission.Quarantined {
 			if rejection.InputIndex == nil {
 				return nil, fmt.Errorf("validate source event batch: %w: quarantine is missing its input index", sourcecdk.ErrInvalidEventEnvelope)
@@ -462,6 +463,15 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			category := rejection.Code
 			lastQuarantineCategory = category
 			syncedEvent := materializedEvents[*rejection.InputIndex]
+			pageQuarantines = append(pageQuarantines, ports.SourceRuntimePageQuarantine{
+				ID:          sourceRuntimeQuarantineID(runtime.GetTenantId(), runtime.GetId(), rejection.EventSHA256, rejection.Code, rejection.Field),
+				InputIndex:  boundedUint32(*rejection.InputIndex),
+				Event:       syncedEvent,
+				EventID:     rejection.EventID,
+				EventSHA256: rejection.EventSHA256,
+				Code:        rejection.Code,
+				Field:       rejection.Field,
+			})
 			recordRuntimeInvalidEventField(candidateRuntime, syncedEvent, category, rejection.Field, time.Now().UTC(), len(eventContracts) > 0)
 			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
 				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -501,6 +511,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
+			contractsJSON, err := json.Marshal(eventContracts)
+			if err != nil {
+				return nil, fmt.Errorf("encode source runtime admission contracts: %w", err)
+			}
 			if err := ledger.BeginSourceRuntimePage(ctx, ports.SourceRuntimePageAttempt{
 				AttemptID:      attemptID,
 				RuntimeID:      candidateRuntime.GetId(),
@@ -509,6 +523,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				PageNumber:     pageNumber,
 				RecordsScanned: boundedUint32(admission.Receipt.Scanned),
 				Events:         acceptedEvents,
+				Quarantines:    pageQuarantines,
 				Admission: ports.SourceRuntimePageAdmission{
 					Kernel:          "sourceruntime-event-admission",
 					ABIVersion:      eventadmission.ABIVersion,
@@ -516,6 +531,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 					Accepted:        boundedUint32(admission.Receipt.Accepted),
 					Quarantined:     boundedUint32(admission.Receipt.Quarantined),
 					Duplicates:      boundedUint32(admission.Receipt.Duplicates),
+					ContractsJSON:   contractsJSON,
 					ContractsSHA256: admission.Receipt.ContractsSHA256,
 					ScannedSHA256:   admission.Receipt.ScannedSHA256,
 					AcceptedSHA256:  admission.Receipt.AcceptedSHA256,
@@ -1458,6 +1474,15 @@ func sourceRuntimePageAttemptID(runtimeID string, pageNumber uint32, started tim
 	hash.Write([]byte(started.UTC().Format(time.RFC3339Nano)))
 	hash.Write([]byte{0})
 	hash.Write([]byte(strconv.FormatUint(uint64(pageNumber), 10)))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func sourceRuntimeQuarantineID(tenantID, runtimeID, eventSHA256, code, field string) string {
+	hash := sha256.New()
+	for _, value := range []string{tenantID, runtimeID, eventSHA256, code, field} {
+		hash.Write([]byte(strings.TrimSpace(value)))
+		hash.Write([]byte{0})
+	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
