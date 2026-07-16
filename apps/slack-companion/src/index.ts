@@ -3,6 +3,9 @@ export * from "./contracts.js";
 export * from "./delivery/contracts.js";
 export * from "./delivery/coordinator.js";
 export * from "./delivery/ports.js";
+export * from "./distributed/contracts.js";
+export * from "./distributed/ports.js";
+export * from "./distributed/validation.js";
 export {
   ExecutionCoordinator,
   ExecutionInvariantError,
