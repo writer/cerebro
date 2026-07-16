@@ -57,7 +57,7 @@ func groundGraphEvidence(ctx context.Context, graph ports.GraphQueryStore, tenan
 			return nil, fmt.Errorf("%w: graph evidence nodes[%d] type or source does not match current graph", ErrInvalidRequest, index)
 		}
 		if err := requireGroundedAttributes(node.Attributes, actual.attributes); err != nil {
-			return nil, fmt.Errorf("%w: graph evidence nodes[%d]: %v", ErrInvalidRequest, index, err)
+			return nil, fmt.Errorf("%w: graph evidence nodes[%d]: %w", ErrInvalidRequest, index, err)
 		}
 	}
 	edgeRows, err := graph.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: groundingEdgesQuery, Params: map[string]any{
@@ -83,7 +83,7 @@ func groundGraphEvidence(ctx context.Context, graph ports.GraphQueryStore, tenan
 			return nil, fmt.Errorf("%w: graph evidence edges[%d] source does not match current graph", ErrInvalidRequest, index)
 		}
 		if err := requireGroundedAttributes(edge.Attributes, actual.attributes); err != nil {
-			return nil, fmt.Errorf("%w: graph evidence edges[%d]: %v", ErrInvalidRequest, index, err)
+			return nil, fmt.Errorf("%w: graph evidence edges[%d]: %w", ErrInvalidRequest, index, err)
 		}
 	}
 	receiptID, err := newID()
@@ -195,7 +195,7 @@ func currentGroundingNodes(rows []ports.CypherRow) (map[string]currentGroundingO
 		}
 		attributes, err := groundingAttributes(row.Values["attributes_json"])
 		if err != nil {
-			return nil, fmt.Errorf("%w: current graph node attributes: %v", ErrInvalidRequest, err)
+			return nil, fmt.Errorf("%w: current graph node attributes: %w", ErrInvalidRequest, err)
 		}
 		result[urn] = currentGroundingObject{entityType: groundingRowString(row, "entity_type"), sourceID: groundingRowString(row, "source_id"), attributes: attributes}
 	}
@@ -213,7 +213,7 @@ func currentGroundingEdges(rows []ports.CypherRow) (map[string]currentGroundingO
 		}
 		attributes, err := groundingAttributes(row.Values["attributes_json"])
 		if err != nil {
-			return nil, fmt.Errorf("%w: current graph edge attributes: %v", ErrInvalidRequest, err)
+			return nil, fmt.Errorf("%w: current graph edge attributes: %w", ErrInvalidRequest, err)
 		}
 		result[groundingEdgeKey(fromURN, toURN, relation)] = currentGroundingObject{sourceID: groundingRowString(row, "source_id"), attributes: attributes}
 	}
