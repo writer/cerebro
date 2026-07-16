@@ -1,6 +1,36 @@
 package graphstore
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestIngestRunGraphCountsKeepFlatJSONContract(t *testing.T) {
+	t.Parallel()
+	encoded, err := json.Marshal(IngestRun{
+		ID: "run-a",
+		IngestRunGraphCounts: IngestRunGraphCounts{
+			GraphNodesBefore: 10, GraphLinksBefore: 20, GraphNodesAfter: 11, GraphLinksAfter: 22,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]float64{
+		"graph_nodes_before": 10, "graph_links_before": 20, "graph_nodes_after": 11, "graph_links_after": 22,
+	} {
+		if wire[key] != want {
+			t.Fatalf("%s = %#v, want %v", key, wire[key], want)
+		}
+	}
+	if _, exists := wire["ingest_run_graph_counts"]; exists {
+		t.Fatalf("embedded counts leaked a nested JSON field: %s", encoded)
+	}
+}
 
 func TestSuppressTwoHopPath(t *testing.T) {
 	tests := []struct {

@@ -48,6 +48,7 @@ import (
 	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/policycandidate"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
@@ -64,13 +65,15 @@ import (
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
 type Dependencies struct {
-	AppendLog       ports.AppendLog
-	StateStore      ports.StateStore
-	GraphStore      ports.GraphStore
-	GraphAgentLLM   graphagent.LLMClient
-	QueryCache      querycache.Cache
-	FindingRules    *findings.Registry
-	PolicyAuthoring *agentauthoring.Service
+	AppendLog                   ports.AppendLog
+	StateStore                  ports.StateStore
+	GraphStore                  ports.GraphStore
+	GraphAgentLLM               graphagent.LLMClient
+	QueryCache                  querycache.Cache
+	FindingRules                *findings.Registry
+	PolicyAuthoring             *agentauthoring.Service
+	PolicyExperiments           PolicyExperimentJobHandler
+	PolicyExperimentCheckpoints policycandidate.ExperimentCheckpointStatusReader
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
