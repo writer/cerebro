@@ -335,20 +335,39 @@ describe("DeliveryCoordinator", () => {
     assert.equal(paused.parts[0]?.state, "paused");
     assert.equal(store.claimCount(planned.receipt.delivery_id), 0);
 
+    const recoveryLease = lease({
+      fencing_token: 3,
+      generation: 2,
+      heartbeat_at: "2026-07-16T12:00:10.000Z",
+      lease_expires_at: "2026-07-16T12:00:40.000Z",
+      lease_token: "lease-recovery",
+      owner_id: "worker-recovery",
+    });
+    const pausedAgain = await coordinator.pause(
+      planned.receipt.delivery_id,
+      recoveryLease,
+    );
+    assert.equal(pausedAgain.state, "paused");
+    assert.equal(pausedAgain.parts[0]?.state, "paused");
+
     await assert.rejects(
       () => coordinator.resume(planned.receipt.delivery_id, staleLease),
       DeliveryFenceError,
     );
+    await assert.rejects(
+      () => coordinator.resume(planned.receipt.delivery_id, currentLease),
+      DeliveryFenceError,
+    );
     const resumed = await coordinator.resume(
       planned.receipt.delivery_id,
-      currentLease,
+      recoveryLease,
     );
     assert.equal(resumed.state, "pending");
     assert.equal(resumed.parts[0]?.state, "pending");
 
     const delivered = await coordinator.deliverNext(
       planned.receipt.delivery_id,
-      currentLease,
+      recoveryLease,
     );
     assert.equal(delivered.status, "delivered");
     assert.equal(delivered.receipt.state, "completed");
