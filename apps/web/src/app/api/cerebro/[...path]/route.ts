@@ -306,10 +306,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const [params, currentUser, requestBody] = await Promise.all([
+  const [params, currentUser] = await Promise.all([
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
-    request.text(),
   ]);
   const path = (params.path ?? []).join("/");
   const normalizedPath = normalizeProxyPath(path);
@@ -317,7 +316,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
   const span = startWebSpan(
     "cerebro.proxy.request",
-    proxySpanAttributes("PATCH", path, request, requestBody),
+    proxySpanAttributes("PATCH", path, request),
     request.headers.get("traceparent"),
   );
   span.annotate(authorizationSpanAttributes(decision, currentUser));
@@ -325,6 +324,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy write denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const requestBody = await request.text();
   const url = new URL(request.url);
   let body = requestBody;
   body = stampCurrentUserOnWriteBody(
@@ -369,10 +369,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const [params, currentUser, requestBody] = await Promise.all([
+  const [params, currentUser] = await Promise.all([
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
-    request.text(),
   ]);
   const path = (params.path ?? []).join("/");
   const normalizedPath = normalizeProxyPath(path);
@@ -380,7 +379,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
   const span = startWebSpan(
     "cerebro.proxy.request",
-    proxySpanAttributes("PUT", path, request, requestBody),
+    proxySpanAttributes("PUT", path, request),
     request.headers.get("traceparent"),
   );
   span.annotate(authorizationSpanAttributes(decision, currentUser));
@@ -388,6 +387,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy put denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const requestBody = await request.text();
   const url = new URL(request.url);
   const body = stampCurrentUserOnWriteBody(
     requestBody,

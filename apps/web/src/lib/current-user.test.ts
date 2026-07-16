@@ -125,6 +125,16 @@ describe("current user identity", () => {
     expect(currentUserActorLabel(user)).toBe("person@example.com");
   });
 
+  it("preserves commas in trusted display-name headers", () => {
+    const user = currentUserFromHeaders(new Headers({
+      "x-okta-email": "person@example.com",
+      "x-okta-name": "Example, Person",
+      "x-okta-user": "person",
+    }));
+
+    expect(user?.displayName).toBe("Example, Person");
+  });
+
   it("derives useful initials from email-only identities", () => {
     const user = currentUserFromHeaders(new Headers({
       "x-okta-email": "First.Last+dev@Example.COM",
