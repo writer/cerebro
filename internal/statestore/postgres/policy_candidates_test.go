@@ -32,3 +32,21 @@ func TestDecodePolicyCandidateRoundTrip(t *testing.T) {
 		t.Fatalf("decoded candidate = %#v", got)
 	}
 }
+
+func TestPolicyExperimentSchemaKeepsPinnedRunsAndAppendOnlyObservations(t *testing.T) {
+	joined := strings.Join(policyExperimentStatements, "\n")
+	for _, required := range []string{
+		"CREATE TABLE IF NOT EXISTS policy_experiments",
+		"candidate_revision BIGINT NOT NULL",
+		"dataset_digest TEXT NOT NULL",
+		"CREATE TABLE IF NOT EXISTS policy_experiment_observations",
+		"UNIQUE (experiment_id, sequence)",
+		"idempotency_key TEXT NOT NULL",
+		"policy_experiment_observations_idempotency_idx",
+		"receipt_digest TEXT NOT NULL",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("experiment schema missing %q", required)
+		}
+	}
+}

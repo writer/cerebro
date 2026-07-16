@@ -179,6 +179,7 @@ func (a *App) authorizedPolicyCandidate(r *http.Request, id string) (*policycand
 
 func (a *App) policyCandidateService() policycandidate.Service {
 	store, _ := a.deps.StateStore.(policycandidate.Store)
+	experiments, _ := a.deps.StateStore.(policycandidate.ExperimentStore)
 	var graph ports.GraphQueryStore
 	if candidate, ok := a.deps.GraphStore.(ports.GraphQueryStore); ok {
 		graph = candidate
@@ -195,7 +196,13 @@ func (a *App) policyCandidateService() policycandidate.Service {
 	if a.deps.FindingRules != nil {
 		catalog = findingRuleCoverageCatalog{registry: a.deps.FindingRules}
 	}
-	return policycandidate.Service{Store: store, Author: author, Graph: graph, Catalog: catalog}
+	return policycandidate.Service{Store: store, Experiments: experiments, Author: author, Graph: graph, Catalog: catalog}
+}
+
+func policyCandidateServiceForStore(store ports.StateStore) policycandidate.Service {
+	candidates, _ := store.(policycandidate.Store)
+	experiments, _ := store.(policycandidate.ExperimentStore)
+	return policycandidate.Service{Store: candidates, Experiments: experiments}
 }
 
 type findingRuleCoverageCatalog struct{ registry *findings.Registry }

@@ -35,6 +35,7 @@ func postgresAdvisoryLockKey(parts ...string) string {
 type findingIntelReady struct {
 	candidate         bool
 	policyCandidate   bool
+	policyExperiment  bool
 	memory            bool
 	riskScoringConfig bool
 	remediation       bool
