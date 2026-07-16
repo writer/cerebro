@@ -19,10 +19,6 @@ cases:
           sourceId: okta
           entityType: okta.application
           label: Payroll
-        - urn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
-          sourceId: okta
-          entityType: okta.entitlement
-          label: Payroll write
       edges:
         - fromUrn: urn:cerebro:test-suspended-group:okta:user:alice
           toUrn: urn:cerebro:test-suspended-group:okta:group:finance-admins
@@ -32,10 +28,9 @@ cases:
           toUrn: urn:cerebro:test-suspended-group:okta:application:payroll
           sourceId: okta
           relation: assigned_to
-        - fromUrn: urn:cerebro:test-suspended-group:okta:application:payroll
-          toUrn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
-          sourceId: okta
-          relation: grants_entitlement
+    wantEvidenceUrns:
+      - urn:cerebro:test-suspended-group:okta:group:finance-admins
+      - urn:cerebro:test-suspended-group:okta:application:payroll
     wantFinding: true
   - name: group application path without suspended membership passes
     graphFixture:
@@ -46,8 +41,4 @@ cases:
           toUrn: urn:cerebro:test-suspended-group:okta:application:payroll
           sourceId: okta
           relation: assigned_to
-        - fromUrn: urn:cerebro:test-suspended-group:okta:application:payroll
-          toUrn: urn:cerebro:test-suspended-group:okta:entitlement:payroll-write
-          sourceId: okta
-          relation: grants_entitlement
     wantFinding: false

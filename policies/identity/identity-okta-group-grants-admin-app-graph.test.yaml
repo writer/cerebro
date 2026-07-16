@@ -34,6 +34,10 @@ cases:
           toUrn: urn:cerebro:test-group-admin-path:access:capability:cloud_admin
           sourceId: okta
           relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-group-admin-path:okta:application:cloud-console
+      - urn:cerebro:test-group-admin-path:okta:entitlement:console-admin
+      - urn:cerebro:test-group-admin-path:access:capability:cloud_admin
     wantFinding: true
   - name: group application entitlement path without admin capability passes
     graphFixture:

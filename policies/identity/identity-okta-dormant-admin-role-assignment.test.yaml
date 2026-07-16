@@ -37,6 +37,10 @@ cases:
           toUrn: urn:cerebro:test-dormant-admin:access:capability:identity-admin
           sourceId: okta
           relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-dormant-admin:okta:admin-role:org-admin
+      - urn:cerebro:test-dormant-admin:okta:entitlement:org-admin
+      - urn:cerebro:test-dormant-admin:access:capability:identity-admin
     wantFinding: true
   - name: admin capability path without dormant user assignment passes
     graphFixture:

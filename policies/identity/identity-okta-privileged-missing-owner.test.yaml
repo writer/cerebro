@@ -36,6 +36,10 @@ cases:
           toUrn: urn:cerebro:test-missing-owner:access:capability:identity-admin
           sourceId: okta
           relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-missing-owner:okta:admin-role:super-admin
+      - urn:cerebro:test-missing-owner:okta:entitlement:tenant-admin
+      - urn:cerebro:test-missing-owner:access:capability:identity-admin
     wantFinding: true
   - name: privileged capability path without user role assignment passes
     graphFixture:

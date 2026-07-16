@@ -20,10 +20,6 @@ cases:
           sourceId: okta
           entityType: okta.application
           label: Deployment console
-        - urn: urn:cerebro:test-stale-group:okta:entitlement:deploy-production
-          sourceId: okta
-          entityType: okta.entitlement
-          label: Deploy production
       edges:
         - fromUrn: urn:cerebro:test-stale-group:okta:user:bob
           toUrn: urn:cerebro:test-stale-group:okta:group:engineering-admins
@@ -33,10 +29,9 @@ cases:
           toUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
           sourceId: okta
           relation: assigned_to
-        - fromUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
-          toUrn: urn:cerebro:test-stale-group:okta:entitlement:deploy-production
-          sourceId: okta
-          relation: grants_entitlement
+    wantEvidenceUrns:
+      - urn:cerebro:test-stale-group:okta:group:engineering-admins
+      - urn:cerebro:test-stale-group:okta:application:deployment-console
     wantFinding: true
   - name: group application path without stale membership passes
     graphFixture:
@@ -47,8 +42,4 @@ cases:
           toUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
           sourceId: okta
           relation: assigned_to
-        - fromUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
-          toUrn: urn:cerebro:test-stale-group:okta:entitlement:deploy-production
-          sourceId: okta
-          relation: grants_entitlement
     wantFinding: false

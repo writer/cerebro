@@ -36,6 +36,10 @@ cases:
           toUrn: urn:cerebro:test-suspended-assignment:access:capability:payroll-write
           sourceId: okta
           relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-suspended-assignment:okta:application:payroll
+      - urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+      - urn:cerebro:test-suspended-assignment:access:capability:payroll-write
     wantFinding: true
   - name: entitlement path without user assignment passes
     graphFixture:
