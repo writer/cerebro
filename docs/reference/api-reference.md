@@ -28,6 +28,7 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `GET /api/v1/agent-platform/contract`
 - `GET /api/v1/agent-platform/capabilities`
 - `GET /api/v1/agent-platform/security-control-plane`
+- `GET /api/v1/agent-platform/missions/contract`
 - `GET /api/v1/event-subscriptions/contract`
 - `GET /api/v1/idempotency-contract`
 - `POST /platform/knowledge/decisions`

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson"
 )
 
@@ -87,7 +88,7 @@ func EvaluateContext(ctx context.Context, input ContextInput) (Context, error) {
 	}
 	var result Context
 	if err := json.Unmarshal(output, &result); err != nil {
-		return Context{}, fmt.Errorf("%w: decode response: %w", ErrEvaluatorUnavailable, err)
+		return Context{}, wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, fmt.Errorf("%w: decode response: %w", ErrEvaluatorUnavailable, err))
 	}
 	if result.AttackTactics == nil {
 		result.AttackTactics = []AttackTactic{}

@@ -132,6 +132,18 @@ EMBEDDED_WASM_MODULES = (
         ),
         changed_reason="MITRE context normalization source, host, or embedded module changed.",
     ),
+    EmbeddedWasmModule(
+        name="sourceruntime-record-kernel",
+        label="source record kernel",
+        package="cerebro-sourceruntime-recordkernel",
+        build_artifact="cerebro_sourceruntime_recordkernel.wasm",
+        embedded_artifact="internal/sourceruntime/recordkernel/recordkernel.wasm",
+        generate_target="sourceruntime-record-kernel-generate",
+        check_target="sourceruntime-record-kernel-check",
+        changed_prefixes=("internal/sourceruntime/recordkernel/",),
+        changed_paths=frozenset(),
+        changed_reason="Source record kernel source, host, or embedded module changed.",
+    ),
 )
 
 MODULES_BY_NAME = {module.name: module for module in EMBEDDED_WASM_MODULES}

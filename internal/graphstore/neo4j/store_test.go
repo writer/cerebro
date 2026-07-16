@@ -7,12 +7,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/projectionmeta"
 
@@ -165,7 +167,7 @@ func TestMigrateProjectedLinkAssertionsValidatesScopeBeforeConnection(t *testing
 		{TenantID: "writer"},
 	} {
 		_, err := store.MigrateProjectedLinkAssertions(context.Background(), request)
-		if err == nil || !strings.Contains(err.Error(), "tenant_id and relations are required") {
+		if !errors.Is(err, errProjectionAssertionMigrationScopeRequired) {
 			t.Fatalf("MigrateProjectedLinkAssertions(%#v) error = %v, want scope validation", request, err)
 		}
 	}
@@ -593,6 +595,8 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 			t.Fatalf("preserved link missing: %s %s %s", link.FromURN, link.Relation, link.ToURN)
 		}
 	}
+
+	runAuthoredPolicyGraphFixtures(t, ctx, store)
 }
 
 func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
@@ -695,6 +699,32 @@ func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
 	}
 	if after.EntitiesMatched != 0 {
 		t.Fatalf("dry-run after backfill matched %d entities, want 0", after.EntitiesMatched)
+	}
+
+}
+
+func runAuthoredPolicyGraphFixtures(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
+	paths, err := findingdsl.DiscoverPolicyTestSuites(repoRoot)
+	if err != nil {
+		t.Fatalf("discover authored policy graph fixtures: %v", err)
+	}
+	for _, path := range paths {
+		suite, issues, err := findingdsl.LoadPolicyRuleTestSuite(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)))
+		if err != nil || len(issues) != 0 {
+			continue // The normal findingdsl lane reports malformed suites.
+		}
+		hasGraphFixture := false
+		for _, testCase := range suite.Cases {
+			hasGraphFixture = hasGraphFixture || testCase.GraphFixture != nil
+		}
+		if !hasGraphFixture {
+			continue
+		}
+		if issues := findingdsl.RunPolicyRuleTestSuiteWithGraphStore(ctx, repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)), store); len(issues) != 0 {
+			t.Fatalf("authored graph policy suite %s failed: %#v", path, issues)
+		}
 	}
 }
 

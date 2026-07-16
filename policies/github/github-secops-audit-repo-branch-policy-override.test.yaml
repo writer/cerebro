@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        action: protected_branch.policy_override
+        branch: true
+        resource_type: protected_branch
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        action: protected_branch.policy_override
+        branch: true
+        resource_type: protected_branch-passing
+      wantFinding: false

@@ -6,11 +6,22 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson"
 	"github.com/writer/cerebro/internal/wasmjson/wasmjsontest"
 )
 
 const contextEvaluatorFuzzMaxInput = 64 << 10
+
+func TestContextEvaluatorReportsCanceledDiagnostic(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runContextEvaluator(ctx, []byte(`{}`))
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, wasmhost.ErrCanceled) {
+		t.Fatalf("runContextEvaluator() error = %v, want cancellation diagnostic", err)
+	}
+}
 
 //go:embed testdata/wasmjson/*.json
 var contextEvaluatorCorpus embed.FS
@@ -68,6 +79,21 @@ func TestContextEvaluatorRejectsMalformedAndOversizedInput(t *testing.T) {
 	}
 	if !errors.Is(err, wasmjson.ErrInputTooLarge) {
 		t.Fatalf("runContextEvaluator(oversized) error = %v; want ErrInputTooLarge", err)
+	}
+}
+
+func BenchmarkContextEvaluator(b *testing.B) {
+	ctx := context.Background()
+	payload := []byte(`{"attack_tactic_values":["TA0001","Initial Access"],"attack_technique_values":["T1190 Exploit Public-Facing Application"],"defend_artifact_values":["d3f:Credential"]}`)
+	if _, err := runContextEvaluator(ctx, payload); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := runContextEvaluator(ctx, payload); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

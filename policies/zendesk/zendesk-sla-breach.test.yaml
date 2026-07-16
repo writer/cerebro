@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        first_response_sla_breached: true
+        status: closed-passing
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        first_response_sla_breached: false
+        status: closed-passing
+      wantFinding: false

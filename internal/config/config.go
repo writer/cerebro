@@ -25,6 +25,7 @@ const (
 	defaultPostgresConnMaxIdleTime     = time.Minute
 	defaultDeadLetterPendingRetention  = 7 * 24 * time.Hour
 	defaultDeadLetterTerminalRetention = 30 * 24 * time.Hour
+	defaultDecisionPacketRetention     = 30 * 24 * time.Hour
 	defaultDeadLetterWarningRecords    = int64(10_000)
 	defaultDeadLetterHardRecords       = int64(100_000)
 	defaultDeadLetterWarningBytes      = int64(1 << 30)
@@ -117,6 +118,7 @@ type StateStoreConfig struct {
 	PostgresConnMaxIdleTime     time.Duration
 	DeadLetterPendingRetention  time.Duration
 	DeadLetterTerminalRetention time.Duration
+	DecisionPacketRetention     time.Duration
 	DeadLetterWarningRecords    int64
 	DeadLetterHardRecords       int64
 	DeadLetterWarningBytes      int64
@@ -681,6 +683,9 @@ func Load() (Config, error) {
 	if cfg.StateStore.DeadLetterTerminalRetention, err = parseDurationEnv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", defaultDeadLetterTerminalRetention); err != nil {
 		return Config{}, err
 	}
+	if cfg.StateStore.DecisionPacketRetention, err = parseDurationEnv("CEREBRO_DECISION_PACKET_RETENTION", defaultDecisionPacketRetention); err != nil {
+		return Config{}, err
+	}
 	if cfg.StateStore.DeadLetterWarningRecords, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", defaultDeadLetterWarningRecords); err != nil {
 		return Config{}, err
 	}
@@ -695,6 +700,9 @@ func Load() (Config, error) {
 	}
 	if err := validateDeadLetterPolicy(cfg.StateStore); err != nil {
 		return Config{}, err
+	}
+	if cfg.StateStore.DecisionPacketRetention <= 0 {
+		return Config{}, errors.New("CEREBRO_DECISION_PACKET_RETENTION must be greater than zero")
 	}
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
@@ -894,6 +902,9 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 	}
 	if cfg.DeadLetterTerminalRetention == 0 {
 		cfg.DeadLetterTerminalRetention = defaultDeadLetterTerminalRetention
+	}
+	if cfg.DecisionPacketRetention == 0 {
+		cfg.DecisionPacketRetention = defaultDecisionPacketRetention
 	}
 	if cfg.DeadLetterWarningRecords == 0 {
 		cfg.DeadLetterWarningRecords = defaultDeadLetterWarningRecords

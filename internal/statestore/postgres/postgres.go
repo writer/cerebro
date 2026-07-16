@@ -69,6 +69,7 @@ type grcTablesReady struct {
 	evidenceLedger       bool
 	auditState           bool
 	auditPackets         bool
+	decisionPackets      bool
 }
 
 type appendLogTablesReady struct {

@@ -1554,6 +1554,7 @@ var knownAccessAuditConnectProcedures = map[string]struct{}{
 	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                      {},
 	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:                    {},
 	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:                 {},
+	cerebrov1connect.BootstrapServiceBuildDecisionPacketProcedure:                    {},
 }
 
 func fallbackAccessAuditRoute(method string, path string) string {

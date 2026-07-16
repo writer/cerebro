@@ -75,6 +75,11 @@ macro_rules! identifier {
 identifier!(TenantId, "tenant id");
 identifier!(MandateId, "mandate id");
 identifier!(MissionId, "mission id");
+identifier!(BeliefId, "belief id");
+identifier!(PlanId, "plan id");
+identifier!(CommitmentId, "commitment id");
+identifier!(WakeConditionId, "wake condition id");
+identifier!(ConversationId, "conversation id");
 identifier!(ActorId, "actor id");
 identifier!(GrantId, "grant id");
 identifier!(DecisionId, "decision id");

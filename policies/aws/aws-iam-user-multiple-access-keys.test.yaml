@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        access_key_1_active: true
+        access_key_2_active: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        access_key_1_active: false
+        access_key_2_active: true
+      wantFinding: false

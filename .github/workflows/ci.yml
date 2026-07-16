@@ -74,7 +74,7 @@ jobs:
 
       - name: Set up Rust
         if: matrix.setup_rust == true
-        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview --target wasm32-unknown-unknown
 
       - name: Cache Rust build data
         if: matrix.setup_rust == true
@@ -82,11 +82,12 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-llvm-cov
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2-cargo-llvm-cov-0.8.7
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
             ${{ runner.os }}-${{ runner.arch }}-rust-v1-
@@ -98,6 +99,15 @@ jobs:
           set -euo pipefail
           if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
             cargo install cargo-deny --version 0.20.2 --locked
+          fi
+
+      - name: Install Rust coverage tool
+        if: matrix.setup_rust == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! cargo llvm-cov --version 2>/dev/null | grep -Fxq 'cargo-llvm-cov 0.8.7'; then
+            cargo install cargo-llvm-cov --version 0.8.7 --locked
           fi
 
       - name: Cache Go build data

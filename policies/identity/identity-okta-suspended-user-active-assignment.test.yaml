@@ -1,22 +1,57 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: suspended user with active app assignment fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_user:00u-suspended
-        primary_label: suspended@example.com
-        primary_type: okta.user
-        fingerprint_key: urn:cerebro:writer:okta_user:00u-suspended|urn:cerebro:writer:okta_application:app-payroll
-        resource_urns:
-          - urn:cerebro:writer:okta_user:00u-suspended
-          - urn:cerebro:writer:okta_application:app-payroll
-        severity: HIGH
-        summary: Okta suspended user suspended@example.com still has active assignment to Payroll
-        action: Remove app assignment and verify downstream deprovisioning
-        evidence:
-          - urn: urn:cerebro:writer:okta_application:app-payroll
+  - name: suspended user to capability path produces a finding
+    graphFixture:
+      tenantId: test-suspended-assignment
+      nodes: &nodes
+        - urn: urn:cerebro:test-suspended-assignment:okta:user:alice
+          sourceId: okta
+          entityType: okta.user
+          label: alice@example.com
+          attributes:
+            status: suspended
+        - urn: urn:cerebro:test-suspended-assignment:okta:application:payroll
+          sourceId: okta
+          entityType: okta.application
+          label: Payroll
+        - urn: urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+          sourceId: okta
+          entityType: okta.entitlement
+          label: Payroll admin
+        - urn: urn:cerebro:test-suspended-assignment:access:capability:payroll-write
+          sourceId: okta
+          entityType: access.capability
+          label: Payroll write
+      edges:
+        - fromUrn: urn:cerebro:test-suspended-assignment:okta:user:alice
+          toUrn: urn:cerebro:test-suspended-assignment:okta:application:payroll
+          sourceId: okta
+          relation: assigned_to
+        - fromUrn: urn:cerebro:test-suspended-assignment:okta:application:payroll
+          toUrn: urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+          toUrn: urn:cerebro:test-suspended-assignment:access:capability:payroll-write
+          sourceId: okta
+          relation: confers_capability
+    wantEvidenceUrns:
+      - urn:cerebro:test-suspended-assignment:okta:application:payroll
+      - urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+      - urn:cerebro:test-suspended-assignment:access:capability:payroll-write
     wantFinding: true
-  - name: suspended user without app assignment passes
-    resource:
-      placeholder: true
+  - name: entitlement path without user assignment passes
+    graphFixture:
+      tenantId: test-suspended-assignment
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-suspended-assignment:okta:application:payroll
+          toUrn: urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+          sourceId: okta
+          relation: grants_entitlement
+        - fromUrn: urn:cerebro:test-suspended-assignment:okta:entitlement:payroll-admin
+          toUrn: urn:cerebro:test-suspended-assignment:access:capability:payroll-write
+          sourceId: okta
+          relation: confers_capability
     wantFinding: false

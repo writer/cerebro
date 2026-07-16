@@ -310,6 +310,40 @@ func (duplicateEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.S
 	}}, nil
 }
 
+type eventLimitSource struct {
+	reads int
+}
+
+func (*eventLimitSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "event_limit", Name: "Event limit"}
+}
+
+func (*eventLimitSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (*eventLimitSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *eventLimitSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.reads++
+	if cursor == nil || cursor.GetOpaque() == "" || cursor.GetOpaque() == "1" {
+		return sourcecdk.Pull{
+			Events:     []*cerebrov1.EventEnvelope{runtimeTestEvent("event-limit-1", "event_limit", "event_limit.record")},
+			NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+			Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "1"},
+		}, nil
+	}
+	return sourcecdk.Pull{
+		Events: []*cerebrov1.EventEnvelope{
+			runtimeTestEvent("event-limit-2", "event_limit", "event_limit.record"),
+			runtimeTestEvent("event-limit-3", "event_limit", "event_limit.record"),
+		},
+		Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "2"},
+	}, nil
+}
+
 type invalidEventSource struct{}
 
 func (invalidEventSource) Spec() *cerebrov1.SourceSpec {
@@ -1287,6 +1321,101 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	if store.putCount != 2 {
 		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
+	}
+}
+
+func TestSyncRuntimeStopsAtExactEventLimitWithoutReadingAnotherPage(t *testing.T) {
+	source := &eventLimitSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-event-limit": {Id: "writer-event-limit", SourceId: "event_limit", TenantId: "writer"},
+	}}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:         "writer-event-limit",
+		PageLimit:  3,
+		EventLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetPagesRead() != 1 || resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync() pages/events = %d/%d, want 1/1", resp.GetPagesRead(), resp.GetEventsAppended())
+	}
+	if !resp.GetEventLimitReached() || resp.GetShortCircuitReason() != syncEventLimitReachedReason {
+		t.Fatalf("Sync() limit/reason = %v/%q, want true/%q", resp.GetEventLimitReached(), resp.GetShortCircuitReason(), syncEventLimitReachedReason)
+	}
+	if source.reads != 1 {
+		t.Fatalf("source reads = %d, want 1", source.reads)
+	}
+	stored := store.runtimes["writer-event-limit"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "1" {
+		t.Fatalf("stored checkpoint = %q, want 1", got)
+	}
+	if got := stored.GetNextCursor().GetOpaque(); got != "2" {
+		t.Fatalf("stored next cursor = %q, want 2", got)
+	}
+}
+
+func TestSyncRuntimeDefersWholePageThatWouldExceedEventLimit(t *testing.T) {
+	source := &eventLimitSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-event-limit": {Id: "writer-event-limit", SourceId: "event_limit", TenantId: "writer"},
+	}}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:         "writer-event-limit",
+		PageLimit:  3,
+		EventLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetPagesRead() != 1 || resp.GetEventsAppended() != 1 || len(log.events) != 1 {
+		t.Fatalf("first Sync() pages/events/log = %d/%d/%d, want 1/1/1", resp.GetPagesRead(), resp.GetEventsAppended(), len(log.events))
+	}
+	if !resp.GetEventLimitReached() || source.reads != 2 {
+		t.Fatalf("first Sync() limit/reads = %v/%d, want true/2", resp.GetEventLimitReached(), source.reads)
+	}
+	stored := store.runtimes["writer-event-limit"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "1" {
+		t.Fatalf("checkpoint after deferred page = %q, want 1", got)
+	}
+	if got := stored.GetNextCursor().GetOpaque(); got != "2" {
+		t.Fatalf("cursor after deferred page = %q, want 2", got)
+	}
+
+	resumed, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:         "writer-event-limit",
+		PageLimit:  1,
+		EventLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("resumed Sync() error = %v", err)
+	}
+	if resumed.GetPagesRead() != 1 || resumed.GetEventsAppended() != 2 || resumed.GetEventLimitReached() {
+		t.Fatalf("resumed Sync() pages/events/limit = %d/%d/%v, want 1/2/false", resumed.GetPagesRead(), resumed.GetEventsAppended(), resumed.GetEventLimitReached())
+	}
+	if len(log.events) != 3 {
+		t.Fatalf("event log count after resume = %d, want 3", len(log.events))
+	}
+	stored = store.runtimes["writer-event-limit"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "2" {
+		t.Fatalf("checkpoint after resume = %q, want 2", got)
+	}
+	if stored.GetNextCursor() != nil {
+		t.Fatalf("cursor after resume = %#v, want nil", stored.GetNextCursor())
 	}
 }
 

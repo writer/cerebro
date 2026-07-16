@@ -64,6 +64,10 @@ Security-agent behavior is exposed through `internal/agentplatform.SecurityContr
 `/api/v1/agent-platform/security-control-plane` route. The control plane is the registry that agents should reason
 from before touching graph context, connector tools, findings, memory, or remediation surfaces.
 
+The `mission_operating` block and `/api/v1/agent-platform/missions/contract` route define durable mandates,
+missions, beliefs, plan revisions, commitments, and wake conditions. Existing agent work is a projection of that
+contract, not a parallel transcript-backed lifecycle.
+
 The first supported integration strategies are:
 
 - A2A protocol boundary: public discovery is limited to `/.well-known/agent-card.json` and the legacy

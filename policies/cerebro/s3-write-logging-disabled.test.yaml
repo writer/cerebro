@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        cloudtrail_data_events:
+            write_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        cloudtrail_data_events:
+            write_enabled: true
+      wantFinding: false

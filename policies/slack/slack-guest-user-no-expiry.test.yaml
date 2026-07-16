@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        guest_user_no_expiry_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        guest_user_no_expiry_compliant: true
+      wantFinding: false

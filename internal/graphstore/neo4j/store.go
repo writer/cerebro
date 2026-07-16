@@ -48,6 +48,7 @@ SET e.tenant_id = $tenant_id,
 RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
+var errProjectionAssertionMigrationScopeRequired = errors.New("tenant_id and relations are required for projected link assertion migration")
 var mutatingCypherPattern = regexp.MustCompile(`(?i)\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|LOAD\s+CSV)\b|\bCALL\s+(DB|APOC)\.`)
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
@@ -1630,7 +1631,7 @@ func (s *Store) MigrateProjectedLinkAssertions(ctx context.Context, request port
 	tenantID := strings.TrimSpace(request.TenantID)
 	relations := normalizeCleanupValues(request.Relations)
 	if tenantID == "" || len(relations) == 0 {
-		return ports.ProjectionAssertionMigrationResult{}, errors.New("tenant_id and relations are required for projected link assertion migration")
+		return ports.ProjectionAssertionMigrationResult{}, errProjectionAssertionMigrationScopeRequired
 	}
 	if err := s.requireConfigured(); err != nil {
 		return ports.ProjectionAssertionMigrationResult{}, err

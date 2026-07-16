@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        resource_type: saml_provider
+        saml_provider_settings_weakened: "true"
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        resource_type: saml_provider-passing
+        saml_provider_settings_weakened: "true"
+      wantFinding: false

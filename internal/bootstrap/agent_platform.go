@@ -78,6 +78,9 @@ func (a *App) handleAgentPlatformCapabilities(w http.ResponseWriter, r *http.Req
 func (a *App) handleAgentPlatformSecurityControlPlane(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, agentplatform.SecurityControlPlaneSnapshot())
 }
+func (a *App) handleAgentPlatformMissionContract(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.SecurityControlPlaneSnapshot().MissionOperating)
+}
 
 func (a *App) handleAgentPlatformCapabilityDecision(w http.ResponseWriter, r *http.Request) {
 	var request agentplatform.CapabilityDecisionRequest

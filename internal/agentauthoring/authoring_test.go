@@ -65,6 +65,40 @@ func TestDraftPolicyRuleRejectsInvalidDraft(t *testing.T) {
 	}
 }
 
+func TestDraftPolicyBundleAuthorsRunnableTestsAndProof(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-public-bucket", Name: "Agent public bucket", Description: "Flags public buckets drafted by the agent.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "public"), true)`, `cmp_eq(path(resource, "approved"), false)`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"2.1.5"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &stubDraftModel{raw: raw}
+	result, err := (Service{Model: model}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{Prompt: "author a policy for public buckets", Domain: "aws", Context: map[string]any{"source_kind": "aws.s3.bucket"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.req.Kind != "policy_finding_rule" || model.req.Context["source_kind"] != "aws.s3.bucket" || model.req.Context["test_author_contract"] == nil {
+		t.Fatalf("model request = %#v", model.req)
+	}
+	if result.PolicyPath != "policies/aws/agent-public-bucket.yaml" || result.TestPath != "policies/aws/agent-public-bucket.test.yaml" {
+		t.Fatalf("paths = %q %q", result.PolicyPath, result.TestPath)
+	}
+	if len(result.Suite.Cases) != 2 || len(result.Proof.Receipts) != 2 || !result.Proof.Receipts[0].Passed || !result.Proof.Receipts[1].Passed {
+		t.Fatalf("bundle = %#v", result)
+	}
+}
+
+func TestDraftPolicyBundleRejectsPolicyWithoutSafeFixtureContract(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-complex", Name: "Agent complex", Description: "Complex agent policy.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "state"), path(resource, "expected_state"))`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := (Service{Model: &stubDraftModel{raw: raw}}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{Prompt: "author complex policy", Domain: "aws"})
+	if !errors.Is(err, ErrDraftValidationFail) || result != nil {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
 func TestDraftConnectorDefinitionClassifiesAndDryRunsSourcegen(t *testing.T) {
 	definition := connectordefinitions.Definition{
 		ID:          "tenant-a-demo",
