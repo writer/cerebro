@@ -28,6 +28,30 @@ func TestWriteNewRefusesOverwrite(t *testing.T) {
 	}
 }
 
+func TestWriteNewRefusesSymlink(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "policies", "aws"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target.yaml")
+	if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../target.yaml", filepath.Join(root, "policies", "aws", "example.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeNew(root, "policies/aws/example.yaml", []byte("replacement")); err == nil {
+		t.Fatal("writeNew() symlink error = nil")
+	}
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, []byte("target")) {
+		t.Fatalf("target content = %q", content)
+	}
+}
+
 func TestFindGapsClassifiesSupportedPolicies(t *testing.T) {
 	root := t.TempDir()
 	intent := policyauthor.Intent{ID: "public-bucket", Domain: "aws", Name: "Public bucket", Description: "Flags public buckets.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "public"), true)`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}}

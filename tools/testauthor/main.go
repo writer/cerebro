@@ -183,20 +183,24 @@ func writeNew(root, rel string, content []byte) error {
 		return err
 	}
 	defer repo.Close()
-	if _, err := repo.Lstat(rel); err == nil {
-		return fmt.Errorf("refusing to overwrite %s", rel)
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
 	if dir := filepath.ToSlash(filepath.Dir(rel)); dir != "." {
 		if err := repo.MkdirAll(dir, 0o750); err != nil {
 			return err
 		}
 	}
-	if err := repo.WriteFile(rel, content, 0o600); err != nil {
+	file, err := repo.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("refusing to overwrite %s", rel)
+		}
 		return err
 	}
-	return nil
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		_ = repo.Remove(rel)
+		return err
+	}
+	return file.Close()
 }
 
 func fail(err error) { fmt.Fprintln(os.Stderr, "testauthor:", err); os.Exit(1) }
