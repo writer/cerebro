@@ -8,12 +8,13 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 )
 
-func TestCollectionProjectionMetricsKeepFlatJSONContract(t *testing.T) {
+func TestCollectionProjectionReceiptsKeepFlatJSONContract(t *testing.T) {
 	t.Parallel()
 	encoded, err := json.Marshal(CollectionReceipt{
-		ID: "receipt-a",
-		CollectionProjectionMetrics: CollectionProjectionMetrics{
-			SourcePagesRead: 3, GraphPagesRead: 4, GraphMaterialLinkReconciliationCompleted: true,
+		ID:                                "receipt-a",
+		CollectionSourceProjectionReceipt: CollectionSourceProjectionReceipt{SourcePagesRead: 3},
+		CollectionGraphReceipt: CollectionGraphReceipt{
+			GraphPagesRead: 4, GraphMaterialLinkReconciliationCompleted: true,
 		},
 	})
 	if err != nil {
@@ -26,8 +27,11 @@ func TestCollectionProjectionMetricsKeepFlatJSONContract(t *testing.T) {
 	if wire["source_pages_read"] != float64(3) || wire["graph_pages_read"] != float64(4) || wire["graph_material_link_reconciliation_completed"] != true {
 		t.Fatalf("projection metrics are not flat: %s", encoded)
 	}
-	if _, exists := wire["collection_projection_metrics"]; exists {
-		t.Fatalf("embedded metrics leaked a nested JSON field: %s", encoded)
+	if _, exists := wire["collection_source_projection_receipt"]; exists {
+		t.Fatalf("embedded source projection receipt leaked a nested JSON field: %s", encoded)
+	}
+	if _, exists := wire["collection_graph_receipt"]; exists {
+		t.Fatalf("embedded graph receipt leaked a nested JSON field: %s", encoded)
 	}
 }
 
