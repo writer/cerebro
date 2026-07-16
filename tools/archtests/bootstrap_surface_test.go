@@ -122,6 +122,9 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
+// Agent service lifecycle discovery adds only authenticated route registration
+// and response mapping; the state machines, records, validation, and generated
+// bindings remain behind internal/agentplatform.
 // Policy discovery candidates add only HTTP request/response mapping,
 // tenant/scope enforcement, safe transport views, and configured model/store
 // composition, including the narrow findings-registry coverage adapter.
@@ -141,7 +144,7 @@ import (
 // Dedicated evaluation-dataset read, proposal, and approval scope constants
 // keep future agent credentials separate from candidate execution. Bootstrap
 // owns only their route-policy and OAuth discovery catalog entries.
-const bootstrapProductionGoLineBudget = 28954
+const bootstrapProductionGoLineBudget = 28960
 
 type bootstrapFileLineCount struct {
 	path  string
