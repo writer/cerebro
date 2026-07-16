@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        spec:
+            containers:
+                security_context:
+                    read_only_root_filesystem: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        spec:
+            containers:
+                security_context:
+                    read_only_root_filesystem: true
+      wantFinding: false

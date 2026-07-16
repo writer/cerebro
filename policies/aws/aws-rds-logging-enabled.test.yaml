@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        enabled_cloudwatch_logs_exports: null
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        enabled_cloudwatch_logs_exports: true
+      wantFinding: false

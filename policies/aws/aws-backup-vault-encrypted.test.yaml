@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        backup_vault_encrypted: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        backup_vault_encrypted: true
+      wantFinding: false

@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        untrusted_fork_write_token_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        untrusted_fork_write_token_compliant: true
+      wantFinding: false

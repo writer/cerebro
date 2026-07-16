@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        organization_policy_restrict_vm_external_ip_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        organization_policy_restrict_vm_external_ip_compliant: true
+      wantFinding: false
