@@ -127,6 +127,34 @@ mod tests {
     use super::*;
     use crate::{ActorId, CommitmentInput, PlanId};
 
+    fn commitment(state: CommitmentState) -> Commitment {
+        let mut commitment = Commitment::propose(CommitmentInput {
+            commitment_id: CommitmentId::parse(format!("commitment-{state:?}")).unwrap(),
+            plan_id: PlanId::parse("plan-1").unwrap(),
+            plan_revision: 1,
+            step_id: "remove-access".into(),
+            actor_id: ActorId::parse("executor").unwrap(),
+            capability: "identity.access.revoke".into(),
+            resource_urn: "urn:identity:1".into(),
+            expected_effect: "Production access is removed".into(),
+            rollback_reference: Some("runbook:restore-access".into()),
+            requires_decision: true,
+        })
+        .unwrap();
+        commitment.state = state;
+        commitment
+    }
+
+    fn snapshot(state: MissionState) -> SupervisorSnapshot {
+        SupervisorSnapshot {
+            mission_state: state,
+            has_current_plan: true,
+            commitments: vec![],
+            armed_wake_condition_ids: vec![],
+            satisfied_wake_condition_ids: vec![],
+        }
+    }
+
     #[test]
     fn supervisor_interrupts_only_for_the_pending_decision() {
         let commitment = Commitment::propose(CommitmentInput {
@@ -153,6 +181,94 @@ mod tests {
             MissionDirective::RequestDecision {
                 commitment_id: CommitmentId::parse("commitment-1").unwrap()
             }
+        );
+    }
+
+    #[test]
+    fn supervisor_emits_a_bounded_directive_for_every_mission_state() {
+        assert_eq!(
+            next_directive(&snapshot(MissionState::Open)),
+            MissionDirective::ResolveScope
+        );
+        assert_eq!(
+            next_directive(&snapshot(MissionState::ResolvingScope)),
+            MissionDirective::ResolveScope
+        );
+
+        let mut planning = snapshot(MissionState::Planning);
+        planning.has_current_plan = false;
+        assert_eq!(next_directive(&planning), MissionDirective::RevisePlan);
+        planning.has_current_plan = true;
+        assert_eq!(
+            next_directive(&planning),
+            blocked("plan_has_no_active_commitment")
+        );
+        planning.commitments = vec![commitment(CommitmentState::WaitingOnApproval)];
+        assert!(matches!(
+            next_directive(&planning),
+            MissionDirective::RequestDecision { .. }
+        ));
+        planning.commitments = vec![commitment(CommitmentState::Ready)];
+        assert!(matches!(
+            next_directive(&planning),
+            MissionDirective::Execute { .. }
+        ));
+        planning.commitments = vec![commitment(CommitmentState::Executing)];
+        assert!(matches!(
+            next_directive(&planning),
+            MissionDirective::Verify { .. }
+        ));
+
+        for state in [MissionState::WaitingOnEvidence, MissionState::Blocked] {
+            let mut waiting = snapshot(state);
+            assert_eq!(next_directive(&waiting), blocked("no_wake_condition"));
+            waiting.armed_wake_condition_ids = vec![WakeConditionId::parse("wake-1").unwrap()];
+            assert!(matches!(
+                next_directive(&waiting),
+                MissionDirective::Wait { .. }
+            ));
+            waiting.satisfied_wake_condition_ids = vec![WakeConditionId::parse("wake-2").unwrap()];
+            assert!(matches!(
+                next_directive(&waiting),
+                MissionDirective::ReplanFromWake { .. }
+            ));
+        }
+
+        let mut approval = snapshot(MissionState::WaitingOnApproval);
+        assert_eq!(next_directive(&approval), blocked("no_pending_decision"));
+        approval.commitments = vec![commitment(CommitmentState::WaitingOnApproval)];
+        assert!(matches!(
+            next_directive(&approval),
+            MissionDirective::RequestDecision { .. }
+        ));
+
+        for state in [MissionState::ReadyToAct, MissionState::Acting] {
+            let mut acting = snapshot(state);
+            assert_eq!(next_directive(&acting), blocked("no_executable_commitment"));
+            acting.commitments = vec![commitment(CommitmentState::Ready)];
+            assert!(matches!(
+                next_directive(&acting),
+                MissionDirective::Execute { .. }
+            ));
+        }
+
+        let mut verifying = snapshot(MissionState::Verifying);
+        assert_eq!(
+            next_directive(&verifying),
+            blocked("no_commitment_to_verify")
+        );
+        verifying.commitments = vec![commitment(CommitmentState::WaitingOnVerification)];
+        assert!(matches!(
+            next_directive(&verifying),
+            MissionDirective::Verify { .. }
+        ));
+        assert_eq!(
+            next_directive(&snapshot(MissionState::Verified)),
+            MissionDirective::Close
+        );
+        assert_eq!(
+            next_directive(&snapshot(MissionState::Closed)),
+            MissionDirective::NoAction
         );
     }
 }

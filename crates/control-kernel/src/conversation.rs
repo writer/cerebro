@@ -105,6 +105,14 @@ pub fn resolve_conversation(
 mod tests {
     use super::*;
 
+    fn mission(id: &str, state: MissionState, subjects: &[&str]) -> MissionReference {
+        MissionReference {
+            mission_id: MissionId::parse(id).unwrap(),
+            state,
+            subject_urns: subjects.iter().map(|subject| (*subject).into()).collect(),
+        }
+    }
+
     #[test]
     fn short_fresh_follow_ups_do_not_launch_research() {
         assert_eq!(
@@ -135,6 +143,73 @@ mod tests {
         assert_eq!(
             resolution,
             ConversationResolution::ContinueMission { mission_id }
+        );
+    }
+
+    #[test]
+    fn execution_depth_tracks_the_cost_of_being_wrong() {
+        let mut profile = EncounterProfile {
+            is_follow_up: false,
+            explicit_deep_request: false,
+            consequential_action_requested: false,
+            current_state_available: false,
+            current_state_fresh: false,
+            material_evidence_gap: false,
+        };
+        assert_eq!(
+            route_execution_depth(&profile),
+            ExecutionDepth::TargetedVerification
+        );
+        profile.explicit_deep_request = true;
+        assert_eq!(
+            route_execution_depth(&profile),
+            ExecutionDepth::DeepInvestigation
+        );
+        profile.explicit_deep_request = false;
+        profile.consequential_action_requested = true;
+        profile.material_evidence_gap = true;
+        assert_eq!(
+            route_execution_depth(&profile),
+            ExecutionDepth::DeepInvestigation
+        );
+    }
+
+    #[test]
+    fn conversation_resolution_is_explicit_and_deterministic() {
+        let first = mission("mission-1", MissionState::Planning, &["urn:identity:1"]);
+        let second = mission(
+            "mission-2",
+            MissionState::WaitingOnEvidence,
+            &["urn:identity:1"],
+        );
+        let closed = mission("mission-3", MissionState::Closed, &["urn:identity:2"]);
+
+        assert_eq!(
+            resolve_conversation(Some(&first.mission_id), &[], std::slice::from_ref(&first)),
+            ConversationResolution::ContinueMission {
+                mission_id: first.mission_id.clone()
+            }
+        );
+        let missing = MissionId::parse("mission-missing").unwrap();
+        assert_eq!(
+            resolve_conversation(Some(&missing), &[], std::slice::from_ref(&first)),
+            ConversationResolution::UnknownMissionReference {
+                mission_id: missing
+            }
+        );
+        assert_eq!(
+            resolve_conversation(None, &["urn:identity:2".into()], &[closed]),
+            ConversationResolution::OpenMission
+        );
+        assert_eq!(
+            resolve_conversation(
+                None,
+                &["urn:identity:1".into()],
+                &[second.clone(), first.clone(), second.clone()],
+            ),
+            ConversationResolution::NeedsMissionChoice {
+                candidate_mission_ids: vec![first.mission_id, second.mission_id]
+            }
         );
     }
 }

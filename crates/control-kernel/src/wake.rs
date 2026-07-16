@@ -219,6 +219,16 @@ fn validate_text(value: &str) -> Result<(), ()> {
 mod tests {
     use super::*;
 
+    fn arm(id: &str, kind: WakeConditionKind) -> WakeCondition {
+        WakeCondition::arm(
+            WakeConditionId::parse(id).unwrap(),
+            kind,
+            10,
+            "wait for a durable signal".into(),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn source_wake_requires_a_different_revision() {
         let condition = WakeCondition::arm(
@@ -246,6 +256,195 @@ mod tests {
         assert_eq!(
             condition.satisfy(&changed, 12).unwrap().state,
             WakeConditionState::Satisfied
+        );
+    }
+
+    #[test]
+    fn every_wake_kind_matches_only_its_bound_signal() {
+        let event = arm(
+            "wake-event",
+            WakeConditionKind::EventObserved {
+                event_type: "identity.offboarded".into(),
+                subject_urn: "urn:identity:1".into(),
+            },
+        );
+        assert_eq!(
+            event
+                .satisfy(
+                    &WakeSignal::Event {
+                        event_type: "identity.offboarded".into(),
+                        subject_urn: "urn:identity:1".into(),
+                    },
+                    11,
+                )
+                .unwrap()
+                .state,
+            WakeConditionState::Satisfied
+        );
+
+        let deadline = arm(
+            "wake-deadline",
+            WakeConditionKind::DeadlineReached {
+                not_before_unix_ms: 20,
+            },
+        );
+        assert_eq!(
+            deadline.satisfy(
+                &WakeSignal::Clock {
+                    observed_at_unix_ms: 19
+                },
+                19
+            ),
+            Err(WakeConditionError::SignalMismatch)
+        );
+        assert!(
+            deadline
+                .satisfy(
+                    &WakeSignal::Clock {
+                        observed_at_unix_ms: 20
+                    },
+                    20
+                )
+                .is_ok()
+        );
+
+        let conversation_id = ConversationId::parse("conversation-1").unwrap();
+        let conversation = arm(
+            "wake-conversation",
+            WakeConditionKind::ConversationAdvanced {
+                conversation_id: conversation_id.clone(),
+                after_sequence: 4,
+            },
+        );
+        assert!(
+            conversation
+                .satisfy(
+                    &WakeSignal::Conversation {
+                        conversation_id,
+                        sequence: 5,
+                    },
+                    12,
+                )
+                .is_ok()
+        );
+
+        let decision_id = DecisionId::parse("decision-1").unwrap();
+        let decision = arm(
+            "wake-decision",
+            WakeConditionKind::DecisionRecorded {
+                decision_id: decision_id.clone(),
+            },
+        );
+        assert!(
+            decision
+                .satisfy(&WakeSignal::Decision { decision_id }, 13)
+                .is_ok()
+        );
+        assert_eq!(
+            decision.satisfy(
+                &WakeSignal::Clock {
+                    observed_at_unix_ms: 100
+                },
+                13
+            ),
+            Err(WakeConditionError::SignalMismatch)
+        );
+    }
+
+    #[test]
+    fn wake_conditions_reject_invalid_or_terminal_changes() {
+        assert_eq!(
+            WakeCondition::arm(
+                WakeConditionId::parse("wake-invalid").unwrap(),
+                WakeConditionKind::DeadlineReached {
+                    not_before_unix_ms: 0
+                },
+                10,
+                "wait".into(),
+            ),
+            Err(WakeConditionError::InvalidCondition)
+        );
+        assert_eq!(
+            WakeCondition::arm(
+                WakeConditionId::parse("wake-invalid-time").unwrap(),
+                WakeConditionKind::DecisionRecorded {
+                    decision_id: DecisionId::parse("decision-1").unwrap(),
+                },
+                0,
+                "wait".into(),
+            ),
+            Err(WakeConditionError::InvalidCondition)
+        );
+        assert_eq!(
+            WakeCondition::arm(
+                WakeConditionId::parse("wake-invalid-text").unwrap(),
+                WakeConditionKind::SourceRevisionChanged {
+                    source_urn: "".into(),
+                    baseline_revision: "rev-1".into(),
+                },
+                10,
+                "wait".into(),
+            ),
+            Err(WakeConditionError::InvalidCondition)
+        );
+        assert_eq!(
+            WakeCondition::arm(
+                WakeConditionId::parse("wake-invalid-event").unwrap(),
+                WakeConditionKind::EventObserved {
+                    event_type: "identity.offboarded".into(),
+                    subject_urn: " urn:identity:1".into(),
+                },
+                10,
+                "wait".into(),
+            ),
+            Err(WakeConditionError::InvalidCondition)
+        );
+        assert_eq!(
+            WakeCondition::arm(
+                WakeConditionId::parse("wake-invalid-conversation").unwrap(),
+                WakeConditionKind::ConversationAdvanced {
+                    conversation_id: ConversationId::parse("conversation-1").unwrap(),
+                    after_sequence: 0,
+                },
+                10,
+                "wait".into(),
+            ),
+            Err(WakeConditionError::InvalidCondition)
+        );
+
+        let condition = arm(
+            "wake-cancel",
+            WakeConditionKind::DecisionRecorded {
+                decision_id: DecisionId::parse("decision-1").unwrap(),
+            },
+        );
+        assert_eq!(
+            condition.cancel("".into()),
+            Err(WakeConditionError::InvalidCondition)
+        );
+        assert_eq!(
+            condition.satisfy(
+                &WakeSignal::Decision {
+                    decision_id: DecisionId::parse("decision-1").unwrap(),
+                },
+                9,
+            ),
+            Err(WakeConditionError::SignalMismatch)
+        );
+        let cancelled = condition.cancel("mission retired".into()).unwrap();
+        assert_eq!(cancelled.state, WakeConditionState::Cancelled);
+        assert_eq!(
+            cancelled.cancel("cancel again".into()),
+            Err(WakeConditionError::AlreadyTerminal)
+        );
+        assert_eq!(
+            cancelled.satisfy(
+                &WakeSignal::Decision {
+                    decision_id: DecisionId::parse("decision-1").unwrap(),
+                },
+                12,
+            ),
+            Err(WakeConditionError::AlreadyTerminal)
         );
     }
 }
