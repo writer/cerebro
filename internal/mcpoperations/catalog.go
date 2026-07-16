@@ -54,11 +54,11 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.connector_definitions.validate", "connectors", "connector definition validation"),
 		expertRead("cerebro.findings.list", "findings", "runtime finding list"),
 		expertRead("cerebro.findings.get", "findings", "finding record"),
-		expertRead("cerebro.findings.search", "findings", "finding search results"),
+		taskRead("cerebro.findings.search", "findings", "finding search results", "find findings", "search findings", "list risks", "open findings"),
 		expertRead("cerebro.runtimes.status", "source-runtime", "runtime status and risk summary"),
 		expertRead("cerebro.evidence.list", "findings", "finding evidence list"),
 		expertRead("cerebro.evidence.get", "findings", "finding evidence record"),
-		expertRead("cerebro.assets.search", "graph", "asset search results"),
+		taskRead("cerebro.assets.search", "graph", "asset search results", "find asset", "search assets", "inventory lookup", "affected asset"),
 		expertRead("cerebro.assets.get", "graph", "asset record"),
 		expertRead("cerebro.risk.summary", "risk", "finding risk summary"),
 		expertRead("cerebro.risk.actions.list", "risk", "risk action plan"),
@@ -74,8 +74,8 @@ func buildOperationRegistry() map[string]Operation {
 		expertRead("cerebro.agent.claims.verify", "agent-platform", "claim verification"),
 		expertRead("cerebro.agent.work.contract", "agent-platform", "agent work contract"),
 		expertRead("cerebro.agent.missions.contract", "agent-platform", "mission operating contract"),
-		expertRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace"),
-		expertRead("cerebro.investigation.context", "findings", "finding investigation context"),
+		taskRead("cerebro.graph.reason", "graph-agent", "graph reasoning trace", "ask graph", "reason over graph", "relationship", "attack path"),
+		taskRead("cerebro.investigation.context", "findings", "finding investigation context", "investigate finding", "investigation context", "triage finding", "finding context"),
 		expertExecute("cerebro.assessments.plan.create", "compliance-assessment", "persisted assessment plan draft"),
 		expertExecute("cerebro.assessments.plan.publish", "compliance-assessment", "published assessment plan revision"),
 		expertRead("cerebro.assessments.plan.get", "compliance-assessment", "assessment plan revision"),
@@ -197,7 +197,10 @@ func ParseToolsets(header string, rawParams []byte) Toolsets {
 	toolsets := Toolsets{}
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value != "" && value != "all" && value != "full" {
+		if value == "all" {
+			value = "full"
+		}
+		if value != "" {
 			toolsets[value] = true
 		}
 	}
@@ -205,6 +208,9 @@ func ParseToolsets(header string, rawParams []byte) Toolsets {
 }
 
 func EnabledForToolsets(name string, enabled Toolsets) bool {
+	if enabled["full"] {
+		return true
+	}
 	operation, known := Lookup(name)
 	if enabled["task"] && known && operation.Classification == ClassificationTask {
 		return true

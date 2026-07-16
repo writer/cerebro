@@ -3114,6 +3114,7 @@ func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID stri
 		req.Header.Set("Authorization", authHeader)
 	}
 	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	req.Header.Set("X-Cerebro-MCP-Toolsets", "full")
 	if sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}

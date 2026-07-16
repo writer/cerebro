@@ -3262,9 +3262,6 @@ func mcpToolNameFromParams(method string, rawParams json.RawMessage) string {
 func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 	tools := mcpTools()
 	enabled := mcpRequestedToolsets(r, rawParams)
-	if len(enabled) == 0 {
-		return tools
-	}
 	filtered := make([]mcpTool, 0, len(tools))
 	for _, tool := range tools {
 		if mcpoperations.EnabledForToolsets(tool.Name, enabled) {
@@ -3276,9 +3273,6 @@ func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 
 func mcpToolAllowedForRequest(r *http.Request, name string) bool {
 	enabled := mcpRequestedToolsets(r, nil)
-	if len(enabled) == 0 {
-		return true
-	}
 	return mcpoperations.EnabledForToolsets(name, enabled)
 }
 
@@ -3287,7 +3281,11 @@ func mcpRequestedToolsets(r *http.Request, rawParams json.RawMessage) mcpoperati
 	if r != nil {
 		header = r.Header.Get("X-Cerebro-MCP-Toolsets")
 	}
-	return mcpoperations.ParseToolsets(header, rawParams)
+	toolsets := mcpoperations.ParseToolsets(header, rawParams)
+	if len(toolsets) == 0 {
+		toolsets["task"] = true
+	}
+	return toolsets
 }
 
 func mcpToolFamily(name string) string {

@@ -20,15 +20,19 @@ The endpoint is a stateless Streamable HTTP MCP endpoint:
 
 Do not advertise or emulate a stateful SSE session on this route. Native Droid uses the MCP SDK Streamable HTTP client for `type: "http"` servers, and it treats stateful session/SSE signals as part of the transport contract.
 
-## Task profile
+## Default tool surface
 
-Set `X-Cerebro-MCP-Toolsets: task` when the client should start with a bounded,
-task-level tool list. The profile exposes six tools:
+Requests start with ten task-level tools. Clients can also request the same
+surface explicitly with `X-Cerebro-MCP-Toolsets: task`:
 
 | Tool | Result |
 | --- | --- |
 | `cerebro.health` | Service readiness |
 | `cerebro.version` | Running build identity |
+| `cerebro.findings.search` | Findings that match the requested risk or scope |
+| `cerebro.assets.search` | Assets that match the requested identity, type, runtime, or tenant |
+| `cerebro.graph.reason` | Answer grounded in tenant-scoped graph evidence |
+| `cerebro.investigation.context` | Finding, evidence, graph, and runtime context for triage |
 | `cerebro.risk.explain` | Finding, evidence, asset, and optional graph context |
 | `cerebro.evidence.packet` | Evidence packet for the requested question and authorized scope |
 | `cerebro.sources.health` | Configured source coverage and current blind spots |
@@ -45,10 +49,11 @@ Task tools do not mutate resources. `cerebro.action.plan` stops at
 The evidence-packet task accepts only `observe`, `explain`, `recommend`, and
 `dry_run` action stages.
 
-Requests without a toolset keep the full tool list for compatibility. Existing
-domain tools remain available as expert tools. Use
-`X-Cerebro-MCP-Toolsets: expert` for that profile, or the existing domain
-toolsets such as `graph`, `risk`, `findings`, and `assessments` for narrower access.
+Low-level domain tools remain available through explicit profiles. Use
+`X-Cerebro-MCP-Toolsets: expert` for expert tools, a domain toolset such as
+`graph`, `risk`, `findings`, or `assessments` for narrower access, or
+`X-Cerebro-MCP-Toolsets: full` for the previous complete tool list. New clients
+should use the default surface instead of `full`.
 
 ## Assessment operations
 
