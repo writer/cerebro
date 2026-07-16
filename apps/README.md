@@ -1,12 +1,14 @@
 # Applications
 
-Applications in this directory are public, portable clients of Cerebro contracts.
-The following workspaces are imported by the sequence in `docs/engineering/monorepo.md`;
-they may not exist on an earlier commit in that sequence.
+`apps/` contains Cerebro's public operator surfaces. They live in this monorepo because they consume the same contracts as the Go runtime and should move with those contracts when behavior changes.
 
-- `web` will own the browser application, server-side web proxy, and UI tests.
-- `slack-companion` will own Slack admission, durable run coordination, delivery, and Slack-visible lifecycle behavior.
+| Workspace | Package | Owns |
+| --- | --- | --- |
+| `web` | `@writer/cerebro-web` | Browser operator UI, server-side web boundary, UI contracts, and web tests. |
+| `slack-companion` | `@writer/cerebro-slack-companion` | Slack intake, durable run coordination, delivery, background work, and Slack-visible lifecycle behavior. See [Slack companion](slack-companion/README.md). |
 
-Each imported application is an npm workspace with its own private package manifest and independent build entrypoint. Applications may depend on public schemas and SDKs in this repository. The Go runtime does not import application code, serve application assets, or require an application to start.
+Each app is an npm workspace with its own `package.json`. The package manifests use `private: true` to prevent accidental npm publication; that does not mean the code belongs in a private repository.
 
-Environment-specific deployment adapters, network configuration, secret addresses, rollout policy, and recovery policy do not belong under `apps/`.
+Apps may depend on public schemas, generated bindings, and SDKs in this repo. The Go runtime does not import app code, serve app assets, or require an app to start.
+
+Do not put environment-specific deployment adapters, network configuration, secret addresses, rollout policy, or recovery policy under `apps/`. Keep those in private operations repositories and expose only portable interfaces, fixtures, and conformance tests here. See [Monorepo Ownership And Boundaries](../docs/engineering/monorepo.md) for the canonical split.
