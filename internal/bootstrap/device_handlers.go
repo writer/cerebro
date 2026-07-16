@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -434,25 +433,7 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		DeviceID:       auth.principal.DeviceID,
 		IdempotencyKey: idempotencyKey,
 		Body:           body,
-		Persist: func(ctx context.Context) error {
-			if batcher, ok := h.appendLog.(ports.AppendLogBatcher); ok {
-				if err := batcher.AppendBatch(ctx, events); err != nil {
-					return err
-				}
-			} else {
-				for _, event := range events {
-					if err := h.appendLog.Append(ctx, event); err != nil {
-						return err
-					}
-				}
-			}
-			for _, event := range events {
-				if _, err := h.projector.Project(ctx, event); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
+		Persist:        endpointtelemetry.Persistence(events, h.appendLog, h.projector),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
