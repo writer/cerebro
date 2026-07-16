@@ -115,7 +115,7 @@ do {
       product: product,
       executableURL: ProcessExecutable.url()
     )
-    guard identity.trust == .validAdHocSignature else {
+    guard ShieldFallbackPolicy.permitsUserWritableFallback(clientTrust: identity.trust) else {
       throw CLIError.provider(
         "The managed background collector rejected the event; no user-writable fallback was accepted."
       )

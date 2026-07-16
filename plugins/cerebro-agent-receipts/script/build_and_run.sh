@@ -8,7 +8,10 @@ MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+FINAL_APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+FINAL_APP_BINARY="$FINAL_APP_BUNDLE/Contents/MacOS/$APP_NAME"
+FINAL_HOOK_HELPER="$FINAL_APP_BUNDLE/Contents/Helpers/CerebroAgentReceiptHook"
+APP_BUNDLE="$DIST_DIR/.$APP_NAME.staging.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
@@ -17,26 +20,10 @@ APP_LAUNCH_AGENTS="$APP_CONTENTS/Library/LaunchAgents"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 HOOK_HELPER="$APP_HELPERS/CerebroAgentReceiptHook"
 SHIELD_AGENT="$APP_RESOURCES/CerebroShieldAgent"
-SHIELD_AGENT_LABEL="com.writer.cerebro.agent-receipts.shield-agent.v3"
+SHIELD_AGENT_LABEL="com.writer.cerebro.agent-receipts.shield-agent.v5"
 SHIELD_AGENT_PLIST="$APP_LAUNCH_AGENTS/$SHIELD_AGENT_LABEL.plist"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
-if [[ -x "$APP_BINARY" ]]; then
-  "$APP_BINARY" --unregister-agent-and-quit >/dev/null 2>&1 &
-  UPDATE_PID=$!
-  for _ in {1..100}; do
-    kill -0 "$UPDATE_PID" >/dev/null 2>&1 || break
-    sleep 0.1
-  done
-  if kill -0 "$UPDATE_PID" >/dev/null 2>&1; then
-    echo "timed out while unregistering the existing shield agent" >&2
-    kill "$UPDATE_PID" >/dev/null 2>&1 || true
-    wait "$UPDATE_PID" 2>/dev/null || true
-    exit 1
-  fi
-  # A partial development bundle may not have a registered login item yet.
-  wait "$UPDATE_PID" || true
-fi
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 "$ROOT_DIR/script/build_hook_release.sh"
@@ -109,9 +96,37 @@ PLIST
 /usr/bin/codesign --force --sign - --identifier "$SHIELD_AGENT_LABEL" \
   --requirements "=designated => identifier \"$SHIELD_AGENT_LABEL\"" "$SHIELD_AGENT"
 /usr/bin/codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+/usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
+
+OLD_AGENT_LABELS=()
+if [[ -d "$FINAL_APP_BUNDLE/Contents/Library/LaunchAgents" ]]; then
+  while IFS= read -r plist; do
+    label="$(/usr/libexec/PlistBuddy -c 'Print :Label' "$plist")"
+    [[ -n "$label" ]] && OLD_AGENT_LABELS+=("$label")
+  done < <(find "$FINAL_APP_BUNDLE/Contents/Library/LaunchAgents" -type f -name '*.plist')
+fi
+if [[ -x "$FINAL_APP_BINARY" ]]; then
+  "$FINAL_APP_BINARY" --unregister-agent-and-quit
+fi
+for label in "${OLD_AGENT_LABELS[@]}"; do
+  for _ in {1..100}; do
+    if ! launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then break; fi
+    sleep 0.1
+  done
+  if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    echo "the previous shield agent is still registered: $label" >&2
+    exit 1
+  fi
+done
+if [[ -x "$FINAL_HOOK_HELPER" ]] && "$FINAL_HOOK_HELPER" ping >/dev/null 2>&1; then
+  echo "the previous shield endpoint is still reachable" >&2
+  exit 1
+fi
+rm -rf "$FINAL_APP_BUNDLE"
+mv "$APP_BUNDLE" "$FINAL_APP_BUNDLE"
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE" --args --show-status
+  /usr/bin/open -n "$FINAL_APP_BUNDLE" --args --show-status
 }
 
 case "$MODE" in
@@ -119,7 +134,7 @@ case "$MODE" in
     open_app
     ;;
   --debug|debug)
-    lldb -- "$APP_BINARY"
+    lldb -- "$FINAL_APP_BINARY"
     ;;
   --logs|logs)
     open_app
@@ -130,13 +145,25 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
-    /usr/bin/open -n "$APP_BUNDLE"
-    sleep 1
+    /usr/bin/open -n "$FINAL_APP_BUNDLE"
+    /usr/bin/codesign --verify --deep --strict "$FINAL_APP_BUNDLE"
+    for _ in {1..100}; do
+      if launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" 2>/dev/null \
+        | grep -q 'state = running' && "$FINAL_HOOK_HELPER" ping >/dev/null 2>&1
+      then
+        break
+      fi
+      sleep 0.1
+    done
     pgrep -x "$APP_NAME" >/dev/null
-    /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
-    launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" \
-      | grep -q 'state = running'
-    "$HOOK_HELPER" ping
+    launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | grep -q 'state = running'
+    "$FINAL_HOOK_HELPER" ping
+    STABLE_PID="$(launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | awk '/pid =/{print $3; exit}')"
+    sleep 12
+    launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | grep -q 'state = running'
+    CURRENT_PID="$(launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | awk '/pid =/{print $3; exit}')"
+    [[ -n "$STABLE_PID" && "$CURRENT_PID" == "$STABLE_PID" ]]
+    "$FINAL_HOOK_HELPER" ping
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2

@@ -49,6 +49,8 @@ The checked-in hook helper is universal. The local development script builds the
 
 The runtime canary currently covers Codex end to end. Droid, Claude Code, OpenCode, and Cursor are covered by adapter contract checks and fixture validation; each still needs a fresh native session canary before release qualification.
 
+The collector resumes its authenticated XPC listener before adapter maintenance starts. A managed hook never places an event into the user-writable development fallback: if the collector rejects or cannot accept an event, the hook returns a nonzero result for the invoking agent to report or enforce. Release qualification must verify that each supported agent treats that result as a stopped or visibly failed operation; a nonzero hook result alone does not prove the agent blocked the action.
+
 See `CANARY.md` for the measured fresh-session and authenticated-provider results.
 
 ## Provider evidence

@@ -32,6 +32,7 @@ struct CheckRunner {
     }
     do { try checkAdminCapability() } catch { failures.append("admin capability: \(error)") }
     do { try checkFallbackSpool() } catch { failures.append("fallback spool: \(error)") }
+    checkFallbackTrustBoundary()
     do { try checkDevelopmentKeyFile() } catch {
       failures.append("development key file: \(error)")
     }
@@ -40,7 +41,7 @@ struct CheckRunner {
     }
 
     if failures.isEmpty {
-      print("PASS: 18 receipt security checks")
+      print("PASS: 19 receipt security checks")
       return
     }
     for failure in failures {
@@ -51,6 +52,18 @@ struct CheckRunner {
 
   private mutating func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     if !condition() { failures.append(message) }
+  }
+
+  private mutating func checkFallbackTrustBoundary() {
+    expect(
+      ShieldFallbackPolicy.permitsUserWritableFallback(clientTrust: .validAdHocSignature),
+      "development hook could not use the bounded fallback")
+    expect(
+      !ShieldFallbackPolicy.permitsUserWritableFallback(clientTrust: .verifiedPublisher),
+      "managed hook accepted a user-writable fallback")
+    expect(
+      !ShieldFallbackPolicy.permitsUserWritableFallback(clientTrust: .invalidSignature),
+      "invalid hook accepted a user-writable fallback")
   }
 
   private mutating func checkCommandMinimization() throws {

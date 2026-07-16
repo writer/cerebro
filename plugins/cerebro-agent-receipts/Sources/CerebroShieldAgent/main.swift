@@ -169,7 +169,6 @@ final class ShieldAgentListener: NSObject, NSXPCListenerDelegate, ShieldServiceX
 
 do {
   let runtime = try ShieldAgentRuntime()
-  runtime.maintain()
   let service = try ShieldAgentListener(
     runtime: runtime,
     clientRequirement: PeerCodeRequirement(executableURL: ShieldAgentRuntime.bundledHelperURL())
@@ -178,8 +177,18 @@ do {
   listener.delegate = service
   listener.resume()
 
-  _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+  let maintenanceQueue = DispatchQueue(
+    label: "com.writer.cerebro.agent-receipts.shield-agent.maintenance",
+    qos: .utility
+  )
+  maintenanceQueue.async {
     runtime.maintain()
+  }
+
+  _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+    maintenanceQueue.async {
+      runtime.maintain()
+    }
   }
 
   RunLoop.current.run()

@@ -32,9 +32,11 @@ The registered LaunchAgent was tested independently of the status app with four 
 
 These results prove persistence and local recovery on this development Mac. They do not prove that a local user cannot disable the LaunchAgent or that a provider mutation was prevented.
 
-The v3 login-item package was then rebuilt and registered in place with an unchanged collector binary. The second registration passed nested code-signature validation, launchd reported the collector running, and the XPC health probe succeeded. A new frozen-collector canary queued one record; after recovery the queue returned to zero and the session occurred exactly once in the ledger. Terminating collector PID `7275` caused launchd to start PID `12202`; the health probe recovered and the final collector ledger contained 5 receipts with 5 valid signatures.
+Extended v3 and v4 rebuild tests found stale background-task state after earlier health probes had passed. The registered bundle had been deleted before launchd job removal was confirmed. Those results were rejected and the packaging flow was changed to build and verify a staging bundle, require the old job and endpoint to disappear, and only then replace the final bundle.
 
-This repeat-upgrade result is a development packaging check, not release-signing evidence. The release gate still requires a Developer ID or enterprise-signed, hardened, notarized universal app and an upgrade test from the prior shipped version.
+The corrected v5 flow passed three consecutive local and two independent build, replacement, registration, signature, launchd-state, and authenticated-XPC checks. Each check required the same collector PID to remain healthy for 12 seconds. A further 15-second delayed sample reported one run, PID `39294`, no prior exit, and `job state = running`; the health probe still passed. The earlier frozen-collector canary also returned its queue from one record to zero, recorded the session exactly once, and left the collector ledger at 5 receipts with 5 valid signatures.
+
+This is a development replacement check, not release-signing evidence. The release gate still requires a Developer ID or enterprise-signed, hardened, notarized universal app and an upgrade test from the prior shipped version through the intended updater.
 
 ## Authenticated provider lookup
 

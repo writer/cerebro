@@ -4,7 +4,13 @@ import Foundation
 public enum ShieldServiceContract {
   public static let machServiceName = "com.writer.cerebro.agent-receipts.shield-agent"
   public static let launchAgentPlistName =
-    "com.writer.cerebro.agent-receipts.shield-agent.v3.plist"
+    "com.writer.cerebro.agent-receipts.shield-agent.v5.plist"
+}
+
+public enum ShieldFallbackPolicy {
+  public static func permitsUserWritableFallback(clientTrust: AgentBinaryTrust) -> Bool {
+    clientTrust == .validAdHocSignature
+  }
 }
 
 public enum ProcessExecutable {

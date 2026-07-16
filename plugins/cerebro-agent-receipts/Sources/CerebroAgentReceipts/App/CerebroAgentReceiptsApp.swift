@@ -11,8 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Data("Could not unregister Cerebro Shield Agent: \(error.localizedDescription)\n".utf8))
           exit(1)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-          NSApplication.shared.terminate(nil)
+        Task { @MainActor in
+          self.waitForBackgroundUnregistration(remainingAttempts: 100)
         }
       }
       return
@@ -35,6 +35,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+  private func waitForBackgroundUnregistration(remainingAttempts: Int) {
+    if ShieldBackgroundManager.state() == .notRegistered {
+      NSApplication.shared.terminate(nil)
+      return
+    }
+    guard remainingAttempts > 0 else {
+      FileHandle.standardError.write(
+        Data("Could not confirm Cerebro Shield Agent unregistration.\n".utf8))
+      exit(1)
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.waitForBackgroundUnregistration(remainingAttempts: remainingAttempts - 1)
+    }
+  }
 
   @objc private func windowDidClose(_ notification: Notification) {
     DispatchQueue.main.async {

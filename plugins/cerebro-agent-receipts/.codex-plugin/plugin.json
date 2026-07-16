@@ -1,6 +1,6 @@
 {
   "name": "cerebro-agent-receipts",
-  "version": "0.1.0+codex.20260716114036",
+  "version": "0.1.0+codex.20260716115516",
   "description": "Monitor local coding-agent activity, adapter drift, executable identity, and unmatched provider events.",
   "author": {
     "name": "Writer"
