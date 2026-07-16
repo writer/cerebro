@@ -13,16 +13,26 @@ export function proxy(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
 
   if (isApiRoute && request.method !== "GET" && request.method !== "HEAD") {
-    const contentLength = request.headers.get("content-length");
-    if (contentLength) {
-      const bytes = Number.parseInt(contentLength, 10);
-      const maxBytes = maxBodyBytesForRequest(request);
-      if (Number.isFinite(bytes) && bytes > maxBytes) {
-        return NextResponse.json(
-          { error: bodyTooLargeMessage(maxBytes) },
-          { status: 413 },
-        );
-      }
+    const contentLength = request.headers.get("content-length")?.trim();
+    if (!contentLength) {
+      return NextResponse.json(
+        { error: "Content-Length is required for API request bodies." },
+        { status: 411 },
+      );
+    }
+    if (!/^\d+$/.test(contentLength)) {
+      return NextResponse.json(
+        { error: "Content-Length must be a non-negative integer." },
+        { status: 400 },
+      );
+    }
+    const bytes = Number(contentLength);
+    const maxBytes = maxBodyBytesForRequest(request);
+    if (!Number.isSafeInteger(bytes) || bytes > maxBytes) {
+      return NextResponse.json(
+        { error: bodyTooLargeMessage(maxBytes) },
+        { status: 413 },
+      );
     }
   }
 

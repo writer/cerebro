@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isApiUnavailableError } from "./cerebro-errors";
+import { isApiUnavailableError, productErrorCopy } from "./cerebro-errors";
 
 describe("cerebro error classification", () => {
   it("recognizes unavailable API failures", () => {
@@ -14,5 +14,12 @@ describe("cerebro error classification", () => {
     expect(isApiUnavailableError("Cerebro request failed (400)")).toBe(false);
     expect(isApiUnavailableError("Connector source was not found.")).toBe(false);
     expect(isApiUnavailableError(null)).toBe(false);
+  });
+
+  it("only replaces OpenAPI resource metadata failures", () => {
+    expect(productErrorCopy("OpenAPI fetch failed (502)")).toBe("API resource metadata could not load.");
+    expect(productErrorCopy("Resource metadata could not load")).toBe("API resource metadata could not load.");
+    expect(productErrorCopy("Resource quota exceeded")).toBe("Resource quota exceeded");
+    expect(productErrorCopy("Resource URN is invalid")).toBe("Resource URN is invalid");
   });
 });
