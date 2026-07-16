@@ -198,7 +198,7 @@ func validateDetectedProposal(value ImprovementProposal) error {
 			return fmt.Errorf("%w: input kind is required", ErrInvalidRequest)
 		}
 		if err := input.Ref.Validate(); err != nil {
-			return fmt.Errorf("%w: input %q: %v", ErrInvalidRequest, input.Kind, err)
+			return fmt.Errorf("%w: input %q: %w", ErrInvalidRequest, input.Kind, err)
 		}
 		key := input.Kind + "\x00" + input.Ref.ID + "\x00" + input.Ref.RevisionID
 		if _, ok := seen[key]; ok {
@@ -272,7 +272,7 @@ func validateResearch(value ResearchPacket, now time.Time) error {
 			return fmt.Errorf("%w: citation id, source URN, and capture time are required", ErrInvalidRequest)
 		}
 		if err := citation.SnapshotRevision.Validate(); err != nil {
-			return fmt.Errorf("%w: citation %q snapshot: %v", ErrInvalidRequest, citation.ID, err)
+			return fmt.Errorf("%w: citation %q snapshot: %w", ErrInvalidRequest, citation.ID, err)
 		}
 		if _, ok := citations[citation.ID]; ok {
 			return fmt.Errorf("%w: duplicate citation %q", ErrInvalidRequest, citation.ID)

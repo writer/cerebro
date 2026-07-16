@@ -84,8 +84,8 @@ func NewGitHubDraftPublisher(client *http.Client, config GitHubDraftPublisherCon
 // VerifyRepositoryChange performs the read-only exact-base and file-operation
 // checks used before a proposal can enter the validated state.
 func (p *GitHubDraftPublisher) VerifyRepositoryChange(ctx context.Context, patch improvement.RepositoryPatch) ([]improvement.VerificationResult, error) {
-	if err := p.validatePatchPolicy(patch); err != nil {
-		return []improvement.VerificationResult{{VerifierID: "repository-policy", Status: improvement.VerificationBlock, Message: err.Error()}}, nil
+	if result := p.patchPolicyResult(patch); result != nil {
+		return []improvement.VerificationResult{*result}, nil
 	}
 	contentResults := p.verifyRepositoryContent(patch.Changes)
 	if improvement.HasBlockingVerification(contentResults) {
@@ -120,6 +120,15 @@ func (p *GitHubDraftPublisher) VerifyRepositoryChange(ctx context.Context, patch
 		Message: "The configured repository capability can create proposal branches and draft pull requests only.",
 	})
 	return improvement.NormalizeVerificationResults(results), nil
+}
+
+func (p *GitHubDraftPublisher) patchPolicyResult(patch improvement.RepositoryPatch) *improvement.VerificationResult {
+	if err := p.validatePatchPolicy(patch); err != nil {
+		return &improvement.VerificationResult{
+			VerifierID: "repository-policy", Status: improvement.VerificationBlock, Message: err.Error(),
+		}
+	}
+	return nil
 }
 
 func (p *GitHubDraftPublisher) OpenDraftPullRequest(ctx context.Context, request improvement.OpenDraftPullRequestRequest) (improvement.DraftPullRequestReceipt, error) {

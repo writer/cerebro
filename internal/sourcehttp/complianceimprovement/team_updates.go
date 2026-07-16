@@ -112,7 +112,7 @@ func (sink *SlackTeamUpdateSink) DeliverTeamUpdate(ctx context.Context, delivery
 		return fmt.Errorf("read Slack team update response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("Slack team update returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("slack team update returned HTTP %d", response.StatusCode)
 	}
 	var result struct {
 		OK    bool   `json:"ok"`
@@ -122,7 +122,7 @@ func (sink *SlackTeamUpdateSink) DeliverTeamUpdate(ctx context.Context, delivery
 		return fmt.Errorf("decode Slack team update response: %w", err)
 	}
 	if !result.OK {
-		return fmt.Errorf("Slack team update was rejected: %s", strings.TrimSpace(result.Error))
+		return fmt.Errorf("slack team update was rejected: %s", strings.TrimSpace(result.Error))
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func slackTeamUpdateText(update improvement.TeamUpdate) string {
 	builder.WriteString(update.Target.Comparator)
 	builder.WriteByte(' ')
 	builder.WriteString(formatMeasurement(update.Target.Value, update.Target.Unit))
-	builder.WriteString(fmt.Sprintf("\nSupporting facts: %d; counterevidence: %d; unknowns: %d", len(update.Supporting), len(update.Counterevidence), len(update.Unknowns)))
+	fmt.Fprintf(&builder, "\nSupporting facts: %d; counterevidence: %d; unknowns: %d", len(update.Supporting), len(update.Counterevidence), len(update.Unknowns))
 	builder.WriteString("\nChecks: ")
 	passing, warnings := 0, 0
 	for _, result := range update.Verification {
@@ -149,7 +149,7 @@ func slackTeamUpdateText(update improvement.TeamUpdate) string {
 			warnings++
 		}
 	}
-	builder.WriteString(fmt.Sprintf("%d passed; %d warnings; 0 blocking", passing, warnings))
+	fmt.Fprintf(&builder, "%d passed; %d warnings; 0 blocking", passing, warnings)
 	builder.WriteString("\nDraft PR: ")
 	builder.WriteString(update.PullRequest.URL)
 	builder.WriteString("\nDecision owner: ")

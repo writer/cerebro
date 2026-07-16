@@ -78,7 +78,7 @@ ON CONFLICT (tenant_id, id) DO NOTHING`,
 	if err := tx.Commit(); err != nil {
 		return complianceimprovement.ImprovementRecord{}, false, fmt.Errorf("commit compliance improvement create: %w", err)
 	}
-	return complianceimprovement.ImprovementRecord{Run: request.Run, Revision: request.Revision}, true, nil
+	return complianceimprovement.ImprovementRecord(request), true, nil
 }
 
 func (s *Store) GetComplianceImprovement(ctx context.Context, tenantID, runID string) (complianceimprovement.ImprovementRecord, error) {
@@ -266,7 +266,7 @@ func validateImprovementCreateRequest(request complianceimprovement.CreateRecord
 		return fmt.Errorf("%w: initial revision does not match run", complianceimprovement.ErrInvalidRequest)
 	}
 	if err := request.Revision.Version.Validate(); err != nil {
-		return fmt.Errorf("%w: invalid revision metadata: %v", complianceimprovement.ErrInvalidRequest, err)
+		return fmt.Errorf("%w: invalid revision metadata: %w", complianceimprovement.ErrInvalidRequest, err)
 	}
 	return nil
 }

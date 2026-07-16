@@ -31,7 +31,7 @@ func (s *MemoryStore) CreateComplianceImprovement(_ context.Context, request Cre
 		}
 		return cloneRecord(existing), false, nil
 	}
-	record := ImprovementRecord{Run: request.Run, Revision: request.Revision}
+	record := ImprovementRecord(request)
 	s.records[key] = cloneRecord(record)
 	return cloneRecord(record), true, nil
 }
