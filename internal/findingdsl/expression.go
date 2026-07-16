@@ -230,6 +230,65 @@ func EvaluatePolicyConditions(conditions []string, resource PolicyResource) (boo
 	return true, nil
 }
 
+// SynthesizeEqualityConditionFixtures derives a finding and passing resource for
+// policies made entirely from cmp_eq(path(resource, field), scalar) conditions.
+// It intentionally rejects broader expressions rather than guessing semantics.
+func SynthesizeEqualityConditionFixtures(conditions []string) (PolicyResource, PolicyResource, error) {
+	if len(conditions) == 0 {
+		return nil, nil, fmt.Errorf("at least one condition is required")
+	}
+	finding := PolicyResource{}
+	passing := PolicyResource{}
+	var firstField string
+	for idx, condition := range conditions {
+		expr, err := parsePolicyExpression(condition)
+		if err != nil {
+			return nil, nil, fmt.Errorf("condition[%d]: %w", idx, err)
+		}
+		call, ok := expr.(callExpression)
+		if !ok || call.name != "cmp_eq" || len(call.args) != 2 {
+			return nil, nil, fmt.Errorf("condition[%d] is not a simple equality condition", idx)
+		}
+		pathCall, ok := call.args[0].(callExpression)
+		if !ok || pathCall.name != "path" || len(pathCall.args) != 2 {
+			return nil, nil, fmt.Errorf("condition[%d] does not compare a resource path", idx)
+		}
+		root, rootOK := pathCall.args[0].(identExpression)
+		fieldExpr, fieldOK := pathCall.args[1].(literalExpression)
+		field, stringOK := fieldExpr.value.(string)
+		valueExpr, valueOK := call.args[1].(literalExpression)
+		if !rootOK || root.name != "resource" || !fieldOK || !stringOK || strings.TrimSpace(field) == "" || !valueOK {
+			return nil, nil, fmt.Errorf("condition[%d] must compare path(resource, field) with a scalar literal", idx)
+		}
+		if _, exists := finding[field]; exists {
+			return nil, nil, fmt.Errorf("condition[%d] repeats resource field %q", idx, field)
+		}
+		if _, err := alternatePolicyFixtureValue(valueExpr.value); err != nil {
+			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
+		}
+		finding[field] = valueExpr.value
+		passing[field] = valueExpr.value
+		if firstField == "" {
+			firstField = field
+		}
+	}
+	passing[firstField], _ = alternatePolicyFixtureValue(finding[firstField])
+	return finding, passing, nil
+}
+
+func alternatePolicyFixtureValue(value any) (any, error) {
+	switch typed := value.(type) {
+	case bool:
+		return !typed, nil
+	case string:
+		return typed + "-passing", nil
+	case float64:
+		return typed + 1, nil
+	default:
+		return nil, fmt.Errorf("literal type %T is not supported", value)
+	}
+}
+
 func collectPolicyResourceFields(expr expression, seen map[string]struct{}) {
 	switch typed := expr.(type) {
 	case callExpression:

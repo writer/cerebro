@@ -110,6 +110,11 @@ func ValidatePolicyRuleTestSuite(suite PolicyRuleTestSuite) []Issue {
 	return issues
 }
 
+func FormatPolicyRuleTestSuiteYAML(suite PolicyRuleTestSuite) ([]byte, error) {
+	suite.RelPath = ""
+	return yaml.Marshal(suite)
+}
+
 func RunPolicyRuleTestSuite(root string, suitePath string) []Issue {
 	suite, issues, err := LoadPolicyRuleTestSuite(root, suitePath)
 	if err != nil {
