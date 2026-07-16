@@ -12,7 +12,7 @@ This document defines the public repository layout used to consolidate Cerebro r
 | `schemas/` | Portable, versioned interchange contracts | Environment values or topology-specific policy |
 | `sdk/typescript/` | Public TypeScript client and generated contract bindings | Application state or deployment configuration |
 | `apps/web/` | Browser application, server-side web boundary, UI tests | Core persistence; environment deployment overlays |
-| `apps/slack-companion/` | Slack transport, durable admission, runs, checkpoints, outbox, status, and portable conformance tests | Environment deployment overlays; concrete rollout or recovery policy |
+| `apps/slack-companion/` | Slack transport, durable admission, runs, checkpoints, outbox, status, assistance, refinement, and portable conformance tests | Environment deployment overlays; concrete rollout or recovery policy |
 | repositories outside this repository | Environment deployment adapters and operational configuration | Portable application behavior or public contract definitions |
 
 ## Dependency Direction
@@ -47,6 +47,19 @@ The following stay outside this repository:
 
 Public tests should use neutral in-memory or fixture adapters. Operational repositories consume the public contracts and prove their own adapters separately.
 
+Within `apps/slack-companion/`, portable ownership is explicit:
+
+- `src/execution/` owns leased turns, checkpoints, effect intent, outcome-unknown reconciliation, and delivery handoff;
+- `src/mission/` projects runs onto the native mission, plan, approval, verification, and closure contract;
+- `src/operations/` owns scheduled-occurrence continuity and release-safe reconciliation;
+- `src/delivery/` owns durable multipart outbox and thread binding;
+- `src/transport/` owns topology-neutral Slack ingress and egress boundaries;
+- `src/assistance/` owns exact-recipient assistance requests and durable human outcomes;
+- `src/improvement/` owns same-candidate, same-draft refinement and invalidation of stale evaluation evidence.
+
+Assistance and refinement records use opaque identities. They must not place raw signals, chat identifiers,
+private run identifiers, tenant values, or secret-like input in branch names, draft metadata, logs, or receipts.
+
 ## History Migration
 
 - Public repository history may be imported under its final `apps/` prefix.
@@ -60,8 +73,10 @@ Public tests should use neutral in-memory or fixture adapters. Operational repos
 2. Import the public web application and make it pass root workspace checks.
 3. Review and land shared public contracts and generated bindings through their owner gate.
 4. Add the reviewed portable Slack companion skeleton and durable admission path.
-5. Move remaining portable Slack behavior onto the shared run, lease, checkpoint, delivery, and schedule semantics.
-6. Update environment deployment adapters only after the applicable public contract and application changes are available.
+5. Move portable effects and missions onto the shared run, lease, checkpoint, approval, verification, and recovery semantics.
+6. Linearize and export the portable operation, delivery, and transport slices as one runnable companion surface.
+7. Add exact-recipient assistance and same-draft refinement on that durable surface, with generation fencing and fresh-evidence requirements.
+8. Update environment deployment adapters only after the applicable public contract and application changes are available.
 
 Repository mechanics and applications that do not consume a proposed contract may land before that contract is
 approved. A contract consumer must not merge ahead of the contract version it reads.
