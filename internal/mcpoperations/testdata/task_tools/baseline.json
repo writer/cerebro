@@ -2,7 +2,7 @@
   "contract": "cerebro.mcp.task-selection-eval.v1",
   "minimum_accuracy_basis_points": 10000,
   "minimum_tool_coverage_basis_points": 10000,
-  "minimum_cases_per_tool": 3,
+  "minimum_cases_per_tool": 5,
   "minimum_correct_margin": 4,
   "maximum_incorrect": 0,
   "maximum_unselected": 0,
