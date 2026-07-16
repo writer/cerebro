@@ -100,11 +100,12 @@ func (engine *RefinementEngine) Run(ctx context.Context, request RunRefinementRe
 	if err != nil {
 		return RunRefinementResult{}, err
 	}
-	completed := []string{StateDetected}
+	completed := completedStagesThrough(record.Run.State)
 	for {
+		durableContext := refinementContextFromRecord(record)
 		switch record.Run.State {
 		case StateDetected:
-			research, researchErr := engine.researcher.ResearchProgramGap(ctx, ResearchAssignment{Context: request.Context, Gap: record.Revision.Proposal.Gap})
+			research, researchErr := engine.researcher.ResearchProgramGap(ctx, ResearchAssignment{Context: durableContext, Gap: record.Revision.Proposal.Gap})
 			if researchErr != nil {
 				return RunRefinementResult{Record: record, CompletedStages: completed}, fmt.Errorf("research compliance program gap: %w", researchErr)
 			}
@@ -117,7 +118,7 @@ func (engine *RefinementEngine) Run(ctx context.Context, request RunRefinementRe
 			completed = append(completed, StateResearching)
 		case StateResearching:
 			impact, patch, authorErr := engine.author.AuthorProgramChange(ctx, AuthorAssignment{
-				Context: request.Context, Gap: record.Revision.Proposal.Gap, Research: record.Revision.Proposal.Research,
+				Context: durableContext, Gap: record.Revision.Proposal.Gap, Research: record.Revision.Proposal.Research,
 			})
 			if authorErr != nil {
 				return RunRefinementResult{Record: record, CompletedStages: completed}, fmt.Errorf("author compliance program change: %w", authorErr)
@@ -134,7 +135,7 @@ func (engine *RefinementEngine) Run(ctx context.Context, request RunRefinementRe
 				ExpectedVersion: record.Run.AggregateVersion, ActorID: request.Actors.Verifier,
 			})
 			if err != nil {
-				return RunRefinementResult{Record: record, CompletedStages: append(completed, StateProposed)}, err
+				return RunRefinementResult{Record: record, CompletedStages: completed}, err
 			}
 			completed = append(completed, StateValidated)
 		case StateValidated:
@@ -158,6 +159,34 @@ func (engine *RefinementEngine) Run(ctx context.Context, request RunRefinementRe
 		default:
 			return RunRefinementResult{Record: record, CompletedStages: completed}, fmt.Errorf("%w: unknown state %q", ErrInvalidState, record.Run.State)
 		}
+	}
+}
+
+func refinementContextFromRecord(record ImprovementRecord) RefinementContext {
+	return RefinementContext{
+		TenantID:  record.Run.TenantID,
+		ProgramID: record.Run.ProgramID,
+		Inputs:    append([]InputRevision(nil), record.Revision.Proposal.Inputs...),
+	}
+}
+
+func completedStagesThrough(state string) []string {
+	stages := []string{StateDetected}
+	switch state {
+	case StateDetected:
+		return stages
+	case StateResearching:
+		return append(stages, StateResearching)
+	case StateProposed:
+		return append(stages, StateResearching, StateProposed)
+	case StateValidated:
+		return append(stages, StateResearching, StateProposed, StateValidated)
+	case StateDraftPROpened:
+		return append(stages, StateResearching, StateProposed, StateValidated, StateDraftPROpened)
+	case StateAccepted, StateRejected, StateExpired, StateSuperseded:
+		return append(stages, StateResearching, StateProposed, StateValidated, StateDraftPROpened, state)
+	default:
+		return stages
 	}
 }
 

@@ -266,6 +266,7 @@ func (s *Service) RecordHumanDecision(ctx context.Context, tenantID, runID strin
 	request.ActorID = strings.TrimSpace(request.ActorID)
 	request.Rationale = strings.TrimSpace(request.Rationale)
 	request.ProposalDigest = strings.TrimSpace(request.ProposalDigest)
+	request.Decision = strings.TrimSpace(request.Decision)
 	if request.ActorID == "" || request.ActorID != record.Run.DecisionOwner || request.Rationale == "" {
 		return ImprovementRecord{}, fmt.Errorf("%w: the assigned human GRC owner and rationale are required", ErrInvalidRequest)
 	}
@@ -274,7 +275,7 @@ func (s *Service) RecordHumanDecision(ctx context.Context, tenantID, runID strin
 		return ImprovementRecord{}, fmt.Errorf("%w: decision must bind the validated proposal digest", ErrVerification)
 	}
 	var nextState string
-	switch strings.TrimSpace(request.Decision) {
+	switch request.Decision {
 	case DecisionAccept:
 		nextState = StateAccepted
 	case DecisionReject:

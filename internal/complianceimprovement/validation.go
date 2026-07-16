@@ -324,7 +324,7 @@ func validatePatch(value RepositoryPatch) error {
 	totalBytes := 0
 	for _, change := range value.Changes {
 		cleaned := path.Clean(change.Path)
-		if change.Path == "" || cleaned != change.Path || path.IsAbs(change.Path) || cleaned == "." || strings.HasPrefix(cleaned, "../") {
+		if change.Path == "" || cleaned != change.Path || path.IsAbs(change.Path) || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 			return fmt.Errorf("%w: unsafe repository path %q", ErrInvalidRequest, change.Path)
 		}
 		if change.Operation != FileOperationCreate && change.Operation != FileOperationUpdate {

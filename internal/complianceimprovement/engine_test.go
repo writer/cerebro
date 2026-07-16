@@ -2,6 +2,7 @@ package complianceimprovement
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -9,6 +10,8 @@ type engineRoleFixtures struct {
 	refinerCalls    int
 	researcherCalls int
 	authorCalls     int
+	research        ResearchAssignment
+	author          AuthorAssignment
 }
 
 func (fixtures *engineRoleFixtures) FindProgramGap(context.Context, RefinementContext) (ProgramGap, error) {
@@ -16,14 +19,72 @@ func (fixtures *engineRoleFixtures) FindProgramGap(context.Context, RefinementCo
 	return detectedRequest().Gap, nil
 }
 
-func (fixtures *engineRoleFixtures) ResearchProgramGap(context.Context, ResearchAssignment) (ResearchPacket, error) {
+func (fixtures *engineRoleFixtures) ResearchProgramGap(_ context.Context, assignment ResearchAssignment) (ResearchPacket, error) {
 	fixtures.researcherCalls++
+	fixtures.research = assignment
 	return validResearch(), nil
 }
 
-func (fixtures *engineRoleFixtures) AuthorProgramChange(context.Context, AuthorAssignment) (ExpectedProgramImpact, RepositoryPatch, error) {
+func (fixtures *engineRoleFixtures) AuthorProgramChange(_ context.Context, assignment AuthorAssignment) (ExpectedProgramImpact, RepositoryPatch, error) {
 	fixtures.authorCalls++
+	fixtures.author = assignment
 	return ExpectedProgramImpact{ExpectedBenefit: "Increase verified evidence coverage without reducing scope."}, validPatch(), nil
+}
+
+func TestRefinementEngineResumesWithDurableInputsAndCompleteStages(t *testing.T) {
+	service := newTestService(&testInputVerifier{}, &testRepositoryVerifier{}, &testDraftPublisher{}, &testTeamOutbox{})
+	original := detectedRequest()
+	original.IdempotencyKey = "engine-resume-durable"
+	if _, _, err := service.Detect(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+
+	roles := &engineRoleFixtures{}
+	engine := NewRefinementEngine(service, roles, roles, roles)
+	retryInputs := []InputRevision{{Kind: "program_scope", Ref: testRevision("scope", "scope-r5", "f")}}
+	result, err := engine.Run(context.Background(), RunRefinementRequest{
+		Context: RefinementContext{
+			TenantID: original.TenantID, ProgramID: original.ProgramID, Inputs: retryInputs,
+		},
+		DecisionOwner: original.DecisionOwner, IdempotencyKey: original.IdempotencyKey,
+		Actors: EngineActors{Refiner: "refiner", Researcher: "researcher", Author: "author", Verifier: "verifier"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStages := []string{StateDetected, StateResearching, StateProposed, StateValidated}
+	if !reflect.DeepEqual(result.CompletedStages, wantStages) {
+		t.Fatalf("completed stages = %v, want %v", result.CompletedStages, wantStages)
+	}
+	if roles.refinerCalls != 0 || roles.researcherCalls != 1 || roles.authorCalls != 1 {
+		t.Fatalf("role calls = %d/%d/%d", roles.refinerCalls, roles.researcherCalls, roles.authorCalls)
+	}
+	if !reflect.DeepEqual(roles.research.Context.Inputs, original.Inputs) || !reflect.DeepEqual(roles.author.Context.Inputs, original.Inputs) {
+		t.Fatalf("role inputs = research %+v author %+v, want durable %+v", roles.research.Context.Inputs, roles.author.Context.Inputs, original.Inputs)
+	}
+}
+
+func TestRefinementEngineReportsCompletedStagesWhenResumingProposedRun(t *testing.T) {
+	service := newTestService(&testInputVerifier{}, &testRepositoryVerifier{}, &testDraftPublisher{}, &testTeamOutbox{})
+	record := advanceToProposal(t, service, ExpectedProgramImpact{ExpectedBenefit: "Increase evidence coverage without reducing scope."})
+	roles := &engineRoleFixtures{}
+	result, err := NewRefinementEngine(service, roles, roles, roles).Run(context.Background(), RunRefinementRequest{
+		Context: RefinementContext{
+			TenantID: record.Run.TenantID, ProgramID: record.Run.ProgramID, Inputs: record.Revision.Proposal.Inputs,
+		},
+		DecisionOwner: record.Run.DecisionOwner, IdempotencyKey: record.Run.IdempotencyKey,
+		Actors: EngineActors{Refiner: "refiner", Researcher: "researcher", Author: "author", Verifier: "verifier"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{StateDetected, StateResearching, StateProposed, StateValidated}
+	if !reflect.DeepEqual(result.CompletedStages, want) {
+		t.Fatalf("completed stages = %v, want %v", result.CompletedStages, want)
+	}
+	if roles.refinerCalls != 0 || roles.researcherCalls != 0 || roles.authorCalls != 0 {
+		t.Fatalf("resume reran completed roles = %d/%d/%d", roles.refinerCalls, roles.researcherCalls, roles.authorCalls)
+	}
 }
 
 func TestRefinementEngineRunsRolesThroughDraftAndStopsBeforeMerge(t *testing.T) {

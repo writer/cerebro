@@ -140,7 +140,7 @@ func TestGovernedImprovementLoopPublishesDraftAndWaitsForHumanDecision(t *testin
 		t.Fatalf("RecordHumanDecision(non-owner) error = %v, want ErrInvalidRequest", err)
 	}
 	record, err = service.RecordHumanDecision(ctx, record.Run.TenantID, record.Run.ID, DecisionRequest{
-		ExpectedVersion: record.Run.AggregateVersion, Decision: DecisionAccept, Rationale: "Reviewed the cited evidence and checks.",
+		ExpectedVersion: record.Run.AggregateVersion, Decision: " accept ", Rationale: "Reviewed the cited evidence and checks.",
 		ActorID: "grc-owner", ProposalDigest: string(validatedDigest),
 	})
 	if err != nil {
@@ -148,6 +148,17 @@ func TestGovernedImprovementLoopPublishesDraftAndWaitsForHumanDecision(t *testin
 	}
 	if record.Run.State != StateAccepted || publisher.calls != 1 {
 		t.Fatalf("human decision state/publisher calls = %q/%d", record.Run.State, publisher.calls)
+	}
+	if record.Revision.Proposal.Decision == nil || record.Revision.Proposal.Decision.Decision != DecisionAccept {
+		t.Fatalf("persisted decision = %+v, want normalized accept", record.Revision.Proposal.Decision)
+	}
+}
+
+func TestValidateRepositoryPatchRejectsBareParentPath(t *testing.T) {
+	patch := validPatch()
+	patch.Changes[0].Path = ".."
+	if err := ValidateRepositoryPatch(patch); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("ValidateRepositoryPatch() error = %v, want ErrInvalidRequest", err)
 	}
 }
 

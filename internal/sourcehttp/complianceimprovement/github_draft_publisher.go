@@ -74,8 +74,9 @@ func NewGitHubDraftPublisher(client *http.Client, config GitHubDraftPublisherCon
 			return nil, fmt.Errorf("%w: invalid allowlisted repository %q", improvement.ErrInvalidRequest, repository)
 		}
 	}
+	hardened := sourcehttp.HardenSourceClient(client, "compliance-github-draft", 10*time.Second, config.AllowLoopback, nil)
 	return &GitHubDraftPublisher{
-		client: client, baseURL: strings.TrimRight(baseURL, "/"), repositories: repositories,
+		client: hardened, baseURL: strings.TrimRight(baseURL, "/"), repositories: repositories,
 		baseBranches: baseBranches, sensitiveValues: normalizedStrings(config.SensitiveValues),
 		now: func() time.Time { return time.Now().UTC() },
 	}, nil
@@ -149,6 +150,9 @@ func (p *GitHubDraftPublisher) OpenDraftPullRequest(ctx context.Context, request
 			return improvement.DraftPullRequestReceipt{}, err
 		}
 		if found {
+			if pull.Head.SHA != "" && pull.Head.SHA != existingHead {
+				return improvement.DraftPullRequestReceipt{}, fmt.Errorf("%w: draft pull-request head does not match proposal commit", improvement.ErrVerification)
+			}
 			return p.receiptFromPull(request, existingHead, pull)
 		}
 		if err := p.requireExactBase(ctx, request.Repository, request.BaseBranch, request.BaseCommitSHA); err != nil {
@@ -228,7 +232,7 @@ var builtInSensitivePatterns = []*regexp.Regexp{
 
 func (p *GitHubDraftPublisher) verifyRepositoryContent(changes []improvement.FileChange) []improvement.VerificationResult {
 	for _, change := range changes {
-		if strings.IndexByte(change.Content, 0) >= 0 || p.containsSensitiveMaterial(change.Content) {
+		if strings.IndexByte(change.Content, 0) >= 0 || p.containsSensitiveMaterial(change.Path) || p.containsSensitiveMaterial(change.Content) {
 			return []improvement.VerificationResult{{
 				VerifierID: "repository-content-policy", Status: improvement.VerificationBlock,
 				Message: "The repository patch contains private, secret, or binary material and cannot be published.",

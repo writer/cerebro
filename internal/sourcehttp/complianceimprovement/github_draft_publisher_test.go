@@ -172,6 +172,39 @@ func TestGitHubDraftPublisherReusesExistingDraftWithoutNewWrites(t *testing.T) {
 	}
 }
 
+func TestGitHubDraftPublisherRejectsExistingDraftAtDifferentHead(t *testing.T) {
+	baseSHA := strings.Repeat("b", 40)
+	headSHA := strings.Repeat("c", 40)
+	differentHeadSHA := strings.Repeat("e", 40)
+	treeSHA := strings.Repeat("d", 40)
+	request := githubPublisherRequest(baseSHA)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, incoming *http.Request) {
+		switch {
+		case incoming.Method == http.MethodGet && incoming.URL.Path == "/api/v3/repos/writer/cerebro/git/ref/heads/"+request.ProposalBranch:
+			writeGitHubJSON(writer, http.StatusOK, map[string]any{"object": map[string]string{"sha": headSHA}})
+		case incoming.Method == http.MethodGet && incoming.URL.Path == "/api/v3/repos/writer/cerebro/git/commits/"+headSHA:
+			writeGitHubJSON(writer, http.StatusOK, map[string]any{
+				"sha": headSHA, "message": "Apply compliance program improvement\n\nCerebro-Proposal-Digest: " + request.ProposalDigest,
+				"tree": map[string]string{"sha": treeSHA}, "parents": []map[string]string{{"sha": baseSHA}},
+			})
+		case incoming.Method == http.MethodGet && incoming.URL.Path == "/api/v3/repos/writer/cerebro/pulls":
+			writeGitHubJSON(writer, http.StatusOK, []map[string]any{{
+				"number": 77, "html_url": "https://example.invalid/pulls/77", "draft": true,
+				"created_at": testNow, "head": map[string]string{"sha": differentHeadSHA},
+			}})
+		default:
+			t.Errorf("unexpected GitHub request %s %s", incoming.Method, incoming.URL.String())
+			writeGitHubJSON(writer, http.StatusNotFound, map[string]string{"message": "unexpected"})
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := newTestGitHubDraftPublisher(t, server.URL).OpenDraftPullRequest(context.Background(), request)
+	if !errors.Is(err, improvement.ErrVerification) {
+		t.Fatalf("OpenDraftPullRequest() error = %v, want improvement.ErrVerification", err)
+	}
+}
+
 func TestGitHubDraftPublisherBlocksMovedBaseAndWrongFileOperation(t *testing.T) {
 	wantBase := strings.Repeat("b", 40)
 	currentBase := strings.Repeat("a", 40)
@@ -216,6 +249,25 @@ func TestGitHubDraftPublisherRequiresAllowlistsAndDraftRequests(t *testing.T) {
 	}
 }
 
+func TestGitHubDraftPublisherHardensHTTPClient(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+	original := &http.Client{}
+	publisher, err := NewGitHubDraftPublisher(original, GitHubDraftPublisherConfig{
+		BaseURL: server.URL, AllowLoopback: true,
+		RepositoryAllowlist: []string{"writer/cerebro"}, BaseBranchAllowlist: []string{"main"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if publisher.client == original || publisher.client.Timeout != 10*time.Second || publisher.client.CheckRedirect == nil {
+		t.Fatalf("publisher client was not hardened: %+v", publisher.client)
+	}
+	if err := publisher.client.CheckRedirect(nil, nil); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("redirect policy error = %v, want http.ErrUseLastResponse", err)
+	}
+}
+
 func TestGitHubDraftPublisherBlocksSensitiveRepositoryContentBeforeNetworkWrite(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -231,6 +283,11 @@ func TestGitHubDraftPublisherBlocksSensitiveRepositoryContentBeforeNetworkWrite(
 		t.Fatal(err)
 	}
 	request := githubPublisherRequest(strings.Repeat("b", 40))
+	request.Changes[0].Path = "internal/tenant-private/evidence_test.go"
+	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, improvement.ErrVerification) {
+		t.Fatalf("OpenDraftPullRequest(private path) error = %v", err)
+	}
+	request.Changes[0].Path = validPatch().Changes[0].Path
 	request.Changes[0].Content = "const tenant = \"tenant-private\"\n"
 	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, improvement.ErrVerification) {
 		t.Fatalf("OpenDraftPullRequest(private data) error = %v", err)
