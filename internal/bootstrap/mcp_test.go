@@ -853,6 +853,9 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
 	}
+	if got, ok := payload["mcp.response_bytes"].(float64); !ok || got <= 0 {
+		t.Fatalf("telemetry mcp.response_bytes = %#v, want positive number; payload=%#v", payload["mcp.response_bytes"], payload)
+	}
 	if _, exists := payload["arguments"]; exists {
 		t.Fatalf("telemetry recorded raw arguments: %#v", payload)
 	}
