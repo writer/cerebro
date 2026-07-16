@@ -91,6 +91,6 @@ fn snapshot(id: &str, observed_at: &str, paths: Vec<SecurityPath>) -> Snapshot {
         },
         paths,
         path_set_digest: format!("path-set-{id}"),
-        digest: format!("snapshot-digest-{id}"),
+        digest: format!("sha256:{:064x}", id.len()),
     }
 }

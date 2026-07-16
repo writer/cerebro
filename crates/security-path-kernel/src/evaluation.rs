@@ -5,9 +5,9 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::model::{
-    CandidateEdgeCut, CollectionReceipt, ComparisonDecision, EvaluationRequest, EvaluationResponse,
-    KernelError, ProofChange, ProofEdge, RuntimeCollectionReceipt, SecurityPath, Snapshot,
-    VerificationDecision,
+    CandidateEdgeCut, CollectionReceipt, ComparisonDecision, DECISION_INPUT_V1, DecisionRequest,
+    DecisionResponse, EvaluationRequest, EvaluationResponse, KernelError, ProofChange, ProofEdge,
+    RuntimeCollectionReceipt, SecurityPath, Snapshot, VerificationDecision,
 };
 
 pub const ABI_VERSION: u32 = 1;
@@ -24,24 +24,68 @@ const OBSERVED_ABSENT: &str = "observed_absent";
 const STILL_OBSERVED: &str = "still_observed";
 const FULL_GRAPH_COLLECTION: &str = "graph_reset_full_scan";
 const CANDIDATE_ONLY: &str = "candidate_only";
+const MAX_PATHS: usize = 100;
+const MAX_PROOF_EDGES_PER_PATH: usize = 64;
+const MAX_RUNTIME_RECEIPTS: usize = 256;
+const MAX_REQUESTED_PATH_IDS: usize = 256;
+const MAX_STRING_BYTES: usize = 4_096;
 
 pub fn evaluate(request: EvaluationRequest) -> Result<EvaluationResponse, KernelError> {
-    match request {
-        EvaluationRequest::Compare { before, after } => Ok(EvaluationResponse::Compare {
+    if request.schema_version != DECISION_INPUT_V1 {
+        return Err(KernelError::UnsupportedSchemaVersion);
+    }
+    let computed_digest = decision_input_digest(&request.request)?;
+    if request.input_digest != computed_digest {
+        return Err(KernelError::InputDigestMismatch);
+    }
+    evaluate_verified(request.request, computed_digest)
+}
+
+pub(crate) fn evaluate_verified(
+    request: DecisionRequest,
+    input_digest: String,
+) -> Result<EvaluationResponse, KernelError> {
+    let request = ValidatedDecisionRequest::new(request)?;
+    let source_snapshot_digests = source_snapshot_digests(&request.0);
+    let response = match request.0 {
+        DecisionRequest::Compare { before, after } => DecisionResponse::Compare {
             result: compare(before.as_ref(), &after)?,
-        }),
-        EvaluationRequest::VerifyObservedAbsent {
+        },
+        DecisionRequest::VerifyObservedAbsent {
             reference,
             after,
             requested_path_ids,
-        } => Ok(EvaluationResponse::VerifyObservedAbsent {
+        } => DecisionResponse::VerifyObservedAbsent {
             result: verify_observed_absent(&reference, &after, &requested_path_ids)?,
-        }),
-        EvaluationRequest::RankCandidateCuts { paths } => {
-            Ok(EvaluationResponse::RankCandidateCuts {
-                result: rank_candidate_cuts(&paths),
-            })
-        }
+        },
+        DecisionRequest::RankCandidateCuts { paths } => DecisionResponse::RankCandidateCuts {
+            result: rank_candidate_cuts(&paths),
+        },
+    };
+    Ok(EvaluationResponse {
+        schema_version: DECISION_INPUT_V1.to_owned(),
+        input_digest,
+        source_snapshot_digests,
+        response,
+    })
+}
+
+pub fn bind_decision_input(request: DecisionRequest) -> Result<EvaluationRequest, KernelError> {
+    validate_decision_request(&request)?;
+    let input_digest = decision_input_digest(&request)?;
+    Ok(EvaluationRequest {
+        schema_version: DECISION_INPUT_V1.to_owned(),
+        input_digest,
+        request,
+    })
+}
+
+struct ValidatedDecisionRequest(DecisionRequest);
+
+impl ValidatedDecisionRequest {
+    fn new(request: DecisionRequest) -> Result<Self, KernelError> {
+        validate_decision_request(&request)?;
+        Ok(Self(request))
     }
 }
 
@@ -246,6 +290,350 @@ pub fn rank_candidate_cuts(paths: &[SecurityPath]) -> Vec<CandidateEdgeCut> {
     candidates
 }
 
+fn decision_input_digest(request: &DecisionRequest) -> Result<String, KernelError> {
+    let mut hasher = DecisionInputHasher::new();
+    match request {
+        DecisionRequest::Compare { before, after } => {
+            hasher.string("compare");
+            hasher.boolean(before.is_some());
+            if let Some(before) = before {
+                hash_snapshot(&mut hasher, before);
+            }
+            hash_snapshot(&mut hasher, after);
+        }
+        DecisionRequest::VerifyObservedAbsent {
+            reference,
+            after,
+            requested_path_ids,
+        } => {
+            hasher.string("verify_observed_absent");
+            hash_snapshot(&mut hasher, reference);
+            hash_snapshot(&mut hasher, after);
+            hash_strings(&mut hasher, requested_path_ids);
+        }
+        DecisionRequest::RankCandidateCuts { paths } => {
+            hasher.string("rank_candidate_cuts");
+            hasher.unsigned(paths.len());
+            for path in paths {
+                hash_security_path(&mut hasher, path);
+            }
+        }
+    }
+    Ok(hasher.finish())
+}
+
+struct DecisionInputHasher(Sha256);
+
+impl DecisionInputHasher {
+    fn new() -> Self {
+        let mut digest = Sha256::new();
+        digest.update(DECISION_INPUT_V1.as_bytes());
+        digest.update([0]);
+        Self(digest)
+    }
+
+    fn string(&mut self, value: &str) {
+        self.unsigned(value.len());
+        self.0.update(value.as_bytes());
+    }
+
+    fn boolean(&mut self, value: bool) {
+        self.0.update([u8::from(value)]);
+    }
+
+    fn unsigned(&mut self, value: usize) {
+        self.0.update((value as u64).to_be_bytes());
+    }
+
+    fn finish(self) -> String {
+        format_sha256(self.0.finalize())
+    }
+}
+
+fn hash_snapshot(hasher: &mut DecisionInputHasher, snapshot: &Snapshot) {
+    let receipt = &snapshot.collection_receipt;
+    for value in [
+        &snapshot.id,
+        &snapshot.tenant_id,
+        &snapshot.scope_id,
+        &snapshot.detector_id,
+        &snapshot.detector_revision,
+        &snapshot.observation_id,
+        &snapshot.observed_at,
+        &receipt.source_runtime_id,
+        &receipt.source_id,
+        &receipt.runtime_watermark,
+        &receipt.last_synced_at,
+        &receipt.collection_mode,
+        &receipt.graph_checkpoint_id,
+        &receipt.graph_run_id,
+    ] {
+        hasher.string(value);
+    }
+    hasher.boolean(receipt.graph_checkpoint_complete);
+    hasher.boolean(receipt.graph_checkpoint_current);
+    hasher.unsigned(receipt.observed_path_count);
+    hasher.unsigned(receipt.total_path_count);
+    hasher.boolean(receipt.lease_held);
+    hash_strings(hasher, &receipt.limitations);
+    hash_strings(hasher, &receipt.proof_runtime_ids);
+    hasher.unsigned(receipt.runtime_receipts.len());
+    for runtime_receipt in &receipt.runtime_receipts {
+        hash_runtime_receipt(hasher, runtime_receipt);
+    }
+    hasher.string(&snapshot.completeness.state);
+    hash_strings(hasher, &snapshot.completeness.reasons);
+    hasher.unsigned(snapshot.paths.len());
+    for path in &snapshot.paths {
+        hash_security_path(hasher, path);
+    }
+    hasher.string(&snapshot.digest);
+}
+
+fn hash_runtime_receipt(hasher: &mut DecisionInputHasher, receipt: &RuntimeCollectionReceipt) {
+    for value in [
+        &receipt.source_runtime_id,
+        &receipt.source_id,
+        &receipt.provider_family,
+        &receipt.config_revision,
+        &receipt.runtime_watermark,
+        &receipt.last_synced_at,
+        &receipt.graph_checkpoint_id,
+        &receipt.graph_run_id,
+        &receipt.graph_run_started_at,
+        &receipt.graph_run_finished_at,
+    ] {
+        hasher.string(value);
+    }
+    hasher.boolean(receipt.graph_checkpoint_complete);
+    hasher.boolean(receipt.graph_checkpoint_current);
+    hash_strings(hasher, &receipt.limitations);
+}
+
+fn hash_security_path(hasher: &mut DecisionInputHasher, path: &SecurityPath) {
+    hasher.string(&path.id);
+    hasher.string(&path.route_id);
+    hasher.unsigned(path.proof_edges.len());
+    for edge in &path.proof_edges {
+        hash_proof_edge(hasher, edge);
+    }
+    hasher.unsigned(path.ownerships.len());
+    for ownership in &path.ownerships {
+        hash_proof_edge(hasher, &ownership.edge);
+    }
+}
+
+fn hash_proof_edge(hasher: &mut DecisionInputHasher, edge: &ProofEdge) {
+    hasher.string(&edge.id);
+    hasher.string(&edge.relation);
+    hasher.string(&edge.source_runtime_id);
+    hash_strings(hasher, &edge.assertion_runtime_ids);
+}
+
+fn hash_strings(hasher: &mut DecisionInputHasher, values: &[String]) {
+    hasher.unsigned(values.len());
+    for value in values {
+        hasher.string(value);
+    }
+}
+
+fn source_snapshot_digests(request: &DecisionRequest) -> Vec<String> {
+    match request {
+        DecisionRequest::Compare { before, after } => before
+            .iter()
+            .map(|snapshot| snapshot.digest.clone())
+            .chain(std::iter::once(after.digest.clone()))
+            .collect(),
+        DecisionRequest::VerifyObservedAbsent {
+            reference, after, ..
+        } => vec![reference.digest.clone(), after.digest.clone()],
+        DecisionRequest::RankCandidateCuts { .. } => Vec::new(),
+    }
+}
+
+fn validate_decision_request(request: &DecisionRequest) -> Result<(), KernelError> {
+    match request {
+        DecisionRequest::Compare { before, after } => {
+            if let Some(before) = before {
+                validate_snapshot(before)?;
+                validate_snapshot_bounds(before)?;
+            }
+            validate_snapshot(after)?;
+            validate_snapshot_bounds(after)
+        }
+        DecisionRequest::VerifyObservedAbsent {
+            reference,
+            after,
+            requested_path_ids,
+        } => {
+            validate_snapshot(reference)?;
+            validate_snapshot_bounds(reference)?;
+            validate_snapshot(after)?;
+            validate_snapshot_bounds(after)?;
+            validate_unique_strings(
+                requested_path_ids,
+                MAX_REQUESTED_PATH_IDS,
+                "too many requested path identifiers",
+                "requested path identifiers must be unique",
+            )?;
+            for value in requested_path_ids {
+                validate_required_string(value, "requested path identity is required")?;
+            }
+            Ok(())
+        }
+        DecisionRequest::RankCandidateCuts { paths } => validate_paths(paths),
+    }
+}
+
+fn validate_snapshot_bounds(snapshot: &Snapshot) -> Result<(), KernelError> {
+    for value in [
+        &snapshot.id,
+        &snapshot.tenant_id,
+        &snapshot.scope_id,
+        &snapshot.detector_id,
+        &snapshot.detector_revision,
+        &snapshot.observation_id,
+        &snapshot.observed_at,
+        &snapshot.digest,
+        &snapshot.completeness.state,
+    ] {
+        validate_bounded_string(value)?;
+    }
+    for reason in &snapshot.completeness.reasons {
+        validate_bounded_string(reason)?;
+    }
+    validate_paths(&snapshot.paths)?;
+    let receipt = &snapshot.collection_receipt;
+    for value in [
+        &receipt.source_runtime_id,
+        &receipt.source_id,
+        &receipt.runtime_watermark,
+        &receipt.last_synced_at,
+        &receipt.collection_mode,
+        &receipt.graph_checkpoint_id,
+        &receipt.graph_run_id,
+    ] {
+        validate_bounded_string(value)?;
+    }
+    validate_unique_strings(
+        &receipt.proof_runtime_ids,
+        MAX_RUNTIME_RECEIPTS,
+        "too many proof runtime identifiers",
+        "proof runtime identifiers must be unique",
+    )?;
+    if receipt.runtime_receipts.len() > MAX_RUNTIME_RECEIPTS {
+        return Err(KernelError::InvalidInput("too many runtime receipts"));
+    }
+    let mut runtime_ids = BTreeSet::new();
+    for runtime_receipt in &receipt.runtime_receipts {
+        validate_required_string(
+            &runtime_receipt.source_runtime_id,
+            "runtime receipt identity is required",
+        )?;
+        if !runtime_ids.insert(runtime_receipt.source_runtime_id.trim()) {
+            return Err(KernelError::InvalidInput(
+                "runtime receipt identifiers must be unique",
+            ));
+        }
+        for value in [
+            &runtime_receipt.source_runtime_id,
+            &runtime_receipt.source_id,
+            &runtime_receipt.provider_family,
+            &runtime_receipt.config_revision,
+            &runtime_receipt.runtime_watermark,
+            &runtime_receipt.last_synced_at,
+            &runtime_receipt.graph_checkpoint_id,
+            &runtime_receipt.graph_run_id,
+            &runtime_receipt.graph_run_started_at,
+            &runtime_receipt.graph_run_finished_at,
+        ] {
+            validate_bounded_string(value)?;
+        }
+        for limitation in &runtime_receipt.limitations {
+            validate_bounded_string(limitation)?;
+        }
+    }
+    for limitation in &receipt.limitations {
+        validate_bounded_string(limitation)?;
+    }
+    Ok(())
+}
+
+fn validate_paths(paths: &[SecurityPath]) -> Result<(), KernelError> {
+    if paths.len() > MAX_PATHS {
+        return Err(KernelError::InvalidInput("too many security paths"));
+    }
+    let mut path_ids = BTreeSet::new();
+    for path in paths {
+        validate_required_string(&path.id, "path identity is required")?;
+        validate_required_string(&path.route_id, "route identity is required")?;
+        if !path_ids.insert(path.id.trim()) {
+            return Err(KernelError::InvalidInput("path identifiers must be unique"));
+        }
+        if path.proof_edges.len() + path.ownerships.len() > MAX_PROOF_EDGES_PER_PATH {
+            return Err(KernelError::InvalidInput("too many proof edges"));
+        }
+        let mut edge_ids = BTreeSet::new();
+        for edge in path
+            .proof_edges
+            .iter()
+            .chain(path.ownerships.iter().map(|ownership| &ownership.edge))
+        {
+            validate_required_string(&edge.id, "proof edge identity is required")?;
+            validate_required_string(&edge.relation, "proof edge relation is required")?;
+            if !edge_ids.insert(edge.id.trim()) {
+                return Err(KernelError::InvalidInput(
+                    "proof edge identifiers must be unique within a path",
+                ));
+            }
+            for value in [&edge.id, &edge.relation, &edge.source_runtime_id] {
+                validate_bounded_string(value)?;
+            }
+            validate_unique_strings(
+                &edge.assertion_runtime_ids,
+                MAX_RUNTIME_RECEIPTS,
+                "too many assertion runtime identifiers",
+                "assertion runtime identifiers must be unique",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_unique_strings(
+    values: &[String],
+    maximum: usize,
+    too_many: &'static str,
+    duplicated: &'static str,
+) -> Result<(), KernelError> {
+    if values.len() > maximum {
+        return Err(KernelError::InvalidInput(too_many));
+    }
+    let mut unique = BTreeSet::new();
+    for value in values {
+        validate_bounded_string(value)?;
+        if !unique.insert(value.trim()) {
+            return Err(KernelError::InvalidInput(duplicated));
+        }
+    }
+    Ok(())
+}
+
+fn validate_required_string(value: &str, reason: &'static str) -> Result<(), KernelError> {
+    validate_bounded_string(value)?;
+    if value.trim().is_empty() {
+        return Err(KernelError::InvalidInput(reason));
+    }
+    Ok(())
+}
+
+fn validate_bounded_string(value: &str) -> Result<(), KernelError> {
+    if value.len() > MAX_STRING_BYTES {
+        return Err(KernelError::InvalidInput("string exceeds size limit"));
+    }
+    Ok(())
+}
+
 fn validate_snapshot(snapshot: &Snapshot) -> Result<(), KernelError> {
     if snapshot.id.trim().is_empty()
         || snapshot.digest.trim().is_empty()
@@ -258,8 +646,19 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), KernelError> {
     {
         return Err(KernelError::InvalidSnapshot("identity is required"));
     }
+    if !is_sha256_digest(&snapshot.digest) {
+        return Err(KernelError::InvalidSnapshot(
+            "digest must be a sha256 value",
+        ));
+    }
     parse_time(&snapshot.observed_at)?;
     Ok(())
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value
+        .strip_prefix("sha256:")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 fn validate_shared_scope(before: &Snapshot, after: &Snapshot) -> Result<(), KernelError> {
@@ -575,10 +974,14 @@ fn digest_strings(values: &[String]) -> String {
         }
         digest.update(value.as_bytes());
     }
+    format_sha256(digest.finalize())
+}
+
+fn format_sha256(value: impl IntoIterator<Item = u8>) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(71);
     output.push_str("sha256:");
-    for byte in digest.finalize() {
+    for byte in value {
         output.push(char::from(HEX[usize::from(byte >> 4)]));
         output.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
@@ -588,7 +991,7 @@ fn digest_strings(values: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Completeness, RuntimeCollectionReceipt};
+    use crate::model::{Completeness, OwnershipProof, RuntimeCollectionReceipt};
 
     const BEFORE_TIME: &str = "2026-07-15T08:00:00Z";
     const AFTER_TIME: &str = "2026-07-15T08:05:00Z";
@@ -656,7 +1059,7 @@ mod tests {
             },
             paths,
             path_set_digest: format!("path-set-{id}"),
-            digest: format!("snapshot-digest-{id}"),
+            digest: format!("sha256:{:064x}", id.len()),
         }
     }
 
@@ -747,15 +1150,335 @@ mod tests {
 
     #[test]
     fn shared_candidate_cut_corpus_decodes() {
-        let request = serde_json::from_str::<EvaluationRequest>(include_str!(
+        let request = serde_json::from_str::<DecisionRequest>(include_str!(
             "../../../internal/securitypathdelta/testdata/rust_shadow/shared_cut.json"
         ))
         .expect("shared candidate-cut corpus must decode");
-        let response = evaluate(request).expect("shared candidate-cut corpus must evaluate");
-        let EvaluationResponse::RankCandidateCuts { result } = response else {
+        let response = evaluate(bind_decision_input(request).expect("bind decision input"))
+            .expect("shared candidate-cut corpus must evaluate");
+        let DecisionResponse::RankCandidateCuts { result } = response.response else {
             panic!("candidate-cut corpus returned another operation");
         };
         assert_eq!(result[0].route_coverage, 2);
+    }
+
+    #[test]
+    fn evaluation_rejects_unknown_version_and_wrong_digest() {
+        let request = DecisionRequest::RankCandidateCuts {
+            paths: vec![path("path-a", "route-a", "edge-a", "runtime-a")],
+        };
+        let mut unsupported = bind_decision_input(request.clone()).expect("bind request");
+        unsupported.schema_version = "security-path-decision-input/v2".to_owned();
+        assert_eq!(
+            evaluate(unsupported),
+            Err(KernelError::UnsupportedSchemaVersion)
+        );
+
+        let mut tampered = bind_decision_input(request).expect("bind request");
+        tampered.input_digest = format!("sha256:{:064x}", 1);
+        assert_eq!(evaluate(tampered), Err(KernelError::InputDigestMismatch));
+    }
+
+    #[test]
+    fn decision_input_digest_matches_v1_vector() {
+        let request = DecisionRequest::RankCandidateCuts {
+            paths: vec![SecurityPath {
+                id: "path-a".to_owned(),
+                route_id: "route-a".to_owned(),
+                proof_edges: vec![ProofEdge {
+                    id: "edge-a".to_owned(),
+                    relation: "CAN_ACCESS".to_owned(),
+                    source_runtime_id: "runtime-a".to_owned(),
+                    assertion_runtime_ids: vec!["runtime-a".to_owned()],
+                    ..ProofEdge::default()
+                }],
+                ..SecurityPath::default()
+            }],
+        };
+        let bound = bind_decision_input(request).expect("bind request");
+        assert_eq!(
+            bound.input_digest,
+            "sha256:40c2ec2e9d328dd86013f22d0de984902d70d248a2d1780d1b63d2c1166fa1a8"
+        );
+    }
+
+    #[test]
+    fn decision_input_rejects_duplicate_identity_and_semantic_overflow() {
+        let duplicated = path("path-a", "route-a", "edge-a", "runtime-a");
+        assert!(matches!(
+            bind_decision_input(DecisionRequest::RankCandidateCuts {
+                paths: vec![duplicated.clone(), duplicated],
+            }),
+            Err(KernelError::InvalidInput("path identifiers must be unique"))
+        ));
+
+        let paths = (0..=MAX_PATHS)
+            .map(|index| {
+                path(
+                    &format!("path-{index}"),
+                    &format!("route-{index}"),
+                    &format!("edge-{index}"),
+                    "runtime-a",
+                )
+            })
+            .collect();
+        assert!(matches!(
+            bind_decision_input(DecisionRequest::RankCandidateCuts { paths }),
+            Err(KernelError::InvalidInput("too many security paths"))
+        ));
+    }
+
+    #[test]
+    fn decision_input_binds_every_operation_and_snapshot_source() {
+        let before = snapshot(
+            "before",
+            BEFORE_TIME,
+            vec![path("path-a", "route-a", "edge-a", "runtime-a")],
+        );
+        let after = snapshot("after", AFTER_TIME, Vec::new());
+        let bound = bind_decision_input(DecisionRequest::Compare {
+            before: Some(before.clone()),
+            after: after.clone(),
+        })
+        .expect("bind comparison");
+        let response = evaluate(bound.clone()).expect("evaluate comparison");
+        assert_eq!(response.schema_version, DECISION_INPUT_V1);
+        assert_eq!(response.input_digest, bound.input_digest);
+        assert_eq!(
+            response.source_snapshot_digests,
+            [before.digest.clone(), after.digest.clone()]
+        );
+        assert!(matches!(
+            response.response,
+            DecisionResponse::Compare { .. }
+        ));
+
+        let bound = bind_decision_input(DecisionRequest::Compare {
+            before: None,
+            after: after.clone(),
+        })
+        .expect("bind baseline comparison");
+        let response = evaluate(bound).expect("evaluate baseline comparison");
+        assert_eq!(
+            response.source_snapshot_digests.as_slice(),
+            std::slice::from_ref(&after.digest)
+        );
+
+        let bound = bind_decision_input(DecisionRequest::VerifyObservedAbsent {
+            reference: before.clone(),
+            after,
+            requested_path_ids: vec!["path-a".to_owned()],
+        })
+        .expect("bind verification");
+        let response = evaluate(bound).expect("evaluate verification");
+        assert_eq!(
+            response.source_snapshot_digests,
+            [
+                before.digest.clone(),
+                format!("sha256:{:064x}", "after".len())
+            ]
+        );
+        assert!(matches!(
+            response.response,
+            DecisionResponse::VerifyObservedAbsent { .. }
+        ));
+    }
+
+    fn assert_invalid(request: DecisionRequest, expected: KernelError) {
+        assert_eq!(
+            bind_decision_input(request).expect_err("decision input must fail"),
+            expected
+        );
+    }
+
+    fn compare_after(after: Snapshot) -> DecisionRequest {
+        DecisionRequest::Compare {
+            before: None,
+            after,
+        }
+    }
+
+    #[test]
+    fn decision_input_enforces_string_receipt_and_path_bounds() {
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.digest = "not-a-sha256".to_owned();
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidSnapshot("digest must be a sha256 value"),
+        );
+
+        let oversized = "x".repeat(MAX_STRING_BYTES + 1);
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.completeness.reasons.push(oversized.clone());
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("string exceeds size limit"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.collection_receipt.proof_runtime_ids =
+            vec!["runtime-a".to_owned(), " runtime-a ".to_owned()];
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("proof runtime identifiers must be unique"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.collection_receipt.proof_runtime_ids = (0..=MAX_RUNTIME_RECEIPTS)
+            .map(|index| format!("runtime-{index}"))
+            .collect();
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("too many proof runtime identifiers"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        let receipt = after.collection_receipt.runtime_receipts[0].clone();
+        after
+            .collection_receipt
+            .runtime_receipts
+            .extend(std::iter::repeat_n(receipt, MAX_RUNTIME_RECEIPTS));
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("too many runtime receipts"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        let mut duplicate = after.collection_receipt.runtime_receipts[0].clone();
+        duplicate.source_runtime_id = " runtime-a ".to_owned();
+        after.collection_receipt.runtime_receipts.push(duplicate);
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("runtime receipt identifiers must be unique"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.collection_receipt.runtime_receipts[0].source_runtime_id = "  ".to_owned();
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("runtime receipt identity is required"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.collection_receipt.runtime_receipts[0]
+            .limitations
+            .push(oversized.clone());
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("string exceeds size limit"),
+        );
+
+        let mut after = snapshot("after", AFTER_TIME, Vec::new());
+        after.collection_receipt.limitations.push(oversized);
+        assert_invalid(
+            compare_after(after),
+            KernelError::InvalidInput("string exceeds size limit"),
+        );
+    }
+
+    #[test]
+    fn decision_input_enforces_requested_path_and_edge_identity() {
+        let reference = snapshot(
+            "before",
+            BEFORE_TIME,
+            vec![path("path-a", "route-a", "edge-a", "runtime-a")],
+        );
+        let after = snapshot("after", AFTER_TIME, Vec::new());
+        for (requested_path_ids, expected) in [
+            (
+                vec!["path-a".to_owned(), " path-a ".to_owned()],
+                "requested path identifiers must be unique",
+            ),
+            (vec![" ".to_owned()], "requested path identity is required"),
+        ] {
+            assert_invalid(
+                DecisionRequest::VerifyObservedAbsent {
+                    reference: reference.clone(),
+                    after: after.clone(),
+                    requested_path_ids,
+                },
+                KernelError::InvalidInput(expected),
+            );
+        }
+        assert_invalid(
+            DecisionRequest::VerifyObservedAbsent {
+                reference,
+                after,
+                requested_path_ids: (0..=MAX_REQUESTED_PATH_IDS)
+                    .map(|index| format!("path-{index}"))
+                    .collect(),
+            },
+            KernelError::InvalidInput("too many requested path identifiers"),
+        );
+
+        let mut invalid = path(" ", "route-a", "edge-a", "runtime-a");
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![invalid.clone()],
+            },
+            KernelError::InvalidInput("path identity is required"),
+        );
+        invalid.id = "path-a".to_owned();
+        invalid.route_id = " ".to_owned();
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![invalid.clone()],
+            },
+            KernelError::InvalidInput("route identity is required"),
+        );
+        invalid.route_id = "route-a".to_owned();
+        invalid.proof_edges[0].id = " ".to_owned();
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![invalid.clone()],
+            },
+            KernelError::InvalidInput("proof edge identity is required"),
+        );
+        invalid.proof_edges[0].id = "edge-a".to_owned();
+        invalid.proof_edges[0].relation = " ".to_owned();
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![invalid.clone()],
+            },
+            KernelError::InvalidInput("proof edge relation is required"),
+        );
+
+        let mut duplicated_edge = path("path-a", "route-a", "edge-a", "runtime-a");
+        duplicated_edge.ownerships.push(OwnershipProof {
+            edge: duplicated_edge.proof_edges[0].clone(),
+            ..OwnershipProof::default()
+        });
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![duplicated_edge],
+            },
+            KernelError::InvalidInput("proof edge identifiers must be unique within a path"),
+        );
+
+        let mut too_many_edges = path("path-a", "route-a", "edge-a", "runtime-a");
+        too_many_edges.proof_edges = (0..=MAX_PROOF_EDGES_PER_PATH)
+            .map(|index| ProofEdge {
+                id: format!("edge-{index}"),
+                relation: "can_reach".to_owned(),
+                ..ProofEdge::default()
+            })
+            .collect();
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![too_many_edges],
+            },
+            KernelError::InvalidInput("too many proof edges"),
+        );
+
+        let mut assertion_ids = path("path-a", "route-a", "edge-a", "runtime-a");
+        assertion_ids.proof_edges[0].assertion_runtime_ids =
+            vec!["runtime-a".to_owned(), " runtime-a ".to_owned()];
+        assert_invalid(
+            DecisionRequest::RankCandidateCuts {
+                paths: vec![assertion_ids],
+            },
+            KernelError::InvalidInput("assertion runtime identifiers must be unique"),
+        );
     }
 
     #[test]

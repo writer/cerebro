@@ -251,9 +251,19 @@ pub struct Snapshot {
     pub digest: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+pub const DECISION_INPUT_V1: &str = "security-path-decision-input/v1";
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvaluationRequest {
+    pub schema_version: String,
+    pub input_digest: String,
+    pub request: DecisionRequest,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
-pub enum EvaluationRequest {
+pub enum DecisionRequest {
     Compare {
         #[serde(default)]
         before: Option<Snapshot>,
@@ -272,8 +282,16 @@ pub enum EvaluationRequest {
 }
 
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct EvaluationResponse {
+    pub schema_version: String,
+    pub input_digest: String,
+    pub source_snapshot_digests: Vec<String>,
+    pub response: DecisionResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 #[serde(tag = "operation", rename_all = "snake_case")]
-pub enum EvaluationResponse {
+pub enum DecisionResponse {
     Compare { result: ComparisonDecision },
     VerifyObservedAbsent { result: VerificationDecision },
     RankCandidateCuts { result: Vec<CandidateEdgeCut> },
@@ -328,6 +346,8 @@ pub struct VerificationDecision {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KernelError {
+    UnsupportedSchemaVersion,
+    InputDigestMismatch,
     InvalidSnapshot(&'static str),
     InvalidInput(&'static str),
     InvalidRequestedPath(String),
@@ -337,6 +357,8 @@ pub enum KernelError {
 impl fmt::Display for KernelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedSchemaVersion => formatter.write_str("unsupported schema version"),
+            Self::InputDigestMismatch => formatter.write_str("input digest does not match request"),
             Self::InvalidSnapshot(reason) => write!(formatter, "invalid snapshot: {reason}"),
             Self::InvalidInput(reason) => write!(formatter, "invalid input: {reason}"),
             Self::InvalidRequestedPath(path_id) => {
