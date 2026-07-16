@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/sourcegen"
+	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
 var (
@@ -44,6 +45,22 @@ type PolicyRuleDraftResult struct {
 	YAML       []byte                       `json:"yaml,omitempty"`
 	Issues     []findingdsl.Issue           `json:"issues,omitempty"`
 	SchemaJSON []byte                       `json:"schema_json,omitempty"`
+}
+
+type PolicyBundleDraftRequest struct {
+	Prompt  string
+	Domain  string
+	Context map[string]any
+}
+
+type PolicyBundleDraftResult struct {
+	Rule       findingdsl.PolicyFindingRule   `json:"rule"`
+	PolicyPath string                         `json:"policy_path"`
+	PolicyYAML []byte                         `json:"policy_yaml"`
+	Suite      findingdsl.PolicyRuleTestSuite `json:"suite"`
+	TestPath   string                         `json:"test_path"`
+	TestYAML   []byte                         `json:"test_yaml"`
+	Proof      policyauthor.ProofResult       `json:"proof"`
 }
 
 type ConnectorDefinitionDraftRequest struct {
@@ -97,6 +114,34 @@ func (s Service) DraftPolicyRule(ctx context.Context, request PolicyRuleDraftReq
 		return result, fmt.Errorf("%w: format policy rule draft: %w", ErrDraftValidationFail, err)
 	}
 	result.YAML = yamlBytes
+	return result, nil
+}
+
+// DraftPolicyBundle authors a schema-bound policy from the model response,
+// derives executable tests, and proves them against authored and weakened rules.
+func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraftRequest) (*PolicyBundleDraftResult, error) {
+	contextValues := make(map[string]any, len(request.Context)+1)
+	for key, value := range request.Context {
+		contextValues[key] = value
+	}
+	contextValues["test_author_contract"] = map[string]any{
+		"condition_shape": `cmp_eq(path(resource, "field"), scalar)`,
+		"required_cases":  []string{"finding", "passing"},
+		"proof":           "generated suite must reject a policy with its first condition removed",
+	}
+	draft, err := s.DraftPolicyRule(ctx, PolicyRuleDraftRequest{Prompt: request.Prompt, Context: contextValues})
+	if err != nil {
+		return nil, err
+	}
+	artifacts, err := policyauthor.ArtifactsForRule(request.Domain, draft.Rule)
+	if err != nil {
+		return nil, fmt.Errorf("%w: author policy bundle: %w", ErrDraftValidationFail, err)
+	}
+	proof, err := policyauthor.Prove(artifacts)
+	result := &PolicyBundleDraftResult{Rule: artifacts.Rule, PolicyPath: artifacts.PolicyPath, PolicyYAML: artifacts.PolicyYAML, Suite: artifacts.Suite, TestPath: artifacts.TestPath, TestYAML: artifacts.TestYAML, Proof: proof}
+	if err != nil {
+		return result, fmt.Errorf("%w: prove policy bundle: %w", ErrDraftValidationFail, err)
+	}
 	return result, nil
 }
 

@@ -39,16 +39,23 @@ type Artifacts struct {
 }
 
 func Author(intent Intent) (Artifacts, error) {
-	domain := strings.TrimSpace(intent.Domain)
-	if !domainPattern.MatchString(domain) {
-		return Artifacts{}, fmt.Errorf("policy domain %q must use lowercase dash-separated alphanumeric segments", intent.Domain)
-	}
 	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
-		ID: intent.ID, Domain: domain, Name: intent.Name, Description: intent.Description,
+		ID: intent.ID, Domain: intent.Domain, Name: intent.Name, Description: intent.Description,
 		Severity: intent.Severity, Resource: intent.Resource, Conditions: intent.Conditions,
 		References: intent.References, Tags: intent.Tags, RiskCategories: intent.RiskCategories,
 		Frameworks: intent.Frameworks, Remediation: intent.Remediation, RemediationStep: intent.RemediationSteps,
 	})
+	return ArtifactsForRule(intent.Domain, rule)
+}
+
+func ArtifactsForRule(domain string, rule findingdsl.PolicyFindingRule) (Artifacts, error) {
+	domain = strings.TrimSpace(domain)
+	if !domainPattern.MatchString(domain) {
+		return Artifacts{}, fmt.Errorf("policy domain %q must use lowercase dash-separated alphanumeric segments", domain)
+	}
+	rule = findingdsl.NormalizePolicyRule(rule)
+	rule.Domain = domain
+	rule.RelPath = findingdsl.PolicyRuleRelPath(domain, rule.Metadata.ID)
 	if issues := findingdsl.ValidatePolicyRule(rule); len(issues) != 0 {
 		return Artifacts{}, fmt.Errorf("authored policy is invalid: %s", joinIssues(issues))
 	}
