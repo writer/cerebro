@@ -23,6 +23,13 @@ type LayoutMode = "concentric" | "cose" | "breadthfirst" | "circle";
 type RiskLevel = "critical" | "high" | "medium" | "low" | "unknown";
 type RiskFilter = "all" | RiskLevel;
 
+export const graphViewSignature = (
+  nodeIDs: string[],
+  edgeIDs: string[],
+  layoutMode: LayoutMode,
+  theme: string,
+) => [nodeIDs.join("|"), edgeIDs.join("|"), layoutMode, theme].join("\n");
+
 const NODE_LIMIT = 120;
 const EDGE_LABEL_LIMIT = 42;
 const RISK_FILTERS: RiskLevel[] = ["critical", "high", "medium", "low", "unknown"];
@@ -539,13 +546,13 @@ export default function GraphViewer({
     });
   }, [view.elements]);
   const graphSignature = useMemo(
-    () => [
-      model.nodes.map((node) => node.urn).join("|"),
-      model.edges.map((edge) => edge.id).join("|"),
+    () => graphViewSignature(
+      view.nodes.map((node) => node.urn),
+      view.edges.map((edge) => edge.id),
       layoutMode,
       theme,
-    ].join("\n"),
-    [layoutMode, model.edges, model.nodes, theme],
+    ),
+    [layoutMode, view.edges, view.nodes, theme],
   );
 
   useEffect(() => {

@@ -277,10 +277,15 @@ const identityHeaderAllowed = (name: string) => {
   return trusted.includes(name.toLowerCase());
 };
 
-const firstHeaderMatch = (headers: Headers, names: string[], maxLength = 8000): HeaderMatch | null => {
+const firstHeaderMatch = (
+  headers: Headers,
+  names: string[],
+  maxLength = 8000,
+  splitCommaSeparated = true,
+): HeaderMatch | null => {
   for (const name of names) {
     const value = headers.get(name);
-    const first = cleanString(value?.split(",")[0], maxLength);
+    const first = cleanString(splitCommaSeparated ? value?.split(",")[0] : value, maxLength);
     if (first) return { name, value: normalizeFederatedHeaderValue(first) };
   }
   return null;
@@ -971,7 +976,7 @@ const mergeComplementaryCandidates = (primary: CurrentUser, alternates: CurrentU
 const directHeaderCandidate = (headers: Headers): CurrentUser | null => {
   const matches = [
     firstHeaderMatch(headers, allowedHeaderNames(EMAIL_HEADERS)),
-    firstHeaderMatch(headers, allowedHeaderNames(DISPLAY_NAME_HEADERS)),
+    firstHeaderMatch(headers, allowedHeaderNames(DISPLAY_NAME_HEADERS), 8000, false),
     firstHeaderMatch(headers, allowedHeaderNames(SUBJECT_HEADERS)),
     firstHeaderMatch(headers, allowedHeaderNames(USERNAME_HEADERS)),
   ];
