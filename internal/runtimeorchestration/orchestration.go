@@ -3,6 +3,7 @@ package runtimeorchestration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -36,6 +37,9 @@ type OrchestrationResult struct {
 	SecurityPath *SecurityPathResult
 }
 
+// OrchestrationJobPayload is the persisted job document produced by an orchestration run.
+type OrchestrationJobPayload map[string]any
+
 func (s *SecurityPathService) Orchestrate(ctx context.Context, evaluator findingRuleEvaluator, request OrchestrationRequest) (result OrchestrationResult, runErr error) {
 	if request.CaptureSecurityPathDelta {
 		capture, captureErr := s.Capture(ctx, SecurityPathRequest{
@@ -49,7 +53,7 @@ func (s *SecurityPathService) Orchestrate(ctx context.Context, evaluator finding
 			})
 		}
 		if captureErr != nil {
-			return result, captureErr
+			return result, errors.Join(captureErr, runErr)
 		}
 		return result, runErr
 	}
@@ -73,8 +77,8 @@ func (s *SecurityPathService) Orchestrate(ctx context.Context, evaluator finding
 	return result, runErr
 }
 
-func (result OrchestrationResult) JobPayload() (map[string]any, map[string]string, error) {
-	payload := map[string]any{}
+func (result OrchestrationResult) JobPayload() (OrchestrationJobPayload, map[string]string, error) {
+	payload := OrchestrationJobPayload{}
 	refs := map[string]string{}
 	if result.Sync != nil {
 		encoded, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(result.Sync)
