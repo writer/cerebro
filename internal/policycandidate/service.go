@@ -23,6 +23,7 @@ var accountIDPattern = regexp.MustCompile(`(^|[^0-9])[0-9]{12}([^0-9]|$)`)
 type Service struct {
 	Store       Store
 	Experiments ExperimentStore
+	Datasets    PolicyEvaluationDatasetStore
 	Author      *agentauthoring.Service
 	Graph       ports.GraphQueryStore
 	Catalog     CoverageCatalog
