@@ -842,18 +842,6 @@ func clearRuntimeInvalidEvent(config map[string]string) {
 	}
 }
 
-func invalidEventFailureCategory(err error) string {
-	message := err.Error()
-	switch {
-	case strings.Contains(message, "missing required attribute"):
-		return "missing_required_attribute"
-	case strings.Contains(message, "missing required payload field"):
-		return "missing_required_payload_field"
-	default:
-		return "invalid_event"
-	}
-}
-
 func emitSourceRuntimeValidation(ctx context.Context, runtime *cerebrov1.SourceRuntime, category string) {
 	if runtime == nil {
 		return
@@ -925,23 +913,6 @@ func recordRuntimeInvalidEventField(runtime *cerebrov1.SourceRuntime, event *cer
 		setRuntimeConfig(runtime.Config, runtimeLastInvalidDiagnosticConfigKey, "invalid source event")
 	}
 	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, category, contractConfigured))
-}
-
-func invalidEventFieldName(err error) string {
-	message := err.Error()
-	for _, marker := range []string{"missing required attribute ", "missing required payload field "} {
-		index := strings.Index(message, marker)
-		if index < 0 {
-			continue
-		}
-		value := strings.TrimSpace(message[index+len(marker):])
-		value = strings.TrimLeft(value, "\"' :")
-		if end := strings.IndexAny(value, " :"); end > 0 {
-			value = value[:end]
-		}
-		return strings.Trim(value, "\"'")
-	}
-	return ""
 }
 
 func contractProbeStateForRuntime(runtime *cerebrov1.SourceRuntime, failureCategory string, contractConfigured bool) string {

@@ -112,17 +112,32 @@ func TestAdmitRejectsEnvelopeFailuresInsideKernel(t *testing.T) {
 }
 
 func TestAdmitRejectsInvalidUTF8BeforeJSONCanRepairOriginalEvent(t *testing.T) {
-	event := testEvent(string([]byte{'e', 0xff}), `{"identity":{"id":"user-1"}}`)
-	response, err := Admit(context.Background(), []*cerebrov1.EventEnvelope{event}, nil)
-	if !errors.Is(err, ErrBatchRejected) {
-		t.Fatalf("Admit() error = %v; want transport rejection", err)
+	tests := []struct {
+		name  string
+		field string
+		edit  func(*cerebrov1.EventEnvelope)
+	}{
+		{name: "id", field: "id", edit: func(event *cerebrov1.EventEnvelope) { event.Id = string([]byte{'e', 0xff}) }},
+		{name: "payload", field: "payload", edit: func(event *cerebrov1.EventEnvelope) {
+			event.Payload = []byte(`{"identity":{"id":"user-` + string([]byte{0xff}) + `"}}`)
+		}},
 	}
-	if len(response.Events) != 0 {
-		t.Fatalf("authorized events = %d; want 0", len(response.Events))
-	}
-	var rejected *RejectedError
-	if !errors.As(err, &rejected) || rejected.Rejection.Code != "invalid_event_envelope" || rejected.Rejection.Field != "id" {
-		t.Fatalf("Admit() error = %#v; want invalid id UTF-8", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := testEvent("event-1", `{"identity":{"id":"user-1"}}`)
+			test.edit(event)
+			response, err := Admit(context.Background(), []*cerebrov1.EventEnvelope{event}, nil)
+			if !errors.Is(err, ErrBatchRejected) {
+				t.Fatalf("Admit() error = %v; want transport rejection", err)
+			}
+			if len(response.Events) != 0 {
+				t.Fatalf("authorized events = %d; want 0", len(response.Events))
+			}
+			var rejected *RejectedError
+			if !errors.As(err, &rejected) || rejected.Rejection.Code != "invalid_event_envelope" || rejected.Rejection.Field != test.field {
+				t.Fatalf("Admit() error = %#v; want invalid %s UTF-8", err, test.field)
+			}
+		})
 	}
 }
 

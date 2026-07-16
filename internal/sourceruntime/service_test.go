@@ -1726,7 +1726,7 @@ func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 	}
 }
 
-func FuzzInvalidEventFailureClassification(f *testing.F) {
+func FuzzSourceRuntimeFailureClassification(f *testing.F) {
 	f.Add("missing required attribute source_system")
 	f.Add("missing required payload field uri")
 	f.Add("provider returned 401 unauthorized")
@@ -1739,16 +1739,6 @@ func FuzzInvalidEventFailureClassification(f *testing.F) {
 		case "auth_error", "rate_limited", "provider_unavailable", "sync_failed":
 		default:
 			t.Fatalf("unexpected source runtime failure category %q", category)
-		}
-		invalidCategory := invalidEventFailureCategory(err)
-		switch invalidCategory {
-		case "missing_required_attribute", "missing_required_payload_field", "invalid_event":
-		default:
-			t.Fatalf("unexpected invalid event failure category %q", invalidCategory)
-		}
-		field := invalidEventFieldName(err)
-		if strings.Contains(field, " ") || strings.Contains(field, ":") {
-			t.Fatalf("invalid event field was not bounded to field token: %q", field)
 		}
 	})
 }
