@@ -1,4 +1,7 @@
 export * from "./admission.js";
+export * from "./assistance/contracts.js";
+export * from "./assistance/coordinator.js";
+export * from "./assistance/ports.js";
 export * from "./contracts.js";
 export * from "./delivery/contracts.js";
 export * from "./delivery/coordinator.js";
@@ -21,6 +24,9 @@ export type {
   ExecutionClockPort,
 } from "./execution/ports.js";
 export * from "./installation.js";
+export * from "./improvement/contracts.js";
+export * from "./improvement/coordinator.js";
+export * from "./improvement/ports.js";
 export * from "./lifecycle.js";
 export * from "./mission/coordinator.js";
 export * from "./mission/model.js";
