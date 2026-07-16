@@ -1144,6 +1144,16 @@ export type CreatePlatformJobRequest = {
   tenant_id?: string;
 };
 
+export type CreatePolicyCandidateRequest = {
+  domain: string;
+  graph_evidence: PolicyCandidateGraphEvidenceInput;
+  grounding: PolicyCandidateGroundingInput;
+  hypothesis: string;
+  origin: PolicyCandidateOriginInput;
+  tenant_id: string;
+  [key: string]: unknown;
+};
+
 export type CredentialStoreBinding = {
   auth_method?: string;
   connection_status?: string;
@@ -3610,6 +3620,88 @@ export type PlatformJobListResponse = {
 
 export type PlatformJobResponse = {
   job: PlatformJob;
+};
+
+export type PolicyCandidate = {
+  artifacts?: PolicyCandidateArtifacts;
+  coverage_gap: PolicyCandidateCoverageGapReceipt;
+  created_at: string;
+  domain: string;
+  graph: { edge_count?: number; entity_types?: string[]; node_count?: number; relations?: string[] };
+  grounding: PolicyCandidateGroundingReceipt;
+  hypothesis: string;
+  id: string;
+  origin_kind: string;
+  pr_ready: boolean;
+  proof?: PolicyCandidateProof;
+  revision: number;
+  shadow?: PolicyCandidateShadowReceipt;
+  status: "grounded" | "proved" | "ready_for_review" | "blocked";
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyCandidateArtifacts = {
+  policy_digest: string;
+  policy_path: string;
+  policy_yaml: string;
+  rule: Record<string, unknown>;
+  suite: Record<string, unknown>;
+  test_digest: string;
+  test_path: string;
+  test_yaml: string;
+};
+
+export type PolicyCandidateCoverageGapReceipt = {
+  candidate_signature: string;
+  catalog_digest: string;
+  compared_rule_count: number;
+  execution: "finding_rule_catalog";
+  observed_at: string;
+};
+
+export type PolicyCandidateGraphEvidenceInput = {
+  critical_edge: Record<string, unknown>;
+  edges: Record<string, unknown>[];
+  evidence_node_ids: string[];
+  nodes: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingInput = {
+  bindings: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingReceipt = {
+  edge_count: number;
+  execution: "graph_store";
+  node_count: number;
+  observed_at: string;
+  receipt_id: string;
+};
+
+export type PolicyCandidateOriginInput = {
+  external_ref: string;
+  kind: string;
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateProof = {
+  policy_digest?: string;
+  policy_id?: string;
+  policy_path?: string;
+  receipts?: { detail?: string; execution?: string; gate?: string; passed?: boolean }[];
+  test_digest?: string;
+  test_path?: string;
+};
+
+export type PolicyCandidateShadowReceipt = {
+  execution: "graph_store";
+  match_count: number;
+  observed_at: string;
+  receipt_id: string;
+  truncated: boolean;
 };
 
 export type PromoteFindingCandidateRequest = {
