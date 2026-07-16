@@ -152,6 +152,22 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // errors instead of panicking. Production startup should use this form so
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{})
+}
+
+// NewWithContext constructs the bootstrap app with a caller-owned process lifetime.
+func NewWithContext(ctx context.Context, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	if ctx == nil {
+		return nil, errors.New("bootstrap context is required")
+	}
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{eventAdmissionContext: ctx})
+}
+
+type appConstructionOptions struct {
+	eventAdmissionContext context.Context
+}
+
+func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (*App, error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {
@@ -240,8 +256,11 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.reports = app.newReportService()
 	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
 	if cfg.SourceRuntime.EventAdmissionWorkerPath != "" {
+		if options.eventAdmissionContext == nil {
+			return nil, errors.New("source event admission requires a bootstrap context")
+		}
 		admitter, admissionErr := eventadmission.NewNativeAdmitter(
-			context.Background(),
+			options.eventAdmissionContext,
 			cfg.SourceRuntime.EventAdmissionWorkerPath,
 			cfg.SourceRuntime.EventAdmissionWorkers,
 		)

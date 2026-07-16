@@ -136,12 +136,12 @@ func serve() error {
 	deps.FindingRules = rules
 	recordContentPackStartup(context.Background(), selection.State)
 
-	app, err := bootstrap.NewWithError(cfg, deps, sources)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	app, err := bootstrap.NewWithContext(ctx, cfg, deps, sources)
 	if err != nil {
 		return fmt.Errorf("bootstrap app: %w", err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	jobRecoveryDone := app.StartPlatformJobRecovery(ctx, log.Printf)
 	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)

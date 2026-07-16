@@ -122,11 +122,12 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
-// Native source event admission adds worker-pool composition, Connect service
-// reuse, and shutdown wiring only. Admission policy, framing, restart behavior,
-// and receipt validation remain in internal/sourceruntime/eventadmission; the
-// boundary is recorded in docs/engineering/rust-source-runtime-adr.md.
-const bootstrapProductionGoLineBudget = 28317
+// Native source event admission adds caller-lifetime worker-pool composition,
+// Connect service reuse, and shutdown wiring only. Admission policy, framing,
+// restart behavior, and receipt validation remain in
+// internal/sourceruntime/eventadmission; the boundary is recorded in
+// docs/engineering/rust-source-runtime-adr.md.
+const bootstrapProductionGoLineBudget = 28336
 
 type bootstrapFileLineCount struct {
 	path  string
