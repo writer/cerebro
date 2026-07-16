@@ -157,6 +157,34 @@ func ValidatePolicyRuleTestSuite(suite PolicyRuleTestSuite) []Issue {
 	return issues
 }
 
+// ValidatePolicyRuleTestSuiteAgainstRule validates an already-loaded suite
+// against an already-loaded rule. It is the filesystem-free validation seam
+// used by durable evaluation datasets and other authoring workflows.
+func ValidatePolicyRuleTestSuiteAgainstRule(rule PolicyFindingRule, suite PolicyRuleTestSuite) []Issue {
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		out := make([]Issue, 0, len(issues))
+		for _, issue := range issues {
+			out = append(out, Issue{Path: suitePath(suite), Message: "policy " + issue.Path + ": " + issue.Message})
+		}
+		return out
+	}
+	if issues := ValidatePolicyRuleTestSuite(suite); len(issues) != 0 {
+		return issues
+	}
+	var out []Issue
+	for idx, testCase := range suite.Cases {
+		out = append(out, validatePolicyRuleTestCaseAgainstRule(suitePath(suite), rule, idx, testCase)...)
+	}
+	return out
+}
+
+func suitePath(suite PolicyRuleTestSuite) string {
+	if path := strings.TrimSpace(suite.RelPath); path != "" {
+		return path
+	}
+	return "<policy-test-suite>"
+}
+
 func FormatPolicyRuleTestSuiteYAML(suite PolicyRuleTestSuite) ([]byte, error) {
 	suite.RelPath = ""
 	return yaml.Marshal(suite)
