@@ -50,3 +50,22 @@ func TestPolicyExperimentSchemaKeepsPinnedRunsAndAppendOnlyObservations(t *testi
 		}
 	}
 }
+
+func TestPolicyEvaluationDatasetSchemaKeepsImmutableSnapshotsAndIdempotency(t *testing.T) {
+	joined := strings.Join(policyEvaluationDatasetStatements, "\n")
+	for _, required := range []string{
+		"CREATE TABLE IF NOT EXISTS policy_evaluation_datasets",
+		"aggregate_version BIGINT NOT NULL",
+		"UNIQUE (tenant_id, candidate_id, idempotency_key)",
+		"CREATE TABLE IF NOT EXISTS policy_evaluation_dataset_revisions",
+		"UNIQUE (dataset_id, version)",
+		"UNIQUE (dataset_id, idempotency_key)",
+		"CREATE TABLE IF NOT EXISTS policy_evaluation_dataset_cases",
+		"PRIMARY KEY (revision_id, case_id)",
+		"UNIQUE (revision_id, ordinal)",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("evaluation dataset schema missing %q", required)
+		}
+	}
+}
