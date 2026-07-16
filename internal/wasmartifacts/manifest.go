@@ -119,7 +119,7 @@ var moduleSpecs = []ModuleSpec{
 		Name:         "sourceruntime-event-admission",
 		ArtifactPath: "internal/sourceruntime/eventadmission/eventadmission.wasm",
 		SourcePath:   "internal/sourceruntime/eventadmission/src/lib.rs",
-		ABIVersion:   1,
+		ABIVersion:   2,
 		MaxSizeBytes: 225_000,
 	},
 	{

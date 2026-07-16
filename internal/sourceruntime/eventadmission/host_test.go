@@ -155,6 +155,33 @@ func TestAdmitLargestBoundedQuarantinePageFitsOutputBudget(t *testing.T) {
 	}
 }
 
+func TestValidateResponseRejectsTamperedQuarantineProof(t *testing.T) {
+	events := []*cerebrov1.EventEnvelope{testEvent("event-1", `{"identity":{}}`)}
+	response, err := Admit(context.Background(), events, testContracts())
+	if err != nil {
+		t.Fatalf("Admit() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		edit func(*Response)
+	}{
+		{name: "event id", edit: func(response *Response) { response.Quarantined[0].EventID = "other" }},
+		{name: "event digest", edit: func(response *Response) { response.Quarantined[0].EventSHA256 = "sha256:bad" }},
+		{name: "contract digest", edit: func(response *Response) { response.Receipt.ContractsSHA256 = "sha256:bad" }},
+		{name: "input index", edit: func(response *Response) { response.Quarantined[0].InputIndex = nil }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tampered := response
+			tampered.Quarantined = append([]Quarantined(nil), response.Quarantined...)
+			test.edit(&tampered)
+			if err := validateResponse(tampered, events); !errors.Is(err, ErrKernelUnavailable) {
+				t.Fatalf("validateResponse() error = %v; want invalid kernel output", err)
+			}
+		})
+	}
+}
+
 func TestAdmitReturnsTypedRejectionAboveEventLimit(t *testing.T) {
 	events := make([]*cerebrov1.EventEnvelope, MaxEvents+1)
 	for index := range events {
