@@ -12,6 +12,26 @@ export interface ScheduledOccurrenceInput {
   schedule_revision: number;
 }
 
+export interface ScheduledOccurrenceCommitResult {
+  created: boolean;
+  occurrence: ScheduledOccurrenceV1;
+}
+
+/**
+ * Durable scheduled-occurrence state. Production adapters must make create and
+ * compare-and-set atomic; a process-local timer is not a valid implementation.
+ */
+export interface ScheduledOccurrenceStorePort {
+  compareAndSet(
+    expected: ScheduledOccurrenceV1,
+    next: ScheduledOccurrenceV1,
+  ): Promise<ScheduledOccurrenceV1>;
+  putIfAbsent(
+    occurrence: ScheduledOccurrenceV1,
+  ): Promise<ScheduledOccurrenceCommitResult>;
+  read(occurrenceId: string): Promise<ScheduledOccurrenceV1 | undefined>;
+}
+
 export interface MisfirePlan {
   enqueue: string[];
   pending: string[];

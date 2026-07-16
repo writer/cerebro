@@ -1,3 +1,9 @@
+import { IdempotencyConflictError } from "../admission.js";
+import type {
+  AdmissionCommit,
+  AdmissionCommitResult,
+} from "../contracts.js";
+import type { DurableAdmissionPort } from "../ports.js";
 import { ExecutionInvariantError } from "./coordinator.js";
 import {
   effectIntentDigest,
@@ -22,17 +28,55 @@ import type {
 import type { DurableExecutionPort } from "./ports.js";
 
 /** Conformance fixture only. Production adapters must use durable storage. */
-export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
+export class ReferenceMemoryExecutionStore
+  implements DurableAdmissionPort, DurableExecutionPort
+{
   private readonly checkpoints = new Map<string, CheckpointV1[]>();
   private readonly effects = new Map<string, EffectReceiptV1>();
   private readonly effectIntents = new Map<string, ExternalEffectIntentV1>();
   private readonly fencingTokens = new Map<string, number>();
   private readonly highestGenerations = new Map<string, number>();
+  private readonly runIdByIdempotencyKey = new Map<string, string>();
   private readonly leases = new Map<string, WorkLeaseV1>();
   private readonly runs = new Map<string, RunReceiptV1>();
 
   seedRun(run: RunReceiptV1): void {
     this.runs.set(run.run_id, structuredClone(run));
+    this.runIdByIdempotencyKey.set(run.idempotency_key, run.run_id);
+  }
+
+  admitAndEnqueue(
+    commit: AdmissionCommit,
+  ): Promise<AdmissionCommitResult> {
+    const priorRunId = this.runIdByIdempotencyKey.get(
+      commit.receipt.idempotency_key,
+    );
+    if (priorRunId !== undefined) {
+      const prior = this.requireRun(priorRunId);
+      if (prior.input_digest !== commit.receipt.input_digest) {
+        return Promise.reject(new IdempotencyConflictError());
+      }
+      return Promise.resolve({
+        created: false,
+        receipt: structuredClone(prior),
+      });
+    }
+    if (commit.receipt.state !== "queued") {
+      return Promise.reject(
+        new ExecutionInvariantError("admission must commit a queued run"),
+      );
+    }
+    if (this.runs.has(commit.receipt.run_id)) {
+      return Promise.reject(
+        new ExecutionInvariantError("run id already belongs to another input"),
+      );
+    }
+
+    // These mutations model one transaction shared by admission and execution.
+    const receipt = structuredClone(commit.receipt);
+    this.runs.set(receipt.run_id, receipt);
+    this.runIdByIdempotencyKey.set(receipt.idempotency_key, receipt.run_id);
+    return Promise.resolve({ created: true, receipt: structuredClone(receipt) });
   }
 
   acquireLease(
@@ -449,6 +493,10 @@ export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
   readRun(runId: string): RunReceiptV1 | undefined {
     const run = this.runs.get(runId);
     return run === undefined ? undefined : structuredClone(run);
+  }
+
+  runCount(): number {
+    return this.runs.size;
   }
 
   private assertLease(lease: WorkLeaseV1, observedAt: string): void {
