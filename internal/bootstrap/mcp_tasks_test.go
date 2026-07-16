@@ -262,10 +262,34 @@ func TestMCPTaskTelemetryRecordsOperationStateWithoutPrompt(t *testing.T) {
 		"mcp.tool_behavior":       "read",
 		"mcp.tool_owner":          "agent-platform",
 		"mcp.task":                true,
+		"mcp.task_state":          "partial",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
+	}
+}
+
+func TestMCPTaskStateFromResponseAllowsKnownStatesOnly(t *testing.T) {
+	tests := []struct {
+		name       string
+		structured any
+		want       string
+	}{
+		{name: "value response", structured: mcpoperations.TaskResponse{State: mcpoperations.TaskStateComplete}, want: mcpoperations.TaskStateComplete},
+		{name: "pointer response", structured: &mcpoperations.TaskResponse{State: mcpoperations.TaskStatePartial}, want: mcpoperations.TaskStatePartial},
+		{name: "structured map", structured: mcpoperations.StructuredContent{"state": mcpoperations.TaskStateBlocked}, want: mcpoperations.TaskStateBlocked},
+		{name: "generic map", structured: map[string]any{"state": mcpoperations.TaskStateComplete}, want: mcpoperations.TaskStateComplete},
+		{name: "unknown state", structured: map[string]any{"state": "running"}},
+		{name: "missing state", structured: map[string]any{"result": "ok"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := &mcpJSONRPCResponse{Result: mcpToolResult{StructuredContent: test.structured}}
+			if got := mcpTaskStateFromResponse(response); got != test.want {
+				t.Fatalf("mcpTaskStateFromResponse() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
