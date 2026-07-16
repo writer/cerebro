@@ -12,14 +12,45 @@ type instrumentedLLMClient struct {
 	client   LLMClient
 }
 
+type instrumentedStructuredLLMClient struct {
+	*instrumentedLLMClient
+	structured StructuredJSONClient
+}
+
 func instrumentLLMClient(provider string, client LLMClient) LLMClient {
 	if client == nil {
 		return nil
 	}
-	return &instrumentedLLMClient{
+	base := &instrumentedLLMClient{
 		provider: strings.TrimSpace(provider),
 		client:   client,
 	}
+	if structured, ok := client.(StructuredJSONClient); ok {
+		return &instrumentedStructuredLLMClient{instrumentedLLMClient: base, structured: structured}
+	}
+	return base
+}
+
+func (c *instrumentedStructuredLLMClient) DraftStructuredJSON(ctx context.Context, req StructuredJSONRequest) ([]byte, error) {
+	attrs := c.operationAttrs("structured_json", req.Model, req.TenantID).
+		WithField(telemetry.Field{Key: "graphagent.structured.kind", Value: strings.TrimSpace(req.Kind)}).
+		WithField(telemetry.Field{Key: "graphagent.prompt.bytes", Value: len(req.Prompt)}).
+		WithField(telemetry.Field{Key: "graphagent.schema.bytes", Value: len(req.SchemaJSON)}).
+		WithField(telemetry.Field{Key: "graphagent.context.fields", Value: len(req.Context)})
+	ctx, span := telemetry.Start(ctx, "graphagent.llm.structured_json", attrs)
+	payload, err := c.structured.DraftStructuredJSON(ctx, req)
+	endAttrs := telemetry.Attrs()
+	status := "completed"
+	if err != nil {
+		status = "failed"
+		endAttrs = endAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+		telemetry.CaptureError(ctx, "graphagent.llm.error", err, attrs)
+	} else {
+		endAttrs = endAttrs.WithField(telemetry.Field{Key: "graphagent.structured.response.bytes", Value: len(payload)})
+	}
+	c.annotateMain(ctx, "structured_json", status, attrs.With(endAttrs))
+	telemetry.End(span, status, endAttrs)
+	return payload, err
 }
 
 func (c *instrumentedLLMClient) DraftCypher(ctx context.Context, req DraftRequest) (*DraftResponse, error) {
