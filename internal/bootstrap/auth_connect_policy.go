@@ -23,6 +23,7 @@ const (
 	scopeAskQueriesWrite           = "cerebro.ask_queries.write"
 	scopeDashboardsWrite           = "cerebro.dashboards.write"
 	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
+	scopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
 )
 

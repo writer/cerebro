@@ -209,6 +209,52 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func TestValidateRuntimeBoundReadCypher(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		wantCode string
+	}{
+		{
+			name:  "accepts caller bound limit",
+			query: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn LIMIT $row_limit`,
+		},
+		{
+			name:     "rejects hardcoded limit",
+			query:    `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn LIMIT 1`,
+			wantCode: "runtime_limit_required",
+		},
+		{
+			name:     "ignores parameter in string",
+			query:    `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN '$row_limit' AS marker LIMIT 1`,
+			wantCode: "runtime_limit_required",
+		},
+		{
+			name:     "requires every union branch to use caller bound",
+			query:    `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn LIMIT $row_limit UNION MATCH (b:Entity {tenant_id: $tenant_id}) RETURN b.urn LIMIT 1`,
+			wantCode: "runtime_limit_required",
+		},
+		{
+			name:  "accepts comments between limit and parameter",
+			query: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn LIMIT /* caller bound */ $row_limit`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, limit, err := ValidateRuntimeBoundReadCypher(context.Background(), tt.query, 17)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != tt.wantCode {
+				t.Fatalf("result = %#v, want code %q", result, tt.wantCode)
+			}
+			if tt.wantCode == "" && (!result.OK || limit != 17) {
+				t.Fatalf("result = %#v limit = %d, want accepted limit 17", result, limit)
+			}
+		})
+	}
+}
+
 func TestValidatorStaticContract(t *testing.T) {
 	tests := []struct {
 		name       string
