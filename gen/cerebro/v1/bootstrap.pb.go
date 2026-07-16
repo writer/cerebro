@@ -2143,9 +2143,11 @@ func (x *GetSourceRuntimeResponse) GetRuntime() *SourceRuntime {
 
 // SyncSourceRuntimeRequest advances one stored source runtime.
 type SyncSourceRuntimeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	PageLimit     uint32                 `protobuf:"varint,2,opt,name=page_limit,json=pageLimit,proto3" json:"page_limit,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	PageLimit uint32                 `protobuf:"varint,2,opt,name=page_limit,json=pageLimit,proto3" json:"page_limit,omitempty"`
+	// event_limit bounds appended events at whole-page commit boundaries. Zero is unlimited.
+	EventLimit    uint32 `protobuf:"varint,3,opt,name=event_limit,json=eventLimit,proto3" json:"event_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2194,6 +2196,13 @@ func (x *SyncSourceRuntimeRequest) GetPageLimit() uint32 {
 	return 0
 }
 
+func (x *SyncSourceRuntimeRequest) GetEventLimit() uint32 {
+	if x != nil {
+		return x.EventLimit
+	}
+	return 0
+}
+
 // SyncSourceRuntimeResponse returns the updated runtime and sync totals.
 type SyncSourceRuntimeResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
@@ -2205,6 +2214,7 @@ type SyncSourceRuntimeResponse struct {
 	LinksProjected       uint32                 `protobuf:"varint,6,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
 	ShortCircuitReason   string                 `protobuf:"bytes,7,opt,name=short_circuit_reason,json=shortCircuitReason,proto3" json:"short_circuit_reason,omitempty"`
 	ReconciliationReason string                 `protobuf:"bytes,8,opt,name=reconciliation_reason,json=reconciliationReason,proto3" json:"reconciliation_reason,omitempty"`
+	EventLimitReached    bool                   `protobuf:"varint,9,opt,name=event_limit_reached,json=eventLimitReached,proto3" json:"event_limit_reached,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -2293,6 +2303,13 @@ func (x *SyncSourceRuntimeResponse) GetReconciliationReason() string {
 		return x.ReconciliationReason
 	}
 	return ""
+}
+
+func (x *SyncSourceRuntimeResponse) GetEventLimitReached() bool {
+	if x != nil {
+		return x.EventLimitReached
+	}
+	return false
 }
 
 // WriteClaimsRequest persists one batch of runtime-scoped claims.
@@ -7373,11 +7390,13 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x17GetSourceRuntimeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"O\n" +
 	"\x18GetSourceRuntimeResponse\x123\n" +
-	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\"I\n" +
+	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\"j\n" +
 	"\x18SyncSourceRuntimeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
-	"page_limit\x18\x02 \x01(\rR\tpageLimit\"\x87\x03\n" +
+	"page_limit\x18\x02 \x01(\rR\tpageLimit\x12\x1f\n" +
+	"\vevent_limit\x18\x03 \x01(\rR\n" +
+	"eventLimit\"\xb7\x03\n" +
 	"\x19SyncSourceRuntimeResponse\x123\n" +
 	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\x12.\n" +
 	"\x06source\x18\x02 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x12\x1d\n" +
@@ -7387,7 +7406,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x12entities_projected\x18\x05 \x01(\rR\x11entitiesProjected\x12'\n" +
 	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected\x120\n" +
 	"\x14short_circuit_reason\x18\a \x01(\tR\x12shortCircuitReason\x123\n" +
-	"\x15reconciliation_reason\x18\b \x01(\tR\x14reconciliationReason\"\x89\x01\n" +
+	"\x15reconciliation_reason\x18\b \x01(\tR\x14reconciliationReason\x12.\n" +
+	"\x13event_limit_reached\x18\t \x01(\bR\x11eventLimitReached\"\x89\x01\n" +
 	"\x12WriteClaimsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12)\n" +

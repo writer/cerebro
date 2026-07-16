@@ -302,6 +302,8 @@ message GetSourceRuntimeResponse {
 message SyncSourceRuntimeRequest {
   string id = 1;
   uint32 page_limit = 2;
+  // event_limit bounds appended events at whole-page commit boundaries. Zero is unlimited.
+  uint32 event_limit = 3;
 }
 
 // SyncSourceRuntimeResponse returns the updated runtime and sync totals.
@@ -314,6 +316,7 @@ message SyncSourceRuntimeResponse {
   uint32 links_projected = 6;
   string short_circuit_reason = 7;
   string reconciliation_reason = 8;
+  bool event_limit_reached = 9;
 }
 
 // WriteClaimsRequest persists one batch of runtime-scoped claims.

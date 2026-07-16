@@ -30,11 +30,12 @@ import (
 )
 
 const (
-	defaultPageLimit = 1
-	maxPageLimit     = 100
-	defaultListLimit = 100
-	maxListLimit     = 500
-	redactedValue    = "[redacted]"
+	defaultPageLimit            = 1
+	maxPageLimit                = 100
+	defaultListLimit            = 100
+	maxListLimit                = 500
+	redactedValue               = "[redacted]"
+	syncEventLimitReachedReason = "sync_event_limit_reached"
 
 	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 
@@ -259,6 +260,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	ctx, span := telemetry.Start(ctx, "source_runtime.sync", telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: runtimeID},
 		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
+		telemetry.Field{Key: "event_limit", Value: req.GetEventLimit()},
 		telemetry.Field{Key: "operation.type", Value: "source_runtime_sync"},
 	))
 	started := time.Now()
@@ -277,6 +279,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		linksProjected         uint32
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
+		eventLimitReached      bool
 		shortCircuitReason     string
 		reconciliationReason   string
 	)
@@ -390,6 +393,42 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			reconciliationReason = pageReconciliationReason
 		}
 		eventsRead := boundedUint32(len(pull.Events))
+		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
+		for _, event := range pull.Events {
+			if syncedEvent := materializeEvent(runtime, event); syncedEvent != nil {
+				materializedEvents = append(materializedEvents, syncedEvent)
+			}
+		}
+		materializedEvents = dedupeAcceptedEvents(materializedEvents)
+		acceptedEvents, quarantinedEvents, err := validateSourcePageEvents(materializedEvents, eventContracts)
+		if err != nil {
+			return nil, err
+		}
+		eventLimit := req.GetEventLimit()
+		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
+			eventLimitReached = true
+			shortCircuitReason = syncEventLimitReachedReason
+			deferredAttrs := telemetry.Attrs(
+				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+				telemetry.Field{Key: "page", Value: pageNumber},
+				telemetry.Field{Key: "events_read", Value: eventsRead},
+				telemetry.Field{Key: "events_appended", Value: eventsAppended},
+				telemetry.Field{Key: "event_limit", Value: eventLimit},
+				telemetry.Field{Key: "reason", Value: syncEventLimitReachedReason},
+			)
+			telemetry.Event(ctx, "source_runtime.page_deferred", deferredAttrs)
+			telemetry.IncrementMain(ctx, "source_runtime.page.deferred.count", 1)
+			telemetry.AnnotateMain(ctx, deferredAttrs.With(telemetry.Attrs(
+				telemetry.Field{Key: "source_runtime.sync.event_limit_reached", Value: true},
+			)))
+			break
+		}
+		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) == uint64(eventLimit) && pull.NextCursor != nil {
+			eventLimitReached = true
+			shortCircuitReason = syncEventLimitReachedReason
+		}
 		recordsScanned += eventsRead
 		pageReadAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -413,41 +452,24 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
-		acceptedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
-		for _, event := range pull.Events {
-			syncedEvent := materializeEvent(runtime, event)
-			if syncedEvent == nil {
-				continue
-			}
-			if err := sourcecdk.ValidateEventEnvelope(syncedEvent); err != nil {
-				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
-			}
-			if err := sourcecdk.ValidateEventEnvelopeWithContracts(syncedEvent, eventContracts); err != nil {
-				if quarantinableContractError(err) {
-					recordsRejected++
-					category := invalidEventFailureCategory(err)
-					lastQuarantineCategory = category
-					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC(), len(eventContracts) > 0)
-					telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
-						telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
-						telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
-						telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
-						telemetry.Field{Key: "failure_category", Value: category},
-						telemetry.Field{Key: "retryable", Value: false},
-					))
-					telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
-					telemetry.AnnotateMain(ctx, telemetry.Attrs(
-						telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
-						telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
-					))
-					emitSourceRuntimeValidation(ctx, runtime, category)
-					continue
-				}
-				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
-			}
-			acceptedEvents = append(acceptedEvents, syncedEvent)
+		for _, quarantined := range quarantinedEvents {
+			recordsRejected++
+			lastQuarantineCategory = quarantined.category
+			recordRuntimeInvalidEvent(runtime, quarantined.event, quarantined.category, quarantined.cause, time.Now().UTC(), len(eventContracts) > 0)
+			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
+				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+				telemetry.Field{Key: "failure_category", Value: quarantined.category},
+				telemetry.Field{Key: "retryable", Value: false},
+			))
+			telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
+			telemetry.AnnotateMain(ctx, telemetry.Attrs(
+				telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: quarantined.category},
+				telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
+			))
+			emitSourceRuntimeValidation(ctx, runtime, quarantined.category)
 		}
-		acceptedEvents = dedupeAcceptedEvents(acceptedEvents)
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
@@ -554,6 +576,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if pull.NextCursor == nil {
 			break
 		}
+		if eventLimitReached {
+			break
+		}
 		cursor = cloneCursor(pull.NextCursor)
 	}
 	status = "completed"
@@ -563,6 +588,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_rejected", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_quarantined", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit", Value: req.GetEventLimit()})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit_reached", Value: eventLimitReached})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
@@ -583,7 +610,37 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		LinksProjected:       linksProjected,
 		ShortCircuitReason:   shortCircuitReason,
 		ReconciliationReason: reconciliationReason,
+		EventLimitReached:    eventLimitReached,
 	}, nil
+}
+
+type quarantinedSourceEvent struct {
+	event    *cerebrov1.EventEnvelope
+	category string
+	cause    error
+}
+
+func validateSourcePageEvents(events []*cerebrov1.EventEnvelope, contracts []sourcecdk.EventContract) ([]*cerebrov1.EventEnvelope, []quarantinedSourceEvent, error) {
+	accepted := make([]*cerebrov1.EventEnvelope, 0, len(events))
+	quarantined := make([]quarantinedSourceEvent, 0)
+	for _, event := range events {
+		if err := sourcecdk.ValidateEventEnvelope(event); err != nil {
+			return nil, nil, fmt.Errorf("validate source event %q: %w", event.GetId(), err)
+		}
+		if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, contracts); err != nil {
+			if !quarantinableContractError(err) {
+				return nil, nil, fmt.Errorf("validate source event %q: %w", event.GetId(), err)
+			}
+			quarantined = append(quarantined, quarantinedSourceEvent{
+				event:    event,
+				category: invalidEventFailureCategory(err),
+				cause:    err,
+			})
+			continue
+		}
+		accepted = append(accepted, event)
+	}
+	return accepted, quarantined, nil
 }
 
 func sourceRuntimeTelemetryErrorKind(err error) string {
