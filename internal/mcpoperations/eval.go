@@ -1,6 +1,7 @@
 package mcpoperations
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,9 @@ const (
 	TaskSelectionReportContract = "cerebro.mcp.task-selection-eval.v1"
 	TaskSelectionSelector       = "advertised-metadata-overlap.v1"
 )
+
+// ErrTaskSelectionRegression identifies a report that falls below the checked-in baseline.
+var ErrTaskSelectionRegression = errors.New("task selection baseline failed")
 
 type TaskSelectionCase struct {
 	ID                     string   `json:"id"`
@@ -161,7 +165,7 @@ func ValidateTaskSelectionBaseline(report TaskSelectionReport, baseline TaskSele
 		}
 	}
 	if len(failures) != 0 {
-		return fmt.Errorf("task selection baseline failed: %s", strings.Join(failures, "; "))
+		return fmt.Errorf("%w: %s", ErrTaskSelectionRegression, strings.Join(failures, "; "))
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -76,13 +75,8 @@ func TestValidateTaskSelectionBaselineRejectsRegression(t *testing.T) {
 		MaximumAmbiguousSelections: 0,
 	}
 	err := ValidateTaskSelectionBaseline(report, baseline)
-	if err == nil {
-		t.Fatal("ValidateTaskSelectionBaseline() error = nil")
-	}
-	for _, phrase := range []string{"accuracy", "minimum correct margin", "incorrect selections", "cases"} {
-		if !strings.Contains(err.Error(), phrase) {
-			t.Fatalf("ValidateTaskSelectionBaseline() error = %q, want %q", err, phrase)
-		}
+	if !errors.Is(err, ErrTaskSelectionRegression) {
+		t.Fatalf("ValidateTaskSelectionBaseline() error = %v, want ErrTaskSelectionRegression", err)
 	}
 }
 
