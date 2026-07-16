@@ -1,4 +1,4 @@
-package complianceimprovement
+package complianceimprovementhttp
 
 import (
 	"context"
@@ -10,7 +10,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	improvement "github.com/writer/cerebro/internal/complianceimprovement"
 )
+
+var testNow = time.Date(2026, 7, 16, 18, 0, 0, 0, time.UTC)
 
 func TestGitHubDraftPublisherCreatesCommitBranchAndDraftPullRequest(t *testing.T) {
 	baseSHA := strings.Repeat("b", 40)
@@ -99,7 +103,7 @@ func TestGitHubDraftPublisherCreatesCommitBranchAndDraftPullRequest(t *testing.T
 
 	publisher := newTestGitHubDraftPublisher(t, server.URL)
 	results, err := publisher.VerifyRepositoryChange(context.Background(), validPatch())
-	if err != nil || hasBlockingResult(results) {
+	if err != nil || improvement.HasBlockingVerification(results) {
 		t.Fatalf("VerifyRepositoryChange() = %+v, %v", results, err)
 	}
 	receipt, err := publisher.OpenDraftPullRequest(context.Background(), request)
@@ -189,12 +193,12 @@ func TestGitHubDraftPublisherBlocksMovedBaseAndWrongFileOperation(t *testing.T) 
 	patch := validPatch()
 	patch.BaseCommitSHA = wantBase
 	results, err := publisher.VerifyRepositoryChange(context.Background(), patch)
-	if err != nil || !hasBlockingResult(results) {
+	if err != nil || !improvement.HasBlockingVerification(results) {
 		t.Fatalf("VerifyRepositoryChange() = %+v, %v", results, err)
 	}
 	_, err = publisher.OpenDraftPullRequest(context.Background(), githubPublisherRequest(wantBase))
-	if !errors.Is(err, ErrConflict) {
-		t.Fatalf("OpenDraftPullRequest() error = %v, want ErrConflict", err)
+	if !errors.Is(err, improvement.ErrConflict) {
+		t.Fatalf("OpenDraftPullRequest() error = %v, want improvement.ErrConflict", err)
 	}
 }
 
@@ -207,7 +211,7 @@ func TestGitHubDraftPublisherRequiresAllowlistsAndDraftRequests(t *testing.T) {
 	publisher := newTestGitHubDraftPublisher(t, server.URL)
 	request := githubPublisherRequest(strings.Repeat("b", 40))
 	request.Draft = false
-	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, ErrVerification) {
+	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, improvement.ErrVerification) {
 		t.Fatalf("OpenDraftPullRequest(non-draft) error = %v", err)
 	}
 }
@@ -228,16 +232,16 @@ func TestGitHubDraftPublisherBlocksSensitiveRepositoryContentBeforeNetworkWrite(
 	}
 	request := githubPublisherRequest(strings.Repeat("b", 40))
 	request.Changes[0].Content = "const tenant = \"tenant-private\"\n"
-	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, ErrVerification) {
+	if _, err := publisher.OpenDraftPullRequest(context.Background(), request); !errors.Is(err, improvement.ErrVerification) {
 		t.Fatalf("OpenDraftPullRequest(private data) error = %v", err)
 	}
 	request.Changes[0].Content = "token := \"" + "gh" + "p_" + strings.Repeat("a", 32) + "\"\n"
-	results, err := publisher.VerifyRepositoryChange(context.Background(), RepositoryPatch{
+	results, err := publisher.VerifyRepositoryChange(context.Background(), improvement.RepositoryPatch{
 		Repository: request.Repository, BaseBranch: request.BaseBranch, BaseCommitSHA: request.BaseCommitSHA,
-		ProposalBranch: request.ProposalBranch, ChangeKind: ChangeKindAssessmentTest,
+		ProposalBranch: request.ProposalBranch, ChangeKind: improvement.ChangeKindAssessmentTest,
 		Changes: request.Changes, ValidationSteps: []string{"go test ./..."}, RollbackSteps: []string{"Revert the commit."},
 	})
-	if err != nil || !hasBlockingResult(results) {
+	if err != nil || !improvement.HasBlockingVerification(results) {
 		t.Fatalf("VerifyRepositoryChange(secret) = %+v, %v", results, err)
 	}
 	if requests != 0 {
@@ -258,12 +262,21 @@ func newTestGitHubDraftPublisher(t *testing.T, baseURL string) *GitHubDraftPubli
 	return publisher
 }
 
-func githubPublisherRequest(baseSHA string) OpenDraftPullRequestRequest {
-	return OpenDraftPullRequestRequest{
+func githubPublisherRequest(baseSHA string) improvement.OpenDraftPullRequestRequest {
+	return improvement.OpenDraftPullRequestRequest{
 		ProposalDigest: "sha256:" + strings.Repeat("f", 64), Repository: "writer/cerebro",
 		BaseBranch: "main", BaseCommitSHA: baseSHA, ProposalBranch: "cerebro/improvement/evidence-gap-1",
 		Title: "Update compliance assessment tests", Body: "## Summary\n\n- update compliance assessment tests\n",
 		Changes: validPatch().Changes, IdempotencyKey: "improvement-1:proposal", Draft: true,
+	}
+}
+
+func validPatch() improvement.RepositoryPatch {
+	return improvement.RepositoryPatch{
+		Repository: "writer/cerebro", BaseBranch: "main", BaseCommitSHA: strings.Repeat("b", 40),
+		ProposalBranch: "cerebro/improvement/evidence-gap-1", ChangeKind: improvement.ChangeKindAssessmentTest,
+		Changes:         []improvement.FileChange{{Path: "internal/example/evidence_test.go", Operation: improvement.FileOperationUpdate, Content: "package example\n"}},
+		ValidationSteps: []string{"go test ./internal/example"}, RollbackSteps: []string{"Revert the proposal commit."},
 	}
 }
 

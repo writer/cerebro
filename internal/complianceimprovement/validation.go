@@ -342,6 +342,17 @@ func validatePatch(value RepositoryPatch) error {
 	return nil
 }
 
+// NormalizeRepositoryPatch returns the stable representation shared by domain
+// validation and provider adapters.
+func NormalizeRepositoryPatch(value RepositoryPatch) RepositoryPatch {
+	return normalizePatch(value)
+}
+
+// ValidateRepositoryPatch applies the bounded repository-change contract.
+func ValidateRepositoryPatch(value RepositoryPatch) error {
+	return validatePatch(normalizePatch(value))
+}
+
 func validChangeKind(value string) bool {
 	switch value {
 	case ChangeKindControlDefinition, ChangeKindEvidencePolicy, ChangeKindAssessmentTest, ChangeKindMonitoringRule, ChangeKindDocumentation:
@@ -382,6 +393,16 @@ func hasBlockingResult(values []VerificationResult) bool {
 		}
 	}
 	return false
+}
+
+// HasBlockingVerification reports whether any verifier denied progression.
+func HasBlockingVerification(values []VerificationResult) bool {
+	return hasBlockingResult(values)
+}
+
+// NormalizeVerificationResults returns stable verifier ordering for receipts.
+func NormalizeVerificationResults(values []VerificationResult) []VerificationResult {
+	return normalizeVerificationResults(values)
 }
 
 func validateVerificationResults(values []VerificationResult) error {

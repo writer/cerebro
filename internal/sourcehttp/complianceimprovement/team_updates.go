@@ -1,4 +1,4 @@
-package complianceimprovement
+package complianceimprovementhttp
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	improvement "github.com/writer/cerebro/internal/complianceimprovement"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
@@ -16,28 +17,28 @@ import (
 // A failed delivery leaves the outbox record pending; a retry reuses the same
 // outbox and provider idempotency key.
 type DeliveringTeamUpdateOutbox struct {
-	store TeamUpdateDeliveryStore
-	sink  TeamUpdateSink
+	store improvement.TeamUpdateDeliveryStore
+	sink  improvement.TeamUpdateSink
 	now   func() time.Time
 }
 
-func NewDeliveringTeamUpdateOutbox(store TeamUpdateDeliveryStore, sink TeamUpdateSink) *DeliveringTeamUpdateOutbox {
+func NewDeliveringTeamUpdateOutbox(store improvement.TeamUpdateDeliveryStore, sink improvement.TeamUpdateSink) *DeliveringTeamUpdateOutbox {
 	return &DeliveringTeamUpdateOutbox{store: store, sink: sink, now: func() time.Time { return time.Now().UTC() }}
 }
 
-func (outbox *DeliveringTeamUpdateOutbox) EnqueueTeamUpdate(ctx context.Context, tenantID, idempotencyKey string, update TeamUpdate) (TeamUpdateReceipt, error) {
+func (outbox *DeliveringTeamUpdateOutbox) EnqueueTeamUpdate(ctx context.Context, tenantID, idempotencyKey string, update improvement.TeamUpdate) (improvement.TeamUpdateReceipt, error) {
 	if outbox == nil || outbox.store == nil || outbox.sink == nil || outbox.now == nil {
-		return TeamUpdateReceipt{}, ErrUnavailable
+		return improvement.TeamUpdateReceipt{}, improvement.ErrUnavailable
 	}
 	receipt, err := outbox.store.EnqueueTeamUpdate(ctx, tenantID, idempotencyKey, update)
 	if err != nil {
-		return TeamUpdateReceipt{}, err
+		return improvement.TeamUpdateReceipt{}, err
 	}
 	if err := outbox.sink.DeliverTeamUpdate(ctx, receipt.OutboxID, update); err != nil {
-		return TeamUpdateReceipt{}, fmt.Errorf("deliver compliance team update: %w", err)
+		return improvement.TeamUpdateReceipt{}, fmt.Errorf("deliver compliance team update: %w", err)
 	}
-	if err := outbox.store.MarkTeamUpdateDelivered(ctx, tenantID, receipt.OutboxID, canonicalTime(outbox.now())); err != nil {
-		return TeamUpdateReceipt{}, fmt.Errorf("mark compliance team update delivered: %w", err)
+	if err := outbox.store.MarkTeamUpdateDelivered(ctx, tenantID, receipt.OutboxID, canonicalAdapterTime(outbox.now())); err != nil {
+		return improvement.TeamUpdateReceipt{}, fmt.Errorf("mark compliance team update delivered: %w", err)
 	}
 	return receipt, nil
 }
@@ -60,7 +61,7 @@ type SlackTeamUpdateSink struct {
 
 func NewSlackTeamUpdateSink(client *http.Client, config SlackTeamUpdateSinkConfig) (*SlackTeamUpdateSink, error) {
 	if client == nil {
-		return nil, fmt.Errorf("%w: Slack HTTP client is required", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: Slack HTTP client is required", improvement.ErrInvalidRequest)
 	}
 	baseURL := strings.TrimSpace(config.BaseURL)
 	if baseURL == "" {
@@ -72,23 +73,23 @@ func NewSlackTeamUpdateSink(client *http.Client, config SlackTeamUpdateSinkConfi
 	}
 	channelID := strings.TrimSpace(config.ChannelID)
 	if channelID == "" || len(channelID) > 128 || strings.ContainsAny(channelID, " \t\r\n") {
-		return nil, fmt.Errorf("%w: Slack channel ID is required", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: Slack channel ID is required", improvement.ErrInvalidRequest)
 	}
 	hardened := sourcehttp.HardenSourceClient(client, "compliance-team-slack", 10*time.Second, config.AllowLoopback, nil)
 	return &SlackTeamUpdateSink{client: hardened, baseURL: normalized, allowLoopback: config.AllowLoopback, channelID: channelID}, nil
 }
 
-func (sink *SlackTeamUpdateSink) DeliverTeamUpdate(ctx context.Context, deliveryID string, update TeamUpdate) error {
+func (sink *SlackTeamUpdateSink) DeliverTeamUpdate(ctx context.Context, deliveryID string, update improvement.TeamUpdate) error {
 	if sink == nil || sink.client == nil {
-		return ErrUnavailable
+		return improvement.ErrUnavailable
 	}
 	deliveryID = strings.TrimSpace(deliveryID)
 	if deliveryID == "" || strings.TrimSpace(update.ProposalDigest) == "" || strings.TrimSpace(update.PullRequest.URL) == "" || strings.TrimSpace(update.DecisionOwner) == "" {
-		return fmt.Errorf("%w: complete team update and delivery ID are required", ErrInvalidRequest)
+		return fmt.Errorf("%w: complete team update and delivery ID are required", improvement.ErrInvalidRequest)
 	}
 	text := slackTeamUpdateText(update)
 	if len(text) > 32*1024 {
-		return fmt.Errorf("%w: team update exceeds Slack message limit", ErrInvalidRequest)
+		return fmt.Errorf("%w: team update exceeds Slack message limit", improvement.ErrInvalidRequest)
 	}
 	payload := struct {
 		Channel     string `json:"channel"`
@@ -126,7 +127,7 @@ func (sink *SlackTeamUpdateSink) DeliverTeamUpdate(ctx context.Context, delivery
 	return nil
 }
 
-func slackTeamUpdateText(update TeamUpdate) string {
+func slackTeamUpdateText(update improvement.TeamUpdate) string {
 	var builder strings.Builder
 	builder.WriteString("Compliance program change needs review\n")
 	builder.WriteString("Gap: ")
@@ -142,9 +143,9 @@ func slackTeamUpdateText(update TeamUpdate) string {
 	passing, warnings := 0, 0
 	for _, result := range update.Verification {
 		switch result.Status {
-		case VerificationPass:
+		case improvement.VerificationPass:
 			passing++
-		case VerificationWarn:
+		case improvement.VerificationWarn:
 			warnings++
 		}
 	}

@@ -1,4 +1,4 @@
-package complianceimprovement
+package complianceimprovementhttp
 
 import (
 	"context"
@@ -9,25 +9,27 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	improvement "github.com/writer/cerebro/internal/complianceimprovement"
 )
 
 type deliveryTestStore struct {
-	receipt TeamUpdateReceipt
-	update  TeamUpdate
+	receipt improvement.TeamUpdateReceipt
+	update  improvement.TeamUpdate
 	marked  bool
 }
 
-func (store *deliveryTestStore) EnqueueTeamUpdate(_ context.Context, _, _ string, update TeamUpdate) (TeamUpdateReceipt, error) {
+func (store *deliveryTestStore) EnqueueTeamUpdate(_ context.Context, _, _ string, update improvement.TeamUpdate) (improvement.TeamUpdateReceipt, error) {
 	store.update = update
 	if store.receipt.OutboxID == "" {
-		store.receipt = TeamUpdateReceipt{OutboxID: "outbox-42", ProposalDigest: update.ProposalDigest, QueuedAt: testNow}
+		store.receipt = improvement.TeamUpdateReceipt{OutboxID: "outbox-42", ProposalDigest: update.ProposalDigest, QueuedAt: testNow}
 	}
 	return store.receipt, nil
 }
 
 func (store *deliveryTestStore) MarkTeamUpdateDelivered(_ context.Context, _, outboxID string, deliveredAt time.Time) error {
 	if outboxID != store.receipt.OutboxID || deliveredAt.IsZero() {
-		return ErrInvalidRequest
+		return improvement.ErrInvalidRequest
 	}
 	store.marked = true
 	return nil
@@ -35,11 +37,11 @@ func (store *deliveryTestStore) MarkTeamUpdateDelivered(_ context.Context, _, ou
 
 type deliveryTestSink struct {
 	deliveryID string
-	update     TeamUpdate
+	update     improvement.TeamUpdate
 	err        error
 }
 
-func (sink *deliveryTestSink) DeliverTeamUpdate(_ context.Context, deliveryID string, update TeamUpdate) error {
+func (sink *deliveryTestSink) DeliverTeamUpdate(_ context.Context, deliveryID string, update improvement.TeamUpdate) error {
 	sink.deliveryID = deliveryID
 	sink.update = update
 	return sink.err
@@ -126,17 +128,17 @@ func TestSlackTeamUpdateSinkRejectsProviderError(t *testing.T) {
 	}
 }
 
-func validTeamUpdate() TeamUpdate {
-	return TeamUpdate{
-		ProposalDigest: "sha256:" + strings.Repeat("f", 64), State: StateDraftPROpened,
+func validTeamUpdate() improvement.TeamUpdate {
+	return improvement.TeamUpdate{
+		ProposalDigest: "sha256:" + strings.Repeat("f", 64), State: improvement.StateDraftPROpened,
 		GapSummary:      "Quarterly access evidence is incomplete.",
-		Current:         Measurement{Name: "evidence_coverage", Value: 60, Unit: "percent"},
-		Target:          TargetMeasurement{Name: "evidence_coverage", Comparator: ">=", Value: 95, Unit: "percent"},
-		Supporting:      []ResearchClaim{{ID: "claim-1", Statement: "Evidence is incomplete.", CitationIDs: []string{"citation-1"}}},
-		Counterevidence: []ResearchClaim{{ID: "counter-1", Statement: "The latest interval is current.", CitationIDs: []string{"citation-1"}}},
+		Current:         improvement.Measurement{Name: "evidence_coverage", Value: 60, Unit: "percent"},
+		Target:          improvement.TargetMeasurement{Name: "evidence_coverage", Comparator: ">=", Value: 95, Unit: "percent"},
+		Supporting:      []improvement.ResearchClaim{{ID: "claim-1", Statement: "Evidence is incomplete.", CitationIDs: []string{"citation-1"}}},
+		Counterevidence: []improvement.ResearchClaim{{ID: "counter-1", Statement: "The latest interval is current.", CitationIDs: []string{"citation-1"}}},
 		Unknowns:        []string{"Earlier interval coverage."},
-		Verification:    []VerificationResult{{VerifierID: "exact-inputs", Status: VerificationPass, Message: "Inputs match."}},
-		PullRequest: DraftPullRequestReceipt{
+		Verification:    []improvement.VerificationResult{{VerifierID: "exact-inputs", Status: improvement.VerificationPass, Message: "Inputs match."}},
+		PullRequest: improvement.DraftPullRequestReceipt{
 			Repository: "writer/cerebro", Number: 42, URL: "https://example.invalid/pulls/42",
 			HeadCommitSHA: strings.Repeat("c", 40), BaseCommitSHA: strings.Repeat("b", 40), Draft: true,
 			ProposalDigest: "sha256:" + strings.Repeat("f", 64), OpenedAt: testNow,

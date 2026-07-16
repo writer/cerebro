@@ -1,4 +1,4 @@
-package complianceimprovement
+package complianceimprovementhttp
 
 import (
 	"bytes"
@@ -15,12 +15,18 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/compliance"
+	improvement "github.com/writer/cerebro/internal/complianceimprovement"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 const (
 	githubAPIVersion       = "2022-11-28"
 	maxGitHubResponseBytes = 2 * 1024 * 1024
+)
+
+var (
+	publisherRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	publisherCommitSHAPattern  = regexp.MustCompile(`^[a-f0-9]{40}([a-f0-9]{24})?$`)
 )
 
 type GitHubDraftPublisherConfig struct {
@@ -45,7 +51,7 @@ type GitHubDraftPublisher struct {
 
 func NewGitHubDraftPublisher(client *http.Client, config GitHubDraftPublisherConfig) (*GitHubDraftPublisher, error) {
 	if client == nil {
-		return nil, fmt.Errorf("%w: GitHub HTTP client is required", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: GitHub HTTP client is required", improvement.ErrInvalidRequest)
 	}
 	baseURL, err := sourcehttp.NormalizeGitHubBaseURL(strings.TrimSpace(config.BaseURL), config.AllowLoopback)
 	if err != nil {
@@ -61,43 +67,43 @@ func NewGitHubDraftPublisher(client *http.Client, config GitHubDraftPublisherCon
 	repositories := stringSet(config.RepositoryAllowlist)
 	baseBranches := stringSet(config.BaseBranchAllowlist)
 	if len(repositories) == 0 || len(baseBranches) == 0 {
-		return nil, fmt.Errorf("%w: repository and base-branch allowlists are required", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: repository and base-branch allowlists are required", improvement.ErrInvalidRequest)
 	}
 	for repository := range repositories {
-		if !repositoryPattern.MatchString(repository) {
-			return nil, fmt.Errorf("%w: invalid allowlisted repository %q", ErrInvalidRequest, repository)
+		if !publisherRepositoryPattern.MatchString(repository) {
+			return nil, fmt.Errorf("%w: invalid allowlisted repository %q", improvement.ErrInvalidRequest, repository)
 		}
 	}
 	return &GitHubDraftPublisher{
 		client: client, baseURL: strings.TrimRight(baseURL, "/"), repositories: repositories,
-		baseBranches: baseBranches, sensitiveValues: normalizeStrings(config.SensitiveValues, false),
+		baseBranches: baseBranches, sensitiveValues: normalizedStrings(config.SensitiveValues),
 		now: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 
 // VerifyRepositoryChange performs the read-only exact-base and file-operation
 // checks used before a proposal can enter the validated state.
-func (p *GitHubDraftPublisher) VerifyRepositoryChange(ctx context.Context, patch RepositoryPatch) ([]VerificationResult, error) {
+func (p *GitHubDraftPublisher) VerifyRepositoryChange(ctx context.Context, patch improvement.RepositoryPatch) ([]improvement.VerificationResult, error) {
 	if err := p.validatePatchPolicy(patch); err != nil {
-		return []VerificationResult{{VerifierID: "repository-policy", Status: VerificationBlock, Message: err.Error()}}, nil
+		return []improvement.VerificationResult{{VerifierID: "repository-policy", Status: improvement.VerificationBlock, Message: err.Error()}}, nil
 	}
 	contentResults := p.verifyRepositoryContent(patch.Changes)
-	if hasBlockingResult(contentResults) {
+	if improvement.HasBlockingVerification(contentResults) {
 		return contentResults, nil
 	}
 	baseSHA, err := p.readRef(ctx, patch.Repository, patch.BaseBranch)
 	if err != nil {
 		return nil, err
 	}
-	results := append([]VerificationResult(nil), contentResults...)
+	results := append([]improvement.VerificationResult(nil), contentResults...)
 	if baseSHA != patch.BaseCommitSHA {
-		results = append(results, VerificationResult{
-			VerifierID: "repository-exact-base", Status: VerificationBlock,
+		results = append(results, improvement.VerificationResult{
+			VerifierID: "repository-exact-base", Status: improvement.VerificationBlock,
 			Message: "The repository base branch moved after the proposal was authored.",
 		})
 	} else {
-		results = append(results, VerificationResult{
-			VerifierID: "repository-exact-base", Status: VerificationPass,
+		results = append(results, improvement.VerificationResult{
+			VerifierID: "repository-exact-base", Status: improvement.VerificationPass,
 			Message: "The repository base branch matches the proposal's exact commit.",
 		})
 	}
@@ -106,99 +112,99 @@ func (p *GitHubDraftPublisher) VerifyRepositoryChange(ctx context.Context, patch
 		return nil, err
 	}
 	results = append(results, operationResults...)
-	if hasBlockingResult(results) {
-		return normalizeVerificationResults(results), nil
+	if improvement.HasBlockingVerification(results) {
+		return improvement.NormalizeVerificationResults(results), nil
 	}
-	results = append(results, VerificationResult{
-		VerifierID: "repository-draft-capability", Status: VerificationPass,
+	results = append(results, improvement.VerificationResult{
+		VerifierID: "repository-draft-capability", Status: improvement.VerificationPass,
 		Message: "The configured repository capability can create proposal branches and draft pull requests only.",
 	})
-	return normalizeVerificationResults(results), nil
+	return improvement.NormalizeVerificationResults(results), nil
 }
 
-func (p *GitHubDraftPublisher) OpenDraftPullRequest(ctx context.Context, request OpenDraftPullRequestRequest) (DraftPullRequestReceipt, error) {
+func (p *GitHubDraftPublisher) OpenDraftPullRequest(ctx context.Context, request improvement.OpenDraftPullRequestRequest) (improvement.DraftPullRequestReceipt, error) {
 	if err := p.validateOpenRequest(request); err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	owner, _ := splitRepository(request.Repository)
 	existingHead, exists, err := p.readOptionalRef(ctx, request.Repository, request.ProposalBranch)
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	if exists {
 		if err := p.verifyProposalCommit(ctx, request, existingHead); err != nil {
-			return DraftPullRequestReceipt{}, err
+			return improvement.DraftPullRequestReceipt{}, err
 		}
 		pull, found, err := p.findOpenPullRequest(ctx, request, owner)
 		if err != nil {
-			return DraftPullRequestReceipt{}, err
+			return improvement.DraftPullRequestReceipt{}, err
 		}
 		if found {
 			return p.receiptFromPull(request, existingHead, pull)
 		}
 		if err := p.requireExactBase(ctx, request.Repository, request.BaseBranch, request.BaseCommitSHA); err != nil {
-			return DraftPullRequestReceipt{}, err
+			return improvement.DraftPullRequestReceipt{}, err
 		}
 		return p.createDraftPullRequest(ctx, request, owner, existingHead)
 	}
 	if err := p.requireExactBase(ctx, request.Repository, request.BaseBranch, request.BaseCommitSHA); err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
-	operationResults, err := p.verifyFileOperations(ctx, RepositoryPatch{
+	operationResults, err := p.verifyFileOperations(ctx, improvement.RepositoryPatch{
 		Repository: request.Repository, BaseBranch: request.BaseBranch, BaseCommitSHA: request.BaseCommitSHA,
-		ProposalBranch: request.ProposalBranch, ChangeKind: ChangeKindDocumentation,
+		ProposalBranch: request.ProposalBranch, ChangeKind: improvement.ChangeKindDocumentation,
 		Changes: request.Changes, ValidationSteps: []string{"validated"}, RollbackSteps: []string{"revert"},
 	})
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
-	if hasBlockingResult(operationResults) {
-		return DraftPullRequestReceipt{}, fmt.Errorf("%w: repository file operations no longer match the exact base commit", ErrVerification)
+	if improvement.HasBlockingVerification(operationResults) {
+		return improvement.DraftPullRequestReceipt{}, fmt.Errorf("%w: repository file operations no longer match the exact base commit", improvement.ErrVerification)
 	}
 	baseCommit, err := p.readCommit(ctx, request.Repository, request.BaseCommitSHA)
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	treeSHA, err := p.createTree(ctx, request, baseCommit.Tree.SHA)
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	headSHA, err := p.createCommit(ctx, request, treeSHA)
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	if err := p.createRef(ctx, request.Repository, request.ProposalBranch, headSHA); err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	return p.createDraftPullRequest(ctx, request, owner, headSHA)
 }
 
-func (p *GitHubDraftPublisher) validateOpenRequest(request OpenDraftPullRequestRequest) error {
+func (p *GitHubDraftPublisher) validateOpenRequest(request improvement.OpenDraftPullRequestRequest) error {
 	if p == nil || p.client == nil || p.baseURL == "" {
-		return ErrUnavailable
+		return improvement.ErrUnavailable
 	}
-	patch := RepositoryPatch{
+	patch := improvement.RepositoryPatch{
 		Repository: request.Repository, BaseBranch: request.BaseBranch, BaseCommitSHA: request.BaseCommitSHA,
-		ProposalBranch: request.ProposalBranch, ChangeKind: ChangeKindDocumentation,
+		ProposalBranch: request.ProposalBranch, ChangeKind: improvement.ChangeKindDocumentation,
 		Changes: request.Changes, ValidationSteps: []string{"validated"}, RollbackSteps: []string{"revert"},
 	}
 	if err := p.validatePatchPolicy(patch); err != nil {
 		return err
 	}
 	if !request.Draft {
-		return fmt.Errorf("%w: publisher accepts draft pull requests only", ErrVerification)
+		return fmt.Errorf("%w: publisher accepts draft pull requests only", improvement.ErrVerification)
 	}
 	if err := compliance.ValidateContentDigest(compliance.ContentDigest(request.ProposalDigest)); err != nil {
-		return fmt.Errorf("%w: invalid proposal digest", ErrInvalidRequest)
+		return fmt.Errorf("%w: invalid proposal digest", improvement.ErrInvalidRequest)
 	}
 	if strings.TrimSpace(request.Title) == "" || len(request.Title) > 120 || strings.TrimSpace(request.Body) == "" || len(request.Body) > 16*1024 {
-		return fmt.Errorf("%w: bounded pull-request title and body are required", ErrInvalidRequest)
+		return fmt.Errorf("%w: bounded pull-request title and body are required", improvement.ErrInvalidRequest)
 	}
-	if p.containsSensitiveMaterial(request.Title) || p.containsSensitiveMaterial(request.Body) || hasBlockingResult(p.verifyRepositoryContent(request.Changes)) {
-		return fmt.Errorf("%w: pull-request metadata or patch contains material that cannot be published", ErrVerification)
+	if p.containsSensitiveMaterial(request.Title) || p.containsSensitiveMaterial(request.Body) || improvement.HasBlockingVerification(p.verifyRepositoryContent(request.Changes)) {
+		return fmt.Errorf("%w: pull-request metadata or patch contains material that cannot be published", improvement.ErrVerification)
 	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" {
-		return fmt.Errorf("%w: publication idempotency key is required", ErrInvalidRequest)
+		return fmt.Errorf("%w: publication idempotency key is required", improvement.ErrInvalidRequest)
 	}
 	return nil
 }
@@ -211,17 +217,17 @@ var builtInSensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)bearer[ \t]+[A-Za-z0-9._~+/=-]{16,}`),
 }
 
-func (p *GitHubDraftPublisher) verifyRepositoryContent(changes []FileChange) []VerificationResult {
+func (p *GitHubDraftPublisher) verifyRepositoryContent(changes []improvement.FileChange) []improvement.VerificationResult {
 	for _, change := range changes {
 		if strings.IndexByte(change.Content, 0) >= 0 || p.containsSensitiveMaterial(change.Content) {
-			return []VerificationResult{{
-				VerifierID: "repository-content-policy", Status: VerificationBlock,
+			return []improvement.VerificationResult{{
+				VerifierID: "repository-content-policy", Status: improvement.VerificationBlock,
 				Message: "The repository patch contains private, secret, or binary material and cannot be published.",
 			}}
 		}
 	}
-	return []VerificationResult{{
-		VerifierID: "repository-content-policy", Status: VerificationPass,
+	return []improvement.VerificationResult{{
+		VerifierID: "repository-content-policy", Status: improvement.VerificationPass,
 		Message: "The repository patch passed configured private-data and secret checks.",
 	}}
 }
@@ -240,22 +246,22 @@ func (p *GitHubDraftPublisher) containsSensitiveMaterial(value string) bool {
 	return false
 }
 
-func (p *GitHubDraftPublisher) validatePatchPolicy(patch RepositoryPatch) error {
+func (p *GitHubDraftPublisher) validatePatchPolicy(patch improvement.RepositoryPatch) error {
 	if p == nil || p.client == nil || p.baseURL == "" {
-		return ErrUnavailable
+		return improvement.ErrUnavailable
 	}
-	patch = normalizePatch(patch)
-	if err := validatePatch(patch); err != nil {
+	patch = improvement.NormalizeRepositoryPatch(patch)
+	if err := improvement.ValidateRepositoryPatch(patch); err != nil {
 		return err
 	}
 	if _, ok := p.repositories[patch.Repository]; !ok {
-		return fmt.Errorf("%w: repository %q is not allowlisted", ErrVerification, patch.Repository)
+		return fmt.Errorf("%w: repository %q is not allowlisted", improvement.ErrVerification, patch.Repository)
 	}
 	if _, ok := p.baseBranches[patch.BaseBranch]; !ok {
-		return fmt.Errorf("%w: base branch %q is not allowlisted", ErrVerification, patch.BaseBranch)
+		return fmt.Errorf("%w: base branch %q is not allowlisted", improvement.ErrVerification, patch.BaseBranch)
 	}
 	if strings.HasPrefix(patch.ProposalBranch, "refs/") || strings.Contains(patch.ProposalBranch, "..") || strings.HasPrefix(patch.ProposalBranch, "/") || strings.HasSuffix(patch.ProposalBranch, "/") {
-		return fmt.Errorf("%w: proposal branch is invalid", ErrInvalidRequest)
+		return fmt.Errorf("%w: proposal branch is invalid", improvement.ErrInvalidRequest)
 	}
 	return nil
 }
@@ -266,31 +272,31 @@ func (p *GitHubDraftPublisher) requireExactBase(ctx context.Context, repository,
 		return err
 	}
 	if gotSHA != wantSHA {
-		return fmt.Errorf("%w: repository base moved from %s to %s", ErrConflict, wantSHA, gotSHA)
+		return fmt.Errorf("%w: repository base moved from %s to %s", improvement.ErrConflict, wantSHA, gotSHA)
 	}
 	return nil
 }
 
-func (p *GitHubDraftPublisher) verifyFileOperations(ctx context.Context, patch RepositoryPatch) ([]VerificationResult, error) {
-	results := make([]VerificationResult, 0, len(patch.Changes)+1)
+func (p *GitHubDraftPublisher) verifyFileOperations(ctx context.Context, patch improvement.RepositoryPatch) ([]improvement.VerificationResult, error) {
+	results := make([]improvement.VerificationResult, 0, len(patch.Changes)+1)
 	blocked := false
 	for _, change := range patch.Changes {
 		exists, err := p.fileExists(ctx, patch.Repository, change.Path, patch.BaseCommitSHA)
 		if err != nil {
 			return nil, err
 		}
-		valid := (change.Operation == FileOperationCreate && !exists) || (change.Operation == FileOperationUpdate && exists)
+		valid := (change.Operation == improvement.FileOperationCreate && !exists) || (change.Operation == improvement.FileOperationUpdate && exists)
 		if !valid {
 			blocked = true
-			results = append(results, VerificationResult{
-				VerifierID: "repository-file-operation", Status: VerificationBlock,
+			results = append(results, improvement.VerificationResult{
+				VerifierID: "repository-file-operation", Status: improvement.VerificationBlock,
 				Message: fmt.Sprintf("File %q does not match the requested %s operation at the exact base commit.", change.Path, change.Operation),
 			})
 		}
 	}
 	if !blocked {
-		results = append(results, VerificationResult{
-			VerifierID: "repository-file-operation", Status: VerificationPass,
+		results = append(results, improvement.VerificationResult{
+			VerifierID: "repository-file-operation", Status: improvement.VerificationPass,
 			Message: "Every create and update operation matches the exact base commit.",
 		})
 	}
@@ -318,7 +324,7 @@ func (p *GitHubDraftPublisher) readRef(ctx context.Context, repository, branch s
 		return "", err
 	}
 	if !exists {
-		return "", fmt.Errorf("%w: GitHub branch %q was not found", ErrVerification, branch)
+		return "", fmt.Errorf("%w: GitHub branch %q was not found", improvement.ErrVerification, branch)
 	}
 	return sha, nil
 }
@@ -333,8 +339,8 @@ func (p *GitHubDraftPublisher) readOptionalRef(ctx context.Context, repository, 
 		return "", false, nil
 	}
 	var response githubRefResponse
-	if err := json.Unmarshal(body, &response); err != nil || !commitSHAPattern.MatchString(response.Object.SHA) {
-		return "", false, fmt.Errorf("%w: GitHub ref response is invalid", ErrVerification)
+	if err := json.Unmarshal(body, &response); err != nil || !publisherCommitSHAPattern.MatchString(response.Object.SHA) {
+		return "", false, fmt.Errorf("%w: GitHub ref response is invalid", improvement.ErrVerification)
 	}
 	return response.Object.SHA, true, nil
 }
@@ -356,25 +362,25 @@ func (p *GitHubDraftPublisher) readCommit(ctx context.Context, repository, sha s
 		return githubCommitResponse{}, err
 	}
 	var response githubCommitResponse
-	if err := json.Unmarshal(body, &response); err != nil || !commitSHAPattern.MatchString(response.Tree.SHA) {
-		return githubCommitResponse{}, fmt.Errorf("%w: GitHub commit response is invalid", ErrVerification)
+	if err := json.Unmarshal(body, &response); err != nil || !publisherCommitSHAPattern.MatchString(response.Tree.SHA) {
+		return githubCommitResponse{}, fmt.Errorf("%w: GitHub commit response is invalid", improvement.ErrVerification)
 	}
 	return response, nil
 }
 
-func (p *GitHubDraftPublisher) verifyProposalCommit(ctx context.Context, request OpenDraftPullRequestRequest, headSHA string) error {
+func (p *GitHubDraftPublisher) verifyProposalCommit(ctx context.Context, request improvement.OpenDraftPullRequestRequest, headSHA string) error {
 	commit, err := p.readCommit(ctx, request.Repository, headSHA)
 	if err != nil {
 		return err
 	}
 	trailer := "Cerebro-Proposal-Digest: " + request.ProposalDigest
 	if len(commit.Parents) != 1 || commit.Parents[0].SHA != request.BaseCommitSHA || !strings.Contains(commit.Message, trailer) {
-		return fmt.Errorf("%w: proposal branch already exists with different content or base", ErrConflict)
+		return fmt.Errorf("%w: proposal branch already exists with different content or base", improvement.ErrConflict)
 	}
 	return nil
 }
 
-func (p *GitHubDraftPublisher) createTree(ctx context.Context, request OpenDraftPullRequestRequest, baseTreeSHA string) (string, error) {
+func (p *GitHubDraftPublisher) createTree(ctx context.Context, request improvement.OpenDraftPullRequestRequest, baseTreeSHA string) (string, error) {
 	type treeEntry struct {
 		Path    string `json:"path"`
 		Mode    string `json:"mode"`
@@ -397,13 +403,13 @@ func (p *GitHubDraftPublisher) createTree(ctx context.Context, request OpenDraft
 	var response struct {
 		SHA string `json:"sha"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil || !commitSHAPattern.MatchString(response.SHA) {
-		return "", fmt.Errorf("%w: GitHub create-tree response is invalid", ErrVerification)
+	if err := json.Unmarshal(body, &response); err != nil || !publisherCommitSHAPattern.MatchString(response.SHA) {
+		return "", fmt.Errorf("%w: GitHub create-tree response is invalid", improvement.ErrVerification)
 	}
 	return response.SHA, nil
 }
 
-func (p *GitHubDraftPublisher) createCommit(ctx context.Context, request OpenDraftPullRequestRequest, treeSHA string) (string, error) {
+func (p *GitHubDraftPublisher) createCommit(ctx context.Context, request improvement.OpenDraftPullRequestRequest, treeSHA string) (string, error) {
 	payload := struct {
 		Message string   `json:"message"`
 		Tree    string   `json:"tree"`
@@ -419,8 +425,8 @@ func (p *GitHubDraftPublisher) createCommit(ctx context.Context, request OpenDra
 	var response struct {
 		SHA string `json:"sha"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil || !commitSHAPattern.MatchString(response.SHA) {
-		return "", fmt.Errorf("%w: GitHub create-commit response is invalid", ErrVerification)
+	if err := json.Unmarshal(body, &response); err != nil || !publisherCommitSHAPattern.MatchString(response.SHA) {
+		return "", fmt.Errorf("%w: GitHub create-commit response is invalid", improvement.ErrVerification)
 	}
 	return response.SHA, nil
 }
@@ -444,7 +450,7 @@ type githubPullResponse struct {
 	} `json:"head"`
 }
 
-func (p *GitHubDraftPublisher) findOpenPullRequest(ctx context.Context, request OpenDraftPullRequestRequest, owner string) (githubPullResponse, bool, error) {
+func (p *GitHubDraftPublisher) findOpenPullRequest(ctx context.Context, request improvement.OpenDraftPullRequestRequest, owner string) (githubPullResponse, bool, error) {
 	query := url.Values{}
 	query.Set("state", "open")
 	query.Set("head", owner+":"+request.ProposalBranch)
@@ -459,7 +465,7 @@ func (p *GitHubDraftPublisher) findOpenPullRequest(ctx context.Context, request 
 		return githubPullResponse{}, false, fmt.Errorf("decode GitHub pull-request list: %w", err)
 	}
 	if len(pulls) > 1 {
-		return githubPullResponse{}, false, fmt.Errorf("%w: proposal branch has multiple open pull requests", ErrConflict)
+		return githubPullResponse{}, false, fmt.Errorf("%w: proposal branch has multiple open pull requests", improvement.ErrConflict)
 	}
 	if len(pulls) == 0 {
 		return githubPullResponse{}, false, nil
@@ -467,7 +473,7 @@ func (p *GitHubDraftPublisher) findOpenPullRequest(ctx context.Context, request 
 	return pulls[0], true, nil
 }
 
-func (p *GitHubDraftPublisher) createDraftPullRequest(ctx context.Context, request OpenDraftPullRequestRequest, owner, headSHA string) (DraftPullRequestReceipt, error) {
+func (p *GitHubDraftPublisher) createDraftPullRequest(ctx context.Context, request improvement.OpenDraftPullRequestRequest, owner, headSHA string) (improvement.DraftPullRequestReceipt, error) {
 	payload := struct {
 		Title string `json:"title"`
 		Head  string `json:"head"`
@@ -477,27 +483,27 @@ func (p *GitHubDraftPublisher) createDraftPullRequest(ctx context.Context, reque
 	}{Title: request.Title, Head: owner + ":" + request.ProposalBranch, Base: request.BaseBranch, Body: request.Body, Draft: true}
 	_, body, err := p.request(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/pulls", escapeRepository(request.Repository)), payload, http.StatusCreated)
 	if err != nil {
-		return DraftPullRequestReceipt{}, err
+		return improvement.DraftPullRequestReceipt{}, err
 	}
 	var pull githubPullResponse
 	if err := json.Unmarshal(body, &pull); err != nil {
-		return DraftPullRequestReceipt{}, fmt.Errorf("decode GitHub draft pull request: %w", err)
+		return improvement.DraftPullRequestReceipt{}, fmt.Errorf("decode GitHub draft pull request: %w", err)
 	}
 	if pull.Head.SHA != "" && pull.Head.SHA != headSHA {
-		return DraftPullRequestReceipt{}, fmt.Errorf("%w: draft pull-request head does not match proposal commit", ErrVerification)
+		return improvement.DraftPullRequestReceipt{}, fmt.Errorf("%w: draft pull-request head does not match proposal commit", improvement.ErrVerification)
 	}
 	return p.receiptFromPull(request, headSHA, pull)
 }
 
-func (p *GitHubDraftPublisher) receiptFromPull(request OpenDraftPullRequestRequest, headSHA string, pull githubPullResponse) (DraftPullRequestReceipt, error) {
+func (p *GitHubDraftPublisher) receiptFromPull(request improvement.OpenDraftPullRequestRequest, headSHA string, pull githubPullResponse) (improvement.DraftPullRequestReceipt, error) {
 	if pull.Number == 0 || strings.TrimSpace(pull.HTMLURL) == "" || !pull.Draft {
-		return DraftPullRequestReceipt{}, fmt.Errorf("%w: GitHub did not return a draft pull request", ErrVerification)
+		return improvement.DraftPullRequestReceipt{}, fmt.Errorf("%w: GitHub did not return a draft pull request", improvement.ErrVerification)
 	}
-	openedAt := canonicalTime(pull.CreatedAt)
+	openedAt := canonicalAdapterTime(pull.CreatedAt)
 	if openedAt.IsZero() {
-		openedAt = canonicalTime(p.now())
+		openedAt = canonicalAdapterTime(p.now())
 	}
-	return DraftPullRequestReceipt{
+	return improvement.DraftPullRequestReceipt{
 		Repository: request.Repository, Number: pull.Number, URL: pull.HTMLURL,
 		HeadCommitSHA: headSHA, BaseCommitSHA: request.BaseCommitSHA, Draft: true,
 		ProposalDigest: request.ProposalDigest, OpenedAt: openedAt,
@@ -532,7 +538,7 @@ func (p *GitHubDraftPublisher) request(ctx context.Context, method, requestPath 
 		return response.StatusCode, nil, fmt.Errorf("read GitHub response: %w", readErr)
 	}
 	if len(responseBody) > maxGitHubResponseBytes {
-		return response.StatusCode, nil, fmt.Errorf("%w: GitHub response exceeds %d bytes", ErrVerification, maxGitHubResponseBytes)
+		return response.StatusCode, nil, fmt.Errorf("%w: GitHub response exceeds %d bytes", improvement.ErrVerification, maxGitHubResponseBytes)
 	}
 	for _, expected := range expectedStatuses {
 		if response.StatusCode == expected {
@@ -590,4 +596,28 @@ func stringSet(values []string) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+func normalizedStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func canonicalAdapterTime(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return value.UTC().Truncate(time.Millisecond)
 }
