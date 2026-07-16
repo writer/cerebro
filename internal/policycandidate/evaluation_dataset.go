@@ -28,6 +28,14 @@ const (
 
 var evaluationDatasetCaseIDPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 var syntheticEvaluationDatasetURNPattern = regexp.MustCompile(`^urn:(?:test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$`)
+var evaluationDatasetFixtureTokenPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+var evaluationDatasetFixtureLabelPattern = regexp.MustCompile(`^fixture-(?:(?:node|edge|ref|value)-[a-z0-9][a-z0-9-]{0,63}|candidate-marker)$`)
+var evaluationDatasetAttributeKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+var evaluationDatasetEnumValuePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z_]{0,63}$`)
+var evaluationDatasetCountValuePattern = regexp.MustCompile(`^[0-9]{1,6}$`)
+var evaluationDatasetResourceIDPattern = regexp.MustCompile(`(?i)\b(?:ami|acl|eni|igw|i|nat|rtb|sg|snap|subnet|vol|vpc|vpce)-[0-9a-f]{8,17}\b`)
+var evaluationDatasetUUIDPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b`)
+var evaluationDatasetIPv4Pattern = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
 
 func (s Service) CreatePolicyEvaluationDataset(ctx context.Context, request CreatePolicyEvaluationDatasetRequest) (*PolicyEvaluationDatasetResult, error) {
 	if s.Datasets == nil {
@@ -71,11 +79,12 @@ func (s Service) CreatePolicyEvaluationDataset(ctx context.Context, request Crea
 	}
 	inputs := make([]PolicyEvaluationDatasetCaseInput, len(candidate.Artifacts.Suite.Cases))
 	for index, testCase := range candidate.Artifacts.Suite.Cases {
-		normalized, normalizeErr := normalizeEvaluationDatasetTestCase(testCase)
+		caseID := stableEvaluationDatasetCaseID(testCase.Name)
+		normalized, normalizeErr := normalizeAuthoredEvaluationDatasetTestCase(testCase, caseID)
 		if normalizeErr != nil {
 			return nil, normalizeErr
 		}
-		inputs[index] = PolicyEvaluationDatasetCaseInput{ID: stableEvaluationDatasetCaseID(normalized.Name), Test: normalized}
+		inputs[index] = PolicyEvaluationDatasetCaseInput{ID: caseID, Test: normalized}
 	}
 	cases, err := buildEvaluationDatasetCases(datasetID, revisionID, inputs, false)
 	if err != nil {
@@ -423,13 +432,91 @@ func buildEvaluationDatasetCases(datasetID, revisionID string, inputs []PolicyEv
 func normalizeEvaluationDatasetCaseInputs(inputs []PolicyEvaluationDatasetCaseInput) ([]PolicyEvaluationDatasetCaseInput, error) {
 	out := make([]PolicyEvaluationDatasetCaseInput, len(inputs))
 	for index, input := range inputs {
+		input.ID = strings.TrimSpace(input.ID)
+		if strings.TrimSpace(input.Test.Name) != input.ID {
+			return nil, fmt.Errorf("%w: cases[%d].test.name must equal its synthetic case id", ErrInvalidRequest, index)
+		}
+		input.Test.Name = input.ID
 		normalized, err := normalizeEvaluationDatasetTestCase(input.Test)
 		if err != nil {
 			return nil, err
 		}
-		out[index] = PolicyEvaluationDatasetCaseInput{ID: strings.TrimSpace(input.ID), Test: normalized}
+		out[index] = PolicyEvaluationDatasetCaseInput{ID: input.ID, Test: normalized}
 	}
 	return out, nil
+}
+
+func normalizeAuthoredEvaluationDatasetTestCase(testCase findingdsl.PolicyRuleTestCase, caseID string) (findingdsl.PolicyRuleTestCase, error) {
+	payload, err := json.Marshal(testCase)
+	if err != nil {
+		return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: encode authored dataset test case: %w", ErrInvalidRequest, err)
+	}
+	var normalized findingdsl.PolicyRuleTestCase
+	if err := json.Unmarshal(payload, &normalized); err != nil {
+		return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: decode authored dataset test case: %w", ErrInvalidRequest, err)
+	}
+	normalized.Name = caseID
+	fixture := normalized.GraphFixture
+	if fixture == nil {
+		return normalizeEvaluationDatasetTestCase(normalized)
+	}
+	fixture.TenantID = "test"
+	urns := make(map[string]string, len(fixture.Nodes))
+	for index := range fixture.Nodes {
+		node := &fixture.Nodes[index]
+		oldURN := strings.TrimSpace(node.URN)
+		newURN := fmt.Sprintf("urn:test:node-%d", index+1)
+		if oldURN == "" {
+			return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: authored dataset fixture node %d has no URN", ErrInvalidRequest, index)
+		}
+		if _, duplicate := urns[oldURN]; duplicate {
+			return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: authored dataset fixture node URNs must be unique", ErrInvalidRequest)
+		}
+		urns[oldURN] = newURN
+		node.URN = newURN
+		if strings.TrimSpace(node.RuntimeID) != "" {
+			node.RuntimeID = fmt.Sprintf("runtime:test:node-%d", index+1)
+		}
+		node.Label = fmt.Sprintf("fixture-node-%d", index+1)
+		node.Attributes = normalizeAuthoredEvaluationDatasetAttributes(node.Attributes, fmt.Sprintf("node-%d", index+1))
+	}
+	for index := range fixture.Edges {
+		edge := &fixture.Edges[index]
+		fromURN, fromOK := urns[strings.TrimSpace(edge.FromURN)]
+		toURN, toOK := urns[strings.TrimSpace(edge.ToURN)]
+		if !fromOK || !toOK {
+			return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: authored dataset fixture edge %d references an unknown node", ErrInvalidRequest, index)
+		}
+		edge.FromURN, edge.ToURN = fromURN, toURN
+		if strings.TrimSpace(edge.RuntimeID) != "" {
+			edge.RuntimeID = fmt.Sprintf("runtime:test:edge-%d", index+1)
+		}
+		edge.Attributes = normalizeAuthoredEvaluationDatasetAttributes(edge.Attributes, fmt.Sprintf("edge-%d", index+1))
+	}
+	for index, urn := range normalized.WantEvidenceURNs {
+		mapped, ok := urns[strings.TrimSpace(urn)]
+		if !ok {
+			return findingdsl.PolicyRuleTestCase{}, fmt.Errorf("%w: authored dataset evidence URN %d references an unknown node", ErrInvalidRequest, index)
+		}
+		normalized.WantEvidenceURNs[index] = mapped
+	}
+	return normalizeEvaluationDatasetTestCase(normalized)
+}
+
+func normalizeAuthoredEvaluationDatasetAttributes(attributes map[string]string, token string) map[string]string {
+	if len(attributes) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(attributes))
+	for rawKey, rawValue := range attributes {
+		key, value := strings.TrimSpace(rawKey), strings.TrimSpace(rawValue)
+		if evaluationDatasetAttributeValueAllowed(key, value) {
+			out[key] = value
+			continue
+		}
+		out[key] = "fixture-ref-" + token
+	}
+	return out
 }
 
 func normalizeEvaluationDatasetTestCase(testCase findingdsl.PolicyRuleTestCase) (findingdsl.PolicyRuleTestCase, error) {
@@ -477,8 +564,8 @@ func validateEvaluationDatasetTestCaseBoundary(testCase findingdsl.PolicyRuleTes
 	if testCase.GraphFixture == nil {
 		return fmt.Errorf("%w: durable evaluation cases require a synthetic graph fixture", ErrInvalidRequest)
 	}
-	if len(testCase.Name) > maxEvaluationDatasetNameBytes || containsLiveIdentifier(testCase.Name) || containsSensitiveEvaluationDatasetValue(testCase.Name) {
-		return fmt.Errorf("%w: dataset case name must be bounded and redacted", ErrInvalidRequest)
+	if len(testCase.Name) > maxEvaluationDatasetNameBytes || !evaluationDatasetCaseIDPattern.MatchString(testCase.Name) {
+		return fmt.Errorf("%w: dataset case name must equal a synthetic case identifier", ErrInvalidRequest)
 	}
 	fixture := testCase.GraphFixture
 	if fixture.TenantID != "fixture" && fixture.TenantID != "test" {
@@ -508,8 +595,8 @@ func validateEvaluationDatasetTestCaseBoundary(testCase findingdsl.PolicyRuleTes
 		if err := validateEvaluationDatasetRuntimeID(node.RuntimeID); err != nil {
 			return err
 		}
-		if len(node.Label) > maxEvaluationDatasetFixtureValueBytes || containsLiveIdentifier(node.Label) || containsSensitiveEvaluationDatasetValue(node.Label) {
-			return fmt.Errorf("%w: dataset fixture node label must be bounded and redacted", ErrInvalidRequest)
+		if node.Label != "" && !evaluationDatasetFixtureLabelPattern.MatchString(node.Label) {
+			return fmt.Errorf("%w: dataset fixture node labels must use a fixture token", ErrInvalidRequest)
 		}
 		if err := validateEvaluationDatasetAttributes(node.Attributes); err != nil {
 			return err
@@ -537,8 +624,8 @@ func validateEvaluationDatasetTestCaseBoundary(testCase findingdsl.PolicyRuleTes
 
 func validateEvaluationDatasetFixtureToken(value, label string) error {
 	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 128 || containsLiveIdentifier(value) || containsSensitiveEvaluationDatasetValue(value) {
-		return fmt.Errorf("%w: dataset fixture %s must be bounded and redacted", ErrInvalidRequest, label)
+	if value == "" || !evaluationDatasetFixtureTokenPattern.MatchString(value) || containsDisallowedEvaluationDatasetScalar(value) {
+		return fmt.Errorf("%w: dataset fixture %s must be an identifier-safe topology token", ErrInvalidRequest, label)
 	}
 	return nil
 }
@@ -561,11 +648,56 @@ func validateEvaluationDatasetAttributes(attributes map[string]string) error {
 	for key, value := range attributes {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
-		if key == "" || len(key) > 64 || len(value) > maxEvaluationDatasetFixtureValueBytes || containsLiveIdentifier(value) || containsSensitiveEvaluationDatasetValue(key) || containsSensitiveEvaluationDatasetValue(value) {
-			return fmt.Errorf("%w: dataset fixture attributes must be bounded and redacted", ErrInvalidRequest)
+		if !evaluationDatasetAttributeKeyPattern.MatchString(key) || len(value) > maxEvaluationDatasetFixtureValueBytes || !evaluationDatasetAttributeValueAllowed(key, value) {
+			return fmt.Errorf("%w: dataset fixture attributes must use typed synthetic values", ErrInvalidRequest)
 		}
 	}
 	return nil
+}
+
+func evaluationDatasetAttributeValueAllowed(key, value string) bool {
+	if containsDisallowedEvaluationDatasetScalar(key) || containsDisallowedEvaluationDatasetScalar(value) {
+		return false
+	}
+	if evaluationDatasetFixtureLabelPattern.MatchString(value) {
+		return true
+	}
+	if strings.HasPrefix(key, "has_") {
+		return value == "true" || value == "false"
+	}
+	if strings.HasSuffix(key, "_count") {
+		return evaluationDatasetCountValuePattern.MatchString(value)
+	}
+	switch key {
+	case "event_type", "last_status", "observed_last_status", "role_usage", "state", "status":
+		return evaluationDatasetEnumValuePattern.MatchString(value) && !looksOpaqueEvaluationDatasetScalar(value)
+	default:
+		return false
+	}
+}
+
+func containsDisallowedEvaluationDatasetScalar(value string) bool {
+	return containsLiveIdentifier(value) || containsSensitiveEvaluationDatasetValue(value) ||
+		evaluationDatasetResourceIDPattern.MatchString(value) || evaluationDatasetUUIDPattern.MatchString(value) || evaluationDatasetIPv4Pattern.MatchString(value) ||
+		looksOpaqueEvaluationDatasetScalar(value)
+}
+
+func looksOpaqueEvaluationDatasetScalar(value string) bool {
+	if len(value) < 20 {
+		return false
+	}
+	var lower, upper, digit bool
+	for _, character := range value {
+		switch {
+		case character >= 'a' && character <= 'z':
+			lower = true
+		case character >= 'A' && character <= 'Z':
+			upper = true
+		case character >= '0' && character <= '9':
+			digit = true
+		}
+	}
+	return lower && upper && digit
 }
 
 func containsSensitiveEvaluationDatasetValue(value string) bool {

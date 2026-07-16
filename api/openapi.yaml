@@ -5833,7 +5833,7 @@ paths:
     post:
       operationId: createPolicyEvaluationDataset
       summary: Create a versioned evaluation dataset from a proved candidate
-      description: Imports the candidate's current synthetic graph-fixture suite as immutable revision one. Live provider identifiers, query rows, resources, and secret-bearing attributes are rejected.
+      description: Imports the candidate's current synthetic graph-fixture suite as immutable revision one. Authored fixture tenants, URNs, runtime IDs, case names, labels, and non-predicate values are canonicalized into durable fixture tokens before persistence. Live provider identifiers, query rows, resources, and untyped attributes are rejected.
       tags: [Findings]
       parameters:
         - {name: candidateID, in: path, required: true, schema: {type: string}}
@@ -5898,7 +5898,7 @@ paths:
     post:
       operationId: appendPolicyEvaluationDatasetRevision
       summary: Append an immutable evaluation dataset revision
-      description: Appends a complete synthetic graph-fixture snapshot with optimistic aggregate-version and idempotency checks. No case update or delete operation exists.
+      description: Appends a complete synthetic graph-fixture snapshot with optimistic aggregate-version and idempotency checks. Case names are replaced with the stable case ID before persistence; topology fields and scalar values must satisfy the typed synthetic fixture contract. No case update or delete operation exists.
       tags: [Findings]
       parameters:
         - {name: datasetID, in: path, required: true, schema: {type: string}}
@@ -15932,7 +15932,7 @@ components:
       additionalProperties: false
       required: [name, change_summary]
       properties:
-        name: {type: string, minLength: 1, maxLength: 200}
+        name: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$', description: Canonical synthetic name; append requests must set this to the containing case ID.}
         change_summary: {type: string, minLength: 1, maxLength: 1000}
     AppendPolicyEvaluationDatasetRevisionRequest:
       type: object
@@ -15986,13 +15986,15 @@ components:
       required: [urn, sourceId, entityType]
       properties:
         urn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
-        sourceId: {type: string, minLength: 1, maxLength: 128}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
         runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
-        entityType: {type: string, minLength: 1, maxLength: 128}
-        label: {type: string, maxLength: 256}
+        entityType: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        label: {type: string, pattern: '^fixture-(?:(?:node|edge|ref|value)-[a-z0-9][a-z0-9-]{0,63}|candidate-marker)$'}
         attributes:
           type: object
           maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must be fixture tokens, booleans for has_* keys, bounded integers for *_count keys, or identifier-free enums for the supported predicate keys.
           additionalProperties: {type: string, maxLength: 256}
     PolicyEvaluationDatasetGraphEdge:
       type: object
@@ -16001,12 +16003,14 @@ components:
       properties:
         fromUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
         toUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
-        sourceId: {type: string, minLength: 1, maxLength: 128}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
         runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
-        relation: {type: string, minLength: 1, maxLength: 128}
+        relation: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
         attributes:
           type: object
           maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must satisfy the same typed synthetic scalar contract as node attributes.
           additionalProperties: {type: string, maxLength: 256}
     PolicyEvaluationDataset:
       type: object

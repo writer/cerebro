@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/findingdsl"
+	testauthorpolicy "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
 type memoryEvaluationDatasetStore struct {
@@ -191,7 +192,8 @@ func TestPolicyEvaluationDatasetCreateAppendReplayAndCAS(t *testing.T) {
 			{ID: datasetStore.cases[appended.Revision.ID][2].ID, Test: datasetStore.cases[appended.Revision.ID][2].Test},
 		},
 	}
-	thirdRequest.Cases[2].Test.Name = "passes after the same edge remains absent"
+	thirdRequest.Cases[2].Test = cloneEvaluationDatasetTestCase(thirdRequest.Cases[2].Test)
+	thirdRequest.Cases[2].Test.GraphFixture.Nodes[0].Label = "fixture-value-revised"
 	third, err := service.AppendPolicyEvaluationDatasetRevision(context.Background(), thirdRequest)
 	if err != nil || third.Dataset.AggregateVersion != 3 {
 		t.Fatalf("third revision = %#v, %v", third, err)
@@ -204,6 +206,66 @@ func TestPolicyEvaluationDatasetCreateAppendReplayAndCAS(t *testing.T) {
 	stale.IdempotencyKey = "dataset-append-stale"
 	if _, err := service.AppendPolicyEvaluationDatasetRevision(context.Background(), stale); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale append error = %v, want conflict", err)
+	}
+}
+
+func TestPolicyEvaluationDatasetImportsSuiteFromGraphAuthor(t *testing.T) {
+	rule := graphRule()
+	evidence := testauthorpolicy.GraphEvidence{
+		Nodes: []testauthorpolicy.GraphEvidenceNode{
+			{ID: "arn:aws:sts::123456789012:assumed-role/Operator/private", SourceID: "aws", EntityType: "aws.session"},
+			{ID: "arn:aws:ecs:us-east-1:123456789012:task/private", SourceID: "aws", EntityType: "aws.task", Attributes: map[string]string{"started_by": "private-candidate"}},
+			{ID: "arn:aws:ecs:us-east-1:123456789012:task-definition/private:7", SourceID: "aws", EntityType: "aws.task_definition"},
+		},
+		Edges: []testauthorpolicy.GraphEvidenceEdge{
+			{FromID: "arn:aws:sts::123456789012:assumed-role/Operator/private", ToID: "arn:aws:ecs:us-east-1:123456789012:task/private", SourceID: "aws", Relation: "acted_on"},
+			{FromID: "arn:aws:ecs:us-east-1:123456789012:task/private", ToID: "arn:aws:ecs:us-east-1:123456789012:task-definition/private:7", SourceID: "aws", Relation: "depends_on"},
+		},
+		CriticalEdge: testauthorpolicy.GraphEvidenceEdgeRef{FromID: "arn:aws:ecs:us-east-1:123456789012:task/private", ToID: "arn:aws:ecs:us-east-1:123456789012:task-definition/private:7", Relation: "depends_on"},
+		EvidenceNodeIDs: []string{
+			"arn:aws:sts::123456789012:assumed-role/Operator/private",
+			"arn:aws:ecs:us-east-1:123456789012:task-definition/private:7",
+		},
+	}
+	suite, err := testauthorpolicy.SuiteForGraphRule(context.Background(), rule, evidence)
+	if err != nil {
+		t.Fatalf("author graph suite: %v", err)
+	}
+	candidate := &Candidate{
+		ID: "pc_authored_dataset", TenantID: "tenant-a", Status: StatusProved, Revision: 2,
+		Artifacts: &Artifacts{Rule: rule, Suite: suite, PolicyDigest: strings.Repeat("a", 64), TestDigest: strings.Repeat("b", 64)},
+	}
+	datasetStore := newMemoryEvaluationDatasetStore()
+	service := Service{Store: &memoryStore{records: map[string]*Candidate{candidate.ID: candidate}}, Datasets: datasetStore}
+	result, err := service.CreatePolicyEvaluationDataset(context.Background(), CreatePolicyEvaluationDatasetRequest{
+		TenantID: "tenant-a", CandidateID: candidate.ID, Name: "Authored graph cases", ChangeSummary: "Import authored synthetic graph cases",
+		ActorID: "operator", IdempotencyKey: "authored-import-1",
+	})
+	if err != nil {
+		t.Fatalf("create authored evaluation dataset: %v", err)
+	}
+	cases := datasetStore.cases[result.Revision.ID]
+	if len(cases) != len(suite.Cases) {
+		t.Fatalf("stored cases = %d, want %d", len(cases), len(suite.Cases))
+	}
+	payload, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"urn:cerebro:", "123456789012", "private-candidate", "test-authored-"} {
+		if strings.Contains(string(payload), forbidden) {
+			t.Fatalf("stored authored suite contains source value %q: %s", forbidden, payload)
+		}
+	}
+	for _, testCase := range cases {
+		if testCase.Test.Name != testCase.ID || testCase.Test.GraphFixture == nil || testCase.Test.GraphFixture.TenantID != "test" {
+			t.Fatalf("stored authored case was not canonicalized: %#v", testCase)
+		}
+		for _, node := range testCase.Test.GraphFixture.Nodes {
+			if !strings.HasPrefix(node.URN, "urn:test:") {
+				t.Fatalf("stored authored node URN = %q", node.URN)
+			}
+		}
 	}
 }
 
@@ -246,6 +308,24 @@ func TestPolicyEvaluationDatasetRejectsUnsafeCasePayloads(t *testing.T) {
 		},
 		"secret value": func(testCase *findingdsl.PolicyRuleTestCase) {
 			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"access_token": "value"}
+		},
+		"ec2 id": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"resource_ref": "i-0123456789abcdef0"}
+		},
+		"vpc id": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"resource_ref": "vpc-0123456789abcdef0"}
+		},
+		"bucket label": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Label = "production-finance-bucket"
+		},
+		"uuid": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"event_type": "550e8400-e29b-41d4-a716-446655440000"}
+		},
+		"ip address": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"event_type": "10.0.12.34"}
+		},
+		"opaque value": func(testCase *findingdsl.PolicyRuleTestCase) {
+			testCase.GraphFixture.Nodes[0].Attributes = map[string]string{"event_type": "AbCdEfGhIjKlMnOpQrStUv1234"}
 		},
 	}
 	for name, mutate := range tests {
@@ -312,14 +392,14 @@ func evaluationDatasetSuite() findingdsl.PolicyRuleTestSuite {
 	}
 	passingEdges := append([]findingdsl.PolicyGraphFixtureEdge(nil), edges[:1]...)
 	return findingdsl.PolicyRuleTestSuite{APIVersion: findingdsl.APIVersion, Kind: findingdsl.KindPolicyFindingRuleTest, Cases: []findingdsl.PolicyRuleTestCase{
-		{Name: "finds the complete two-hop path", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: edges}, WantEvidenceURNs: []string{"urn:test:actor", "urn:test:definition"}, WantFinding: true},
-		{Name: "passes when the critical edge is absent", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: passingEdges}, WantFinding: false},
+		{Name: "finds_complete_two_hop_path", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: edges}, WantEvidenceURNs: []string{"urn:test:actor", "urn:test:definition"}, WantFinding: true},
+		{Name: "passes_without_critical_edge", GraphFixture: &findingdsl.PolicyGraphFixture{TenantID: "fixture", Nodes: nodes, Edges: passingEdges}, WantFinding: false},
 	}}
 }
 
 func secondPassingEvaluationCase() findingdsl.PolicyRuleTestCase {
 	testCase := evaluationDatasetSuite().Cases[1]
-	testCase.Name = "passes when the same critical edge remains absent"
+	testCase.Name = "case_second_passing_path"
 	return testCase
 }
 
