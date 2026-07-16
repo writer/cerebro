@@ -2,6 +2,7 @@ package findingdsl
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,11 +10,12 @@ import (
 )
 
 type recordingPolicyGraphStore struct {
-	entities []*ports.ProjectedEntity
-	links    []*ports.ProjectedLink
-	deleted  []string
-	request  ports.CypherQueryRequest
-	rows     []ports.CypherRow
+	entities    []*ports.ProjectedEntity
+	links       []*ports.ProjectedLink
+	deleted     []string
+	request     ports.CypherQueryRequest
+	rows        []ports.CypherRow
+	entityErrAt int
 }
 
 func (s *recordingPolicyGraphStore) Ping(context.Context) error { return nil }
@@ -21,8 +23,27 @@ func (s *recordingPolicyGraphStore) GetEntityNeighborhood(context.Context, strin
 	return nil, nil
 }
 func (s *recordingPolicyGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.entityErrAt > 0 && len(s.entities)+1 == s.entityErrAt {
+		return errors.New("projection failed")
+	}
 	s.entities = append(s.entities, entity)
 	return nil
+}
+
+func TestRunPolicyGraphFixtureCleansUpPartialProjection(t *testing.T) {
+	fixture := &PolicyGraphFixture{TenantID: "fixture", Nodes: []PolicyGraphFixtureNode{
+		{URN: "a", SourceID: "okta", EntityType: "okta.user"},
+		{URN: "b", SourceID: "okta", EntityType: "okta.group"},
+		{URN: "c", SourceID: "okta", EntityType: "okta.application"},
+	}}
+	store := &recordingPolicyGraphStore{entityErrAt: 2}
+	err := runPolicyGraphFixture(context.Background(), store, PolicyFindingRule{}, PolicyRuleTestCase{GraphFixture: fixture})
+	if err == nil || !strings.Contains(err.Error(), "projection failed") {
+		t.Fatalf("runPolicyGraphFixture() error = %v, want projection failure", err)
+	}
+	if len(store.deleted) != 1 || store.deleted[0] != "a" {
+		t.Fatalf("deleted = %#v, want first projected node cleaned up", store.deleted)
+	}
 }
 func (s *recordingPolicyGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
 	s.links = append(s.links, link)
@@ -49,7 +70,7 @@ func TestValidatePolicyGraphFixtureRequiresConnectedTwoEdgePath(t *testing.T) {
 				{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"},
 				{FromURN: "c", ToURN: "d", SourceID: "okta", Relation: "grants_entitlement"},
 			},
-		}, WantFinding: false,
+		}, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true,
 	}}}
 	issues := ValidatePolicyRuleTestSuite(suite)
 	if !issuesContain(issues, "must contain a connected path spanning two edges") {
@@ -91,8 +112,9 @@ func TestRunPolicyGraphFixtureProjectsTopologyAndExecutesPolicyCypher(t *testing
 	}}
 	store := &recordingPolicyGraphStore{rows: []ports.CypherRow{{Values: map[string]any{
 		"primary_urn": "a", "fingerprint_key": "a|c", "summary": "multi-hop access", "resource_urns": []string{"a", "b", "c"},
+		"evidence": []any{map[string]any{"urn": "b"}, map[string]any{"urn": "c"}},
 	}}}}
-	if err := runPolicyGraphFixture(context.Background(), store, rule, PolicyRuleTestCase{Name: "complete path", GraphFixture: fixture, WantFinding: true}); err != nil {
+	if err := runPolicyGraphFixture(context.Background(), store, rule, PolicyRuleTestCase{Name: "complete path", GraphFixture: fixture, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true}); err != nil {
 		t.Fatalf("runPolicyGraphFixture() error = %v", err)
 	}
 	if len(store.entities) != 3 || len(store.links) != 2 || len(store.deleted) != 3 {
@@ -103,5 +125,38 @@ func TestRunPolicyGraphFixtureProjectsTopologyAndExecutesPolicyCypher(t *testing
 	}
 	if store.request.Params["tenant_id"] != "fixture" || store.request.Params["row_limit"] != int64(25) {
 		t.Fatalf("executed params = %#v", store.request.Params)
+	}
+}
+
+func TestGraphFixtureMutationRejectsNodeAttributeChanges(t *testing.T) {
+	finding := &PolicyGraphFixture{TenantID: "fixture", Nodes: []PolicyGraphFixtureNode{
+		{URN: "a", SourceID: "okta", EntityType: "okta.user", Attributes: map[string]string{"status": "suspended"}},
+		{URN: "b", SourceID: "okta", EntityType: "okta.group"},
+		{URN: "c", SourceID: "okta", EntityType: "okta.application"},
+	}, Edges: []PolicyGraphFixtureEdge{
+		{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"},
+		{FromURN: "b", ToURN: "c", SourceID: "okta", Relation: "assigned_to"},
+	}}
+	passing := *finding
+	passing.Nodes = append([]PolicyGraphFixtureNode(nil), finding.Nodes...)
+	passing.Nodes[0].Attributes = map[string]string{"status": "active"}
+	passing.Edges = append([]PolicyGraphFixtureEdge(nil), finding.Edges[1:]...)
+	if graphFixtureSingleEdgeMutation(finding, &passing) {
+		t.Fatal("graphFixtureSingleEdgeMutation() = true when node attributes changed")
+	}
+}
+
+func TestValidatePolicyGraphFixtureRejectsDuplicateEdges(t *testing.T) {
+	edge := PolicyGraphFixtureEdge{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"}
+	suite := PolicyRuleTestSuite{APIVersion: APIVersion, Kind: KindPolicyFindingRuleTest, Cases: []PolicyRuleTestCase{{
+		Name: "duplicate edge", GraphFixture: &PolicyGraphFixture{TenantID: "fixture", Nodes: []PolicyGraphFixtureNode{
+			{URN: "a", SourceID: "okta", EntityType: "okta.user"},
+			{URN: "b", SourceID: "okta", EntityType: "okta.group"},
+			{URN: "c", SourceID: "okta", EntityType: "okta.application"},
+		}, Edges: []PolicyGraphFixtureEdge{edge, edge}}, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true,
+	}}}
+	issues := ValidatePolicyRuleTestSuite(suite)
+	if !issuesContain(issues, "duplicates an earlier edge") {
+		t.Fatalf("ValidatePolicyRuleTestSuite() issues = %#v, want duplicate-edge issue", issues)
 	}
 }

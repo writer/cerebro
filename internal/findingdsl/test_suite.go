@@ -25,11 +25,12 @@ type PolicyRuleTestSuite struct {
 }
 
 type PolicyRuleTestCase struct {
-	Name         string              `json:"name" yaml:"name"`
-	Resource     map[string]any      `json:"resource,omitempty" yaml:"resource,omitempty"`
-	QueryRows    []map[string]any    `json:"queryRows,omitempty" yaml:"queryRows,omitempty"`
-	GraphFixture *PolicyGraphFixture `json:"graphFixture,omitempty" yaml:"graphFixture,omitempty"`
-	WantFinding  bool                `json:"wantFinding" yaml:"wantFinding"`
+	Name             string              `json:"name" yaml:"name"`
+	Resource         map[string]any      `json:"resource,omitempty" yaml:"resource,omitempty"`
+	QueryRows        []map[string]any    `json:"queryRows,omitempty" yaml:"queryRows,omitempty"`
+	GraphFixture     *PolicyGraphFixture `json:"graphFixture,omitempty" yaml:"graphFixture,omitempty"`
+	WantEvidenceURNs []string            `json:"wantEvidenceUrns,omitempty" yaml:"wantEvidenceUrns,omitempty"`
+	WantFinding      bool                `json:"wantFinding" yaml:"wantFinding"`
 }
 
 // PolicyGraphFixture is a deterministic projected graph used to execute a
@@ -144,6 +145,12 @@ func ValidatePolicyRuleTestSuite(suite PolicyRuleTestSuite) []Issue {
 		}
 		if testCase.GraphFixture != nil {
 			issues = append(issues, validatePolicyGraphFixture(path, idx, testCase)...)
+			if testCase.WantFinding && len(testCase.WantEvidenceURNs) < 2 {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q graph finding cases require at least two wantEvidenceUrns", idx, testCase.Name)})
+			}
+			if !testCase.WantFinding && len(testCase.WantEvidenceURNs) != 0 {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q passing graph cases must not declare wantEvidenceUrns", idx, testCase.Name)})
+			}
 		}
 	}
 	issues = append(issues, validatePolicyGraphMutationPair(path, suite.Cases)...)

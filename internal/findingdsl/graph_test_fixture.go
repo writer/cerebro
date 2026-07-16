@@ -3,6 +3,7 @@ package findingdsl
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -18,7 +19,7 @@ func validatePolicyGraphFixture(path string, caseIndex int, testCase PolicyRuleT
 	if len(fixture.Nodes) < 3 {
 		issues = append(issues, Issue{Path: path, Message: prefix + " must contain at least three nodes"})
 	}
-	if len(fixture.Edges) < 2 {
+	if testCase.WantFinding && len(fixture.Edges) < 2 {
 		issues = append(issues, Issue{Path: path, Message: prefix + " must contain at least two edges"})
 	}
 	nodes := make(map[string]struct{}, len(fixture.Nodes))
@@ -33,6 +34,7 @@ func validatePolicyGraphFixture(path string, caseIndex int, testCase PolicyRuleT
 		nodes[urn] = struct{}{}
 	}
 	adjacency := map[string][]string{}
+	edges := map[string]struct{}{}
 	for edgeIndex, edge := range fixture.Edges {
 		from, to := strings.TrimSpace(edge.FromURN), strings.TrimSpace(edge.ToURN)
 		if _, ok := nodes[from]; !ok {
@@ -44,10 +46,18 @@ func validatePolicyGraphFixture(path string, caseIndex int, testCase PolicyRuleT
 		if strings.TrimSpace(edge.SourceID) == "" || strings.TrimSpace(edge.Relation) == "" {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s.edges[%d] requires sourceId and relation", prefix, edgeIndex)})
 		}
+		if from != "" && from == to {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s.edges[%d] must connect two distinct nodes", prefix, edgeIndex)})
+		}
+		edgeKey := from + "\x00" + strings.TrimSpace(edge.Relation) + "\x00" + to
+		if _, exists := edges[edgeKey]; exists {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s.edges[%d] duplicates an earlier edge", prefix, edgeIndex)})
+		}
+		edges[edgeKey] = struct{}{}
 		adjacency[from] = append(adjacency[from], to)
 		adjacency[to] = append(adjacency[to], from)
 	}
-	if !containsTwoEdgePath(adjacency) {
+	if testCase.WantFinding && !containsTwoEdgePath(adjacency) {
 		issues = append(issues, Issue{Path: path, Message: prefix + " must contain a connected path spanning two edges"})
 	}
 	return issues
@@ -91,14 +101,14 @@ func graphFixtureSingleEdgeMutation(finding, passing *PolicyGraphFixture) bool {
 	if finding == nil || passing == nil || strings.TrimSpace(finding.TenantID) != strings.TrimSpace(passing.TenantID) {
 		return false
 	}
-	findingNodes, passingNodes := map[string]struct{}{}, map[string]struct{}{}
+	findingNodes, passingNodes := map[string]PolicyGraphFixtureNode{}, map[string]PolicyGraphFixtureNode{}
 	for _, node := range finding.Nodes {
-		findingNodes[strings.TrimSpace(node.URN)] = struct{}{}
+		findingNodes[strings.TrimSpace(node.URN)] = node
 	}
 	for _, node := range passing.Nodes {
-		passingNodes[strings.TrimSpace(node.URN)] = struct{}{}
+		passingNodes[strings.TrimSpace(node.URN)] = node
 	}
-	if !sameStringSet(findingNodes, passingNodes) {
+	if !sameGraphFixtureNodes(findingNodes, passingNodes) {
 		return false
 	}
 	findingEdges, passingEdges := graphFixtureEdgeSet(finding.Edges), graphFixtureEdgeSet(passing.Edges)
@@ -122,12 +132,13 @@ func graphFixtureEdgeSet(edges []PolicyGraphFixtureEdge) map[string]struct{} {
 	return out
 }
 
-func sameStringSet(left, right map[string]struct{}) bool {
+func sameGraphFixtureNodes(left, right map[string]PolicyGraphFixtureNode) bool {
 	if len(left) != len(right) {
 		return false
 	}
-	for value := range left {
-		if _, ok := right[value]; !ok {
+	for urn, leftNode := range left {
+		rightNode, ok := right[urn]
+		if !ok || leftNode.URN != rightNode.URN || leftNode.SourceID != rightNode.SourceID || leftNode.RuntimeID != rightNode.RuntimeID || leftNode.EntityType != rightNode.EntityType || leftNode.Label != rightNode.Label || !maps.Equal(leftNode.Attributes, rightNode.Attributes) {
 			return false
 		}
 	}
@@ -136,6 +147,15 @@ func sameStringSet(left, right map[string]struct{}) bool {
 
 func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule PolicyFindingRule, testCase PolicyRuleTestCase) (err error) {
 	fixture := testCase.GraphFixture
+	projectedURNs := make([]string, 0, len(fixture.Nodes))
+	defer func() {
+		cleanupCtx := context.WithoutCancel(ctx)
+		for index := len(projectedURNs) - 1; index >= 0; index-- {
+			if cleanupErr := store.DeleteProjectedEntity(cleanupCtx, projectedURNs[index]); cleanupErr != nil && err == nil {
+				err = fmt.Errorf("delete fixture node %q: %w", projectedURNs[index], cleanupErr)
+			}
+		}
+	}()
 	for _, node := range fixture.Nodes {
 		if err := store.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
 			URN: node.URN, TenantID: fixture.TenantID, SourceID: node.SourceID, RuntimeID: node.RuntimeID,
@@ -143,14 +163,8 @@ func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule
 		}); err != nil {
 			return fmt.Errorf("project node %q: %w", node.URN, err)
 		}
+		projectedURNs = append(projectedURNs, node.URN)
 	}
-	defer func() {
-		for index := len(fixture.Nodes) - 1; index >= 0; index-- {
-			if cleanupErr := store.DeleteProjectedEntity(ctx, fixture.Nodes[index].URN); cleanupErr != nil && err == nil {
-				err = fmt.Errorf("delete fixture node %q: %w", fixture.Nodes[index].URN, cleanupErr)
-			}
-		}
-	}()
 	for _, edge := range fixture.Edges {
 		if err := store.UpsertProjectedLink(ctx, &ports.ProjectedLink{
 			TenantID: fixture.TenantID, SourceID: edge.SourceID, RuntimeID: edge.RuntimeID,
@@ -179,12 +193,40 @@ func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule
 	if issues := validatePolicyRuleTestCaseAgainstRule("<graph-fixture>", rule, 0, rowCase); len(issues) != 0 {
 		return fmt.Errorf("query result violates graph finding contract: %s", issues[0].Message)
 	}
+	if err := validateGraphFixtureEvidence(rows, testCase.WantEvidenceURNs); err != nil {
+		return err
+	}
 	got, err := EvaluatePolicyRuleTestCase(rule, rowCase)
 	if err != nil {
 		return err
 	}
 	if got != testCase.WantFinding {
 		return fmt.Errorf("finding = %t, want %t (query returned %d row(s))", got, testCase.WantFinding, len(rows))
+	}
+	return nil
+}
+
+func validateGraphFixtureEvidence(rows []ports.CypherRow, expectedURNs []string) error {
+	if len(expectedURNs) == 0 {
+		return nil
+	}
+	actual := map[string]struct{}{}
+	for _, row := range rows {
+		items, _ := row.Values["evidence"].([]any)
+		for _, item := range items {
+			values, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if urn := strings.TrimSpace(fmt.Sprintf("%v", values["urn"])); urn != "" && urn != "<nil>" {
+				actual[urn] = struct{}{}
+			}
+		}
+	}
+	for _, expected := range expectedURNs {
+		if _, ok := actual[strings.TrimSpace(expected)]; !ok {
+			return fmt.Errorf("query evidence missing expected URN %q", expected)
+		}
 	}
 	return nil
 }
