@@ -39,9 +39,18 @@ struct CheckRunner {
     do { try checkShieldFalseGreen() } catch {
       failures.append("shield false green: \(error)")
     }
+    do { try checkDeliveryStaysNotEnrolledWithoutCredential() } catch {
+      failures.append("delivery not enrolled: \(error)")
+    }
+    do { try checkDeliveryAcknowledgementAndRetry() } catch {
+      failures.append("delivery acknowledgement: \(error)")
+    }
+    do { try checkDeliveryEnrollmentAndCredentialBinding() } catch {
+      failures.append("delivery enrollment: \(error)")
+    }
 
     if failures.isEmpty {
-      print("PASS: 19 receipt security checks")
+      print("PASS: 22 receipt security checks")
       return
     }
     for failure in failures {
@@ -953,6 +962,233 @@ struct CheckRunner {
     )
   }
 
+  private mutating func checkDeliveryStaysNotEnrolledWithoutCredential() throws {
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    _ = try store.append(draft: draft(id: "delivery-pending", phase: .completed), signer: signer)
+    let credentialStore = TestCredentialStore(credential: nil)
+    let cursorStore = TestCursorStore()
+    let stateStore = TestDeliveryStateStore()
+    let http = TestHTTPClient(responses: [])
+    let engine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-1"),
+      store: store,
+      signer: signer,
+      credentials: credentialStore,
+      cursorStore: cursorStore,
+      stateStore: stateStore,
+      http: http)
+
+    engine.deliverOnce()
+
+    expect(stateStore.state?.state == .notEnrolled, "missing credential did not report not_enrolled")
+    expect(stateStore.state?.pendingReceipts == 1, "not_enrolled state lost the pending count")
+    expect(http.requests.isEmpty, "not_enrolled delivery made a network request")
+    expect(cursorStore.cursor == nil, "not_enrolled delivery advanced the cursor")
+  }
+
+  private mutating func checkDeliveryAcknowledgementAndRetry() throws {
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    _ = try store.append(draft: draft(id: "delivery-receipt", phase: .completed), signer: signer)
+    let credentialStore = TestCredentialStore(credential: CerebroDeviceCredential(
+      baseURL: "https://cerebro.test",
+      hardwareUUID: "hardware-1",
+      serverDeviceID: "server-device-1",
+      refreshToken: "refresh-old",
+      refreshExpiresAt: "2026-07-17T00:00:00Z"))
+    let cursorStore = TestCursorStore()
+    let stateStore = TestDeliveryStateStore()
+    let tokenBody = Data(#"{"access_token":"access-1","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh-new","refresh_expires_at":"2026-07-18T00:00:00Z","scopes":["platform.telemetry.ingest"]}"#.utf8)
+    let acceptedBody = Data(#"{"status":"accepted","device_id":"server-device-1","bytes":1,"received_at":"2026-07-16T00:00:00Z"}"#.utf8)
+    let http = TestHTTPClient(responses: [
+      CerebroHTTPResponse(statusCode: 200, body: tokenBody),
+      CerebroHTTPResponse(statusCode: 500, body: Data()),
+      CerebroHTTPResponse(statusCode: 202, body: acceptedBody),
+    ])
+    let fixedNow = ReceiptDate.parse("2026-07-16T00:00:00.000Z")!
+    let engine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-1"),
+      store: store,
+      signer: signer,
+      credentials: credentialStore,
+      cursorStore: cursorStore,
+      stateStore: stateStore,
+      http: http,
+      now: { fixedNow })
+
+    engine.deliverOnce()
+    expect(cursorStore.cursor == nil, "500 response advanced the delivery cursor")
+    expect(stateStore.state?.state == .retryableFailure, "500 response was not retryable")
+    expect(credentialStore.credential?.refreshToken == "refresh-new", "rotated refresh token was not stored")
+    engine.deliverOnce()
+
+    expect(cursorStore.cursor?.lastSequence == 1, "accepted response did not advance one receipt")
+    expect(stateStore.state?.state == .accepted, "accepted response did not report accepted")
+    expect(http.requests.count == 3, "unexpected delivery request count")
+    let firstIngest = http.requests[1]
+    let retriedIngest = http.requests[2]
+    expect(firstIngest.httpBody == retriedIngest.httpBody, "retry changed the canonical body")
+    expect(
+      firstIngest.value(forHTTPHeaderField: "Idempotency-Key")
+        == retriedIngest.value(forHTTPHeaderField: "Idempotency-Key"),
+      "retry changed the idempotency key")
+    expect(
+      firstIngest.value(forHTTPHeaderField: "DPoP")
+        != retriedIngest.value(forHTTPHeaderField: "DPoP"),
+      "retry reused a DPoP proof")
+    try verifyDPoP(firstIngest.value(forHTTPHeaderField: "DPoP"), signer: signer, accessToken: "access-1")
+  }
+
+  private mutating func checkDeliveryEnrollmentAndCredentialBinding() throws {
+    expect(
+      ManagedShieldConfiguration.validDeliveryBaseURL(URL(string: "https://cerebro.test")!),
+      "root HTTPS delivery URL was rejected")
+    expect(
+      !ManagedShieldConfiguration.validDeliveryBaseURL(URL(string: "https://cerebro.test/prefix")!),
+      "managed delivery URL accepted a path prefix")
+    expect(
+      !ManagedShieldConfiguration.validDeliveryBaseURL(URL(string: "http://cerebro.test")!),
+      "managed delivery URL accepted plaintext HTTP")
+
+    let malformedDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: malformedDirectory) }
+    try FileManager.default.createDirectory(
+      at: malformedDirectory, withIntermediateDirectories: true)
+    let malformedConfigurationURL = malformedDirectory.appendingPathComponent("shield.plist")
+    let malformedConfiguration: [String: Any] = [
+      "OrganizationPublicKey": "test-key",
+      "ExpectedTeamIdentifier": "WRITERTEAM",
+      "ExpectedSigningIdentifier": "com.writer.cerebro.agent-receipts",
+      "AdminCapabilityPath": "/var/db/cerebro/capability.json",
+      "ReceiptUploadEnabled": "true",
+    ]
+    let malformedData = try PropertyListSerialization.data(
+      fromPropertyList: malformedConfiguration, format: .xml, options: 0)
+    try malformedData.write(to: malformedConfigurationURL, options: .atomic)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o600], ofItemAtPath: malformedConfigurationURL.path)
+    do {
+      _ = try ManagedShieldConfiguration.load(
+        from: malformedConfigurationURL,
+        requiredOwnerAccountID: UInt32(geteuid()))
+      failures.append("a malformed managed upload flag disabled delivery silently")
+    } catch ManagedShieldConfigurationError.invalidManagedConfiguration {
+      // Expected.
+    }
+
+    let (store, signer, cleanup) = try temporaryStore()
+    defer { cleanup() }
+    _ = try store.append(draft: draft(id: "enrolled-receipt", phase: .completed), signer: signer)
+    let credentialStore = TestCredentialStore(credential: nil)
+    let cursorStore = TestCursorStore()
+    let stateStore = TestDeliveryStateStore()
+    let enrollmentBody = Data(#"{"access_token":"access-enrolled","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh-enrolled","refresh_expires_at":"2026-07-18T00:00:00Z","scopes":["platform.telemetry.ingest"],"device_id":"server-device-enrolled"}"#.utf8)
+    let acceptedBody = Data(#"{"status":"accepted","device_id":"server-device-enrolled"}"#.utf8)
+    let http = TestHTTPClient(responses: [
+      CerebroHTTPResponse(statusCode: 200, body: enrollmentBody),
+      CerebroHTTPResponse(statusCode: 202, body: acceptedBody),
+    ])
+    let engine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-enrolled"),
+      store: store,
+      signer: signer,
+      credentials: credentialStore,
+      cursorStore: cursorStore,
+      stateStore: stateStore,
+      http: http)
+
+    try engine.enroll(bootstrapToken: "one-time-bootstrap")
+    expect(credentialStore.credential?.baseURL == "https://cerebro.test", "credential omitted base URL binding")
+    expect(credentialStore.credential?.hardwareUUID == "hardware-enrolled", "credential omitted hardware binding")
+    expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == nil, "enrollment sent Authorization")
+    expect(http.requests.first?.value(forHTTPHeaderField: "DPoP") == nil, "enrollment sent an unnecessary DPoP proof")
+    expect(
+      !(http.requests.first?.httpBody ?? Data()).isEmpty,
+      "enrollment omitted its request body")
+    engine.deliverOnce()
+    expect(http.requests.count == 2, "fresh enrollment unnecessarily rotated its refresh token")
+    expect(cursorStore.cursor?.lastSequence == 1, "enrolled delivery did not reach the cursor")
+
+    let wrongCredential = TestCredentialStore(credential: CerebroDeviceCredential(
+      baseURL: "https://other.test",
+      hardwareUUID: "hardware-enrolled",
+      serverDeviceID: "other-device",
+      refreshToken: "must-not-send",
+      refreshExpiresAt: "2026-07-18T00:00:00Z"))
+    let blockedHTTP = TestHTTPClient(responses: [])
+    let blockedState = TestDeliveryStateStore()
+    let blockedEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-enrolled"),
+      store: store,
+      signer: signer,
+      credentials: wrongCredential,
+      cursorStore: TestCursorStore(),
+      stateStore: blockedState,
+      http: blockedHTTP)
+    blockedEngine.deliverOnce()
+    expect(blockedHTTP.requests.isEmpty, "credential was sent to a different managed base URL")
+    expect(blockedState.state?.errorCode == "credential_binding_mismatch", "credential mismatch was not explicit")
+
+    let stateFailureHTTP = TestHTTPClient(responses: [])
+    let stateFailureEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-enrolled"),
+      store: store,
+      signer: signer,
+      credentials: TestCredentialStore(credential: CerebroDeviceCredential(
+        baseURL: "https://cerebro.test",
+        hardwareUUID: "hardware-enrolled",
+        serverDeviceID: "server-device-enrolled",
+        refreshToken: "must-not-send",
+        refreshExpiresAt: "2026-07-18T00:00:00Z")),
+      cursorStore: TestCursorStore(),
+      stateStore: FailingDeliveryStateStore(),
+      http: stateFailureHTTP)
+    stateFailureEngine.deliverOnce()
+    expect(
+      stateFailureHTTP.requests.isEmpty,
+      "delivery made a network request without a durable attempt state")
+    expect(
+      !stateFailureEngine.deliveryStateStorageHealthy,
+      "delivery state persistence failure was not exposed to the status app")
+  }
+
+  private mutating func verifyDPoP(
+    _ proof: String?, signer: DeviceKeySigner, accessToken: String
+  ) throws {
+    guard let proof else { failures.append("ingest request omitted DPoP"); return }
+    let parts = proof.split(separator: ".").map(String.init)
+    guard parts.count == 3,
+      let payloadData = base64URLDecode(parts[1]),
+      let signatureData = base64URLDecode(parts[2]),
+      let payload = try JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+      let publicData = Data(base64Encoded: signer.publicKeyBase64),
+      let publicKey = try? P256.Signing.PublicKey(x963Representation: publicData),
+      let signature = try? P256.Signing.ECDSASignature(rawRepresentation: signatureData)
+    else { failures.append("DPoP proof could not be decoded"); return }
+    let signingInput = Data("\(parts[0]).\(parts[1])".utf8)
+    expect(publicKey.isValidSignature(signature, for: signingInput), "DPoP signature was invalid")
+    let expectedATH = Data(SHA256.hash(data: Data(accessToken.utf8))).base64URLForCheck
+    expect(payload["ath"] as? String == expectedATH, "DPoP ath did not bind the access token")
+    expect(payload["htm"] as? String == "POST", "DPoP htm was wrong")
+    expect(
+      payload["htu"] as? String == "https://cerebro.test/platform/telemetry/ingest",
+      "DPoP htu was wrong")
+  }
+
+  private func base64URLDecode(_ value: String) -> Data? {
+    var raw = value.replacingOccurrences(of: "-", with: "+")
+      .replacingOccurrences(of: "_", with: "/")
+    raw.append(String(repeating: "=", count: (4 - raw.count % 4) % 4))
+    return Data(base64Encoded: raw)
+  }
+
   private func temporaryStore() throws -> (ReceiptStore, DeviceKeySigner, () -> Void) {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let signer = try DeviceKeySigner(rawKey: P256.Signing.PrivateKey().rawRepresentation)
@@ -963,8 +1199,52 @@ struct CheckRunner {
   }
 }
 
+private final class TestCredentialStore: CerebroCredentialStoring, @unchecked Sendable {
+  var credential: CerebroDeviceCredential?
+  init(credential: CerebroDeviceCredential?) { self.credential = credential }
+  func load() throws -> CerebroDeviceCredential? { credential }
+  func save(_ credential: CerebroDeviceCredential) throws { self.credential = credential }
+  func remove() throws { credential = nil }
+}
+
+private final class TestCursorStore: CerebroCursorStoring, @unchecked Sendable {
+  var cursor: CerebroDeliveryCursor?
+  func load() throws -> CerebroDeliveryCursor? { cursor }
+  func save(_ cursor: CerebroDeliveryCursor) throws { self.cursor = cursor }
+}
+
+private final class TestDeliveryStateStore: CerebroDeliveryStateStoring, @unchecked Sendable {
+  var state: CerebroDeliveryState?
+  func save(_ state: CerebroDeliveryState) throws { self.state = state }
+}
+
+private struct FailingDeliveryStateStore: CerebroDeliveryStateStoring {
+  func save(_ state: CerebroDeliveryState) throws { throw CheckError.stateWriteFailed }
+}
+
+private final class TestHTTPClient: CerebroHTTPPerforming, @unchecked Sendable {
+  var responses: [CerebroHTTPResponse]
+  var requests: [URLRequest] = []
+  init(responses: [CerebroHTTPResponse]) { self.responses = responses }
+  func perform(_ request: URLRequest) throws -> CerebroHTTPResponse {
+    requests.append(request)
+    guard !responses.isEmpty else { throw URLError(.notConnectedToInternet) }
+    return responses.removeFirst()
+  }
+}
+
+extension Data {
+  fileprivate var base64URLForCheck: String {
+    base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+}
+
 private enum CheckError: Error {
   case missingAction
+  case stateWriteFailed
 }
 
 do {

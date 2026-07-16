@@ -29,7 +29,19 @@ public enum ProcessExecutable {
 
 @objc public protocol ShieldServiceXPC {
   func submitDraft(_ data: Data, reply: @escaping (Bool, String?) -> Void)
+  func enroll(_ bootstrapToken: String, reply: @escaping (Bool, String?) -> Void)
+  func deliveryHealth(reply: @escaping (Bool, Bool) -> Void)
   func ping(reply: @escaping (String) -> Void)
+}
+
+public struct ShieldDeliveryHealth: Codable, Equatable, Sendable {
+  public let configured: Bool
+  public let stateStorageHealthy: Bool
+
+  public init(configured: Bool, stateStorageHealthy: Bool) {
+    self.configured = configured
+    self.stateStorageHealthy = stateStorageHealthy
+  }
 }
 
 private final class ShieldReplyBox: @unchecked Sendable {
@@ -49,7 +61,88 @@ private final class ShieldReplyBox: @unchecked Sendable {
   }
 }
 
+private final class ShieldDeliveryHealthReplyBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: ShieldDeliveryHealth?
+
+  func set(configured: Bool, stateStorageHealthy: Bool) {
+    lock.lock()
+    value = ShieldDeliveryHealth(
+      configured: configured, stateStorageHealthy: stateStorageHealthy)
+    lock.unlock()
+  }
+
+  func get() -> ShieldDeliveryHealth? {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
+  }
+}
+
 public enum ShieldServiceClient {
+  public static func deliveryHealth(timeout: TimeInterval = 0.25) -> ShieldDeliveryHealth? {
+    let connection = NSXPCConnection(
+      machServiceName: ShieldServiceContract.machServiceName,
+      options: [])
+    connection.remoteObjectInterface = NSXPCInterface(with: ShieldServiceXPC.self)
+    let reply = ShieldDeliveryHealthReplyBox()
+    let completed = DispatchSemaphore(value: 0)
+    connection.resume()
+    guard
+      let service = connection.remoteObjectProxyWithErrorHandler({ _ in
+        completed.signal()
+      }) as? ShieldServiceXPC
+    else {
+      connection.invalidate()
+      return nil
+    }
+    service.deliveryHealth { configured, stateStorageHealthy in
+      reply.set(configured: configured, stateStorageHealthy: stateStorageHealthy)
+      completed.signal()
+    }
+    let result = completed.wait(timeout: .now() + timeout)
+    connection.invalidate()
+    guard result == .success else { return nil }
+    return reply.get()
+  }
+
+  public static func enroll(
+    bootstrapToken: String,
+    timeout: TimeInterval = 15
+  ) -> (accepted: Bool, error: String?) {
+    let connection = NSXPCConnection(
+      machServiceName: ShieldServiceContract.machServiceName,
+      options: [])
+    connection.remoteObjectInterface = NSXPCInterface(with: ShieldServiceXPC.self)
+    let completed = DispatchSemaphore(value: 0)
+    let lock = NSLock()
+    var result = (accepted: false, error: Optional<String>.none)
+    connection.resume()
+    guard
+      let service = connection.remoteObjectProxyWithErrorHandler({ error in
+        lock.lock()
+        result = (false, error.localizedDescription)
+        lock.unlock()
+        completed.signal()
+      }) as? ShieldServiceXPC
+    else {
+      connection.invalidate()
+      return (false, "The background collector is unavailable.")
+    }
+    service.enroll(bootstrapToken) { accepted, error in
+      lock.lock()
+      result = (accepted, error)
+      lock.unlock()
+      completed.signal()
+    }
+    let wait = completed.wait(timeout: .now() + timeout)
+    connection.invalidate()
+    guard wait == .success else { return (false, "Enrollment timed out.") }
+    lock.lock()
+    defer { lock.unlock() }
+    return result
+  }
+
   public static func submit(
     _ draft: ReceiptDraft,
     timeout: TimeInterval = 2

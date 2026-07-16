@@ -11,6 +11,15 @@ do {
     exit(0)
   }
 
+  if arguments.first == "delivery-health" {
+    guard arguments.count == 1, let health = ShieldServiceClient.deliveryHealth(timeout: 1) else {
+      throw CLIError.provider("The Cerebro Shield delivery status is not reachable.")
+    }
+    FileHandle.standardOutput.write(try CanonicalJSON.encode(health))
+    FileHandle.standardOutput.write(Data("\n".utf8))
+    exit(0)
+  }
+
   if arguments.first == "import-cloudtrail" {
     guard arguments.count == 2 else {
       throw CLIError.usage("usage: CerebroAgentReceiptHook import-cloudtrail <lookup-events.json>")
@@ -103,7 +112,7 @@ do {
     product = selected
   } else {
     throw CLIError.usage(
-      "usage: CerebroAgentReceiptHook [capture <codex|droid|claude-code|opencode|cursor>|ping|verify|import-cloudtrail|fetch-cloudtrail]"
+      "usage: CerebroAgentReceiptHook [capture <codex|droid|claude-code|opencode|cursor>|ping|delivery-health|verify|import-cloudtrail|fetch-cloudtrail]"
     )
   }
   let input = FileHandle.standardInput.readDataToEndOfFile()

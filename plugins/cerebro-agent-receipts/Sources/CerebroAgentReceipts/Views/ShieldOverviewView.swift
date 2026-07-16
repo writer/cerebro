@@ -3,6 +3,9 @@ import SwiftUI
 
 struct ShieldOverviewView: View {
   @ObservedObject var store: ReceiptViewStore
+  @State private var bootstrapToken = ""
+  @State private var enrollmentResult: String?
+  @State private var enrollmentInProgress = false
 
   var body: some View {
     ScrollView {
@@ -55,6 +58,46 @@ struct ShieldOverviewView: View {
           .foregroundStyle(.secondary)
         }
 
+        if deliveryConfigured || deliveryConfigurationError != nil {
+          DetailCard(title: "Cerebro delivery") {
+            if let deliveryConfigurationError {
+              DetailRow(label: "State", value: "Configuration invalid")
+              Text(deliveryConfigurationError).foregroundStyle(.red)
+            } else if let state = deliveryState {
+              DetailRow(label: "State", value: deliveryStateLabel(state))
+              if store.deliveryHealth?.stateStorageHealthy == false {
+                DetailRow(label: "Status storage", value: "Unavailable")
+              }
+              DetailRow(label: "Receipts pending", value: "\(state.pendingReceipts)")
+              DetailRow(
+                label: "Last accepted sequence",
+                value: state.lastAcknowledgedSequence.map(String.init) ?? "None")
+              DetailRow(label: "Last attempt", value: state.lastAttemptAt ?? "None")
+              if let error = state.errorCode {
+                DetailRow(label: "Delivery error", value: error)
+              }
+            } else {
+              Text("This device has not reported a delivery attempt.")
+                .foregroundStyle(.secondary)
+            }
+            if deliveryConfigurationError == nil {
+              SecureField("One-time bootstrap token", text: $bootstrapToken)
+                .textFieldStyle(.roundedBorder)
+              Button(enrollmentInProgress ? "Enrolling…" : "Enroll device") {
+                enrollDevice()
+              }
+              .disabled(enrollmentInProgress || bootstrapToken.isEmpty)
+              if let enrollmentResult {
+                Text(enrollmentResult).foregroundStyle(.secondary)
+              }
+              Text(
+                "The bootstrap token is sent directly to the background collector and is not saved by this app."
+              )
+              .foregroundStyle(.secondary)
+            }
+          }
+        }
+
         DetailCard(title: "Detected agent integrations") {
           ForEach(store.adapterStatuses) { status in
             AgentProtectionRow(
@@ -95,6 +138,53 @@ struct ShieldOverviewView: View {
     .navigationTitle("Device status")
   }
 
+  private var deliveryConfigured: Bool {
+    guard let configuration = try? ManagedShieldConfiguration.load() else { return false }
+    return configuration.receiptUploadEnabled
+  }
+
+  private var deliveryConfigurationError: String? {
+    do {
+      _ = try ManagedShieldConfiguration.load()
+      return nil
+    } catch {
+      return error.localizedDescription
+    }
+  }
+
+  private var deliveryState: CerebroDeliveryState? {
+    let url = ReceiptStore.shieldAgentDirectory().appendingPathComponent("delivery-state.json")
+    guard let data = try? Data(contentsOf: url) else { return nil }
+    return try? JSONDecoder().decode(CerebroDeliveryState.self, from: data)
+  }
+
+  private func deliveryStateLabel(_ state: CerebroDeliveryState) -> String {
+    switch state.state {
+    case .notEnrolled: return "Not enrolled"
+    case .delivering: return "Delivery in progress"
+    case .idle: return "No receipts pending"
+    case .accepted: return "Last receipt accepted"
+    case .retryableFailure: return "Retry scheduled"
+    case .blocked: return "Delivery blocked"
+    }
+  }
+
+  private func enrollDevice() {
+    let token = bootstrapToken
+    bootstrapToken = ""
+    enrollmentInProgress = true
+    enrollmentResult = nil
+    Task {
+      let result = await Task.detached {
+        ShieldServiceClient.enroll(bootstrapToken: token)
+      }.value
+      enrollmentInProgress = false
+      enrollmentResult = result.accepted
+        ? "Device enrolled. Pending receipts will be delivered by the background collector."
+        : (result.error ?? "Enrollment failed.")
+    }
+  }
+
   @ViewBuilder
   private var adminStatus: some View {
     switch store.adminAccess {
@@ -121,6 +211,7 @@ struct ShieldOverviewView: View {
   }
 
   private var statusTitle: String {
+    if deliveryNeedsAttention { return "Collection needs attention" }
     switch store.shieldSnapshot.level {
     case .active: return "Collector is running"
     case .attention: return "Collection needs attention"
@@ -129,6 +220,9 @@ struct ShieldOverviewView: View {
   }
 
   private var statusDetail: String {
+    if deliveryNeedsAttention {
+      return "Cerebro delivery is not enrolled, blocked, retrying, stale, or misconfigured."
+    }
     switch store.shieldSnapshot.level {
     case .active:
       return
@@ -141,6 +235,7 @@ struct ShieldOverviewView: View {
   }
 
   private var statusImage: String {
+    if deliveryNeedsAttention { return "exclamationmark.shield.fill" }
     switch store.shieldSnapshot.level {
     case .active: return "checkmark.shield.fill"
     case .attention: return "exclamationmark.shield.fill"
@@ -149,6 +244,7 @@ struct ShieldOverviewView: View {
   }
 
   private var statusColor: Color {
+    if deliveryNeedsAttention { return .orange }
     switch store.shieldSnapshot.level {
     case .active: return .green
     case .attention: return .orange
@@ -160,6 +256,24 @@ struct ShieldOverviewView: View {
     store.shieldSnapshot.trustBoundary == .organizationManaged
       ? "Organization managed"
       : "Development trust"
+  }
+
+  private var deliveryNeedsAttention: Bool {
+    if deliveryConfigurationError != nil { return true }
+    guard deliveryConfigured else { return false }
+    guard
+      let deliveryHealth = store.deliveryHealth,
+      deliveryHealth.configured,
+      deliveryHealth.stateStorageHealthy
+    else { return true }
+    guard let state = deliveryState,
+      let attemptedAt = state.lastAttemptAt.flatMap(ReceiptDate.parse),
+      Date().timeIntervalSince(attemptedAt) <= 90
+    else { return true }
+    switch state.state {
+    case .notEnrolled, .retryableFailure, .blocked: return true
+    case .delivering, .idle, .accepted: return false
+    }
   }
 }
 

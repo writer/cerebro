@@ -5,9 +5,15 @@ import Security
 
 enum ShieldAgentStartupError: Error, LocalizedError {
   case untrustedSigningIdentity
+  case deliveryNotConfigured
 
   var errorDescription: String? {
-    "The shield agent requires an identified publisher signature or an explicit ad-hoc development build."
+    switch self {
+    case .untrustedSigningIdentity:
+      return "The shield agent requires an identified publisher signature or an explicit ad-hoc development build."
+    case .deliveryNotConfigured:
+      return "Receipt delivery is not configured by this organization."
+    }
   }
 }
 
@@ -16,6 +22,9 @@ final class ShieldAgentRuntime: @unchecked Sendable {
   private let signer: DeviceKeySigner
   private let spool: ShieldFallbackSpool
   private let installer: AgentAdapterInstaller
+  private let delivery: CerebroDeliveryEngine?
+  private let deliveryQueue = DispatchQueue(
+    label: "com.writer.cerebro.agent-receipts.delivery", qos: .utility)
   private let receiptLock = NSLock()
   private var receiptIDs: Set<String>
   let developmentMode: Bool
@@ -44,11 +53,43 @@ final class ShieldAgentRuntime: @unchecked Sendable {
     spool = ShieldFallbackSpool()
     installer = AgentAdapterInstaller(bundledHelperURL: Self.bundledHelperURL())
     receiptIDs = Set(try store.readReceipts().map(\.id))
+    if
+      let managed = try ManagedShieldConfiguration.load(),
+      managed.receiptUploadEnabled,
+      let baseURL = managed.cerebroBaseURL,
+      let hardwareUUID = managed.hardwareUUID
+    {
+      delivery = CerebroDeliveryEngine(
+        configuration: CerebroDeliveryConfiguration(
+          baseURL: baseURL, hardwareUUID: hardwareUUID),
+        store: store,
+        signer: signer,
+        cursorStore: FileCerebroCursorStore(
+          url: store.directory.appendingPathComponent("delivery-cursor.json")),
+        stateStore: FileCerebroDeliveryStateStore(
+          url: store.directory.appendingPathComponent("delivery-state.json")))
+    } else {
+      delivery = nil
+    }
   }
 
   func submit(_ data: Data) throws {
     let draft = try JSONDecoder().decode(ReceiptDraft.self, from: data)
     try submit(draft)
+  }
+
+  func enroll(bootstrapToken: String) throws {
+    guard let delivery else { throw ShieldAgentStartupError.deliveryNotConfigured }
+    try delivery.enroll(bootstrapToken: bootstrapToken)
+  }
+
+  func deliveryHealth() -> ShieldDeliveryHealth {
+    guard let delivery else {
+      return ShieldDeliveryHealth(configured: false, stateStorageHealthy: true)
+    }
+    return ShieldDeliveryHealth(
+      configured: true,
+      stateStorageHealthy: delivery.deliveryStateStorageHealthy)
   }
 
   func maintain() {
@@ -64,6 +105,11 @@ final class ShieldAgentRuntime: @unchecked Sendable {
     if developmentMode {
       _ = try? spool.drain { draft in
         try submit(draft)
+      }
+    }
+    if let delivery {
+      deliveryQueue.async {
+        delivery.deliverOnce()
       }
     }
   }
@@ -89,6 +135,16 @@ final class ShieldAgentRuntime: @unchecked Sendable {
       cursor
       .appendingPathComponent("Contents/Helpers", isDirectory: true)
       .appendingPathComponent("CerebroAgentReceiptHook")
+  }
+
+  static func bundledApplicationURL() -> URL {
+    var cursor = ProcessExecutable.url() ?? URL(fileURLWithPath: "/")
+    while cursor.pathExtension != "app" && cursor.path != "/" {
+      cursor.deleteLastPathComponent()
+    }
+    return cursor
+      .appendingPathComponent("Contents/MacOS", isDirectory: true)
+      .appendingPathComponent("CerebroAgentReceipts")
   }
 }
 
@@ -132,11 +188,11 @@ final class ShieldAgentListener: NSObject, NSXPCListenerDelegate, ShieldServiceX
   @unchecked Sendable
 {
   private let runtime: ShieldAgentRuntime
-  private let clientRequirement: PeerCodeRequirement
+  private let clientRequirements: [PeerCodeRequirement]
 
-  init(runtime: ShieldAgentRuntime, clientRequirement: PeerCodeRequirement) {
+  init(runtime: ShieldAgentRuntime, clientRequirements: [PeerCodeRequirement]) {
     self.runtime = runtime
-    self.clientRequirement = clientRequirement
+    self.clientRequirements = clientRequirements
   }
 
   func listener(
@@ -145,7 +201,7 @@ final class ShieldAgentListener: NSObject, NSXPCListenerDelegate, ShieldServiceX
   ) -> Bool {
     guard
       newConnection.effectiveUserIdentifier == geteuid(),
-      clientRequirement.accepts(newConnection)
+      clientRequirements.contains(where: { $0.accepts(newConnection) })
     else { return false }
     newConnection.exportedInterface = NSXPCInterface(with: ShieldServiceXPC.self)
     newConnection.exportedObject = self
@@ -162,6 +218,20 @@ final class ShieldAgentListener: NSObject, NSXPCListenerDelegate, ShieldServiceX
     }
   }
 
+  func enroll(_ bootstrapToken: String, reply: @escaping (Bool, String?) -> Void) {
+    do {
+      try runtime.enroll(bootstrapToken: bootstrapToken)
+      reply(true, nil)
+    } catch {
+      reply(false, error.localizedDescription)
+    }
+  }
+
+  func deliveryHealth(reply: @escaping (Bool, Bool) -> Void) {
+    let health = runtime.deliveryHealth()
+    reply(health.configured, health.stateStorageHealthy)
+  }
+
   func ping(reply: @escaping (String) -> Void) {
     reply("cerebro-shield-agent.v1")
   }
@@ -171,7 +241,10 @@ do {
   let runtime = try ShieldAgentRuntime()
   let service = try ShieldAgentListener(
     runtime: runtime,
-    clientRequirement: PeerCodeRequirement(executableURL: ShieldAgentRuntime.bundledHelperURL())
+    clientRequirements: [
+      PeerCodeRequirement(executableURL: ShieldAgentRuntime.bundledHelperURL()),
+      PeerCodeRequirement(executableURL: ShieldAgentRuntime.bundledApplicationURL()),
+    ]
   )
   let listener = NSXPCListener(machServiceName: ShieldServiceContract.machServiceName)
   listener.delegate = service

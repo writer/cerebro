@@ -24,6 +24,7 @@ final class ReceiptViewStore: ObservableObject {
   )
   @Published private(set) var adminAccess: ShieldAdminAccess = .unavailable
   @Published private(set) var backgroundState: ShieldBackgroundState = .notRegistered
+  @Published private(set) var deliveryHealth: ShieldDeliveryHealth?
   @Published var selection: String?
   @Published var sidebarSelection: SidebarSelection = .overview {
     didSet { selectFirstVisibleItem() }
@@ -255,6 +256,7 @@ final class ReceiptViewStore: ObservableObject {
         reconciliations = snapshot.reconciliations
         shieldSnapshot = snapshot.shieldSnapshot
         adminAccess = snapshot.adminAccess
+        deliveryHealth = snapshot.deliveryHealth
         self.backgroundState = ShieldBackgroundManager.state()
         if refreshAdapters { lastAdapterRefresh = Date() }
         isStale = false
@@ -381,6 +383,7 @@ final class ReceiptViewStore: ObservableObject {
       collectorReachable: backgroundState == .enabled && ShieldServiceClient.isReachable(),
       trustBoundary: trustBoundary
     )
+    let deliveryHealth = ShieldServiceClient.deliveryHealth()
     let adminAccess: ShieldAdminAccess
     if managedConfiguration != nil && trustBoundary != .organizationManaged {
       adminAccess = .denied("This build does not have an identified publisher signature.")
@@ -410,7 +413,8 @@ final class ReceiptViewStore: ObservableObject {
       binaryIdentities: binaryIdentities,
       reconciliations: reconciliations,
       shieldSnapshot: shieldSnapshot,
-      adminAccess: adminAccess
+      adminAccess: adminAccess,
+      deliveryHealth: deliveryHealth
     )
   }
 
@@ -437,6 +441,7 @@ private struct ReceiptSnapshot: Sendable {
   let reconciliations: [AgentAdapterReconciliation]
   let shieldSnapshot: ShieldSnapshot
   let adminAccess: ShieldAdminAccess
+  let deliveryHealth: ShieldDeliveryHealth?
 }
 
 enum SidebarSelection: Hashable {

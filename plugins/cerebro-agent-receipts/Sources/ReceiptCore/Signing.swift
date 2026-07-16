@@ -109,6 +109,24 @@ public struct DeviceKeySigner: ReceiptSigning {
     try material.signature(for: data).derRepresentation
   }
 
+  /// Public key representation accepted by Cerebro's RFC 9449 DPoP verifier.
+  /// Receipt signatures remain DER encoded; DPoP JWS signatures use the fixed
+  /// width IEEE P1363 representation required by ES256.
+  public var dpopJWK: [String: String] {
+    let raw = material.publicKey.x963Representation
+    precondition(raw.count == 65 && raw.first == 0x04)
+    return [
+      "kty": "EC",
+      "crv": "P-256",
+      "x": Data(raw[1..<33]).base64URLEncodedString(),
+      "y": Data(raw[33..<65]).base64URLEncodedString(),
+    ]
+  }
+
+  public func signDPoP(_ signingInput: Data) throws -> Data {
+    try material.signature(for: signingInput).rawRepresentation
+  }
+
   public static func verify(_ receipt: ExecutionReceipt) -> Bool {
     guard
       receipt.signature.algorithm == "P256-SHA256",
@@ -148,5 +166,14 @@ public struct DeviceKeySigner: ReceiptSigning {
     if status == errSecSuccess { return true }
     if status == errSecDuplicateItem { return false }
     throw SigningError.keychain(status)
+  }
+}
+
+extension Data {
+  fileprivate func base64URLEncodedString() -> String {
+    base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
   }
 }

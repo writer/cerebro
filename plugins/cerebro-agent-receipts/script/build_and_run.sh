@@ -129,6 +129,18 @@ open_app() {
   /usr/bin/open -n "$FINAL_APP_BUNDLE" --args --show-status
 }
 
+wait_for_agent() {
+  for _ in {1..100}; do
+    if launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" 2>/dev/null \
+      | grep -q 'state = running' && "$FINAL_HOOK_HELPER" ping >/dev/null 2>&1
+    then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
 case "$MODE" in
   run)
     open_app
@@ -147,23 +159,25 @@ case "$MODE" in
   --verify|verify)
     /usr/bin/open -n "$FINAL_APP_BUNDLE"
     /usr/bin/codesign --verify --deep --strict "$FINAL_APP_BUNDLE"
-    for _ in {1..100}; do
-      if launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" 2>/dev/null \
-        | grep -q 'state = running' && "$FINAL_HOOK_HELPER" ping >/dev/null 2>&1
-      then
-        break
-      fi
-      sleep 0.1
-    done
+    if ! wait_for_agent; then
+      # ServiceManagement can retain the replaced bundle's lightweight code
+      # requirement briefly even after the old job disappears. Re-register the
+      # exact final bundle once so launchd refreshes that requirement.
+      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+      /usr/bin/open -n "$FINAL_APP_BUNDLE" --args --reregister-agent --show-status
+      wait_for_agent
+    fi
     pgrep -x "$APP_NAME" >/dev/null
     launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | grep -q 'state = running'
     "$FINAL_HOOK_HELPER" ping
+    "$FINAL_HOOK_HELPER" delivery-health
     STABLE_PID="$(launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | awk '/pid =/{print $3; exit}')"
     sleep 12
     launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | grep -q 'state = running'
     CURRENT_PID="$(launchctl print "gui/$(id -u)/$SHIELD_AGENT_LABEL" | awk '/pid =/{print $3; exit}')"
     [[ -n "$STABLE_PID" && "$CURRENT_PID" == "$STABLE_PID" ]]
     "$FINAL_HOOK_HELPER" ping
+    "$FINAL_HOOK_HELPER" delivery-health >/dev/null
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2

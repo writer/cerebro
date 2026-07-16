@@ -221,30 +221,40 @@ public struct ManagedShieldConfiguration: Sendable {
   public let expectedSigningIdentifier: String
   public let capabilityURL: URL
   public let autoRepair: Bool
+  public let cerebroBaseURL: URL?
+  public let hardwareUUID: String?
+  public let receiptUploadEnabled: Bool
 
   public init(
     organizationPublicKeyBase64: String,
     expectedTeamIdentifier: String,
     expectedSigningIdentifier: String,
     capabilityURL: URL,
-    autoRepair: Bool
+    autoRepair: Bool,
+    cerebroBaseURL: URL? = nil,
+    hardwareUUID: String? = nil,
+    receiptUploadEnabled: Bool = false
   ) {
     self.organizationPublicKeyBase64 = organizationPublicKeyBase64
     self.expectedTeamIdentifier = expectedTeamIdentifier
     self.expectedSigningIdentifier = expectedSigningIdentifier
     self.capabilityURL = capabilityURL
     self.autoRepair = autoRepair
+    self.cerebroBaseURL = cerebroBaseURL
+    self.hardwareUUID = hardwareUUID
+    self.receiptUploadEnabled = receiptUploadEnabled
   }
 
   public static func load(
     from url: URL = URL(
-      fileURLWithPath: "/Library/Managed Preferences/com.writer.cerebro.shield.plist")
+      fileURLWithPath: "/Library/Managed Preferences/com.writer.cerebro.shield.plist"),
+    requiredOwnerAccountID: UInt32 = 0
   ) throws -> ManagedShieldConfiguration? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value
     let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0o777
-    guard owner == 0, permissions & 0o022 == 0 else {
+    guard owner == requiredOwnerAccountID, permissions & 0o022 == 0 else {
       throw ManagedShieldConfigurationError.insecureManagedConfiguration(url)
     }
     let propertyList = try PropertyListSerialization.propertyList(
@@ -262,13 +272,65 @@ public struct ManagedShieldConfiguration: Sendable {
     else {
       throw ManagedShieldConfigurationError.invalidManagedConfiguration(url)
     }
+    let uploadEnabled: Bool
+    if let configuredUpload = dictionary["ReceiptUploadEnabled"] {
+      guard let configuredUpload = configuredUpload as? Bool else {
+        throw ManagedShieldConfigurationError.invalidManagedConfiguration(url)
+      }
+      uploadEnabled = configuredUpload
+    } else {
+      uploadEnabled = false
+    }
+    let autoRepair: Bool
+    if let configuredAutoRepair = dictionary["AutoRepair"] {
+      guard let configuredAutoRepair = configuredAutoRepair as? Bool else {
+        throw ManagedShieldConfigurationError.invalidManagedConfiguration(url)
+      }
+      autoRepair = configuredAutoRepair
+    } else {
+      autoRepair = true
+    }
+    let baseURL: URL?
+    let hardwareUUID: String?
+    if uploadEnabled {
+      guard
+        let rawBaseURL = dictionary["CerebroBaseURL"] as? String,
+        let parsedBaseURL = URL(string: rawBaseURL),
+        Self.validDeliveryBaseURL(parsedBaseURL),
+        let configuredHardwareUUID = dictionary["HardwareUUID"] as? String,
+        !configuredHardwareUUID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else {
+        throw ManagedShieldConfigurationError.invalidManagedConfiguration(url)
+      }
+      baseURL = parsedBaseURL
+      hardwareUUID = configuredHardwareUUID.trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      baseURL = nil
+      hardwareUUID = nil
+    }
     return ManagedShieldConfiguration(
       organizationPublicKeyBase64: key,
       expectedTeamIdentifier: teamIdentifier,
       expectedSigningIdentifier: signingIdentifier,
       capabilityURL: URL(fileURLWithPath: capabilityPath),
-      autoRepair: dictionary["AutoRepair"] as? Bool ?? true
+      autoRepair: autoRepair,
+      cerebroBaseURL: baseURL,
+      hardwareUUID: hardwareUUID,
+      receiptUploadEnabled: uploadEnabled
     )
+  }
+
+  public static func validDeliveryBaseURL(_ url: URL) -> Bool {
+    guard
+      url.scheme?.lowercased() == "https",
+      url.host != nil,
+      url.user == nil,
+      url.password == nil,
+      url.query == nil,
+      url.fragment == nil,
+      url.path.isEmpty || url.path == "/"
+    else { return false }
+    return true
   }
 
   public func accepts(applicationIdentity: AgentBinaryIdentity) -> Bool {

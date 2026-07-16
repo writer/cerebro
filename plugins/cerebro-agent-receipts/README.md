@@ -25,6 +25,20 @@ Organization investigation access is represented by a signed capability bound to
 
 Each receipt records the agent product, adapter, native event name, session, tool call, input digest, and lifecycle state through one normalized contract. The raw event remains an agent-supplied claim; disabled hooks and commands run outside a connected agent are outside this evidence boundary. Cursor user hooks cover local sessions. Cloud sessions require a project-level hook configuration.
 
+## Cerebro delivery
+
+Managed deployments can enable background receipt delivery with these root-owned preference values:
+
+- `ReceiptUploadEnabled`: `true`
+- `CerebroBaseURL`: the HTTPS Cerebro origin, with no credentials, query, fragment, or path
+- `HardwareUUID`: the hardware identifier bound into the one-time enrollment credential
+
+The status app accepts the one-time bootstrap token in a secure field and sends it directly to the collector over authenticated XPC. The app clears the field before the request and does not write the token to preferences or delivery state. The collector enrolls its existing receipt-signing key as the device key, stores only the rotating refresh credential in the device-only Keychain, and keeps access tokens in memory.
+
+Before upload, the collector takes a locked ledger snapshot and verifies its signatures, sequence, and chain. It sends one bounded receipt claim at a time with a DPoP-bound access token and a deterministic idempotency key. The non-secret cursor advances only after Cerebro returns `202 accepted` for the enrolled device. Network and server failures leave the cursor unchanged; receipt, credential-binding, and idempotency conflicts block delivery for investigation.
+
+The resulting graph record proves that an authenticated enrolled device submitted the bounded claim. Cerebro does not yet verify the complete endpoint receipt signature or a remote chain checkpoint, so this is not proof that the named agent or person executed the action.
+
 ## Evidence states
 
 - **Local evidence only:** chained receipts exist and verify against the public-key pin stored with this Mac's receipt ledger.
@@ -85,7 +99,7 @@ Agent hooks are evidence collection, not complete interception. They do not obse
 
 The deployable role template in `assets/aws-canary-role.yaml` is limited to `/cerebro/canary/*`. Its trust principal must be a dedicated broker workload identity. Trusting an operator's normal SSO role would not prevent direct credential bypass.
 
-The current collector is a separately registered per-user LaunchAgent and can still be disabled by that user. In a development build it stores its signing key in a user-owned 0600 file because ad-hoc rebuilds do not have a stable Keychain code requirement; a signed managed build uses Keychain custody. The next trust boundary is remote enrollment, device heartbeats, and receipt-chain checkpoints. A later privileged broker and provider-side deny policy must own protected cloud mutations. Endpoint Security is reserved for a later system extension if protected local process interception is required. Until those boundaries are deployed, this plugin provides persistent local execution evidence, adapter drift recovery, executable identity inventory, and provider-first gap detection—not an enforcement claim.
+The current collector is a separately registered per-user LaunchAgent and can still be disabled by that user. In a development build it stores its signing key in a user-owned 0600 file because ad-hoc rebuilds do not have a stable Keychain code requirement; a signed managed build uses Keychain custody. Device enrollment and authenticated delivery are implemented; signed remote heartbeats and server-verified chain checkpoints remain the next trust boundary. A later privileged broker and provider-side deny policy must own protected cloud mutations. Endpoint Security is reserved for a later system extension if protected local process interception is required. Until those boundaries are deployed, this plugin provides persistent local execution evidence, authenticated device-claim delivery, adapter drift recovery, executable identity inventory, and provider-first gap detection—not an enforcement or verified-execution claim.
 
 ## Canary acceptance test
 
