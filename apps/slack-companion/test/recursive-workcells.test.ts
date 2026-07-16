@@ -25,9 +25,11 @@ import type {
 } from "../src/distributed/contracts.js";
 import {
   createRecursiveWorkcellChild,
+  createRecursiveWorkcellReconciliation,
   RecursiveWorkcellCoordinator,
   recursiveWorkcellIdentity,
 } from "../src/distributed/workcells/coordinator.js";
+import { MAX_RECURSIVE_WORKCELL_DEPTH } from "../src/distributed/workcells/contracts.js";
 import { ReferenceMemoryRecursiveWorkcellStore } from "../src/distributed/workcells/reference-store.js";
 
 const T0 = "2026-07-16T12:00:00.000Z";
@@ -72,6 +74,304 @@ describe("topology-neutral recursive workcells", () => {
         ),
       /leaves no room for a child/,
     );
+  });
+
+  test("treats the exact lease expiration instant as expired", async () => {
+    const parent = parentPacket();
+    const coordinator = new RecursiveWorkcellCoordinator(
+      new ReferenceMemoryRecursiveWorkcellStore(),
+    );
+    const lease = {
+      ...leaseFixture(parent.child_run.run_id, 1, 1, T0),
+      lease_expires_at: T0,
+    };
+
+    await assert.rejects(
+      coordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [childPacket(parent, 1)],
+          parent_ancestor_packet_ids: [],
+          parent_packet: parent,
+        },
+        lease,
+      ),
+      /lease is expired/,
+    );
+  });
+
+  test("derives lineage from durable bindings and rejects truncated depth", async () => {
+    const store = new ReferenceMemoryRecursiveWorkcellStore();
+    const coordinator = new RecursiveWorkcellCoordinator(store);
+    let parent = parentPacket();
+    let ancestors: string[] = [];
+
+    for (let depth = 1; depth <= MAX_RECURSIVE_WORKCELL_DEPTH; depth += 1) {
+      const child = nestedChildPacket(parent, depth);
+      const admitted = await coordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [child],
+          parent_ancestor_packet_ids: ancestors,
+          parent_packet: parent,
+        },
+        leaseFixture(parent.child_run.run_id, 1, 1, T0),
+      );
+      assert.equal(admitted.reconciliation.children[0]?.depth, depth);
+      ancestors = [...ancestors, parent.packet_id];
+      parent = child;
+    }
+
+    const overflow = nestedChildPacket(
+      parent,
+      MAX_RECURSIVE_WORKCELL_DEPTH + 1,
+    );
+    await assert.rejects(
+      coordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [overflow],
+          parent_ancestor_packet_ids: [],
+          parent_packet: parent,
+        },
+        leaseFixture(parent.child_run.run_id, 1, 1, T0),
+      ),
+      /ancestry does not match the durable parent binding/,
+    );
+    const forged = createRecursiveWorkcellReconciliation({
+      admitted_at: T0,
+      child_packets: [overflow],
+      parent_ancestor_packet_ids: [],
+      parent_packet: parent,
+    });
+    await assert.rejects(
+      async () =>
+        store.admitChildren({
+          children: forged.children,
+          lease: leaseFixture(parent.child_run.run_id, 1, 1, T0),
+          reconciliation: forged,
+        }),
+      /ancestry does not match the durable parent binding/,
+    );
+    await assert.rejects(
+      coordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [overflow],
+          parent_ancestor_packet_ids: ancestors,
+          parent_packet: parent,
+        },
+        leaseFixture(parent.child_run.run_id, 1, 1, T0),
+      ),
+      /leaves no room for a child/,
+    );
+
+    const changedParent = structuredClone(parent);
+    changedParent.child_run.run_id = "changed-durable-parent-run";
+    await assert.rejects(
+      coordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [
+            nestedChildPacket(
+              changedParent,
+              MAX_RECURSIVE_WORKCELL_DEPTH + 2,
+            ),
+          ],
+          parent_ancestor_packet_ids: ancestors,
+          parent_packet: changedParent,
+        },
+        leaseFixture(changedParent.child_run.run_id, 1, 1, T0),
+      ),
+      /durable parent identity changed/,
+    );
+
+    const unboundParent = nestedChildPacket(parentPacket(), 100);
+    const unboundCoordinator = new RecursiveWorkcellCoordinator(
+      new ReferenceMemoryRecursiveWorkcellStore(),
+    );
+    await assert.rejects(
+      unboundCoordinator.admit(
+        {
+          admitted_at: T0,
+          child_packets: [nestedChildPacket(unboundParent, 101)],
+          parent_ancestor_packet_ids: [],
+          parent_packet: unboundParent,
+        },
+        leaseFixture(unboundParent.child_run.run_id, 1, 1, T0),
+      ),
+      /durable parent binding does not exist/,
+    );
+  });
+
+  test("renews active work atomically under the same authority", async () => {
+    const { children, coordinator, lease, parent } = await admittedFixture();
+    const renewed = {
+      ...lease,
+      heartbeat_at: T1,
+      lease_expires_at: "2026-07-16T14:00:00.000Z",
+    };
+
+    await assert.rejects(
+      coordinator.claimActiveLease(parent.packet_id, renewed, 2),
+      /revision is stale/,
+    );
+
+    const claimed = await coordinator.claimActiveLease(
+      parent.packet_id,
+      renewed,
+      1,
+    );
+    assert.equal(claimed.created, true);
+    assert.equal(claimed.reconciliation.revision, 2);
+
+    const retry = await coordinator.claimActiveLease(
+      parent.packet_id,
+      renewed,
+      1,
+    );
+    assert.equal(retry.created, false);
+    assert.equal(retry.reconciliation.revision, 2);
+
+    const progressed = await coordinator.recordProgress(
+      parent.packet_id,
+      children[0]!.packet_id,
+      {
+        counterevidence: [],
+        idempotency_key: "progress-after-renewal",
+        phase: "running",
+        recorded_at: T2,
+        runtime_observations: [],
+        sequence: 1,
+      },
+      renewed,
+      2,
+    );
+    assert.equal(progressed.reconciliation.revision, 3);
+  });
+
+  test("recovers active work only after expiration under a newer fence", async () => {
+    const parent = parentPacket();
+    const child = childPacket(parent, 1);
+    const coordinator = new RecursiveWorkcellCoordinator(
+      new ReferenceMemoryRecursiveWorkcellStore(),
+    );
+    const original = {
+      ...leaseFixture(parent.child_run.run_id, 1, 1, T0),
+      lease_expires_at: T1,
+    };
+    await coordinator.admit(
+      {
+        admitted_at: T0,
+        child_packets: [child],
+        parent_ancestor_packet_ids: [],
+        parent_packet: parent,
+      },
+      original,
+    );
+
+    await assert.rejects(
+      coordinator.claimActiveLease(
+        parent.packet_id,
+        {
+          ...leaseFixture(parent.child_run.run_id, 2, 2, T0),
+          lease_expires_at: T3,
+        },
+        1,
+      ),
+      /requires an expired lease and a newer generation and fence/,
+    );
+    await assert.rejects(
+      coordinator.claimActiveLease(
+        parent.packet_id,
+        {
+          ...original,
+          heartbeat_at: T1,
+          lease_expires_at: T3,
+        },
+        1,
+      ),
+      /lease renewal must advance before expiration/,
+    );
+    await assert.rejects(
+      coordinator.claimActiveLease(
+        parent.packet_id,
+        {
+          ...leaseFixture(parent.child_run.run_id, 2, 1, T1),
+          lease_expires_at: T3,
+        },
+        1,
+      ),
+      /requires an expired lease and a newer generation and fence/,
+    );
+    await assert.rejects(
+      coordinator.claimActiveLease(
+        parent.packet_id,
+        {
+          ...original,
+          heartbeat_at: "2026-07-16T12:00:30.000Z",
+          lease_expires_at: T3,
+          owner_id: "changed-owner",
+        },
+        1,
+      ),
+      /requires an expired lease and a newer generation and fence/,
+    );
+
+    const replacement = {
+      ...leaseFixture(parent.child_run.run_id, 2, 2, T1),
+      lease_expires_at: T3,
+    };
+    const recovered = await coordinator.claimActiveLease(
+      parent.packet_id,
+      replacement,
+      1,
+    );
+    assert.equal(recovered.created, true);
+    assert.equal(recovered.reconciliation.coordination_state, "active");
+    assert.equal(recovered.reconciliation.revision, 2);
+
+    const recoveryRetry = await coordinator.claimActiveLease(
+      parent.packet_id,
+      replacement,
+      1,
+    );
+    assert.equal(recoveryRetry.created, false);
+    assert.equal(recoveryRetry.reconciliation.revision, 2);
+
+    await assert.rejects(
+      coordinator.recordProgress(
+        parent.packet_id,
+        child.packet_id,
+        {
+          counterevidence: [],
+          idempotency_key: "progress-under-stale-owner",
+          phase: "running",
+          recorded_at: T0,
+          runtime_observations: [],
+          sequence: 1,
+        },
+        original,
+        2,
+      ),
+      /generation or fence is stale/,
+    );
+
+    const progressed = await coordinator.recordProgress(
+      parent.packet_id,
+      child.packet_id,
+      {
+        counterevidence: [],
+        idempotency_key: "progress-after-recovery",
+        phase: "running",
+        recorded_at: T2,
+        runtime_observations: [],
+        sequence: 1,
+      },
+      replacement,
+      2,
+    );
+    assert.equal(progressed.reconciliation.revision, 3);
   });
 
   test("admits the whole child set and keeps progress idempotent under one fence", async () => {
@@ -157,6 +457,15 @@ describe("topology-neutral recursive workcells", () => {
     const checkpointed = await coordinator.checkpoint(checkpoint, lease, 2);
     assert.equal(checkpointed.reconciliation.coordination_state, "checkpointed");
     assert.equal(checkpointed.reconciliation.revision, 3);
+
+    await assert.rejects(
+      coordinator.claimActiveLease(
+        parent.packet_id,
+        leaseFixture(parent.child_run.run_id, 2, 2, T3),
+        3,
+      ),
+      /checkpointed recursive workcell ownership must use resume/,
+    );
 
     await assert.rejects(
       coordinator.recordProgress(
@@ -331,6 +640,21 @@ function childPacket(
     parent_subject_ref: parent.packet_id,
   });
   return packetFixture(input, `child-run-${sequence}`);
+}
+
+function nestedChildPacket(
+  parent: DistributedWorkPacketV1,
+  depth: number,
+): DistributedWorkPacketV1 {
+  const input = identityInput({
+    causation_id: parent.child_run.run_id,
+    idempotency_key: `nested-child-packet-${depth}`,
+    objective_digest: digest(`nested-child-objective-${depth}`),
+    objective_ref: `work-objective://opaque/nested-child-${depth}`,
+    parent_run_id: parent.child_run.run_id,
+    parent_subject_ref: parent.packet_id,
+  });
+  return packetFixture(input, `nested-child-run-${depth}`);
 }
 
 function identityInput(

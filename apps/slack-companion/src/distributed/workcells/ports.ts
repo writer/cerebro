@@ -21,6 +21,12 @@ export interface RecursiveWorkcellProgressCommit {
   progress: RecursiveWorkcellProgressV1;
 }
 
+export interface RecursiveWorkcellActiveLeaseClaimCommit {
+  expected_revision: number;
+  lease: WorkLeaseV1;
+  parent_packet_id: string;
+}
+
 export interface RecursiveWorkcellCheckpointCommit {
   checkpoint: CheckpointV1;
   expected_revision: number;
@@ -58,6 +64,20 @@ export interface DurableRecursiveWorkcellPort {
   readReconciliation(
     parentPacketId: string,
   ): Promise<RecursiveWorkcellReconciliationV1 | undefined>;
+
+  /** Returns the durable binding when this packet was admitted as a child. */
+  readChildBinding(
+    childPacketId: string,
+  ): Promise<RecursiveWorkcellChildV1 | undefined>;
+
+  /**
+   * Atomically renews the active authority or recovers expired active work
+   * under a strictly newer generation and fence. Checkpointed work must use
+   * resume instead.
+   */
+  claimActiveLease(
+    commit: RecursiveWorkcellActiveLeaseClaimCommit,
+  ): Promise<RecursiveWorkcellCommitResult>;
 
   /** Appends one idempotent progress fact under the exact active fence. */
   appendProgress(

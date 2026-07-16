@@ -58,16 +58,58 @@ export class RecursiveWorkcellInvariantError extends Error {
 export class RecursiveWorkcellCoordinator {
   constructor(private readonly store: DurableRecursiveWorkcellPort) {}
 
-  admit(
+  async admit(
     draft: RecursiveWorkcellAdmissionDraft,
     lease: WorkLeaseV1,
   ): Promise<RecursiveWorkcellCommitResult> {
-    const reconciliation = createRecursiveWorkcellReconciliation(draft);
+    const parentBinding = await this.store.readChildBinding(
+      draft.parent_packet.packet_id,
+    );
+    if (
+      parentBinding === undefined &&
+      PACKET_ID.test(draft.parent_packet.parent_subject_ref)
+    ) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell durable parent binding does not exist",
+      );
+    }
+    if (
+      parentBinding !== undefined &&
+      stableStringify(parentBinding.child_packet) !==
+        stableStringify(draft.parent_packet)
+    ) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell durable parent identity changed",
+      );
+    }
+    const durableAncestors = parentBinding?.ancestor_packet_ids ?? [];
+    if (!sameStringArray(draft.parent_ancestor_packet_ids, durableAncestors)) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell ancestry does not match the durable parent binding",
+      );
+    }
+    const reconciliation = createRecursiveWorkcellReconciliation({
+      ...draft,
+      parent_ancestor_packet_ids: durableAncestors,
+    });
     validateLeaseForParent(reconciliation.parent_packet, lease, draft.admitted_at);
     return this.store.admitChildren({
       children: reconciliation.children,
       lease,
       reconciliation,
+    });
+  }
+
+  async claimActiveLease(
+    parentPacketId: string,
+    lease: WorkLeaseV1,
+    expectedRevision: number,
+  ): Promise<RecursiveWorkcellCommitResult> {
+    requirePattern(parentPacketId, PACKET_ID, "parent_packet_id");
+    return this.store.claimActiveLease({
+      expected_revision: expectedRevision,
+      lease,
+      parent_packet_id: parentPacketId,
     });
   }
 
@@ -578,7 +620,7 @@ export function validateLeaseForParent(
       "recursive workcell lease does not own the parent run",
     );
   }
-  if (Date.parse(observedAt) > Date.parse(lease.lease_expires_at)) {
+  if (Date.parse(observedAt) >= Date.parse(lease.lease_expires_at)) {
     throw new RecursiveWorkcellInvariantError(
       "recursive workcell lease is expired",
     );
@@ -903,4 +945,11 @@ function stableStringify(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }

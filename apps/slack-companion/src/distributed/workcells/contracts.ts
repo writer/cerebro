@@ -126,6 +126,7 @@ export interface RecursiveWorkcellReconciliationV1 {
 export interface RecursiveWorkcellAdmissionDraft {
   admitted_at: string;
   child_packets: DistributedWorkPacketV1[];
+  /** Claimed lineage; admission verifies it against the durable parent binding. */
   parent_ancestor_packet_ids: string[];
   parent_packet: DistributedWorkPacketV1;
 }

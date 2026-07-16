@@ -21,6 +21,7 @@ import {
 import type {
   DurableRecursiveWorkcellPort,
   RecursiveWorkcellAdmissionCommit,
+  RecursiveWorkcellActiveLeaseClaimCommit,
   RecursiveWorkcellCheckpointCommit,
   RecursiveWorkcellCommitResult,
   RecursiveWorkcellProgressCommit,
@@ -33,6 +34,7 @@ import {
 } from "../validation.js";
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
+const PACKET_ID = /^distributed-work-packet:\/\/sha256\/[a-f0-9]{64}$/;
 const OPAQUE_REFERENCE = /^[a-z][a-z0-9+.-]*:\/\/\S+$/;
 const MAX_ID_LENGTH = 256;
 const MAX_REF_LENGTH = 1_024;
@@ -42,6 +44,10 @@ export class ReferenceMemoryRecursiveWorkcellStore
   implements DurableRecursiveWorkcellPort
 {
   private readonly activeLeaseByParent = new Map<string, WorkLeaseV1>();
+  private readonly childByPacket = new Map<
+    string,
+    RecursiveWorkcellReconciliationV1["children"][number]
+  >();
   private readonly parentByRun = new Map<string, string>();
   private readonly parentByWorkcell = new Map<string, string>();
   private readonly records = new Map<
@@ -55,6 +61,7 @@ export class ReferenceMemoryRecursiveWorkcellStore
     const incoming = commit.reconciliation;
     validateAdmission(commit);
     const parentPacketId = incoming.parent_packet.packet_id;
+    this.validateDurableParentLineage(incoming);
     const current = this.records.get(parentPacketId);
     if (current !== undefined) {
       if (
@@ -68,12 +75,25 @@ export class ReferenceMemoryRecursiveWorkcellStore
       return Promise.resolve(result(false, current));
     }
 
+    for (const child of incoming.children) {
+      const priorBinding = this.childByPacket.get(child.child_packet.packet_id);
+      if (priorBinding !== undefined && !sameValue(priorBinding, child)) {
+        throw new RecursiveWorkcellInvariantError(
+          "recursive workcell child already has a different durable binding",
+        );
+      }
+    }
+
     const stored = structuredClone(incoming);
     this.records.set(parentPacketId, stored);
     this.activeLeaseByParent.set(parentPacketId, structuredClone(commit.lease));
     this.parentByRun.set(incoming.parent_packet.child_run.run_id, parentPacketId);
     for (const child of incoming.children) {
       this.parentByWorkcell.set(child.workcell_id, parentPacketId);
+      this.childByPacket.set(
+        child.child_packet.packet_id,
+        structuredClone(child),
+      );
     }
     return Promise.resolve(result(true, stored));
   }
@@ -87,6 +107,70 @@ export class ReferenceMemoryRecursiveWorkcellStore
         ? undefined
         : structuredClone(reconciliation),
     );
+  }
+
+  readChildBinding(
+    childPacketId: string,
+  ): Promise<RecursiveWorkcellReconciliationV1["children"][number] | undefined> {
+    const child = this.childByPacket.get(childPacketId);
+    return Promise.resolve(
+      child === undefined ? undefined : structuredClone(child),
+    );
+  }
+
+  claimActiveLease(
+    commit: RecursiveWorkcellActiveLeaseClaimCommit,
+  ): Promise<RecursiveWorkcellCommitResult> {
+    const current = this.requireRecord(commit.parent_packet_id);
+    if (current.coordination_state !== "active") {
+      throw new RecursiveWorkcellInvariantError(
+        "checkpointed recursive workcell ownership must use resume",
+      );
+    }
+    validateLeaseForParent(
+      current.parent_packet,
+      commit.lease,
+      commit.lease.heartbeat_at,
+    );
+
+    const active = this.requireActiveLease(commit.parent_packet_id);
+    if (sameLease(active, commit.lease)) {
+      return Promise.resolve(result(false, current));
+    }
+    requireRevision(current, commit.expected_revision);
+
+    if (sameLeaseAuthority(active, commit.lease)) {
+      if (
+        Date.parse(active.lease_expires_at) <=
+          Date.parse(commit.lease.heartbeat_at) ||
+        Date.parse(commit.lease.heartbeat_at) <= Date.parse(active.heartbeat_at) ||
+        Date.parse(commit.lease.lease_expires_at) <=
+          Date.parse(active.lease_expires_at)
+      ) {
+        throw new RecursiveWorkcellInvariantError(
+          "recursive workcell lease renewal must advance before expiration",
+        );
+      }
+    } else if (
+      Date.parse(active.lease_expires_at) >
+        Date.parse(commit.lease.heartbeat_at) ||
+      commit.lease.generation <= active.generation ||
+      commit.lease.fencing_token <= active.fencing_token ||
+      commit.lease.lease_token === active.lease_token
+    ) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell recovery requires an expired lease and a newer generation and fence",
+      );
+    }
+
+    const next = structuredClone(current);
+    advance(next, commit.lease.heartbeat_at);
+    this.records.set(commit.parent_packet_id, next);
+    this.activeLeaseByParent.set(
+      commit.parent_packet_id,
+      structuredClone(commit.lease),
+    );
+    return Promise.resolve(result(true, next));
   }
 
   appendProgress(
@@ -391,6 +475,39 @@ export class ReferenceMemoryRecursiveWorkcellStore
     return lease;
   }
 
+  private validateDurableParentLineage(
+    reconciliation: RecursiveWorkcellReconciliationV1,
+  ): void {
+    const parentBinding = this.childByPacket.get(
+      reconciliation.parent_packet.packet_id,
+    );
+    if (
+      parentBinding === undefined &&
+      PACKET_ID.test(reconciliation.parent_packet.parent_subject_ref)
+    ) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell durable parent binding does not exist",
+      );
+    }
+    if (
+      parentBinding !== undefined &&
+      !sameValue(parentBinding.child_packet, reconciliation.parent_packet)
+    ) {
+      throw new RecursiveWorkcellInvariantError(
+        "recursive workcell durable parent identity changed",
+      );
+    }
+    const durableAncestors = parentBinding?.ancestor_packet_ids ?? [];
+    for (const child of reconciliation.children) {
+      const suppliedAncestors = child.ancestor_packet_ids.slice(0, -1);
+      if (!sameValue(suppliedAncestors, durableAncestors)) {
+        throw new RecursiveWorkcellInvariantError(
+          "recursive workcell ancestry does not match the durable parent binding",
+        );
+      }
+    }
+  }
+
   private requireRecord(
     parentPacketId: string,
   ): RecursiveWorkcellReconciliationV1 {
@@ -610,6 +727,16 @@ function sameLease(left: WorkLeaseV1, right: WorkLeaseV1): boolean {
     left.lease_token === right.lease_token &&
     left.heartbeat_at === right.heartbeat_at &&
     left.lease_expires_at === right.lease_expires_at
+  );
+}
+
+function sameLeaseAuthority(left: WorkLeaseV1, right: WorkLeaseV1): boolean {
+  return (
+    left.run_id === right.run_id &&
+    left.owner_id === right.owner_id &&
+    left.generation === right.generation &&
+    left.fencing_token === right.fencing_token &&
+    left.lease_token === right.lease_token
   );
 }
 
