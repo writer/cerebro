@@ -377,3 +377,43 @@ impl Error for KernelError {}
 const fn is_zero(value: &usize) -> bool {
     *value == 0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CollectionReceipt, KernelError};
+
+    #[test]
+    fn kernel_errors_have_stable_messages() {
+        let cases = [
+            (
+                KernelError::InvalidSnapshot("missing id"),
+                "invalid snapshot: missing id",
+            ),
+            (
+                KernelError::InvalidInput("missing paths"),
+                "invalid input: missing paths",
+            ),
+            (
+                KernelError::InvalidRequestedPath("path-a".to_owned()),
+                "requested path is absent from reference: path-a",
+            ),
+            (KernelError::InvalidTime, "invalid RFC3339 observation time"),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn receipt_serialization_omits_only_zero_counts() {
+        let empty = serde_json::to_value(CollectionReceipt::default()).expect("serialize receipt");
+        assert!(empty.get("source_pages_read").is_none());
+
+        let populated = serde_json::to_value(CollectionReceipt {
+            source_pages_read: 1,
+            ..CollectionReceipt::default()
+        })
+        .expect("serialize receipt");
+        assert_eq!(populated["source_pages_read"], 1);
+    }
+}
