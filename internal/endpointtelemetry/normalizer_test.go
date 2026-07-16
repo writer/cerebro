@@ -2,6 +2,7 @@ package endpointtelemetry
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,32 @@ func TestNormalizeAgentExecutionReceiptDoesNotRetainUnknownActionTokens(t *testi
 	}
 	if strings.Contains(string(events[0].GetPayload()), "super-secret") {
 		t.Fatal("normalized payload retained an unknown action token")
+	}
+}
+
+func TestNormalizeAgentExecutionReceiptDoesNotRetainKnownCommandFlagValues(t *testing.T) {
+	tests := []struct {
+		action string
+		want   string
+	}{
+		{action: "git -C /Users/alice/private status", want: "git status"},
+		{action: "aws --profile sensitive-profile s3 put-bucket-policy", want: "aws s3 put-bucket-policy"},
+	}
+	for _, test := range tests {
+		t.Run(test.want, func(t *testing.T) {
+			receipt := fmt.Sprintf(`{"type":"agent_execution_receipt","receipt_id":"receipt-flags","receipt_digest":"sha256:receipt","sequence":1,"captured_at":"2026-07-16T12:00:00Z","phase":"completed","agent_product":"Codex","session_id":"session-1","action_summary":%q,"evidence_integrity":"signature_valid"}`, test.action)
+			events, err := Normalize([]byte(`{"events":[`+receipt+`]}`), Principal{TenantID: "tenant-1", DeviceID: "device-1"}, time.Now())
+			if err != nil {
+				t.Fatalf("Normalize() error = %v", err)
+			}
+			if got := events[0].GetAttributes()["action"]; got != test.want {
+				t.Fatalf("minimized action = %q, want %q", got, test.want)
+			}
+			payload := string(events[0].GetPayload())
+			if strings.Contains(payload, "alice") || strings.Contains(payload, "sensitive-profile") {
+				t.Fatalf("normalized payload retained a flag value: %s", payload)
+			}
+		})
 	}
 }
 

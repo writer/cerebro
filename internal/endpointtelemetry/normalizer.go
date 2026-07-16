@@ -263,43 +263,102 @@ func scalarString(values map[string]any, keys ...string) string {
 }
 
 func minimizeAgentAction(value string) string {
-	var safe []string
-	for _, token := range strings.Fields(value) {
-		if len(token) > 64 || strings.HasPrefix(token, "-") || strings.Contains(token, "=") || !safeActionToken(token) {
-			continue
-		}
-		safe = append(safe, token)
-	}
-	if len(safe) == 0 {
+	tokens := strings.Fields(value)
+	if len(tokens) == 0 {
 		return "agent_tool_execution"
 	}
-	safe[0] = path.Base(safe[0])
-	limit := 0
-	switch strings.ToLower(safe[0]) {
+	command := strings.ToLower(path.Base(tokens[0]))
+	switch command {
 	case "aws":
-		limit = 3
+		service := firstKnownAgentActionToken("aws-service", tokens[1:])
+		if service == "" {
+			return command
+		}
+		operation := firstKnownAgentActionToken("aws-operation", tokens[1:])
+		if operation == "" {
+			return command + " " + service
+		}
+		return command + " " + service + " " + operation
 	case "git", "gh", "kubectl", "docker", "terraform", "brew", "npm", "pnpm", "yarn", "go", "swift":
-		limit = 2
+		operation := firstKnownAgentActionToken(command, tokens[1:])
+		if operation == "" {
+			return command
+		}
+		return command + " " + operation
 	default:
 		return "agent_tool_execution"
 	}
-	if len(safe) < limit {
-		limit = len(safe)
-	}
-	return strings.Join(safe[:limit], " ")
 }
 
-func safeActionToken(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("_./:-", r) {
-			continue
+func firstKnownAgentActionToken(vocabulary string, values []string) string {
+	for _, value := range values {
+		candidate := strings.ToLower(strings.TrimSpace(value))
+		if knownAgentActionToken(vocabulary, candidate) {
+			return candidate
 		}
-		return false
 	}
-	return true
+	return ""
+}
+
+func knownAgentActionToken(vocabulary, value string) bool {
+	switch vocabulary {
+	case "aws-service":
+		switch value {
+		case "cloudformation", "cloudtrail", "ec2", "ecs", "eks", "iam", "kms", "lambda", "organizations", "rds", "s3", "secretsmanager", "sts":
+			return true
+		}
+	case "aws-operation":
+		switch value {
+		case "assume-role", "create-stack", "delete-bucket", "delete-role", "delete-stack", "put-bucket-policy", "put-role-policy", "register-task-definition", "run-instances", "start-execution", "terminate-instances", "update-function-code", "update-service", "update-stack":
+			return true
+		}
+	case "git":
+		switch value {
+		case "add", "branch", "checkout", "clone", "commit", "diff", "fetch", "log", "merge", "pull", "push", "rebase", "remote", "restore", "show", "status", "switch", "tag":
+			return true
+		}
+	case "gh":
+		switch value {
+		case "api", "auth", "issue", "pr", "release", "repo", "run", "workflow":
+			return true
+		}
+	case "kubectl":
+		switch value {
+		case "apply", "auth", "create", "delete", "describe", "exec", "get", "logs", "patch", "rollout", "scale", "set":
+			return true
+		}
+	case "docker":
+		switch value {
+		case "build", "compose", "exec", "image", "inspect", "login", "pull", "push", "run", "stop":
+			return true
+		}
+	case "terraform":
+		switch value {
+		case "apply", "destroy", "import", "init", "output", "plan", "state", "validate":
+			return true
+		}
+	case "brew":
+		switch value {
+		case "install", "services", "uninstall", "update", "upgrade":
+			return true
+		}
+	case "npm", "pnpm", "yarn":
+		switch value {
+		case "add", "audit", "install", "publish", "remove", "run", "test", "update":
+			return true
+		}
+	case "go":
+		switch value {
+		case "build", "clean", "env", "generate", "get", "install", "list", "mod", "run", "test", "tool", "vet":
+			return true
+		}
+	case "swift":
+		switch value {
+		case "build", "package", "run", "test":
+			return true
+		}
+	}
+	return false
 }
 
 func validateAgentExecutionReceiptAttributes(attrs map[string]string) error {
