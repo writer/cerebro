@@ -309,6 +309,12 @@ type singlePageSource struct {
 	events []*cerebrov1.EventEnvelope
 }
 
+type authoritativeSinglePageSource struct{ *singlePageSource }
+
+func (*authoritativeSinglePageSource) SupportsAuthoritativeProjectionReconciliation(sourcecdk.Config) bool {
+	return true
+}
+
 func (s *singlePageSource) Spec() *cerebrov1.SourceSpec {
 	return &cerebrov1.SourceSpec{Id: s.id, Name: "Single Page"}
 }
@@ -405,6 +411,67 @@ func (s *recordingProjectionGraphStore) CleanupProjectedEntities(_ context.Conte
 		}
 	}
 	return result, nil
+}
+
+func (s *recordingProjectionGraphStore) CleanupProjectedRuntimeLinks(_ context.Context, request ports.ProjectionRuntimeLinkReconciliationRequest) (ports.ProjectionLinkCleanupResult, error) {
+	var result ports.ProjectionLinkCleanupResult
+	limit := request.Limit
+	if limit == 0 {
+		limit = defaultCleanupLimit
+	}
+	for key, link := range s.links {
+		if result.LinksDeleted >= limit || link == nil || link.TenantID != request.TenantID || link.SourceID != request.SourceID || link.RuntimeID != request.RuntimeID || !slices.Contains(request.Relations, link.Relation) {
+			continue
+		}
+		if link.Attributes[projectionReconciliationAttribute] == request.ReconciliationID {
+			continue
+		}
+		result.LinksMatched++
+		if !request.DryRun {
+			delete(s.links, key)
+			result.LinksDeleted++
+		}
+	}
+	return result, nil
+}
+
+func TestIngestSourceReconcilesStaleMaterialLinksAfterCompleteAuthoritativePass(t *testing.T) {
+	source := &authoritativeSinglePageSource{&singlePageSource{id: "authoritative", events: []*cerebrov1.EventEnvelope{{Id: "event-current", SourceId: "authoritative"}}}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleKey := "urn:resource|can_reach|urn:stale"
+	store := &checkpointProjectionGraphStore{recordingProjectionGraphStore: recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:resource": {URN: "urn:resource"},
+			"urn:stale":    {URN: "urn:stale"},
+		},
+		links: map[string]*ports.ProjectedLink{
+			staleKey: {TenantID: "tenant", SourceID: "authoritative", RuntimeID: "runtime-a", FromURN: "urn:resource", Relation: "can_reach", ToURN: "urn:stale", Attributes: map[string]string{}},
+		},
+	}}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		current := &ports.ProjectedEntity{URN: "urn:current", TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", EntityType: "resource", Label: "current"}
+		resource := &ports.ProjectedEntity{URN: "urn:resource", TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", EntityType: "resource", Label: "resource"}
+		return []*ports.ProjectedEntity{resource, current}, []*ports.ProjectedLink{{TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", FromURN: resource.URN, Relation: "can_reach", ToURN: current.URN, Attributes: map[string]string{}}}, nil
+	})
+	service := New(registry, nil, projector, store)
+	if !service.supportsAuthoritativeMaterialLinkReconciliation("authoritative", sourcecdk.Config{}) {
+		t.Fatal("authoritative source/store/projector did not enable reconciliation")
+	}
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID: "authoritative", RuntimeID: "runtime-a", TenantID: "tenant", PageLimit: 1,
+		CheckpointEnabled: true, CheckpointID: "checkpoint-a", ResetCheckpoint: true,
+		ReconcileMaterialLinks: true, ReconciliationSupported: true, ProjectionReconciliationID: "reconcile-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := store.links["urn:resource|can_reach|urn:current"]
+	if !result.MaterialLinkReconciliationCompleted || result.StaleMaterialLinksDeleted != 1 || store.links[staleKey] != nil || current == nil || current.Attributes[projectionReconciliationAttribute] != "reconcile-1" {
+		t.Fatalf("reconciliation result=%#v links=%#v", result, store.links)
+	}
 }
 
 func projectionCleanupTestMatches(request ports.ProjectionCleanupRequest, entity *ports.ProjectedEntity) bool {

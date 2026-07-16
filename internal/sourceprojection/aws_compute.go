@@ -426,6 +426,8 @@ func addAWSECSTask(entities map[string]*ports.ProjectedEntity, tenantID string, 
 			"subnet_ids":                 strings.TrimSpace(attributes["subnet_ids"]),
 			"task_arn":                   strings.TrimSpace(attributes["task_arn"]),
 			"task_definition_arn":        strings.TrimSpace(attributes["task_definition_arn"]),
+			"started_by":                 strings.TrimSpace(attributes["started_by"]),
+			"observed_last_status":       strings.TrimSpace(attributes["observed_last_status"]),
 			"vpc_id":                     strings.TrimSpace(attributes["vpc_id"]),
 		},
 	})
@@ -450,6 +452,8 @@ func addAWSECSTaskDefinition(entities map[string]*ports.ProjectedEntity, tenantI
 			"domain":                          strings.TrimSpace(attributes["domain"]),
 			"ephemeral_storage_size_gib":      strings.TrimSpace(attributes["ephemeral_storage_size_gib"]),
 			"fargate_compatible":              strings.TrimSpace(attributes["fargate_compatible"]),
+			"has_candidate_marker":            strings.TrimSpace(attributes["has_candidate_marker"]),
+			"has_secret_bindings":             strings.TrimSpace(attributes["has_secret_bindings"]),
 			"memory":                          strings.TrimSpace(attributes["memory"]),
 			"network_mode":                    strings.TrimSpace(attributes["network_mode"]),
 			"region":                          strings.TrimSpace(attributes["region"]),
@@ -459,6 +463,7 @@ func addAWSECSTaskDefinition(entities map[string]*ports.ProjectedEntity, tenantI
 			"resource_provider":               strings.TrimSpace(attributes["resource_provider"]),
 			"resource_type":                   strings.TrimSpace(firstNonEmpty(attributes["resource_type"], "ecs_task_definition")),
 			"revision":                        strings.TrimSpace(attributes["revision"]),
+			"secret_binding_count":            strings.TrimSpace(attributes["secret_binding_count"]),
 			"runtime_cpu_architecture":        strings.TrimSpace(attributes["runtime_cpu_architecture"]),
 			"runtime_operating_system_family": strings.TrimSpace(attributes["runtime_operating_system_family"]),
 			"status":                          strings.TrimSpace(attributes["status"]),
@@ -718,13 +723,19 @@ func addAWSComputeRoleLink(entities map[string]*ports.ProjectedEntity, links map
 			"role_name": strings.TrimSpace(roleName),
 		},
 	})
-	addLink(links, projectedLink(tenantID, sourceID, resourceURN, roleURN, relationRunsAs, map[string]string{
+	link := projectedLink(tenantID, sourceID, resourceURN, roleURN, relationRunsAs, map[string]string{
 		"event_id":   event.GetId(),
 		"match_type": "aws_compute_role",
 		"role_arn":   roleARN,
 		"role_name":  strings.TrimSpace(roleName),
 		"role_usage": strings.TrimSpace(roleUsage),
-	}))
+	})
+	if existing := links[awsComputeProjectedLinkKey(link)]; existing != nil {
+		for _, usage := range strings.Split(strings.Join([]string{existing.Attributes["role_usages"], existing.Attributes["role_usage"], roleUsage}, ","), ",") {
+			mergeCSVLinkAttribute(link.Attributes, "role_usages", usage)
+		}
+	}
+	addLink(links, link)
 }
 
 func addAWSNetworkContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, attributes map[string]string) {
