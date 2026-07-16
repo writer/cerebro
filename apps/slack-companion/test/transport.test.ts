@@ -71,6 +71,35 @@ describe("Slack transport boundary", () => {
     });
   });
 
+  test("does not acknowledge a malformed durable payload receipt", async () => {
+    const order: string[] = [];
+    const request = eventsRequest(eventBody());
+
+    const outcome = await handleEventsApiRequest(request, requestKey(), {
+      admission: acceptingAdmission(order),
+      clock: { now: () => now },
+      normalizer: recordingNormalizer(order),
+      payloads: {
+        persist: async () => {
+          order.push("persist");
+          return {
+            digest: `sha256:${createHash("sha256")
+              .update(request.raw_body)
+              .digest("hex")}`,
+          } as InboundPayloadReceipt;
+        },
+      },
+    });
+
+    assert.deepEqual(order, ["persist"]);
+    assert.deepEqual(outcome, {
+      kind: "no_acknowledgement",
+      reason_code: "invalid_payload_receipt",
+      retryable: true,
+      stage: "persistence",
+    });
+  });
+
   test("does not acknowledge when durable admission rejects the event", async () => {
     const order: string[] = [];
 
