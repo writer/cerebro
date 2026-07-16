@@ -364,8 +364,6 @@ func validChangeKind(value string) bool {
 
 func intrinsicVerification(value ImprovementProposal) []VerificationResult {
 	results := []VerificationResult{
-		{VerifierID: "research-citations", Status: VerificationPass, Message: "Every research claim has a source citation."},
-		{VerifierID: "bounded-repository-patch", Status: VerificationPass, Message: "The repository patch is within configured file and byte limits."},
 		{VerifierID: "human-merge-boundary", Status: VerificationPass, Message: "The proposal can open only a draft pull request; a human GRC owner must decide whether to merge."},
 	}
 	impact := value.Impact

@@ -154,9 +154,13 @@ func (s *Service) Validate(ctx context.Context, tenantID, runID string, request 
 	results := intrinsicVerification(proposal)
 	if err := validateResearch(proposal.Research, canonicalTime(s.now())); err != nil {
 		results = append(results, VerificationResult{VerifierID: "research-citations", Status: VerificationBlock, Message: err.Error()})
+	} else {
+		results = append(results, VerificationResult{VerifierID: "research-citations", Status: VerificationPass, Message: "Every research claim has a current source citation."})
 	}
 	if err := validatePatch(proposal.Patch); err != nil {
 		results = append(results, VerificationResult{VerifierID: "bounded-repository-patch", Status: VerificationBlock, Message: err.Error()})
+	} else {
+		results = append(results, VerificationResult{VerifierID: "bounded-repository-patch", Status: VerificationPass, Message: "The repository patch is within configured file and byte limits."})
 	}
 	inputs := append([]InputRevision(nil), proposal.Inputs...)
 	for _, citation := range proposal.Research.Citations {

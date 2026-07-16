@@ -219,6 +219,45 @@ func TestRepositoryPolicyCanBlockPublication(t *testing.T) {
 	}
 }
 
+func TestVerifierDoesNotRecordCitationPassWhenCitationExpires(t *testing.T) {
+	service := newTestService(&testInputVerifier{}, &testRepositoryVerifier{}, &testDraftPublisher{}, &testTeamOutbox{})
+	record, _, err := service.Detect(context.Background(), detectedRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	research := validResearch()
+	research.Citations[0].ExpiresAt = testNow.Add(time.Minute)
+	record, err = service.RecordResearch(context.Background(), record.Run.TenantID, record.Run.ID, ResearchRequest{
+		ExpectedVersion: record.Run.AggregateVersion, Research: research, ActorID: "researcher-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err = service.Propose(context.Background(), record.Run.TenantID, record.Run.ID, ProposeRequest{
+		ExpectedVersion: record.Run.AggregateVersion, ActorID: "author-agent",
+		Impact: ExpectedProgramImpact{ExpectedBenefit: "Increase evidence coverage."}, Patch: validPatch(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return testNow.Add(2 * time.Minute) }
+	record, err = service.Validate(context.Background(), record.Run.TenantID, record.Run.ID, ValidateRequest{
+		ExpectedVersion: record.Run.AggregateVersion, ActorID: "verifier-agent",
+	})
+	if !errors.Is(err, ErrVerification) {
+		t.Fatalf("Validate() error = %v, want ErrVerification", err)
+	}
+	statuses := []string{}
+	for _, result := range record.Revision.Proposal.Verification.Results {
+		if result.VerifierID == "research-citations" {
+			statuses = append(statuses, result.Status)
+		}
+	}
+	if !reflect.DeepEqual(statuses, []string{VerificationBlock}) {
+		t.Fatalf("research citation statuses = %v, want one block", statuses)
+	}
+}
+
 func TestPublisherRejectsNonDraftReceipt(t *testing.T) {
 	publisher := &testDraftPublisher{receipt: &DraftPullRequestReceipt{
 		Repository: "writer/cerebro", Number: 42, URL: "https://example.invalid/pulls/42",
