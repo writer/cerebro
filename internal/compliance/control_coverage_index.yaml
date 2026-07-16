@@ -85200,7 +85200,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 22
         unmapped_controls: 14
-        mapped_rules: 591
+        mapped_rules: 592
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -85595,9 +85595,10 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 13
+          rule_count: 14
           mapped_rules:
             - anthropic-unmanaged-active-api-key
+            - aws-ecs-active-candidate-secret-role-path
             - github-org-owner-role-review-needed
             - identity-okta-admin-plus-app-owner
             - identity-okta-admin-privilege-grant-events-30d
@@ -86736,6 +86737,10 @@ profiles:
               control_id: A.8.20
             - framework_name: ISO 27001:2022
               control_id: A.8.22
+        - rule_id: aws-ecs-active-candidate-secret-role-path
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
         - rule_id: aws-guardduty-c2-traffic
           controls:
             - framework_name: ISO 27001:2022
@@ -120502,7 +120507,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 32
         unmapped_controls: 4
-        mapped_rules: 1519
+        mapped_rules: 1520
         auditor_ready_controls: 36
         needs_enrichment_controls: 0
         placeholder_controls: 0
@@ -122211,7 +122216,7 @@ profiles:
             - framework_name: PCI DSS v4.0.1
               control_id: "7.2"
           coverage_status: mapped
-          rule_count: 1000
+          rule_count: 1001
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -122262,6 +122267,7 @@ profiles:
             - aws-ec2-public-ports-restricted
             - aws-ec2-sg-no-all-traffic-ingress
             - aws-ecr-public-repository
+            - aws-ecs-active-candidate-secret-role-path
             - aws-ecs-secrets-in-env-vars
             - aws-ecs-service-public-ip-disabled
             - aws-ecs-task-definition-no-privileged
@@ -123278,7 +123284,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 1034
+          rule_count: 1035
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -123330,6 +123336,7 @@ profiles:
             - aws-ec2-internet-facing-iam
             - aws-ec2-public-ports-restricted
             - aws-ecr-public-repository
+            - aws-ecs-active-candidate-secret-role-path
             - aws-ecs-ports-restricted
             - aws-ecs-secrets-in-env-vars
             - aws-ecs-service-public-ip-disabled
@@ -124381,7 +124388,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 333
+          rule_count: 334
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -124400,6 +124407,7 @@ profiles:
             - aws-ec2-instance-profile-attached
             - aws-ec2-internet-facing-iam
             - aws-ecr-public-repository
+            - aws-ecs-active-candidate-secret-role-path
             - aws-eks-public-endpoint-disabled
             - aws-iam-access-key-rotation
             - aws-iam-no-full-admin
@@ -129817,6 +129825,14 @@ profiles:
               control_id: CC7.1
             - framework_name: SOC 2
               control_id: CC7.5
+        - rule_id: aws-ecs-active-candidate-secret-role-path
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
         - rule_id: aws-ecs-ports-restricted
           controls:
             - framework_name: SOC 2

@@ -40571,6 +40571,385 @@
       ]
     },
     {
+      "id": "aws-ecs-active-candidate-secret-role-path",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Candidate ECS Launch Retains an Active Secret-Bearing Execution Path",
+      "description": "Flags failed graph-state evidence for aws ecs task definition: Candidate ECS Launch Retains an Active Secret-Bearing Execution Path. Detects an observed ECS RunTask path where a candidate workload depends on a task definition that remains active with secret bindings and an execution role. Audit impact: An active candidate task definition can be relaunched with its configured secret bindings and execution-role permissions.",
+      "source_id": "aws",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "graph"
+      ],
+      "output_kind": "policy.graph_finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "aws",
+        "cloud_security",
+        "ecs",
+        "evidence:configuration_snapshot",
+        "graph",
+        "graph-backed",
+        "policy",
+        "secrets",
+        "workload-identity"
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "A controlled pre-production account may permit candidate workloads with isolated secrets and a purpose-scoped execution role; retain the isolation evidence with an exception.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Confirm the CloudTrail launch edge, current task-definition status, secret-binding indicator, and execution-role edge before remediation. Deregister the candidate task definition or replace its secret bindings and execution role before another task is launched. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "evidence_type": "configuration_snapshot",
+      "assessment_methods": [
+        "examine"
+      ],
+      "auditor_guidance": "Confirm the CloudTrail launch edge, current task-definition status, secret-binding indicator, and execution-role edge before remediation.",
+      "risk_statement": "An active candidate task definition can be relaunched with its configured secret bindings and execution-role permissions.",
+      "remediation_intent": "Remove the active launch path by deregistering the candidate definition or isolating its secrets and execution role.",
+      "required_attributes": [
+        "event_type",
+        "execution_role_arn",
+        "graph_evidence_count",
+        "has_candidate_marker",
+        "has_secret_bindings",
+        "status",
+        "task_arn",
+        "task_definition_arn"
+      ],
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "resource_urn",
+        "resource_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "ecs_task",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "ecs_task"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "ecs_task_definition",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "ecs_task_definition"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "fargate_service",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "ecs_service",
+            "ecs_task",
+            "ecs_task_definition"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "anthropic",
+          "dimension_id": "workload_identity",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "federation_issuer",
+            "federation_rule",
+            "service_account"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "azure",
+          "dimension_id": "service_principal",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "active_account",
+            "app_identity",
+            "azure_ad_service_principal",
+            "service_principal",
+            "stale_login",
+            "workload_identity"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "identity_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "duo",
+          "dimension_id": "roles",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "openai",
+          "dimension_id": "identity_access",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group",
+            "group_role",
+            "group_user",
+            "invite",
+            "role",
+            "user",
+            "user_role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "privileged_users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "admin",
+            "owner",
+            "privileged",
+            "privileged_user",
+            "role",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "aws-ecs-ports-restricted",
       "pack_id": "policy",
       "pack_name": "Policy",
