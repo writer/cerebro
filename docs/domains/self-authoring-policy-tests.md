@@ -2,6 +2,8 @@
 
 `testauthor` turns a bounded policy intent into a policy and an executable finding/passing test suite. It can also scan existing policies and author missing suites when every condition is a simple scalar equality.
 
+The native agent-authoring service exposes the same path as `DraftPolicyBundle`. A schema-bound model draft is normalized and validated, then passed through the deterministic test author and protected/unprotected proof. Callers receive policy YAML, test YAML, repository paths, artifact digests, and proof receipts as one result.
+
 The authoring boundary is deliberate. The tool accepts `cmp_eq(path(resource, "field"), scalar)` conditions. It rejects query, graph, inequality, collection, and compound-expression semantics until a generator has an explicit fixture contract for them.
 
 ## Author a policy and its tests
