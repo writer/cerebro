@@ -17,7 +17,7 @@ The macOS app manages local event adapters for these agent products:
 | OpenCode | Native plugin event bus | `~/.config/opencode/plugins/cerebro-agent-receipts.js` |
 | Cursor | Native command hooks | `~/.cursor/hooks.json` |
 
-Open **Agent connections** in the app, select an agent, and choose **Install capture**. The installer copies the signed helper to Application Support and merges managed hook entries without replacing unrelated settings. Removing capture deletes only the managed entries.
+Open **Agent connections** in the app, select an agent, and choose **Install capture**. The installer verifies and copies the bundled helper to Application Support, then merges managed hook entries without replacing unrelated settings. Removing capture deletes only the managed entries. The app reports an adapter as configured until a fresh lifecycle event from that product is observed; only observed products receive a green connection state.
 
 Each receipt records the agent product, adapter, native event name, session, tool call, input digest, and lifecycle state through one normalized contract. The raw event remains an agent-supplied claim; disabled hooks and commands run outside a connected agent are outside this evidence boundary. Cursor user hooks cover local sessions. Cloud sessions require a project-level hook configuration.
 

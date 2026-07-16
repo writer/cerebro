@@ -1,11 +1,13 @@
+import CryptoKit
 import Foundation
 
 public enum AdapterInstallState: String, Codable, Sendable {
   case managedByPlugin = "managed_by_plugin"
-  case installed
+  case configured
   case notInstalled = "not_installed"
   case needsRepair = "needs_repair"
   case invalidConfiguration = "invalid_configuration"
+  case unmanagedConflict = "unmanaged_conflict"
 }
 
 public struct AgentAdapterStatus: Identifiable, Sendable {
@@ -13,6 +15,7 @@ public struct AgentAdapterStatus: Identifiable, Sendable {
   public let state: AdapterInstallState
   public let executableAvailable: Bool
   public let configurationPath: String?
+  public let helperCurrent: Bool?
 
   public var id: String { product.id }
 
@@ -20,12 +23,14 @@ public struct AgentAdapterStatus: Identifiable, Sendable {
     product: AgentProduct,
     state: AdapterInstallState,
     executableAvailable: Bool,
-    configurationPath: String?
+    configurationPath: String?,
+    helperCurrent: Bool? = nil
   ) {
     self.product = product
     self.state = state
     self.executableAvailable = executableAvailable
     self.configurationPath = configurationPath
+    self.helperCurrent = helperCurrent
   }
 }
 
@@ -33,6 +38,7 @@ public enum AgentAdapterInstallError: Error, LocalizedError {
   case codexManagedByPlugin
   case invalidConfiguration(URL)
   case missingBundledHelper(URL)
+  case unmanagedPlugin(URL)
 
   public var errorDescription: String? {
     switch self {
@@ -41,12 +47,14 @@ public enum AgentAdapterInstallError: Error, LocalizedError {
     case .invalidConfiguration(let url):
       return "The existing agent configuration is not valid JSON: \(url.path)"
     case .missingBundledHelper(let url):
-      return "The signed receipt helper is missing from the app bundle: \(url.path)"
+      return "The verified receipt helper is missing from the app bundle: \(url.path)"
+    case .unmanagedPlugin(let url):
+      return "An unmanaged OpenCode plugin already exists at \(url.path)."
     }
   }
 }
 
-public struct AgentAdapterInstaller {
+public struct AgentAdapterInstaller: Sendable {
   public let homeDirectory: URL
   public let bundledHelperURL: URL
   public let installedHelperURL: URL
@@ -68,16 +76,22 @@ public struct AgentAdapterInstaller {
   }
 
   public func statuses() -> [AgentAdapterStatus] {
-    AgentProduct.allCases.map(status)
+    let helperCurrent = helperIsCurrentAndValid()
+    return AgentProduct.allCases.map { status(for: $0, helperCurrent: helperCurrent) }
   }
 
   public func status(for product: AgentProduct) -> AgentAdapterStatus {
+    status(for: product, helperCurrent: product == .codex ? false : helperIsCurrentAndValid())
+  }
+
+  private func status(for product: AgentProduct, helperCurrent: Bool) -> AgentAdapterStatus {
     if product == .codex {
       return AgentAdapterStatus(
         product: product,
         state: .managedByPlugin,
         executableAvailable: executableExists(for: product),
-        configurationPath: nil
+        configurationPath: nil,
+        helperCurrent: nil
       )
     }
 
@@ -90,16 +104,17 @@ public struct AgentAdapterInstaller {
             product: product,
             state: .notInstalled,
             executableAvailable: executableExists(for: product),
-            configurationPath: configuration.path
+            configurationPath: configuration.path,
+            helperCurrent: nil
           )
         }
         let body = try String(contentsOf: configuration, encoding: .utf8)
         if body.contains(Self.marker) && body.contains(installedHelperURL.path) {
-          state = .installed
+          state = helperCurrent ? .configured : .needsRepair
         } else if body.contains(Self.marker) {
           state = .needsRepair
         } else {
-          state = .invalidConfiguration
+          state = .unmanagedConflict
         }
       } else {
         guard FileManager.default.fileExists(atPath: configuration.path) else {
@@ -107,14 +122,16 @@ public struct AgentAdapterInstaller {
             product: product,
             state: .notInstalled,
             executableAvailable: executableExists(for: product),
-            configurationPath: configuration.path
+            configurationPath: configuration.path,
+            helperCurrent: nil
           )
         }
         let root = try readJSONObject(at: configuration)
+        try validateHookSchema(root, for: product, at: configuration)
         let commands = hookCommands(in: root)
         let productCommands = commands.filter { isManagedCommand($0, product: product) }
         if productCommands.contains(command(for: product)) {
-          state = .installed
+          state = helperCurrent ? .configured : .needsRepair
         } else if !productCommands.isEmpty {
           state = .needsRepair
         } else {
@@ -129,7 +146,8 @@ public struct AgentAdapterInstaller {
       product: product,
       state: state,
       executableAvailable: executableExists(for: product),
-      configurationPath: configuration.path
+      configurationPath: configuration.path,
+      helperCurrent: state == .configured ? true : (state == .needsRepair ? false : nil)
     )
   }
 
@@ -156,6 +174,7 @@ public struct AgentAdapterInstaller {
     }
 
     var root = try readJSONObject(at: url)
+    try validateHookSchema(root, for: product, at: url)
     guard var hooks = root["hooks"] as? [String: Any] else { return }
     for event in hooks.keys {
       guard let groups = hooks[event] as? [[String: Any]] else { continue }
@@ -180,7 +199,10 @@ public struct AgentAdapterInstaller {
   }
 
   private func installHelper() throws {
-    guard FileManager.default.isExecutableFile(atPath: bundledHelperURL.path) else {
+    guard
+      FileManager.default.isExecutableFile(atPath: bundledHelperURL.path),
+      codeSignatureIsValid(at: bundledHelperURL)
+    else {
       throw AgentAdapterInstallError.missingBundledHelper(bundledHelperURL)
     }
     try FileManager.default.createDirectory(
@@ -192,11 +214,16 @@ public struct AgentAdapterInstaller {
     try data.write(to: installedHelperURL, options: .atomic)
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o755], ofItemAtPath: installedHelperURL.path)
+    guard helperIsCurrentAndValid() else {
+      try? FileManager.default.removeItem(at: installedHelperURL)
+      throw AgentAdapterInstallError.missingBundledHelper(bundledHelperURL)
+    }
   }
 
   private func installNestedHooks(for product: AgentProduct) throws {
     let url = configurationURL(for: product)
     var root = try readJSONObjectIfPresent(at: url)
+    try validateHookSchema(root, for: product, at: url)
     var hooks = root["hooks"] as? [String: Any] ?? [:]
     let events =
       product == .claudeCode
@@ -211,10 +238,11 @@ public struct AgentAdapterInstaller {
         "command": command(for: product),
         "timeout": event == "SessionStart" ? 120 : 30,
       ]
-      groups.append([
-        "matcher": event == "SessionStart" ? "startup|resume|clear|compact" : "*",
-        "hooks": [handler],
-      ])
+      var group: [String: Any] = ["hooks": [handler]]
+      if event != "SessionStart" || product == .claudeCode {
+        group["matcher"] = event == "SessionStart" ? "startup|resume|clear|compact" : "*"
+      }
+      groups.append(group)
       hooks[event] = groups
     }
     root["hooks"] = hooks
@@ -224,6 +252,7 @@ public struct AgentAdapterInstaller {
   private func installCursorHooks() throws {
     let url = configurationURL(for: .cursor)
     var root = try readJSONObjectIfPresent(at: url)
+    try validateHookSchema(root, for: .cursor, at: url)
     var hooks = root["hooks"] as? [String: Any] ?? [:]
     for event in ["sessionStart", "preToolUse", "postToolUse", "postToolUseFailure"] {
       var handlers = hooks[event] as? [[String: Any]] ?? []
@@ -244,6 +273,12 @@ public struct AgentAdapterInstaller {
 
   private func installOpenCodePlugin() throws {
     let url = configurationURL(for: .openCode)
+    if FileManager.default.fileExists(atPath: url.path) {
+      let existing = try String(contentsOf: url, encoding: .utf8)
+      guard existing.contains(Self.marker) else {
+        throw AgentAdapterInstallError.unmanagedPlugin(url)
+      }
+    }
     let helper = try jsonString(installedHelperURL.path)
     let script = """
       // \(Self.marker)
@@ -330,9 +365,80 @@ public struct AgentAdapterInstaller {
     case .openCode: candidates = [".local/bin/opencode", ".opencode/bin/opencode"]
     case .cursor: candidates = [".local/bin/cursor-agent", "Applications/Cursor.app"]
     }
+    let configuredPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+      .split(separator: ":")
+      .map(String.init)
+    let commandNames: [String]
+    switch product {
+    case .codex: commandNames = ["codex"]
+    case .droid: commandNames = ["droid"]
+    case .claudeCode: commandNames = ["claude"]
+    case .openCode: commandNames = ["opencode"]
+    case .cursor: commandNames = ["cursor", "cursor-agent"]
+    }
     return candidates.contains {
       FileManager.default.fileExists(atPath: homeDirectory.appendingPathComponent($0).path)
-    } || (product == .cursor && FileManager.default.fileExists(atPath: "/Applications/Cursor.app"))
+    }
+      || configuredPaths.contains { directory in
+        commandNames.contains { name in
+          FileManager.default.isExecutableFile(
+            atPath: URL(fileURLWithPath: directory).appendingPathComponent(name).path)
+        }
+      }
+      || (product == .cursor && FileManager.default.fileExists(atPath: "/Applications/Cursor.app"))
+  }
+
+  private func validateHookSchema(
+    _ root: [String: Any], for product: AgentProduct, at url: URL
+  ) throws {
+    guard let rawHooks = root["hooks"] else { return }
+    guard let hooks = rawHooks as? [String: Any] else {
+      throw AgentAdapterInstallError.invalidConfiguration(url)
+    }
+    for rawGroups in hooks.values {
+      guard let groups = rawGroups as? [[String: Any]] else {
+        throw AgentAdapterInstallError.invalidConfiguration(url)
+      }
+      for group in groups {
+        if product == .cursor {
+          guard group["command"] is String else {
+            throw AgentAdapterInstallError.invalidConfiguration(url)
+          }
+        } else {
+          guard group["hooks"] is [[String: Any]] else {
+            throw AgentAdapterInstallError.invalidConfiguration(url)
+          }
+        }
+      }
+    }
+  }
+
+  private func helperIsCurrentAndValid() -> Bool {
+    guard
+      FileManager.default.isExecutableFile(atPath: bundledHelperURL.path),
+      FileManager.default.isExecutableFile(atPath: installedHelperURL.path),
+      let bundled = try? Data(contentsOf: bundledHelperURL),
+      let installed = try? Data(contentsOf: installedHelperURL),
+      SHA256.hash(data: bundled) == SHA256.hash(data: installed),
+      codeSignatureIsValid(at: bundledHelperURL),
+      codeSignatureIsValid(at: installedHelperURL)
+    else { return false }
+    return true
+  }
+
+  private func codeSignatureIsValid(at url: URL) -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = ["--verify", "--strict", url.path]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    do {
+      try process.run()
+      process.waitUntilExit()
+      return process.terminationStatus == 0
+    } catch {
+      return false
+    }
   }
 
   private func readJSONObjectIfPresent(at url: URL) throws -> [String: Any] {

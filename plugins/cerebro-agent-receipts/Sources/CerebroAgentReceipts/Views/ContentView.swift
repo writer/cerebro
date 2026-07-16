@@ -66,6 +66,11 @@ struct ContentView: View {
     }
     .toolbar {
       ToolbarItemGroup {
+        if store.isStale {
+          Label("Evidence refresh failed", systemImage: "exclamationmark.triangle.fill")
+            .foregroundStyle(.red)
+            .help(store.lastRefreshError ?? "The last evidence refresh failed.")
+        }
         Button {
           store.reload()
         } label: {
@@ -103,8 +108,17 @@ struct ContentView: View {
   }
 
   private var emptyDescription: String {
-    if let product = store.selectedProduct {
-      return "Run \(product.displayName) after capture is installed."
+    if let product = store.selectedProduct, let status = store.selectedAdapterStatus {
+      switch status.state {
+      case .notInstalled:
+        return "Install capture, then start a new \(product.displayName) session."
+      case .needsRepair:
+        return "Repair capture, then start a new \(product.displayName) session."
+      case .invalidConfiguration, .unmanagedConflict:
+        return "Resolve the configuration issue before starting \(product.displayName)."
+      case .configured, .managedByPlugin:
+        return "Start a new \(product.displayName) session to verify capture."
+      }
     }
     return "Run a connected coding agent or import provider events."
   }
@@ -131,29 +145,32 @@ private struct AdapterSidebarRow: View {
   }
 
   private var statusLabel: String {
+    if actionCount > 0 { return "Observed" }
     switch status.state {
-    case .managedByPlugin: return "Plugin"
-    case .installed: return "Installed"
+    case .managedByPlugin: return "Plugin · no event"
+    case .configured: return "Configured · no event"
     case .notInstalled: return "Not installed"
     case .needsRepair: return "Repair required"
     case .invalidConfiguration: return "Config error"
+    case .unmanagedConflict: return "Path in use"
     }
   }
 
   private var statusImage: String {
     switch status.state {
-    case .managedByPlugin, .installed: return "checkmark.circle.fill"
+    case .managedByPlugin, .configured:
+      return actionCount > 0 ? "checkmark.circle.fill" : "circle.dashed"
     case .needsRepair: return "wrench.and.screwdriver.fill"
-    case .invalidConfiguration: return "exclamationmark.triangle.fill"
+    case .invalidConfiguration, .unmanagedConflict: return "exclamationmark.triangle.fill"
     case .notInstalled: return "circle"
     }
   }
 
   private var statusColor: Color {
     switch status.state {
-    case .managedByPlugin, .installed: return .green
+    case .managedByPlugin, .configured: return actionCount > 0 ? .green : .blue
     case .needsRepair: return .orange
-    case .invalidConfiguration: return .red
+    case .invalidConfiguration, .unmanagedConflict: return .red
     case .notInstalled: return .secondary
     }
   }

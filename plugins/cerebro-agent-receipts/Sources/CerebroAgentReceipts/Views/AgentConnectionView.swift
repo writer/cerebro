@@ -19,16 +19,19 @@ struct AgentConnectionView: View {
 
         HStack {
           primaryAction
-          if status.state == .installed || status.state == .needsRepair {
+          if status.state == .configured || status.state == .needsRepair {
             Button("Remove capture", role: .destructive) {
               store.removeAdapter(status.product)
             }
           }
           if let path = status.configurationPath {
             Button("Show configuration") {
-              NSWorkspace.shared.activateFileViewerSelecting([
-                URL(fileURLWithPath: path)
-              ])
+              let url = URL(fileURLWithPath: path)
+              if FileManager.default.fileExists(atPath: path) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+              } else {
+                NSWorkspace.shared.open(url.deletingLastPathComponent())
+              }
             }
           }
         }
@@ -38,6 +41,12 @@ struct AgentConnectionView: View {
           DetailRow(label: "Adapter", value: integrationLabel)
           DetailRow(
             label: "Executable", value: status.executableAvailable ? "Detected" : "Not detected")
+          DetailRow(
+            label: "Capture", value: hasObservedEvent ? "Event observed" : "No event observed")
+          if let helperCurrent = status.helperCurrent {
+            DetailRow(
+              label: "Helper", value: helperCurrent ? "Current bundle build" : "Repair required")
+          }
           DetailRow(label: "Recorded actions", value: "\(store.actionCount(for: status.product))")
           DetailRow(
             label: "Last action",
@@ -68,39 +77,51 @@ struct AgentConnectionView: View {
     case .needsRepair:
       Button("Repair capture") { store.installAdapter(status.product) }
         .buttonStyle(.borderedProminent)
-    case .installed:
+    case .configured:
       Button("Repair capture") { store.installAdapter(status.product) }
     case .managedByPlugin:
-      Text("Installed with the Codex plugin")
+      Text("Managed by the Codex plugin")
         .foregroundStyle(.secondary)
     case .invalidConfiguration:
       Text("Fix the JSON configuration before installing capture.")
+        .foregroundStyle(.red)
+    case .unmanagedConflict:
+      Text("Move or remove the existing unmanaged plugin before installing capture.")
         .foregroundStyle(.red)
     }
   }
 
   private var statusLabel: String {
     switch status.state {
-    case .managedByPlugin: return "Capture managed by plugin"
-    case .installed: return "Capture installed"
+    case .managedByPlugin:
+      return hasObservedEvent ? "Agent event observed" : "Capture managed by plugin"
+    case .configured:
+      return hasObservedEvent ? "Agent event observed" : "Capture configured"
     case .notInstalled: return "Capture not installed"
     case .needsRepair: return "Capture needs repair"
     case .invalidConfiguration: return "Configuration cannot be read"
+    case .unmanagedConflict: return "Plugin path is already in use"
     }
   }
 
   private var statusDescription: String {
     switch status.state {
     case .managedByPlugin:
-      return "Codex sends lifecycle events through the installed Cerebro plugin."
-    case .installed:
-      return "The agent sends lifecycle events to the local signed receipt helper."
+      return hasObservedEvent
+        ? "Cerebro recorded a lifecycle event from the Codex plugin."
+        : "Start a new Codex session to verify the plugin hook."
+    case .configured:
+      return hasObservedEvent
+        ? "Cerebro recorded a lifecycle event through this adapter."
+        : "Start a new agent session to load the adapter and verify capture."
     case .notInstalled:
       return "No Cerebro event adapter is present in this agent's local configuration."
     case .needsRepair:
       return "The adapter points to an older receipt helper and must be updated."
     case .invalidConfiguration:
       return "Cerebro will not replace an existing configuration that is not valid JSON."
+    case .unmanagedConflict:
+      return "Cerebro will not replace an existing OpenCode plugin at the managed path."
     }
   }
 
@@ -128,19 +149,24 @@ struct AgentConnectionView: View {
 
   private var statusImage: String {
     switch status.state {
-    case .managedByPlugin, .installed: return "checkmark.circle.fill"
+    case .managedByPlugin, .configured:
+      return hasObservedEvent ? "checkmark.circle.fill" : "circle.dashed"
     case .needsRepair: return "wrench.and.screwdriver.fill"
     case .notInstalled: return "circle"
-    case .invalidConfiguration: return "exclamationmark.triangle.fill"
+    case .invalidConfiguration, .unmanagedConflict: return "exclamationmark.triangle.fill"
     }
   }
 
   private var statusColor: Color {
     switch status.state {
-    case .managedByPlugin, .installed: return .green
+    case .managedByPlugin, .configured: return hasObservedEvent ? .green : .blue
     case .needsRepair: return .orange
     case .notInstalled: return .secondary
-    case .invalidConfiguration: return .red
+    case .invalidConfiguration, .unmanagedConflict: return .red
     }
+  }
+
+  private var hasObservedEvent: Bool {
+    store.actionCount(for: status.product) > 0
   }
 }

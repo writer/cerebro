@@ -15,10 +15,13 @@ final class ReceiptViewStore: ObservableObject {
   }
   @Published var showImporter = false
   @Published var errorMessage: String?
+  @Published private(set) var isStale = false
+  @Published private(set) var lastRefreshError: String?
 
   private let receiptStore: ReceiptStore
   private let adapterInstaller: AgentAdapterInstaller
   private var timer: Timer?
+  private var reloadInProgress = false
 
   init(
     receiptStore: ReceiptStore = ReceiptStore(),
@@ -117,26 +120,33 @@ final class ReceiptViewStore: ObservableObject {
   }
 
   func reload(silently: Bool = false) {
-    do {
-      let receipts = try receiptStore.readReceipts()
-      providerEvents = try receiptStore.readProviderEvents()
-      let results =
-        receipts.isEmpty
-        ? []
-        : ReceiptVerifier.verify(
-          receipts, trustedPublicKeyBase64: try receiptStore.readTrustedPublicKey())
-      verifications = Dictionary(uniqueKeysWithValues: results.map { ($0.receiptID, $0) })
-      actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verifications)
-      assessment = ReceiptCorrelator.assess(
-        actions: actions,
-        providerEvents: providerEvents,
-        policy: bindingPolicyFromEnvironment()
-      )
-      adapterStatuses = adapterInstaller.statuses()
-      if selection == nil { selectFirstVisibleItem() }
-      if !silently { errorMessage = nil }
-    } catch {
-      if !silently { errorMessage = error.localizedDescription }
+    guard !reloadInProgress else { return }
+    reloadInProgress = true
+    let receiptStore = self.receiptStore
+    let adapterInstaller = self.adapterInstaller
+    Task {
+      defer { reloadInProgress = false }
+      do {
+        let snapshot = try await Task.detached(priority: .utility) {
+          try Self.loadSnapshot(
+            receiptStore: receiptStore,
+            adapterInstaller: adapterInstaller
+          )
+        }.value
+        providerEvents = snapshot.providerEvents
+        verifications = snapshot.verifications
+        actions = snapshot.actions
+        assessment = snapshot.assessment
+        adapterStatuses = snapshot.adapterStatuses
+        isStale = false
+        lastRefreshError = nil
+        if selection == nil { selectFirstVisibleItem() }
+        if !silently { errorMessage = nil }
+      } catch {
+        isStale = true
+        lastRefreshError = error.localizedDescription
+        if !silently { errorMessage = error.localizedDescription }
+      }
     }
   }
 
@@ -167,7 +177,34 @@ final class ReceiptViewStore: ObservableObject {
     }
   }
 
-  private func bindingPolicyFromEnvironment() -> ProviderBindingPolicy? {
+  nonisolated private static func loadSnapshot(
+    receiptStore: ReceiptStore,
+    adapterInstaller: AgentAdapterInstaller
+  ) throws -> ReceiptSnapshot {
+    let receipts = try receiptStore.readReceipts()
+    let providerEvents = try receiptStore.readProviderEvents()
+    let results =
+      receipts.isEmpty
+      ? []
+      : ReceiptVerifier.verify(
+        receipts, trustedPublicKeyBase64: try receiptStore.readTrustedPublicKey())
+    let verifications = Dictionary(uniqueKeysWithValues: results.map { ($0.receiptID, $0) })
+    let actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verifications)
+    let assessment = ReceiptCorrelator.assess(
+      actions: actions,
+      providerEvents: providerEvents,
+      policy: bindingPolicyFromEnvironment()
+    )
+    return ReceiptSnapshot(
+      actions: actions,
+      verifications: verifications,
+      assessment: assessment,
+      providerEvents: providerEvents,
+      adapterStatuses: adapterInstaller.statuses()
+    )
+  }
+
+  nonisolated private static func bindingPolicyFromEnvironment() -> ProviderBindingPolicy? {
     let environment = ProcessInfo.processInfo.environment
     guard
       let account = environment["CEREBRO_EXPECTED_AWS_ACCOUNT_ID"],
@@ -177,6 +214,14 @@ final class ReceiptViewStore: ObservableObject {
     else { return nil }
     return ProviderBindingPolicy(expectedAccountID: account, expectedAgentRole: role)
   }
+}
+
+private struct ReceiptSnapshot: Sendable {
+  let actions: [ExecutionAction]
+  let verifications: [String: ReceiptVerification]
+  let assessment: AttributionAssessment
+  let providerEvents: [ProviderEvent]
+  let adapterStatuses: [AgentAdapterStatus]
 }
 
 enum SidebarSelection: Hashable {

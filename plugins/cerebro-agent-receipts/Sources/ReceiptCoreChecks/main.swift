@@ -380,11 +380,7 @@ struct CheckRunner {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    let helper = root.appendingPathComponent("bundled/CerebroAgentReceiptHook")
-    try FileManager.default.createDirectory(
-      at: helper.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: helper)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+    let helper = URL(fileURLWithPath: "/usr/bin/true")
     let installed = root.appendingPathComponent("support/CerebroAgentReceiptHook")
     let installer = AgentAdapterInstaller(
       homeDirectory: root,
@@ -409,12 +405,26 @@ struct CheckRunner {
     try JSONSerialization.data(withJSONObject: existing).write(to: factorySettings)
 
     try installer.install(.droid)
-    expect(installer.status(for: .droid).state == .installed, "Droid adapter was not installed")
+    expect(installer.status(for: .droid).state == .configured, "Droid adapter was not configured")
     let merged =
       try JSONSerialization.jsonObject(with: Data(contentsOf: factorySettings))
       as? [String: Any]
     expect(merged?["theme"] as? String == "dark", "Droid settings were overwritten")
+    let mergedHooks = merged?["hooks"] as? [String: Any]
+    let sessionGroups = mergedHooks?["SessionStart"] as? [[String: Any]]
+    expect(
+      sessionGroups?.last?["matcher"] == nil,
+      "Droid SessionStart adapter used a tool-only matcher")
     expect(FileManager.default.isExecutableFile(atPath: installed.path), "helper was not staged")
+    try Data("stale helper".utf8).write(to: installed, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installed.path)
+    expect(
+      installer.status(for: .droid).state == .needsRepair,
+      "a stale helper was reported as configured")
+    try installer.install(.droid)
+    expect(
+      installer.status(for: .droid).state == .configured,
+      "repair did not restore the bundled helper")
     try installer.remove(.droid)
     expect(
       installer.status(for: .droid).state == .notInstalled,
@@ -426,12 +436,62 @@ struct CheckRunner {
       try installer.install(product)
       let installedState = installer.status(for: product).state
       expect(
-        installedState == .installed,
-        "\(product.displayName) adapter was not installed (\(installedState.rawValue))")
+        installedState == .configured,
+        "\(product.displayName) adapter was not configured (\(installedState.rawValue))")
       try installer.remove(product)
       expect(
         installer.status(for: product).state == .notInstalled,
         "\(product.displayName) adapter was not removed")
+    }
+
+    let cursorSettings = root.appendingPathComponent(".cursor/hooks.json")
+    let invalidCursor = Data(#"{"hooks":"unexpected"}"#.utf8)
+    try invalidCursor.write(to: cursorSettings, options: .atomic)
+    expect(
+      installer.status(for: .cursor).state == .invalidConfiguration,
+      "an invalid Cursor hook schema was accepted")
+    do {
+      try installer.install(.cursor)
+      failures.append("invalid Cursor hook schema was overwritten")
+    } catch AgentAdapterInstallError.invalidConfiguration {
+      let preservedInvalidCursor = try Data(contentsOf: cursorSettings)
+      expect(
+        preservedInvalidCursor == invalidCursor,
+        "invalid Cursor configuration changed after a refused install")
+    }
+
+    let invalidDroid = Data(#"{"hooks":{"PreToolUse":"unexpected"}}"#.utf8)
+    try invalidDroid.write(to: factorySettings, options: .atomic)
+    expect(
+      installer.status(for: .droid).state == .invalidConfiguration,
+      "an invalid Droid hook schema was accepted")
+    do {
+      try installer.install(.droid)
+      failures.append("invalid Droid hook schema was overwritten")
+    } catch AgentAdapterInstallError.invalidConfiguration {
+      let preservedInvalidDroid = try Data(contentsOf: factorySettings)
+      expect(
+        preservedInvalidDroid == invalidDroid,
+        "invalid Droid configuration changed after a refused install")
+    }
+
+    let openCodePlugin = root.appendingPathComponent(
+      ".config/opencode/plugins/cerebro-agent-receipts.js")
+    try FileManager.default.createDirectory(
+      at: openCodePlugin.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let unmanagedPlugin = Data("export const Existing = async () => ({})\n".utf8)
+    try unmanagedPlugin.write(to: openCodePlugin, options: .atomic)
+    expect(
+      installer.status(for: .openCode).state == .unmanagedConflict,
+      "an unmanaged OpenCode plugin was not reported as a conflict")
+    do {
+      try installer.install(.openCode)
+      failures.append("unmanaged OpenCode plugin was overwritten")
+    } catch AgentAdapterInstallError.unmanagedPlugin {
+      let preservedOpenCodePlugin = try Data(contentsOf: openCodePlugin)
+      expect(
+        preservedOpenCodePlugin == unmanagedPlugin,
+        "unmanaged OpenCode plugin changed after a refused install")
     }
   }
 
