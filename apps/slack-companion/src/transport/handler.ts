@@ -168,7 +168,10 @@ function validPayloadReceipt(
   receipt: InboundPayloadReceipt,
   rawBody: Uint8Array,
 ): boolean {
-  if (receipt.payload_ref.trim() === "") {
+  if (
+    typeof receipt.payload_ref !== "string" ||
+    receipt.payload_ref.trim() === ""
+  ) {
     return false;
   }
   const digest = createHash("sha256").update(rawBody).digest("hex");
