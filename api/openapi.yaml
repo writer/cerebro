@@ -5829,6 +5829,101 @@ paths:
               schema: {$ref: '#/components/schemas/PolicyCandidate'}
         '409': {description: Candidate has not passed proof.}
         '503': {description: Current graph reads are unavailable.}
+  /policy-candidates/{candidateID}/experiments:
+    post:
+      operationId: createPolicyExperiment
+      summary: Create an immutable policy evaluation experiment
+      description: Resolves one source runtime's authoritative complete current graph checkpoint, then pins the proved candidate revision, artifact and catalog digests, server-owned current-canary dataset revision, and checkpoint receipt. The experiment is draft-only and cannot write findings or activate policy.
+      tags: [Findings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePolicyExperimentRequest'}
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      responses:
+        '201':
+          description: Queued or explicitly blocked experiment.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyExperiment'}
+        '400': {description: Runtime or idempotency input is invalid.}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '409': {description: Candidate is not proved or its artifacts are unavailable.}
+        '503': {description: Durable experiment storage is unavailable.}
+    get:
+      operationId: listPolicyExperiments
+      summary: List evaluation experiments for one policy candidate
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [queued, running, completed, failed, blocked]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Candidate-scoped experiment history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [experiments]
+                properties:
+                  experiments: {type: array, items: {$ref: '#/components/schemas/PolicyExperiment'}}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-experiments/{experimentID}:
+    get:
+      operationId: getPolicyExperiment
+      summary: Get one immutable policy evaluation experiment
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      responses:
+        '200':
+          description: Experiment state and immutable pins.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyExperiment'}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+  /policy-experiments/{experimentID}/observations:
+    get:
+      operationId: listPolicyExperimentObservations
+      summary: List append-only policy experiment observations
+      description: Returns bounded metrics and receipt digests; graph rows and provider identifiers are never returned.
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}
+      responses:
+        '200':
+          description: Ordered experiment observations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [observations]
+                properties:
+                  observations: {type: array, items: {$ref: '#/components/schemas/PolicyExperimentObservation'}}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+  /policy-experiments/{experimentID}/run:
+    post:
+      operationId: runPolicyExperiment
+      summary: Start one policy experiment through its purpose-bound job
+      description: Creates or reuses the experiment's idempotent leased job. This route requires policy-candidate operator scope and does not grant access to other platform job kinds.
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+      responses:
+        '202': {description: Experiment job created and started.}
+        '200': {description: Existing idempotent experiment job returned.}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+        '503': {description: Durable job execution is unavailable.}
   /platform/jobs:
     get:
       operationId: listPlatformJobs
@@ -11737,6 +11832,7 @@ components:
             - graph_ingest_runtime
             - finding_rules_evaluate
             - findings_evaluate
+            - policy_candidate_experiment
             - report_run
         tenant_id:
           type: string
@@ -15673,6 +15769,67 @@ components:
         pr_ready: {type: boolean, description: 'True only after current coverage-gap revalidation, proof, and current-state shadow execution succeed.'}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    CreatePolicyExperimentRequest:
+      type: object
+      additionalProperties: false
+      required: [runtime_id]
+      properties:
+        runtime_id: {type: string, minLength: 1}
+    PolicyExperimentCheckpoint:
+      type: object
+      additionalProperties: false
+      required: [runtime_id, id, digest, complete, current]
+      properties:
+        runtime_id: {type: string, minLength: 1}
+        id: {type: string, minLength: 1}
+        digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        complete: {type: boolean}
+        current: {type: boolean}
+    PolicyExperimentPins:
+      type: object
+      required: [candidate_revision, policy_digest, test_digest, catalog_digest, dataset_digest, checkpoints]
+      properties:
+        candidate_revision: {type: integer, format: int64, minimum: 1}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        catalog_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        dataset_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        checkpoints:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {$ref: '#/components/schemas/PolicyExperimentCheckpoint'}
+    PolicyExperiment:
+      type: object
+      required: [id, candidate_id, tenant_id, status, revision, pins, observation_count, created_at, updated_at]
+      properties:
+        id: {type: string}
+        candidate_id: {type: string}
+        tenant_id: {type: string}
+        status: {type: string, enum: [queued, running, completed, failed, blocked]}
+        revision: {type: integer, format: int64, minimum: 1}
+        pins: {$ref: '#/components/schemas/PolicyExperimentPins'}
+        status_reason: {type: string}
+        observation_count: {type: integer, format: int64, minimum: 0}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+    PolicyExperimentObservation:
+      type: object
+      required: [id, experiment_id, sequence, kind, receipt_digest, observed_at, created_at]
+      properties:
+        id: {type: string}
+        experiment_id: {type: string}
+        sequence: {type: integer, format: int64, minimum: 1}
+        kind: {type: string, pattern: '^[a-z][a-z0-9_.-]*$'}
+        checkpoint_id: {type: string}
+        receipt_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        metrics:
+          type: object
+          additionalProperties: {type: number, format: double}
+        observed_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
     PolicyCandidateArtifacts:
       type: object
       required: [rule, policy_path, policy_yaml, policy_digest, suite, test_path, test_yaml, test_digest]
