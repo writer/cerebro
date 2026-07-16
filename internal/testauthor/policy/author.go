@@ -49,6 +49,17 @@ func Author(intent Intent) (Artifacts, error) {
 }
 
 func ArtifactsForRule(domain string, rule findingdsl.PolicyFindingRule) (Artifacts, error) {
+	return artifactsForRule(domain, rule, nil)
+}
+
+// ArtifactsForRuleWithGraphEvidence derives deterministic multi-hop fixtures
+// from typed evidence. Evidence node IDs are local handles: authored fixtures
+// never copy source URNs, labels, or other resource identifiers.
+func ArtifactsForRuleWithGraphEvidence(domain string, rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (Artifacts, error) {
+	return artifactsForRule(domain, rule, evidence)
+}
+
+func artifactsForRule(domain string, rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (Artifacts, error) {
 	domain = strings.TrimSpace(domain)
 	if !domainPattern.MatchString(domain) {
 		return Artifacts{}, fmt.Errorf("policy domain %q must use lowercase dash-separated alphanumeric segments", domain)
@@ -59,7 +70,7 @@ func ArtifactsForRule(domain string, rule findingdsl.PolicyFindingRule) (Artifac
 	if issues := findingdsl.ValidatePolicyRule(rule); len(issues) != 0 {
 		return Artifacts{}, fmt.Errorf("authored policy is invalid: %s", joinIssues(issues))
 	}
-	suite, err := SuiteForRule(rule)
+	suite, err := suiteForRule(rule, evidence)
 	if err != nil {
 		return Artifacts{}, err
 	}
@@ -87,6 +98,19 @@ func ArtifactsForRule(domain string, rule findingdsl.PolicyFindingRule) (Artifac
 }
 
 func SuiteForRule(rule findingdsl.PolicyFindingRule) (findingdsl.PolicyRuleTestSuite, error) {
+	return suiteForRule(rule, nil)
+}
+
+func suiteForRule(rule findingdsl.PolicyFindingRule, evidence *GraphEvidence) (findingdsl.PolicyRuleTestSuite, error) {
+	if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
+		if evidence == nil {
+			return findingdsl.PolicyRuleTestSuite{}, ErrGraphEvidenceRequired
+		}
+		return SuiteForGraphRule(rule, *evidence)
+	}
+	if evidence != nil {
+		return findingdsl.PolicyRuleTestSuite{}, errors.New("graph evidence requires a policy with spec.graph.query")
+	}
 	finding, passing, err := findingdsl.SynthesizeEqualityConditionFixtures(rule.Spec.Match.Conditions)
 	if err != nil {
 		return findingdsl.PolicyRuleTestSuite{}, fmt.Errorf("author policy tests: %w", err)
@@ -119,6 +143,9 @@ func joinIssues(issues []findingdsl.Issue) string {
 }
 
 func IsSupported(rule findingdsl.PolicyFindingRule) bool {
+	if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
+		return false
+	}
 	_, _, err := findingdsl.SynthesizeEqualityConditionFixtures(rule.Spec.Match.Conditions)
 	return err == nil
 }

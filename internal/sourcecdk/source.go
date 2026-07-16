@@ -157,6 +157,13 @@ type CoverageContractProvider interface {
 	CoverageContract() CoverageContract
 }
 
+// ProjectionReconciliationProvider marks sources whose nil-cursor read is an
+// authoritative snapshot suitable for pruning graph links not observed in a
+// complete pass. Incremental or audit-log sources must not implement it.
+type ProjectionReconciliationProvider interface {
+	SupportsAuthoritativeProjectionReconciliation(Config) bool
+}
+
 // Registry indexes sources by their stable identifier.
 type Registry struct {
 	sources                         map[string]Source
@@ -237,6 +244,14 @@ func (s *catalogContractSource) CoverageContract() CoverageContract {
 	return CoverageContract{}
 }
 
+func (s *catalogContractSource) SupportsAuthoritativeProjectionReconciliation(config Config) bool {
+	if s == nil || sourceIsNil(s.Source) {
+		return false
+	}
+	provider, ok := s.Source.(ProjectionReconciliationProvider)
+	return ok && provider.SupportsAuthoritativeProjectionReconciliation(config)
+}
+
 func (s *catalogContractSource) LifecycleContract() LifecycleContract {
 	if s == nil {
 		return LifecycleContract{}
@@ -298,6 +313,14 @@ func (s *catalogCoverageSource) EventContracts() []EventContract {
 	return cloneEventContracts(provider.EventContracts())
 }
 
+func (s *catalogCoverageSource) SupportsAuthoritativeProjectionReconciliation(config Config) bool {
+	if s == nil || sourceIsNil(s.Source) {
+		return false
+	}
+	provider, ok := s.Source.(ProjectionReconciliationProvider)
+	return ok && provider.SupportsAuthoritativeProjectionReconciliation(config)
+}
+
 func (s *catalogCoverageSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
 	if s == nil || sourceIsNil(s.Source) {
 		return Pull{}, fmt.Errorf("source is required")
@@ -351,6 +374,14 @@ func (s *catalogLifecycleSource) CoverageContract() CoverageContract {
 		return CoverageContract{}
 	}
 	return cloneCoverageContract(provider.CoverageContract())
+}
+
+func (s *catalogLifecycleSource) SupportsAuthoritativeProjectionReconciliation(config Config) bool {
+	if s == nil || sourceIsNil(s.Source) {
+		return false
+	}
+	provider, ok := s.Source.(ProjectionReconciliationProvider)
+	return ok && provider.SupportsAuthoritativeProjectionReconciliation(config)
 }
 
 func (s *catalogLifecycleSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
