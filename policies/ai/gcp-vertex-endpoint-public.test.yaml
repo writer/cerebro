@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        network: null
+        private_service_connect_config: null
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        network: true
+        private_service_connect_config: null
+      wantFinding: false

@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        account_active: true
+        is_human_user: true
+        mfa_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        account_active: true
+        is_human_user: true
+        mfa_enabled: true
+      wantFinding: false

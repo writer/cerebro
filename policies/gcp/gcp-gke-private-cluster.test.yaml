@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        private_cluster_config:
+            enable_private_endpoint: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        private_cluster_config:
+            enable_private_endpoint: true
+      wantFinding: false

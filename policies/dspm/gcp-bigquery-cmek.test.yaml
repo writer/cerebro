@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        default_encryption_configuration:
+            kms_key_name: null
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        default_encryption_configuration:
+            kms_key_name: true
+      wantFinding: false

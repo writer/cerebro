@@ -231,73 +231,141 @@ func EvaluatePolicyConditions(conditions []string, resource PolicyResource) (boo
 }
 
 // SynthesizeEqualityConditionFixtures derives a finding and passing resource for
-// policies made entirely from cmp_eq(path(resource, field), scalar) conditions.
-// It intentionally rejects broader expressions rather than guessing semantics.
+// policies made entirely from supported scalar comparisons. It intentionally
+// rejects broader expressions rather than guessing semantics.
 func SynthesizeEqualityConditionFixtures(conditions []string) (PolicyResource, PolicyResource, error) {
 	if len(conditions) == 0 {
 		return nil, nil, fmt.Errorf("at least one condition is required")
 	}
 	finding := PolicyResource{}
 	passing := PolicyResource{}
-	var firstField string
 	for idx, condition := range conditions {
 		expr, err := parsePolicyExpression(condition)
 		if err != nil {
 			return nil, nil, fmt.Errorf("condition[%d]: %w", idx, err)
 		}
-		call, ok := expr.(callExpression)
-		if !ok || call.name != "cmp_eq" || len(call.args) != 2 {
-			return nil, nil, fmt.Errorf("condition[%d] is not a simple equality condition", idx)
+		fixture, err := scalarConditionFixture(expr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("condition[%d]: %w", idx, err)
 		}
-		pathCall, ok := call.args[0].(callExpression)
-		if !ok || pathCall.name != "path" || len(pathCall.args) != 2 {
-			return nil, nil, fmt.Errorf("condition[%d] does not compare a resource path", idx)
+		if err := setPolicyFixturePath(finding, fixture.field, fixture.finding); err != nil {
+			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, fixture.field, err)
 		}
-		root, rootOK := pathCall.args[0].(identExpression)
-		fieldExpr, fieldOK := pathCall.args[1].(literalExpression)
-		field, stringOK := fieldExpr.value.(string)
-		valueExpr, valueOK := call.args[1].(literalExpression)
-		if !rootOK || root.name != "resource" || !fieldOK || !stringOK || strings.TrimSpace(field) == "" || !valueOK {
-			return nil, nil, fmt.Errorf("condition[%d] must compare path(resource, field) with a scalar literal", idx)
+		passingValue := fixture.finding
+		if idx == 0 {
+			passingValue = fixture.passing
 		}
-		if _, err := alternatePolicyFixtureValue(valueExpr.value); err != nil {
-			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
+		if err := setPolicyFixturePath(passing, fixture.field, passingValue); err != nil {
+			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, fixture.field, err)
 		}
-		if err := setPolicyFixturePath(finding, field, valueExpr.value); err != nil {
-			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
-		}
-		if err := setPolicyFixturePath(passing, field, valueExpr.value); err != nil {
-			return nil, nil, fmt.Errorf("condition[%d] field %q: %w", idx, field, err)
-		}
-		if firstField == "" {
-			firstField = field
-		}
-	}
-	alternate, _ := alternatePolicyFixtureValue(policyFixturePathValue(finding, firstField))
-	if err := replacePolicyFixturePath(passing, firstField, alternate); err != nil {
-		return nil, nil, err
 	}
 	return finding, passing, nil
 }
 
-func replacePolicyFixturePath(resource PolicyResource, path string, value any) error {
-	parts := strings.Split(path, ".")
-	current := map[string]any(resource)
-	for idx, part := range parts {
-		if idx == len(parts)-1 {
-			if _, exists := current[part]; !exists {
-				return fmt.Errorf("resource path %q does not exist", path)
-			}
-			current[part] = value
-			return nil
-		}
-		next, ok := current[part].(map[string]any)
-		if !ok {
-			return fmt.Errorf("resource path %q does not exist", path)
-		}
-		current = next
+type scalarFixture struct {
+	field   string
+	finding any
+	passing any
+}
+
+func scalarConditionFixture(expr expression) (scalarFixture, error) {
+	call, ok := expr.(callExpression)
+	if !ok || len(call.args) != 2 {
+		return scalarFixture{}, fmt.Errorf("expression is not a supported scalar comparison")
 	}
-	return nil
+	field, err := policyResourcePath(call.args[0])
+	if err != nil {
+		return scalarFixture{}, err
+	}
+	switch call.name {
+	case "cmp_eq", "cmp_ne", "cmp_gt", "cmp_lt", "cmp_ge", "cmp_le":
+		literal, ok := call.args[1].(literalExpression)
+		if !ok {
+			return scalarFixture{}, fmt.Errorf("%s must compare the resource path with a scalar literal", call.name)
+		}
+		finding, passing, err := scalarComparisonValues(call.name, literal.value)
+		return scalarFixture{field: field, finding: finding, passing: passing}, err
+	case "in_list":
+		list, ok := call.args[1].(listExpression)
+		if !ok || len(list.items) == 0 {
+			return scalarFixture{}, fmt.Errorf("in_list requires a non-empty literal list")
+		}
+		values := make([]any, 0, len(list.items))
+		for _, item := range list.items {
+			literal, ok := item.(literalExpression)
+			if !ok {
+				return scalarFixture{}, fmt.Errorf("in_list values must be scalar literals")
+			}
+			values = append(values, literal.value)
+		}
+		passing, err := valueOutsidePolicyList(values)
+		return scalarFixture{field: field, finding: values[0], passing: passing}, err
+	default:
+		return scalarFixture{}, fmt.Errorf("function %q is not a supported scalar comparison", call.name)
+	}
+}
+
+func policyResourcePath(expr expression) (string, error) {
+	pathCall, ok := expr.(callExpression)
+	if !ok || pathCall.name != "path" || len(pathCall.args) != 2 {
+		return "", fmt.Errorf("comparison does not use a resource path")
+	}
+	root, rootOK := pathCall.args[0].(identExpression)
+	fieldExpr, fieldOK := pathCall.args[1].(literalExpression)
+	field, stringOK := fieldExpr.value.(string)
+	if !rootOK || root.name != "resource" || !fieldOK || !stringOK || strings.TrimSpace(field) == "" {
+		return "", fmt.Errorf("comparison must use path(resource, field)")
+	}
+	return field, nil
+}
+
+func scalarComparisonValues(name string, literal any) (any, any, error) {
+	switch name {
+	case "cmp_eq":
+		alternate, err := alternatePolicyFixtureValue(literal)
+		return literal, alternate, err
+	case "cmp_ne":
+		alternate, err := alternatePolicyFixtureValue(literal)
+		return alternate, literal, err
+	case "cmp_gt":
+		greater, err := orderedPolicyFixtureValue(literal, 1)
+		return greater, literal, err
+	case "cmp_lt":
+		lesser, err := orderedPolicyFixtureValue(literal, -1)
+		return lesser, literal, err
+	case "cmp_ge":
+		lesser, err := orderedPolicyFixtureValue(literal, -1)
+		return literal, lesser, err
+	case "cmp_le":
+		greater, err := orderedPolicyFixtureValue(literal, 1)
+		return literal, greater, err
+	default:
+		return nil, nil, fmt.Errorf("unsupported comparison %q", name)
+	}
+}
+
+func valueOutsidePolicyList(values []any) (any, error) {
+	candidate, err := alternatePolicyFixtureValue(values[0])
+	if err != nil {
+		return nil, err
+	}
+	for attempts := 0; attempts < len(values)+1; attempts++ {
+		inside := false
+		for _, value := range values {
+			if compareValues(candidate, value) == 0 {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			return candidate, nil
+		}
+		candidate, err = alternatePolicyFixtureValue(candidate)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("could not derive a value outside the list")
 }
 
 func setPolicyFixturePath(resource PolicyResource, path string, value any) error {
@@ -330,11 +398,6 @@ func setPolicyFixturePath(resource PolicyResource, path string, value any) error
 	return nil
 }
 
-func policyFixturePathValue(resource PolicyResource, path string) any {
-	value, _, _ := pathLookupArgs([]any{resource, path})
-	return value
-}
-
 func alternatePolicyFixtureValue(value any) (any, error) {
 	switch typed := value.(type) {
 	case bool:
@@ -343,8 +406,27 @@ func alternatePolicyFixtureValue(value any) (any, error) {
 		return typed + "-passing", nil
 	case float64:
 		return typed + 1, nil
+	case nil:
+		return true, nil
 	default:
 		return nil, fmt.Errorf("literal type %T is not supported", value)
+	}
+}
+
+func orderedPolicyFixtureValue(value any, direction float64) (any, error) {
+	switch typed := value.(type) {
+	case float64:
+		return typed + direction, nil
+	case string:
+		if direction > 0 {
+			return typed + "\uffff", nil
+		}
+		if typed == "" {
+			return nil, fmt.Errorf("cannot derive a string ordered below the empty string")
+		}
+		return "", nil
+	default:
+		return nil, fmt.Errorf("literal type %T does not have a deterministic ordered fixture", value)
 	}
 }
 

@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        iam_configuration:
+            uniform_bucket_level_access:
+                enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        iam_configuration:
+            uniform_bucket_level_access:
+                enabled: true
+      wantFinding: false

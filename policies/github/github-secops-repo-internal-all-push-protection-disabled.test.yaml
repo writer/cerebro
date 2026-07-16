@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        resource_type: code_repository
+        secret_scanning_push_protection: enabled-passing
+        visibility: internal
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        resource_type: code_repository-passing
+        secret_scanning_push_protection: enabled-passing
+        visibility: internal
+      wantFinding: false

@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        versioning:
+            mfa_delete: Enabled-passing
+            status: Enabled
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        versioning:
+            mfa_delete: Enabled-passing
+            status: Enabled-passing
+      wantFinding: false
