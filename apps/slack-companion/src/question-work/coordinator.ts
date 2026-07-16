@@ -203,7 +203,7 @@ function taskFor(work: QuestionWorkV1, availableAt: string): QuestionWorkTaskV1 
 }
 
 function validateAdmissionInput(input: QuestionWorkAdmissionInput): void {
-  for (const [value, label] of Object.entries(input)) {
+  for (const [label, value] of Object.entries(input)) {
     if (typeof value !== "string" || value.trim() === "") {
       throw new QuestionWorkInputError(`${label} cannot be empty.`);
     }

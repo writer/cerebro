@@ -143,6 +143,38 @@ describe("ExternalEffectReconciler", () => {
     assert.equal(result.effect.generation, 2);
   });
 
+  test("recovers planned effects under an expired lease as uncertain", async () => {
+    const fixture = makeFixture();
+    const firstSession = await fixture.session(1);
+    const input = effectDraft();
+    const committed = await fixture.store.persistEffectIntent(
+      firstSession.lease,
+      intentDraft(input),
+      fixture.clock.now().toISOString(),
+    );
+    await fixture.execution.beginEffect(firstSession, {
+      approval_ref: committed.intent.approval_ref,
+      approval_required: committed.intent.approval_required,
+      effect_id: committed.intent.effect_id,
+      idempotency_key: committed.intent.idempotency_key,
+      request_digest: committed.intent.request_digest,
+      rollback_plan_ref: committed.intent.rollback_plan_ref,
+      step_id: committed.intent.step_id,
+      target_ref: committed.intent.target_ref,
+    });
+
+    fixture.clock.advance(31_000);
+    const recovered = await fixture.execution.reconcileExpired();
+
+    assert.equal(recovered.length, 1);
+    assert.deepEqual(recovered[0]?.uncertain_effect_ids, [input.effect_id]);
+    assert.equal(
+      (await fixture.store.getEffect(firstSession.run.run_id, input.idempotency_key))
+        ?.state,
+      "unknown",
+    );
+  });
+
   for (const partialState of ["prepared", "materialized"] as const) {
     test(`resumes the ${partialState} partial window exactly once`, async () => {
       const fixture = makeFixture();

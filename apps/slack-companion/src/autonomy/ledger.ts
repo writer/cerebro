@@ -324,7 +324,10 @@ export class MissionLedger {
         });
         return { acquired: true, created: true, occurrence: committed };
       } catch (error) {
-        if (!(error instanceof MissionLedgerOccurrenceConflictError)) {
+        if (
+          !(error instanceof MissionLedgerOccurrenceConflictError) &&
+          !(error instanceof MissionLedgerStaleRevisionError)
+        ) {
           throw error;
         }
       }

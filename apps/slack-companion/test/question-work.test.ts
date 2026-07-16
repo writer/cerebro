@@ -130,6 +130,21 @@ describe("QuestionWorkCoordinator", () => {
     );
   });
 
+  test("rejects empty admission fields before persistence", async () => {
+    const fixture = makeFixture();
+    await assert.rejects(
+      fixture.coordinator.admit(
+        admission({ request_ref: " " }),
+        readyPreflight(),
+      ),
+      /request_ref cannot be empty/,
+    );
+    assert.equal(
+      await fixture.store.read(questionWorkIdentity(admission())),
+      undefined,
+    );
+  });
+
   test("persists monotonic progress and resumes retry work under a newer fence", async () => {
     const fixture = makeFixture();
     const accepted = await fixture.coordinator.admit(admission(), readyPreflight());

@@ -468,7 +468,7 @@ export class ReferenceMemoryExecutionStore
     for (const [key, effect] of this.effects) {
       if (
         effect.run_id === lease.run_id &&
-        effect.state === "executing" &&
+        (effect.state === "planned" || effect.state === "executing") &&
         sameEffectLease(effect, lease)
       ) {
         this.effects.set(key, {

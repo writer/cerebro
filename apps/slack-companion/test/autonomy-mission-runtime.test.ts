@@ -320,6 +320,45 @@ describe("portable autonomy mission ledger", () => {
     );
   });
 
+  test("retries scheduled claims after a transient snapshot revision race", async () => {
+    const store = new StaleOnceMissionLedgerStore();
+    const ledger = new MissionLedger({ store });
+    const run = runReceipt("run-stale-claim", "subject-stale-claim");
+    const plan = missionPlan(run, "mission-stale-claim");
+    await ledger.initialize({
+      event: eventContext("2026-07-16T11:00:00.000Z", "mission.created"),
+      operation_id: "create-stale-claim",
+      seed: {
+        plan,
+        run,
+        wake: createMissionWake({
+          created_at: "2026-07-16T11:00:00.000Z",
+          due_at: "2026-07-16T11:30:00.000Z",
+          generation: 1,
+          misfire_policy: "coalesce_once",
+          mission_ref: plan.mission_ref,
+          mission_revision: plan.mission_revision,
+          wake_condition_ref: "wake/stale-claim",
+        }),
+      },
+    });
+
+    const due = (await ledger.listDue(BASE_TIME, 1))[0]!;
+    const claimed = await ledger.claimDue(due, {
+      fencing_token: 3,
+      generation: 2,
+      lease_expires_at: "2026-07-16T12:01:00.000Z",
+      lease_token: "scheduled-lease-stale-retry",
+      now: BASE_TIME,
+      owner_id: "scheduler-stale-retry",
+    });
+
+    assert.equal(claimed.acquired, true);
+    assert.equal(store.compareAttempts, 2);
+    if (!claimed.acquired) assert.fail("expected claim retry to succeed");
+    assert.equal(claimed.created, true);
+  });
+
   test("keeps complete ordered events behind a bounded snapshot and fences transitions", async () => {
     const authority = new MutableMissionLeaseAuthority(BASE_TIME);
     const store = new ReferenceMemoryMissionLedgerStore({
@@ -708,5 +747,24 @@ class MutableMissionLeaseAuthority implements MissionLeaseAuthorityPort {
           : { lease: structuredClone(lease), observed_at: this.observedAt },
       ),
     );
+  }
+}
+
+class StaleOnceMissionLedgerStore extends ReferenceMemoryMissionLedgerStore {
+  compareAttempts = 0;
+  private staleOnce = true;
+
+  compareAndSetOccurrence(
+    request: Parameters<ReferenceMemoryMissionLedgerStore["compareAndSetOccurrence"]>[0],
+  ) {
+    this.compareAttempts += 1;
+    if (this.staleOnce) {
+      this.staleOnce = false;
+      throw new MissionLedgerStaleRevisionError(
+        request.expected_snapshot_revision,
+        request.expected_snapshot_revision + 1,
+      );
+    }
+    return super.compareAndSetOccurrence(request);
   }
 }
