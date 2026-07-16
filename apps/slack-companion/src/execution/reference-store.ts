@@ -1,10 +1,18 @@
 import { ExecutionInvariantError } from "./coordinator.js";
+import {
+  effectIntentDigest,
+  normalizeEffectIntentValue,
+  sameExternalEffectIntent,
+} from "./effect-intent.js";
 import type {
   CheckpointDraft,
   CheckpointV1,
   EffectDraft,
   EffectReceiptV1,
   EffectResolution,
+  ExternalEffectIntentCommit,
+  ExternalEffectIntentDraft,
+  ExternalEffectIntentV1,
   LeaseAcquisition,
   LeaseClaim,
   RecoveredRun,
@@ -17,6 +25,7 @@ import type { DurableExecutionPort } from "./ports.js";
 export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
   private readonly checkpoints = new Map<string, CheckpointV1[]>();
   private readonly effects = new Map<string, EffectReceiptV1>();
+  private readonly effectIntents = new Map<string, ExternalEffectIntentV1>();
   private readonly fencingTokens = new Map<string, number>();
   private readonly highestGenerations = new Map<string, number>();
   private readonly leases = new Map<string, WorkLeaseV1>();
@@ -162,6 +171,17 @@ export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
     finishedAt: string,
   ): Promise<RunReceiptV1> {
     this.assertLease(lease, finishedAt);
+    for (const [key, intent] of this.effectIntents) {
+      if (intent.run_id !== lease.run_id) {
+        continue;
+      }
+      const effect = this.effects.get(key);
+      if (effect?.state !== "succeeded" || effect.verification_state !== "verified") {
+        throw new ExecutionInvariantError(
+          "run has an external intent without a verified effect",
+        );
+      }
+    }
     for (const effect of this.effects.values()) {
       if (effect.run_id !== lease.run_id) {
         continue;
@@ -180,6 +200,58 @@ export class ReferenceMemoryExecutionStore implements DurableExecutionPort {
     this.runs.set(lease.run_id, delivering);
     this.leases.delete(lease.run_id);
     return Promise.resolve(structuredClone(delivering));
+  }
+
+  persistEffectIntent(
+    lease: WorkLeaseV1,
+    draft: ExternalEffectIntentDraft,
+    persistedAt: string,
+  ): Promise<ExternalEffectIntentCommit> {
+    this.assertLease(lease, persistedAt);
+    if (
+      JSON.stringify(normalizeEffectIntentValue(draft.request)) !==
+      JSON.stringify(draft.request)
+    ) {
+      throw new ExecutionInvariantError("effect intent request is not canonical");
+    }
+    if (effectIntentDigest(draft) !== draft.request_digest) {
+      throw new ExecutionInvariantError("effect intent digest does not match its request");
+    }
+    const key = effectKey(lease.run_id, draft.idempotency_key);
+    const current = this.effectIntents.get(key);
+    if (current !== undefined) {
+      if (!sameExternalEffectIntent(current, draft)) {
+        throw new ExecutionInvariantError(
+          "effect idempotency key has a different external intent",
+        );
+      }
+      return Promise.resolve({
+        created: false,
+        intent: structuredClone(current),
+      });
+    }
+
+    const intent: ExternalEffectIntentV1 = {
+      ...structuredClone(draft),
+      fencing_token: lease.fencing_token,
+      generation: lease.generation,
+      lease_token: lease.lease_token,
+      persisted_at: persistedAt,
+      run_id: lease.run_id,
+      schema_version: "external-effect-intent/v1",
+    };
+    this.effectIntents.set(key, intent);
+    return Promise.resolve({ created: true, intent: structuredClone(intent) });
+  }
+
+  getEffectIntent(
+    runId: string,
+    idempotencyKey: string,
+  ): Promise<ExternalEffectIntentV1 | undefined> {
+    const intent = this.effectIntents.get(effectKey(runId, idempotencyKey));
+    return Promise.resolve(
+      intent === undefined ? undefined : structuredClone(intent),
+    );
   }
 
   beginEffect(
