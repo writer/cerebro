@@ -57,6 +57,41 @@ export interface EffectResolution {
   verification_state: "verified" | "failed";
 }
 
+export type EffectIntentValue =
+  | boolean
+  | null
+  | number
+  | string
+  | EffectIntentValue[]
+  | { [key: string]: EffectIntentValue };
+
+export interface ExternalEffectIntentDraft {
+  approval_ref?: string;
+  approval_required: boolean;
+  candidate_version: string;
+  effect_id: string;
+  idempotency_key: string;
+  request: EffectIntentValue;
+  request_digest: string;
+  rollback_plan_ref?: string;
+  step_id: string;
+  target_ref: string;
+}
+
+export interface ExternalEffectIntentV1 extends ExternalEffectIntentDraft {
+  fencing_token: number;
+  generation: number;
+  lease_token: string;
+  persisted_at: string;
+  run_id: string;
+  schema_version: "external-effect-intent/v1";
+}
+
+export interface ExternalEffectIntentCommit {
+  created: boolean;
+  intent: ExternalEffectIntentV1;
+}
+
 export interface LeaseAcquisition {
   created: boolean;
   lease: WorkLeaseV1;

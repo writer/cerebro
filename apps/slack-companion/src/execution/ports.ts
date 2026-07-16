@@ -4,6 +4,9 @@ import type {
   EffectDraft,
   EffectReceiptV1,
   EffectResolution,
+  ExternalEffectIntentCommit,
+  ExternalEffectIntentDraft,
+  ExternalEffectIntentV1,
   LeaseAcquisition,
   LeaseClaim,
   RecoveredRun,
@@ -60,12 +63,29 @@ export interface DurableExecutionPort {
 
   /**
    * Atomically finishes execution, advances the run to durable delivery, and
-   * releases its lease. Delivery reconciliation alone may complete the run.
+   * releases its lease. An external intent without a succeeded, independently
+   * verified effect must block this transition. Delivery reconciliation alone
+   * may complete the run.
    */
   finishExecution(
     lease: WorkLeaseV1,
     finishedAt: string,
   ): Promise<RunReceiptV1>;
+
+  /**
+   * Persists the exact external write intent under the active lease. Repeating
+   * the same logical intent is idempotent; changing it is a conflict.
+   */
+  persistEffectIntent(
+    lease: WorkLeaseV1,
+    draft: ExternalEffectIntentDraft,
+    persistedAt: string,
+  ): Promise<ExternalEffectIntentCommit>;
+
+  getEffectIntent(
+    runId: string,
+    idempotencyKey: string,
+  ): Promise<ExternalEffectIntentV1 | undefined>;
 
   beginEffect(
     lease: WorkLeaseV1,
