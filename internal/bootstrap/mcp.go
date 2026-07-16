@@ -3114,12 +3114,12 @@ func mcpResponseTelemetryFields(response *mcpJSONRPCResponse) []telemetry.Field 
 	}
 	switch result := response.Result.(type) {
 	case mcpToolResult:
-		return []telemetry.Field{
-			{Key: "mcp.response_shape", Value: "tool_result"},
-			{Key: "mcp.tool_result_error", Value: result.IsError},
-			{Key: "mcp.tool_result_content_count", Value: len(result.Content)},
-			{Key: "mcp.structured_content_present", Value: result.StructuredContent != nil},
+		fields := []telemetry.Field{{Key: "mcp.response_shape", Value: "tool_result"}, {Key: "mcp.tool_result_error", Value: result.IsError}, {Key: "mcp.tool_result_content_count", Value: len(result.Content)}, {Key: "mcp.structured_content_present", Value: result.StructuredContent != nil}}
+		taskResponse, isTaskResponse := result.StructuredContent.(mcpoperations.TaskResponse)
+		if taskState := mcpoperations.TaskResponseState(taskResponse); !result.IsError && isTaskResponse && taskState != "" {
+			fields = append(fields, telemetry.Field{Key: "mcp.task_state", Value: taskState})
 		}
+		return fields
 	case map[string]any:
 		fields := []telemetry.Field{{Key: "mcp.response_shape", Value: mcpMapResponseShape(result)}}
 		if version := mcpAnyString(result["protocolVersion"]); version != "" {

@@ -154,6 +154,26 @@ func TestTaskResponsesPreserveStructuredContentPartialErrors(t *testing.T) {
 	}
 }
 
+func TestTaskResponseStateAllowsKnownStatesOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		response TaskResponse
+		want     string
+	}{
+		{name: "value response", response: TaskResponse{State: TaskStateComplete}, want: TaskStateComplete},
+		{name: "partial response", response: TaskResponse{State: TaskStatePartial}, want: TaskStatePartial},
+		{name: "blocked response", response: TaskResponse{State: TaskStateBlocked}, want: TaskStateBlocked},
+		{name: "unknown state", response: TaskResponse{State: "running"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := TaskResponseState(test.response); got != test.want {
+				t.Fatalf("TaskResponseState() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func readTaskSelectionCases(t *testing.T) []TaskSelectionCase {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join("testdata", "task_tools", "selection_cases.json"))

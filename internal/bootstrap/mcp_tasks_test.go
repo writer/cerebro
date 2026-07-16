@@ -262,6 +262,7 @@ func TestMCPTaskTelemetryRecordsOperationStateWithoutPrompt(t *testing.T) {
 		"mcp.tool_behavior":       "read",
 		"mcp.tool_owner":          "agent-platform",
 		"mcp.task":                true,
+		"mcp.task_state":          "partial",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
