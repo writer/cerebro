@@ -64,6 +64,17 @@ func trustedEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		"source_product":      "trusted_endpoint",
 		"at":                  eventObservedAt(event),
 	}
+	if event.GetKind() == "trusted_endpoint.agent_execution_receipt" {
+		for _, key := range []string{
+			"agent_product", "captured_at", "claimed_evidence_integrity", "claimed_provider_binding",
+			"claimed_provider_event_id", "evidence_integrity", "local_user_claim", "local_user_claim_source",
+			"model", "permission_mode", "phase", "previous_receipt_digest", "provider_binding",
+			"normalized_receipt_digest", "receipt_digest", "receipt_id", "receipt_key", "sequence", "session_id",
+			"tool_call_id", "tool_name", "turn_id",
+		} {
+			eventAttrs[key] = strings.TrimSpace(attrs[key])
+		}
+	}
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        eventURN,
 		TenantID:   tenantID,
@@ -82,6 +93,52 @@ func trustedEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		"kind":     event.GetKind(),
 		"at":       eventObservedAt(event),
 	}))
+	if event.GetKind() == "trusted_endpoint.agent_execution_receipt" {
+		product := strings.TrimSpace(attrs["agent_product"])
+		sessionID := strings.TrimSpace(attrs["session_id"])
+		sessionURN := projectionURN(tenantID, "trusted_endpoint_agent_session", agentID, product, sessionID)
+		receiptURN := projectionURN(tenantID, "trusted_endpoint_agent_receipt", agentID, attrs["receipt_id"])
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        sessionURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "trusted_endpoint.agent_session",
+			Label:      firstNonEmpty(product+" "+sessionID, sessionID),
+			Attributes: map[string]string{
+				"agent_product":  product,
+				"device_id":      strings.TrimSpace(attrs["device_id"]),
+				"model":          strings.TrimSpace(attrs["model"]),
+				"session_id":     sessionID,
+				"source_product": "trusted_endpoint",
+			},
+		})
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        receiptURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "trusted_endpoint.agent_execution_receipt",
+			Label:      strings.TrimSpace(attrs["receipt_id"]),
+			Attributes: map[string]string{
+				"device_id":      strings.TrimSpace(attrs["device_id"]),
+				"receipt_id":     strings.TrimSpace(attrs["receipt_id"]),
+				"receipt_key":    strings.TrimSpace(attrs["receipt_key"]),
+				"source_product": "trusted_endpoint",
+			},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), agentURN, sessionURN, relationHasContext, map[string]string{
+			"event_id": event.GetId(),
+			"at":       eventObservedAt(event),
+		}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), sessionURN, receiptURN, relationHasEvidence, map[string]string{
+			"event_id": event.GetId(),
+			"at":       eventObservedAt(event),
+		}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), receiptURN, eventURN, relationHasEvidence, map[string]string{
+			"event_id":                  event.GetId(),
+			"normalized_receipt_digest": strings.TrimSpace(attrs["normalized_receipt_digest"]),
+			"at":                        eventObservedAt(event),
+		}))
+	}
 	entitiesOut, linksOut := entitiesAndLinks(entities, links)
 	return entitiesOut, linksOut, nil
 }
@@ -96,6 +153,8 @@ func trustedEndpointEventEntityType(kind string) string {
 		return "trusted_endpoint.trust_gate_decision"
 	case "trusted_endpoint.action_outcome":
 		return "trusted_endpoint.action_outcome"
+	case "trusted_endpoint.agent_execution_receipt":
+		return "trusted_endpoint.agent_execution_receipt_observation"
 	default:
 		return "trusted_endpoint.observation"
 	}
@@ -103,6 +162,7 @@ func trustedEndpointEventEntityType(kind string) string {
 
 func trustedEndpointEventLabel(event *cerebrov1.EventEnvelope, attrs map[string]string) string {
 	return firstNonEmpty(
+		attrs["receipt_id"],
 		attrs["finding_id"],
 		attrs["control_id"],
 		attrs["action"],

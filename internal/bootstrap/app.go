@@ -205,7 +205,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.dpopVerifier = dpop
 			app.riskScorer = riskScorer
 			app.observationStore = obsStore
-			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin, deps.AppendLog, sourceProjector(deps.StateStore, deps.GraphStore))
 		}
 	}
 	if cfg.Auth.Enabled && len(cfg.Auth.APICredentials) > 0 && len(cfg.Auth.CapabilityTokenSecrets) > 0 {

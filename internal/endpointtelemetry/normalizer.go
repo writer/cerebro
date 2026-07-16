@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,43 @@ func Normalize(body []byte, principal Principal, observedAt time.Time) ([]*cereb
 
 func normalizeEvent(raw map[string]any, principal Principal, agentID string) (string, string, map[string]any, map[string]string) {
 	eventType := firstString(raw, "type", "event", "action", "status")
+	if isAgentExecutionReceipt(raw, eventType) {
+		receiptID := firstString(raw, "receipt_id", "receiptId")
+		action := minimizeAgentAction(firstString(raw, "action", "action_summary", "actionSummary"))
+		phase := strings.ToLower(firstString(raw, "phase"))
+		payload := map[string]any{
+			"agent_id":                   agentID,
+			"device_id":                  principal.DeviceID,
+			"receipt_id":                 receiptID,
+			"receipt_digest":             firstString(raw, "receipt_digest", "receiptDigest"),
+			"sequence":                   scalarString(raw, "sequence"),
+			"previous_receipt_digest":    firstString(raw, "previous_receipt_digest", "previousReceiptDigest"),
+			"captured_at":                firstString(raw, "captured_at", "capturedAt"),
+			"phase":                      phase,
+			"agent_product":              firstString(raw, "agent_product", "agentProduct", "product"),
+			"model":                      firstString(raw, "model"),
+			"session_id":                 firstString(raw, "session_id", "sessionId"),
+			"turn_id":                    firstString(raw, "turn_id", "turnId"),
+			"tool_call_id":               firstString(raw, "tool_call_id", "toolCallId"),
+			"tool_name":                  firstString(raw, "tool_name", "toolName"),
+			"action":                     action,
+			"permission_mode":            firstString(raw, "permission_mode", "permissionMode"),
+			"local_user_claim":           firstString(raw, "local_user_claim", "localUserClaim"),
+			"local_user_claim_source":    firstString(raw, "local_user_claim_source", "localUserClaimSource"),
+			"evidence_integrity":         "authenticated_device_claim",
+			"claimed_evidence_integrity": firstString(raw, "evidence_integrity", "evidenceIntegrity"),
+			"provider_binding":           "unverified",
+			"claimed_provider_binding":   firstString(raw, "provider_binding", "providerBinding"),
+			"claimed_provider_event_id":  firstString(raw, "provider_event_id", "providerEventId"),
+		}
+		attrs := make(map[string]string, len(payload))
+		for key, value := range payload {
+			if text, ok := value.(string); ok {
+				attrs[key] = text
+			}
+		}
+		return "trusted_endpoint.agent_execution_receipt", "trusted_endpoint/agent_execution_receipt/v1", payload, attrs
+	}
 	if findingID := firstString(raw, "finding_id", "findingId"); findingID != "" {
 		severity := normalizeSeverity(firstString(raw, "severity"))
 		payload := map[string]any{
@@ -184,6 +222,11 @@ func validateEmittedAttributes(envelope *cerebrov1.EventEnvelope) error {
 		return nil
 	}
 	switch envelope.GetKind() {
+	case "trusted_endpoint.agent_execution_receipt":
+		if err := requireAttrs("agent_id", "device_id", "receipt_id", "receipt_digest", "captured_at", "agent_product", "session_id", "phase", "action", "evidence_integrity", "provider_binding"); err != nil {
+			return err
+		}
+		return validateAgentExecutionReceiptAttributes(attrs)
 	case "trusted_endpoint.trust_gate_decision":
 		return requireAttrs("agent_id", "action", "decision")
 	case "trusted_endpoint.grc_evidence":
@@ -195,13 +238,112 @@ func validateEmittedAttributes(envelope *cerebrov1.EventEnvelope) error {
 	}
 }
 
+func isAgentExecutionReceipt(raw map[string]any, eventType string) bool {
+	return strings.EqualFold(strings.TrimSpace(eventType), "agent_execution_receipt") || firstString(raw, "receipt_id", "receiptId") != ""
+}
+
+func scalarString(values map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			return strings.TrimSpace(typed)
+		case float64:
+			return strconv.FormatFloat(typed, 'f', -1, 64)
+		case bool:
+			return strconv.FormatBool(typed)
+		case json.Number:
+			return typed.String()
+		}
+	}
+	return ""
+}
+
+func minimizeAgentAction(value string) string {
+	var safe []string
+	for _, token := range strings.Fields(value) {
+		if len(token) > 64 || strings.HasPrefix(token, "-") || strings.Contains(token, "=") || !safeActionToken(token) {
+			continue
+		}
+		safe = append(safe, token)
+	}
+	if len(safe) == 0 {
+		return "agent_tool_execution"
+	}
+	safe[0] = path.Base(safe[0])
+	limit := 1
+	switch strings.ToLower(safe[0]) {
+	case "aws":
+		limit = 3
+	case "git", "gh", "kubectl", "docker", "terraform", "brew", "npm", "pnpm", "yarn", "go", "swift":
+		limit = 2
+	}
+	if len(safe) < limit {
+		limit = len(safe)
+	}
+	return strings.Join(safe[:limit], " ")
+}
+
+func safeActionToken(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("_./:-", r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validateAgentExecutionReceiptAttributes(attrs map[string]string) error {
+	limits := map[string]int{
+		"receipt_id": 256, "receipt_digest": 128, "previous_receipt_digest": 128,
+		"agent_product": 64, "model": 128, "session_id": 256, "turn_id": 256,
+		"tool_call_id": 256, "tool_name": 128, "action": 256, "permission_mode": 64,
+		"local_user_claim": 128, "local_user_claim_source": 64,
+		"claimed_evidence_integrity": 64, "claimed_provider_binding": 64, "claimed_provider_event_id": 256,
+	}
+	for key, limit := range limits {
+		if len(attrs[key]) > limit {
+			return fmt.Errorf("trusted_endpoint.agent_execution_receipt attribute %q exceeds %d bytes", key, limit)
+		}
+	}
+	switch attrs["phase"] {
+	case "session", "attempted", "approval_requested", "completed", "failed":
+	default:
+		return fmt.Errorf("trusted_endpoint.agent_execution_receipt phase %q is not supported", attrs["phase"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, attrs["captured_at"]); err != nil {
+		return fmt.Errorf("trusted_endpoint.agent_execution_receipt captured_at is invalid: %w", err)
+	}
+	sequence, err := strconv.ParseUint(attrs["sequence"], 10, 64)
+	if err != nil || sequence == 0 {
+		return fmt.Errorf("trusted_endpoint.agent_execution_receipt sequence must be a positive integer")
+	}
+	return nil
+}
+
 func eventEnvelope(tenantID, agentID, kind, schemaRef string, payload map[string]any, attrs map[string]string, observedAt time.Time, index int) (*cerebrov1.EventEnvelope, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal endpoint telemetry event: %w", err)
 	}
 	attrs = trimAttrs(attrs)
+	if kind == "trusted_endpoint.agent_execution_receipt" {
+		normalizedDigest := sha256.Sum256(data)
+		attrs["normalized_receipt_digest"] = hex.EncodeToString(normalizedDigest[:])
+		keyDigest := sha256.Sum256([]byte(strings.Join([]string{tenantID, agentID, attrs["receipt_id"]}, "\x00")))
+		attrs["receipt_key"] = hex.EncodeToString(keyDigest[:16])
+	}
 	id := eventID(tenantID, agentID, kind, data, index)
+	if kind == "trusted_endpoint.agent_execution_receipt" {
+		id = "trusted_endpoint_receipt_" + attrs["receipt_key"] + "_" + attrs["normalized_receipt_digest"][:24]
+	}
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
 		TenantId:   tenantID,

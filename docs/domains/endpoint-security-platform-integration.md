@@ -60,6 +60,7 @@ families:
 | `trusted_endpoint.grc_evidence` | Control evidence for audit and compliance surfaces |
 | `trusted_endpoint.trust_gate_decision` | Allow/deny/review decisions and reasons |
 | `trusted_endpoint.action_outcome` | Human-approved remediation or workflow action results |
+| `trusted_endpoint.agent_execution_receipt` | Bounded coding-agent session and tool execution evidence |
 
 ## Telemetry Normalization
 
@@ -77,10 +78,34 @@ event envelopes:
 | --- | --- |
 | `posture` object | `trusted_endpoint.host_posture` |
 | event with `finding_id` | `trusted_endpoint.security_finding` |
+| event with `type: agent_execution_receipt` | `trusted_endpoint.agent_execution_receipt` |
 | other event | `trusted_endpoint.action_outcome` |
 
-This keeps endpoint telemetry compatible with source-runtime replay and graph
-projection without writing high-volume raw telemetry directly into the graph.
+An accepted request means every normalized event was appended and projected.
+The accepted idempotency response is stored only after both operations succeed;
+an append or projection failure remains retryable with the same key. Concurrent
+requests for the same device and idempotency key are serialized inside the
+single-replica device-auth boundary. Graph upserts use stable event IDs; append
+delivery semantics remain those of the configured append-log implementation.
+
+Agent execution receipts retain only bounded attribution and integrity fields:
+authenticated device, agent product, session and tool identifiers, minimized
+action summary, chain digests, local-user claim and claim source, integrity
+claim, and provider-binding claim. The server minimizes action summaries again,
+applies field bounds, computes its own normalized receipt digest, and marks
+integrity as an authenticated-device claim and provider binding as unverified.
+It does not treat either client value as server-verified. Raw prompts, tool
+input, command output, diffs, file contents, and transcripts are not normalized
+into the event or graph.
+
+The graph stores the authenticated endpoint agent, the agent session, and the
+execution receipt as separate entities. Session identity includes the
+authenticated device. Each stable device-and-receipt identity links to one or
+more server-digested observations, so conflicting versions are queryable rather
+than silently merged. The local username remains an explicit claim rather than
+a verified human identity. This keeps endpoint telemetry compatible with
+source-runtime replay and graph projection without writing high-volume raw
+telemetry directly into the graph.
 
 ## Trust-Gate Loop
 
