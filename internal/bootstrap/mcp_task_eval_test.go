@@ -47,7 +47,7 @@ func mcpTaskToolEvalDescriptors() []mcpoperations.TaskToolDescriptor {
 func readMCPTaskEvalJSON[T any](t *testing.T, path string) T {
 	t.Helper()
 	var value T
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- test-only paths point to checked-in fixtures.
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
