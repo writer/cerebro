@@ -2222,7 +2222,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:         "cerebro.health",
 			Title:        "Cerebro Health",
-			Description:  "Check whether the Cerebro service is healthy and ready, including failed or unavailable backend dependencies.",
+			Description:  "Check Cerebro service readiness and whether it is healthy, ready, and acceptable for use, including failed or unavailable backend dependencies.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Health"),
@@ -2738,7 +2738,7 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "cerebro.graph.reason",
-			Title:       "Explain Graph Connections",
+			Title:       "Explain Connecting Resources",
 			Description: "Explain the relationship between an endpoint and a finding, how a public resource is connected to a privileged identity, or which attack path reaches an asset. Return tenant-scoped graph evidence, citations, and provenance.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"question":  map[string]any{"type": "string"},
@@ -2761,7 +2761,7 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "cerebro.investigation.context",
-			Title:       "Investigation Context",
+			Title:       "Investigate and Triage Finding",
 			Description: "Assemble triage and investigation context for one finding, including evidence, affected assets, runtime details, and graph context.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id":  map[string]any{"type": "string"},
