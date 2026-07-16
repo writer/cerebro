@@ -265,7 +265,7 @@ func normalizeSelectionToken(token string) string {
 		return "asset"
 	case "builds":
 		return "build"
-	case "connections", "connected", "connecting", "connects":
+	case "connections", "connected":
 		return "connection"
 	case "controls":
 		return "control"
@@ -275,18 +275,12 @@ func normalizeSelectionToken(token string) string {
 		return "failure"
 	case "findings":
 		return "finding"
-	case "investigate", "investigated", "investigating":
-		return "investigation"
 	case "packets":
 		return "packet"
 	case "paths":
 		return "path"
 	case "relationships":
 		return "relationship"
-	case "readiness":
-		return "ready"
-	case "risky", "riskiest":
-		return "risk"
 	case "runtimes":
 		return "runtime"
 	case "sources":
