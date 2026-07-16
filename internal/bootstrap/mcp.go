@@ -2434,7 +2434,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.assets.search",
 			Title:       "Search Assets",
-			Description: "Find visible inventory and graph assets by query, URN, entity type, tenant, or runtime.",
+			Description: "Find visible inventory and graph assets, including hosts, by query, URN, entity type, tenant, or runtime.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"query":       map[string]any{"type": "string"},
 				"urn":         map[string]any{"type": "string"},
