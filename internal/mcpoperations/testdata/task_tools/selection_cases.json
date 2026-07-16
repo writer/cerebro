@@ -498,5 +498,75 @@
     "forbidden_tools": ["cerebro.findings.action.propose"],
     "require_partial_handling": true,
     "maximum_call_count": 2
+  },
+  {
+    "id": "service-readiness-language",
+    "user_request": "Is the service readiness acceptable?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.health",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "risk-risky-finding-language",
+    "user_request": "Why is this finding risky?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.risk.explain",
+    "allowed_followup_tools": ["cerebro.action.plan"],
+    "forbidden_tools": ["cerebro.findings.action.propose"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "investigation-investigate-language",
+    "user_request": "Investigate and triage this finding before assignment.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.investigation.context",
+    "allowed_followup_tools": ["cerebro.risk.explain"],
+    "forbidden_tools": ["cerebro.findings.get"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "graph-connecting-language",
+    "user_request": "How are these resources connecting?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.graph.reason",
+    "allowed_followup_tools": ["cerebro.investigation.context"],
+    "forbidden_tools": ["cerebro.graph.paths"],
+    "require_partial_handling": true,
+    "maximum_call_count": 2
+  },
+  {
+    "id": "version-deployed-revision-language",
+    "user_request": "Which revision is deployed?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.version",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.agent.control_plane"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "assets-host-inventory-language",
+    "user_request": "Which hosts are in our inventory?",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.assets.search",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assets.get"],
+    "require_partial_handling": false,
+    "maximum_call_count": 1
+  },
+  {
+    "id": "evidence-auditor-proof-language",
+    "user_request": "Assemble the auditor's proof bundle.",
+    "permitted_scopes": ["cerebro.cosmo.security.read"],
+    "expected_tool": "cerebro.evidence.packet",
+    "allowed_followup_tools": [],
+    "forbidden_tools": ["cerebro.assessments.plan.publish"],
+    "require_partial_handling": true,
+    "maximum_call_count": 1
   }
 ]

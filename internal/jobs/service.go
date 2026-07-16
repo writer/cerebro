@@ -485,6 +485,8 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 			Error:              runErr.Error(),
 			Message:            "job failed",
 			FailureClass:       failureClass,
+			Result:             result,
+			ResultRefs:         refs,
 			FinishedAt:         &finished,
 			AllowedStatuses:    []string{ports.JobStatusRunning},
 			ExpectedLeaseOwner: leaseOwner,

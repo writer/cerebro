@@ -1652,6 +1652,13 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	return nil
 }
 
+func (s *stubGraphStore) CountProjectedLinksMissingAssertions(context.Context, string, []string) (uint32, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 0, nil
+}
+
 func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -4962,10 +4969,12 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 				EventsRead:        8,
 				EntitiesProjected: 12,
 				LinksProjected:    16,
-				GraphNodesBefore:  100,
-				GraphNodesAfter:   109,
-				GraphLinksBefore:  200,
-				GraphLinksAfter:   211,
+				IngestRunGraphCounts: graphstore.IngestRunGraphCounts{
+					GraphNodesBefore: 100,
+					GraphNodesAfter:  109,
+					GraphLinksBefore: 200,
+					GraphLinksAfter:  211,
+				},
 			},
 		},
 	}
