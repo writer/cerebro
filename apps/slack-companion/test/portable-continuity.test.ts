@@ -203,6 +203,7 @@ test("one scheduled Slack run remains durable across transport, execution, and d
       goal_ref: "goal://portable-continuity",
       installation_id: "installation-1",
       subject_ref: deliveringRun.subject_ref,
+      tenant_id: deliveringRun.tenant_id,
       thread_id: "thread-1",
     },
     delivered.receipt,
