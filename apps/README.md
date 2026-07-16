@@ -5,7 +5,7 @@
 | Workspace | Package | Owns |
 | --- | --- | --- |
 | `web` | `@writer/cerebro-web` | Browser operator UI, server-side web boundary, UI contracts, and web tests. |
-| `slack-companion` | `@writer/cerebro-slack-companion` | Slack intake, durable run coordination, delivery, background work, and Slack-visible lifecycle behavior. |
+| `slack-companion` | `@writer/cerebro-slack-companion` | Slack intake, durable run coordination, delivery, background work, and Slack-visible lifecycle behavior. See [Slack companion](slack-companion/README.md). |
 
 Each app is an npm workspace with its own `package.json`. The package manifests use `private: true` to prevent accidental npm publication; that does not mean the code belongs in a private repository.
 

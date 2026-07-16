@@ -9,6 +9,36 @@ The first supported path is durable admission:
 3. Permit the Slack acknowledgement only after that transaction succeeds.
 4. Return the existing receipt when Slack retries the same input.
 
+## Slack To Cerebro And Back
+
+The companion treats Slack as transport and attention, not as the system of record. It persists and acknowledges Slack input first, performs work through portable Cerebro contracts, then delivers the result back through a durable outbox.
+
+```mermaid
+sequenceDiagram
+  participant Slack as Slack
+  participant Transport as Transport handler
+  participant Admission as Durable admission
+  participant Queue as Run and work queue
+  participant Worker as Companion worker
+  participant Cerebro as Cerebro contracts/API
+  participant Delivery as Delivery outbox
+
+  Slack->>Transport: event, mention, or interaction
+  Transport->>Transport: verify signature or socket presence
+  Transport->>Admission: persist payload and normalize envelope
+  Admission->>Queue: dedupe, write run receipt, enqueue work
+  Admission-->>Slack: acknowledge only after durable commit
+  Worker->>Queue: claim work with lease and fencing
+  Worker->>Cerebro: read evidence, graph, policy, and source context
+  Cerebro-->>Worker: return grounded context and contract-shaped results
+  Worker->>Delivery: plan response parts with stable ids
+  Delivery->>Slack: send message or status update
+  Slack-->>Delivery: destination receipt
+  Delivery->>Queue: record delivered, retry, paused, or abandoned state
+```
+
+The same shape applies to longer-running work. Slack-visible status can show queued, degraded, recovery, or completed states while leases, checkpoints, and receipts keep retries idempotent.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
