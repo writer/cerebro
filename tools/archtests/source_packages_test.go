@@ -29,7 +29,7 @@ const deepTierDepthContractScore = 100
 // source grows, move shared behavior into the Source CDK instead of raising it.
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"aurelius":        619,
-	"aws":             19078,
+	"aws":             19063,
 	"azure":           2858,
 	"cosmo":           1006,
 	"gcp":             2130,

@@ -105,6 +105,7 @@ import (
 	"github.com/writer/cerebro/sources/internal/awsaccount"
 	"github.com/writer/cerebro/sources/internal/awsappsync"
 	"github.com/writer/cerebro/sources/internal/awscloudformation"
+	"github.com/writer/cerebro/sources/internal/awsevidence"
 	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -985,72 +986,8 @@ type trustStatement struct {
 	Condition map[string]any  `json:"Condition"`
 }
 
-type cloudTrailDetail struct {
-	EventName         string                  `json:"eventName"`
-	EventSource       string                  `json:"eventSource"`
-	EventTime         string                  `json:"eventTime"`
-	SourceIPAddress   string                  `json:"sourceIPAddress"`
-	UserIdentity      cloudTrailUserIdentity  `json:"userIdentity"`
-	Resources         []cloudTrailResourceRef `json:"resources"`
-	RequestParameters cloudTrailECSRequest    `json:"requestParameters"`
-	ResponseElements  cloudTrailECSResponse   `json:"responseElements"`
-}
-
-type cloudTrailECSRequest struct {
-	Cluster              string                             `json:"cluster"`
-	Family               string                             `json:"family"`
-	StartedBy            string                             `json:"startedBy"`
-	TaskDefinition       string                             `json:"taskDefinition"`
-	TaskRoleARN          string                             `json:"taskRoleArn"`
-	ExecutionRoleARN     string                             `json:"executionRoleArn"`
-	ContainerDefinitions []cloudTrailECSContainerDefinition `json:"containerDefinitions"`
-}
-
-type cloudTrailECSResponse struct {
-	TaskDefinition cloudTrailECSTaskDefinition `json:"taskDefinition"`
-	Tasks          []cloudTrailECSTask         `json:"tasks"`
-}
-
-type cloudTrailECSTaskDefinition struct {
-	TaskDefinitionARN    string                             `json:"taskDefinitionArn"`
-	Family               string                             `json:"family"`
-	TaskRoleARN          string                             `json:"taskRoleArn"`
-	ExecutionRoleARN     string                             `json:"executionRoleArn"`
-	ContainerDefinitions []cloudTrailECSContainerDefinition `json:"containerDefinitions"`
-}
-
-type cloudTrailECSTask struct {
-	TaskARN           string `json:"taskArn"`
-	TaskDefinitionARN string `json:"taskDefinitionArn"`
-	ClusterARN        string `json:"clusterArn"`
-	StartedBy         string `json:"startedBy"`
-	LastStatus        string `json:"lastStatus"`
-}
-
-type cloudTrailECSContainerDefinition struct {
-	Name    string                   `json:"name"`
-	Image   string                   `json:"image"`
-	Secrets []cloudTrailECSSecretRef `json:"secrets"`
-}
-
-type cloudTrailECSSecretRef struct {
-	Name string `json:"name"`
-}
-
-type cloudTrailUserIdentity struct {
-	Type        string `json:"type"`
-	PrincipalID string `json:"principalId"`
-	Arn         string `json:"arn"`
-	UserName    string `json:"userName"`
-}
-
-type cloudTrailResourceRef struct {
-	ARN       string `json:"ARN"`
-	ARNLower  string `json:"arn"`
-	Name      string `json:"resourceName"`
-	Type      string `json:"resourceType"`
-	AccountID string `json:"accountId"`
-}
+type cloudTrailDetail = awsevidence.CloudTrailDetail
+type cloudTrailUserIdentity = awsevidence.CloudTrailUserIdentity
 
 type cloudTrailCursor struct {
 	Version       int    `json:"version,omitempty"`
@@ -4215,7 +4152,7 @@ func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitive
 		"resource_type":      resourceType,
 		"source_ip":          detail.SourceIPAddress,
 	}
-	addCloudTrailECSAttributes(attributes, detail)
+	awsevidence.AddCloudTrailECSAttributes(attributes, awssdk.ToString(event.CloudTrailEvent))
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "event": event, "detail": detail})
 	if err != nil {
 		return nil, err
@@ -4229,91 +4166,6 @@ func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitive
 		}
 	}
 	return sourceEvent(settings, "aws-cloudtrail-"+firstNonEmpty(awssdk.ToString(event.EventId), attributes["event_type"], strconv.FormatInt(occurredAt.UnixNano(), 10)), "aws.cloudtrail", "aws/cloudtrail/v1", payload, attributes, occurredAt)
-}
-
-func addCloudTrailECSAttributes(attributes map[string]string, detail cloudTrailDetail) {
-	eventName := strings.TrimSpace(firstNonEmpty(detail.EventName, attributes["event_type"]))
-	switch eventName {
-	case "RegisterTaskDefinition":
-		definition := detail.ResponseElements.TaskDefinition
-		containers := definition.ContainerDefinitions
-		if len(containers) == 0 {
-			containers = detail.RequestParameters.ContainerDefinitions
-		}
-		taskDefinitionARN := strings.TrimSpace(definition.TaskDefinitionARN)
-		if taskDefinitionARN == "" {
-			return
-		}
-		taskRoleARN := firstNonEmpty(definition.TaskRoleARN, detail.RequestParameters.TaskRoleARN)
-		executionRoleARN := firstNonEmpty(definition.ExecutionRoleARN, detail.RequestParameters.ExecutionRoleARN)
-		attributes["resource_id"] = taskDefinitionARN
-		attributes["resource_name"] = firstNonEmpty(definition.Family, detail.RequestParameters.Family, taskDefinitionARN)
-		attributes["resource_type"] = "ecs_task_definition"
-		attributes["task_definition_arn"] = taskDefinitionARN
-		attributes["task_family"] = firstNonEmpty(definition.Family, detail.RequestParameters.Family)
-		attributes["task_role_arn"] = taskRoleARN
-		attributes["task_role_name"] = roleNameFromARN(taskRoleARN)
-		attributes["execution_role_arn"] = executionRoleARN
-		attributes["execution_role_name"] = roleNameFromARN(executionRoleARN)
-		attributes["container_names"] = strings.Join(cloudTrailECSContainerNames(containers), ",")
-		attributes["container_images"] = strings.Join(cloudTrailECSContainerImages(containers), ",")
-		attributes["container_count"] = strconv.Itoa(len(containers))
-		secretBindingCount := cloudTrailECSSecretBindingCount(containers)
-		attributes["secret_binding_count"] = strconv.Itoa(secretBindingCount)
-		attributes["has_secret_bindings"] = strconv.FormatBool(secretBindingCount > 0)
-		attributes["has_candidate_marker"] = strconv.FormatBool(hasCandidateMarker(attributes["task_family"], attributes["container_names"], attributes["container_images"]))
-	case "RunTask":
-		if len(detail.ResponseElements.Tasks) == 0 {
-			return
-		}
-		task := detail.ResponseElements.Tasks[0]
-		taskARN := strings.TrimSpace(task.TaskARN)
-		if taskARN == "" {
-			return
-		}
-		attributes["resource_id"] = taskARN
-		attributes["resource_name"] = firstNonEmpty(path.Base(taskARN), taskARN)
-		attributes["resource_type"] = "ecs_task"
-		attributes["task_arn"] = taskARN
-		attributes["task_definition_arn"] = firstNonEmpty(task.TaskDefinitionARN, detail.RequestParameters.TaskDefinition)
-		attributes["cluster_arn"] = firstNonEmpty(task.ClusterARN, detail.RequestParameters.Cluster)
-		attributes["cluster_name"] = path.Base(attributes["cluster_arn"])
-		attributes["started_by"] = firstNonEmpty(task.StartedBy, detail.RequestParameters.StartedBy)
-		attributes["observed_last_status"] = task.LastStatus
-	}
-}
-
-func cloudTrailECSContainerNames(containers []cloudTrailECSContainerDefinition) []string {
-	values := make([]string, 0, len(containers))
-	for _, container := range containers {
-		values = append(values, container.Name)
-	}
-	return cleanStrings(values)
-}
-
-func cloudTrailECSContainerImages(containers []cloudTrailECSContainerDefinition) []string {
-	values := make([]string, 0, len(containers))
-	for _, container := range containers {
-		values = append(values, container.Image)
-	}
-	return cleanStrings(values)
-}
-
-func cloudTrailECSSecretBindingCount(containers []cloudTrailECSContainerDefinition) int {
-	count := 0
-	for _, container := range containers {
-		count += len(container.Secrets)
-	}
-	return count
-}
-
-func hasCandidateMarker(values ...string) bool {
-	for _, value := range values {
-		if strings.Contains(strings.ToLower(value), "candidate") {
-			return true
-		}
-	}
-	return false
 }
 
 func sourceEvent(settings settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string, occurredAt time.Time) (*primitives.Event, error) {

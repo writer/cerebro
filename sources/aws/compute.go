@@ -24,6 +24,7 @@ import (
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 
 	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/sources/internal/awsevidence"
 )
 
 type ecsServicePageCursor struct {
@@ -651,7 +652,6 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 	taskARN := awssdk.ToString(task.TaskDefinitionArn)
 	taskRoleARN := awssdk.ToString(task.TaskRoleArn)
 	executionRoleARN := awssdk.ToString(task.ExecutionRoleArn)
-	secretBindingCount := ecsSecretBindingCount(task.ContainerDefinitions)
 	attributes := map[string]string{
 		"container_images":                strings.Join(ecsContainerImages(task.ContainerDefinitions), ","),
 		"container_names":                 strings.Join(ecsContainerNames(task.ContainerDefinitions), ","),
@@ -662,8 +662,6 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 		"execution_role_name":             roleNameFromARN(executionRoleARN),
 		"family":                          familyECSTaskDefinition,
 		"fargate_compatible":              boolString(ecsTaskDefinitionFargateCompatible(task)),
-		"has_candidate_marker":            boolString(hasCandidateMarker(awssdk.ToString(task.Family), strings.Join(ecsContainerNames(task.ContainerDefinitions), ","), strings.Join(ecsContainerImages(task.ContainerDefinitions), ","))),
-		"has_secret_bindings":             boolString(secretBindingCount > 0),
 		"awsvpc_required":                 boolString(task.NetworkMode == ecstypes.NetworkModeAwsvpc),
 		"ephemeral_storage_size_gib":      ecsTaskDefinitionEphemeralStorageSizeGiB(task),
 		"memory":                          awssdk.ToString(task.Memory),
@@ -678,27 +676,19 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 		"resource_provider":               "aws",
 		"resource_type":                   "ecs_task_definition",
 		"revision":                        strconv.FormatInt(int64(task.Revision), 10),
-		"secret_binding_count":            strconv.Itoa(secretBindingCount),
 		"status":                          string(task.Status),
 		"task_definition_arn":             taskARN,
 		"task_family":                     awssdk.ToString(task.Family),
 		"task_role_arn":                   taskRoleARN,
 		"task_role_name":                  roleNameFromARN(taskRoleARN),
 	}
+	awsevidence.AddTaskDefinitionRiskAttributes(attributes, task)
 	addTimeAttribute(attributes, "registered_at", task.RegisteredAt)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "task_definition": task})
 	if err != nil {
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-ecs-task-definition-"+taskARN, "aws.ecs_task_definition", "aws/ecs_task_definition/v1", payload, attributes, firstTime(task.RegisteredAt))
-}
-
-func ecsSecretBindingCount(definitions []ecstypes.ContainerDefinition) int {
-	count := 0
-	for _, definition := range definitions {
-		count += len(definition.Secrets)
-	}
-	return count
 }
 
 func eksClusterEvent(settings settings, cluster ekstypes.Cluster) (*primitives.Event, error) {
