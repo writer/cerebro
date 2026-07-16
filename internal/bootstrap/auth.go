@@ -1453,7 +1453,7 @@ func accessAuditRouteFamily(route string) string {
 		return "finding_evidence"
 	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/finding-candidates"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
 		return "finding"
-	case strings.Contains(route, "/policy-candidates"):
+	case strings.Contains(route, "/policy-candidates"), strings.Contains(route, "/policy-experiments"):
 		return "policy_candidate"
 	case strings.Contains(route, "/grc/"):
 		return "grc"
@@ -1628,6 +1628,8 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/policy-candidates"
 	case strings.HasPrefix(path, "/policy-candidates/"):
 		return prefix + fallbackPolicyCandidateRoute(path)
+	case strings.HasPrefix(path, "/policy-experiments/"):
+		return prefix + fallbackPolicyExperimentRoute(path)
 	case strings.HasPrefix(path, "/grc/entities/") && strings.HasSuffix(path, "/impact"):
 		return prefix + "/grc/entities/{entityID}/impact"
 	case strings.HasPrefix(path, "/grc/audit-packets/"):
@@ -1658,11 +1660,23 @@ func fallbackPolicyCandidateRoute(path string) string {
 	}
 	parts := strings.SplitN(suffix, "/", 2)
 	switch parts[1] {
-	case "prove", "shadow":
+	case "prove", "shadow", "experiments":
 		return "/policy-candidates/{candidateID}/" + parts[1]
 	default:
 		return "/policy-candidates/{candidateID}/{subresource}"
 	}
+}
+
+func fallbackPolicyExperimentRoute(path string) string {
+	suffix := strings.TrimPrefix(path, "/policy-experiments/")
+	if !strings.Contains(suffix, "/") {
+		return "/policy-experiments/{experimentID}"
+	}
+	parts := strings.SplitN(suffix, "/", 2)
+	if parts[1] == "observations" || parts[1] == "run" {
+		return "/policy-experiments/{experimentID}/" + parts[1]
+	}
+	return "/policy-experiments/{experimentID}/{subresource}"
 }
 
 func fallbackRuntimeRoute(path string) string {

@@ -2,12 +2,35 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
+
+// ErrProjectedTenantScope indicates that a Cerebro-owned projection URN does
+// not belong to the tenant receiving the projection.
+var ErrProjectedTenantScope = errors.New("projected URN tenant scope mismatch")
+
+// ProjectedTenantScopeError identifies the rejected projection field and both
+// tenant scopes without requiring callers to parse an error string.
+type ProjectedTenantScopeError struct {
+	Field              string
+	URN                string
+	URNTenantID        string
+	ProjectionTenantID string
+}
+
+func (err *ProjectedTenantScopeError) Error() string {
+	return fmt.Sprintf(
+		"%s %q is scoped to tenant %q, not projection tenant %q",
+		err.Field, err.URN, err.URNTenantID, err.ProjectionTenantID,
+	)
+}
+
+func (err *ProjectedTenantScopeError) Unwrap() error { return ErrProjectedTenantScope }
 
 // ProjectedEntity is the normalized current-state and graph entity shape.
 type ProjectedEntity struct {
@@ -79,7 +102,9 @@ func validateProjectedCerebroURNScope(field string, rawURN string, rawTenantID s
 		return fmt.Errorf("%s %q is invalid: %w", field, urn, err)
 	}
 	if parsed.TenantID != tenantID {
-		return fmt.Errorf("%s %q is scoped to tenant %q, not projection tenant %q", field, urn, parsed.TenantID, tenantID)
+		return &ProjectedTenantScopeError{
+			Field: field, URN: urn, URNTenantID: parsed.TenantID, ProjectionTenantID: tenantID,
+		}
 	}
 	return nil
 }

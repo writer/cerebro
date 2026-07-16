@@ -21,11 +21,12 @@ var domainPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 var accountIDPattern = regexp.MustCompile(`(^|[^0-9])[0-9]{12}([^0-9]|$)`)
 
 type Service struct {
-	Store   Store
-	Author  *agentauthoring.Service
-	Graph   ports.GraphQueryStore
-	Catalog CoverageCatalog
-	Now     func() time.Time
+	Store       Store
+	Experiments ExperimentStore
+	Author      *agentauthoring.Service
+	Graph       ports.GraphQueryStore
+	Catalog     CoverageCatalog
+	Now         func() time.Time
 }
 
 func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate, error) {
@@ -47,7 +48,7 @@ func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate,
 		return nil, fmt.Errorf("%w: graph_evidence is required for a grounded policy candidate", ErrInvalidRequest)
 	}
 	if _, err := policyauthor.GraphEvidenceModelContext(*request.GraphEvidence); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	if len(request.Hypothesis) > 4000 {
 		return nil, fmt.Errorf("%w: hypothesis exceeds 4000 bytes", ErrInvalidRequest)

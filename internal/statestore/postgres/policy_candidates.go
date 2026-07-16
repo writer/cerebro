@@ -104,7 +104,7 @@ func (s *Store) ListPolicyCandidates(ctx context.Context, request policycandidat
 	if err != nil {
 		return nil, fmt.Errorf("list policy candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]*policycandidate.Candidate, 0)
 	for rows.Next() {
 		var record []byte
