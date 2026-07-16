@@ -217,11 +217,11 @@ sdk-python-build-check: ## Build and validate the Python SDK package artifacts.
 	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m build --sdist --wheel --outdir "$(SDK_PYTHON_DIST)" sdk/python
 	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m twine check "$(SDK_PYTHON_DIST)"/*
 
-sdk-typescript-test: ## Run TypeScript SDK tests.
-	cd sdk/typescript && npm test
+sdk-typescript-test: workspace-install ## Run TypeScript SDK tests.
+	npm test --workspace @writer/cerebro-sdk
 
-sdk-typescript-check: ## Install TypeScript SDK dependencies and run type checks.
-	cd sdk/typescript && npm ci && npm run typecheck
+sdk-typescript-check: workspace-install ## Install workspace dependencies and run TypeScript SDK type checks.
+	npm run typecheck --workspace @writer/cerebro-sdk
 
 workspace-install: ## Install root npm workspace dependencies from the shared lockfile.
 	npm ci
@@ -828,4 +828,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

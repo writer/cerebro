@@ -1645,7 +1645,7 @@ The overhaul is complete when:
 
 ## Non-Goals
 
-- No end-user web UI in this repository.
+- The Go service does not embed or serve an end-user client.
 - No replacement control catalog. Catalog revisions are inputs to the compliance
   model, not a second source of definitions.
 - No duplicate raw evidence blob store. The ledger references the existing
