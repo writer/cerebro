@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +125,16 @@ func TestDecisionPacketHTTPRejectsUnknownFields(t *testing.T) {
 	app.handleBuildDecisionPacket(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestDecisionPacketConnectInternalErrorsHideDetails(t *testing.T) {
+	err := decisionPacketConnectError(errors.New("postgres password leaked"))
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("error = %T, want *connect.Error", err)
+	}
+	if connectErr.Code() != connect.CodeInternal || connectErr.Message() != "internal error" || strings.Contains(connectErr.Message(), "postgres") {
+		t.Fatalf("connect error = code %s message %q", connectErr.Code(), connectErr.Message())
 	}
 }

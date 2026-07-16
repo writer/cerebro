@@ -238,5 +238,8 @@ func decisionPacketConnectError(err error) error {
 	case errors.Is(err, decisionpacket.ErrResolverUnavailable):
 		code = connect.CodeUnavailable
 	}
-	return connect.NewError(code, fmt.Errorf("decision packet request failed: %w", err))
+	if code == connect.CodeInternal {
+		return connect.NewError(code, errors.New("internal error"))
+	}
+	return connect.NewError(code, err)
 }
