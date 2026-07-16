@@ -220,19 +220,7 @@ func (r *policyAuthoringEvidenceRedactor) redact(value any, key string) any {
 			redacted[r.redactKey(childKey)] = r.redact(childValue, childKey)
 		}
 		return redacted
-	case map[string]string:
-		redacted := make(map[string]any, len(typed))
-		for childKey, childValue := range typed {
-			redacted[r.redactKey(childKey)] = r.redact(childValue, childKey)
-		}
-		return redacted
 	case []any:
-		redacted := make([]any, 0, len(typed))
-		for _, childValue := range typed {
-			redacted = append(redacted, r.redact(childValue, key))
-		}
-		return redacted
-	case []string:
 		redacted := make([]any, 0, len(typed))
 		for _, childValue := range typed {
 			redacted = append(redacted, r.redact(childValue, key))

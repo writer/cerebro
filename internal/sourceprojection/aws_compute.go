@@ -723,13 +723,19 @@ func addAWSComputeRoleLink(entities map[string]*ports.ProjectedEntity, links map
 			"role_name": strings.TrimSpace(roleName),
 		},
 	})
-	addLink(links, projectedLink(tenantID, sourceID, resourceURN, roleURN, relationRunsAs, map[string]string{
+	link := projectedLink(tenantID, sourceID, resourceURN, roleURN, relationRunsAs, map[string]string{
 		"event_id":   event.GetId(),
 		"match_type": "aws_compute_role",
 		"role_arn":   roleARN,
 		"role_name":  strings.TrimSpace(roleName),
 		"role_usage": strings.TrimSpace(roleUsage),
-	}))
+	})
+	if existing := links[awsComputeProjectedLinkKey(link)]; existing != nil {
+		for _, usage := range strings.Split(strings.Join([]string{existing.Attributes["role_usages"], existing.Attributes["role_usage"], roleUsage}, ","), ",") {
+			mergeCSVLinkAttribute(link.Attributes, "role_usages", usage)
+		}
+	}
+	addLink(links, link)
 }
 
 func addAWSNetworkContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, attributes map[string]string) {

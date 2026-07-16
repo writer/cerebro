@@ -3742,7 +3742,8 @@ func TestProjectAWSCloudTrailECSLaunchBuildsCausalRolePath(t *testing.T) {
 			Attributes: map[string]string{
 				"actor_id": actorARN, "actor_type": "AssumedRole", "domain": "123456789012", "event_type": "RegisterTaskDefinition",
 				"resource_id": definitionARN, "resource_name": "release-candidate", "resource_type": "ecs_task_definition", "task_definition_arn": definitionARN,
-				"task_family": "release-candidate", "execution_role_arn": executionRoleARN, "execution_role_name": "ExecutionRole",
+				"task_family": "release-candidate", "task_role_arn": executionRoleARN, "task_role_name": "ExecutionRole",
+				"execution_role_arn": executionRoleARN, "execution_role_name": "ExecutionRole",
 				"container_images": "123456789012.dkr.ecr.us-east-1.amazonaws.com/service:candidate-7", "has_candidate_marker": "true", "has_secret_bindings": "true", "secret_binding_count": "2",
 			},
 		},
@@ -3778,6 +3779,9 @@ func TestProjectAWSCloudTrailECSLaunchBuildsCausalRolePath(t *testing.T) {
 	}
 	if got := state.links[definitionURN+"|"+relationRunsAs+"|"+roleURN].Attributes["role_usage"]; got != "execution" {
 		t.Fatalf("runs_as role_usage = %q, want execution", got)
+	}
+	if got := state.links[definitionURN+"|"+relationRunsAs+"|"+roleURN].Attributes["role_usages"]; got != "task,execution" {
+		t.Fatalf("runs_as role_usages = %q, want task,execution for a shared task and execution role", got)
 	}
 	for _, status := range []string{"ACTIVE", "INACTIVE"} {
 		if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
