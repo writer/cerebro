@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -185,8 +184,8 @@ func TestAdmitMatchesGoContractDecisionsForRepresentativeCorpus(t *testing.T) {
 					t.Fatalf("Go decision rejected accepted case: %v", goErr)
 				}
 			case "quarantined":
-				if goErr == nil || !strings.Contains(goErr.Error(), "missing required") {
-					t.Fatalf("Go decision = %v; want missing required field", goErr)
+				if !errors.Is(goErr, sourcecdk.ErrInvalidEventEnvelope) {
+					t.Fatalf("Go decision = %v; want %v", goErr, sourcecdk.ErrInvalidEventEnvelope)
 				}
 			case "rejected":
 				if goErr == nil {
