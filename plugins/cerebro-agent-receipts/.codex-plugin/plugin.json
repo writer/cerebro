@@ -1,0 +1,18 @@
+{
+  "name": "cerebro-agent-receipts",
+  "version": "0.1.0+codex.20260716083505",
+  "description": "Capture signed local evidence for Codex tool executions and compare it with provider audit events.",
+  "author": {
+    "name": "Writer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cerebro Agent Receipts",
+    "shortDescription": "Find agent actions and provider changes that lack attribution.",
+    "longDescription": "Cerebro Agent Receipts records chained local execution evidence from Codex hooks, reduces hook phases into actions, and reports provider activity without a one-to-one action match.",
+    "developerName": "Writer",
+    "category": "Security",
+    "capabilities": [],
+    "defaultPrompt": "Show provider-observed changes that do not have a one-to-one agent action match."
+  }
+}
