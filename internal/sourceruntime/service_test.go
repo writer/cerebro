@@ -114,8 +114,9 @@ func stringInSlice(values []string, needle string) bool {
 
 type ledgerRuntimeStore struct {
 	runtimeStore
-	calls    []string
-	attempts []ports.SourceRuntimePageAttempt
+	calls     []string
+	attempts  []ports.SourceRuntimePageAttempt
+	commitErr error
 }
 
 func (s *ledgerRuntimeStore) BeginSourceRuntimePage(_ context.Context, attempt ports.SourceRuntimePageAttempt) error {
@@ -142,6 +143,9 @@ func (s *ledgerRuntimeStore) MarkSourceRuntimePageProjected(_ context.Context, _
 
 func (s *ledgerRuntimeStore) CommitSourceRuntimePage(ctx context.Context, _ string, runtime *cerebrov1.SourceRuntime) error {
 	s.calls = append(s.calls, "committed")
+	if s.commitErr != nil {
+		return s.commitErr
+	}
 	return s.PutSourceRuntime(ctx, runtime)
 }
 
@@ -2245,6 +2249,101 @@ func TestSyncRuntimeAdmissionRejectsWholePageBeforeBatchAppend(t *testing.T) {
 	}
 	if got := stored.GetNextCursor().GetOpaque(); got != "committed-next-cursor" {
 		t.Fatalf("next cursor = %q, want committed-next-cursor", got)
+	}
+}
+
+func TestSyncRuntimeFailureDoesNotPersistUncommittedProgress(t *testing.T) {
+	appendFailure := errors.New("append failed")
+	projectionFailure := errors.New("projection failed")
+	tests := []struct {
+		name      string
+		appendLog *appendLog
+		projector *projector
+		wantErr   error
+	}{
+		{name: "append", appendLog: &appendLog{err: appendFailure}, projector: &projector{}, wantErr: appendFailure},
+		{name: "projection", appendLog: &appendLog{}, projector: &projector{err: projectionFailure}, wantErr: projectionFailure},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := admissionTestSource{
+				id:         "admission_progress",
+				events:     []*cerebrov1.EventEnvelope{runtimeTestEvent("event-1", "admission_progress", "admission_progress.event")},
+				checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "candidate-checkpoint"},
+				nextCursor: &cerebrov1.SourceCursor{Opaque: "candidate-next-cursor"},
+			}
+			registry, err := sourcecdk.NewRegistry(source)
+			if err != nil {
+				t.Fatalf("NewRegistry() error = %v", err)
+			}
+			store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-admission-progress": {
+					Id:         "writer-admission-progress",
+					SourceId:   source.id,
+					TenantId:   "writer",
+					Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "committed-checkpoint"},
+					NextCursor: &cerebrov1.SourceCursor{Opaque: "committed-next-cursor"},
+				},
+			}}
+			service := New(registry, store, test.appendLog, test.projector)
+
+			_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-progress"})
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("Sync() error = %v, want %v", err, test.wantErr)
+			}
+			stored := store.runtimes["writer-admission-progress"]
+			if got := stored.GetCheckpoint().GetCursorOpaque(); got != "committed-checkpoint" {
+				t.Fatalf("checkpoint after failure = %q, want committed-checkpoint", got)
+			}
+			if got := stored.GetNextCursor().GetOpaque(); got != "committed-next-cursor" {
+				t.Fatalf("next cursor after failure = %q, want committed-next-cursor", got)
+			}
+			if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "failed" {
+				t.Fatalf("runtime status after failure = %q, want failed", got)
+			}
+		})
+	}
+}
+
+func TestSyncRuntimeCommitFailureDoesNotActivateCandidateProgress(t *testing.T) {
+	commitFailure := errors.New("commit failed")
+	source := admissionTestSource{
+		id:         "admission_commit",
+		events:     []*cerebrov1.EventEnvelope{runtimeTestEvent("event-1", "admission_commit", "admission_commit.event")},
+		checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "candidate-checkpoint"},
+		nextCursor: &cerebrov1.SourceCursor{Opaque: "candidate-next-cursor"},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &ledgerRuntimeStore{
+		runtimeStore: runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-admission-commit": {
+				Id:         "writer-admission-commit",
+				SourceId:   source.id,
+				TenantId:   "writer",
+				Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "committed-checkpoint"},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "committed-next-cursor"},
+			},
+		}},
+		commitErr: commitFailure,
+	}
+	service := New(registry, store, &appendLog{}, &projector{result: ports.ProjectionResult{EntitiesProjected: 1}})
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-commit"})
+	if !errors.Is(err, commitFailure) {
+		t.Fatalf("Sync() error = %v, want %v", err, commitFailure)
+	}
+	stored := store.runtimes["writer-admission-commit"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "committed-checkpoint" {
+		t.Fatalf("checkpoint after commit failure = %q, want committed-checkpoint", got)
+	}
+	if got := stored.GetNextCursor().GetOpaque(); got != "committed-next-cursor" {
+		t.Fatalf("next cursor after commit failure = %q, want committed-next-cursor", got)
+	}
+	if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "failed" {
+		t.Fatalf("runtime status after commit failure = %q, want failed", got)
 	}
 }
 
