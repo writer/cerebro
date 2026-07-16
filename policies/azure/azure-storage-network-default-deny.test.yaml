@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        network_rule_set:
+            default_action: Deny-passing
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        network_rule_set:
+            default_action: Deny
+      wantFinding: false

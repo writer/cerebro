@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        betweenness_centrality: 1.8
+        bridged_teams: 2
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        betweenness_centrality: 0.8
+        bridged_teams: 2
+      wantFinding: false

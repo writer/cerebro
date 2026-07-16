@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        bus_factor: 1
+        criticality: high
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        bus_factor: 1
+        criticality: high-passing
+      wantFinding: false

@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        log_file_validation_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        log_file_validation_enabled: true
+      wantFinding: false

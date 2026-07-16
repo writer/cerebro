@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        discovered_at: ""
+        severity: HIGH
+        state: ACTIVE
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        discovered_at: ""
+        severity: HIGH-passing
+        state: ACTIVE
+      wantFinding: false
