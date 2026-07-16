@@ -279,7 +279,7 @@ func validateImprovementAppendRequest(request complianceimprovement.AppendRevisi
 		return fmt.Errorf("%w: appended revision does not match run", complianceimprovement.ErrInvalidRequest)
 	}
 	if err := request.Revision.Version.Validate(); err != nil {
-		return fmt.Errorf("%w: invalid revision metadata: %v", complianceimprovement.ErrInvalidRequest, err)
+		return fmt.Errorf("%w: invalid revision metadata: %w", complianceimprovement.ErrInvalidRequest, err)
 	}
 	return nil
 }
