@@ -175,6 +175,18 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 
 // WriteDecision records one decision node plus its target, evidence, and action links.
 func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteRequest) (*DecisionWriteResult, error) {
+	return s.writeDecision(ctx, request, false)
+}
+
+// WriteAuthenticatedPacketDecision records a decision reached through the authenticated
+// decision-packet workflow. This method is intentionally separate from the public knowledge
+// write path so replay consumers can distinguish server-routed packet decisions from
+// client-supplied metadata claims.
+func (s *Service) WriteAuthenticatedPacketDecision(ctx context.Context, request DecisionWriteRequest) (*DecisionWriteResult, error) {
+	return s.writeDecision(ctx, request, true)
+}
+
+func (s *Service) writeDecision(ctx context.Context, request DecisionWriteRequest, authenticatedPacket bool) (*DecisionWriteResult, error) {
 	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -219,6 +231,9 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 	})
 	if err != nil {
 		return nil, err
+	}
+	if authenticatedPacket {
+		event.Attributes[workflowevents.EventAttributeDecisionTrust] = workflowevents.DecisionTrustAuthenticatedPacket
 	}
 	statuses, err := s.recordAndProject(ctx, event)
 	if err != nil {

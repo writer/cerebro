@@ -35,7 +35,7 @@ const (
 )
 
 type knowledgeWriter interface {
-	WriteDecision(context.Context, knowledge.DecisionWriteRequest) (*knowledge.DecisionWriteResult, error)
+	WriteAuthenticatedPacketDecision(context.Context, knowledge.DecisionWriteRequest) (*knowledge.DecisionWriteResult, error)
 	WriteOutcome(context.Context, knowledge.OutcomeWriteRequest) (*knowledge.OutcomeWriteResult, error)
 }
 
@@ -132,7 +132,7 @@ func (s *Service) RecordDecision(ctx context.Context, request RecordDecisionRequ
 		metadataPacketID: receipt.PacketID, metadataPacketSchema: receipt.SchemaVersion,
 		metadataPacketDigest: receipt.PacketDigest, metadataTenantAuth: true,
 	}
-	result, err := s.writer.WriteDecision(ctx, knowledge.DecisionWriteRequest{
+	result, err := s.writer.WriteAuthenticatedPacketDecision(ctx, knowledge.DecisionWriteRequest{
 		ID:           request.PacketID + ":" + string(request.Disposition),
 		DecisionType: "evidence-backed-" + string(workflow), Status: string(request.Disposition),
 		MadeBy: request.ActorID, TargetIDs: []string{target}, EvidenceIDs: []string{receipt.PacketID},
@@ -265,6 +265,9 @@ func (s *Service) loadDecision(ctx context.Context, tenantID, decisionID string)
 		return resolvedDecision{}, err
 	}
 	if len(events) != 1 {
+		return resolvedDecision{}, ErrDecisionNotFound
+	}
+	if events[0].GetAttributes()[workflowevents.EventAttributeDecisionTrust] != workflowevents.DecisionTrustAuthenticatedPacket {
 		return resolvedDecision{}, ErrDecisionNotFound
 	}
 	payload, err := workflowevents.DecodeDecisionRecorded(events[0])

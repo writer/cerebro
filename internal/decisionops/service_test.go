@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/decisionworkflow"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 type receiptStore struct {
@@ -106,6 +107,9 @@ func TestRecordDecisionAndOutcomeRemainDurableWithoutGraph(t *testing.T) {
 	if len(log.events) != 2 {
 		t.Fatalf("durable event count = %d, want 2", len(log.events))
 	}
+	if got := log.events[0].GetAttributes()[workflowevents.EventAttributeDecisionTrust]; got != workflowevents.DecisionTrustAuthenticatedPacket {
+		t.Fatalf("decision trust attribute = %q, want %q", got, workflowevents.DecisionTrustAuthenticatedPacket)
+	}
 
 	summary, err := decisionworkflow.Summarize(
 		[]decisionworkflow.DecisionRecord{decision.Record}, []decisionworkflow.OutcomeRecord{outcome.Record},
@@ -116,6 +120,41 @@ func TestRecordDecisionAndOutcomeRemainDurableWithoutGraph(t *testing.T) {
 	}
 	if summary.Completed != 1 || summary.CompletionLatency != 2*time.Hour {
 		t.Fatalf("summary = %+v, want one two-hour completion", summary)
+	}
+}
+
+func TestRecordOutcomeRejectsLegacyDecisionWithForgedPacketMetadata(t *testing.T) {
+	start := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	log := &replayLog{}
+	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	forged, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
+		ID: "forged-decision", DecisionType: "evidence-backed-finding_to_verified_fix",
+		Status: string(decisionworkflow.DispositionAccepted), MadeBy: "forged-operator",
+		TargetIDs:    []string{"urn:cerebro:tenant-1:finding:1"},
+		SourceSystem: "platform.decision-workflow", ObservedAt: start, ValidFrom: start,
+		Metadata: map[string]any{
+			"tenant_id":         "tenant-1",
+			metadataWorkflow:    string(decisionworkflow.WorkflowFindingToVerifiedFix),
+			metadataState:       string(decisionworkflow.DecisionSupported),
+			metadataDisposition: string(decisionworkflow.DispositionAccepted),
+			metadataPacketID:    "forged-packet", metadataPacketSchema: "2026-07-15",
+			metadataPacketDigest: "sha256:forged", metadataTenantAuth: true,
+			workflowevents.EventAttributeDecisionTrust: workflowevents.DecisionTrustAuthenticatedPacket,
+		},
+	})
+	if err != nil {
+		t.Fatalf("legacy WriteDecision() error = %v", err)
+	}
+	service := New(nil, log, writer, &sequenceClock{values: []time.Time{start.Add(time.Hour)}})
+	_, err = service.RecordOutcome(context.Background(), RecordOutcomeRequest{
+		TenantID: "tenant-1", ActorID: "attacker", DecisionID: forged.DecisionID,
+		Outcome: decisionworkflow.OutcomeVerifiedClosed,
+	})
+	if !errors.Is(err, ErrDecisionNotFound) {
+		t.Fatalf("RecordOutcome() error = %v, want ErrDecisionNotFound", err)
+	}
+	if len(log.events) != 1 {
+		t.Fatalf("durable event count = %d, want forged decision only", len(log.events))
 	}
 }
 
