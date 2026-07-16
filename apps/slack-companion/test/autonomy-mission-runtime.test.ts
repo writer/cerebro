@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { RunReceiptV1 } from "@writer/cerebro-sdk";
+import type { RunReceiptV1, WorkLeaseV1 } from "@writer/cerebro-sdk";
 import {
   createMissionWake,
   decideMissionWorkDispatch,
@@ -10,6 +10,10 @@ import {
   MissionLedgerStaleRevisionError,
 } from "../src/autonomy/ledger.js";
 import { ReferenceMemoryMissionLedgerStore } from "../src/autonomy/reference-store.js";
+import type {
+  AuthoritativeMissionLeaseRead,
+  MissionLeaseAuthorityPort,
+} from "../src/autonomy/ports.js";
 import { ExecutionCoordinator } from "../src/execution/coordinator.js";
 import type { ExecutionSession } from "../src/execution/model.js";
 import { ReferenceMemoryExecutionStore } from "../src/execution/reference-store.js";
@@ -223,8 +227,104 @@ describe("portable autonomy mission ledger", () => {
     );
   });
 
-  test("keeps complete ordered events behind a bounded snapshot and fences transitions", async () => {
+  test("persists one scheduled claim across restart and reclaims it only with a newer fence", async () => {
     const store = new ReferenceMemoryMissionLedgerStore();
+    const ledger = new MissionLedger({ store });
+    const run = runReceipt("run-durable-claim", "subject-durable-claim");
+    const plan = missionPlan(run, "mission-durable-claim");
+    const wake = createMissionWake({
+      created_at: "2026-07-16T11:00:00.000Z",
+      due_at: "2026-07-16T11:30:00.000Z",
+      generation: 1,
+      misfire_policy: "coalesce_once",
+      mission_ref: plan.mission_ref,
+      mission_revision: plan.mission_revision,
+      wake_condition_ref: "wake/durable-claim",
+    });
+    await ledger.initialize({
+      event: eventContext("2026-07-16T11:00:00.000Z", "mission.created"),
+      operation_id: "create-durable-claim",
+      seed: { plan, run, wake },
+    });
+    const due = (await ledger.listDue(BASE_TIME, 1))[0]!;
+    const firstClaim = {
+      fencing_token: 7,
+      generation: 2,
+      lease_expires_at: "2026-07-16T12:01:00.000Z",
+      lease_token: "scheduled-lease-durable",
+      now: BASE_TIME,
+      owner_id: "scheduler-durable",
+    };
+
+    const claimed = await ledger.claimDue(due, firstClaim);
+    assert.equal(claimed.acquired, true);
+    if (!claimed.acquired) assert.fail("expected the first claim to succeed");
+    assert.equal(claimed.created, true);
+    assert.equal(
+      (await store.readOccurrence(wake.occurrence.occurrence_id))?.state,
+      "leased",
+    );
+    assert.equal((await ledger.listDue(BASE_TIME, 1)).length, 0);
+
+    const restarted = new MissionLedger({ store });
+    const replay = await restarted.claimDue(due, firstClaim);
+    assert.equal(replay.acquired, true);
+    if (!replay.acquired) assert.fail("expected the claim replay to succeed");
+    assert.equal(replay.created, false);
+    assert.deepEqual(replay.occurrence, claimed.occurrence);
+    assert.deepEqual(
+      await restarted.claimDue(due, {
+        ...firstClaim,
+        lease_token: "scheduled-lease-competing",
+        owner_id: "scheduler-competing",
+      }),
+      { acquired: false, reason: "active_lease" },
+    );
+
+    const afterExpiry = "2026-07-16T12:02:00.000Z";
+    const expiredDue = (await restarted.listDue(afterExpiry, 1))[0]!;
+    assert.equal(expiredDue.occurrence.state, "leased");
+    assert.deepEqual(
+      await restarted.claimDue(expiredDue, {
+        ...firstClaim,
+        lease_expires_at: "2026-07-16T12:03:00.000Z",
+        now: afterExpiry,
+      }),
+      { acquired: false, reason: "stale_fencing_token" },
+    );
+    const reclaimed = await restarted.claimDue(expiredDue, {
+      ...firstClaim,
+      fencing_token: 8,
+      generation: 3,
+      lease_expires_at: "2026-07-16T12:03:00.000Z",
+      lease_token: "scheduled-lease-recovered",
+      now: afterExpiry,
+      owner_id: "scheduler-recovered",
+    });
+    assert.equal(reclaimed.acquired, true);
+    if (!reclaimed.acquired) assert.fail("expected the expired claim to recover");
+    assert.equal(reclaimed.created, true);
+    assert.equal(reclaimed.occurrence.fencing_token, 8);
+    assert.equal(
+      reclaimed.occurrence.occurrence_id,
+      claimed.occurrence.occurrence_id,
+    );
+    assert.equal(reclaimed.occurrence.run_id, claimed.occurrence.run_id);
+    assert.equal(
+      reclaimed.occurrence.idempotency_key,
+      claimed.occurrence.idempotency_key,
+    );
+    assert.deepEqual(
+      await store.readOccurrence(wake.occurrence.occurrence_id),
+      reclaimed.occurrence,
+    );
+  });
+
+  test("keeps complete ordered events behind a bounded snapshot and fences transitions", async () => {
+    const authority = new MutableMissionLeaseAuthority(BASE_TIME);
+    const store = new ReferenceMemoryMissionLedgerStore({
+      lease_authority: authority,
+    });
     const ledger = new MissionLedger({ recent_event_ref_limit: 2, store });
     const run = runReceipt("run-fenced", "subject-fenced");
     const plan = missionPlan(run, "mission-fenced");
@@ -236,6 +336,7 @@ describe("portable autonomy mission ledger", () => {
 
     const execution = executionFixture(run, 2);
     const firstSession = await execution.session;
+    authority.install(firstSession.lease);
     const firstTransition = transitionInput(
       firstSession,
       1,
@@ -316,6 +417,7 @@ describe("portable autonomy mission ledger", () => {
     if (replacement.status === "not_runnable") {
       assert.fail("expected a replacement execution session");
     }
+    authority.install(replacement.session.lease);
     const fifth = await ledger.transition(
       transitionInput(
         replacement.session,
@@ -349,6 +451,76 @@ describe("portable autonomy mission ledger", () => {
     );
     assert.equal((await ledger.readBySubject(run.subject_ref))?.revision, 5);
     assert.equal((await ledger.listEvents(run.subject_ref, 0, 10)).length, 5);
+  });
+
+  test("rejects forged or expired lease proof using authority time, not event time", async () => {
+    const authority = new MutableMissionLeaseAuthority(
+      "2026-07-16T12:02:00.000Z",
+    );
+    const store = new ReferenceMemoryMissionLedgerStore({
+      lease_authority: authority,
+    });
+    const ledger = new MissionLedger({ store });
+    const run = runReceipt("run-authority", "subject-authority");
+    await ledger.initialize({
+      event: eventContext("2026-07-16T11:00:00.000Z", "mission.created"),
+      operation_id: "create-authority",
+      seed: { plan: missionPlan(run, "mission-authority"), run },
+    });
+    const expiredLease: WorkLeaseV1 = {
+      fencing_token: 9,
+      generation: 9,
+      heartbeat_at: "2026-07-16T12:00:00.000Z",
+      lease_expires_at: "2026-07-16T12:01:00.000Z",
+      lease_token: "lease-authority",
+      owner_id: "executor-authority",
+      run_id: run.run_id,
+      schema_version: "work-lease/v1",
+    };
+    authority.install(expiredLease);
+    const backdatedSession: ExecutionSession = {
+      lease: expiredLease,
+      run: {
+        ...run,
+        revision: 2,
+        state: "running",
+        updated_at: "2026-07-16T12:00:30.000Z",
+      },
+    };
+
+    await assert.rejects(
+      ledger.transition(
+        transitionInput(
+          backdatedSession,
+          1,
+          "backdated-expired-lease",
+          "2026-07-16T12:00:30.000Z",
+        ),
+      ),
+      MissionLedgerStaleLeaseError,
+    );
+    authority.setObservedAt("2026-07-16T12:00:30.000Z");
+    await assert.rejects(
+      ledger.transition({
+        ...transitionInput(
+          backdatedSession,
+          1,
+          "forged-lease",
+          "2026-07-16T12:00:30.000Z",
+        ),
+        session: {
+          ...backdatedSession,
+          lease: {
+            ...expiredLease,
+            fencing_token: 99,
+            lease_token: "lease-forged",
+            owner_id: "executor-forged",
+          },
+        },
+      }),
+      MissionLedgerStaleLeaseError,
+    );
+    assert.equal((await ledger.readBySubject(run.subject_ref))?.revision, 1);
   });
 
   test("promotes once and never lets a legacy candidate replace current state", async () => {
@@ -509,4 +681,32 @@ function executionFixture(run: RunReceiptV1, generation: number) {
         return started.session;
       }),
   };
+}
+
+class MutableMissionLeaseAuthority implements MissionLeaseAuthorityPort {
+  private readonly leases = new Map<string, WorkLeaseV1>();
+
+  constructor(private observedAt: string) {}
+
+  install(lease: WorkLeaseV1): void {
+    this.leases.set(lease.run_id, structuredClone(lease));
+  }
+
+  setObservedAt(observedAt: string): void {
+    this.observedAt = observedAt;
+  }
+
+  withCurrentLease<T>(
+    runId: string,
+    operation: (current: AuthoritativeMissionLeaseRead | undefined) => T,
+  ): Promise<T> {
+    const lease = this.leases.get(runId);
+    return Promise.resolve(
+      operation(
+        lease === undefined
+          ? undefined
+          : { lease: structuredClone(lease), observed_at: this.observedAt },
+      ),
+    );
+  }
 }

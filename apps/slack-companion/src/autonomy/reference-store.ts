@@ -11,18 +11,27 @@ import type {
   WorkLeaseV1,
 } from "./contracts.js";
 import type {
+  AuthoritativeMissionLeaseRead,
   DurableMissionLedgerPort,
   LegacyMissionAtomicCommit,
+  MissionLeaseAuthorityPort,
   MissionAtomicCommit,
+  MissionOccurrenceCompareAndSet,
 } from "./ports.js";
 import {
   lifecycleEventReference,
   MissionLedgerIdempotencyConflictError,
   MissionLedgerInvariantError,
+  MissionLedgerOccurrenceConflictError,
   MissionLedgerStaleLeaseError,
   MissionLedgerStaleRevisionError,
   missionSnapshotReference,
 } from "./ledger.js";
+import { acquireScheduledOccurrence } from "../operations/schedules.js";
+
+export interface ReferenceMemoryMissionLedgerStoreOptions {
+  lease_authority?: MissionLeaseAuthorityPort;
+}
 
 /** Reference conformance adapter. Runtime datastore selection stays external. */
 export class ReferenceMemoryMissionLedgerStore
@@ -33,44 +42,51 @@ export class ReferenceMemoryMissionLedgerStore
   private readonly missionSubjects = new Map<string, string>();
   private readonly occurrences = new Map<string, ScheduledOccurrenceV1>();
   private readonly snapshots = new Map<string, MissionSnapshotV1>();
+  private readonly leaseAuthority: MissionLeaseAuthorityPort | undefined;
 
-  commitTransition(
+  constructor(options: ReferenceMemoryMissionLedgerStoreOptions = {}) {
+    this.leaseAuthority = options.lease_authority;
+  }
+
+  async commitTransition(
     commit: MissionAtomicCommit,
   ): Promise<MissionTransitionResult> {
     const prior = this.requireIdempotentCommit(commit);
     if (prior !== undefined) {
-      return Promise.resolve({
+      return {
         created: false,
         event: prior.event,
         occurrence: prior.occurrence,
         snapshot: prior.snapshot,
-      });
+      };
     }
-
-    const current = this.snapshots.get(commit.snapshot.subject_ref);
-    this.validateCommit(commit, current);
-    this.applyCommit(commit);
-    return Promise.resolve({
-      created: true,
-      event: clone(commit.event),
-      occurrence: cloneOptional(commit.occurrence),
-      snapshot: clone(commit.snapshot),
-    });
+    if (commit.lease === undefined) {
+      return this.commitWithLeaseAuthority(commit, undefined);
+    }
+    if (this.leaseAuthority === undefined) {
+      throw new MissionLedgerStaleLeaseError(
+        "mission execution lease authority is unavailable",
+      );
+    }
+    return this.leaseAuthority.withCurrentLease(
+      commit.lease.run_id,
+      (authoritative) => this.commitWithLeaseAuthority(commit, authoritative),
+    );
   }
 
-  promoteLegacy(
+  async promoteLegacy(
     commit: LegacyMissionAtomicCommit,
   ): Promise<MissionPromotionResult> {
     requireRef(commit.adapter_ref, "adapter_ref");
     requireRef(commit.source_ref, "source_ref");
     const prior = this.requireIdempotentCommit(commit);
     if (prior !== undefined) {
-      return Promise.resolve({
+      return {
         created: false,
         event: prior.event,
         occurrence: prior.occurrence,
         snapshot: prior.snapshot,
-      });
+      };
     }
 
     const currentBySubject = this.snapshots.get(commit.snapshot.subject_ref);
@@ -81,17 +97,17 @@ export class ReferenceMemoryMissionLedgerStore
         : this.snapshots.get(currentSubject);
     const current = currentBySubject ?? currentByMission;
     if (current !== undefined) {
-      return Promise.resolve({ created: false, snapshot: clone(current) });
+      return { created: false, snapshot: clone(current) };
     }
 
-    this.validateCommit(commit, undefined);
+    this.validateCommit(commit, undefined, undefined);
     this.applyCommit(commit);
-    return Promise.resolve({
+    return {
       created: true,
       event: clone(commit.event),
       occurrence: cloneOptional(commit.occurrence),
       snapshot: clone(commit.snapshot),
-    });
+    };
   }
 
   readByIdempotencyKey(
@@ -136,6 +152,30 @@ export class ReferenceMemoryMissionLedgerStore
     return Promise.resolve(cloneOptional(this.occurrences.get(occurrenceRef)));
   }
 
+  compareAndSetOccurrence(
+    request: MissionOccurrenceCompareAndSet,
+  ): Promise<ScheduledOccurrenceV1> {
+    const snapshot = this.snapshots.get(request.subject_ref);
+    if (
+      snapshot === undefined ||
+      snapshot.revision !== request.expected_snapshot_revision ||
+      snapshot.wake?.occurrence_ref !== request.expected.occurrence_id
+    ) {
+      throw new MissionLedgerStaleRevisionError(
+        request.expected_snapshot_revision,
+        snapshot?.revision ?? 0,
+      );
+    }
+    const current = this.occurrences.get(request.expected.occurrence_id);
+    if (current === undefined || !isDeepStrictEqual(current, request.expected)) {
+      throw new MissionLedgerOccurrenceConflictError();
+    }
+    validateOccurrenceLeaseAdvance(request.expected, request.next);
+    const committed = clone(request.next);
+    this.occurrences.set(committed.occurrence_id, committed);
+    return Promise.resolve(clone(committed));
+  }
+
   listDue(observedAt: string, limit: number): Promise<DueMissionRecord[]> {
     const observed = normalizeTime(observedAt, "observed_at");
     requirePositiveInteger(limit, "limit");
@@ -145,7 +185,7 @@ export class ReferenceMemoryMissionLedgerStore
         const occurrence = this.occurrences.get(snapshot.wake.occurrence_ref);
         if (
           occurrence === undefined ||
-          (occurrence.state !== "admitted" && occurrence.state !== "queued") ||
+          !isDueQueueable(occurrence, observed) ||
           normalizeTime(occurrence.due_at, "due_at") > observed
         ) {
           return [];
@@ -184,9 +224,34 @@ export class ReferenceMemoryMissionLedgerStore
     return clone(prior);
   }
 
+  private commitWithLeaseAuthority(
+    commit: MissionAtomicCommit,
+    authoritative: AuthoritativeMissionLeaseRead | undefined,
+  ): MissionTransitionResult {
+    const prior = this.requireIdempotentCommit(commit);
+    if (prior !== undefined) {
+      return {
+        created: false,
+        event: prior.event,
+        occurrence: prior.occurrence,
+        snapshot: prior.snapshot,
+      };
+    }
+    const current = this.snapshots.get(commit.snapshot.subject_ref);
+    this.validateCommit(commit, current, authoritative);
+    this.applyCommit(commit);
+    return {
+      created: true,
+      event: clone(commit.event),
+      occurrence: cloneOptional(commit.occurrence),
+      snapshot: clone(commit.snapshot),
+    };
+  }
+
   private validateCommit(
     commit: MissionAtomicCommit,
     current: MissionSnapshotV1 | undefined,
+    authoritative: AuthoritativeMissionLeaseRead | undefined,
   ): void {
     const { event, snapshot } = commit;
     requireRef(commit.idempotency_key, "idempotency_key");
@@ -246,7 +311,7 @@ export class ReferenceMemoryMissionLedgerStore
           "mission transition changed identity or omitted its lease proof",
         );
       }
-      this.assertLeaseProof(current, commit.lease, event.occurred_at);
+      this.assertLeaseProof(current, commit.lease, authoritative);
     }
 
     const indexedSubject = this.missionSubjects.get(snapshot.mission_ref);
@@ -292,7 +357,7 @@ export class ReferenceMemoryMissionLedgerStore
   private assertLeaseProof(
     current: MissionSnapshotV1,
     lease: WorkLeaseV1,
-    occurredAt: string,
+    authoritative: AuthoritativeMissionLeaseRead | undefined,
   ): void {
     if (
       lease.schema_version !== "work-lease/v1" ||
@@ -300,9 +365,16 @@ export class ReferenceMemoryMissionLedgerStore
       !Number.isSafeInteger(lease.generation) ||
       lease.generation < 1 ||
       !Number.isSafeInteger(lease.fencing_token) ||
-      lease.fencing_token < 1 ||
+      lease.fencing_token < 1
+    ) {
+      throw new MissionLedgerStaleLeaseError();
+    }
+
+    if (
+      authoritative === undefined ||
+      !isDeepStrictEqual(authoritative.lease, lease) ||
       normalizeTime(lease.lease_expires_at, "lease_expires_at") <=
-        normalizeTime(occurredAt, "occurred_at")
+        normalizeTime(authoritative.observed_at, "authority.observed_at")
     ) {
       throw new MissionLedgerStaleLeaseError();
     }
@@ -348,6 +420,50 @@ export class ReferenceMemoryMissionLedgerStore
       snapshot,
     });
   }
+}
+
+function validateOccurrenceLeaseAdvance(
+  expected: ScheduledOccurrenceV1,
+  next: ScheduledOccurrenceV1,
+): void {
+  if (
+    next.heartbeat_at === undefined ||
+    next.lease_expires_at === undefined ||
+    next.lease_token === undefined ||
+    next.owner_id === undefined ||
+    next.fencing_token === undefined
+  ) {
+    throw new MissionLedgerInvariantError(
+      "scheduled occurrence lease proof is incomplete",
+    );
+  }
+  const acquired = acquireScheduledOccurrence(expected, {
+    fencing_token: next.fencing_token,
+    generation: next.generation,
+    lease_expires_at: next.lease_expires_at,
+    lease_token: next.lease_token,
+    now: next.heartbeat_at,
+    owner_id: next.owner_id,
+  });
+  if (!acquired.acquired || !isDeepStrictEqual(acquired.occurrence, next)) {
+    throw new MissionLedgerInvariantError(
+      "scheduled occurrence lease transition is invalid",
+    );
+  }
+}
+
+function isDueQueueable(
+  occurrence: ScheduledOccurrenceV1,
+  observedAt: string,
+): boolean {
+  if (occurrence.state === "admitted" || occurrence.state === "queued") {
+    return true;
+  }
+  return (
+    (occurrence.state === "leased" || occurrence.state === "running") &&
+    occurrence.lease_expires_at !== undefined &&
+    normalizeTime(occurrence.lease_expires_at, "lease_expires_at") <= observedAt
+  );
 }
 
 function compareDueMissions(

@@ -20,6 +20,30 @@ export interface MissionAtomicCommit {
   snapshot: MissionSnapshotV1;
 }
 
+export interface AuthoritativeMissionLeaseRead {
+  lease: WorkLeaseV1;
+  observed_at: string;
+}
+
+/**
+ * Portable read boundary for the execution lease that currently owns a run.
+ * The adapter, not the mission event producer, owns `observed_at`.
+ */
+export interface MissionLeaseAuthorityPort {
+  /** Keeps the authoritative lease stable until `operation` returns. */
+  withCurrentLease<T>(
+    runId: string,
+    operation: (current: AuthoritativeMissionLeaseRead | undefined) => T,
+  ): Promise<T>;
+}
+
+export interface MissionOccurrenceCompareAndSet {
+  expected: ScheduledOccurrenceV1;
+  expected_snapshot_revision: number;
+  next: ScheduledOccurrenceV1;
+  subject_ref: string;
+}
+
 export interface LegacyMissionAtomicCommit extends MissionAtomicCommit {
   adapter_ref: string;
   source_ref: string;
@@ -30,6 +54,10 @@ export interface LegacyMissionAtomicCommit extends MissionAtomicCommit {
  * lifecycle event, and optional scheduled work item atomically.
  */
 export interface DurableMissionLedgerPort {
+  /**
+   * Atomically verifies an exact active execution lease at authority-owned time
+   * and commits the snapshot, event, and optional scheduled work item.
+   */
   commitTransition(
     commit: MissionAtomicCommit,
   ): Promise<MissionTransitionResult>;
@@ -51,6 +79,14 @@ export interface DurableMissionLedgerPort {
   readOccurrence(
     occurrenceRef: string,
   ): Promise<ScheduledOccurrenceV1 | undefined>;
+
+  /**
+   * Atomically verifies the exact mission snapshot and occurrence before
+   * installing a fenced scheduled-work lease.
+   */
+  compareAndSetOccurrence(
+    request: MissionOccurrenceCompareAndSet,
+  ): Promise<ScheduledOccurrenceV1>;
   listDue(observedAt: string, limit: number): Promise<DueMissionRecord[]>;
   listEvents(
     subjectRef: string,

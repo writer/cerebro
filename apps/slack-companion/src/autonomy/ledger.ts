@@ -7,10 +7,15 @@ import type {
   WorkState,
 } from "@writer/cerebro-sdk";
 import {
+  acquireScheduledOccurrence,
   createScheduledOccurrence,
   scheduledOccurrenceIdentity,
 } from "../operations/schedules.js";
-import type { ScheduledLeaseClaim } from "../operations/schedules.js";
+import type {
+  ScheduledLeaseClaim,
+  ScheduledLeaseDecision,
+  ScheduledLeaseRequest,
+} from "../operations/schedules.js";
 import type {
   DueMissionRecord,
   InitializeMissionInput,
@@ -60,6 +65,10 @@ export type MissionWorkDispatchDecision =
         | "wake_superseded";
     }
   | { disposition: "retry_claimed"; reason: "active_lease" };
+
+export type MissionOccurrenceClaimResult =
+  | { acquired: true; created: boolean; occurrence: ScheduledOccurrenceV1 }
+  | Extract<ScheduledLeaseDecision, { acquired: false }>;
 
 export class MissionLedger {
   private readonly recentEventRefLimit: number;
@@ -266,6 +275,62 @@ export class MissionLedger {
       after_sequence: afterSequence,
       limit,
     });
+  }
+
+  async claimDue(
+    due: DueMissionRecord,
+    request: ScheduledLeaseRequest,
+  ): Promise<MissionOccurrenceClaimResult> {
+    requireRef(due.snapshot.subject_ref, "subject_ref");
+    requireRef(due.occurrence.occurrence_id, "occurrence_id");
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const snapshot = await this.store.readBySubject(due.snapshot.subject_ref);
+      const occurrence = await this.store.readOccurrence(
+        due.occurrence.occurrence_id,
+      );
+      if (snapshot === undefined || occurrence === undefined) {
+        throw new MissionLedgerInvariantError(
+          "mission wake is no longer durable",
+        );
+      }
+
+      const dispatch = decideMissionWorkDispatch(
+        snapshot,
+        occurrence,
+        request.now,
+        request,
+      );
+      if (dispatch.disposition === "consume_stale") {
+        throw new MissionLedgerInvariantError(
+          `mission wake is stale: ${dispatch.reason}`,
+        );
+      }
+      if (dispatch.disposition === "retry_claimed") {
+        return { acquired: false, reason: "active_lease" };
+      }
+      if (dispatch.disposition === "execute") {
+        return { acquired: true, created: false, occurrence };
+      }
+
+      const acquired = acquireScheduledOccurrence(occurrence, request);
+      if (!acquired.acquired) return acquired;
+      try {
+        const committed = await this.store.compareAndSetOccurrence({
+          expected: occurrence,
+          expected_snapshot_revision: snapshot.revision,
+          next: acquired.occurrence,
+          subject_ref: snapshot.subject_ref,
+        });
+        return { acquired: true, created: true, occurrence: committed };
+      } catch (error) {
+        if (!(error instanceof MissionLedgerOccurrenceConflictError)) {
+          throw error;
+        }
+      }
+    }
+
+    throw new MissionLedgerOccurrenceConflictError();
   }
 
   private async replayedCommit(
@@ -651,5 +716,12 @@ export class MissionLedgerStaleLeaseError extends Error {
   constructor(message = "mission execution lease is stale") {
     super(message);
     this.name = "MissionLedgerStaleLeaseError";
+  }
+}
+
+export class MissionLedgerOccurrenceConflictError extends Error {
+  constructor() {
+    super("mission scheduled occurrence changed concurrently");
+    this.name = "MissionLedgerOccurrenceConflictError";
   }
 }
