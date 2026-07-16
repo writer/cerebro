@@ -47,7 +47,7 @@ func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate,
 		return nil, fmt.Errorf("%w: graph_evidence is required for a grounded policy candidate", ErrInvalidRequest)
 	}
 	if _, err := policyauthor.GraphEvidenceModelContext(*request.GraphEvidence); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	if len(request.Hypothesis) > 4000 {
 		return nil, fmt.Errorf("%w: hypothesis exceeds 4000 bytes", ErrInvalidRequest)

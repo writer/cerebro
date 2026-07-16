@@ -329,12 +329,14 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 		RuntimeID: runtimeID, SourcePageLimit: uint32Payload(job.Payload, "page_limit"), GraphPageLimit: uint32Payload(job.Payload, "graph_page_limit"),
 		RuleIDs: stringSlicePayload(job.Payload, "rule_ids"), EventLimit: uint32Payload(job.Payload, "event_limit"),
 		CaptureSecurityPathDelta: boolPayload(job.Payload, "capture_security_path_delta"), SecurityPathAccountID: stringPayload(job.Payload, "security_path_account_id", ""),
-		ObservationID: strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
+		SecurityPathRustShadow: boolPayload(job.Payload, "security_path_rust_shadow"),
+		ObservationID:          strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
-	result, refs, mapErr := orchestration.JobPayload()
+	payload, refs, mapErr := orchestration.JobPayload()
 	if mapErr != nil {
 		return nil, nil, mapErr
 	}
+	result = map[string]any(payload.Result())
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
 	if orchestration.FindingRules != nil {
 		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
