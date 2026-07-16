@@ -15932,7 +15932,7 @@ components:
       additionalProperties: false
       required: [name, change_summary]
       properties:
-        name: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$', description: Canonical synthetic name; append requests must set this to the containing case ID.}
+        name: {type: string, minLength: 1, maxLength: 200}
         change_summary: {type: string, minLength: 1, maxLength: 1000}
     AppendPolicyEvaluationDatasetRevisionRequest:
       type: object
@@ -15958,7 +15958,7 @@ components:
       additionalProperties: false
       required: [name, graphFixture, wantFinding]
       properties:
-        name: {type: string, minLength: 1, maxLength: 200}
+        name: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$', description: Canonical synthetic name; append requests must set this to the containing case ID.}
         graphFixture: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphFixture'}
         wantEvidenceUrns:
           type: array
