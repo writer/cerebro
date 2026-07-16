@@ -363,32 +363,28 @@ func testPath(resource, principal, permission, traversalRelation, label string, 
 
 func snapshotInput(observationID string, observedAt time.Time, complete bool, paths ...ObservedPath) SnapshotInput {
 	receipt := CollectionReceiptInput{
-		CollectionSourceReceipt: CollectionSourceReceipt{
-			SourceRuntimeID:  "runtime-aws",
-			SourceID:         "aws",
-			ProviderFamily:   "inventory",
-			ConfigRevision:   "sha256:config-a",
-			RuntimeWatermark: observedAt.Add(-2 * time.Minute),
-			LastSyncedAt:     observedAt.Add(-time.Minute),
-			CollectionMode:   CollectionModeGraphResetFullScan,
+		SourceRuntimeID:    "runtime-aws",
+		SourceID:           "aws",
+		ProviderFamily:     "inventory",
+		ConfigRevision:     "sha256:config-a",
+		RuntimeWatermark:   observedAt.Add(-2 * time.Minute),
+		LastSyncedAt:       observedAt.Add(-time.Minute),
+		CollectionMode:     CollectionModeGraphResetFullScan,
+		GraphCheckpointID:  "checkpoint-aws",
+		GraphRunID:         observationID + "-graph",
+		GraphRunStartedAt:  observedAt.Add(-30 * time.Second),
+		GraphRunFinishedAt: observedAt.Add(-20 * time.Second),
+		CollectionGraphProjectionReceipt: CollectionGraphProjectionReceipt{
+			GraphPagesRead: 1,
 		},
-		CollectionGraphReceipt: CollectionGraphReceipt{
-			GraphCheckpointID:                        "checkpoint-aws",
-			GraphRunID:                               observationID + "-graph",
-			GraphRunStartedAt:                        observedAt.Add(-30 * time.Second),
-			GraphRunFinishedAt:                       observedAt.Add(-20 * time.Second),
-			GraphPagesRead:                           1,
-			GraphMaterialLinkReconciliationRequested: true,
-			GraphMaterialLinkReconciliationSupported: true,
-			GraphMaterialLinkReconciliationCompleted: true,
-			GraphCheckpointComplete:                  true,
-			GraphCheckpointCurrent:                   true,
-		},
-		CollectionPathReceipt: CollectionPathReceipt{
-			ObservedPathCount: len(paths),
-			TotalPathCount:    len(paths),
-			LeaseHeld:         true,
-		},
+		GraphMaterialLinkReconciliationRequested: true,
+		GraphMaterialLinkReconciliationSupported: true,
+		GraphMaterialLinkReconciliationCompleted: true,
+		GraphCheckpointComplete:                  true,
+		GraphCheckpointCurrent:                   true,
+		ObservedPathCount:                        len(paths),
+		TotalPathCount:                           len(paths),
+		LeaseHeld:                                true,
 	}
 	if !complete {
 		receipt.GraphCheckpointCurrent = false
