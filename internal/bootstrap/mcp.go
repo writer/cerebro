@@ -2222,15 +2222,15 @@ func mcpTools() []mcpTool {
 		{
 			Name:         "cerebro.health",
 			Title:        "Cerebro Health",
-			Description:  "Return Cerebro service health and dependency status.",
+			Description:  "Check whether the Cerebro service is healthy and ready, including failed or unavailable backend dependencies.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Health"),
 		},
 		{
 			Name:         "cerebro.version",
-			Title:        "Cerebro Version",
-			Description:  "Return Cerebro service build and API version metadata.",
+			Title:        "Running Cerebro Build",
+			Description:  "Identify the release running on this server, including service version, commit, build date, and API version.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Version"),
@@ -2377,7 +2377,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.findings.search",
 			Title:       "Search Findings",
-			Description: "Search visible findings across a runtime or tenant by query, severity, status, rule, resource, event, or policy.",
+			Description: "Find visible security findings across a runtime or tenant. Filter open, resolved, or suppressed findings by query, severity, rule, resource, event, or policy.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"tenant_id":    map[string]any{"type": "string"},
 				"runtime_id":   map[string]any{"type": "string"},
@@ -2434,7 +2434,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.assets.search",
 			Title:       "Search Assets",
-			Description: "Search graph assets/entities visible to the authenticated caller by query, URN, entity type, tenant, or runtime.",
+			Description: "Find visible inventory and graph assets by query, URN, entity type, tenant, or runtime.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"query":       map[string]any{"type": "string"},
 				"urn":         map[string]any{"type": "string"},
@@ -2738,8 +2738,8 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "cerebro.graph.reason",
-			Title:       "Graph Reasoning",
-			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
+			Title:       "Explain Graph Connections",
+			Description: "Explain the relationship between an endpoint and a finding, how a public resource is connected to a privileged identity, or which attack path reaches an asset. Return tenant-scoped graph evidence, citations, and provenance.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"question":  map[string]any{"type": "string"},
 				"scope_urn": map[string]any{"type": "string"},
@@ -2762,7 +2762,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.investigation.context",
 			Title:       "Investigation Context",
-			Description: "Bundle finding, evidence, assets, and graph context for one finding so an agent can investigate without many round trips.",
+			Description: "Assemble triage and investigation context for one finding, including evidence, affected assets, runtime details, and graph context.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id":  map[string]any{"type": "string"},
 				"limit":       mcpLimitSchema(maxMCPEvidenceLimit, "evidence records"),

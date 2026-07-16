@@ -8,38 +8,75 @@ import (
 	"testing"
 )
 
-func TestTaskToolSelectionFixtures(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join("testdata", "task_tools", "selection_cases.json"))
-	if err != nil {
-		t.Fatalf("read selection fixtures: %v", err)
+func TestTaskToolSelectionFixturesAreComplete(t *testing.T) {
+	cases := readTaskSelectionCases(t)
+	if len(cases) < 30 {
+		t.Fatalf("selection fixtures = %d, want at least 30", len(cases))
 	}
-	var cases []TaskSelectionCase
-	if err := json.Unmarshal(body, &cases); err != nil {
-		t.Fatalf("decode selection fixtures: %v", err)
-	}
-	if len(cases) < 6 {
-		t.Fatalf("selection fixtures = %d, want at least 6", len(cases))
-	}
+	seenIDs := map[string]bool{}
 	for _, evalCase := range cases {
 		if evalCase.ID == "" || evalCase.UserRequest == "" || evalCase.ExpectedTool == "" {
 			t.Fatalf("fixture is incomplete: %#v", evalCase)
 		}
+		if seenIDs[evalCase.ID] {
+			t.Fatalf("fixture ID %q is duplicated", evalCase.ID)
+		}
+		seenIDs[evalCase.ID] = true
 		if evalCase.MaximumCallCount < 1 {
 			t.Fatalf("fixture %q maximum_call_count = %d", evalCase.ID, evalCase.MaximumCallCount)
 		}
 		if !IsTaskTool(evalCase.ExpectedTool) {
 			t.Fatalf("fixture %q expects non-task tool %q", evalCase.ID, evalCase.ExpectedTool)
 		}
+		for _, followup := range evalCase.AllowedFollowupTools {
+			if !IsKnownTool(followup) {
+				t.Fatalf("fixture %q allows unknown follow-up tool %q", evalCase.ID, followup)
+			}
+		}
 		for _, forbidden := range evalCase.ForbiddenTools {
+			if !IsKnownTool(forbidden) {
+				t.Fatalf("fixture %q forbids unknown tool %q", evalCase.ID, forbidden)
+			}
 			if IsTaskTool(forbidden) {
 				t.Fatalf("fixture %q forbids task tool %q", evalCase.ID, forbidden)
 			}
 		}
 	}
-	for _, result := range EvaluateTaskSelection(cases) {
-		if !result.Passed {
-			t.Fatalf("fixture %q selected %q, want %q", result.ID, result.SelectedTool, result.ExpectedTool)
-		}
+}
+
+func TestScoreTaskSelectionUsesAdvertisedMetadata(t *testing.T) {
+	descriptors := []TaskToolDescriptor{
+		{Name: "cerebro.findings.search", Title: "Search Findings", Description: "Find open findings by severity."},
+		{Name: "cerebro.assets.search", Title: "Search Assets", Description: "Find inventory assets by type."},
+	}
+	report := ScoreTaskSelection([]TaskSelectionCase{{ID: "finding", UserRequest: "Find open critical findings", ExpectedTool: "cerebro.findings.search"}}, descriptors)
+	if report.Correct != 1 || report.AccuracyBP != 10000 || report.Results[0].SelectedTool != "cerebro.findings.search" || report.Results[0].Margin <= 0 {
+		t.Fatalf("report = %#v", report)
+	}
+}
+
+func TestValidateTaskSelectionBaselineRejectsRegression(t *testing.T) {
+	report := TaskSelectionReport{
+		Contract:             TaskSelectionReportContract,
+		AccuracyBP:           9000,
+		ToolCoverageBP:       10000,
+		MinimumCorrectMargin: 3,
+		Incorrect:            1,
+		PerTool:              []TaskSelectionToolScore{{Tool: "cerebro.health", Cases: 2, Correct: 2}},
+	}
+	baseline := TaskSelectionBaseline{
+		Contract:                   TaskSelectionReportContract,
+		MinimumAccuracyBP:          10000,
+		MinimumToolCoverageBP:      10000,
+		MinimumCasesPerTool:        3,
+		MinimumCorrectMargin:       4,
+		MaximumIncorrect:           0,
+		MaximumUnselected:          0,
+		MaximumAmbiguousSelections: 0,
+	}
+	err := ValidateTaskSelectionBaseline(report, baseline)
+	if !errors.Is(err, ErrTaskSelectionRegression) {
+		t.Fatalf("ValidateTaskSelectionBaseline() error = %v, want ErrTaskSelectionRegression", err)
 	}
 }
 
@@ -115,4 +152,17 @@ func TestTaskResponsesPreserveStructuredContentPartialErrors(t *testing.T) {
 	if plan.State != TaskStatePartial || len(plan.PartialReasons) != 1 || plan.PartialReasons[0] != "graph lookup failed" {
 		t.Fatalf("ActionPlan() = %#v, want partial state with graph error", plan)
 	}
+}
+
+func readTaskSelectionCases(t *testing.T) []TaskSelectionCase {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "task_tools", "selection_cases.json"))
+	if err != nil {
+		t.Fatalf("read selection fixtures: %v", err)
+	}
+	var cases []TaskSelectionCase
+	if err := json.Unmarshal(body, &cases); err != nil {
+		t.Fatalf("decode selection fixtures: %v", err)
+	}
+	return cases
 }

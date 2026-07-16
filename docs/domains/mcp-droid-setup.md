@@ -55,6 +55,30 @@ Low-level domain tools remain available through explicit profiles. Use
 `X-Cerebro-MCP-Toolsets: full` for the previous complete tool list. New clients
 should use the default surface instead of `full`.
 
+## Hillclimb the task tools
+
+Run the task-selection regression gate before changing a task tool name,
+title, description, or input schema:
+
+```bash
+make mcp-tool-eval
+```
+
+The gate scores the metadata returned by the default `tools/list` response
+against the checked-in request corpus in
+`internal/mcpoperations/testdata/task_tools/selection_cases.json`. The baseline
+requires every task tool to remain represented, every case to select the
+intended tool, no tied selections, and a minimum winning margin. Add a case for
+each observed selection failure before changing the tool metadata, then keep
+the change only when it preserves or improves the checked-in baseline in
+`internal/mcpoperations/testdata/task_tools/baseline.json`.
+
+This gate is a deterministic metadata check, not a substitute for model and
+runtime evaluation. Validate promoted changes with representative MCP clients,
+then compare task request counts, errors, latency, partial states, and blocked
+states by tool. Cerebro telemetry records tool classification, behavior, and
+owner domain without recording the user request.
+
 ## Assessment operations
 
 Set `X-Cerebro-MCP-Toolsets: assessments` to expose the assessment lifecycle:
