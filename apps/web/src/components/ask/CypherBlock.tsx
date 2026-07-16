@@ -35,9 +35,9 @@ const CYPHER_KEYWORDS = new Set([
   "IS",
 ]);
 
-const tokenize = (cypher: string) => {
+export const tokenizeCypher = (cypher: string) => {
   const tokens: Array<{ value: string; kind: "kw" | "str" | "num" | "op" | "text" }> = [];
-  const regex = /(['"][^'"]*['"]|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z0-9_]*|[{}()\[\]:,.;=<>!+\-*/]|\s+)/g;
+  const regex = /(['"][^'"]*['"]|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z0-9_]*|[{}()\[\]:,.;=<>!+\-*/$?|~]|\s+)/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(cypher)) !== null) {
     const value = match[0];
@@ -86,7 +86,7 @@ export default function CypherBlock({ cypher, validator }: AskCypherEvent) {
     }
   };
 
-  const tokens = tokenize(cypher);
+  const tokens = tokenizeCypher(cypher);
   const validatorBadge = validator.ok
     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
     : "border-rose-200 bg-rose-50 text-rose-700";
