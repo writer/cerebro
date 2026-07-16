@@ -144,6 +144,18 @@ EMBEDDED_WASM_MODULES = (
         changed_paths=frozenset(),
         changed_reason="Source record kernel source, host, or embedded module changed.",
     ),
+    EmbeddedWasmModule(
+        name="security-path-evaluator",
+        label="security path",
+        package="cerebro-security-path-kernel",
+        build_artifact="cerebro_security_path_kernel.wasm",
+        embedded_artifact="internal/securitypathdelta/evaluator.wasm",
+        generate_target="security-path-evaluator-generate",
+        check_target="security-path-evaluator-check",
+        changed_prefixes=("crates/security-path-kernel/", "internal/securitypathdelta/"),
+        changed_paths=frozenset({"internal/securitypathdelta/evaluator.wasm"}),
+        changed_reason="Security path kernel source, host, or embedded module changed.",
+    ),
 )
 
 MODULES_BY_NAME = {module.name: module for module in EMBEDDED_WASM_MODULES}

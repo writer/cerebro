@@ -115,9 +115,7 @@ func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *te
 	if err == nil {
 		t.Fatal("UpsertProjectedEntity() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedEntity() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected entity urn", "urn:cerebro:victim:github_user:alice")
 }
 
 func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
@@ -132,9 +130,7 @@ func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeConnection(t *test
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedLink() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected link to urn", "urn:cerebro:victim:github_code_repository:writer/cerebro")
 }
 
 func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
@@ -1106,9 +1102,7 @@ func TestUpsertProjectedEntitiesRejectsCrossTenantCerebroURNBeforeConnection(t *
 	if err == nil {
 		t.Fatal("UpsertProjectedEntities() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedEntities() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected entity urn", "urn:cerebro:victim:github_user:alice")
 }
 
 func TestUpsertProjectedLinksRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
@@ -1123,8 +1117,20 @@ func TestUpsertProjectedLinksRejectsCrossTenantCerebroURNBeforeConnection(t *tes
 	if err == nil {
 		t.Fatal("UpsertProjectedLinks() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedLinks() error = %q", got)
+	requireProjectedTenantScopeError(t, err, "projected link to urn", "urn:cerebro:victim:github_code_repository:writer/cerebro")
+}
+
+func requireProjectedTenantScopeError(t *testing.T, err error, field, urn string) {
+	t.Helper()
+	if !errors.Is(err, ports.ErrProjectedTenantScope) {
+		t.Fatalf("error = %v, want %v", err, ports.ErrProjectedTenantScope)
+	}
+	var scopeErr *ports.ProjectedTenantScopeError
+	if !errors.As(err, &scopeErr) {
+		t.Fatalf("error = %T, want *ports.ProjectedTenantScopeError", err)
+	}
+	if scopeErr.Field != field || scopeErr.URN != urn || scopeErr.URNTenantID != "victim" || scopeErr.ProjectionTenantID != "writer" {
+		t.Fatalf("scope error = %#v", scopeErr)
 	}
 }
 
