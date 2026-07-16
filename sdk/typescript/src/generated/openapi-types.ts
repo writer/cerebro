@@ -1137,7 +1137,7 @@ export type CoverageControlRef = {
 
 export type CreatePlatformJobRequest = {
   idempotency_key?: string;
-  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "report_run";
+  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "policy_candidate_experiment" | "report_run";
   payload?: Record<string, unknown>;
   subject_id?: string;
   subject_type?: string;
@@ -1151,6 +1151,11 @@ export type CreatePolicyCandidateRequest = {
   hypothesis: string;
   origin: PolicyCandidateOriginInput;
   tenant_id: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyExperimentRequest = {
+  runtime_id: string;
   [key: string]: unknown;
 };
 
@@ -3702,6 +3707,51 @@ export type PolicyCandidateShadowReceipt = {
   observed_at: string;
   receipt_id: string;
   truncated: boolean;
+};
+
+export type PolicyExperiment = {
+  candidate_id: string;
+  created_at: string;
+  finished_at?: string;
+  id: string;
+  observation_count: number;
+  pins: PolicyExperimentPins;
+  revision: number;
+  started_at?: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked";
+  status_reason?: string;
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyExperimentCheckpoint = {
+  complete: boolean;
+  current: boolean;
+  digest: string;
+  id: string;
+  runtime_id: string;
+  [key: string]: unknown;
+};
+
+export type PolicyExperimentObservation = {
+  checkpoint_id?: string;
+  created_at: string;
+  experiment_id: string;
+  id: string;
+  kind: string;
+  metrics?: Record<string, number>;
+  observed_at: string;
+  receipt_digest: string;
+  sequence: number;
+};
+
+export type PolicyExperimentPins = {
+  candidate_revision: number;
+  catalog_digest: string;
+  checkpoints: PolicyExperimentCheckpoint[];
+  dataset_digest: string;
+  policy_digest: string;
+  test_digest: string;
 };
 
 export type PromoteFindingCandidateRequest = {

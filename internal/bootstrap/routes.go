@@ -65,8 +65,13 @@ func (app *App) registerPolicyCandidateRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /policy-candidates", routeSurfacePlatformHTTP, app.handleCreatePolicyCandidate)
 	registerHTTPRoute(mux, "GET /policy-candidates", routeSurfacePlatformHTTP, app.handleListPolicyCandidates)
 	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}", routeSurfacePlatformHTTP, app.handleGetPolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleCreatePolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleListPolicyExperiments)
 	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/prove", routeSurfacePlatformHTTP, app.handleProvePolicyCandidate)
 	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/shadow", routeSurfacePlatformHTTP, app.handleShadowPolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}", routeSurfacePlatformHTTP, app.handleGetPolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}/observations", routeSurfacePlatformHTTP, app.handleListPolicyExperimentObservations)
+	registerHTTPRoute(mux, "POST /policy-experiments/{experimentID}/run", routeSurfacePlatformHTTP, app.handleRunPolicyExperiment)
 }
 func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions, decisionPackets: app.services.decisionPackets}

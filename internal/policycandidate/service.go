@@ -21,11 +21,12 @@ var domainPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 var accountIDPattern = regexp.MustCompile(`(^|[^0-9])[0-9]{12}([^0-9]|$)`)
 
 type Service struct {
-	Store   Store
-	Author  *agentauthoring.Service
-	Graph   ports.GraphQueryStore
-	Catalog CoverageCatalog
-	Now     func() time.Time
+	Store       Store
+	Experiments ExperimentStore
+	Author      *agentauthoring.Service
+	Graph       ports.GraphQueryStore
+	Catalog     CoverageCatalog
+	Now         func() time.Time
 }
 
 func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate, error) {
