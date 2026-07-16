@@ -294,7 +294,8 @@ func (s *Service) RecordOutcome(ctx context.Context, request RecordOutcomeReques
 	}
 	observability.RecordDecisionOutcome(ctx, metrics, decisionworkflow.Completion{
 		Workflow: resolved.Record.Workflow, DecisionID: result.DecisionID, DecisionState: resolved.Record.State,
-		Outcome: request.Outcome, AuthenticatedTenant: true, Durable: true,
+		Outcome:             completionOutcomeForRecordedOutcome(resolved.Record.Workflow, request.Outcome),
+		AuthenticatedTenant: true, Durable: true,
 		Reopened:                   request.Outcome == decisionworkflow.OutcomeReopened,
 		AuditPacketExportReceiptID: request.AuditPacketExportReceiptID,
 	})
@@ -410,4 +411,13 @@ func dispositionOutcome(value decisionworkflow.Disposition) decisionworkflow.Out
 	default:
 		return decisionworkflow.OutcomeUnknown
 	}
+}
+
+func completionOutcomeForRecordedOutcome(workflow decisionworkflow.Workflow, outcome decisionworkflow.Outcome) decisionworkflow.Outcome {
+	// Change decisions complete when their disposition is recorded. A later
+	// matching outcome remains durable audit detail, not a second completion.
+	if workflow == decisionworkflow.WorkflowChangeDecision {
+		return decisionworkflow.OutcomeNone
+	}
+	return outcome
 }

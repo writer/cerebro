@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/decisionworkflow"
 	"github.com/writer/cerebro/internal/knowledge"
@@ -167,6 +171,82 @@ func TestAuthenticatedPacketDecisionClassification(t *testing.T) {
 	if _, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", trusted.Record.ID); !errors.Is(err, ErrDecisionNotFound) {
 		t.Fatalf("duplicate trusted decision error = %v, want %v", err, ErrDecisionNotFound)
 	}
+}
+
+func TestRecordedOutcomeCompletionDoesNotRepeatChangeDecision(t *testing.T) {
+	if got := completionOutcomeForRecordedOutcome(decisionworkflow.WorkflowChangeDecision, decisionworkflow.OutcomeAccepted); got != decisionworkflow.OutcomeNone {
+		t.Fatalf("change decision completion outcome = %q, want none", got)
+	}
+	if got := completionOutcomeForRecordedOutcome(decisionworkflow.WorkflowFindingToVerifiedFix, decisionworkflow.OutcomeVerifiedClosed); got != decisionworkflow.OutcomeVerifiedClosed {
+		t.Fatalf("verified fix completion outcome = %q, want verified_closed", got)
+	}
+	if got := completionOutcomeForRecordedOutcome(decisionworkflow.WorkflowContinuousEvidence, decisionworkflow.OutcomeAuditPacketDelivered); got != decisionworkflow.OutcomeAuditPacketDelivered {
+		t.Fatalf("continuous evidence completion outcome = %q, want audit_packet_delivered", got)
+	}
+}
+
+func TestChangeDecisionCompletionMetricIsEmittedOnce(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	previous := otel.GetMeterProvider()
+	otel.SetMeterProvider(provider)
+	t.Cleanup(func() {
+		otel.SetMeterProvider(previous)
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown metric provider: %v", err)
+		}
+	})
+
+	start := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	receipts := &receiptStore{receipt: &ports.DecisionPacketReceipt{
+		TenantID: "tenant-1", PacketID: "dpr_1", SchemaVersion: "2026-07-15",
+		Workflow: string(decisionworkflow.WorkflowChangeDecision), DecisionState: string(decisionworkflow.DecisionSupported),
+		PacketDigest: "sha256:packet", ScopeURN: "urn:cerebro:tenant-1:change:1",
+	}}
+	log := &replayLog{}
+	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start, start.Add(time.Minute)}})
+	decision, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
+		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
+		Disposition: decisionworkflow.DispositionAccepted, Reason: decisionworkflow.DismissalNone,
+	})
+	if err != nil {
+		t.Fatalf("RecordDecision() error = %v", err)
+	}
+	if _, err := service.RecordOutcome(context.Background(), RecordOutcomeRequest{
+		TenantID: "tenant-1", ActorID: "operator-2", DecisionID: decision.Record.ID,
+		Outcome: decisionworkflow.OutcomeAccepted,
+	}); err != nil {
+		t.Fatalf("RecordOutcome() error = %v", err)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	if got := decisionMetricTotal(metrics, "cerebro_decisions_completed_total"); got != 1 {
+		t.Fatalf("completed decision metric = %d, want 1", got)
+	}
+	if got := decisionMetricTotal(metrics, "cerebro_decision_outcomes_total"); got != 2 {
+		t.Fatalf("decision outcome metric = %d, want 2", got)
+	}
+}
+
+func decisionMetricTotal(metrics metricdata.ResourceMetrics, name string) int64 {
+	var total int64
+	for _, scope := range metrics.ScopeMetrics {
+		for _, metric := range scope.Metrics {
+			if metric.Name != name {
+				continue
+			}
+			if sum, ok := metric.Data.(metricdata.Sum[int64]); ok {
+				for _, point := range sum.DataPoints {
+					total += point.Value
+				}
+			}
+		}
+	}
+	return total
 }
 
 func TestRecordOutcomeRejectsLegacyDecisionWithForgedPacketMetadata(t *testing.T) {
