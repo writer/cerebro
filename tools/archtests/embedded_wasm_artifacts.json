@@ -20,8 +20,8 @@
     {
       "name": "sourcecoverage-evaluator",
       "path": "internal/sourcecoverage/evaluator.wasm",
-      "sha256": "8f06c23c134761c85ce7ba4b1434decd6a3c1acc85d3f0994022b5d5cbfa5ea3",
-      "size_bytes": 149563,
+      "sha256": "83af65b2262c8c18a255c612f821031cf0ae2d15c6a60cc9d87f8f2c18869ad0",
+      "size_bytes": 150568,
       "max_size_bytes": 175000,
       "abi_version": 1
     },
@@ -36,16 +36,16 @@
     {
       "name": "mitre-context-evaluator",
       "path": "internal/mitre/evaluator.wasm",
-      "sha256": "38b465a023832295b2380f76516afc66c1a79ed2186606d03c750c291cc5eff1",
-      "size_bytes": 729552,
+      "sha256": "bcbb97629fa90464c8a2e7890b829ab6d48c012afa95de5d954fb84eac0b7aeb",
+      "size_bytes": 738188,
       "max_size_bytes": 800000,
       "abi_version": 1
     },
     {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
-      "sha256": "354f662338d19fd99d919a3a6be04d55930f258f1aa1a0c8c99f74666c0ee526",
-      "size_bytes": 164994,
+      "sha256": "7e56da56e716d81c11d1ef131ef2a7f3ed4faed448f4bc809d1e1841e5b2a51c",
+      "size_bytes": 165760,
       "max_size_bytes": 200000,
       "abi_version": 1
     },
