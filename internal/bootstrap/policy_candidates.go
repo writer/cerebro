@@ -23,7 +23,7 @@ func (a *App) handleCreatePolicyCandidate(w http.ResponseWriter, r *http.Request
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		writePolicyCandidateError(w, fmt.Errorf("%w: decode request: %v", policycandidate.ErrInvalidRequest, err))
+		writePolicyCandidateError(w, fmt.Errorf("%w: decode request: %w", policycandidate.ErrInvalidRequest, err))
 		return
 	}
 	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)

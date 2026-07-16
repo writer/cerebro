@@ -168,7 +168,9 @@ Recommended work items:
 
 ## API Shape
 
-The repo does not ship an end-user web UI. Lifecycle operations should be exposed as typed APIs and CLI surfaces, then consumed by a separate console.
+The Go service does not embed or serve the end-user application. Lifecycle
+operations are exposed as typed APIs and CLI surfaces, then consumed by an
+independently built client under `apps/`.
 
 Implemented endpoints:
 
