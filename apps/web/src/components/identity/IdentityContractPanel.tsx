@@ -117,7 +117,7 @@ export default function IdentityContractPanel({ compact = false }: { compact?: b
             <IdentityRow label="Issuer" value={health ? (health.config.issuerConfigured ? "configured" : "not configured") : ""} />
             <IdentityRow label="Audience" value={health ? (health.config.audienceConfigured ? "configured" : "not configured") : ""} />
             <IdentityRow label="JWKS" value={health ? (health.config.jwksConfigured ? "configured" : "not configured") : ""} />
-            <IdentityRow label="Trusted headers" value={health ? joinValues(health.config.trustedHeaders) || "all recognized headers" : ""} />
+            <IdentityRow label="Trusted headers" value={health ? joinValues(health.config.trustedHeaders) || "none configured" : ""} />
           </div>
           {health?.status === "blocked" && (
             <div className="mt-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-[12px] leading-5 text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">

@@ -7,7 +7,7 @@ import {
   currentUserActor,
   currentUserActorLabel,
   currentUserAuditFields,
-  currentUserFromHeaders,
+  currentUserFromHeaders as currentUserFromHeadersRaw,
   currentUserFromHeadersWithFallback,
   currentUserSourceLabel,
   identityHealthFromHeaders,
@@ -79,6 +79,13 @@ const headersFromFixture = (fixture: {
   return headers;
 };
 
+const currentUserFromHeaders = (headers: Headers) => {
+  if (!process.env.CEREBRO_IDENTITY_PROFILE && !process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS) {
+    process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = Array.from(headers.keys()).join(",");
+  }
+  return currentUserFromHeadersRaw(headers);
+};
+
 const applyEnv = (env: Record<string, string>) => {
   for (const [key, value] of Object.entries(env)) {
     process.env[key] = value;
@@ -86,6 +93,16 @@ const applyEnv = (env: Record<string, string>) => {
 };
 
 describe("current user identity", () => {
+  it("rejects proxy identity headers until a trust profile or allowlist is configured", () => {
+    delete process.env.CEREBRO_IDENTITY_PROFILE;
+    delete process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
+
+    expect(currentUserFromHeadersRaw(new Headers({
+      "x-forwarded-email": "spoofed@example.com",
+    }))).toBeNull();
+    expect(identityRuntimeConfig().trustedHeaders).toEqual([]);
+  });
+
   it("uses direct Okta or auth proxy headers first", () => {
     const user = currentUserFromHeaders(new Headers({
       "x-okta-email": "person@example.com",
@@ -234,6 +251,24 @@ describe("current user identity", () => {
       source: "jwt",
     });
     expect(currentUserActor(user)).toBe("00u123");
+  });
+
+  it("decodes matching direct and token subjects before conflict detection", () => {
+    process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-amzn-oidc-data,x-amzn-oidc-identity";
+    const user = currentUserFromHeaders(new Headers({
+      "x-amzn-oidc-data": jwtWithPayload({
+        email: "alex.example@example.com",
+        sub: "amr:op:user123",
+      }),
+      "x-amzn-oidc-identity": "amr%3Aop%3Auser123",
+    }));
+
+    expect(user).toMatchObject({
+      actorId: "amr:op:user123",
+      confidence: "trusted-proxy",
+      subject: "amr:op:user123",
+    });
+    expect(user?.conflicts).toBeUndefined();
   });
 
   it("falls back to bearer JWT claims", () => {

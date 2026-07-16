@@ -136,7 +136,15 @@ import (
 // normalization, and dependency wiring only. Immutable pins, transitions,
 // checkpoint verification, current-canary execution, and append-only receipts
 // stay behind internal/policycandidate.
-const bootstrapProductionGoLineBudget = 28918
+// Policy evaluation datasets add only route/auth registration, tenant/actor
+// resolution, and state-store capability wiring. Fixture validation, immutable
+// revisions, digest verification, and append semantics stay behind
+// internal/policycandidate; transport mapping stays in
+// internal/sourcehttp/policyevaluationdatasets.
+// Dedicated evaluation-dataset read, proposal, and approval scope constants
+// keep future agent credentials separate from candidate execution. Bootstrap
+// owns only their route-policy and OAuth discovery catalog entries.
+const bootstrapProductionGoLineBudget = 28960
 
 type bootstrapFileLineCount struct {
 	path  string
