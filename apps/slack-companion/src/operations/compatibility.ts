@@ -4,6 +4,7 @@ import type {
   CapabilityRequirement,
   PresenceSnapshotV1,
   SchemaCompatibility,
+  WorkLeaseV1,
 } from "@writer/cerebro-sdk";
 
 export interface CompatibilityAssessment {
@@ -22,6 +23,24 @@ export interface CompatibilityInput {
 export interface ContinuityGate {
   allowed: boolean;
   reason: string;
+}
+
+/**
+ * Lease policy for one admitted distributed-work child run. The worker uses
+ * the canonical service presence, capability manifest, and work lease records;
+ * it does not have a separate lifecycle.
+ */
+export interface PacketLeaseGateInput {
+  assessment: CompatibilityAssessment;
+  expected_route_generation: number;
+  now: string;
+  packet_required_capabilities: readonly CapabilityRequirement[];
+  presence: PresenceSnapshotV1;
+  prior_lease?: WorkLeaseV1;
+  proposed_fencing_token: number;
+  proposed_generation: number;
+  run_id: string;
+  worker_manifest: CapabilityManifestV1;
 }
 
 export function assessCompatibility(
@@ -96,7 +115,12 @@ export function readinessGate(
   assessment: CompatibilityAssessment,
   now: string,
 ): ContinuityGate {
-  if (Date.parse(presence.expires_at) <= Date.parse(now)) {
+  const expiresAt = Date.parse(presence.expires_at);
+  const observedAt = Date.parse(now);
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(observedAt)) {
+    return { allowed: false, reason: "presence_time_invalid" };
+  }
+  if (expiresAt <= observedAt) {
     return { allowed: false, reason: "presence_expired" };
   }
   if (assessment.decision === "blocked" || assessment.decision === "incompatible") {
@@ -129,6 +153,73 @@ export function newLeaseGate(
     return { allowed: false, reason: "route_generation_changed" };
   }
   return { allowed: true, reason: "lease_allowed" };
+}
+
+export function packetLeaseGate(
+  input: PacketLeaseGateInput,
+): ContinuityGate {
+  const priorLease = input.prior_lease;
+  const serviceGate = newLeaseGate(
+    input.presence,
+    input.assessment,
+    input.proposed_generation,
+    input.expected_route_generation,
+    input.now,
+  );
+  const reclaimDuringRecovery =
+    priorLease !== undefined &&
+    input.presence.service_state === "recovering" &&
+    serviceGate.reason === "service_recovering";
+  if (!serviceGate.allowed && !reclaimDuringRecovery) {
+    return serviceGate;
+  }
+  if (input.presence.active_generation !== input.proposed_generation) {
+    return { allowed: false, reason: "generation_changed" };
+  }
+  if (input.presence.route_generation !== input.expected_route_generation) {
+    return { allowed: false, reason: "route_generation_changed" };
+  }
+  if (!Number.isSafeInteger(input.proposed_generation) || input.proposed_generation <= 0) {
+    return { allowed: false, reason: "proposed_generation_invalid" };
+  }
+  if (input.worker_manifest.generation !== input.proposed_generation) {
+    return { allowed: false, reason: "worker_manifest_generation_changed" };
+  }
+
+  const missingRequired = missingCapabilities(
+    input.packet_required_capabilities,
+    input.worker_manifest.capabilities,
+    "worker",
+  );
+  if (missingRequired.length > 0) {
+    return { allowed: false, reason: missingRequired[0] ?? "worker_capability_missing" };
+  }
+  if (!Number.isSafeInteger(input.proposed_fencing_token) || input.proposed_fencing_token <= 0) {
+    return { allowed: false, reason: "proposed_fencing_token_invalid" };
+  }
+
+  if (priorLease === undefined) {
+    return { allowed: true, reason: "packet_lease_allowed" };
+  }
+  if (priorLease.run_id !== input.run_id) {
+    return { allowed: false, reason: "prior_lease_run_changed" };
+  }
+
+  const priorExpiry = Date.parse(priorLease.lease_expires_at);
+  const observedAt = Date.parse(input.now);
+  if (!Number.isFinite(priorExpiry) || !Number.isFinite(observedAt)) {
+    return { allowed: false, reason: "prior_lease_time_invalid" };
+  }
+  if (priorExpiry > observedAt) {
+    return { allowed: false, reason: "prior_lease_active" };
+  }
+  if (input.proposed_generation <= priorLease.generation) {
+    return { allowed: false, reason: "reclaim_generation_not_newer" };
+  }
+  if (input.proposed_fencing_token <= priorLease.fencing_token) {
+    return { allowed: false, reason: "reclaim_fence_not_newer" };
+  }
+  return { allowed: true, reason: "packet_reclaim_allowed" };
 }
 
 function missingCapabilities(
