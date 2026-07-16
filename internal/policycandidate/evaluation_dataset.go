@@ -314,9 +314,7 @@ func (s Service) ListPolicyEvaluationDatasetCases(ctx context.Context, request L
 	if request.TenantID == "" || request.DatasetID == "" || request.RevisionID == "" {
 		return nil, fmt.Errorf("%w: tenant id, dataset id, and revision id are required", ErrInvalidRequest)
 	}
-	_, cases, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest{
-		TenantID: request.TenantID, DatasetID: request.DatasetID, RevisionID: request.RevisionID,
-	})
+	_, cases, err := s.verifiedEvaluationDatasetSnapshot(ctx, GetPolicyEvaluationDatasetRevisionRequest(request))
 	return cases, err
 }
 

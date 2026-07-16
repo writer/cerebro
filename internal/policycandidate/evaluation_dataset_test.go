@@ -83,8 +83,8 @@ func (s *memoryEvaluationDatasetStore) GetPolicyEvaluationDatasetRevision(_ cont
 	return cloneEvaluationDatasetRevision(revision), nil
 }
 
-func (s *memoryEvaluationDatasetStore) GetPolicyEvaluationDatasetRevisionSnapshot(_ context.Context, request GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevisionSnapshot, error) {
-	revision, err := s.GetPolicyEvaluationDatasetRevision(context.Background(), request)
+func (s *memoryEvaluationDatasetStore) GetPolicyEvaluationDatasetRevisionSnapshot(ctx context.Context, request GetPolicyEvaluationDatasetRevisionRequest) (*PolicyEvaluationDatasetRevisionSnapshot, error) {
+	revision, err := s.GetPolicyEvaluationDatasetRevision(ctx, request)
 	if err != nil {
 		return nil, err
 	}
