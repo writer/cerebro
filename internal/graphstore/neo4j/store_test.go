@@ -147,7 +147,7 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 		t.Fatalf("endpointOwnerIDLinkCleanupParams() error = %v", err)
 	}
 	query := endpointOwnerIDLinkCleanupQuery(conditions, false)
-	orderIndex := strings.Index(query, "ORDER BY e.urn, stale.relation, target.urn, elementId(stale)")
+	orderIndex := strings.Index(query, "ORDER BY e.urn, relation, target.urn, elementId(stale)")
 	limitIndex := strings.Index(query, "LIMIT $limit")
 	if orderIndex == -1 {
 		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing deterministic ORDER BY:\n%s", query)
@@ -157,6 +157,19 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	}
 	if orderIndex > limitIndex {
 		t.Fatalf("endpointOwnerIDLinkCleanupQuery() orders after limiting:\n%s", query)
+	}
+}
+
+func TestMigrateProjectedLinkAssertionsValidatesScopeBeforeConnection(t *testing.T) {
+	store := &Store{}
+	for _, request := range []ports.ProjectionAssertionMigrationRequest{
+		{Relations: []string{"can_reach"}},
+		{TenantID: "writer"},
+	} {
+		_, err := store.MigrateProjectedLinkAssertions(context.Background(), request)
+		if !errors.Is(err, errProjectionAssertionMigrationScopeRequired) {
+			t.Fatalf("MigrateProjectedLinkAssertions(%#v) error = %v, want scope validation", request, err)
+		}
 	}
 }
 
@@ -1049,6 +1062,10 @@ func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
 		"MATCH (src:Entity {urn: row.from_urn}), (dst:Entity {urn: row.to_urn})",
 		"SET src.relation_lock = coalesce(src.relation_lock, 0) + 1",
 		"MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)",
+		"MERGE (src)-[a:RELATION_ASSERTION {",
+		"source_id: row.source_id",
+		"runtime_id: row.runtime_id",
+		"a.projection_reconciliation_id = row.reconciliation_id",
 		"RETURN row.from_urn AS from_urn",
 	} {
 		if !strings.Contains(mergeProjectedLinksQuery, clause) {
@@ -1059,10 +1076,21 @@ func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
 		"UNWIND $rows AS row",
 		"WHERE coalesce(r.attributes_version, 0) = row.attributes_version",
 		"r.attributes_version = row.next_attributes_version",
+		"r.assertion_managed = true",
 		"RETURN count(r)",
 	} {
 		if !strings.Contains(updateProjectedLinksQuery, clause) {
 			t.Fatalf("updateProjectedLinksQuery missing %q:\n%s", clause, updateProjectedLinksQuery)
+		}
+	}
+	for _, clause := range []string{
+		"MATCH (:Entity {urn: row.from_urn})-[a:RELATION_ASSERTION {",
+		"WHERE coalesce(a.attributes_version, 0) = row.attributes_version",
+		"a.projection_reconciliation_id = row.reconciliation_id",
+		"RETURN count(a)",
+	} {
+		if !strings.Contains(updateProjectedLinkAssertionsQuery, clause) {
+			t.Fatalf("updateProjectedLinkAssertionsQuery missing %q:\n%s", clause, updateProjectedLinkAssertionsQuery)
 		}
 	}
 }
@@ -1187,22 +1215,28 @@ func TestPrepareProjectedLinksCoalescesValidatesAndSorts(t *testing.T) {
 			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
 			Attributes: map[string]string{"since": "2025"},
 		},
+		{
+			TenantID: "writer", SourceID: "github", RuntimeID: "writer-github",
+			FromURN:    "urn:cerebro:writer:github_user:alice",
+			Relation:   "maintains",
+			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+			Attributes: map[string]string{"team": "security"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("prepareProjectedLinks() error = %v", err)
 	}
-	if len(prepared) != 2 {
-		t.Fatalf("prepared len = %d, want 2 (alice link coalesced)", len(prepared))
+	if len(prepared) != 3 {
+		t.Fatalf("prepared len = %d, want 3 (runtime assertions remain distinct)", len(prepared))
 	}
-	if prepared[0].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[1].fromURN != "urn:cerebro:writer:github_user:zoe" {
-		t.Fatalf("prepared links not sorted by from urn: %q, %q", prepared[0].fromURN, prepared[1].fromURN)
+	if prepared[0].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[1].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[2].fromURN != "urn:cerebro:writer:github_user:zoe" {
+		t.Fatalf("prepared links not sorted by from urn: %q, %q, %q", prepared[0].fromURN, prepared[1].fromURN, prepared[2].fromURN)
 	}
-	alice := prepared[0]
-	if alice.attributes["role"] != "admin" || alice.attributes["since"] != "2025" {
-		t.Fatalf("coalesced alice link attributes = %#v, want merged role+since", alice.attributes)
+	if prepared[0].runtimeID != "" || prepared[0].attributes["role"] != "admin" {
+		t.Fatalf("default-runtime alice assertion = %#v, want role=admin", prepared[0])
 	}
-	if alice.runtimeID != "writer-github" {
-		t.Fatalf("coalesced alice link runtime = %q, want latest occurrence to win", alice.runtimeID)
+	if prepared[1].runtimeID != "writer-github" || prepared[1].attributes["since"] != "2025" || prepared[1].attributes["team"] != "security" {
+		t.Fatalf("writer-github alice assertion = %#v, want merged since+team", prepared[1])
 	}
 }
 

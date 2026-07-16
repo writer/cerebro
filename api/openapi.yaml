@@ -5751,6 +5751,98 @@ paths:
           description: The dead-letter record is terminal or has an active replay claim.
         '503':
           description: Pending dead-letter purge storage is not configured.
+  /policy-candidates:
+    post:
+      operationId: createPolicyCandidate
+      summary: Create a grounded policy candidate draft
+      description: Persists one redacted hypothesis only after server-authored, tenant-scoped graph reads verify every declared node, edge, relation, source, and risk-relevant attribute. The operation does not author files, create findings, or promote a rule.
+      tags: [Findings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyCandidateRequest'
+      responses:
+        '201':
+          description: Grounded draft candidate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyCandidate'
+        '400': {description: Invalid or unredacted candidate input.}
+        '403': {description: Tenant or scope is not authorized.}
+        '409': {description: A registered graph rule already covers the candidate subpath.}
+        '503': {description: 'Durable candidate storage, graph grounding, or complete coverage semantics are unavailable.'}
+    get:
+      operationId: listPolicyCandidates
+      summary: List policy candidate drafts
+      tags: [Findings]
+      parameters:
+        - {name: tenant_id, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [grounded, proved, ready_for_review, blocked]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Tenant-scoped candidate drafts without private origin references or raw graph evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [candidates]
+                properties:
+                  candidates:
+                    type: array
+                    items: {$ref: '#/components/schemas/PolicyCandidate'}
+        '403': {description: Tenant or scope is not authorized.}
+        '503': {description: Durable candidate storage is unavailable.}
+  /policy-candidates/{candidateID}:
+    get:
+      operationId: getPolicyCandidate
+      summary: Get one policy candidate draft
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Candidate state with safe graph summary and available review artifacts.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '403': {description: Tenant or scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-candidates/{candidateID}/prove:
+    post:
+      operationId: provePolicyCandidate
+      summary: Author and prove one policy candidate
+      description: Revalidates the server-minted coverage gap, authors exactly one policy and paired tests, then executes the existing proof boundary. This remains draft-only and performs no repository or graph writes outside isolated proof fixtures.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Proved candidate with bounded policy and test artifacts.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '409': {description: Candidate state does not permit proof.}
+        '503': {description: Authoring or graph proof runtime is unavailable.}
+  /policy-candidates/{candidateID}/shadow:
+    post:
+      operationId: shadowPolicyCandidate
+      summary: Shadow one proved policy against current graph state
+      description: Revalidates the server-minted coverage gap, then executes one validated read-only rule with a bounded look-ahead row. Rows and provider identifiers are not returned or stored in the receipt. Review readiness requires at least one current match and an untruncated result; otherwise the successful response retains status proved with pr_ready false and an explicit zero-match or truncated shadow receipt.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Review-ready candidate with a bounded shadow receipt.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '409': {description: Candidate has not passed proof.}
+        '503': {description: Current graph reads are unavailable.}
   /platform/jobs:
     get:
       operationId: listPlatformJobs
@@ -15472,6 +15564,185 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FindingCandidate'
+    CreatePolicyCandidateRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, hypothesis, domain, origin, graph_evidence, grounding]
+      properties:
+        tenant_id: {type: string, minLength: 1}
+        hypothesis:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Redacted policy hypothesis. Live cloud identifiers, endpoints, and email addresses are rejected.
+        domain:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        origin:
+          $ref: '#/components/schemas/PolicyCandidateOriginInput'
+        graph_evidence:
+          $ref: '#/components/schemas/PolicyCandidateGraphEvidenceInput'
+        grounding:
+          $ref: '#/components/schemas/PolicyCandidateGroundingInput'
+    PolicyCandidateOriginInput:
+      type: object
+      additionalProperties: false
+      required: [kind, external_ref]
+      properties:
+        kind: {type: string, minLength: 1}
+        external_ref:
+          type: string
+          minLength: 1
+          description: Opaque private reference retained in current-state storage and omitted from API responses and model context.
+    PolicyCandidateGraphEvidenceInput:
+      type: object
+      additionalProperties: false
+      required: [nodes, edges, critical_edge, evidence_node_ids]
+      properties:
+        nodes:
+          type: array
+          minItems: 3
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, source_id, entity_type]
+            properties:
+              id: {type: string, minLength: 1, description: Request-local handle.}
+              source_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]*$'}
+              entity_type: {type: string, minLength: 1}
+              attributes: {type: object, additionalProperties: {type: string}}
+        edges:
+          type: array
+          minItems: 2
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [from_id, to_id, source_id, relation]
+            properties:
+              from_id: {type: string, minLength: 1}
+              to_id: {type: string, minLength: 1}
+              source_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]*$'}
+              relation: {type: string, minLength: 1}
+              attributes: {type: object, additionalProperties: {type: string}}
+        critical_edge:
+          type: object
+          additionalProperties: false
+          required: [from_id, to_id, relation]
+          properties:
+            from_id: {type: string, minLength: 1}
+            to_id: {type: string, minLength: 1}
+            relation: {type: string, minLength: 1}
+        evidence_node_ids:
+          type: array
+          minItems: 1
+          items: {type: string, minLength: 1}
+    PolicyCandidateGroundingInput:
+      type: object
+      additionalProperties: false
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 16
+          description: Ephemeral node-to-current-graph bindings used only for server-side grounding. Entity URNs are omitted from stored public views and model context.
+          items:
+            type: object
+            additionalProperties: false
+            required: [node_id, entity_urn]
+            properties:
+              node_id: {type: string, minLength: 1}
+              entity_urn: {type: string, pattern: '^urn:cerebro:[^:]+:.+$'}
+    PolicyCandidate:
+      type: object
+      required: [id, tenant_id, status, revision, hypothesis, domain, origin_kind, graph, grounding, coverage_gap, pr_ready, created_at, updated_at]
+      properties:
+        id: {type: string}
+        tenant_id: {type: string}
+        status: {type: string, enum: [grounded, proved, ready_for_review, blocked]}
+        revision: {type: integer, format: int64, minimum: 1}
+        hypothesis: {type: string}
+        domain: {type: string}
+        origin_kind: {type: string}
+        graph:
+          type: object
+          required: [node_count, edge_count]
+          properties:
+            node_count: {type: integer, minimum: 0}
+            edge_count: {type: integer, minimum: 0}
+            entity_types: {type: array, items: {type: string}}
+            relations: {type: array, items: {type: string}}
+        grounding:
+          $ref: '#/components/schemas/PolicyCandidateGroundingReceipt'
+        coverage_gap:
+          $ref: '#/components/schemas/PolicyCandidateCoverageGapReceipt'
+        artifacts:
+          $ref: '#/components/schemas/PolicyCandidateArtifacts'
+        proof:
+          $ref: '#/components/schemas/PolicyCandidateProof'
+        shadow:
+          $ref: '#/components/schemas/PolicyCandidateShadowReceipt'
+        pr_ready: {type: boolean, description: 'True only after current coverage-gap revalidation, proof, and current-state shadow execution succeed.'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    PolicyCandidateArtifacts:
+      type: object
+      required: [rule, policy_path, policy_yaml, policy_digest, suite, test_path, test_yaml, test_digest]
+      properties:
+        rule: {type: object, additionalProperties: true}
+        policy_path: {type: string}
+        policy_yaml: {type: string}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        suite: {type: object, additionalProperties: true}
+        test_path: {type: string}
+        test_yaml: {type: string}
+        test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    PolicyCandidateGroundingReceipt:
+      type: object
+      required: [execution, node_count, edge_count, receipt_id, observed_at]
+      properties:
+        execution: {type: string, enum: [graph_store]}
+        node_count: {type: integer, minimum: 1, maximum: 16}
+        edge_count: {type: integer, minimum: 1, maximum: 32}
+        receipt_id: {type: string}
+        observed_at: {type: string, format: date-time}
+    PolicyCandidateCoverageGapReceipt:
+      type: object
+      required: [execution, catalog_digest, compared_rule_count, candidate_signature, observed_at]
+      properties:
+        execution: {type: string, enum: [finding_rule_catalog]}
+        catalog_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        compared_rule_count: {type: integer, minimum: 0, maximum: 512}
+        candidate_signature: {type: string, pattern: '^[a-f0-9]{64}$'}
+        observed_at: {type: string, format: date-time}
+    PolicyCandidateProof:
+      type: object
+      properties:
+        policy_id: {type: string}
+        policy_path: {type: string}
+        test_path: {type: string}
+        policy_digest: {type: string}
+        test_digest: {type: string}
+        receipts:
+          type: array
+          items:
+            type: object
+            properties:
+              gate: {type: string}
+              passed: {type: boolean}
+              execution: {type: string}
+              detail: {type: string}
+    PolicyCandidateShadowReceipt:
+      type: object
+      required: [execution, match_count, truncated, receipt_id, observed_at]
+      properties:
+        execution: {type: string, enum: [graph_store]}
+        match_count: {type: integer, minimum: 0, maximum: 100}
+        truncated: {type: boolean}
+        receipt_id: {type: string}
+        observed_at: {type: string, format: date-time}
     FindingCandidate:
       type: object
       properties:

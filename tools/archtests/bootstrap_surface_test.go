@@ -125,7 +125,14 @@ import (
 // Agent service lifecycle discovery adds only authenticated route registration
 // and response mapping; the state machines, records, validation, and generated
 // bindings remain behind internal/agentplatform.
-const bootstrapProductionGoLineBudget = 28295
+// Policy discovery candidates add only HTTP request/response mapping,
+// tenant/scope enforcement, safe transport views, and configured model/store
+// composition, including the narrow findings-registry coverage adapter.
+// Candidate lifecycle, graph grounding, duplicate-coverage decisions,
+// proof/shadow orchestration, redaction boundaries, and optimistic revisions
+// stay behind internal/policycandidate; durable persistence stays in the
+// concrete Postgres state-store package.
+const bootstrapProductionGoLineBudget = 28587
 
 type bootstrapFileLineCount struct {
 	path  string

@@ -730,7 +730,7 @@ function RuntimeActivationPanel({
               </div>
             </div>
           )}
-          {definition && isDeposit && (
+          {isDeposit && (
             <div className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-4">
               <div className="text-[13px] font-semibold text-[var(--text-primary)]">Deposit endpoint</div>
               <div className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">

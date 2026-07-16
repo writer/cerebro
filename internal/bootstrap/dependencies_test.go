@@ -2,8 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/config"
 )
 
@@ -40,6 +42,19 @@ func TestOpenDependenciesInitializesConfiguredGraphAgentLLM(t *testing.T) {
 	}()
 	if deps.GraphAgentLLM == nil {
 		t.Fatal("GraphAgentLLM = nil, want configured startup client")
+	}
+	if deps.PolicyAuthoring == nil || deps.PolicyAuthoring.Model == nil {
+		t.Fatal("PolicyAuthoring = nil, want configured structured authoring service")
+	}
+	payload, err := deps.PolicyAuthoring.Model.DraftJSON(context.Background(), agentauthoring.StructuredDraftRequest{
+		TenantID: "tenant-a", Kind: "policy_finding_rule", Prompt: "draft", SchemaJSON: `{"type":"object"}`,
+	})
+	if err != nil {
+		t.Fatalf("PolicyAuthoring.DraftJSON() error = %v", err)
+	}
+	var object map[string]any
+	if err := json.Unmarshal(payload, &object); err != nil {
+		t.Fatalf("PolicyAuthoring payload = %q: %v", payload, err)
 	}
 }
 
