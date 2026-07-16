@@ -1,0 +1,20 @@
+{
+  "name": "@writer/cerebro-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cerebro runtime, public applications, contracts, and SDKs",
+  "license": "Apache-2.0",
+  "packageManager": "npm@10.9.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "sdk/typescript"
+  ],
+  "scripts": {
+    "check:workspaces": "npm run check --workspaces --if-present",
+    "test:workspaces": "npm test --workspaces --if-present",
+    "typecheck:workspaces": "npm run typecheck --workspaces --if-present"
+  }
+}

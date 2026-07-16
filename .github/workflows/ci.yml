@@ -25,6 +25,8 @@ jobs:
             command: make cover
           - name: sdk
             command: make sdk-test
+          - name: workspace
+            command: make workspace-check
           - name: sdk-dependency-audit
             command: make sdk-dependency-audit
           - name: script-test
