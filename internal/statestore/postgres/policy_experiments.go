@@ -144,12 +144,13 @@ func (s *Store) ListPolicyExperiments(ctx context.Context, request policycandida
 		query += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 	args = append(args, request.Limit)
+	// #nosec G202 -- the suffix is fixed SQL and the limit remains parameterized.
 	query += fmt.Sprintf(" ORDER BY updated_at DESC, id LIMIT $%d", len(args))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list policy experiments: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]*policycandidate.PolicyExperiment, 0)
 	for rows.Next() {
 		var record []byte
@@ -275,7 +276,7 @@ func (s *Store) ListPolicyExperimentObservations(ctx context.Context, request po
 	if err != nil {
 		return nil, fmt.Errorf("list policy experiment observations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]*policycandidate.PolicyExperimentObservation, 0)
 	for rows.Next() {
 		var record []byte
