@@ -51,6 +51,7 @@ Within `apps/slack-companion/`, portable ownership is explicit:
 
 - `src/execution/` owns leased turns, checkpoints, effect intent, outcome-unknown reconciliation, and delivery handoff;
 - `src/mission/` projects runs onto the native mission, plan, approval, verification, and closure contract;
+- `src/autonomy/` owns durable mission snapshots, wake and due indexing, ordered lifecycle-event history, and portable legacy-promotion rules;
 - `src/operations/` owns scheduled-occurrence continuity and release-safe reconciliation;
 - `src/delivery/` owns durable multipart outbox and thread binding;
 - `src/transport/` owns topology-neutral Slack ingress and egress boundaries;
@@ -75,8 +76,9 @@ private run identifiers, tenant values, or secret-like input in branch names, dr
 4. Add the reviewed portable Slack companion skeleton and durable admission path.
 5. Move portable effects and missions onto the shared run, lease, checkpoint, approval, verification, and recovery semantics.
 6. Linearize and export the portable operation, delivery, and transport slices as one runnable companion surface.
-7. Add exact-recipient assistance and same-draft refinement on that durable surface, with generation fencing and fresh-evidence requirements.
-8. Update environment deployment adapters only after the applicable public contract and application changes are available.
+7. Add durable mission-ledger continuity by reusing lifecycle events, fenced leases, and scheduled occurrences.
+8. Add exact-recipient assistance and same-draft refinement on that durable surface, with generation fencing and fresh-evidence requirements.
+9. Update environment deployment adapters only after the applicable public contract and application changes are available.
 
 Repository mechanics and applications that do not consume a proposed contract may land before that contract is
 approved. A contract consumer must not merge ahead of the contract version it reads.
