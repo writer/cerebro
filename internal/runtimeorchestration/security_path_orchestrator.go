@@ -19,6 +19,7 @@ type SecurityPathRequest struct {
 	SourcePageLimit uint32
 	GraphPageLimit  uint32
 	LeaseOwner      string
+	RustShadow      bool
 }
 
 type RuntimeGraphRun struct {
@@ -36,6 +37,7 @@ type SecurityPathResult struct {
 	VerificationGraphRuns   []RuntimeGraphRun                    `json:"verification_graph_ingests,omitempty"`
 	VerificationSnapshot    *securitypathdelta.Snapshot          `json:"verification_snapshot,omitempty"`
 	Verification            *securitypathdelta.Verification      `json:"verification,omitempty"`
+	RustShadow              []securitypathdelta.RustShadowResult `json:"rust_shadow,omitempty"`
 }
 
 func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathRequest) (result SecurityPathResult, runErr error) {
@@ -109,6 +111,9 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 		return result, err
 	}
 	result.Delta, err = securitypathdelta.Compare(&result.Before, result.After)
+	if err == nil && request.RustShadow {
+		result.RustShadow = append(result.RustShadow, securitypathdelta.CompareRustShadow(ctx, &result.Before, result.After, result.Delta))
+	}
 	if err != nil || len(result.Delta.NoLongerObserved) == 0 {
 		return result, err
 	}
@@ -141,6 +146,11 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 	}
 	if verification.Verification.ID != "" {
 		result.Verification = &verification.Verification
+		if request.RustShadow && result.VerificationSnapshot != nil {
+			result.RustShadow = append(result.RustShadow, securitypathdelta.VerifyObservedAbsentRustShadow(
+				ctx, result.Before, *result.VerificationSnapshot, requestedPathIDs, verification.Verification,
+			))
+		}
 	}
 	return result, err
 }
