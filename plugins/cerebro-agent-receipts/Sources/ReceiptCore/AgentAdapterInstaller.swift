@@ -89,13 +89,15 @@ public struct AgentAdapterInstaller: Sendable {
   public let homeDirectory: URL
   public let bundledHelperURL: URL
   public let installedHelperURL: URL
+  private let environment: [String: String]
 
   private static let marker = "cerebro-agent-receipts-managed-adapter"
 
   public init(
     homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
     bundledHelperURL: URL,
-    installedHelperURL: URL? = nil
+    installedHelperURL: URL? = nil,
+    environment: [String: String] = ProcessInfo.processInfo.environment
   ) {
     self.homeDirectory = homeDirectory
     self.bundledHelperURL = bundledHelperURL
@@ -104,6 +106,7 @@ public struct AgentAdapterInstaller: Sendable {
       ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("com.writer.cerebro.agent-receipts/bin", isDirectory: true)
       .appendingPathComponent("CerebroAgentReceiptHook")
+    self.environment = environment
   }
 
   public func statuses() -> [AgentAdapterStatus] {
@@ -462,18 +465,17 @@ public struct AgentAdapterInstaller: Sendable {
       ]
     case .cursor: candidates = [".local/bin/cursor-agent", "Applications/Cursor.app"]
     }
-    let configuredPaths = Array(
-      Set(
-        (ProcessInfo.processInfo.environment["PATH"] ?? "")
-          .split(separator: ":")
-          .map(String.init)
-          + [
-            "/opt/homebrew/bin", "/usr/local/bin",
-            homeDirectory.appendingPathComponent(".local/bin").path,
-            homeDirectory.appendingPathComponent(".bun/bin").path,
-            homeDirectory.appendingPathComponent("Library/pnpm").path,
-          ]
-      ))
+    let candidatePaths = (environment["PATH"] ?? "")
+      .split(separator: ":")
+      .map(String.init)
+      + [
+        "/opt/homebrew/bin", "/usr/local/bin",
+        homeDirectory.appendingPathComponent(".local/bin").path,
+        homeDirectory.appendingPathComponent(".bun/bin").path,
+        homeDirectory.appendingPathComponent("Library/pnpm").path,
+      ]
+    var seenPaths: Set<String> = []
+    let configuredPaths = candidatePaths.filter { seenPaths.insert($0).inserted }
     let commandNames: [String]
     switch product {
     case .codex: commandNames = ["codex"]

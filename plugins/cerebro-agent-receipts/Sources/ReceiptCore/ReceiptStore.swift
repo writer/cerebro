@@ -139,7 +139,16 @@ public struct ReceiptStore: Sendable {
   /// Returns a consistent, verified ledger snapshot for remote delivery. A
   /// writer cannot append a partial NDJSON record while this snapshot is read.
   public func readVerifiedReceipts() throws -> [ExecutionReceipt] {
-    guard FileManager.default.fileExists(atPath: receiptsURL.path) else { return [] }
+    try withVerifiedReceipts { $0 }
+  }
+
+  /// Keeps the shared receipt lock held while a caller derives and persists a
+  /// local status from the verified ledger revision. The operation must remain
+  /// local and bounded; network work does not belong inside this transaction.
+  public func withVerifiedReceipts<T>(
+    _ operation: ([ExecutionReceipt]) throws -> T
+  ) throws -> T {
+    try prepareDirectory()
     let lockURL = directory.appendingPathComponent("receipts.lock")
     let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
     guard descriptor >= 0 else { throw ReceiptStoreError.lockFailed(errno) }
@@ -147,6 +156,9 @@ public struct ReceiptStore: Sendable {
     guard flock(descriptor, LOCK_SH) == 0 else { throw ReceiptStoreError.lockFailed(errno) }
     defer { flock(descriptor, LOCK_UN) }
 
+    guard FileManager.default.fileExists(atPath: receiptsURL.path) else {
+      return try operation([])
+    }
     let data = try Data(contentsOf: receiptsURL)
     let lines = data.split(separator: UInt8(10), omittingEmptySubsequences: true)
     let receipts = try lines.map {
@@ -155,7 +167,7 @@ public struct ReceiptStore: Sendable {
     let trustedKey = try readTrustedPublicKey()
     guard ReceiptVerifier.verify(receipts, trustedPublicKeyBase64: trustedKey).allSatisfy(\.valid)
     else { throw ReceiptStoreError.invalidRecord }
-    return receipts
+    return try operation(receipts)
   }
 
   public func saveProviderEvents(_ events: [ProviderEvent]) throws {

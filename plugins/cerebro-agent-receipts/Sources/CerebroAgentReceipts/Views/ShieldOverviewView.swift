@@ -68,7 +68,9 @@ struct ShieldOverviewView: View {
               if store.deliveryHealth?.stateStorageHealthy == false {
                 DetailRow(label: "Status storage", value: "Unavailable")
               }
-              DetailRow(label: "Receipts pending", value: "\(state.pendingReceipts)")
+              DetailRow(
+                label: "Pending at last attempt",
+                value: state.pendingReceipts.map(String.init) ?? "Unknown")
               DetailRow(
                 label: "Last accepted sequence",
                 value: state.lastAcknowledgedSequence.map(String.init) ?? "None")
@@ -162,6 +164,7 @@ struct ShieldOverviewView: View {
     switch state.state {
     case .notEnrolled: return "Not enrolled"
     case .delivering: return "Delivery in progress"
+    case .queued: return "Receipts queued"
     case .idle: return "No receipts pending"
     case .accepted: return "Last receipt accepted"
     case .retryableFailure: return "Retry scheduled"
@@ -272,7 +275,7 @@ struct ShieldOverviewView: View {
     else { return true }
     switch state.state {
     case .notEnrolled, .retryableFailure, .blocked: return true
-    case .delivering, .idle, .accepted: return false
+    case .delivering, .queued, .idle, .accepted: return false
     }
   }
 }

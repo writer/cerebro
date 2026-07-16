@@ -206,6 +206,7 @@ public struct FileCerebroCursorStore: CerebroCursorStoring {
 public enum CerebroDeliveryStateCode: String, Codable, Sendable {
   case notEnrolled = "not_enrolled"
   case delivering
+  case queued
   case idle
   case accepted
   case retryableFailure = "retryable_failure"
@@ -215,7 +216,7 @@ public enum CerebroDeliveryStateCode: String, Codable, Sendable {
 public struct CerebroDeliveryState: Codable, Equatable, Sendable {
   public let schemaVersion: String
   public let state: CerebroDeliveryStateCode
-  public let pendingReceipts: Int
+  public let pendingReceipts: Int?
   public let lastAcknowledgedSequence: UInt64?
   public let lastAttemptAt: String?
   public let lastAcceptedAt: String?
@@ -223,7 +224,7 @@ public struct CerebroDeliveryState: Codable, Equatable, Sendable {
 
   public init(
     state: CerebroDeliveryStateCode,
-    pendingReceipts: Int,
+    pendingReceipts: Int?,
     lastAcknowledgedSequence: UInt64?,
     lastAttemptAt: String?,
     lastAcceptedAt: String?,
@@ -297,6 +298,12 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
     let expiresAt: Date
   }
 
+  private struct VerifiedDeliveryPosition {
+    let credential: CerebroDeviceCredential?
+    let cursor: CerebroDeliveryCursor?
+    let pending: [ExecutionReceipt]
+  }
+
   private let configuration: CerebroDeliveryConfiguration
   private let store: ReceiptStore
   private let signer: DeviceKeySigner
@@ -343,34 +350,26 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
     guard deliveryLock.try() else { return }
     defer { deliveryLock.unlock() }
     let attemptedAt = ReceiptDate.string(from: now())
-    var pendingCount = 0
     do {
-      let receipts = try store.readVerifiedReceipts()
-      let cursor = try cursorStore.load()
-      let pending = try pendingReceipts(receipts, cursor: cursor)
-      pendingCount = pending.count
+      let position = try verifiedDeliveryPosition()
+      guard let credential = position.credential else {
+        try saveCurrentState(
+          .notEnrolled,
+          attemptedAt: attemptedAt,
+          error: nil)
+        return
+      }
       // Do not make a network request unless the UI-visible attempt marker is
       // durable. This turns local state-storage failure into fail-closed
       // delivery rather than a stale accepted result.
       try saveState(
         .delivering,
-        pending: pending.count,
-        cursor: cursor,
+        pending: position.pending.count,
+        cursor: position.cursor,
         attemptedAt: attemptedAt,
         error: nil)
-      guard let credential = try credentials.load() else {
-        try saveState(.notEnrolled, pending: pending.count, cursor: cursor, attemptedAt: attemptedAt, error: nil)
-        return
-      }
-      guard
-        credential.baseURL == configuration.baseURL.absoluteString,
-        credential.hardwareUUID == configuration.hardwareUUID
-      else { throw CerebroDeliveryError.credentialBindingMismatch }
-      if let cursor, cursor.serverDeviceID != credential.serverDeviceID {
-        throw CerebroDeliveryError.cursorMismatch
-      }
-      guard let receipt = pending.first else {
-        try saveState(.idle, pending: 0, cursor: cursor, attemptedAt: attemptedAt, error: nil)
+      guard let receipt = position.pending.first else {
+        try saveCurrentState(.idle, attemptedAt: attemptedAt, error: nil)
         return
       }
       let token = try validAccessToken(credential: credential)
@@ -405,26 +404,29 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
         lastReceiptID: receipt.id,
         lastReceiptDigest: digest)
       try cursorStore.save(nextCursor)
-      try saveState(
+      try saveCurrentState(
         .accepted,
-        pending: pending.count - 1,
-        cursor: nextCursor,
         attemptedAt: attemptedAt,
         acceptedAt: ReceiptDate.string(from: now()),
         error: nil)
     } catch {
-      let cursor = try? cursorStore.load()
-      let retryable = isRetryable(error)
+      let deliveryError = error
+      let retryable = isRetryable(deliveryError)
       do {
-        try saveState(
+        try saveCurrentState(
           retryable ? .retryableFailure : .blocked,
-          pending: pendingCount,
-          cursor: cursor,
           attemptedAt: attemptedAt,
-          error: errorCode(error))
+          error: errorCode(deliveryError))
       } catch {
-        // FileCerebroDeliveryStateStore removes the previous state before
-        // writing, so the status app observes missing state and fails closed.
+        // The delivery position could not be verified, or the transactional
+        // status write failed. Persist only an explicit unknown-count block;
+        // if that also fails, storage health remains false over XPC.
+        try? saveState(
+          .blocked,
+          pending: nil,
+          cursor: nil,
+          attemptedAt: attemptedAt,
+          error: errorCode(deliveryError))
       }
     }
   }
@@ -493,13 +495,16 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
     accessToken = AccessToken(
       value: enrolled.access_token,
       expiresAt: now().addingTimeInterval(TimeInterval(enrolled.expires_in)))
-    let pending = (try? store.readVerifiedReceipts().count) ?? 0
-    try saveState(
-      .idle,
-      pending: pending,
-      cursor: nil,
-      attemptedAt: ReceiptDate.string(from: now()),
-      error: nil)
+    do {
+      try saveCurrentState(.idle, attemptedAt: ReceiptDate.string(from: now()), error: nil)
+    } catch {
+      try saveState(
+        .blocked,
+        pending: nil,
+        cursor: nil,
+        attemptedAt: ReceiptDate.string(from: now()),
+        error: errorCode(error))
+    }
   }
 
   private func pendingReceipts(
@@ -520,6 +525,52 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
       try CanonicalJSON.digest(acknowledged) == cursor.lastReceiptDigest
     else { throw CerebroDeliveryError.cursorMismatch }
     return Array(receipts.dropFirst(Int(cursor.lastSequence)))
+  }
+
+  private func verifiedDeliveryPosition() throws -> VerifiedDeliveryPosition {
+    try verifiedDeliveryPosition(receipts: store.readVerifiedReceipts())
+  }
+
+  private func verifiedDeliveryPosition(
+    receipts: [ExecutionReceipt]
+  ) throws -> VerifiedDeliveryPosition {
+    let cursor = try cursorStore.load()
+    let credential = try credentials.load()
+    guard let credential else {
+      guard cursor == nil else { throw CerebroDeliveryError.cursorMismatch }
+      return VerifiedDeliveryPosition(credential: nil, cursor: nil, pending: receipts)
+    }
+    guard
+      credential.baseURL == configuration.baseURL.absoluteString,
+      credential.hardwareUUID == configuration.hardwareUUID
+    else { throw CerebroDeliveryError.credentialBindingMismatch }
+    if let cursor, cursor.serverDeviceID != credential.serverDeviceID {
+      throw CerebroDeliveryError.cursorMismatch
+    }
+    return VerifiedDeliveryPosition(
+      credential: credential,
+      cursor: cursor,
+      pending: try pendingReceipts(receipts, cursor: cursor))
+  }
+
+  private func saveCurrentState(
+    _ requestedState: CerebroDeliveryStateCode,
+    attemptedAt: String,
+    acceptedAt: String? = nil,
+    error: String?
+  ) throws {
+    try store.withVerifiedReceipts { receipts in
+      let position = try verifiedDeliveryPosition(receipts: receipts)
+      let state =
+        requestedState == .idle && !position.pending.isEmpty ? .queued : requestedState
+      try saveState(
+        state,
+        pending: position.pending.count,
+        cursor: position.cursor,
+        attemptedAt: attemptedAt,
+        acceptedAt: acceptedAt,
+        error: error)
+    }
   }
 
   private func validAccessToken(credential: CerebroDeviceCredential) throws -> AccessToken {
@@ -645,7 +696,7 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
 
   private func saveState(
     _ state: CerebroDeliveryStateCode,
-    pending: Int,
+    pending: Int?,
     cursor: CerebroDeliveryCursor?,
     attemptedAt: String,
     acceptedAt: String? = nil,
@@ -653,7 +704,7 @@ public final class CerebroDeliveryEngine: @unchecked Sendable {
   ) throws {
     let snapshot = CerebroDeliveryState(
       state: state,
-      pendingReceipts: max(0, pending),
+      pendingReceipts: pending.map { max(0, $0) },
       lastAcknowledgedSequence: cursor?.lastSequence,
       lastAttemptAt: attemptedAt,
       lastAcceptedAt: acceptedAt,

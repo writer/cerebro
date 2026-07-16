@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import ReceiptCore
 
@@ -571,6 +572,24 @@ struct CheckRunner {
       installedHelperURL: installed
     )
 
+    let firstPath = root.appendingPathComponent("path-first")
+    let secondPath = root.appendingPathComponent("path-second")
+    for directory in [firstPath, secondPath] {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let executable = directory.appendingPathComponent("droid")
+      try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable, options: .atomic)
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: executable.path)
+    }
+    let pathInstaller = AgentAdapterInstaller(
+      homeDirectory: root,
+      bundledHelperURL: helper,
+      installedHelperURL: installed,
+      environment: ["PATH": "\(secondPath.path):\(firstPath.path):\(secondPath.path)"])
+    expect(
+      pathInstaller.executableURL(for: .droid) == secondPath.appendingPathComponent("droid"),
+      "executable resolution did not preserve configured PATH order")
+
     let factorySettings = root.appendingPathComponent(".factory/settings.json")
     try FileManager.default.createDirectory(
       at: factorySettings.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -1110,6 +1129,8 @@ struct CheckRunner {
     expect(
       !(http.requests.first?.httpBody ?? Data()).isEmpty,
       "enrollment omitted its request body")
+    expect(stateStore.state?.state == .queued, "enrollment hid a queued receipt as idle")
+    expect(stateStore.state?.pendingReceipts == 1, "enrollment lost the queued receipt count")
     engine.deliverOnce()
     expect(http.requests.count == 2, "fresh enrollment unnecessarily rotated its refresh token")
     expect(cursorStore.cursor?.lastSequence == 1, "enrolled delivery did not reach the cursor")
@@ -1157,6 +1178,274 @@ struct CheckRunner {
     expect(
       !stateFailureEngine.deliveryStateStorageHealthy,
       "delivery state persistence failure was not exposed to the status app")
+
+    let (corruptStore, corruptSigner, corruptCleanup) = try temporaryStore()
+    defer { corruptCleanup() }
+    _ = try corruptStore.append(
+      draft: draft(id: "corrupt-delivery-receipt", phase: .completed), signer: corruptSigner)
+    let corruptHandle = try FileHandle(forWritingTo: corruptStore.receiptsURL)
+    try corruptHandle.seekToEnd()
+    try corruptHandle.write(contentsOf: Data("{not-json}\n".utf8))
+    try corruptHandle.close()
+    let corruptState = TestDeliveryStateStore()
+    let corruptHTTP = TestHTTPClient(responses: [])
+    let corruptEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-enrolled"),
+      store: corruptStore,
+      signer: corruptSigner,
+      credentials: TestCredentialStore(credential: nil),
+      cursorStore: TestCursorStore(),
+      stateStore: corruptState,
+      http: corruptHTTP)
+    corruptEngine.deliverOnce()
+    expect(corruptState.state?.state == .blocked, "an unreadable ledger was not blocked")
+    expect(
+      corruptState.state?.pendingReceipts == nil,
+      "an unreadable ledger reported a known pending receipt count")
+    expect(corruptHTTP.requests.isEmpty, "an unreadable ledger made a network request")
+
+    let corruptEnrollmentState = TestDeliveryStateStore()
+    let corruptEnrollmentEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-corrupt"),
+      store: corruptStore,
+      signer: corruptSigner,
+      credentials: TestCredentialStore(credential: nil),
+      cursorStore: TestCursorStore(),
+      stateStore: corruptEnrollmentState,
+      http: TestHTTPClient(responses: [
+        CerebroHTTPResponse(statusCode: 200, body: enrollmentBody)
+      ]))
+    try corruptEnrollmentEngine.enroll(bootstrapToken: "one-time-bootstrap")
+    expect(
+      corruptEnrollmentState.state?.state == .blocked,
+      "enrollment reported an unreadable ledger as idle")
+    expect(
+      corruptEnrollmentState.state?.pendingReceipts == nil,
+      "enrollment reported an unreadable ledger as zero pending")
+
+    let corruptCursorStore = TestCursorStore()
+    corruptCursorStore.cursor = CerebroDeliveryCursor(
+      serverDeviceID: "server-device-enrolled",
+      signingDeviceID: signer.deviceID,
+      lastSequence: 2,
+      lastReceiptID: "missing-receipt",
+      lastReceiptDigest: "missing-digest")
+    let corruptCursorState = TestDeliveryStateStore()
+    let corruptCursorEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-cursor"),
+      store: store,
+      signer: signer,
+      credentials: TestCredentialStore(credential: nil),
+      cursorStore: corruptCursorStore,
+      stateStore: corruptCursorState,
+      http: TestHTTPClient(responses: [
+        CerebroHTTPResponse(statusCode: 200, body: enrollmentBody)
+      ]))
+    try corruptCursorEngine.enroll(bootstrapToken: "one-time-bootstrap")
+    expect(
+      corruptCursorState.state?.state == .blocked,
+      "enrollment reported a corrupt delivery cursor as healthy")
+    expect(
+      corruptCursorState.state?.pendingReceipts == nil,
+      "enrollment reported a known count for a corrupt delivery cursor")
+
+    let validOldCursor = CerebroDeliveryCursor(
+      serverDeviceID: "old-server-device",
+      signingDeviceID: signer.deviceID,
+      lastSequence: 1,
+      lastReceiptID: cursorStore.cursor!.lastReceiptID,
+      lastReceiptDigest: cursorStore.cursor!.lastReceiptDigest)
+    let oldCursorEnrollmentStore = TestCursorStore()
+    oldCursorEnrollmentStore.cursor = validOldCursor
+    let oldCursorEnrollmentState = TestDeliveryStateStore()
+    let newDeviceEnrollmentBody = Data(#"{"access_token":"access-new-device","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh-new-device","refresh_expires_at":"2026-07-18T00:00:00Z","scopes":["platform.telemetry.ingest"],"device_id":"new-server-device"}"#.utf8)
+    let oldCursorEnrollmentEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-old-cursor"),
+      store: store,
+      signer: signer,
+      credentials: TestCredentialStore(credential: nil),
+      cursorStore: oldCursorEnrollmentStore,
+      stateStore: oldCursorEnrollmentState,
+      http: TestHTTPClient(responses: [
+        CerebroHTTPResponse(statusCode: 200, body: newDeviceEnrollmentBody)
+      ]))
+    try oldCursorEnrollmentEngine.enroll(bootstrapToken: "one-time-bootstrap")
+    expect(
+      oldCursorEnrollmentState.state?.state == .blocked,
+      "enrollment accepted a cursor bound to another server device")
+    expect(
+      oldCursorEnrollmentState.state?.pendingReceipts == nil,
+      "enrollment counted pending receipts through another device's cursor")
+
+    let oldCursorDeliveryStore = TestCursorStore()
+    oldCursorDeliveryStore.cursor = validOldCursor
+    let oldCursorDeliveryState = TestDeliveryStateStore()
+    let oldCursorDeliveryHTTP = TestHTTPClient(responses: [])
+    let oldCursorDeliveryEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-old-cursor"),
+      store: store,
+      signer: signer,
+      credentials: TestCredentialStore(credential: CerebroDeviceCredential(
+        baseURL: "https://cerebro.test",
+        hardwareUUID: "hardware-old-cursor",
+        serverDeviceID: "new-server-device",
+        refreshToken: "must-not-send",
+        refreshExpiresAt: "2026-07-18T00:00:00Z")),
+      cursorStore: oldCursorDeliveryStore,
+      stateStore: oldCursorDeliveryState,
+      http: oldCursorDeliveryHTTP)
+    oldCursorDeliveryEngine.deliverOnce()
+    expect(
+      oldCursorDeliveryState.state?.state == .blocked,
+      "delivery accepted a cursor bound to another server device")
+    expect(
+      oldCursorDeliveryState.state?.pendingReceipts == nil,
+      "delivery counted pending receipts through another device's cursor")
+    expect(
+      oldCursorDeliveryHTTP.requests.isEmpty,
+      "delivery used the network with another device's cursor")
+
+    let (postAcceptStore, postAcceptSigner, postAcceptCleanup) = try temporaryStore()
+    defer { postAcceptCleanup() }
+    _ = try postAcceptStore.append(
+      draft: draft(id: "post-accept-receipt", phase: .completed), signer: postAcceptSigner)
+    let postAcceptCursor = CommitThenFailCursorStore()
+    let postAcceptState = TestDeliveryStateStore()
+    let postAcceptTokenBody = Data(#"{"access_token":"access-post-accept","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh-post-accept","refresh_expires_at":"2026-07-18T00:00:00Z","scopes":["platform.telemetry.ingest"]}"#.utf8)
+    let postAcceptHTTP = TestHTTPClient(responses: [
+      CerebroHTTPResponse(statusCode: 200, body: postAcceptTokenBody),
+      CerebroHTTPResponse(
+        statusCode: 202,
+        body: Data(#"{"status":"accepted","device_id":"server-device-1"}"#.utf8)),
+    ])
+    let postAcceptEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-1"),
+      store: postAcceptStore,
+      signer: postAcceptSigner,
+      credentials: TestCredentialStore(credential: CerebroDeviceCredential(
+        baseURL: "https://cerebro.test",
+        hardwareUUID: "hardware-1",
+        serverDeviceID: "server-device-1",
+        refreshToken: "refresh-old",
+        refreshExpiresAt: "2026-07-18T00:00:00Z")),
+      cursorStore: postAcceptCursor,
+      stateStore: postAcceptState,
+      http: postAcceptHTTP)
+    postAcceptEngine.deliverOnce()
+    expect(
+      postAcceptCursor.cursor?.lastSequence == 1,
+      "post-accept cursor failure did not model a committed acknowledgement")
+    expect(
+      postAcceptState.state?.state == .blocked,
+      "post-accept local failure did not remain visible")
+    expect(
+      postAcceptState.state?.pendingReceipts == 0,
+      "post-accept fallback retained the pre-acknowledgement pending count")
+
+    let (emptyRaceStore, emptyRaceSigner, emptyRaceCleanup) = try temporaryStore()
+    defer { emptyRaceCleanup() }
+    let emptyRaceDraft = draft(id: "concurrent-not-enrolled", phase: .completed)
+    let emptyRaceCursor = AppendOnceOnLoadCursorStore {
+      _ = try emptyRaceStore.append(
+        draft: emptyRaceDraft,
+        signer: emptyRaceSigner)
+    }
+    let emptyRaceState = TestDeliveryStateStore()
+    let emptyRaceEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-empty-race"),
+      store: emptyRaceStore,
+      signer: emptyRaceSigner,
+      credentials: TestCredentialStore(credential: nil),
+      cursorStore: emptyRaceCursor,
+      stateStore: emptyRaceState,
+      http: TestHTTPClient(responses: []))
+    emptyRaceEngine.deliverOnce()
+    expect(
+      emptyRaceState.state?.state == .notEnrolled,
+      "concurrent append changed the missing-credential state")
+    expect(
+      emptyRaceState.state?.pendingReceipts == 1,
+      "concurrent append was omitted from the persisted not-enrolled count")
+
+    let (acceptedRaceStore, acceptedRaceSigner, acceptedRaceCleanup) = try temporaryStore()
+    defer { acceptedRaceCleanup() }
+    _ = try acceptedRaceStore.append(
+      draft: draft(id: "accepted-race-first", phase: .completed),
+      signer: acceptedRaceSigner)
+    let acceptedRaceDraft = draft(id: "accepted-race-second", phase: .completed)
+    let acceptedRaceCursor = AppendOnceOnSaveCursorStore {
+      _ = try acceptedRaceStore.append(
+        draft: acceptedRaceDraft,
+        signer: acceptedRaceSigner)
+    }
+    let acceptedRaceState = TestDeliveryStateStore()
+    let acceptedRaceHTTP = TestHTTPClient(responses: [
+      CerebroHTTPResponse(statusCode: 200, body: postAcceptTokenBody),
+      CerebroHTTPResponse(
+        statusCode: 202,
+        body: Data(#"{"status":"accepted","device_id":"server-device-1"}"#.utf8)),
+    ])
+    let acceptedRaceEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-1"),
+      store: acceptedRaceStore,
+      signer: acceptedRaceSigner,
+      credentials: TestCredentialStore(credential: CerebroDeviceCredential(
+        baseURL: "https://cerebro.test",
+        hardwareUUID: "hardware-1",
+        serverDeviceID: "server-device-1",
+        refreshToken: "refresh-old",
+        refreshExpiresAt: "2026-07-18T00:00:00Z")),
+      cursorStore: acceptedRaceCursor,
+      stateStore: acceptedRaceState,
+      http: acceptedRaceHTTP)
+    acceptedRaceEngine.deliverOnce()
+    expect(
+      acceptedRaceState.state?.state == .accepted,
+      "concurrent append prevented accepted status persistence")
+    expect(
+      acceptedRaceState.state?.pendingReceipts == 1,
+      "concurrent append was omitted from the post-accept pending count")
+
+    let (failureLockStore, failureLockSigner, failureLockCleanup) = try temporaryStore()
+    defer { failureLockCleanup() }
+    _ = try failureLockStore.append(
+      draft: draft(id: "failure-lock-receipt", phase: .completed),
+      signer: failureLockSigner)
+    let failureLockState = LockObservingDeliveryStateStore(
+      lockURL: failureLockStore.directory.appendingPathComponent("receipts.lock"),
+      observedState: .retryableFailure)
+    let failureLockEngine = CerebroDeliveryEngine(
+      configuration: CerebroDeliveryConfiguration(
+        baseURL: URL(string: "https://cerebro.test")!, hardwareUUID: "hardware-1"),
+      store: failureLockStore,
+      signer: failureLockSigner,
+      credentials: TestCredentialStore(credential: CerebroDeviceCredential(
+        baseURL: "https://cerebro.test",
+        hardwareUUID: "hardware-1",
+        serverDeviceID: "server-device-1",
+        refreshToken: "refresh-old",
+        refreshExpiresAt: "2026-07-18T00:00:00Z")),
+      cursorStore: TestCursorStore(),
+      stateStore: failureLockState,
+      http: TestHTTPClient(responses: [
+        CerebroHTTPResponse(statusCode: 200, body: postAcceptTokenBody),
+        CerebroHTTPResponse(statusCode: 500, body: Data()),
+      ]))
+    failureLockEngine.deliverOnce()
+    expect(
+      failureLockState.state?.state == .retryableFailure,
+      "network failure did not persist a retryable state")
+    expect(
+      failureLockState.observedSharedReceiptLock,
+      "failure state was persisted outside the verified-ledger transaction")
   }
 
   private mutating func verifyDPoP(
@@ -1213,9 +1502,75 @@ private final class TestCursorStore: CerebroCursorStoring, @unchecked Sendable {
   func save(_ cursor: CerebroDeliveryCursor) throws { self.cursor = cursor }
 }
 
+private final class CommitThenFailCursorStore: CerebroCursorStoring, @unchecked Sendable {
+  var cursor: CerebroDeliveryCursor?
+  func load() throws -> CerebroDeliveryCursor? { cursor }
+  func save(_ cursor: CerebroDeliveryCursor) throws {
+    self.cursor = cursor
+    throw CheckError.cursorPostCommitFailed
+  }
+}
+
+private final class AppendOnceOnLoadCursorStore: CerebroCursorStoring, @unchecked Sendable {
+  var cursor: CerebroDeliveryCursor?
+  private var append: (() throws -> Void)?
+  init(append: @escaping () throws -> Void) { self.append = append }
+  func load() throws -> CerebroDeliveryCursor? {
+    if let append {
+      self.append = nil
+      try append()
+    }
+    return cursor
+  }
+  func save(_ cursor: CerebroDeliveryCursor) throws { self.cursor = cursor }
+}
+
+private final class AppendOnceOnSaveCursorStore: CerebroCursorStoring, @unchecked Sendable {
+  var cursor: CerebroDeliveryCursor?
+  private var append: (() throws -> Void)?
+  init(append: @escaping () throws -> Void) { self.append = append }
+  func load() throws -> CerebroDeliveryCursor? { cursor }
+  func save(_ cursor: CerebroDeliveryCursor) throws {
+    self.cursor = cursor
+    if let append {
+      self.append = nil
+      try append()
+    }
+  }
+}
+
 private final class TestDeliveryStateStore: CerebroDeliveryStateStoring, @unchecked Sendable {
   var state: CerebroDeliveryState?
   func save(_ state: CerebroDeliveryState) throws { self.state = state }
+}
+
+private final class LockObservingDeliveryStateStore: CerebroDeliveryStateStoring,
+  @unchecked Sendable
+{
+  let lockURL: URL
+  let observedState: CerebroDeliveryStateCode
+  var state: CerebroDeliveryState?
+  var observedSharedReceiptLock = false
+
+  init(lockURL: URL, observedState: CerebroDeliveryStateCode) {
+    self.lockURL = lockURL
+    self.observedState = observedState
+  }
+
+  func save(_ state: CerebroDeliveryState) throws {
+    if state.state == observedState {
+      let descriptor = open(lockURL.path, O_RDWR)
+      if descriptor >= 0 {
+        if flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+          observedSharedReceiptLock = true
+        } else {
+          _ = flock(descriptor, LOCK_UN)
+        }
+        close(descriptor)
+      }
+    }
+    self.state = state
+  }
 }
 
 private struct FailingDeliveryStateStore: CerebroDeliveryStateStoring {
@@ -1244,6 +1599,7 @@ extension Data {
 
 private enum CheckError: Error {
   case missingAction
+  case cursorPostCommitFailed
   case stateWriteFailed
 }
 
