@@ -118,8 +118,8 @@ measures. They are not substitutes for a completed decision.
 
 ## User Jobs The Contracts Must Support
 
-The repository does not ship the end-user interface, but its APIs must support
-these jobs without forcing a client to reconstruct domain logic.
+The Go service does not embed or serve the end-user interface, but its APIs
+must support these jobs without forcing a client to reconstruct domain logic.
 
 | Actor and question | Required result |
 | --- | --- |
