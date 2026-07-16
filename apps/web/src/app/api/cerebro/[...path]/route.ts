@@ -95,7 +95,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const inflight = cacheKey ? readCerebroProxyInflight(cacheKey) : null;
   if (inflight) {
-    const payload = await inflight;
+    let payload: ProxyResponsePayload;
+    try {
+      payload = await inflight;
+    } catch (error) {
+      return tracedProxyError(error, span);
+    }
     span.increment("proxy.cache.dedupe.count");
     span.end(payload.status >= 500 ? "failed" : "completed", {
       cache_state: payload.state === "stale" ? "stale" : "dedupe",
