@@ -69,6 +69,15 @@ type CollectionSourceProjectionReceipt struct {
 	SourceLinksProjected    int `json:"source_links_projected,omitempty"`
 }
 
+// CollectionGraphProjectionReceipt records graph-side collection volume.
+type CollectionGraphProjectionReceipt struct {
+	GraphPagesRead                 int `json:"graph_pages_read,omitempty"`
+	GraphEventsRead                int `json:"graph_events_read,omitempty"`
+	GraphEntitiesProjected         int `json:"graph_entities_projected,omitempty"`
+	GraphLinksProjected            int `json:"graph_links_projected,omitempty"`
+	GraphStaleMaterialLinksDeleted int `json:"graph_stale_material_links_deleted,omitempty"`
+}
+
 // CollectionGraphReceipt records the graph checkpoint and projection state.
 type CollectionGraphReceipt struct {
 	GraphCheckpointID                        string    `json:"graph_checkpoint_id,omitempty"`
@@ -96,11 +105,31 @@ type CollectionPathReceipt struct {
 }
 
 type CollectionReceiptInput struct {
-	CollectionSourceReceipt
+	SourceRuntimeID string
+	SourceID        string
+	// ProviderFamily identifies the normalized provider collection family.
+	ProviderFamily string
+	// ConfigRevision is a stable non-secret revision; callers must not pass raw configuration.
+	ConfigRevision   string
+	RuntimeWatermark time.Time
+	LastSyncedAt     time.Time
+	CollectionMode   string
 	CollectionSourceProjectionReceipt
-	CollectionGraphReceipt
-	CollectionPathReceipt
-	RuntimeReceipts []RuntimeCollectionReceiptInput
+	GraphCheckpointID  string
+	GraphRunID         string
+	GraphRunStartedAt  time.Time
+	GraphRunFinishedAt time.Time
+	CollectionGraphProjectionReceipt
+	GraphMaterialLinkReconciliationRequested bool
+	GraphMaterialLinkReconciliationSupported bool
+	GraphMaterialLinkReconciliationCompleted bool
+	GraphCheckpointComplete                  bool
+	GraphCheckpointCurrent                   bool
+	ObservedPathCount                        int
+	TotalPathCount                           int
+	LeaseHeld                                bool
+	Limitations                              []string
+	RuntimeReceipts                          []RuntimeCollectionReceiptInput
 }
 
 // RuntimeCollectionReceiptInput records the latest source and graph state for
