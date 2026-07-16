@@ -46,12 +46,48 @@ func TestPolicyCandidateHTTPRoutesUseApplicationNamespace(t *testing.T) {
 	routes := []string{
 		"POST /policy-candidates", "GET /policy-candidates", "GET /policy-candidates/{candidateID}",
 		"POST /policy-candidates/{candidateID}/prove", "POST /policy-candidates/{candidateID}/shadow",
+		"POST /policy-candidates/{candidateID}/experiments", "GET /policy-candidates/{candidateID}/experiments",
+		"GET /policy-experiments/{experimentID}", "GET /policy-experiments/{experimentID}/observations",
+		"POST /policy-experiments/{experimentID}/run",
 	}
 	for _, route := range routes {
 		method, path, _ := strings.Cut(route, " ")
 		policy := httpRoutePolicyFor(method, path)
 		if policy.Scope == "" {
 			t.Fatalf("route %s has no auth policy", route)
+		}
+	}
+}
+
+func TestPolicyExperimentHTTPRoutesRequireOperatorScope(t *testing.T) {
+	for _, route := range []string{
+		"POST /policy-candidates/candidate-1/experiments",
+		"GET /policy-candidates/candidate-1/experiments",
+		"GET /policy-experiments/experiment-1",
+		"GET /policy-experiments/experiment-1/observations",
+		"POST /policy-experiments/experiment-1/run",
+	} {
+		method, path, _ := strings.Cut(route, " ")
+		if got := httpRoutePolicyFor(method, path).Scope; got != scopePolicyCandidatesWrite {
+			t.Fatalf("route %s scope = %q, want %q", route, got, scopePolicyCandidatesWrite)
+		}
+	}
+}
+
+func TestPolicyExperimentObservationViewOmitsPrivateDatasetCase(t *testing.T) {
+	encoded, err := json.Marshal(newPolicyExperimentObservationView(&policycandidate.PolicyExperimentObservation{
+		ID: "peo_test", ExperimentID: "pex_test", TenantID: "tenant-a", Sequence: 1,
+		Kind: "historical_case", CheckpointID: "checkpoint-safe", DatasetCaseID: "private-resource-urn",
+		ReceiptDigest: strings.Repeat("a", 64), Metrics: map[string]float64{"matched": 1},
+		ObservedAt: time.Unix(100, 0), CreatedAt: time.Unix(101, 0),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(encoded)
+	for _, forbidden := range []string{"private-resource-urn", "dataset_case_id", "tenant-a", "tenant_id"} {
+		if strings.Contains(payload, forbidden) {
+			t.Fatalf("observation view contains %q: %s", forbidden, payload)
 		}
 	}
 }

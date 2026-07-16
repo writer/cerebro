@@ -62,6 +62,7 @@ func (a *App) newJobService() *platformjobs.Service {
 	service.WithRunner(platformjobs.KindFindingRulesEvaluate, a.runFindingRulesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingsEvaluate, a.runFindingsEvaluateJob)
 	service.WithRunner(platformjobs.KindReportRun, a.runReportJob)
+	service.WithRunner(platformjobs.KindPolicyCandidateExperiment, a.runPolicyCandidateExperimentJob)
 	if a.cfg.AppendLog.JetStreamRuntimeIndexEnabled {
 		service.WithRunner(platformjobs.KindAppendLogRuntimeIndex, a.runAppendLogRuntimeIndexJob)
 	}
@@ -167,6 +168,10 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		writeJobError(w, err)
 		return
 	}
+	if err := normalizePolicyExperimentJobRequest(&request); err != nil {
+		writeJobError(w, err)
+		return
+	}
 	tenantID, err = authorizeJobCreate(r.Context(), a.deps.StateStore, request)
 	if err != nil {
 		writeJobError(w, err)
@@ -217,6 +222,32 @@ func normalizeAssessmentJobRequest(request *createJobHTTPRequest) error {
 	request.SubjectID = runID
 	request.IdempotencyKey = expectedKey
 	request.Payload["run_id"] = runID
+	request.Payload["tenant_id"] = request.TenantID
+	return nil
+}
+
+func normalizePolicyExperimentJobRequest(request *createJobHTTPRequest) error {
+	if request == nil || strings.TrimSpace(request.Kind) != platformjobs.KindPolicyCandidateExperiment {
+		return nil
+	}
+	experimentID := stringPayload(request.Payload, "experiment_id", request.SubjectID)
+	if experimentID == "" {
+		return fmt.Errorf("%w: policy experiment experiment_id is required", platformjobs.ErrInvalidRequest)
+	}
+	if subjectType := strings.TrimSpace(request.SubjectType); subjectType != "" && subjectType != "policy_experiment" {
+		return fmt.Errorf("%w: policy experiment subject_type must be policy_experiment", platformjobs.ErrInvalidRequest)
+	}
+	if subjectID := strings.TrimSpace(request.SubjectID); subjectID != "" && subjectID != experimentID {
+		return fmt.Errorf("%w: policy experiment subject_id must match experiment_id", platformjobs.ErrInvalidRequest)
+	}
+	expectedKey := "policy-experiment:" + experimentID
+	if request.IdempotencyKey != "" && request.IdempotencyKey != expectedKey {
+		return fmt.Errorf("%w: policy experiment idempotency_key must match experiment_id", platformjobs.ErrInvalidRequest)
+	}
+	request.SubjectType = "policy_experiment"
+	request.SubjectID = experimentID
+	request.IdempotencyKey = expectedKey
+	request.Payload["experiment_id"] = experimentID
 	request.Payload["tenant_id"] = request.TenantID
 	return nil
 }
@@ -329,12 +360,14 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 		RuntimeID: runtimeID, SourcePageLimit: uint32Payload(job.Payload, "page_limit"), GraphPageLimit: uint32Payload(job.Payload, "graph_page_limit"),
 		RuleIDs: stringSlicePayload(job.Payload, "rule_ids"), EventLimit: uint32Payload(job.Payload, "event_limit"),
 		CaptureSecurityPathDelta: boolPayload(job.Payload, "capture_security_path_delta"), SecurityPathAccountID: stringPayload(job.Payload, "security_path_account_id", ""),
-		ObservationID: strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
+		SecurityPathRustShadow: boolPayload(job.Payload, "security_path_rust_shadow"),
+		ObservationID:          strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
-	result, refs, mapErr := orchestration.JobPayload()
+	payload, refs, mapErr := orchestration.JobPayload()
 	if mapErr != nil {
 		return nil, nil, mapErr
 	}
+	result = map[string]any(payload.Result())
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
 	if orchestration.FindingRules != nil {
 		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
@@ -512,6 +545,17 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 			return "", err
 		}
 		return firstNonEmpty(request.TenantID, run.TenantID), nil
+	case platformjobs.KindPolicyCandidateExperiment:
+		experimentID := stringPayload(request.Payload, "experiment_id", request.SubjectID)
+		service := policyCandidateServiceForStore(store)
+		experiment, err := service.GetExperiment(ctx, experimentID)
+		if err != nil {
+			return "", err
+		}
+		if err := requireMatchingJobTenant(request.TenantID, experiment.TenantID); err != nil {
+			return "", err
+		}
+		return firstNonEmpty(request.TenantID, experiment.TenantID), nil
 	case platformjobs.KindAppendLogRuntimeIndex:
 		if err := authorizeJobAdmin(ctx); err != nil {
 			return "", err

@@ -132,7 +132,11 @@ import (
 // proof/shadow orchestration, redaction boundaries, and optimistic revisions
 // stay behind internal/policycandidate; durable persistence stays in the
 // concrete Postgres state-store package.
-const bootstrapProductionGoLineBudget = 28587
+// Policy evaluation experiments add operator-scoped HTTP mapping, platform-job
+// normalization, and dependency wiring only. Immutable pins, transitions,
+// checkpoint verification, current-canary execution, and append-only receipts
+// stay behind internal/policycandidate.
+const bootstrapProductionGoLineBudget = 28918
 
 type bootstrapFileLineCount struct {
 	path  string
