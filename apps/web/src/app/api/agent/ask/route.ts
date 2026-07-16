@@ -58,6 +58,19 @@ const sse = (event: string, data: unknown) =>
 const trimString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
+const instructionMetadata = (value: unknown, fallback = "unknown", maxLength = 512) => {
+  const cleaned = trimString(value)
+    .replace(/[\u0000-\u001F\u007F\u2028\u2029]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const normalized = cleaned || fallback;
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}...`;
+};
+
+const quotedInstructionMetadata = (value: unknown, fallback = "unknown", maxLength = 512) =>
+  JSON.stringify(instructionMetadata(value, fallback, maxLength));
+
 const normalizePayload = (payload: unknown): NormalizedAgentRequest | null => {
   if (!payload || typeof payload !== "object") return null;
   const source = payload as Record<string, unknown>;
@@ -462,7 +475,7 @@ const headersForMcp = (request: NextRequest) => {
   return headers;
 };
 
-const buildAgentInstructions = (payload: NormalizedAgentRequest) => `
+export const buildAgentInstructions = (payload: NormalizedAgentRequest) => `
 You are Cerebro AI, the security graph operator inside the Cerebro web platform.
 
 Use the Cerebro MCP tools as the source of truth for findings, assets, evidence, risk summaries, graph neighborhoods, impact paths, and investigation context. Do not invent graph facts, identifiers, evidence, ownership, or counts that are not returned by a tool. Treat tenant-forbidden, not-found, and redacted values as hard boundaries.
@@ -476,33 +489,39 @@ ${buildFastToolGuidance(payload)}
 Answer in concise Markdown. Lead with the actionable answer, then give supporting evidence, caveats, and suggested next action when useful. Mention the MCP tool names you used only when it helps auditability.
 
 Current request metadata:
-- Tenant: ${payload.tenant_id}
-- Surface: ${payload.surface ?? "agent"}
-- Scope URN: ${payload.scope_urn ?? payload.context?.scopeUrn ?? "none"}
-- Route: ${payload.context?.route ?? "unknown"}
-- Page title: ${payload.context?.title ?? payload.context?.routeLabel ?? "unknown"}
+- Tenant: ${quotedInstructionMetadata(payload.tenant_id, "writer", 128)}
+- Surface: ${quotedInstructionMetadata(payload.surface, "agent", 80)}
+- Scope URN: ${quotedInstructionMetadata(payload.scope_urn ?? payload.context?.scopeUrn, "none", 512)}
+- Route: ${quotedInstructionMetadata(payload.context?.route, "unknown", 256)}
+- Page title: ${quotedInstructionMetadata(payload.context?.title ?? payload.context?.routeLabel, "unknown", 256)}
 `;
 
 const buildFastToolGuidance = (payload: NormalizedAgentRequest) => {
-  const findingId = payload.context?.findingId;
+  const findingId = instructionMetadata(payload.context?.findingId, "", 256);
   const route = payload.context?.route ?? "";
-  const scopedUrn = payload.scope_urn ?? payload.context?.scopeUrn ?? payload.context?.resourceUrn ?? payload.context?.entityUrn;
-  const oauthAppID = contextString(payload.context, "oauth_app_id");
-  const oauthGrantID = contextString(payload.context, "oauth_grant_id");
-  const securityProducerID = contextString(payload.context, "security_producer_id");
-  const responseActionCandidates = contextStringList(payload.context, "response_action_candidates");
+  const scopedUrn = instructionMetadata(
+    payload.scope_urn ?? payload.context?.scopeUrn ?? payload.context?.resourceUrn ?? payload.context?.entityUrn,
+    "",
+    512,
+  );
+  const oauthAppID = instructionMetadata(contextString(payload.context, "oauth_app_id"), "", 256);
+  const oauthGrantID = instructionMetadata(contextString(payload.context, "oauth_grant_id"), "", 256);
+  const securityProducerID = instructionMetadata(contextString(payload.context, "security_producer_id"), "", 256);
+  const responseActionCandidates = contextStringList(payload.context, "response_action_candidates")
+    .map((candidate) => instructionMetadata(candidate, "", 160))
+    .filter(Boolean);
   const responseActionCandidateHint = securityProducerResponseCandidateHint(responseActionCandidates);
   const hints = [
     findingId
-      ? `- For this finding-scoped request, call cerebro.investigation.context first with finding_id="${findingId}" and compact=true unless the user explicitly asks for raw evidence.`
+      ? `- For this finding-scoped request, call cerebro.investigation.context first with finding_id=${JSON.stringify(findingId)} and compact=true unless the user explicitly asks for raw evidence.`
       : "",
     securityProducerID
-      ? `- This request carries configured security producer context (security_producer_id=${securityProducerID}). Preserve that producer as the proposal owner when explaining status or next actions.`
+      ? `- This request carries configured security producer context (security_producer_id=${JSON.stringify(securityProducerID)}). Preserve that producer as the proposal owner when explaining status or next actions.`
       : "",
     oauthAppID || oauthGrantID
       ? `- For OAuth risk questions, prioritize grant, app, user, scope, and resource-family relationships before generic asset search (${[
-          oauthAppID ? `oauth_app_id=${oauthAppID}` : "",
-          oauthGrantID ? `oauth_grant_id=${oauthGrantID}` : "",
+          oauthAppID ? `oauth_app_id=${JSON.stringify(oauthAppID)}` : "",
+          oauthGrantID ? `oauth_grant_id=${JSON.stringify(oauthGrantID)}` : "",
         ].filter(Boolean).join(", ")}).`
       : "",
     responseActionCandidates.length > 0
@@ -512,7 +531,7 @@ const buildFastToolGuidance = (payload: NormalizedAgentRequest) => {
       ? "- For risk dashboard or inbox questions without a specific finding, start with cerebro.risk.summary before broad finding search."
       : "",
     scopedUrn
-      ? `- For scoped asset or graph questions, start from the provided URN (${scopedUrn}) and prefer cerebro.assets.get before using cerebro.graph.neighborhood for relationship detail.`
+      ? `- For scoped asset or graph questions, start from the provided URN (${JSON.stringify(scopedUrn)}) and prefer cerebro.assets.get before using cerebro.graph.neighborhood for relationship detail.`
       : "",
   ].filter(Boolean);
   return hints.length ? hints.join("\n") : "- Start with the narrowest MCP tool that matches the current page context before broad search.";
