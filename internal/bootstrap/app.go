@@ -23,6 +23,7 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/complianceassessment"
@@ -63,12 +64,13 @@ import (
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
 type Dependencies struct {
-	AppendLog     ports.AppendLog
-	StateStore    ports.StateStore
-	GraphStore    ports.GraphStore
-	GraphAgentLLM graphagent.LLMClient
-	QueryCache    querycache.Cache
-	FindingRules  *findings.Registry
+	AppendLog       ports.AppendLog
+	StateStore      ports.StateStore
+	GraphStore      ports.GraphStore
+	GraphAgentLLM   graphagent.LLMClient
+	QueryCache      querycache.Cache
+	FindingRules    *findings.Registry
+	PolicyAuthoring *agentauthoring.Service
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
