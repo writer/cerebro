@@ -33,6 +33,7 @@ export interface AssistanceRequestV1 {
   destination_ref: string;
   expires_at: string;
   idempotency_key: string;
+  installation_id: string;
   intended_actor_ref: string;
   outcome?: AssistanceOutcomeV1;
   payload_digest: string;
@@ -42,6 +43,8 @@ export interface AssistanceRequestV1 {
   revision: number;
   schema_version: "assistance-request/v1";
   status: AssistanceStatus;
+  subject_ref: string;
+  tenant_id: string;
   thread_binding_id?: string;
   thread_binding_updated_at?: string;
   updated_at: string;
@@ -52,11 +55,14 @@ export interface AssistanceRequestInput {
   destination_ref: string;
   expires_at: string;
   idempotency_key: string;
+  installation_id: string;
   intended_actor_ref: string;
   max_delivery_attempts: number;
   payload_digest: string;
   payload_ref: string;
   request_run_id: string;
+  subject_ref: string;
+  tenant_id: string;
 }
 
 export interface AssistanceRequestCommit {
@@ -100,6 +106,7 @@ export interface NormalizedAssistanceReply {
   redaction_state: "redacted" | "raw";
   reply_run_id: string;
   subtype?: string;
+  tenant_id: string;
   thread_id: string;
 }
 

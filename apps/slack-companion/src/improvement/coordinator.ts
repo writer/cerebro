@@ -242,7 +242,10 @@ export class ImprovementCoordinator {
       throw new ImprovementConflictError("Fresh evidence does not match the candidate head.");
     }
     const snapshot = await this.evidence.recordFresh(input);
-    if (!allEvidenceFresh(snapshot, candidate.head_digest)) {
+    if (!isExactEvidenceSnapshot(snapshot, candidate, {
+      head_digest: candidate.head_digest,
+      state: "fresh",
+    })) {
       return candidate;
     }
     return this.candidates.markEvidenceReady({
@@ -271,8 +274,11 @@ export class ImprovementCoordinator {
     const snapshot = await this.evidence.read(candidateId, authorGeneration);
     if (
       snapshot === undefined ||
-      snapshot.states.length !== IMPROVEMENT_EVIDENCE_KINDS.length ||
-      snapshot.states.some((state) => state.state !== "invalidated")
+      !isExactEvidenceSnapshot(
+        snapshot,
+        { author_generation: authorGeneration, candidate_id: candidateId },
+        { state: "invalidated" },
+      )
     ) {
       throw new ImprovementConflictError("Required evidence was not invalidated before authoring.");
     }
@@ -350,8 +356,14 @@ class ImprovementEffectBridge implements ExternalEffectPort {
     );
     const invalidated =
       evidence !== undefined &&
-      evidence.states.length === IMPROVEMENT_EVIDENCE_KINDS.length &&
-      evidence.states.every((state) => state.state === "invalidated");
+      isExactEvidenceSnapshot(
+        evidence,
+        {
+          author_generation: intent.author_generation,
+          candidate_id: intent.candidate_id,
+        },
+        { state: "invalidated" },
+      );
     return {
       candidate_version: intent.candidate_version,
       receipt_ref: verification.receipt_ref,
@@ -359,8 +371,8 @@ class ImprovementEffectBridge implements ExternalEffectPort {
     };
   }
 
-  private invalidate(intent: ImprovementAuthoringIntent, lease: WorkLeaseV1) {
-    return this.evidence.invalidate(
+  private async invalidate(intent: ImprovementAuthoringIntent, lease: WorkLeaseV1) {
+    const receipt = await this.evidence.invalidate(
       {
         author_generation: intent.author_generation,
         candidate_id: intent.candidate_id,
@@ -370,6 +382,24 @@ class ImprovementEffectBridge implements ExternalEffectPort {
       },
       lease,
     );
+    const snapshot = await this.evidence.read(
+      intent.candidate_id,
+      intent.author_generation,
+    );
+    if (
+      snapshot === undefined ||
+      !isExactEvidenceSnapshot(
+        snapshot,
+        {
+          author_generation: intent.author_generation,
+          candidate_id: intent.candidate_id,
+        },
+        { state: "invalidated" },
+      )
+    ) {
+      throw new ImprovementConflictError("Required evidence invalidation is not exact.");
+    }
+    return receipt;
   }
 }
 
@@ -596,20 +626,35 @@ function validateFreshEvidence(input: ImprovementFreshEvidenceInput): void {
   assertSafeRef(input.evidence_ref, "evidence");
 }
 
-function allEvidenceFresh(
+function isExactEvidenceSnapshot(
   snapshot: ImprovementEvidenceSnapshot,
-  headDigest: string,
+  candidate: Pick<ImprovementCandidateV1, "author_generation" | "candidate_id">,
+  expected: { state: "invalidated" } | { head_digest: string; state: "fresh" },
 ): boolean {
-  return IMPROVEMENT_EVIDENCE_KINDS.every((kind) =>
-    snapshot.states.some(
-      (state) =>
-        state.kind === kind &&
-        state.state === "fresh" &&
-        state.head_digest === headDigest &&
-        state.evidence_digest !== undefined &&
-        state.evidence_ref !== undefined,
-    ),
-  );
+  if (
+    snapshot.candidate_id !== candidate.candidate_id ||
+    snapshot.author_generation !== candidate.author_generation ||
+    snapshot.states.length !== IMPROVEMENT_EVIDENCE_KINDS.length
+  ) return false;
+
+  const kinds = new Set<string>();
+  for (const state of snapshot.states) {
+    if (
+      state.candidate_id !== candidate.candidate_id ||
+      state.author_generation !== candidate.author_generation ||
+      !IMPROVEMENT_EVIDENCE_KINDS.includes(state.kind) ||
+      kinds.has(state.kind) ||
+      state.state !== expected.state
+    ) return false;
+    if (
+      expected.state === "fresh" &&
+      (state.head_digest !== expected.head_digest ||
+        state.evidence_digest === undefined ||
+        state.evidence_ref === undefined)
+    ) return false;
+    kinds.add(state.kind);
+  }
+  return kinds.size === IMPROVEMENT_EVIDENCE_KINDS.length;
 }
 
 function assertDigest(value: string, field: string): void {

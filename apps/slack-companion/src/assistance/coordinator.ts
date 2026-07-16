@@ -62,8 +62,12 @@ export class AssistanceCoordinator {
   async request(input: AssistanceRequestInput): Promise<AssistanceRequestResult> {
     validateRequest(input, this.clock.now());
     const run = await this.requireAdmittedRun(input.request_run_id);
-    if (run.binding_id !== input.binding_id) {
-      throw new AssistanceInputError("The assistance binding does not match the run.");
+    if (
+      run.binding_id !== input.binding_id ||
+      run.subject_ref !== input.subject_ref ||
+      run.tenant_id !== input.tenant_id
+    ) {
+      throw new AssistanceInputError("The assistance scope does not match the run.");
     }
 
     const now = this.clock.now().toISOString();
@@ -81,6 +85,7 @@ export class AssistanceCoordinator {
         input.request_run_id,
         input.idempotency_key,
       ]),
+      installation_id: input.installation_id,
       intended_actor_ref: input.intended_actor_ref,
       payload_digest: input.payload_digest,
       payload_ref: input.payload_ref,
@@ -88,6 +93,8 @@ export class AssistanceCoordinator {
       revision: 1,
       schema_version: "assistance-request/v1",
       status: "requested",
+      subject_ref: run.subject_ref,
+      tenant_id: run.tenant_id,
       updated_at: now,
     };
     const committed = await this.store.putIfAbsent({
@@ -169,13 +176,22 @@ export class AssistanceCoordinator {
     if (reply.binding_id !== request.binding_id) {
       throw new AssistanceReplyRejectedError("The reply binding does not match the request.");
     }
+    if (
+      reply.installation_id !== request.installation_id ||
+      reply.tenant_id !== request.tenant_id
+    ) {
+      throw new AssistanceReplyRejectedError("The reply installation scope does not match the request.");
+    }
 
     const activeBinding = await this.threads.resume(threadIdentity(reply));
     if (
       activeBinding === undefined ||
       request.thread_binding_id === undefined ||
       activeBinding.thread_binding_id !== request.thread_binding_id ||
-      activeBinding.updated_at !== request.thread_binding_updated_at
+      activeBinding.updated_at !== request.thread_binding_updated_at ||
+      activeBinding.installation_id !== request.installation_id ||
+      activeBinding.subject_ref !== request.subject_ref ||
+      activeBinding.tenant_id !== request.tenant_id
     ) {
       throw new AssistanceReplyRejectedError("The reply is not on the exact active thread.");
     }
@@ -185,7 +201,8 @@ export class AssistanceCoordinator {
       replyRun.binding_id !== request.binding_id ||
       replyRun.input_digest !== reply.payload_digest ||
       replyRun.run_kind !== "interactive" ||
-      replyRun.subject_ref !== activeBinding.subject_ref
+      replyRun.subject_ref !== request.subject_ref ||
+      replyRun.tenant_id !== request.tenant_id
     ) {
       throw new AssistanceReplyRejectedError("The admitted reply receipt does not match the reply.");
     }
@@ -246,10 +263,13 @@ function validateRequest(input: AssistanceRequestInput, now: Date): void {
     input.destination_ref,
     input.expires_at,
     input.idempotency_key,
+    input.installation_id,
     input.intended_actor_ref,
     input.payload_digest,
     input.payload_ref,
     input.request_run_id,
+    input.subject_ref,
+    input.tenant_id,
   ]) {
     if (value.trim() === "") throw new AssistanceInputError("Assistance fields cannot be empty.");
   }
@@ -272,7 +292,9 @@ function validateBindRequest(
     bind.binding_id !== request.binding_id ||
     bind.delivery_id !== request.delivery_id ||
     bind.expires_at !== request.expires_at ||
-    bind.subject_ref.trim() === ""
+    bind.installation_id !== request.installation_id ||
+    bind.subject_ref !== request.subject_ref ||
+    bind.tenant_id !== request.tenant_id
   ) {
     throw new AssistanceInputError("Thread binding does not match assistance intent.");
   }
@@ -293,6 +315,7 @@ function validateReplyShape(
     reply.outcome_ref,
     reply.payload_digest,
     reply.reply_run_id,
+    reply.tenant_id,
     reply.thread_id,
   ]) {
     if (value.trim() === "") throw new AssistanceReplyRejectedError("Reply fields cannot be empty.");
@@ -313,6 +336,7 @@ function threadIdentity(reply: NormalizedAssistanceReply) {
     binding_id: reply.binding_id,
     conversation_id: reply.conversation_id,
     installation_id: reply.installation_id,
+    tenant_id: reply.tenant_id,
     thread_id: reply.thread_id,
   };
 }
@@ -324,11 +348,14 @@ function requestFingerprint(input: AssistanceRequestInput): string {
       input.destination_ref,
       input.expires_at,
       input.idempotency_key,
+      input.installation_id,
       input.intended_actor_ref,
       input.max_delivery_attempts,
       input.payload_digest,
       input.payload_ref,
       input.request_run_id,
+      input.subject_ref,
+      input.tenant_id,
     ]))
     .digest("hex");
 }

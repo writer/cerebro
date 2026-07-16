@@ -101,6 +101,21 @@ describe("ImprovementCoordinator", () => {
     assert.notEqual(outcome.result.new_head_digest, candidate.head_digest);
   });
 
+  test("rejects duplicate or missing invalidation kinds before authoring", async () => {
+    for (const corruption of ["duplicate", "missing"] as const) {
+      const fixture = makeFixture();
+      const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+      const session = await fixture.session(1);
+      fixture.evidence.corruptNextInvalidation(corruption);
+
+      await assert.rejects(
+        fixture.coordinator.authorCandidate(authorRequest(candidate, session)),
+        ImprovementConflictError,
+      );
+      assert.equal(fixture.author.applyCalls, 0, corruption);
+    }
+  });
+
   test("recovers an outcome-unknown author effect by inspection without reauthoring", async () => {
     const fixture = makeFixture();
     const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
@@ -207,6 +222,29 @@ describe("ImprovementCoordinator", () => {
         ?.states.every((state) => state.state === "fresh"),
       true,
     );
+  });
+
+  test("rejects fresh evidence snapshots from another candidate or generation", async () => {
+    for (const corruption of ["candidate", "generation"] as const) {
+      const fixture = makeFixture();
+      const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+      const session = await fixture.session(1);
+      let current = (await fixture.coordinator.authorCandidate(
+        authorRequest(candidate, session),
+      )).candidate;
+      for (const kind of IMPROVEMENT_EVIDENCE_KINDS.slice(0, -1)) {
+        current = await fixture.coordinator.recordFreshEvidence(
+          freshEvidence(current, kind),
+        );
+      }
+
+      fixture.evidence.corruptNextFreshSnapshot(corruption);
+      const rejected = await fixture.coordinator.recordFreshEvidence(
+        freshEvidence(current, "promotion"),
+      );
+      assert.equal(rejected.status, "awaiting_evidence", corruption);
+      assert.equal(rejected.fresh_evidence_ref, undefined, corruption);
+    }
   });
 });
 
@@ -417,6 +455,8 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
 class MemoryEvidencePort implements ImprovementEvidencePort {
   readonly bundleRef = "evidence-bundle://opaque-improvement";
   observedIntentFirst = false;
+  private nextFreshCorruption?: "candidate" | "generation";
+  private nextInvalidationCorruption?: "duplicate" | "missing";
   private readonly records = new Map<string, ImprovementEvidenceSnapshot>();
 
   constructor(
@@ -426,6 +466,14 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
 
   get uniqueInvalidationCount(): number {
     return this.records.size;
+  }
+
+  corruptNextFreshSnapshot(corruption: "candidate" | "generation"): void {
+    this.nextFreshCorruption = corruption;
+  }
+
+  corruptNextInvalidation(corruption: "duplicate" | "missing"): void {
+    this.nextInvalidationCorruption = corruption;
   }
 
   async invalidate(
@@ -453,7 +501,7 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
         invalidation_ref: prior.bundle_ref,
       };
     }
-    const states: ImprovementEvidenceStateV1[] = request.kinds.map((kind) => ({
+    let states: ImprovementEvidenceStateV1[] = request.kinds.map((kind) => ({
       author_generation: request.author_generation,
       candidate_id: request.candidate_id,
       kind,
@@ -461,6 +509,12 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
       state: "invalidated",
       updated_at: this.clock.now().toISOString(),
     }));
+    if (this.nextInvalidationCorruption === "duplicate") {
+      states = [...states.slice(0, -1), clone(states[0]!)];
+    } else if (this.nextInvalidationCorruption === "missing") {
+      states = states.slice(0, -1);
+    }
+    this.nextInvalidationCorruption = undefined;
     const snapshot = this.snapshot(request.candidate_id, request.author_generation, states);
     this.records.set(key, snapshot);
     return {
@@ -501,7 +555,25 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     });
     const next = this.snapshot(input.candidate_id, input.author_generation, states);
     this.records.set(key, next);
-    return Promise.resolve(clone(next));
+    if (this.nextFreshCorruption === undefined) {
+      return Promise.resolve(clone(next));
+    }
+    const corrupted = clone(next);
+    if (this.nextFreshCorruption === "candidate") {
+      corrupted.candidate_id = `improvement-${"f".repeat(32)}`;
+      corrupted.states = corrupted.states.map((state) => ({
+        ...state,
+        candidate_id: corrupted.candidate_id,
+      }));
+    } else {
+      corrupted.author_generation += 1;
+      corrupted.states = corrupted.states.map((state) => ({
+        ...state,
+        author_generation: corrupted.author_generation,
+      }));
+    }
+    this.nextFreshCorruption = undefined;
+    return Promise.resolve(corrupted);
   }
 
   private snapshot(

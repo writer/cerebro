@@ -28,6 +28,7 @@ describe("SlackThreadBindingCoordinator", () => {
     assert.deepEqual(resumed, first.binding);
     assert.equal(first.binding.destination_receipt, "destination-1");
     assert.equal(first.binding.subject_ref, "subject://control-1");
+    assert.equal(first.binding.tenant_id, "tenant-1");
     assert.equal(first.binding.goal_ref, "goal://explain-control");
     assert.equal(store.writeCount, 1);
   });
@@ -221,6 +222,7 @@ function bindingRequest(
     goal_ref: "goal://explain-control",
     installation_id: "installation-1",
     subject_ref: "subject://control-1",
+    tenant_id: "tenant-1",
     thread_id: "thread-1",
     ...changes,
   };

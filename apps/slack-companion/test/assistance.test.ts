@@ -9,6 +9,7 @@ import type {
 import {
   AssistanceConflictError,
   AssistanceCoordinator,
+  AssistanceInputError,
   AssistanceReplyRejectedError,
 } from "../src/assistance/coordinator.js";
 import type {
@@ -34,6 +35,7 @@ import {
   ThreadBindingConflictError,
 } from "../src/thread-binding.js";
 import type {
+  BindSlackThreadRequest,
   SlackThreadBindingV1,
   ThreadBindingCommit,
   ThreadBindingCommitResult,
@@ -82,6 +84,29 @@ describe("AssistanceCoordinator", () => {
     assert.equal(fixture.delivery.uniquePlanCount, 1);
   });
 
+  test("binds assistance only to the originating run scope", async () => {
+    for (const bind of [
+      { subject_ref: "subject://different" },
+      { tenant_id: "different-tenant" },
+      { installation_id: "installation-other" },
+    ]) {
+      const fixture = makeFixture();
+      await assert.rejects(
+        fixture.bind(bind),
+        AssistanceInputError,
+      );
+      assert.equal(fixture.refinements.uniqueAdmissionCount, 0);
+    }
+
+    const fixture = makeFixture();
+    await assert.rejects(
+      fixture.coordinator.request(
+        requestInput({ subject_ref: "subject://different" }),
+      ),
+      AssistanceInputError,
+    );
+  });
+
   test("records a bounded redacted outcome before idempotent refinement admission", async () => {
     const fixture = makeFixture();
     const bound = await fixture.bind();
@@ -125,6 +150,8 @@ describe("AssistanceCoordinator", () => {
       { name: "wrong actor", mutate: { actor_ref: "actor://other" } },
       { name: "wrong channel", mutate: { conversation_id: "conversation-other" } },
       { name: "wrong thread", mutate: { thread_id: "thread-other" } },
+      { name: "wrong installation", mutate: { installation_id: "installation-other" } },
+      { name: "wrong tenant", mutate: { tenant_id: "different-tenant" } },
       { name: "action-like", mutate: { action_classification: "action_like" } },
       { name: "unsafe", mutate: { action_classification: "unsafe" } },
       {
@@ -132,6 +159,22 @@ describe("AssistanceCoordinator", () => {
         prepare: (fixture) => fixture.runs.delete("run-reply-1"),
       },
       { name: "wrong admitted payload", mutate: { payload_digest: "sha256:other" } },
+      {
+        name: "wrong admitted subject",
+        prepare: (fixture) => fixture.runs.seed(
+          runReceipt("run-reply-1", "queued", "sha256:reply-payload", {
+            subject_ref: "subject://different",
+          }),
+        ),
+      },
+      {
+        name: "wrong admitted tenant",
+        prepare: (fixture) => fixture.runs.seed(
+          runReceipt("run-reply-1", "queued", "sha256:reply-payload", {
+            tenant_id: "different-tenant",
+          }),
+        ),
+      },
       {
         name: "expired",
         prepare: (fixture) => fixture.clock.set("2026-07-16T13:01:00.000Z"),
@@ -174,7 +217,7 @@ function makeFixture() {
   });
 
   return {
-    async bind() {
+    async bind(bindChanges: Partial<BindSlackThreadRequest> = {}) {
       const requested = await coordinator.request(requestInput());
       const delivered = deliveredReceipt(requested.delivery);
       return coordinator.bindThread(requested.request.assistance_id, {
@@ -188,7 +231,9 @@ function makeFixture() {
           goal_ref: "goal://assistance-1",
           installation_id: "installation-1",
           subject_ref: "subject://assistance-1",
+          tenant_id: "opaque-tenant",
           thread_id: "thread-1",
+          ...bindChanges,
         },
         delivered,
       });
@@ -493,11 +538,14 @@ function requestInput(
     destination_ref: "conversation://opaque-assistance",
     expires_at: "2026-07-16T13:00:00.000Z",
     idempotency_key: "assistance-step-1",
+    installation_id: "installation-1",
     intended_actor_ref: "actor://intended",
     max_delivery_attempts: 3,
     payload_digest: "sha256:assistance-payload",
     payload_ref: "payload://assistance-question",
     request_run_id: "run-request-1",
+    subject_ref: "subject://assistance-1",
+    tenant_id: "opaque-tenant",
     ...overrides,
   };
 }
@@ -521,6 +569,7 @@ function replyInput(
     payload_digest: "sha256:reply-payload",
     redaction_state: "redacted",
     reply_run_id: "run-reply-1",
+    tenant_id: "opaque-tenant",
     thread_id: "thread-1",
     ...overrides,
   };
@@ -530,6 +579,7 @@ function runReceipt(
   runId: string,
   state: RunReceiptV1["state"],
   inputDigest = "sha256:request-payload",
+  changes: Partial<RunReceiptV1> = {},
 ): RunReceiptV1 {
   return {
     admitted_at: start,
@@ -548,6 +598,7 @@ function runReceipt(
     subject_ref: "subject://assistance-1",
     tenant_id: "opaque-tenant",
     updated_at: start,
+    ...changes,
   };
 }
 

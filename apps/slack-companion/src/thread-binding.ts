@@ -18,6 +18,7 @@ export interface SlackThreadBindingV1 {
   schema_version: "slack-thread-binding/v1";
   state: ThreadBindingState;
   subject_ref: string;
+  tenant_id: string;
   thread_binding_id: string;
   thread_id: string;
   updated_at: string;
@@ -33,6 +34,7 @@ export interface BindSlackThreadRequest {
   goal_ref: string;
   installation_id: string;
   subject_ref: string;
+  tenant_id: string;
   thread_id: string;
 }
 
@@ -106,6 +108,7 @@ export class SlackThreadBindingCoordinator {
       schema_version: "slack-thread-binding/v1",
       state: "active",
       subject_ref: request.subject_ref,
+      tenant_id: request.tenant_id,
       thread_binding_id: threadBindingId,
       thread_id: request.thread_id,
       updated_at: now,
@@ -119,7 +122,7 @@ export class SlackThreadBindingCoordinator {
   async resume(
     request: Pick<
       BindSlackThreadRequest,
-      "app_id" | "binding_id" | "conversation_id" | "installation_id" | "thread_id"
+      "app_id" | "binding_id" | "conversation_id" | "installation_id" | "tenant_id" | "thread_id"
     >,
   ): Promise<SlackThreadBindingV1 | undefined> {
     if (Object.values(request).some((value) => value.length === 0)) {
@@ -155,7 +158,7 @@ function validateBindingRequest(request: BindSlackThreadRequest): void {
 function threadIdentity(
   request: Pick<
     BindSlackThreadRequest,
-    "app_id" | "binding_id" | "conversation_id" | "installation_id" | "thread_id"
+    "app_id" | "binding_id" | "conversation_id" | "installation_id" | "tenant_id" | "thread_id"
   >,
 ): string {
   return `thread-${createHash("sha256")
@@ -163,6 +166,7 @@ function threadIdentity(
       JSON.stringify([
         request.app_id,
         request.installation_id,
+        request.tenant_id,
         request.binding_id,
         request.conversation_id,
         request.thread_id,
@@ -186,6 +190,7 @@ function fingerprint(binding: SlackThreadBindingV1): string {
         goal_ref: binding.goal_ref,
         installation_id: binding.installation_id,
         subject_ref: binding.subject_ref,
+        tenant_id: binding.tenant_id,
         thread_id: binding.thread_id,
       }),
     )
