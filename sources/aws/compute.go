@@ -24,6 +24,7 @@ import (
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 
 	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/sources/internal/awsevidence"
 )
 
 type ecsServicePageCursor struct {
@@ -213,24 +214,7 @@ func listECSTasks(ctx context.Context, clients awsClients, _ settings, cursor st
 }
 
 func listECSTaskDefinitions(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ecstypes.TaskDefinition, string, error) {
-	output, err := clients.ecs.ListTaskDefinitions(ctx, &ecs.ListTaskDefinitionsInput{
-		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
-		NextToken:  stringPtr(cursor),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	records := make([]ecstypes.TaskDefinition, 0, len(output.TaskDefinitionArns))
-	for _, arn := range output.TaskDefinitionArns {
-		describe, err := clients.ecs.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{TaskDefinition: awssdk.String(arn)})
-		if err != nil {
-			return nil, "", fmt.Errorf("describe task definition %q: %w", arn, err)
-		}
-		if describe.TaskDefinition != nil {
-			records = append(records, *describe.TaskDefinition)
-		}
-	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return awsevidence.ListTaskDefinitions(ctx, clients.ecs, cursor, limit)
 }
 
 func listEKSClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ekstypes.Cluster, string, error) {
@@ -681,6 +665,7 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 		"task_role_arn":                   taskRoleARN,
 		"task_role_name":                  roleNameFromARN(taskRoleARN),
 	}
+	awsevidence.AddTaskDefinitionRiskAttributes(attributes, task)
 	addTimeAttribute(attributes, "registered_at", task.RegisteredAt)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "task_definition": task})
 	if err != nil {

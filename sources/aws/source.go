@@ -105,6 +105,7 @@ import (
 	"github.com/writer/cerebro/sources/internal/awsaccount"
 	"github.com/writer/cerebro/sources/internal/awsappsync"
 	"github.com/writer/cerebro/sources/internal/awscloudformation"
+	"github.com/writer/cerebro/sources/internal/awsevidence"
 	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -985,29 +986,8 @@ type trustStatement struct {
 	Condition map[string]any  `json:"Condition"`
 }
 
-type cloudTrailDetail struct {
-	EventName       string                  `json:"eventName"`
-	EventSource     string                  `json:"eventSource"`
-	EventTime       string                  `json:"eventTime"`
-	SourceIPAddress string                  `json:"sourceIPAddress"`
-	UserIdentity    cloudTrailUserIdentity  `json:"userIdentity"`
-	Resources       []cloudTrailResourceRef `json:"resources"`
-}
-
-type cloudTrailUserIdentity struct {
-	Type        string `json:"type"`
-	PrincipalID string `json:"principalId"`
-	Arn         string `json:"arn"`
-	UserName    string `json:"userName"`
-}
-
-type cloudTrailResourceRef struct {
-	ARN       string `json:"ARN"`
-	ARNLower  string `json:"arn"`
-	Name      string `json:"resourceName"`
-	Type      string `json:"resourceType"`
-	AccountID string `json:"accountId"`
-}
+type cloudTrailDetail = awsevidence.CloudTrailDetail
+type cloudTrailUserIdentity = awsevidence.CloudTrailUserIdentity
 
 type cloudTrailCursor struct {
 	Version       int    `json:"version,omitempty"`
@@ -4176,6 +4156,7 @@ func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitive
 		"resource_type":      resourceType,
 		"source_ip":          detail.SourceIPAddress,
 	}
+	awsevidence.AddCloudTrailECSAttributes(attributes, awssdk.ToString(event.CloudTrailEvent))
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "event": event, "detail": detail})
 	if err != nil {
 		return nil, err

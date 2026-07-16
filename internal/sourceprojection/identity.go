@@ -212,7 +212,53 @@ func awsIAMRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 }
 
 func awsCloudTrailProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, awsIdentityProfile)
+	entities, links, err := identityAuditProjections(event, awsIdentityProfile)
+	if err != nil {
+		return nil, nil, err
+	}
+	entityMap := projectedEntitiesMap(entities)
+	linkMap := projectedLinksMap(links)
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	switch strings.TrimSpace(firstNonEmpty(attributes["event_type"], attributes["event_name"])) {
+	case "RegisterTaskDefinition":
+		taskDefinitionURN := projectionURN(tenantID, "aws_ecs_task_definition", attributes["task_definition_arn"])
+		addAWSECSTaskDefinition(entityMap, tenantID, event.GetSourceId(), taskDefinitionURN, attributes)
+		dropEmptyProjectedEntityAttributes(entityMap[taskDefinitionURN])
+		for _, role := range []struct {
+			arn   string
+			name  string
+			usage string
+		}{
+			{arn: attributes["task_role_arn"], name: attributes["task_role_name"], usage: "task"},
+			{arn: attributes["execution_role_arn"], name: attributes["execution_role_name"], usage: "execution"},
+		} {
+			addAWSComputeRoleLink(entityMap, linkMap, tenantID, event.GetSourceId(), event, taskDefinitionURN, role.arn, role.name, role.usage)
+		}
+	case "RunTask":
+		taskURN := projectionURN(tenantID, "aws_ecs_task", attributes["task_arn"])
+		taskDefinitionURN := projectionURN(tenantID, "aws_ecs_task_definition", attributes["task_definition_arn"])
+		addAWSECSTask(entityMap, tenantID, event.GetSourceId(), taskURN, attributes)
+		dropEmptyProjectedEntityAttributes(entityMap[taskURN])
+		if taskURN != "" && taskDefinitionURN != "" {
+			addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), taskURN, taskDefinitionURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "cloudtrail_run_task_definition"}))
+		}
+	}
+	return identityProjectionResult(entityMap, linkMap)
+}
+
+func dropEmptyProjectedEntityAttributes(entity *ports.ProjectedEntity) {
+	if entity == nil {
+		return
+	}
+	for key, value := range entity.Attributes {
+		if strings.TrimSpace(value) == "" {
+			delete(entity.Attributes, key)
+		}
+	}
 }
 
 func azureUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
