@@ -28,10 +28,13 @@ Preview both artifacts, then write them:
 ```sh
 go run ./tools/testauthor author-policy --intent intent.yaml
 go run ./tools/testauthor author-policy --intent intent.yaml --write
+go run ./tools/testauthor prove-policy --intent intent.yaml
 go run ./tools/findingdsl test policies/aws/aws-s3-public-access.test.yaml
 ```
 
 The write is refused if either target exists. Before writing, the command renders both artifacts twice, requires byte-identical output, validates both artifacts, and executes the finding and passing cases against the authored policy.
+
+`prove-policy` emits artifact digests and two receipts. The protected-target receipt requires the generated suite to pass against the authored policy. The unprotected-target receipt removes the first condition and requires the generated suite to reject that weakened policy.
 
 ## Fill supported repository gaps
 

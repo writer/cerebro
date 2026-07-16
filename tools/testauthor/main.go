@@ -26,7 +26,7 @@ type gap struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("command is required: scan, author-policy, or author-tests"))
+		fail(errors.New("command is required: scan, author-policy, author-tests, or prove-policy"))
 	}
 	var err error
 	switch os.Args[1] {
@@ -36,6 +36,8 @@ func main() {
 		err = runAuthorPolicy(os.Args[2:])
 	case "author-tests":
 		err = runAuthorTests(os.Args[2:])
+	case "prove-policy":
+		err = runProvePolicy(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -70,18 +72,9 @@ func runAuthorPolicy(args []string) error {
 	if strings.TrimSpace(*intentPath) == "" {
 		return errors.New("--intent is required")
 	}
-	content, err := os.ReadFile(*intentPath)
+	intent, err := loadIntent(*intentPath)
 	if err != nil {
 		return err
-	}
-	var intent policyauthor.Intent
-	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&intent); err != nil {
-		return fmt.Errorf("decode policy intent: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("policy intent must contain one YAML document")
 	}
 	artifacts, err := policyauthor.Author(intent)
 	if err != nil {
@@ -100,6 +93,49 @@ func runAuthorPolicy(args []string) error {
 	}
 	_, err = fmt.Fprintf(os.Stdout, "testauthor: wrote %s and %s; finding and passing cases proved\n", artifacts.PolicyPath, artifacts.TestPath)
 	return err
+}
+
+func runProvePolicy(args []string) error {
+	flags := flag.NewFlagSet("testauthor prove-policy", flag.ContinueOnError)
+	intentPath := flags.String("intent", "", "policy intent YAML")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*intentPath) == "" {
+		return errors.New("--intent is required")
+	}
+	intent, err := loadIntent(*intentPath)
+	if err != nil {
+		return err
+	}
+	artifacts, err := policyauthor.Author(intent)
+	if err != nil {
+		return err
+	}
+	result, err := policyauthor.Prove(artifacts)
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if encodeErr := encoder.Encode(result); encodeErr != nil {
+		return errors.Join(err, encodeErr)
+	}
+	return err
+}
+
+func loadIntent(path string) (policyauthor.Intent, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return policyauthor.Intent{}, err
+	}
+	var intent policyauthor.Intent
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&intent); err != nil {
+		return intent, fmt.Errorf("decode policy intent: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return intent, errors.New("policy intent must contain one YAML document")
+	}
+	return intent, nil
 }
 
 func runAuthorTests(args []string) error {
