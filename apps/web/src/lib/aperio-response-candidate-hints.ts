@@ -1,4 +1,4 @@
-import { securityProducers, type SecurityProducer } from "./security-producers";
+import type { SecurityProducer } from "./security-producers";
 
 const actionsFor = (producers: SecurityProducer[]) => new Map(
   producers
@@ -9,19 +9,19 @@ const actionsFor = (producers: SecurityProducer[]) => new Map(
 
 export const aperioProposalActionForCandidate = (
   candidate: string,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => actionsFor(producers).get(candidate)?.runtimeAction || candidate;
 
 export const aperioResponseCandidateHint = (
   candidates: string[],
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => candidates.length === 0
   ? "Response proposal"
   : candidates.map((candidate) => aperioResponseCandidateHintForCandidate(candidate, producers)).join(", ");
 
 export const aperioResponseCandidateHintForCandidate = (
   candidate: string,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => {
   const action = actionsFor(producers).get(candidate);
   if (!action) return candidate;

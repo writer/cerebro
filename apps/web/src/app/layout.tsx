@@ -8,6 +8,7 @@ import CerebroAgentPanelShell from "@/components/agent/CerebroAgentPanelShell";
 import { CerebroAgentProvider } from "@/components/agent/CerebroAgentProvider";
 import CommandPaletteShell from "@/components/CommandPaletteShell";
 import { ApiKeyProvider, CommandPaletteProvider, CurrentUserProvider, GRCQueryProvider, SidebarProvider, ThemeProvider, UserPreferencesProvider } from "@/components/providers";
+import { SecurityProducerCatalogProvider } from "@/components/SecurityProducerCatalogProvider";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 
@@ -40,27 +41,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ApiKeyProvider>
             <GRCQueryProvider>
               <CurrentUserProvider>
-                <UserPreferencesProvider>
-                  <ThemeProvider>
-                    <CerebroAgentProvider>
-                      <CommandPaletteProvider>
-                        <SidebarProvider>
-                          <div className="flex h-screen max-w-full overflow-hidden bg-[var(--app-bg)]">
-                            <Sidebar />
-                            <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
-                              <Topbar />
-                              <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--app-bg)] px-8 py-6 max-md:px-4">
-                                <Suspense fallback={null}>{children}</Suspense>
-                              </main>
+                <SecurityProducerCatalogProvider>
+                  <UserPreferencesProvider>
+                    <ThemeProvider>
+                      <CerebroAgentProvider>
+                        <CommandPaletteProvider>
+                          <SidebarProvider>
+                            <div className="flex h-screen max-w-full overflow-hidden bg-[var(--app-bg)]">
+                              <Sidebar />
+                              <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+                                <Topbar />
+                                <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--app-bg)] px-8 py-6 max-md:px-4">
+                                  <Suspense fallback={null}>{children}</Suspense>
+                                </main>
+                              </div>
                             </div>
-                          </div>
-                          <CommandPaletteShell />
-                          <CerebroAgentPanelShell />
-                        </SidebarProvider>
-                      </CommandPaletteProvider>
-                    </CerebroAgentProvider>
-                  </ThemeProvider>
-                </UserPreferencesProvider>
+                            <CommandPaletteShell />
+                            <CerebroAgentPanelShell />
+                          </SidebarProvider>
+                        </CommandPaletteProvider>
+                      </CerebroAgentProvider>
+                    </ThemeProvider>
+                  </UserPreferencesProvider>
+                </SecurityProducerCatalogProvider>
               </CurrentUserProvider>
             </GRCQueryProvider>
           </ApiKeyProvider>
