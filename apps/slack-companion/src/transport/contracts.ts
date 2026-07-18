@@ -4,17 +4,31 @@ import type {
   SlackIngressEnvelope,
 } from "../contracts.js";
 
-export type SlackIngressMode = "events_api" | "socket_mode";
+export type SlackIngressMode =
+  | "events_api"
+  | "interactive"
+  | "slash_commands"
+  | "socket_mode";
 
 export interface SlackTransportRoute {
   binding_id: string;
+  conversation_id?: string;
   required_capabilities: CapabilityRequirement[];
   retention_policy_ref: string;
   run_kind: RunKind;
   tenant_id: string;
+  thread_id?: string;
 }
 
 export interface SlackEventsApiRequest {
+  raw_body: Uint8Array;
+  received_at: string;
+  request_signature: string;
+  request_timestamp: string;
+  route: SlackTransportRoute;
+}
+
+export interface SlackSignedInvocationRequest {
   raw_body: Uint8Array;
   received_at: string;
   request_signature: string;
@@ -48,6 +62,33 @@ export interface SlackSocketModeEnvelope {
   retry_reason?: string;
   type: "events_api" | "interactive" | "slash_commands";
 }
+
+export interface SlackSlashCommandEnvelope {
+  api_app_id: string;
+  channel_id: string;
+  command: string;
+  team_id: string;
+  text: string;
+  trigger_id: string;
+  type: "slash_command";
+  user_id: string;
+}
+
+export interface SlackInteractiveEnvelope {
+  action_id: string;
+  api_app_id: string;
+  conversation_id?: string;
+  interaction_type: string;
+  team_id: string;
+  thread_id?: string;
+  trigger_id: string;
+  type: "interactive";
+  user_id: string;
+}
+
+export type SlackInvocationEnvelope =
+  | SlackInteractiveEnvelope
+  | SlackSlashCommandEnvelope;
 
 export interface SlackSocketConnectionProof {
   connection_ref: string;
@@ -101,6 +142,17 @@ export interface SlackEventNormalizer {
   normalize(input: SlackEventNormalizationInput): SlackIngressEnvelope;
 }
 
+export interface SlackInvocationNormalizationInput {
+  envelope: SlackInvocationEnvelope;
+  payload: InboundPayloadReceipt;
+  received_at: string;
+  route: SlackTransportRoute;
+}
+
+export interface SlackInvocationNormalizer {
+  normalize(input: SlackInvocationNormalizationInput): SlackIngressEnvelope;
+}
+
 export interface EventsApiAcknowledgementCommand {
   body: "";
   kind: "events_api_ack";
@@ -112,6 +164,13 @@ export interface SocketModeAcknowledgementCommand {
   kind: "socket_mode_ack";
 }
 
+export interface SignedInvocationAcknowledgementCommand {
+  body: "";
+  invocation: "interactive" | "slash_command";
+  kind: "signed_invocation_ack";
+  status_code: 200;
+}
+
 export interface UrlVerificationCommand {
   body: string;
   kind: "url_verification";
@@ -120,6 +179,7 @@ export interface UrlVerificationCommand {
 
 export type SlackAcknowledgementCommand =
   | EventsApiAcknowledgementCommand
+  | SignedInvocationAcknowledgementCommand
   | SocketModeAcknowledgementCommand;
 
 export type TransportFailureStage =
@@ -155,7 +215,15 @@ export interface EventsApiHandlerDependencies {
 
 export interface SocketModeHandlerDependencies {
   admission: SlackAdmissionPort;
+  invocation_normalizer?: SlackInvocationNormalizer;
   normalizer: SlackEventNormalizer;
   payloads: DurableInboundPayloadPort;
   presence: DurableSocketPresencePort;
+}
+
+export interface SignedInvocationHandlerDependencies {
+  admission: SlackAdmissionPort;
+  clock: { now(): Date };
+  normalizer: SlackInvocationNormalizer;
+  payloads: DurableInboundPayloadPort;
 }
