@@ -10,6 +10,7 @@ import { tagSlug } from "@/lib/openapi";
 import { useOpenApi } from "@/lib/openapi-store";
 
 const developerLinks = [
+  { label: "Audit Log", href: "/developer/audit-log", description: "Search normalized runtime events by service, source, status, and trace." },
   { label: "Agent Platform", href: "/developer/agent-platform", description: "Runtime, eval, capability, execution, replay, connector, and knowledge provenance principles." },
   { label: "Identity Contract", href: "/developer/identity", description: "Current user source, avatar initials, actor value, and write-stamp fields." },
   { label: "Security Producers", href: "/developer/security-producers", description: "Source runtime coverage, graph context tools, and security producer queries." },
