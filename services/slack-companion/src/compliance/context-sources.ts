@@ -1,0 +1,45 @@
+import type { CorpusSource } from "./context-types.js";
+
+export const COMPLIANCE_CONTEXT_SOURCE_PATHS: CorpusSource[] = [
+  { path: "docs/domains/compliance-controls.md", category: "docs" },
+  { path: "docs/domains/grc-architecture.md", category: "docs" },
+  { path: "docs/domains/policy-lifecycle.md", category: "docs" },
+  { path: "docs/domains/policy-rule-extensions.md", category: "docs" },
+  { path: "docs/domains/policies.md", category: "docs" },
+  { path: "docs/domains/persona-view-lenses.md", category: "docs" },
+  { path: "internal/compliance/catalog.go", category: "service" },
+  { path: "internal/compliance/control_archetypes.yaml", category: "catalog" },
+  { path: "internal/compliance/control_families.yaml", category: "catalog" },
+  { path: "internal/compliance/control_pack_service.go", category: "service" },
+  { path: "internal/compliance/control_profiles.yaml", category: "catalog" },
+  { path: "internal/compliance/evidence_packet.go", category: "service" },
+  { path: "internal/compliance/policy_rule_extensions.yaml", category: "catalog" },
+  { path: "internal/compliance/posture.go", category: "service" },
+  { path: "internal/compliance/profile.go", category: "service" },
+  { path: "internal/compliance/selection.go", category: "service" },
+  { path: "internal/grccatalog/catalog.go", category: "service" },
+  { path: "internal/grccontrol/packets.go", category: "service" },
+  { path: "internal/grcprogram/readiness.go", category: "service" },
+  { path: "policies/compliance/compliance-background-checks.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-bcdr-plan.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-data-inventory.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-gdpr-policy.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-inventory-data-tracking.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-inventory-owners.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-ir-gdpr-addendum.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-ir-plan.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-p1-security-issues.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-p2-security-issues.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-risk-assessment.yaml", category: "policy" },
+  { path: "policies/compliance/compliance-security-training.yaml", category: "policy" },
+  { path: "policies/compliance/contract-billing-mismatch.yaml", category: "policy" },
+  { path: "policies/compliance/same-user-approve-execute.yaml", category: "policy" },
+  { path: "policies/compliance/uptime-breach-enterprise.yaml", category: "policy" },
+];
+
+export const COMPLIANCE_CONTEXT_EXCLUDED_PATHS = [
+  {
+    path: "internal/compliance/control_coverage_index.yaml",
+    reason: "Generated coverage index is several MB. Use live Cerebro GRC endpoints, graph tools, or targeted source snippets for coverage questions.",
+  },
+];

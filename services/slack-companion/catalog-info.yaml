@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cerebro-slack-companion
+  title: "cerebro-slack-companion"
+  description: "Slack companion service for Cerebro security operations"
+  annotations:
+    github.com/project-slug: writer/cerebro
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - typescript
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/security
+  system: security-platform
