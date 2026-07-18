@@ -4,6 +4,13 @@ import type {
   ScheduledLeaseDecision,
 } from "../operations/schedules.js";
 
+export const ANSWER_WATCH_LIMITS = {
+  operator_refs: 64,
+  ref_utf8_bytes: 2_048,
+  request_key_utf8_bytes: 256,
+  summary_utf8_bytes: 4_096,
+} as const;
+
 export type AnswerWatchStateV1 =
   | "queued"
   | "active"
@@ -167,6 +174,19 @@ export interface AnswerWatchObservationV1 {
   watch_id: string;
 }
 
+export interface CreateAnswerWatchObservationInputV1 {
+  material_state: AnswerWatchMaterialStateV1;
+  observation_id: string;
+  observed_at: string;
+  occurrence_id: string;
+  reason_code: string;
+  status: AnswerWatchObservationStatusV1;
+  summary: string;
+  target_ref: string;
+  target_version: string;
+  watch_id: string;
+}
+
 export interface AnswerWatchUpdateV1 {
   event_id: string;
   from_state: AnswerWatchStateV1;
@@ -188,6 +208,22 @@ export interface ApplyAnswerWatchObservationResultV1 {
   occurrence: AnswerWatchOccurrenceV1;
   replayed: boolean;
   schema_version: "apply-answer-watch-observation-result/v1";
+  update: AnswerWatchUpdateV1;
+  watch: AnswerWatchV1;
+}
+
+export interface StopAnswerWatchRequestV1 {
+  occurred_at: string;
+  reason_code: string;
+  request_key: string;
+  schema_version: "stop-answer-watch-request/v1";
+  to_state: "cancelled" | "retired";
+  watch_id: string;
+}
+
+export interface StopAnswerWatchResultV1 {
+  replayed: boolean;
+  schema_version: "stop-answer-watch-result/v1";
   update: AnswerWatchUpdateV1;
   watch: AnswerWatchV1;
 }

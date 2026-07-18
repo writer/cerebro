@@ -7,12 +7,14 @@ import type {
   AnswerWatchObservationV1,
   AnswerWatchV1,
 } from "../src/watch/contracts.js";
+import { ANSWER_WATCH_LIMITS } from "../src/watch/contracts.js";
 import {
   answerWatchMaterialDigest,
   applyAnswerWatchObservation,
   authorizeAnswerWatch,
   beginAnswerWatchOccurrence,
   bindAnswerWatchTarget,
+  createAnswerWatchObservation,
   createAnswerWatchOccurrence,
   projectSlackAnswerWatchStatus,
   startAnswerWatch,
@@ -87,6 +89,111 @@ describe("server-bound answer watch admission", () => {
         prior_watch: first,
       }),
       /different server-side binding/,
+    );
+  });
+
+  test("bounds persisted identifiers, summaries, and operator sets", () => {
+    assert.doesNotThrow(() => bindAnswerWatchTarget({
+      answer_ref: "answer://sample/1",
+      candidates: [{
+        ...candidate(),
+        target_ref: "r".repeat(ANSWER_WATCH_LIMITS.ref_utf8_bytes),
+      }],
+      evidence_ref: "evidence://sample/1",
+      resolved_at: createdAt,
+    }));
+    assert.throws(
+      () => bindAnswerWatchTarget({
+        answer_ref: "answer://sample/1",
+        candidates: [{
+          ...candidate(),
+          target_ref: "r".repeat(ANSWER_WATCH_LIMITS.ref_utf8_bytes + 1),
+        }],
+        evidence_ref: "evidence://sample/1",
+        resolved_at: createdAt,
+      }),
+      /UTF-8 bytes/,
+    );
+
+    const requestBoundary = startAnswerWatch({
+      ...startInput(),
+      request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes),
+    });
+    assert.equal(requestBoundary.disposition, "started");
+    assert.throws(
+      () => startAnswerWatch({
+        ...startInput(),
+        request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes + 1),
+      }),
+      /UTF-8 bytes/,
+    );
+    assert.throws(
+      () => startAnswerWatch({ ...startInput(), request_key: "key with whitespace" }),
+      /without whitespace/,
+    );
+
+    const operatorRefs = Array.from(
+      { length: ANSWER_WATCH_LIMITS.operator_refs },
+      (_, index) => `principal://operator/${index}`,
+    );
+    assert.equal(authorizeAnswerWatch("principal://requester", {
+      ...authority(),
+      operator_refs: operatorRefs,
+    }, binding()).allowed, true);
+    assert.throws(
+      () => authorizeAnswerWatch("principal://requester", {
+        ...authority(),
+        operator_refs: [...operatorRefs, "principal://operator/overflow"],
+      }, binding()),
+      /at most 64 references/,
+    );
+
+    const watch = startedWatch();
+    const occurrence = scheduled(watch);
+    assert.doesNotThrow(() => observation(occurrence.occurrence.occurrence_id, watch, {
+      summary: "é".repeat(ANSWER_WATCH_LIMITS.summary_utf8_bytes / 2),
+    }));
+    assert.throws(
+      () => observation(occurrence.occurrence.occurrence_id, watch, {
+        summary: `${"é".repeat(ANSWER_WATCH_LIMITS.summary_utf8_bytes / 2)}é`,
+      }),
+      /UTF-8 bytes/,
+    );
+    assert.throws(
+      () => observation(occurrence.occurrence.occurrence_id, watch, {
+        summary: "Unsafe\u0000summary",
+      }),
+      /unsafe control character/,
+    );
+  });
+
+  test("rejects noncanonical timestamps on persisted records", () => {
+    assert.throws(
+      () => authorizeAnswerWatch("principal://requester", authority(), {
+        ...binding(),
+        resolved_at: "2030-01-02T03:04:05Z",
+      }),
+      /canonical UTC timestamp/,
+    );
+    assert.throws(
+      () => projectSlackAnswerWatchStatus({
+        ...startedWatch(),
+        updated_at: "2030-01-02T03:04:05Z",
+      }),
+      /canonical UTC timestamp/,
+    );
+
+    const watch = startedWatch();
+    const occurrence = scheduled(watch);
+    assert.throws(
+      () => beginAnswerWatchOccurrence({
+        ...occurrence,
+        occurrence: {
+          ...occurrence.occurrence,
+          created_at: "2030-01-02T03:04:05Z",
+        },
+      }, leaseRequest(watch.revision)),
+      /canonical UTC timestamp/,
     );
   });
 });
@@ -213,20 +320,49 @@ describe("answer watch observation policy", () => {
     assert.equal(projectSlackAnswerWatchStatus(closed.watch).state, "closed");
   });
 
-  test("replays the same observation and rejects a stale fencing claim", () => {
+  test("replays only an observation bound to the same canonical payload", () => {
     const first = observe(startedWatch(), {
       observation_id: "observation://sample/stable",
     });
     const replay = applyAnswerWatchObservation({
       claim: first.claim,
       occurrence: first.occurrence,
-      observation: observation(first.occurrence.occurrence.occurrence_id, first.watch, {
-        observation_id: "observation://sample/stable",
-      }),
+      observation: first.observation,
       watch: first.watch,
     });
     assert.equal(replay.replayed, true);
     assert.deepEqual(replay.update, first.update);
+
+    assert.throws(
+      () => applyAnswerWatchObservation({
+        claim: first.claim,
+        occurrence: first.occurrence,
+        observation: { ...first.observation, summary: "Changed after digesting." },
+        watch: first.watch,
+      }),
+      /digest does not match its canonical payload/,
+    );
+
+    const otherOccurrence = scheduled(first.watch);
+    assert.notEqual(
+      otherOccurrence.occurrence.occurrence_id,
+      first.occurrence.occurrence.occurrence_id,
+    );
+    assert.throws(
+      () => applyAnswerWatchObservation({
+        claim: first.claim,
+        occurrence: otherOccurrence,
+        observation: {
+          ...first.observation,
+          occurrence_id: otherOccurrence.occurrence.occurrence_id,
+        },
+        watch: first.watch,
+      }),
+      /digest does not match its canonical payload/,
+    );
+  });
+
+  test("rejects a stale fencing claim", () => {
 
     const watch = startedWatch();
     const due = scheduled(watch);
@@ -245,12 +381,14 @@ describe("answer watch observation policy", () => {
 
   test("projects cancellation and retirement as terminal Slack states", () => {
     const queued = startedWatch();
-    const cancelled = stopAnswerWatch(
-      queued,
-      "cancelled",
-      "2030-01-02T03:05:00Z",
-      "requester_cancelled",
-    );
+    const cancelRequest = stopRequest(queued, {
+      occurred_at: "2030-01-02T03:05:00.000Z",
+      reason_code: "requester_cancelled",
+      request_key: "cancel-request-1",
+      to_state: "cancelled",
+    });
+    const cancelled = stopAnswerWatch(queued, cancelRequest);
+    assert.equal(cancelled.replayed, false);
     assert.deepEqual(projectSlackAnswerWatchStatus(cancelled.watch), {
       schema_version: "slack-answer-watch-status/v1",
       should_publish: true,
@@ -259,12 +397,50 @@ describe("answer watch observation policy", () => {
       text: "Watch cancelled.",
       watch_id: queued.watch_id,
     });
-    assert.equal(stopAnswerWatch(
-      cancelled.watch,
-      "retired",
-      "2030-01-02T03:06:00Z",
-      "retention_complete",
-    ).watch.state, "retired");
+
+    const replay = stopAnswerWatch(cancelled.watch, cancelRequest);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.watch, cancelled.watch);
+    assert.deepEqual(replay.update, cancelled.update);
+
+    assert.throws(
+      () => stopAnswerWatch(cancelled.watch, {
+        ...cancelRequest,
+        reason_code: "operator_cancelled",
+      }),
+      /reused with different content/,
+    );
+    assert.throws(
+      () => stopAnswerWatch(cancelled.watch, {
+        ...cancelRequest,
+        to_state: "retired",
+      }),
+      /reused with different content/,
+    );
+
+    assert.equal(stopAnswerWatch(cancelled.watch, stopRequest(cancelled.watch, {
+      occurred_at: "2030-01-02T03:06:00.000Z",
+      reason_code: "retention_complete",
+      request_key: "retire-request-1",
+      to_state: "retired",
+    })).watch.state, "retired");
+  });
+
+  test("bounds stop request identities", () => {
+    const queued = startedWatch();
+    assert.doesNotThrow(() => stopAnswerWatch(queued, stopRequest(queued, {
+      request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes),
+    })));
+    assert.throws(
+      () => stopAnswerWatch(queued, stopRequest(queued, {
+        request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes + 1),
+      })),
+      /UTF-8 bytes/,
+    );
+    assert.throws(
+      () => stopAnswerWatch(queued, stopRequest(queued, { request_key: "bad key" })),
+      /without whitespace/,
+    );
   });
 });
 
@@ -335,6 +511,25 @@ function leaseRequest(fencingToken: number) {
   };
 }
 
+function stopRequest(
+  watch: AnswerWatchV1,
+  overrides: Partial<{
+    occurred_at: string;
+    reason_code: string;
+    request_key: string;
+    to_state: "cancelled" | "retired";
+  }> = {},
+) {
+  return {
+    occurred_at: overrides.occurred_at ?? "2030-01-02T03:05:00.000Z",
+    reason_code: overrides.reason_code ?? "requester_cancelled",
+    request_key: overrides.request_key ?? "cancel-request-1",
+    schema_version: "stop-answer-watch-request/v1" as const,
+    to_state: overrides.to_state ?? "cancelled",
+    watch_id: watch.watch_id,
+  };
+}
+
 function observe(
   watch: AnswerWatchV1,
   options: {
@@ -350,14 +545,20 @@ function observe(
   const due = scheduled(watch);
   const acquired = beginAnswerWatchOccurrence(due, leaseRequest(watch.revision));
   if (!acquired.acquired) assert.fail(`expected occurrence lease: ${acquired.reason}`);
+  const recordedObservation = observation(
+    acquired.occurrence.occurrence.occurrence_id,
+    watch,
+    options,
+  );
   return {
     ...applyAnswerWatchObservation({
       claim: acquired.claim,
       occurrence: acquired.occurrence,
-      observation: observation(acquired.occurrence.occurrence.occurrence_id, watch, options),
+      observation: recordedObservation,
       watch,
     }),
     claim: acquired.claim,
+    observation: recordedObservation,
   };
 }
 
@@ -390,19 +591,16 @@ function observation(
           : "open",
   };
   const observationId = options.observation_id ?? `observation://sample/${watch.revision}`;
-  return {
-    material_digest: answerWatchMaterialDigest(materialState),
+  return createAnswerWatchObservation({
     material_state: materialState,
-    observation_digest: `sha256:${observationId}`,
     observation_id: observationId,
-    observed_at: "2030-01-02T03:06:00Z",
+    observed_at: "2030-01-02T03:06:00.000Z",
     occurrence_id: occurrenceId,
     reason_code: `watch_${status}`,
-    schema_version: "answer-watch-observation/v1",
     status,
     summary: options.summary ?? "The condition is pending.",
     target_ref: watch.target_ref,
     target_version: `version://sample/${watch.revision + 1}`,
     watch_id: watch.watch_id,
-  };
+  });
 }

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import type { ScheduleMisfirePolicy } from "@writer/cerebro-sdk";
 import {
@@ -22,10 +23,16 @@ import type {
   AnswerWatchUpdateV1,
   AnswerWatchV1,
   ApplyAnswerWatchObservationResultV1,
+  CreateAnswerWatchObservationInputV1,
   SlackAnswerWatchStatusV1,
   StartAnswerWatchInputV1,
   StartAnswerWatchResultV1,
+  StopAnswerWatchRequestV1,
+  StopAnswerWatchResultV1,
 } from "./contracts.js";
+import { ANSWER_WATCH_LIMITS } from "./contracts.js";
+
+const UNSAFE_TEXT_CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000d\u000e-\u001f\u007f]/;
 
 const WATCH_TRANSITIONS: Readonly<Record<AnswerWatchStateV1, readonly AnswerWatchStateV1[]>> = {
   active: ["degraded", "completed", "closed", "failed", "cancelled"],
@@ -48,7 +55,7 @@ export function bindAnswerWatchTarget(input: {
 }): AnswerWatchTargetBindingV1 {
   requireRef(input.answer_ref, "answer_ref");
   requireRef(input.evidence_ref, "evidence_ref");
-  const resolvedAt = requireTimestamp(input.resolved_at, "resolved_at");
+  const resolvedAt = normalizeTimestamp(input.resolved_at, "resolved_at");
   if (input.candidates.length !== 1) {
     throw new AnswerWatchInvariantError(
       "A delivered answer must resolve to exactly one watch target.",
@@ -105,9 +112,9 @@ export function authorizeAnswerWatch(
 
 export function startAnswerWatch(input: StartAnswerWatchInputV1): StartAnswerWatchResultV1 {
   requireRef(input.conversation_ref, "conversation_ref");
-  requireText(input.request_key, "request_key");
+  requireRequestKey(input.request_key);
   requireRef(input.schedule_ref, "schedule_ref");
-  const createdAt = requireTimestamp(input.created_at, "created_at");
+  const createdAt = normalizeTimestamp(input.created_at, "created_at");
   const authorization = authorizeAnswerWatch(input.actor_ref, input.authority, input.binding);
   if (!authorization.allowed) {
     return {
@@ -173,7 +180,7 @@ export function startAnswerWatch(input: StartAnswerWatchInputV1): StartAnswerWat
 
 export function answerWatchIdentity(answerRef: string, requestKey: string): string {
   requireRef(answerRef, "answer_ref");
-  requireText(requestKey, "request_key");
+  requireRequestKey(requestKey);
   return `answer-watch:${stableDigest([answerRef, requestKey]).slice(0, 32)}`;
 }
 
@@ -190,6 +197,37 @@ export function answerWatchMaterialDigest(
     state.head_ref,
     state.terminal_state,
   ])}`;
+}
+
+/**
+ * Constructs the only accepted observation identity. The digest binds a
+ * retryable observation id to the exact occurrence and material payload.
+ */
+export function createAnswerWatchObservation(
+  input: CreateAnswerWatchObservationInputV1,
+): AnswerWatchObservationV1 {
+  const observedAt = normalizeTimestamp(input.observed_at, "observed_at");
+  const materialDigest = answerWatchMaterialDigest(input.material_state);
+  const observation = {
+    material_digest: materialDigest,
+    material_state: structuredClone(input.material_state),
+    observation_id: input.observation_id,
+    observed_at: observedAt,
+    occurrence_id: input.occurrence_id,
+    reason_code: input.reason_code,
+    schema_version: "answer-watch-observation/v1" as const,
+    status: input.status,
+    summary: input.summary,
+    target_ref: input.target_ref,
+    target_version: input.target_version,
+    watch_id: input.watch_id,
+  };
+  const result: AnswerWatchObservationV1 = {
+    ...observation,
+    observation_digest: observationDigest(observation),
+  };
+  validateObservation(result);
+  return result;
 }
 
 export function createAnswerWatchOccurrence(input: {
@@ -358,43 +396,87 @@ export function applyAnswerWatchObservation(input: {
 
 export function stopAnswerWatch(
   current: AnswerWatchV1,
-  toState: "cancelled" | "retired",
-  occurredAt: string,
-  reasonCode: string,
-): { update: AnswerWatchUpdateV1; watch: AnswerWatchV1 } {
+  request: StopAnswerWatchRequestV1,
+): StopAnswerWatchResultV1 {
   validateWatch(current);
-  requireText(reasonCode, "reason_code");
-  requireWatchTransitionIfChanged(current.state, toState);
-  const normalizedOccurredAt = requireMonotonicTimestamp(occurredAt, current.updated_at, "occurred_at");
+  validateStopRequest(request);
+  if (request.watch_id !== current.watch_id) {
+    throw new AnswerWatchInvariantError("Stop request must belong to the watch.");
+  }
+  const idempotencyKey = stopIdempotencyKey(current.watch_id, request.request_key);
+  if (current.last_update?.idempotency_key === idempotencyKey) {
+    if (
+      current.last_update.to_state !== request.to_state ||
+      current.last_update.reason_code !== request.reason_code ||
+      current.last_update.occurred_at !== request.occurred_at
+    ) {
+      throw new AnswerWatchInvariantError(
+        "Stop request idempotency key was reused with different content.",
+      );
+    }
+    return {
+      replayed: true,
+      schema_version: "stop-answer-watch-result/v1",
+      update: structuredClone(current.last_update),
+      watch: structuredClone(current),
+    };
+  }
+  if (current.state === request.to_state) {
+    throw new AnswerWatchInvariantError(
+      `Watch is already ${request.to_state}; use the original stop request key to replay.`,
+    );
+  }
+  requireWatchTransitionIfChanged(current.state, request.to_state);
+  const normalizedOccurredAt = requireMonotonicTimestamp(
+    request.occurred_at,
+    current.updated_at,
+    "occurred_at",
+  );
   const stateSequence = current.state_sequence + 1;
   const sequence = current.revision + 1;
   const update: AnswerWatchUpdateV1 = {
     event_id: `${current.watch_id}:update:${current.revision + 1}`,
     from_state: current.state,
-    idempotency_key: `${current.watch_id}:transition:${stateSequence}:${toState}`,
+    idempotency_key: idempotencyKey,
     material_change: true,
     observation_ref: `watch://${current.watch_id}/transition/${sequence}`,
     occurred_at: normalizedOccurredAt,
     publish: true,
-    reason_code: reasonCode,
+    reason_code: request.reason_code,
     schema_version: "answer-watch-update/v1",
     sequence,
-    summary: toState === "cancelled" ? "Watch cancelled." : "Watch retired.",
+    summary: request.to_state === "cancelled" ? "Watch cancelled." : "Watch retired.",
     terminal: true,
-    to_state: toState,
+    to_state: request.to_state,
     watch_id: current.watch_id,
   };
   return {
+    replayed: false,
+    schema_version: "stop-answer-watch-result/v1",
     update,
     watch: {
       ...current,
       last_update: update,
       revision: current.revision + 1,
-      state: toState,
+      state: request.to_state,
       state_sequence: stateSequence,
       updated_at: normalizedOccurredAt,
     },
   };
+}
+
+function validateStopRequest(request: StopAnswerWatchRequestV1): void {
+  if (request.schema_version !== "stop-answer-watch-request/v1") {
+    throw new AnswerWatchInvariantError("Unsupported answer watch stop request version.");
+  }
+  requireCanonicalTimestamp(request.occurred_at, "occurred_at");
+  requireRef(request.reason_code, "reason_code");
+  requireRequestKey(request.request_key);
+  requireRef(request.watch_id, "watch_id");
+}
+
+function stopIdempotencyKey(watchId: string, requestKey: string): string {
+  return `answer-watch-stop:${stableDigest([watchId, requestKey])}`;
 }
 
 export function projectSlackAnswerWatchStatus(watch: AnswerWatchV1): SlackAnswerWatchStatusV1 {
@@ -455,7 +537,7 @@ function validateBinding(binding: AnswerWatchTargetBindingV1): void {
     target_ref: binding.target_ref,
     target_version: binding.target_version,
   })) requireRef(value, label);
-  requireTimestamp(binding.resolved_at, "resolved_at");
+  requireCanonicalTimestamp(binding.resolved_at, "resolved_at");
   const expectedDigest = stableDigest([
     binding.answer_ref,
     binding.evidence_ref,
@@ -492,25 +574,39 @@ function validateWatch(watch: AnswerWatchV1): void {
     binding_digest: watch.binding_digest,
     binding_ref: watch.binding_ref,
     conversation_ref: watch.conversation_ref,
-    request_key: watch.request_key,
     schedule_ref: watch.schedule_ref,
     target_kind: watch.target_kind,
     target_ref: watch.target_ref,
     target_version: watch.target_version,
     watch_id: watch.watch_id,
   })) requireRef(value, label);
+  requireRequestKey(watch.request_key);
   if (watch.authority !== "read") {
     throw new AnswerWatchInvariantError("Answer watches require read-only authority.");
   }
   requirePositiveInteger(watch.revision, "revision");
   requireNonNegativeInteger(watch.state_sequence, "state_sequence");
-  const createdAt = requireTimestamp(watch.created_at, "created_at");
-  const updatedAt = requireTimestamp(watch.updated_at, "updated_at");
+  const createdAt = requireCanonicalTimestamp(watch.created_at, "created_at");
+  const updatedAt = requireCanonicalTimestamp(watch.updated_at, "updated_at");
   if (Date.parse(updatedAt) < Date.parse(createdAt)) {
     throw new AnswerWatchInvariantError("Watch time cannot move backward.");
   }
   if ((watch.last_observation_id === undefined) !== (watch.last_observation_digest === undefined)) {
     throw new AnswerWatchInvariantError("Watch observation id and digest must be recorded together.");
+  }
+  for (const [label, value] of Object.entries({
+    last_material_digest: watch.last_material_digest,
+    last_observation_digest: watch.last_observation_digest,
+    last_observation_id: watch.last_observation_id,
+    last_target_version: watch.last_target_version,
+  })) {
+    if (value !== undefined) requireRef(value, label);
+  }
+  if (watch.last_update !== undefined) {
+    validateUpdate(watch.last_update);
+    if (watch.last_update.watch_id !== watch.watch_id) {
+      throw new AnswerWatchInvariantError("Watch update must belong to the watch.");
+    }
   }
 }
 
@@ -522,11 +618,30 @@ function validateOccurrence(occurrence: AnswerWatchOccurrenceV1): void {
   if (occurrence.occurrence.schema_version !== "scheduled-occurrence/v1") {
     throw new AnswerWatchInvariantError("Watch occurrence must use the canonical scheduled occurrence.");
   }
-  requireRef(occurrence.occurrence.occurrence_id, "occurrence_id");
+  for (const [label, value] of Object.entries({
+    idempotency_key: occurrence.occurrence.idempotency_key,
+    lease_token: occurrence.occurrence.lease_token,
+    occurrence_id: occurrence.occurrence.occurrence_id,
+    owner_id: occurrence.occurrence.owner_id,
+    run_id: occurrence.occurrence.run_id,
+    schedule_id: occurrence.occurrence.schedule_id,
+  })) {
+    if (value !== undefined) requireRef(value, label);
+  }
+  if (occurrence.observation_ref !== undefined) {
+    requireRef(occurrence.observation_ref, "observation_ref");
+  }
   requirePositiveInteger(occurrence.occurrence.generation, "generation");
   requirePositiveInteger(occurrence.occurrence.schedule_revision, "schedule_revision");
-  requireTimestamp(occurrence.occurrence.due_at, "due_at");
-  requireTimestamp(occurrence.occurrence.updated_at, "updated_at");
+  requireCanonicalTimestamp(occurrence.occurrence.created_at, "created_at");
+  requireCanonicalTimestamp(occurrence.occurrence.due_at, "due_at");
+  if (occurrence.occurrence.heartbeat_at !== undefined) {
+    requireCanonicalTimestamp(occurrence.occurrence.heartbeat_at, "heartbeat_at");
+  }
+  if (occurrence.occurrence.lease_expires_at !== undefined) {
+    requireCanonicalTimestamp(occurrence.occurrence.lease_expires_at, "lease_expires_at");
+  }
+  requireCanonicalTimestamp(occurrence.occurrence.updated_at, "updated_at");
 }
 
 function validateObservation(observation: AnswerWatchObservationV1): void {
@@ -543,12 +658,17 @@ function validateObservation(observation: AnswerWatchObservationV1): void {
     target_version: observation.target_version,
     watch_id: observation.watch_id,
   })) requireRef(value, label);
-  requireText(observation.summary, "summary");
-  requireTimestamp(observation.observed_at, "observed_at");
+  requireSummary(observation.summary);
+  requireCanonicalTimestamp(observation.observed_at, "observed_at");
   const canonicalDigest = answerWatchMaterialDigest(observation.material_state);
   if (observation.material_digest !== canonicalDigest) {
     throw new AnswerWatchInvariantError(
       "Observation material digest does not match its structured state.",
+    );
+  }
+  if (observation.observation_digest !== observationDigest(observation)) {
+    throw new AnswerWatchInvariantError(
+      "Observation digest does not match its canonical payload.",
     );
   }
   const expectedTerminalState = (() => {
@@ -565,6 +685,22 @@ function validateObservation(observation: AnswerWatchObservationV1): void {
       "Observation status and terminal material state must match.",
     );
   }
+}
+
+function validateUpdate(update: AnswerWatchUpdateV1): void {
+  if (update.schema_version !== "answer-watch-update/v1") {
+    throw new AnswerWatchInvariantError("Unsupported answer watch update version.");
+  }
+  for (const [label, value] of Object.entries({
+    event_id: update.event_id,
+    idempotency_key: update.idempotency_key,
+    observation_ref: update.observation_ref,
+    reason_code: update.reason_code,
+    watch_id: update.watch_id,
+  })) requireRef(value, label);
+  requirePositiveInteger(update.sequence, "sequence");
+  requireSummary(update.summary);
+  requireCanonicalTimestamp(update.occurred_at, "occurred_at");
 }
 
 function validateMaterialState(state: AnswerWatchMaterialStateV1): void {
@@ -597,7 +733,39 @@ function stableDigest(parts: readonly string[]): string {
   return hash.digest("hex");
 }
 
+function observationDigest(observation: Pick<
+  AnswerWatchObservationV1,
+  | "material_digest"
+  | "observation_id"
+  | "observed_at"
+  | "occurrence_id"
+  | "reason_code"
+  | "status"
+  | "summary"
+  | "target_ref"
+  | "target_version"
+  | "watch_id"
+>): string {
+  return `sha256:${stableDigest([
+    observation.observation_id,
+    observation.watch_id,
+    observation.occurrence_id,
+    observation.target_ref,
+    observation.target_version,
+    observation.observed_at,
+    observation.status,
+    observation.reason_code,
+    observation.summary,
+    observation.material_digest,
+  ])}`;
+}
+
 function uniqueRefs(values: readonly string[], label: string): void {
+  if (values.length > ANSWER_WATCH_LIMITS.operator_refs) {
+    throw new AnswerWatchInvariantError(
+      `${label} must contain at most ${ANSWER_WATCH_LIMITS.operator_refs} references.`,
+    );
+  }
   const unique = new Set<string>();
   for (const value of values) {
     requireRef(value, label);
@@ -607,17 +775,27 @@ function uniqueRefs(values: readonly string[], label: string): void {
 }
 
 function requireMonotonicTimestamp(value: string, previous: string, label: string): string {
-  const normalized = requireTimestamp(value, label);
+  const normalized = requireCanonicalTimestamp(value, label);
   if (Date.parse(normalized) < Date.parse(previous)) {
     throw new AnswerWatchInvariantError(`${label} cannot move backward.`);
   }
   return normalized;
 }
 
-function requireTimestamp(value: string, label: string): string {
+function normalizeTimestamp(value: string, label: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) throw new AnswerWatchInvariantError(`${label} must be an ISO timestamp.`);
   return new Date(timestamp).toISOString();
+}
+
+function requireCanonicalTimestamp(value: string, label: string): string {
+  const normalized = normalizeTimestamp(value, label);
+  if (value !== normalized) {
+    throw new AnswerWatchInvariantError(
+      `${label} must be a canonical UTC timestamp with millisecond precision.`,
+    );
+  }
+  return normalized;
 }
 
 function requirePositiveInteger(value: number, label: string): void {
@@ -633,12 +811,35 @@ function requireNonNegativeInteger(value: number, label: string): void {
 }
 
 function requireRef(value: string, label: string): void {
-  requireText(value, label);
+  requireBoundedText(value, label, ANSWER_WATCH_LIMITS.ref_utf8_bytes);
   if (/\s/.test(value)) {
     throw new AnswerWatchInvariantError(`${label} must be an opaque reference without whitespace.`);
   }
 }
 
-function requireText(value: string, label: string): void {
-  if (value.trim().length === 0) throw new AnswerWatchInvariantError(`${label} must not be empty.`);
+function requireRequestKey(value: string): void {
+  requireBoundedText(value, "request_key", ANSWER_WATCH_LIMITS.request_key_utf8_bytes);
+  if (/\s/.test(value)) {
+    throw new AnswerWatchInvariantError(
+      "request_key must be an opaque key without whitespace.",
+    );
+  }
+}
+
+function requireSummary(value: string): void {
+  requireBoundedText(value, "summary", ANSWER_WATCH_LIMITS.summary_utf8_bytes);
+}
+
+function requireBoundedText(value: string, label: string, maxUtf8Bytes: number): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new AnswerWatchInvariantError(`${label} must not be empty.`);
+  }
+  if (UNSAFE_TEXT_CONTROL_CHARACTERS.test(value)) {
+    throw new AnswerWatchInvariantError(`${label} contains an unsafe control character.`);
+  }
+  if (Buffer.byteLength(value, "utf8") > maxUtf8Bytes) {
+    throw new AnswerWatchInvariantError(
+      `${label} must be at most ${maxUtf8Bytes} UTF-8 bytes.`,
+    );
+  }
 }
