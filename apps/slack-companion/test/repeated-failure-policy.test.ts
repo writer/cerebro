@@ -20,12 +20,12 @@ describe("consecutive failure policy", () => {
   test("resets the active fingerprint and count after success", () => {
     const failed = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: emptyConsecutiveFailureState(policy),
     });
     const reset = resetConsecutiveFailures({
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy,
       state: failed.state,
     });
@@ -40,7 +40,7 @@ describe("consecutive failure policy", () => {
       current_run_state: "running",
       current_service_state: "ready",
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: emptyConsecutiveFailureState(policy),
     });
@@ -58,7 +58,7 @@ describe("consecutive failure policy", () => {
       current_run_state: "paused",
       current_service_state: "degraded",
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy,
       state: first.state,
     });
@@ -66,7 +66,7 @@ describe("consecutive failure policy", () => {
       current_run_state: "paused",
       current_service_state: "degraded",
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-3",
+      idempotency_key: "obs-3",
       policy,
       state: second.state,
     });
@@ -83,13 +83,13 @@ describe("consecutive failure policy", () => {
   test("replays an exact observation without consuming the budget twice", () => {
     const first = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: emptyConsecutiveFailureState(policy),
     });
     const replay = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: first.state,
     });
@@ -100,7 +100,7 @@ describe("consecutive failure policy", () => {
       () =>
         recordConsecutiveFailure({
           failure_fingerprint: "unavailable",
-          idempotency_key: "observation-1",
+          idempotency_key: "obs-1",
           policy,
           state: first.state,
         }),
@@ -111,19 +111,19 @@ describe("consecutive failure policy", () => {
   test("starts a new streak when the fingerprinted failure kind changes", () => {
     const first = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: emptyConsecutiveFailureState(policy),
     });
     const second = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy,
       state: first.state,
     });
     const changed = recordConsecutiveFailure({
       failure_fingerprint: "unavailable",
-      idempotency_key: "observation-3",
+      idempotency_key: "obs-3",
       policy,
       state: second.state,
     });
@@ -136,25 +136,25 @@ describe("consecutive failure policy", () => {
   test("replays retained observations after intervening outcomes", () => {
     const first = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: emptyConsecutiveFailureState(policy),
     });
     const success = resetConsecutiveFailures({
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy,
       state: first.state,
     });
     const changed = recordConsecutiveFailure({
       failure_fingerprint: "unavailable",
-      idempotency_key: "observation-3",
+      idempotency_key: "obs-3",
       policy,
       state: success.state,
     });
 
     const oldFailure = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy,
       state: changed.state,
     });
@@ -165,7 +165,7 @@ describe("consecutive failure policy", () => {
     assert.equal(oldFailure.state.failure_fingerprint, "unavailable");
 
     const oldSuccess = resetConsecutiveFailures({
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy,
       state: changed.state,
     });
@@ -182,18 +182,18 @@ describe("consecutive failure policy", () => {
     } as const;
     const first = recordConsecutiveFailure({
       failure_fingerprint: "timeout",
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       policy: boundedPolicy,
       state: emptyConsecutiveFailureState(boundedPolicy),
     });
     const reset = resetConsecutiveFailures({
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       policy: boundedPolicy,
       state: first.state,
     });
     const third = recordConsecutiveFailure({
       failure_fingerprint: "unavailable",
-      idempotency_key: "observation-3",
+      idempotency_key: "obs-3",
       policy: boundedPolicy,
       state: reset.state,
     });
@@ -202,7 +202,7 @@ describe("consecutive failure policy", () => {
       () =>
         recordConsecutiveFailure({
           failure_fingerprint: "changed",
-          idempotency_key: "observation-4",
+          idempotency_key: "obs-4",
           policy: boundedPolicy,
           state: third.state,
         }),
