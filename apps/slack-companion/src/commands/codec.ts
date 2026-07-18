@@ -1,4 +1,4 @@
-const MAX_ENCODED_VALUE_LENGTH = 2_048;
+const MAX_ENCODED_VALUE_LENGTH = 2_000;
 const MAX_ARGUMENTS = 32;
 const MAX_PARAMETERS = 16;
 const NAME_PATTERN = /^[a-z][a-z0-9_.:-]{0,95}$/;
