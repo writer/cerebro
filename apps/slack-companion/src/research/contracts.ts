@@ -1,7 +1,11 @@
-import type { CapabilityRequirement } from "@writer/cerebro-sdk";
+import type {
+  CapabilityManifestV1,
+  CapabilityRequirement,
+} from "@writer/cerebro-sdk";
 
 export const SLACK_RESEARCH_LIMITS = {
   capabilities: 32,
+  contract_versions: 32,
   ref_utf8_bytes: 2_048,
   request_key_utf8_bytes: 256,
   results: 64,
@@ -11,6 +15,7 @@ export const SLACK_RESEARCH_LIMITS = {
 
 export interface SlackResearchRequestV1 {
   readonly capabilities: readonly CapabilityRequirement[];
+  readonly contract_version: string;
   readonly request_key: string;
   readonly schema_version: "slack-research-request/v1";
   readonly subject_ref: string;
@@ -19,9 +24,14 @@ export interface SlackResearchRequestV1 {
 export type SlackResearchCapabilityStatusV1 =
   | "supported"
   | "degraded"
-  | "blocked";
+  | "blocked"
+  | "incompatible";
 
 export interface SlackResearchCapabilityDecisionV1 {
+  readonly capability_manifest_digest: string;
+  readonly capability_manifest_generation: number;
+  readonly capability_manifest_service_id: string;
+  readonly contract_version: string;
   readonly decision_id: string;
   readonly missing_optional: readonly CapabilityRequirement[];
   readonly missing_required: readonly CapabilityRequirement[];
@@ -49,6 +59,7 @@ export interface SlackResearchResultV1 {
 
 export interface SlackResearchSummaryPolicyInputV1 {
   readonly capability_decision: SlackResearchCapabilityDecisionV1;
+  readonly capability_manifest: CapabilityManifestV1;
   readonly max_summary_items?: number;
   readonly max_summary_utf8_bytes?: number;
   readonly request: SlackResearchRequestV1;
@@ -75,7 +86,10 @@ export type SlackResearchSummaryPlanV1 =
   | {
       readonly completeness: "none";
       readonly disposition: "unavailable";
-      readonly reason_code: "missing_required_capability" | "no_successful_results";
+      readonly reason_code:
+        | "incompatible_contract"
+        | "missing_required_capability"
+        | "required_result_unavailable";
       readonly schema_version: "slack-research-summary-plan/v1";
       readonly summary_id: string;
     };

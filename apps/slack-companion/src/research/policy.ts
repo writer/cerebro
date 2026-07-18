@@ -1,6 +1,9 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import type { CapabilityRequirement } from "@writer/cerebro-sdk";
+import type {
+  CapabilityManifestV1,
+  CapabilityRequirement,
+} from "@writer/cerebro-sdk";
 
 import {
   SLACK_RESEARCH_LIMITS,
@@ -26,10 +29,11 @@ export function slackResearchIdentity(subjectRef: string, requestKey: string): s
 
 export function decideSlackResearchCapabilities(
   request: SlackResearchRequestV1,
-  availableCapabilities: readonly CapabilityRequirement[],
+  capabilityManifest: CapabilityManifestV1,
 ): SlackResearchCapabilityDecisionV1 {
   const normalizedRequest = normalizeRequest(request);
-  const offered = canonicalCapabilities(availableCapabilities, "available capabilities");
+  const manifest = normalizeCapabilityManifest(capabilityManifest);
+  const offered = manifest.capabilities;
   const researchId = slackResearchIdentity(
     normalizedRequest.subject_ref,
     normalizedRequest.request_key,
@@ -44,15 +48,23 @@ export function decideSlackResearchCapabilities(
   const missingOptional = freezeCapabilities(
     missing.filter((capability) => capability.level === "optional"),
   );
-  const status = missingRequired.length > 0
-    ? "blocked"
-    : missingOptional.length > 0
-      ? "degraded"
-      : "supported";
+  const status = !manifest.contract_versions.includes(normalizedRequest.contract_version)
+    ? "incompatible"
+    : missingRequired.length > 0
+      ? "blocked"
+      : missingOptional.length > 0
+        ? "degraded"
+        : "supported";
   return Object.freeze({
+    capability_manifest_digest: manifest.digest,
+    capability_manifest_generation: manifest.generation,
+    capability_manifest_service_id: manifest.service_id,
+    contract_version: normalizedRequest.contract_version,
     decision_id: capabilityDecisionIdentity(
       researchId,
       requestDigest,
+      manifest,
+      normalizedRequest.contract_version,
       status,
       missingRequired,
       missingOptional,
@@ -75,6 +87,7 @@ export function planSlackResearchSummary(
 ): SlackResearchSummaryPlanV1 {
   exactKeys(input, [
     "capability_decision",
+    "capability_manifest",
     "max_summary_items",
     "max_summary_utf8_bytes",
     "request",
@@ -85,7 +98,12 @@ export function planSlackResearchSummary(
     throw new SlackResearchPolicyError("The research summary policy version is unsupported.");
   }
   const request = normalizeRequest(input.request);
-  const decision = validateCapabilityDecision(input.capability_decision, request);
+  const manifest = normalizeCapabilityManifest(input.capability_manifest);
+  const decision = validateCapabilityDecision(
+    input.capability_decision,
+    request,
+    manifest,
+  );
   const results = canonicalResults(input.results, decision.research_id, request.capabilities);
   const maxItems = boundedOptionalInteger(
     input.max_summary_items,
@@ -105,6 +123,15 @@ export function planSlackResearchSummary(
     ...results.map(resultIdentity),
   ])}`;
 
+  if (decision.status === "incompatible") {
+    return Object.freeze({
+      completeness: "none",
+      disposition: "unavailable",
+      reason_code: "incompatible_contract",
+      schema_version: "slack-research-summary-plan/v1",
+      summary_id: summaryId,
+    });
+  }
   if (decision.status === "blocked") {
     return Object.freeze({
       completeness: "none",
@@ -115,25 +142,35 @@ export function planSlackResearchSummary(
     });
   }
 
+  const resultByCapability = new Map(
+    results.map((result) => [resultCapabilityIdentity(result), result]),
+  );
+  const missingResult = request.capabilities.some(
+    (capability) => !resultByCapability.has(capabilityVersionIdentity(capability)),
+  );
   const successful = results.filter(
     (result): result is SlackResearchResultV1 & { result_ref: string } =>
       result.state === "succeeded",
   );
   const pending = results.some((result) => result.state === "pending");
-  if (successful.length === 0) {
-    if (pending) {
-      return Object.freeze({
-        completeness: "pending",
-        disposition: "wait",
-        reason_code: "results_pending",
-        schema_version: "slack-research-summary-plan/v1",
-        summary_id: summaryId,
-      });
-    }
+  if (missingResult || pending) {
+    return Object.freeze({
+      completeness: "pending",
+      disposition: "wait",
+      reason_code: "results_pending",
+      schema_version: "slack-research-summary-plan/v1",
+      summary_id: summaryId,
+    });
+  }
+  const requiredUnavailable = request.capabilities.some((capability) => {
+    if (capability.level !== "required") return false;
+    return resultByCapability.get(capabilityVersionIdentity(capability))?.state !== "succeeded";
+  });
+  if (requiredUnavailable) {
     return Object.freeze({
       completeness: "none",
       disposition: "unavailable",
-      reason_code: "no_successful_results",
+      reason_code: "required_result_unavailable",
       schema_version: "slack-research-summary-plan/v1",
       summary_id: summaryId,
     });
@@ -158,7 +195,7 @@ export function planSlackResearchSummary(
 function normalizeRequest(request: SlackResearchRequestV1): SlackResearchRequestV1 {
   exactKeys(
     request,
-    ["capabilities", "request_key", "schema_version", "subject_ref"],
+    ["capabilities", "contract_version", "request_key", "schema_version", "subject_ref"],
     "research request",
   );
   if (request.schema_version !== "slack-research-request/v1") {
@@ -166,8 +203,16 @@ function normalizeRequest(request: SlackResearchRequestV1): SlackResearchRequest
   }
   requireRef(request.subject_ref, "subject_ref");
   requireRequestKey(request.request_key);
+  if (!CAPABILITY_VERSION.test(request.contract_version)) {
+    throw new SlackResearchPolicyError("The research contract version is invalid.");
+  }
+  const capabilities = canonicalCapabilities(request.capabilities, "research capabilities");
+  if (capabilities.length === 0) {
+    throw new SlackResearchPolicyError("The research request requires a capability.");
+  }
   return Object.freeze({
-    capabilities: canonicalCapabilities(request.capabilities, "research capabilities"),
+    capabilities,
+    contract_version: request.contract_version,
     request_key: request.request_key,
     schema_version: "slack-research-request/v1",
     subject_ref: request.subject_ref,
@@ -177,8 +222,13 @@ function normalizeRequest(request: SlackResearchRequestV1): SlackResearchRequest
 function validateCapabilityDecision(
   decision: SlackResearchCapabilityDecisionV1,
   request: SlackResearchRequestV1,
+  manifest: CapabilityManifestV1,
 ): SlackResearchCapabilityDecisionV1 {
   exactKeys(decision, [
+    "capability_manifest_digest",
+    "capability_manifest_generation",
+    "capability_manifest_service_id",
+    "contract_version",
     "decision_id",
     "missing_optional",
     "missing_required",
@@ -212,23 +262,18 @@ function validateCapabilityDecision(
   ) {
     throw new SlackResearchPolicyError("The missing research capability set is invalid.");
   }
-  const expectedStatus = missingRequired.length > 0
-    ? "blocked"
-    : missingOptional.length > 0
-      ? "degraded"
-      : "supported";
-  if (decision.status !== expectedStatus) {
-    throw new SlackResearchPolicyError("The research capability decision status is inconsistent.");
-  }
-  const expectedDecisionId = capabilityDecisionIdentity(
-    researchId,
-    decision.request_digest,
-    expectedStatus,
-    missingRequired,
-    missingOptional,
-  );
-  if (decision.decision_id !== expectedDecisionId) {
-    throw new SlackResearchPolicyError("The research capability decision identity is invalid.");
+  const expected = decideSlackResearchCapabilities(request, manifest);
+  if (
+    decision.capability_manifest_digest !== expected.capability_manifest_digest
+    || decision.capability_manifest_generation !== expected.capability_manifest_generation
+    || decision.capability_manifest_service_id !== expected.capability_manifest_service_id
+    || decision.contract_version !== expected.contract_version
+    || decision.status !== expected.status
+    || decision.decision_id !== expected.decision_id
+    || !sameCapabilities(missingRequired, expected.missing_required)
+    || !sameCapabilities(missingOptional, expected.missing_optional)
+  ) {
+    throw new SlackResearchPolicyError("The research capability decision is inconsistent with its manifest.");
   }
   return Object.freeze({
     ...decision,
@@ -237,10 +282,58 @@ function validateCapabilityDecision(
   });
 }
 
+function normalizeCapabilityManifest(
+  manifest: CapabilityManifestV1,
+): CapabilityManifestV1 {
+  exactKeys(manifest, [
+    "capabilities",
+    "contract_versions",
+    "digest",
+    "generation",
+    "produced_at",
+    "schema_version",
+    "service_id",
+  ], "capability manifest");
+  if (manifest.schema_version !== "capability-manifest/v1") {
+    throw new SlackResearchPolicyError("The capability manifest version is unsupported.");
+  }
+  requireRef(manifest.service_id, "capability manifest service_id");
+  requireRef(manifest.digest, "capability manifest digest");
+  if (!Number.isSafeInteger(manifest.generation) || manifest.generation < 1) {
+    throw new SlackResearchPolicyError("The capability manifest generation is invalid.");
+  }
+  if (
+    !Array.isArray(manifest.contract_versions)
+    || manifest.contract_versions.length === 0
+    || manifest.contract_versions.length > SLACK_RESEARCH_LIMITS.contract_versions
+  ) {
+    throw new SlackResearchPolicyError("The capability manifest contract versions are out of bounds.");
+  }
+  const contractVersions = manifest.contract_versions.map((version) => {
+    if (!CAPABILITY_VERSION.test(version)) {
+      throw new SlackResearchPolicyError("A capability manifest contract version is invalid.");
+    }
+    return version;
+  }).sort(compare);
+  if (new Set(contractVersions).size !== contractVersions.length) {
+    throw new SlackResearchPolicyError("The capability manifest contract versions are duplicated.");
+  }
+  Object.freeze(contractVersions);
+  return Object.freeze({
+    capabilities: canonicalCapabilities(manifest.capabilities, "manifest capabilities"),
+    contract_versions: contractVersions,
+    digest: manifest.digest,
+    generation: manifest.generation,
+    produced_at: canonicalTimestamp(manifest.produced_at, "capability manifest produced_at"),
+    schema_version: "capability-manifest/v1",
+    service_id: manifest.service_id,
+  });
+}
+
 function canonicalCapabilities(
   values: readonly CapabilityRequirement[],
   label: string,
-): readonly CapabilityRequirement[] {
+): CapabilityRequirement[] {
   if (!Array.isArray(values) || values.length > SLACK_RESEARCH_LIMITS.capabilities) {
     throw new SlackResearchPolicyError(`The ${label} are out of bounds.`);
   }
@@ -263,7 +356,8 @@ function canonicalCapabilities(
     return Object.freeze({ ...value });
   });
   capabilities.sort((left, right) => compare(capabilityIdentity(left), capabilityIdentity(right)));
-  return Object.freeze(capabilities);
+  Object.freeze(capabilities);
+  return capabilities;
 }
 
 function freezeCapabilities(
@@ -334,6 +428,7 @@ function researchRequestDigest(request: SlackResearchRequestV1): string {
     request.schema_version,
     request.subject_ref,
     request.request_key,
+    request.contract_version,
     ...request.capabilities.map(capabilityIdentity),
   ]);
 }
@@ -345,6 +440,8 @@ function capabilityIdentity(capability: CapabilityRequirement): string {
 function capabilityDecisionIdentity(
   researchId: string,
   requestDigest: string,
+  manifest: CapabilityManifestV1,
+  contractVersion: string,
   status: SlackResearchCapabilityDecisionV1["status"],
   missingRequired: readonly CapabilityRequirement[],
   missingOptional: readonly CapabilityRequirement[],
@@ -352,11 +449,25 @@ function capabilityDecisionIdentity(
   return `slack-research-capabilities:${stableDigest([
     researchId,
     requestDigest,
+    manifest.service_id,
+    String(manifest.generation),
+    manifest.digest,
+    contractVersion,
     status,
     ...missingRequired.map(capabilityIdentity),
     "optional",
     ...missingOptional.map(capabilityIdentity),
   ])}`;
+}
+
+function capabilityVersionIdentity(
+  capability: Pick<CapabilityRequirement, "capability_id" | "version">,
+): string {
+  return `${capability.capability_id}@${capability.version}`;
+}
+
+function resultCapabilityIdentity(result: SlackResearchResultV1): string {
+  return `${result.capability_id}@${result.capability_version}`;
 }
 
 function resultIdentity(result: SlackResearchResultV1): string {
@@ -374,6 +485,15 @@ function sameCapability(
   right: CapabilityRequirement,
 ): boolean {
   return left.capability_id === right.capability_id && left.version === right.version;
+}
+
+function sameCapabilities(
+  left: readonly CapabilityRequirement[],
+  right: readonly CapabilityRequirement[],
+): boolean {
+  return left.length === right.length && left.every(
+    (capability, index) => capabilityIdentity(capability) === capabilityIdentity(right[index]!),
+  );
 }
 
 function boundedOptionalInteger(
@@ -411,10 +531,36 @@ function requireRequestKey(value: unknown): asserts value is string {
   }
 }
 
-function exactKeys(value: object, allowed: readonly string[], label: string): void {
+function canonicalTimestamp(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new SlackResearchPolicyError(`The ${label} is invalid.`);
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new SlackResearchPolicyError(`The ${label} must be a canonical timestamp.`);
+  }
+  return value;
+}
+
+function exactKeys(value: unknown, allowed: readonly string[], label: string): void {
+  requirePlainRecord(value, label);
   const allowedKeys = new Set(allowed);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     throw new SlackResearchPolicyError(`The ${label} contains unknown fields.`);
+  }
+}
+
+function requirePlainRecord(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new SlackResearchPolicyError(`The ${label} is invalid.`);
   }
 }
 

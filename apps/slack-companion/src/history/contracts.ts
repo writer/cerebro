@@ -6,7 +6,7 @@ export const SLACK_HISTORY_LIMITS = {
 } as const;
 
 export type SlackHistoryAnchorV1 =
-  | { readonly kind: "latest" }
+  | { readonly high_water_sequence: number; readonly kind: "snapshot" }
   | { readonly before_sequence: number; readonly kind: "before" };
 
 export interface SlackHistoryRetrievalRequestV1 {

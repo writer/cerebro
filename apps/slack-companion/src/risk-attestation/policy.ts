@@ -119,6 +119,28 @@ export function decideRiskAttestation(
         schema_version: "risk-attestation-decision-result/v1",
       });
     }
+    if (
+      normalizedRequest.expected_revision !== receipt.from_revision
+      || normalizedRequest.decision !== receipt.decision
+      || normalizedRequest.decided_at !== receipt.attestation.updated_at
+    ) {
+      throw new RiskAttestationPolicyError(
+        "The risk attestation receipt does not match its decision request.",
+      );
+    }
+    const currentDigest = riskAttestationSnapshotDigest(attestation);
+    const matchesPreState =
+      currentDigest === receipt.from_attestation_digest
+      && attestation.state === receipt.from_state
+      && attestation.revision === receipt.from_revision
+      && attestation.state_sequence === receipt.from_state_sequence;
+    const matchesPostState =
+      currentDigest === riskAttestationSnapshotDigest(receipt.attestation);
+    if (!matchesPreState && !matchesPostState) {
+      throw new RiskAttestationPolicyError(
+        "The risk attestation replay does not match the current state.",
+      );
+    }
     return Object.freeze({
       applied: true,
       receipt,
@@ -151,11 +173,17 @@ export function decideRiskAttestation(
     decision: normalizedRequest.decision,
     decision_id: decisionId,
     decision_key: normalizedRequest.decision_key,
+    from_attestation: attestation,
+    from_attestation_digest: riskAttestationSnapshotDigest(attestation),
+    from_revision: attestation.revision,
     from_state: attestation.state,
+    from_state_sequence: attestation.state_sequence,
     receipt_id: receiptId,
     request_digest: requestDigest,
     schema_version: "risk-attestation-decision-receipt/v1" as const,
+    to_revision: updated.revision,
     to_state: toState,
+    to_state_sequence: updated.state_sequence,
   };
   const receipt = Object.freeze({
     ...receiptWithoutDigest,
@@ -256,11 +284,16 @@ function validateLookup(
   lookup: RiskAttestationDecisionReceiptLookupV1,
   receiptId: string,
 ): void {
+  requirePlainRecord(lookup, "risk attestation receipt lookup");
+  if (lookup.found !== true && lookup.found !== false) {
+    throw new RiskAttestationPolicyError("The risk attestation receipt lookup is invalid.");
+  }
   if (lookup.schema_version !== "risk-attestation-decision-receipt-lookup/v1") {
     throw new RiskAttestationPolicyError("The risk attestation receipt lookup version is unsupported.");
   }
   if (lookup.found) {
     exactKeys(lookup, ["found", "receipt", "schema_version"], "risk attestation receipt lookup");
+    requirePlainRecord(lookup.receipt, "risk attestation receipt");
     if (lookup.receipt.receipt_id !== receiptId) {
       throw new RiskAttestationPolicyError("The risk attestation lookup returned a different receipt.");
     }
@@ -280,12 +313,18 @@ function snapshotReceipt(
     "decision",
     "decision_id",
     "decision_key",
+    "from_attestation",
+    "from_attestation_digest",
+    "from_revision",
     "from_state",
+    "from_state_sequence",
     "receipt_digest",
     "receipt_id",
     "request_digest",
     "schema_version",
+    "to_revision",
     "to_state",
+    "to_state_sequence",
   ], "risk attestation receipt");
   if (receipt.schema_version !== "risk-attestation-decision-receipt/v1") {
     throw new RiskAttestationPolicyError("The risk attestation receipt version is unsupported.");
@@ -298,6 +337,7 @@ function snapshotReceipt(
     RISK_ATTESTATION_LIMITS.decision_key_utf8_bytes,
     "decision_key",
   );
+  const fromAttestation = validateAttestation(receipt.from_attestation);
   const attestation = validateAttestation(receipt.attestation);
   const expectedDecisionId = riskAttestationDecisionIdentity(
     attestation.attestation_id,
@@ -308,6 +348,24 @@ function snapshotReceipt(
     || receipt.receipt_id !== riskAttestationDecisionReceiptIdentity(expectedDecisionId)
   ) {
     throw new RiskAttestationPolicyError("The risk attestation receipt identity is invalid.");
+  }
+  if (
+    !SHA256_DIGEST.test(receipt.from_attestation_digest)
+    || receipt.from_attestation_digest !== riskAttestationSnapshotDigest(fromAttestation)
+    || receipt.from_revision !== fromAttestation.revision
+    || receipt.from_state !== fromAttestation.state
+    || receipt.from_state_sequence !== fromAttestation.state_sequence
+    || receipt.to_revision !== attestation.revision
+    || receipt.to_state_sequence !== attestation.state_sequence
+    || receipt.to_revision !== receipt.from_revision + 1
+    || receipt.to_state_sequence !== receipt.from_state_sequence + 1
+    || attestation.attestation_id !== fromAttestation.attestation_id
+    || attestation.subject_ref !== fromAttestation.subject_ref
+    || attestation.request_key !== fromAttestation.request_key
+    || attestation.created_at !== fromAttestation.created_at
+    || Date.parse(attestation.updated_at) < Date.parse(fromAttestation.updated_at)
+  ) {
+    throw new RiskAttestationPolicyError("The risk attestation receipt state boundary is invalid.");
   }
   if (
     !RISK_ATTESTATION_STATES.includes(receipt.from_state)
@@ -326,11 +384,17 @@ function snapshotReceipt(
     decision: receipt.decision,
     decision_id: receipt.decision_id,
     decision_key: receipt.decision_key,
+    from_attestation: fromAttestation,
+    from_attestation_digest: receipt.from_attestation_digest,
+    from_revision: receipt.from_revision,
     from_state: receipt.from_state,
+    from_state_sequence: receipt.from_state_sequence,
     receipt_id: receipt.receipt_id,
     request_digest: receipt.request_digest,
     schema_version: "risk-attestation-decision-receipt/v1" as const,
+    to_revision: receipt.to_revision,
     to_state: receipt.to_state,
+    to_state_sequence: receipt.to_state_sequence,
   };
   const digest = decisionReceiptDigest(snapshot);
   if (receipt.receipt_digest !== digest) {
@@ -358,6 +422,7 @@ function decisionRequestDigest(
 function decisionReceiptDigest(
   receipt: Omit<RiskAttestationDecisionReceiptV1, "receipt_digest">,
 ): string {
+  const fromAttestation = receipt.from_attestation;
   const attestation = receipt.attestation;
   return sha256([
     receipt.schema_version,
@@ -366,8 +431,38 @@ function decisionReceiptDigest(
     receipt.decision_id,
     receipt.decision_key,
     receipt.decision,
+    receipt.from_attestation_digest,
+    String(receipt.from_revision),
     receipt.from_state,
+    String(receipt.from_state_sequence),
+    String(receipt.to_revision),
     receipt.to_state,
+    String(receipt.to_state_sequence),
+    fromAttestation.schema_version,
+    fromAttestation.attestation_id,
+    fromAttestation.subject_ref,
+    fromAttestation.request_key,
+    fromAttestation.created_at,
+    fromAttestation.updated_at,
+    String(fromAttestation.revision),
+    String(fromAttestation.state_sequence),
+    fromAttestation.state,
+    fromAttestation.last_decision_id ?? "",
+    attestation.schema_version,
+    attestation.attestation_id,
+    attestation.subject_ref,
+    attestation.request_key,
+    attestation.created_at,
+    attestation.updated_at,
+    String(attestation.revision),
+    String(attestation.state_sequence),
+    attestation.state,
+    attestation.last_decision_id ?? "",
+  ]);
+}
+
+function riskAttestationSnapshotDigest(attestation: RiskAttestationV1): string {
+  return sha256([
     attestation.schema_version,
     attestation.attestation_id,
     attestation.subject_ref,
@@ -422,10 +517,25 @@ function requireText(
   }
 }
 
-function exactKeys(value: object, allowed: readonly string[], label: string): void {
+function exactKeys(value: unknown, allowed: readonly string[], label: string): void {
+  requirePlainRecord(value, label);
   const allowedKeys = new Set(allowed);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     throw new RiskAttestationPolicyError(`The ${label} contains unknown fields.`);
+  }
+}
+
+function requirePlainRecord(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new RiskAttestationPolicyError(`The ${label} is invalid.`);
   }
 }
 

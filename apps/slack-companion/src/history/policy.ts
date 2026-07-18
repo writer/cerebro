@@ -151,12 +151,19 @@ function normalizeRequest(
 }
 
 function normalizeAnchor(anchor: SlackHistoryAnchorV1): SlackHistoryAnchorV1 {
-  if (anchor === null || typeof anchor !== "object") {
-    throw new SlackHistoryPolicyError("The history anchor is invalid.");
-  }
-  if (anchor.kind === "latest") {
-    exactKeys(anchor, ["kind"], "latest history anchor");
-    return Object.freeze({ kind: "latest" });
+  requirePlainRecord(anchor, "history anchor");
+  if (anchor.kind === "snapshot") {
+    exactKeys(anchor, ["high_water_sequence", "kind"], "snapshot history anchor");
+    if (
+      !Number.isSafeInteger(anchor.high_water_sequence)
+      || anchor.high_water_sequence < 0
+    ) {
+      throw new SlackHistoryPolicyError("The history snapshot sequence is invalid.");
+    }
+    return Object.freeze({
+      high_water_sequence: anchor.high_water_sequence,
+      kind: "snapshot",
+    });
   }
   if (anchor.kind !== "before") {
     throw new SlackHistoryPolicyError("The history anchor kind is unsupported.");
@@ -194,11 +201,16 @@ function validateLookup(
   lookup: SlackHistoryRetrievalReceiptLookupV1,
   receiptId: string,
 ): void {
+  requirePlainRecord(lookup, "history receipt lookup");
+  if (lookup.found !== true && lookup.found !== false) {
+    throw new SlackHistoryPolicyError("The history receipt lookup is invalid.");
+  }
   if (lookup.schema_version !== "slack-history-retrieval-receipt-lookup/v1") {
     throw new SlackHistoryPolicyError("The history receipt lookup version is unsupported.");
   }
   if (lookup.found) {
     exactKeys(lookup, ["found", "receipt", "schema_version"], "history receipt lookup");
+    requirePlainRecord(lookup.receipt, "history receipt");
     if (lookup.receipt.receipt_id !== receiptId) {
       throw new SlackHistoryPolicyError("The history receipt lookup returned a different receipt.");
     }
@@ -234,6 +246,9 @@ function snapshotReceipt(
   const expectedId = slackHistoryRetrievalReceiptIdentity(receipt.retrieval_id);
   if (receipt.receipt_id !== expectedId) {
     throw new SlackHistoryPolicyError("The history receipt identity is invalid.");
+  }
+  if (window.retrieval_id !== receipt.retrieval_id) {
+    throw new SlackHistoryPolicyError("The history window retrieval identity is invalid.");
   }
   const snapshot = {
     receipt_id: receipt.receipt_id,
@@ -281,7 +296,9 @@ function historyRequestDigest(request: SlackHistoryRetrievalRequestV1): string {
     request.thread_ref,
     request.request_key,
     request.anchor.kind,
-    request.anchor.kind === "before" ? String(request.anchor.before_sequence) : "",
+    request.anchor.kind === "before"
+      ? String(request.anchor.before_sequence)
+      : String(request.anchor.high_water_sequence),
     request.requested_items === undefined ? "" : String(request.requested_items),
   ]);
 }
@@ -301,7 +318,7 @@ function historyReceiptDigest(
     receipt.window.anchor.kind,
     receipt.window.anchor.kind === "before"
       ? String(receipt.window.anchor.before_sequence)
-      : "",
+      : String(receipt.window.anchor.high_water_sequence),
     String(receipt.window.item_limit),
   ]);
 }
@@ -332,10 +349,25 @@ function requireText(
   }
 }
 
-function exactKeys(value: object, allowed: readonly string[], label: string): void {
+function exactKeys(value: unknown, allowed: readonly string[], label: string): void {
+  requirePlainRecord(value, label);
   const allowedKeys = new Set(allowed);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     throw new SlackHistoryPolicyError(`The ${label} contains unknown fields.`);
+  }
+}
+
+function requirePlainRecord(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new SlackHistoryPolicyError(`The ${label} is invalid.`);
   }
 }
 

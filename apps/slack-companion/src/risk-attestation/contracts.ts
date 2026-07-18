@@ -60,12 +60,18 @@ export interface RiskAttestationDecisionReceiptV1 {
   readonly decision: RiskAttestationDecisionKindV1;
   readonly decision_id: string;
   readonly decision_key: string;
+  readonly from_attestation: RiskAttestationV1;
+  readonly from_attestation_digest: string;
+  readonly from_revision: number;
   readonly from_state: RiskAttestationStateV1;
+  readonly from_state_sequence: number;
   readonly receipt_digest: string;
   readonly receipt_id: string;
   readonly request_digest: string;
   readonly schema_version: "risk-attestation-decision-receipt/v1";
+  readonly to_revision: number;
   readonly to_state: RiskAttestationStateV1;
+  readonly to_state_sequence: number;
 }
 
 /** A host resolves this receipt lookup before applying the pure policy. */

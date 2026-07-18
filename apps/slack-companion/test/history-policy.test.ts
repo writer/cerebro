@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 
-import type { SlackHistoryRetrievalRequestV1 } from "../src/history/contracts.js";
+import type {
+  SlackHistoryRetrievalReceiptV1,
+  SlackHistoryRetrievalRequestV1,
+} from "../src/history/contracts.js";
 import { SLACK_HISTORY_LIMITS } from "../src/history/contracts.js";
 import {
   planSlackHistoryRetrieval,
+  SlackHistoryPolicyError,
   slackHistoryRetrievalIdentity,
   slackHistoryRetrievalReceiptIdentity,
 } from "../src/history/policy.js";
@@ -13,13 +18,35 @@ function request(
   overrides: Partial<SlackHistoryRetrievalRequestV1> = {},
 ): SlackHistoryRetrievalRequestV1 {
   return {
-    anchor: { before_sequence: 42, kind: "before" },
+    anchor: { high_water_sequence: 42, kind: "snapshot" },
     request_key: "history-request-1",
     requested_items: 30,
     schema_version: "slack-history-retrieval-request/v1",
     thread_ref: "thread:sample-1",
     ...overrides,
   };
+}
+
+function receiptDigest(
+  receipt: Omit<SlackHistoryRetrievalReceiptV1, "receipt_digest">,
+): string {
+  const { window } = receipt;
+  const values = [
+    receipt.schema_version,
+    receipt.receipt_id,
+    receipt.request_digest,
+    receipt.request_key,
+    receipt.retrieval_id,
+    window.schema_version,
+    window.thread_ref,
+    window.retrieval_id,
+    window.anchor.kind,
+    window.anchor.kind === "before"
+      ? String(window.anchor.before_sequence)
+      : String(window.anchor.high_water_sequence),
+    String(window.item_limit),
+  ];
+  return `sha256:${createHash("sha256").update(JSON.stringify(values), "utf8").digest("hex")}`;
 }
 
 function missingLookup(value = request()) {
@@ -48,7 +75,10 @@ describe("bounded Slack history retrieval", () => {
     assert.equal(first.disposition, "retrieve");
     if (first.disposition !== "retrieve") assert.fail("expected retrieval");
     assert.equal(first.receipt.window.item_limit, 12);
-    assert.deepEqual(first.receipt.window.anchor, { before_sequence: 42, kind: "before" });
+    assert.deepEqual(first.receipt.window.anchor, {
+      high_water_sequence: 42,
+      kind: "snapshot",
+    });
     assert.match(first.receipt.request_digest, /^sha256:[a-f0-9]{64}$/);
     assert.match(first.receipt.receipt_digest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(Object.isFrozen(first), true);
@@ -81,7 +111,9 @@ describe("bounded Slack history retrieval", () => {
     const original = planSlackHistoryRetrieval(request(), missingLookup());
     assert.equal(original.disposition, "retrieve");
     if (original.disposition !== "retrieve") assert.fail("expected retrieval");
-    const changed = request({ anchor: { kind: "latest" } });
+    const changed = request({
+      anchor: { high_water_sequence: 43, kind: "snapshot" },
+    });
 
     assert.deepEqual(planSlackHistoryRetrieval(changed, {
       found: true,
@@ -120,5 +152,56 @@ describe("bounded Slack history retrieval", () => {
       request({ anchor: { before_sequence: 0, kind: "before" } }),
       missingLookup(),
     ), /anchor sequence/);
+    assert.throws(() => planSlackHistoryRetrieval(
+      request({ anchor: { high_water_sequence: -1, kind: "snapshot" } }),
+      missingLookup(),
+    ), /snapshot sequence/);
+  });
+
+  test("rejects a receipt whose embedded window belongs to another retrieval", () => {
+    const created = planSlackHistoryRetrieval(request(), missingLookup());
+    assert.equal(created.disposition, "retrieve");
+    if (created.disposition !== "retrieve") assert.fail("expected retrieval");
+    const withoutDigest = {
+      ...created.receipt,
+      window: {
+        ...created.receipt.window,
+        retrieval_id: "slack-history:another-window",
+      },
+    };
+    const tampered = {
+      ...withoutDigest,
+      receipt_digest: receiptDigest(withoutDigest),
+    };
+    assert.throws(() => planSlackHistoryRetrieval(request(), {
+      found: true,
+      receipt: tampered,
+      schema_version: "slack-history-retrieval-receipt-lookup/v1",
+    }), /window retrieval identity/);
+  });
+
+  test("rejects every non-plain top-level and nested record", () => {
+    const invalidRecords = [null, [], 7, () => undefined, new Date()];
+    for (const invalid of invalidRecords) {
+      assert.throws(
+        () => planSlackHistoryRetrieval(invalid as never, missingLookup()),
+        SlackHistoryPolicyError,
+      );
+      assert.throws(
+        () => planSlackHistoryRetrieval(
+          request({ anchor: invalid as never }),
+          missingLookup(),
+        ),
+        SlackHistoryPolicyError,
+      );
+      assert.throws(
+        () => planSlackHistoryRetrieval(request(), {
+          found: true,
+          receipt: invalid,
+          schema_version: "slack-history-retrieval-receipt-lookup/v1",
+        } as never),
+        SlackHistoryPolicyError,
+      );
+    }
   });
 });
