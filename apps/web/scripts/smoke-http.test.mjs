@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertJavaScriptChunkResponse,
   extractNextScriptSrcs,
   isJavaScriptContentType,
   scriptUrlFor,
@@ -29,5 +30,14 @@ describe("smoke-http helpers", () => {
   it("resolves relative chunk URLs against a deployment base URL", () => {
     expect(scriptUrlFor("https://cerebro.example.com/app/", "/_next/static/chunks/a.js"))
       .toBe("https://cerebro.example.com/_next/static/chunks/a.js");
+  });
+
+  it("rejects a malformed JavaScript chunk even when status and MIME type pass", () => {
+    expect(() => assertJavaScriptChunkResponse({
+      body: "this is not valid JavaScript {{{",
+      headers: new Headers({ "content-type": "application/javascript" }),
+      status: 200,
+      url: "http://127.0.0.1/chunk.js",
+    })).toThrow("was not executable");
   });
 });
