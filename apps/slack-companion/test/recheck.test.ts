@@ -27,6 +27,7 @@ describe("server-bound delivered answer evidence", () => {
     const binding = makeBinding();
     assert.equal(binding.answer_run_id, "run:answer-1");
     assert.equal(binding.delivery_id, "delivery:answer-1");
+    assert.match(binding.delivery_digest, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(binding.evidence_artifact_ids, ["artifact:a", "artifact:b"]);
     assert.deepEqual(binding.operator_refs, ["actor:operator-a", "actor:operator-b"]);
     assert.match(binding.binding_digest, /^sha256:[a-f0-9]{64}$/);
@@ -55,6 +56,56 @@ describe("server-bound delivered answer evidence", () => {
     assert.throws(
       () => makeBinding({ evidence_artifact_ids: [] }),
       /must be present and bounded/,
+    );
+  });
+
+  test("hashes operator and evidence arrays as separate canonical fields", () => {
+    const first = makeBinding({
+      evidence_artifact_ids: ["evidence", "z"],
+      operator_refs: ["a"],
+    });
+    const second = makeBinding({
+      evidence_artifact_ids: ["z"],
+      operator_refs: ["a", "evidence"],
+    });
+
+    assert.notEqual(first.binding_digest, second.binding_digest);
+    assert.notEqual(first.binding_ref, second.binding_ref);
+  });
+
+  test("binds the immutable completed delivery receipt and rejects duplicate part identities", () => {
+    const original = makeBinding();
+    const firstPart = delivery().parts[0]!;
+    const changedDelivery = makeBinding({
+      delivery: delivery({
+        parts: [{ ...firstPart, destination_receipt: "destination-receipt:changed" }],
+      }),
+    });
+    assert.notEqual(original.delivery_digest, changedDelivery.delivery_digest);
+    assert.notEqual(original.binding_digest, changedDelivery.binding_digest);
+
+    const secondPart = {
+      ...firstPart,
+      delivered_at: "2026-07-18T11:58:31.000Z",
+      destination_receipt: "destination-receipt:2",
+      idempotency_key: "delivery-part:2",
+      sequence: 2,
+    };
+    assert.throws(
+      () => makeBinding({ delivery: delivery({ parts: [firstPart, secondPart] }) }),
+      /part identities must be distinct/,
+    );
+    assert.throws(
+      () =>
+        makeBinding({
+          delivery: delivery({
+            parts: [
+              firstPart,
+              { ...secondPart, idempotency_key: firstPart.idempotency_key, part_id: "part:2" },
+            ],
+          }),
+        }),
+      /part identities must be distinct/,
     );
   });
 
@@ -195,6 +246,50 @@ describe("durable evidence recheck admission", () => {
       admitEvidenceRecheck(input, missingLookup(input), malformedStore),
       /canonical run receipt is invalid/,
     );
+  });
+
+  test("binds every returned durable record to the admitted request", async () => {
+    const input = admissionInput();
+    const mutations: Array<
+      (receipt: EvidenceRecheckAdmissionReceiptV1) => EvidenceRecheckAdmissionReceiptV1
+    > = [
+      (receipt) => ({
+        ...receipt,
+        recheck: { ...receipt.recheck, actor_ref: "actor:operator-a" },
+      }),
+      (receipt) => ({
+        ...receipt,
+        recheck: { ...receipt.recheck, request_key: "event:another-recheck" },
+      }),
+      (receipt) => ({
+        ...receipt,
+        recheck: { ...receipt.recheck, evidence_artifact_ids: ["artifact:other"] },
+      }),
+      (receipt) => ({
+        ...receipt,
+        recheck: { ...receipt.recheck, created_at: "2026-07-18T12:00:02.000Z" },
+      }),
+      (receipt) => ({
+        ...receipt,
+        recheck: { ...receipt.recheck, updated_at: "2026-07-18T12:00:02.000Z" },
+      }),
+      (receipt) => ({
+        ...receipt,
+        run: {
+          ...receipt.run,
+          raw_payload: "not portable",
+        } as unknown as EvidenceRecheckAdmissionReceiptV1["run"],
+      }),
+    ];
+
+    for (const mutateReceipt of mutations) {
+      const store = new RecordingStore();
+      store.mutateReceipt = mutateReceipt;
+      await assert.rejects(
+        admitEvidenceRecheck(input, missingLookup(input), store),
+        /mismatched recheck|unsupported fields/,
+      );
+    }
   });
 
   test("rejects unauthorized, unbounded, and unmodeled requests before persistence", async () => {

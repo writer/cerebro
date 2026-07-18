@@ -38,6 +38,7 @@ export interface DeliveredAnswerEvidenceBindingV1 {
   binding_ref: string;
   bound_at: string;
   conversation_ref: string;
+  delivery_digest: string;
   delivery_id: string;
   evidence_artifact_ids: string[];
   operator_refs: string[];

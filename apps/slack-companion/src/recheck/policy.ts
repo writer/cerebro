@@ -20,6 +20,7 @@ import {
 
 const UNSAFE_TEXT_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const OPAQUE_ARTIFACT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 const RECHECK_STATES: readonly EvidenceRecheckV1["state"][] = [
   "queued",
   "running",
@@ -50,6 +51,7 @@ export function bindDeliveredAnswerEvidence(
   requireRef(input.thread_ref, "thread_ref");
   const boundAt = normalizeTimestamp(input.bound_at, "bound_at");
   validateCompletedDelivery(input.delivery, input.answer_run_id);
+  const deliveryDigest = completedDeliveryDigest(input.delivery);
   const evidenceArtifactIds = canonicalArtifactIds(input.evidence_artifact_ids);
   const operatorRefs = canonicalRefs(
     input.operator_refs,
@@ -61,6 +63,7 @@ export function bindDeliveredAnswerEvidence(
     answer_run_id: input.answer_run_id,
     bound_at: boundAt,
     conversation_ref: input.conversation_ref,
+    delivery_digest: deliveryDigest,
     delivery_id: input.delivery.delivery_id,
     evidence_artifact_ids: evidenceArtifactIds,
     operator_refs: operatorRefs,
@@ -74,6 +77,7 @@ export function bindDeliveredAnswerEvidence(
     binding_ref: evidenceBindingIdentity(bindingDigest),
     bound_at: boundAt,
     conversation_ref: input.conversation_ref,
+    delivery_digest: deliveryDigest,
     delivery_id: input.delivery.delivery_id,
     evidence_artifact_ids: evidenceArtifactIds,
     operator_refs: operatorRefs,
@@ -152,11 +156,14 @@ export async function admitEvidenceRecheck(
   if (receiptLookup.found) {
     validateAdmissionReceipt(receiptLookup.receipt, {
       binding: input.binding,
+      actor_ref: input.actor_ref,
+      admitted_at: receiptLookup.receipt.run.admitted_at,
       capabilities,
       input_digest: inputDigest,
       receipt_id: receiptId,
       received_at: receivedAt,
       recheck_id: recheckId,
+      request_key: input.request_key,
       run_context: input.run_context,
       run_id: runId,
     });
@@ -202,12 +209,15 @@ export async function admitEvidenceRecheck(
     throw new EvidenceRecheckInvariantError("Evidence recheck admission commit result is invalid.");
   }
   validateAdmissionReceipt(committed.receipt, {
+    actor_ref: input.actor_ref,
+    admitted_at: admittedAt,
     binding: input.binding,
     capabilities,
     input_digest: inputDigest,
     receipt_id: receiptId,
     received_at: receivedAt,
     recheck_id: recheckId,
+    request_key: input.request_key,
     run_context: input.run_context,
     run_id: runId,
   });
@@ -299,6 +309,7 @@ export function validateDeliveredAnswerEvidenceBinding(
     "binding_ref",
     "bound_at",
     "conversation_ref",
+    "delivery_digest",
     "delivery_id",
     "evidence_artifact_ids",
     "operator_refs",
@@ -315,6 +326,7 @@ export function validateDeliveredAnswerEvidenceBinding(
     [binding.binding_digest, "binding_digest"],
     [binding.binding_ref, "binding_ref"],
     [binding.conversation_ref, "conversation_ref"],
+    [binding.delivery_digest, "delivery_digest"],
     [binding.delivery_id, "delivery_id"],
     [binding.requester_ref, "requester_ref"],
     [binding.thread_ref, "thread_ref"],
@@ -322,6 +334,7 @@ export function validateDeliveredAnswerEvidenceBinding(
     requireRef(value, label);
   }
   requireCanonicalTimestamp(binding.bound_at, "bound_at");
+  requireSha256Digest(binding.delivery_digest, "delivery_digest");
   const artifactIds = canonicalArtifactIds(binding.evidence_artifact_ids);
   const operatorRefs = canonicalRefs(
     binding.operator_refs,
@@ -377,12 +390,12 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
     [recheck.binding_ref, "binding_ref"],
     [recheck.reason_code, "reason_code"],
     [recheck.recheck_id, "recheck_id"],
-    [recheck.request_key, "request_key"],
     [recheck.run_id, "run_id"],
     [recheck.thread_ref, "thread_ref"],
   ] as const) {
     requireRef(value, label);
   }
+  requireRequestKey(recheck.request_key);
   requireCanonicalTimestamp(recheck.created_at, "created_at");
   requireCanonicalTimestamp(recheck.updated_at, "updated_at");
   requirePositiveInteger(recheck.revision, "revision");
@@ -507,12 +520,15 @@ function validateAdmissionInput(input: AdmitEvidenceRecheckInputV1): void {
 function validateAdmissionReceipt(
   receipt: EvidenceRecheckAdmissionReceiptV1,
   expected: {
+    actor_ref: string;
+    admitted_at: string;
     binding: DeliveredAnswerEvidenceBindingV1;
     capabilities: CapabilityRequirement[];
     input_digest: string;
     receipt_id: string;
     received_at: string;
     recheck_id: string;
+    request_key: string;
     run_context: AdmitEvidenceRecheckInputV1["run_context"];
     run_id: string;
   },
@@ -535,10 +551,18 @@ function validateAdmissionReceipt(
   if (
     receipt.recheck.recheck_id !== expected.recheck_id ||
     receipt.recheck.run_id !== expected.run_id ||
+    receipt.recheck.actor_ref !== expected.actor_ref ||
     receipt.recheck.binding_ref !== expected.binding.binding_ref ||
     receipt.recheck.binding_digest !== expected.binding.binding_digest ||
     receipt.recheck.answer_ref !== expected.binding.answer_ref ||
+    receipt.recheck.request_key !== expected.request_key ||
     receipt.recheck.thread_ref !== expected.binding.thread_ref ||
+    !sameStrings(
+      receipt.recheck.evidence_artifact_ids,
+      expected.binding.evidence_artifact_ids,
+    ) ||
+    receipt.recheck.created_at !== expected.admitted_at ||
+    receipt.recheck.updated_at !== expected.admitted_at ||
     receipt.recheck.state !== "queued" ||
     receipt.recheck.reason_code !== "admitted"
   ) {
@@ -558,13 +582,33 @@ function validateAdmissionReceipt(
 function validateRunReceipt(
   run: RunReceiptV1,
   expected: {
+    admitted_at: string;
     capabilities: CapabilityRequirement[];
     input_digest: string;
+    recheck_id: string;
     received_at: string;
     run_context: AdmitEvidenceRecheckInputV1["run_context"];
     run_id: string;
   },
 ): void {
+  assertExactKeys(run, [
+    "admitted_at",
+    "binding_id",
+    "idempotency_key",
+    "input_digest",
+    "receipt_id",
+    "received_at",
+    "required_capabilities",
+    "retention_policy_ref",
+    "revision",
+    "run_id",
+    "run_kind",
+    "schema_version",
+    "state",
+    "subject_ref",
+    "tenant_id",
+    "updated_at",
+  ], "evidence recheck canonical run receipt");
   if (
     run.schema_version !== "run-receipt/v1" ||
     run.run_id !== expected.run_id ||
@@ -576,7 +620,11 @@ function validateRunReceipt(
     run.subject_ref !== expected.run_context.subject_ref ||
     run.retention_policy_ref !== expected.run_context.retention_policy_ref ||
     run.input_digest !== expected.input_digest ||
-    run.received_at !== expected.received_at
+    run.received_at !== expected.received_at ||
+    run.admitted_at !== expected.admitted_at ||
+    run.updated_at !== expected.admitted_at ||
+    run.receipt_id !== `run-receipt:${stableDigest([expected.run_id])}` ||
+    run.idempotency_key !== `evidence-recheck:${stableDigest([expected.recheck_id])}`
   ) {
     throw new EvidenceRecheckInvariantError("Evidence recheck canonical run receipt is invalid.");
   }
@@ -663,6 +711,16 @@ function validateCompletedDelivery(
   delivery: BindDeliveredAnswerEvidenceInputV1["delivery"],
   answerRunId: string,
 ): void {
+  assertExactKeys(delivery, [
+    "created_at",
+    "delivery_id",
+    "destination_ref",
+    "parts",
+    "run_id",
+    "schema_version",
+    "state",
+    "updated_at",
+  ], "completed delivery receipt");
   if (
     delivery.schema_version !== "delivery-receipt/v1" ||
     delivery.run_id !== answerRunId ||
@@ -683,7 +741,19 @@ function validateCompletedDelivery(
     throw new EvidenceRecheckInvariantError("Delivered answers require bounded delivery parts.");
   }
   let expectedSequence = 1;
+  const partIds = new Set<string>();
+  const idempotencyKeys = new Set<string>();
   for (const part of [...delivery.parts].sort((left, right) => left.sequence - right.sequence)) {
+    assertExactKeys(part, [
+      "delivered_at",
+      "destination_receipt",
+      "idempotency_key",
+      "part_id",
+      "payload_digest",
+      "payload_ref",
+      "sequence",
+      "state",
+    ], "completed delivery part");
     if (
       part.state !== "delivered" ||
       part.destination_receipt === undefined ||
@@ -700,8 +770,41 @@ function validateCompletedDelivery(
     requireRef(part.payload_ref, "delivery part payload_ref");
     requireRef(part.destination_receipt, "delivery part destination_receipt");
     requireCanonicalTimestamp(part.delivered_at, "delivery part delivered_at");
+    if (partIds.has(part.part_id) || idempotencyKeys.has(part.idempotency_key)) {
+      throw new EvidenceRecheckInvariantError(
+        "Completed delivery part identities must be distinct.",
+      );
+    }
+    partIds.add(part.part_id);
+    idempotencyKeys.add(part.idempotency_key);
     expectedSequence += 1;
   }
+}
+
+function completedDeliveryDigest(
+  delivery: BindDeliveredAnswerEvidenceInputV1["delivery"],
+): string {
+  return `sha256:${stableDigest({
+    created_at: delivery.created_at,
+    delivery_id: delivery.delivery_id,
+    destination_ref: delivery.destination_ref,
+    parts: [...delivery.parts]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((part) => ({
+        delivered_at: part.delivered_at,
+        destination_receipt: part.destination_receipt,
+        idempotency_key: part.idempotency_key,
+        part_id: part.part_id,
+        payload_digest: part.payload_digest,
+        payload_ref: part.payload_ref,
+        sequence: part.sequence,
+        state: part.state,
+      })),
+    run_id: delivery.run_id,
+    schema_version: delivery.schema_version,
+    state: delivery.state,
+    updated_at: delivery.updated_at,
+  })}`;
 }
 
 function evidenceRecheckInputDigest(
@@ -732,28 +835,32 @@ function deliveredAnswerEvidenceBindingDigest(input: {
   answer_run_id: string;
   bound_at: string;
   conversation_ref: string;
+  delivery_digest: string;
   delivery_id: string;
   evidence_artifact_ids: readonly string[];
   operator_refs: readonly string[];
   requester_ref: string;
   thread_ref: string;
 }): string {
-  return `sha256:${stableDigest([
-    input.answer_ref,
-    input.answer_run_id,
-    input.delivery_id,
-    input.conversation_ref,
-    input.thread_ref,
-    input.requester_ref,
-    input.bound_at,
-    ...input.operator_refs,
-    "evidence",
-    ...input.evidence_artifact_ids,
-  ])}`;
+  return `sha256:${stableDigest({
+    answer_ref: input.answer_ref,
+    answer_run_id: input.answer_run_id,
+    bound_at: input.bound_at,
+    conversation_ref: input.conversation_ref,
+    delivery_digest: input.delivery_digest,
+    delivery_id: input.delivery_id,
+    evidence_artifact_ids: input.evidence_artifact_ids,
+    operator_refs: input.operator_refs,
+    requester_ref: input.requester_ref,
+    thread_ref: input.thread_ref,
+  })}`;
 }
 
 function evidenceBindingIdentity(bindingDigest: string): string {
-  return `delivered-answer-evidence-binding:${bindingDigest.slice("sha256:".length, 39)}`;
+  return `delivered-answer-evidence-binding:${bindingDigest.slice(
+    "sha256:".length,
+    "sha256:".length + 32,
+  )}`;
 }
 
 function evidenceRecheckRunIdentity(recheckId: string): string {
@@ -910,6 +1017,12 @@ function requireRef(value: string, label: string): void {
   requireBoundedText(value, EVIDENCE_RECHECK_LIMITS.ref_utf8_bytes, label);
 }
 
+function requireSha256Digest(value: string, label: string): void {
+  if (typeof value !== "string" || !SHA256_DIGEST.test(value)) {
+    throw new EvidenceRecheckInvariantError(`${label} must be a canonical SHA-256 digest.`);
+  }
+}
+
 function requireBoundedText(value: string, maximumBytes: number, label: string): void {
   if (
     typeof value !== "string" ||
@@ -942,6 +1055,6 @@ function requireCanonicalTimestamp(value: string, label: string): void {
   }
 }
 
-function stableDigest(values: readonly string[]): string {
-  return createHash("sha256").update(JSON.stringify(values)).digest("hex");
+function stableDigest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
