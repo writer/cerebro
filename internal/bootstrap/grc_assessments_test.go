@@ -3,12 +3,15 @@ package bootstrap
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,6 +55,15 @@ type testAssessmentResultPageResponse struct {
 	Chunks              []complianceassessment.ResultChunk `json:"chunks"`
 	NextSequence        uint32                             `json:"next_sequence"`
 	HasMore             bool                               `json:"has_more"`
+}
+
+type testAssuranceDecisionRecordResponse struct {
+	Decision complianceassessment.AssuranceDecision `json:"decision"`
+	Created  bool                                   `json:"created"`
+}
+
+type testAssuranceDecisionResponse struct {
+	Decision complianceassessment.AssuranceDecision `json:"decision"`
 }
 
 func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
@@ -154,6 +166,113 @@ func TestGRCAssessmentPlanRunAndPagedResults(t *testing.T) {
 	}
 }
 
+func TestGRCAssuranceDecisionRecordAndGet(t *testing.T) {
+	now := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Microsecond)
+	store := newAssessmentHTTPStore()
+	run, result := seedAssessmentHTTPDecisionRun(t, store, now)
+	service := complianceassessment.NewAssessmentService(store, &assessmentHTTPLog{}, nil, nil)
+	app := &App{}
+	app.services.assessments = service
+	mux := http.NewServeMux()
+	app.registerGRCRoutes(mux)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	request := map[string]any{
+		"tenant_id": "tenant-1", "run_id": run.ID, "result_id": result.ID, "as_of": now.Add(time.Minute),
+		"source_proofs": []any{},
+		"evidence_proofs": []complianceassessment.EvidenceProof{{
+			EvidenceID: "evidence-1", State: complianceassessment.EvidenceSufficient,
+			CollectedAt: now, ValidUntil: now.Add(time.Hour),
+		}},
+		"limitations": []any{}, "required_reviews": []any{},
+		"verification": complianceassessment.VerificationProof{State: complianceassessment.VerificationNotRequired},
+	}
+	missingDeclarations := map[string]any{
+		"tenant_id": "tenant-1", "run_id": run.ID, "result_id": result.ID, "as_of": now.Add(time.Minute),
+	}
+	doAssessmentStatus(t, server.Client(), http.MethodPost, server.URL+"/grc/assurance-decisions", missingDeclarations, "decision-missing-declarations", http.StatusBadRequest)
+	recorded := doAssessmentRequest[testAssuranceDecisionRecordResponse](t, server.Client(), http.MethodPost,
+		server.URL+"/grc/assurance-decisions", request, "decision-key-1", http.StatusCreated)
+	if !recorded.Created || recorded.Decision.ID == "" || !recorded.Decision.Decision.Qualified || recorded.Decision.RunID != run.ID {
+		t.Fatalf("recorded decision = %+v", recorded)
+	}
+	replayed := doAssessmentRequest[testAssuranceDecisionRecordResponse](t, server.Client(), http.MethodPost,
+		server.URL+"/grc/assurance-decisions", request, "decision-key-1", http.StatusOK)
+	if replayed.Created || replayed.Decision.ID != recorded.Decision.ID {
+		t.Fatalf("replayed decision = %+v", replayed)
+	}
+	read := doAssessmentRequest[testAssuranceDecisionResponse](t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assurance-decisions/"+recorded.Decision.ID+"?tenant_id=tenant-1", nil, "", http.StatusOK)
+	if read.Decision.RecordDigest != recorded.Decision.RecordDigest || read.Decision.InputSnapshot.Result.ID != result.ID {
+		t.Fatalf("read decision = %+v", read.Decision)
+	}
+	doAssessmentStatus(t, server.Client(), http.MethodGet,
+		server.URL+"/grc/assurance-decisions/"+recorded.Decision.ID+"?tenant_id=tenant-2", nil, "", http.StatusNotFound)
+}
+
+func seedAssessmentHTTPDecisionRun(t *testing.T, store *assessmentHTTPStore, now time.Time) (complianceassessment.AssessmentRun, complianceassessment.ObjectiveResult) {
+	t.Helper()
+	total := uint64(1)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	manifest := complianceassessment.NormalizeManifest(complianceassessment.InputManifest{
+		ProgramID: "program-1", ScopeRevisionID: "scope-revision-1", PlanRevisionID: "plan-revision-1",
+		PeriodStart: now.Add(-24 * time.Hour), PeriodEnd: now, CollectionCutoff: now,
+		RequestedScopeDigest: digest, ResolvedObjectiveSetDigest: digest, MappingSetDigest: digest,
+		Revisions: []complianceassessment.ManifestRevision{{Kind: "plan", ID: "plan-1", RevisionID: "plan-revision-1", Version: 1, Digest: digest}},
+		Receipts:  []complianceassessment.CollectionReceipt{{Kind: "findings", QueryDigest: digest, RawCount: 1, Deduplicated: 1, Included: 1, ExpectedTotal: &total, Watermark: now, Cutoff: now, Completeness: complianceassessment.CollectionComplete, PageDigest: digest}},
+	})
+	result := complianceassessment.NormalizeResult(complianceassessment.ObjectiveResult{
+		ID: "result-1", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, ObjectiveID: "objective-1",
+		ScopeState: complianceassessment.ScopeInScope, AutomatedOutcome: complianceassessment.OutcomeSatisfied,
+		DesignState: complianceassessment.DesignEffective, OperatingEffectivenessState: complianceassessment.OperatingEffective,
+		EvidenceState: complianceassessment.EvidenceSufficient, DispositionState: complianceassessment.DispositionNone,
+		Assurance: complianceassessment.AssuranceHigh, AuditorState: complianceassessment.AuditorNotReviewed,
+		ReasonCodes: []complianceassessment.ReasonCode{complianceassessment.ReasonSatisfied}, NextActions: []complianceassessment.NextAction{complianceassessment.ActionNone},
+		EvidenceIDs: []string{"evidence-1"}, EvaluatorRevision: "evaluator-1", EvaluatedAt: now,
+	})
+	inputHash, err := complianceassessment.CanonicalManifestDigest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultHash, err := complianceassessment.CanonicalResultSetDigest([]complianceassessment.ObjectiveResult{result})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := complianceassessment.AssessmentRun{
+		ID: "assessment-run-00000000000000000000000000000001", TenantID: "tenant-1", ProgramID: manifest.ProgramID,
+		ScopeRevisionID: manifest.ScopeRevisionID, PlanRevisionID: manifest.PlanRevisionID, State: complianceassessment.RunComplete,
+		Version: 4, RequestedAt: now.Add(-time.Hour), RequestedBy: "assessor-1", RequestHash: digest,
+		IdempotencyKey: "run-key-1", InputManifest: &manifest, InputHash: inputHash, AutomatedResultHash: resultHash,
+		ResultCount: 1, CollectionBarrierAt: now.Add(-time.Minute), CompletedAt: now,
+	}
+	payload, err := json.Marshal([]complianceassessment.ObjectiveResult{result})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var canonicalValue any
+	if err := decoder.Decode(&canonicalValue); err != nil {
+		t.Fatal(err)
+	}
+	canonicalPayload, err := json.Marshal(canonicalValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunkHash := sha256.Sum256(append([]byte("\n"), canonicalPayload...))
+	chunk := complianceassessment.ResultChunk{
+		RunID: run.ID, Sequence: 1, FirstResultID: result.ID, LastResultID: result.ID,
+		Count: 1, Digest: "sha256:" + hex.EncodeToString(chunkHash[:]), Results: []complianceassessment.ObjectiveResult{result},
+	}
+	store.mu.Lock()
+	store.runs[assessmentHTTPKey(run.TenantID, run.ID)] = run
+	store.byKey[assessmentHTTPKey(run.TenantID, run.IdempotencyKey)] = run.ID
+	store.chunks[assessmentHTTPKey(run.TenantID, run.ID)] = []complianceassessment.ResultChunk{chunk}
+	store.mu.Unlock()
+	return run, result
+}
+
 func doAssessmentRequest[T any](t *testing.T, client *http.Client, method, url string, body any, idempotencyKey string, wantStatus int) T {
 	t.Helper()
 	var payload []byte
@@ -232,11 +351,13 @@ func (*assessmentHTTPLog) Append(context.Context, *cerebrov1.EventEnvelope) erro
 
 type assessmentHTTPStore struct {
 	*a2ATestJobStore
-	mu     sync.Mutex
-	plans  map[string]complianceassessment.AssessmentPlanRevision
-	runs   map[string]complianceassessment.AssessmentRun
-	byKey  map[string]string
-	chunks map[string][]complianceassessment.ResultChunk
+	mu            sync.Mutex
+	plans         map[string]complianceassessment.AssessmentPlanRevision
+	runs          map[string]complianceassessment.AssessmentRun
+	byKey         map[string]string
+	chunks        map[string][]complianceassessment.ResultChunk
+	decisions     map[string]complianceassessment.AssuranceDecision
+	decisionByKey map[string]string
 }
 
 func newAssessmentHTTPStore() *assessmentHTTPStore {
@@ -246,7 +367,41 @@ func newAssessmentHTTPStore() *assessmentHTTPStore {
 		runs:            map[string]complianceassessment.AssessmentRun{},
 		byKey:           map[string]string{},
 		chunks:          map[string][]complianceassessment.ResultChunk{},
+		decisions:       map[string]complianceassessment.AssuranceDecision{},
+		decisionByKey:   map[string]string{},
 	}
+}
+
+func (s *assessmentHTTPStore) ApplyAssuranceDecision(_ context.Context, _ string, decision complianceassessment.AssuranceDecision) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := assessmentHTTPKey(decision.TenantID, decision.ID)
+	if existing, ok := s.decisions[key]; ok && existing.RecordDigest != decision.RecordDigest {
+		return complianceassessment.ErrAssessmentConflict
+	}
+	s.decisions[key] = decision
+	s.decisionByKey[assessmentHTTPKey(decision.TenantID, decision.IdempotencyKey)] = decision.ID
+	return nil
+}
+
+func (s *assessmentHTTPStore) GetAssuranceDecision(_ context.Context, tenantID, decisionID string) (complianceassessment.AssuranceDecision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	decision, ok := s.decisions[assessmentHTTPKey(tenantID, decisionID)]
+	if !ok {
+		return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
+	}
+	return decision, nil
+}
+
+func (s *assessmentHTTPStore) FindAssuranceDecisionByIdempotency(_ context.Context, tenantID, key string) (complianceassessment.AssuranceDecision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := s.decisionByKey[assessmentHTTPKey(tenantID, key)]
+	if id == "" {
+		return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
+	}
+	return s.decisions[assessmentHTTPKey(tenantID, id)], nil
 }
 
 func assessmentHTTPKey(tenantID, id string) string { return tenantID + "\x00" + id }
@@ -380,6 +535,7 @@ func (*assessmentHTTPStore) ListFindingEvaluationRuns(context.Context, ports.Lis
 
 var _ complianceassessment.Store = (*assessmentHTTPStore)(nil)
 var _ complianceassessment.ResultChunkPageStore = (*assessmentHTTPStore)(nil)
+var _ complianceassessment.AssuranceDecisionStore = (*assessmentHTTPStore)(nil)
 
 func (s *assessmentHTTPStore) String() string {
 	return fmt.Sprintf("assessmentHTTPStore(%d plans, %d runs)", len(s.plans), len(s.runs))
