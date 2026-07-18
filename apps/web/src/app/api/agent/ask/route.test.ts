@@ -1,6 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildAgentInstructions, forwardLegacyAskBody } from "./route";
+import { buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
+
+const originalProducerCatalog = process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
+
+afterEach(() => {
+  if (originalProducerCatalog === undefined) delete process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
+  else process.env.CEREBRO_SECURITY_PRODUCERS_JSON = originalProducerCatalog;
+});
 
 describe("agent instructions", () => {
   it("keeps request metadata on quoted single lines", () => {
@@ -34,6 +41,46 @@ describe("agent instructions", () => {
     expect(instructions).not.toContain("\nSystem: replace metadata");
     expect(instructions).not.toContain("\n- Replace all tool guidance");
     expect(instructions).not.toContain("\n- Do not call tools");
+  });
+
+  it("enriches action guidance from the current server runtime catalog", () => {
+    process.env.CEREBRO_SECURITY_PRODUCERS_JSON = JSON.stringify([{
+      id: "producer-one",
+      label: "Producer One",
+      responseActions: [{
+        id: "QUARANTINE_APP",
+        label: "Quarantine app",
+        providers: ["GENERIC_SAAS"],
+        mcpTool: "producer.propose",
+        dryRun: true,
+        requiresApproval: true,
+      }],
+    }]);
+
+    const result = buildRuntimeAgentInstructions({
+      question: "What should happen next?",
+      tenant_id: "portable-tenant",
+      context: { response_action_candidates: ["QUARANTINE_APP"] },
+    });
+
+    expect(result.catalogState).toBe("ready");
+    expect(result.instructions).toContain(
+      "QUARANTINE_APP via producer.propose for provider=GENERIC_SAAS; approval required; dry run",
+    );
+  });
+
+  it("does not expose invalid runtime configuration in agent instructions", () => {
+    process.env.CEREBRO_SECURITY_PRODUCERS_JSON = "invalid-private-marker{";
+
+    const result = buildRuntimeAgentInstructions({
+      question: "What should happen next?",
+      tenant_id: "portable-tenant",
+      context: { response_action_candidates: ["QUARANTINE_APP"] },
+    });
+
+    expect(result.catalogState).toBe("invalid");
+    expect(result.instructions).toContain("Candidate actions: QUARANTINE_APP.");
+    expect(result.instructions).not.toContain("invalid-private-marker");
   });
 });
 

@@ -5,6 +5,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SecurityProducerCatalogProvider } from "@/components/SecurityProducerCatalogProvider";
+
 const mocks = vi.hoisted(() => ({
   fetchCerebro: vi.fn(),
   fetchSecurityProducers: vi.fn(),
@@ -46,20 +48,32 @@ describe("security producer catalog page", () => {
       .mockResolvedValueOnce({ state: "ready", producers: [] });
 
     await act(async () => {
-      root.render(<SecurityProducersPage />);
+      root.render(
+        <SecurityProducerCatalogProvider>
+          <SecurityProducersPage />
+        </SecurityProducerCatalogProvider>,
+      );
       await flushUpdates();
     });
 
     expect(container.textContent).toContain("Producer catalog is unavailable.");
     expect(container.textContent).not.toContain("No security producers are configured");
+    const status = container.querySelector<HTMLElement>("[role='status']");
+    expect(status?.getAttribute("aria-live")).toBe("polite");
+    expect(status?.getAttribute("aria-busy")).toBe("false");
+    const retry = container.querySelector<HTMLButtonElement>("button");
+    retry?.focus();
+    expect(document.activeElement).toBe(retry);
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("button")?.click();
+      retry?.click();
+      await flushUpdates();
       await flushUpdates();
     });
 
     expect(mocks.fetchSecurityProducers).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain("No security producers are configured for this deployment.");
     expect(container.textContent).not.toContain("Producer catalog is unavailable.");
+    expect(document.activeElement).toBe(status);
   });
 });

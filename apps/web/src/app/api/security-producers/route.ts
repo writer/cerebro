@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
-import { runtimeSecurityProducers } from "@/lib/security-producers-runtime";
+import { runtimeSecurityProducerCatalog } from "@/lib/security-producers-runtime";
 
 export async function GET(request: NextRequest) {
   const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);
@@ -21,8 +21,21 @@ export async function GET(request: NextRequest) {
   }
   const decision = authorizeCurrentUser(currentUser, "cerebro:read");
   if (!decision.allowed) return authorizationErrorResponse(decision);
+  const catalog = runtimeSecurityProducerCatalog();
+  if (catalog.state === "invalid") {
+    return NextResponse.json(
+      {
+        code: "security_producer_catalog_invalid",
+        error: "Security producer catalog is unavailable.",
+      },
+      {
+        status: 503,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  }
   return NextResponse.json(
-    { producers: runtimeSecurityProducers() },
+    { producers: catalog.producers },
     { headers: { "cache-control": "private, no-store" } },
   );
 }

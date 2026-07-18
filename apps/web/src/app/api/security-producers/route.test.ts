@@ -110,7 +110,24 @@ describe("runtime security producer catalog", () => {
     expect(JSON.stringify(firstBody)).not.toContain("not-portable");
   });
 
-  it("returns an empty catalog for malformed input without emitting its value", async () => {
+  it("keeps missing and valid-empty catalogs ready", async () => {
+    delete process.env.CEREBRO_IDENTITY_PROFILE;
+    process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-user-email";
+    delete process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
+
+    const missing = await GET(trustedRequest());
+    const missingBody = await missing.json();
+    process.env.CEREBRO_SECURITY_PRODUCERS_JSON = "[]";
+    const empty = await GET(trustedRequest());
+    const emptyBody = await empty.json();
+
+    expect(missing.status).toBe(200);
+    expect(missingBody).toEqual({ producers: [] });
+    expect(empty.status).toBe(200);
+    expect(emptyBody).toEqual({ producers: [] });
+  });
+
+  it("returns a value-free unavailable response for malformed JSON", async () => {
     delete process.env.CEREBRO_IDENTITY_PROFILE;
     process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-user-email";
     process.env.CEREBRO_SECURITY_PRODUCERS_JSON = "malformed-private-marker{";
@@ -121,11 +138,31 @@ describe("runtime security producer catalog", () => {
     const response = await GET(trustedRequest());
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ producers: [] });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(body).toEqual({
+      code: "security_producer_catalog_invalid",
+      error: "Security producer catalog is unavailable.",
+    });
     expect(JSON.stringify(body)).not.toContain("malformed-private-marker");
     expect(error).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
+  });
+
+  it("rejects the whole catalog when one record is partial", async () => {
+    delete process.env.CEREBRO_IDENTITY_PROFILE;
+    process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-user-email";
+    process.env.CEREBRO_SECURITY_PRODUCERS_JSON = JSON.stringify([
+      { id: "valid-private-marker", label: "Valid record" },
+      { id: "partial-private-marker" },
+    ]);
+
+    const response = await GET(trustedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({ code: "security_producer_catalog_invalid" });
+    expect(JSON.stringify(body)).not.toMatch(/valid-private-marker|partial-private-marker/);
   });
 });

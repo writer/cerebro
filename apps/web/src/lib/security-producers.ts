@@ -25,73 +25,146 @@ export type SecurityProducerResponseAction = {
   requiresApproval: boolean;
 };
 
-const stringValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+export type SecurityProducerCatalog =
+  | { state: "ready"; producers: SecurityProducer[] }
+  | { state: "invalid" };
 
-const stringList = (value: unknown) =>
-  Array.isArray(value)
-    ? value.map(stringValue).filter(Boolean)
-    : [];
+const hasOwn = (record: Record<string, unknown>, key: string) =>
+  Object.prototype.hasOwnProperty.call(record, key);
 
-const boolValue = (value: unknown, fallback: boolean) =>
-  typeof value === "boolean" ? value : fallback;
+const stringField = (
+  record: Record<string, unknown>,
+  key: string,
+): string | null => {
+  if (!hasOwn(record, key)) return "";
+  const value = record[key];
+  return typeof value === "string" ? value.trim() : null;
+};
+
+const stringListField = (
+  record: Record<string, unknown>,
+  key: string,
+): string[] | null => {
+  if (!hasOwn(record, key)) return [];
+  const value = record[key];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) {
+    return null;
+  }
+  return value.map((item) => item.trim());
+};
+
+const boolField = (
+  record: Record<string, unknown>,
+  key: string,
+  fallback: boolean,
+): boolean | null => {
+  if (!hasOwn(record, key)) return fallback;
+  return typeof record[key] === "boolean" ? record[key] : null;
+};
 
 const responseActionFromRecord = (value: unknown): SecurityProducerResponseAction | null => {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const id = stringValue(record.id);
-  const label = stringValue(record.label);
+  const id = stringField(record, "id");
+  const label = stringField(record, "label");
   if (!id || !label) return null;
+  const providers = stringListField(record, "providers");
+  const targetTypes = stringListField(record, "targetTypes");
+  const requiredContextKeys = stringListField(record, "requiredContextKeys");
+  const mode = stringField(record, "mode");
+  const mcpTool = stringField(record, "mcpTool");
+  const runtimeAction = stringField(record, "runtimeAction");
+  const externalOwner = stringField(record, "externalOwner");
+  const dryRun = boolField(record, "dryRun", true);
+  const requiresApproval = boolField(record, "requiresApproval", true);
+  if (
+    !providers || !targetTypes || !requiredContextKeys || mode === null ||
+    mcpTool === null || runtimeAction === null || externalOwner === null ||
+    dryRun === null || requiresApproval === null
+  ) return null;
   return {
     id,
     label,
-    providers: stringList(record.providers),
-    targetTypes: stringList(record.targetTypes),
-    requiredContextKeys: stringList(record.requiredContextKeys),
-    mode: stringValue(record.mode) || "external_workflow",
-    mcpTool: stringValue(record.mcpTool) || undefined,
-    runtimeAction: stringValue(record.runtimeAction) || undefined,
-    externalOwner: stringValue(record.externalOwner) || undefined,
-    dryRun: boolValue(record.dryRun, true),
-    requiresApproval: boolValue(record.requiresApproval, true),
+    providers,
+    targetTypes,
+    requiredContextKeys,
+    mode: mode || "external_workflow",
+    mcpTool: mcpTool || undefined,
+    runtimeAction: runtimeAction || undefined,
+    externalOwner: externalOwner || undefined,
+    dryRun,
+    requiresApproval,
   };
 };
 
-const responseActionList = (value: unknown) =>
-  Array.isArray(value)
-    ? value.map(responseActionFromRecord).filter((action): action is SecurityProducerResponseAction => Boolean(action))
-    : [];
+const responseActionList = (
+  record: Record<string, unknown>,
+): SecurityProducerResponseAction[] | null => {
+  if (!hasOwn(record, "responseActions")) return [];
+  const value = record.responseActions;
+  if (!Array.isArray(value)) return null;
+  const actions: SecurityProducerResponseAction[] = [];
+  const ids = new Set<string>();
+  for (const candidate of value) {
+    const action = responseActionFromRecord(candidate);
+    if (!action || ids.has(action.id)) return null;
+    ids.add(action.id);
+    actions.push(action);
+  }
+  return actions;
+};
 
 const producerFromRecord = (value: unknown): SecurityProducer | null => {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const id = stringValue(record.id);
-  const label = stringValue(record.label);
+  const id = stringField(record, "id");
+  const label = stringField(record, "label");
   if (!id || !label) return null;
+  const description = stringField(record, "description");
+  const repo = stringField(record, "repo");
+  const runtimeIds = stringListField(record, "runtimeIds");
+  const sourceIds = stringListField(record, "sourceIds");
+  const mcpTools = stringListField(record, "mcpTools");
+  const resourceTemplates = stringListField(record, "resourceTemplates");
+  const contextKeys = stringListField(record, "contextKeys");
+  const responseActions = responseActionList(record);
+  if (
+    description === null || repo === null || !runtimeIds || !sourceIds || !mcpTools ||
+    !resourceTemplates || !contextKeys || !responseActions
+  ) return null;
   return {
     id,
     label,
-    description: stringValue(record.description) || undefined,
-    repo: stringValue(record.repo),
-    runtimeIds: stringList(record.runtimeIds),
-    sourceIds: stringList(record.sourceIds),
-    mcpTools: stringList(record.mcpTools),
-    resourceTemplates: stringList(record.resourceTemplates),
-    contextKeys: stringList(record.contextKeys),
-    responseActions: responseActionList(record.responseActions),
+    description: description || undefined,
+    repo,
+    runtimeIds,
+    sourceIds,
+    mcpTools,
+    resourceTemplates,
+    contextKeys,
+    responseActions,
   };
 };
 
-export const securityProducersFromValue = (value: unknown): SecurityProducer[] =>
-  Array.isArray(value)
-    ? value.map(producerFromRecord).filter((producer): producer is SecurityProducer => Boolean(producer))
-    : [];
+export const securityProducerCatalogFromValue = (value: unknown): SecurityProducerCatalog => {
+  if (!Array.isArray(value)) return { state: "invalid" };
+  const producers: SecurityProducer[] = [];
+  const ids = new Set<string>();
+  for (const candidate of value) {
+    const producer = producerFromRecord(candidate);
+    if (!producer || ids.has(producer.id)) return { state: "invalid" };
+    ids.add(producer.id);
+    producers.push(producer);
+  }
+  return { state: "ready", producers };
+};
 
-export const parseSecurityProducers = (raw?: string): SecurityProducer[] => {
-  if (!raw) return [];
+export const parseSecurityProducerCatalog = (raw?: string): SecurityProducerCatalog => {
+  if (!raw?.trim()) return { state: "ready", producers: [] };
   try {
-    return securityProducersFromValue(JSON.parse(raw) as unknown);
+    return securityProducerCatalogFromValue(JSON.parse(raw) as unknown);
   } catch {
-    return [];
+    return { state: "invalid" };
   }
 };
 
@@ -112,5 +185,3 @@ export const mergeSecurityProducers = (
   }
   return merged;
 };
-
-export const securityProducers = defaultSecurityProducers;

@@ -7,11 +7,12 @@ import { FormEvent, useMemo, useState } from "react";
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import { CoverageMetadata } from "@/components/connectors/CoverageMetadata";
 import { useApiKey } from "@/components/providers";
+import { useSecurityProducerCatalog } from "@/components/SecurityProducerCatalogProvider";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { Badge, DataStateBanner, MetricCard, PageHeader, Panel, ResultLimitNotice, RiskBadge, RiskBreakdown, SeverityDot } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
 import { runFindingMutation } from "@/lib/finding-actions";
-import { securityProducerForFinding, securityProducerResponseActionCandidates } from "@/lib/security-producer-response";
+import { securityProducerContextForFinding } from "@/lib/security-producer-response";
 import { pluralize } from "@/lib/format";
 import { displayDate, GRCAuditPacket, GRCEntityImpact, humanize, shortEntity } from "@/lib/grc";
 import { grcEntityImpactPath, grcPath, useGRCQuery } from "@/lib/grc-client";
@@ -482,6 +483,10 @@ function FindingWorkflowPanel({
 }
 
 export default function FindingDetailPage() {
+  const { catalog: securityProducerCatalog } = useSecurityProducerCatalog();
+  const securityProducers = securityProducerCatalog.state === "ready"
+    ? securityProducerCatalog.producers
+    : [];
   const { apiKey } = useApiKey();
   const params = useParams<{ id: string }>();
   const findingID = useMemo(() => decodeURIComponent(params.id ?? ""), [params.id]);
@@ -674,8 +679,7 @@ export default function FindingDetailPage() {
                   status: finding.status,
                   oauth_app_id: finding.attributes?.oauthAppId ?? finding.attributes?.oauth_app_id,
                   oauth_grant_id: finding.attributes?.oauthGrantId ?? finding.attributes?.oauth_grant_id,
-                  security_producer_id: securityProducerForFinding(finding)?.id,
-                  response_action_candidates: securityProducerResponseActionCandidates(finding),
+                  ...securityProducerContextForFinding(finding, securityProducers),
                   chips: [
                     { label: "Finding", value: finding.id },
                     finding.rule_id ? { label: "Rule", value: finding.rule_id } : null,

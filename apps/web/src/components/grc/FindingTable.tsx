@@ -5,7 +5,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import { Badge, RiskBadge, SeverityDot } from "@/components/grc/Primitives";
-import { securityProducerForFinding, securityProducerResponseActionCandidates } from "@/lib/security-producer-response";
+import { useSecurityProducerCatalog } from "@/components/SecurityProducerCatalogProvider";
+import { securityProducerContextForFinding } from "@/lib/security-producer-response";
 import { displayDate, GRCFinding, shortEntity } from "@/lib/grc";
 
 type SortKey = "risk_score" | "severity" | "last_observed_at" | "title";
@@ -65,6 +66,8 @@ export default function FindingTable({
   const [showAll, setShowAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("risk_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { catalog } = useSecurityProducerCatalog();
+  const securityProducers = catalog.state === "ready" ? catalog.producers : [];
 
   const toggleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -207,8 +210,7 @@ export default function FindingTable({
                       status: finding.status,
                       oauth_app_id: finding.attributes?.oauthAppId ?? finding.attributes?.oauth_app_id,
                       oauth_grant_id: finding.attributes?.oauthGrantId ?? finding.attributes?.oauth_grant_id,
-                      security_producer_id: securityProducerForFinding(finding)?.id,
-                      response_action_candidates: securityProducerResponseActionCandidates(finding),
+                      ...securityProducerContextForFinding(finding, securityProducers),
                       chips: [
                         { label: "Finding", value: finding.id },
                         finding.rule_id ? { label: "Rule", value: finding.rule_id } : null,

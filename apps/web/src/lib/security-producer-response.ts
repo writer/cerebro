@@ -1,6 +1,5 @@
 import type { GRCFinding } from "@/lib/grc";
 import {
-  securityProducers,
   type SecurityProducer,
   type SecurityProducerResponseAction,
 } from "@/lib/security-producers";
@@ -22,7 +21,7 @@ const providerTokens = (finding: FindingLike) =>
 
 export const securityProducerForFinding = (
   finding: FindingLike,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) =>
   producers.find((producer) =>
     producer.sourceIds.includes(compact(finding.source_id)) ||
@@ -32,7 +31,7 @@ export const securityProducerForFinding = (
 
 export const securityProducerResponseActionCandidates = (
   finding: FindingLike,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => {
   const producer = securityProducerForFinding(finding, producers);
   if (!producer) return [];
@@ -47,7 +46,7 @@ export const securityProducerResponseActionCandidates = (
 
 export const securityProducerResponseCandidateHint = (
   candidates: string[],
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => {
   const actions = new Map<string, SecurityProducerResponseAction>();
   producers.forEach((producer) => {
@@ -57,6 +56,14 @@ export const securityProducerResponseCandidateHint = (
   });
   return candidates.map((candidate) => responseActionHint(candidate, actions.get(candidate))).join(", ");
 };
+
+export const securityProducerContextForFinding = (
+  finding: FindingLike,
+  producers: SecurityProducer[],
+) => ({
+  security_producer_id: securityProducerForFinding(finding, producers)?.id,
+  response_action_candidates: securityProducerResponseActionCandidates(finding, producers),
+});
 
 const responseActionHint = (candidate: string, action?: SecurityProducerResponseAction) => {
   if (!action) return candidate;

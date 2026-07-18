@@ -1,5 +1,5 @@
 import {
-  securityProducersFromValue,
+  securityProducerCatalogFromValue,
   type SecurityProducer,
 } from "@/lib/security-producers";
 
@@ -27,9 +27,9 @@ export const fetchSecurityProducers = async (
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return unavailable();
     const configured = (payload as Record<string, unknown>).producers;
     if (!Array.isArray(configured)) return unavailable();
-    const producers = securityProducersFromValue(configured);
-    if (producers.length !== configured.length) return unavailable();
-    return { state: "ready", producers };
+    const catalog = securityProducerCatalogFromValue(configured);
+    if (catalog.state !== "ready") return unavailable();
+    return catalog;
   } catch {
     return unavailable();
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  securityProducerContextForFinding,
   securityProducerForFinding,
   securityProducerResponseActionCandidates,
   securityProducerResponseCandidateHint,
@@ -56,6 +57,10 @@ describe("security producer response context", () => {
       "QUARANTINE_APP",
       "OPEN_TICKET",
     ]);
+    expect(securityProducerContextForFinding(finding, producers)).toEqual({
+      security_producer_id: "producer-one",
+      response_action_candidates: ["QUARANTINE_APP", "OPEN_TICKET"],
+    });
   });
 
   it("keeps provider-specific actions out when the finding lacks that provider", () => {
