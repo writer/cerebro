@@ -122,11 +122,13 @@ export function projectSlackMessages(
   const messageKey = requireSlackKey(plan.message_key, "message key");
   if (
     !Array.isArray(plan.parts)
+    || !Array.isArray(delivery.parts)
     || plan.part_count !== plan.parts.length
     || delivery.part_count !== delivery.parts.length
     || plan.part_count !== delivery.part_count
     || plan.part_count < 1
     || plan.part_count > MAX_SLACK_MESSAGE_PARTS
+    || delivery.parts.length > MAX_SLACK_MESSAGE_PARTS
   ) {
     throw new SlackMessageProjectionError(
       "Slack message plan and durable delivery part counts must match.",
@@ -136,6 +138,7 @@ export function projectSlackMessages(
     plan.source_digest,
     "message source_digest",
   );
+  validateStoredPlanParts(plan.parts);
   const reconstructedSource = plan.parts
     .map((part) => part.payload.text)
     .join("");
@@ -279,6 +282,149 @@ function canonicalPayload(
     );
   }
   return expected;
+}
+
+/**
+ * Rejects malformed persisted payloads before joining text, copying arrays, or
+ * serializing caller-owned records. Canonical reconstruction below remains the
+ * authority for the exact payload bytes.
+ */
+function validateStoredPlanParts(
+  parts: readonly SlackMessagePartPlanV1[],
+): void {
+  let totalCodeUnits = 0;
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    requireExactRecord(
+      part,
+      ["payload", "payload_digest", "sequence"],
+      `message part ${index + 1}`,
+    );
+    if (part.sequence !== index + 1) {
+      throw new SlackMessageProjectionError(
+        "Slack message part sequences must be contiguous.",
+      );
+    }
+    requireSha256(part.payload_digest, "message payload_digest");
+    const textLength = validateStoredPayload(part.payload, index + 1);
+    totalCodeUnits += textLength;
+    if (totalCodeUnits > MAX_SLACK_MESSAGE_SOURCE_LENGTH * 2) {
+      throw new SlackMessageProjectionError(
+        "Slack message source text is invalid.",
+      );
+    }
+  }
+}
+
+function validateStoredPayload(
+  payload: SlackMessagePayloadV1,
+  sequence: number,
+): number {
+  requireExactRecord(
+    payload,
+    [
+      "blocks",
+      "link_names",
+      "mrkdwn",
+      "parse",
+      "text",
+      "unfurl_links",
+      "unfurl_media",
+    ],
+    `message payload ${sequence}`,
+  );
+  const textLength = requireRawStringBound(
+    payload.text,
+    MAX_SLACK_MESSAGE_PART_LENGTH * 2,
+    "message payload text",
+  );
+  if (
+    payload.link_names !== false
+    || payload.mrkdwn !== false
+    || payload.parse !== "none"
+    || payload.unfurl_links !== false
+    || payload.unfurl_media !== false
+  ) {
+    throw new SlackMessageProjectionError(
+      "Slack message payload is not the supported safe shape.",
+    );
+  }
+  if (!Array.isArray(payload.blocks) || payload.blocks.length !== 1) {
+    throw new SlackMessageProjectionError(
+      "Slack message payload must contain exactly one section block.",
+    );
+  }
+  const block = payload.blocks[0];
+  requireExactRecord(
+    block,
+    ["block_id", "text", "type"],
+    "message payload section block",
+  );
+  if (block.type !== "section") {
+    throw new SlackMessageProjectionError(
+      "Slack message payload must contain exactly one section block.",
+    );
+  }
+  requireRawStringBound(block.block_id, 255, "message payload block_id");
+  requireExactRecord(
+    block.text,
+    ["emoji", "text", "type"],
+    "message payload section text",
+  );
+  if (block.text.emoji !== false || block.text.type !== "plain_text") {
+    throw new SlackMessageProjectionError(
+      "Slack message payload is not the supported safe shape.",
+    );
+  }
+  requireRawStringBound(
+    block.text.text,
+    MAX_SLACK_SECTION_LENGTH * 2,
+    "message payload section text",
+  );
+  return textLength;
+}
+
+function requireExactRecord(
+  value: unknown,
+  requiredKeys: readonly string[],
+  field: string,
+): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new SlackMessageProjectionError(`Slack ${field} is invalid.`);
+  }
+  let ownKeyCount = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    ownKeyCount += 1;
+    if (ownKeyCount > requiredKeys.length || !requiredKeys.includes(key)) {
+      throw new SlackMessageProjectionError(
+        `Slack ${field} contains unsupported fields.`,
+      );
+    }
+  }
+  if (
+    ownKeyCount !== requiredKeys.length
+    || requiredKeys.some(
+      (key) => !Object.prototype.hasOwnProperty.call(value, key),
+    )
+  ) {
+    throw new SlackMessageProjectionError(`Slack ${field} is incomplete.`);
+  }
+}
+
+function requireRawStringBound(
+  value: unknown,
+  maximumCodeUnits: number,
+  field: string,
+): number {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > maximumCodeUnits
+  ) {
+    throw new SlackMessageProjectionError(`Slack ${field} is invalid.`);
+  }
+  return value.length;
 }
 
 function requireSha256(value: string, field: string): `sha256:${string}` {

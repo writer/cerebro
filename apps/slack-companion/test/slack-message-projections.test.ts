@@ -112,6 +112,78 @@ test("message projections snapshot mutable stored plans", () => {
   assert.equal(projection.projection_id, originalProjectionId);
 });
 
+test("message projections bound stored text before reconstruction", () => {
+  const validPlan = planSlackMessage("run-one:bounded", "A bounded answer");
+  const delivery = projectSlackMultipartDelivery(
+    receiptForPlan(validPlan, ["pending"], "pending"),
+  );
+  const storedPlan = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const mutablePayload = storedPlan.parts[0]?.payload as unknown as {
+    text: string;
+  };
+  mutablePayload.text = "x".repeat(MAX_SLACK_MESSAGE_PART_LENGTH * 2 + 1);
+
+  assert.throws(
+    () => projectSlackMessages(delivery, storedPlan),
+    /message payload text is invalid/,
+  );
+  assert.deepEqual(projectSlackMessages(delivery, validPlan).parts[0]?.payload, {
+    blocks: validPlan.parts[0]?.payload.blocks,
+    link_names: false,
+    mrkdwn: false,
+    parse: "none",
+    text: "A bounded answer",
+    unfurl_links: false,
+    unfurl_media: false,
+  });
+});
+
+test("message projections reject nested block growth before serialization", () => {
+  const validPlan = planSlackMessage("run-one:nested", "A bounded answer");
+  const delivery = projectSlackMultipartDelivery(
+    receiptForPlan(validPlan, ["pending"], "pending"),
+  );
+  const oversized = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const oversizedPayload = oversized.parts[0]?.payload as unknown as {
+    blocks: unknown[] & { toJSON?: () => never };
+  };
+  let serialized = false;
+  oversizedPayload.blocks = new Array(51);
+  oversizedPayload.blocks.toJSON = () => {
+    serialized = true;
+    throw new Error("caller payload was serialized");
+  };
+  assert.throws(
+    () => projectSlackMessages(delivery, oversized),
+    /exactly one section block/,
+  );
+  assert.equal(serialized, false);
+
+  const actionShaped = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const actionPayload = actionShaped.parts[0]?.payload as unknown as {
+    blocks: unknown[];
+  };
+  actionPayload.blocks = [{
+    block_id: "caller-action-block",
+    elements: new Array(6),
+    type: "actions",
+  }];
+  assert.throws(
+    () => projectSlackMessages(delivery, actionShaped),
+    /unsupported fields/,
+  );
+
+  const extraNested = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const nestedText = (extraNested.parts[0]?.payload.blocks[0] as unknown as {
+    text: Record<string, unknown>;
+  }).text;
+  nestedText.unexpected = { value: "caller-owned" };
+  assert.throws(
+    () => projectSlackMessages(delivery, extraNested),
+    /section text contains unsupported fields/,
+  );
+});
+
 test("message projections reject changed payloads and contradictory receipts", () => {
   const plan = planSlackMessage("run-one:answer", "A durable answer");
   const delivery = projectSlackMultipartDelivery(
