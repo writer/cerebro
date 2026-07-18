@@ -1551,10 +1551,10 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))
 	}
 	admission := store.attempts[0].Admission
-	if admission.Kernel != "sourceruntime-event-admission" || admission.ABIVersion != 1 || admission.Scanned != 1 || admission.Accepted != 1 {
-		t.Fatalf("ledger admission = %#v; want kernel/ABI 1 and 1 accepted event", admission)
+	if admission.Kernel != "sourceruntime-event-admission" || admission.ABIVersion != eventadmission.ABIVersion || admission.Scanned != 1 || admission.Accepted != 1 {
+		t.Fatalf("ledger admission = %#v; want current kernel ABI and 1 accepted event", admission)
 	}
-	if !strings.HasPrefix(admission.ScannedSHA256, "sha256:") || !strings.HasPrefix(admission.ResultSHA256, "sha256:") {
+	if !strings.HasPrefix(admission.ContractsSHA256, "sha256:") || !strings.HasPrefix(admission.ScannedSHA256, "sha256:") || !strings.HasPrefix(admission.ResultSHA256, "sha256:") {
 		t.Fatalf("ledger admission digests = %#v; want SHA-256 receipts", admission)
 	}
 }

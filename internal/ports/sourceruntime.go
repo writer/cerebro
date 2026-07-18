@@ -38,15 +38,16 @@ type SourceRuntimePageAttempt struct {
 
 // SourceRuntimePageAdmission records the exact kernel decision made before append.
 type SourceRuntimePageAdmission struct {
-	Kernel         string
-	ABIVersion     uint32
-	Scanned        uint32
-	Accepted       uint32
-	Quarantined    uint32
-	Duplicates     uint32
-	ScannedSHA256  string
-	AcceptedSHA256 string
-	ResultSHA256   string
+	Kernel          string
+	ABIVersion      uint32
+	Scanned         uint32
+	Accepted        uint32
+	Quarantined     uint32
+	Duplicates      uint32
+	ContractsSHA256 string
+	ScannedSHA256   string
+	AcceptedSHA256  string
+	ResultSHA256    string
 }
 
 // SourceRuntimePageProjection records projection counts for one page attempt.
