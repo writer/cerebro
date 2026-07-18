@@ -57,6 +57,7 @@ const (
 	WorkActionAccept          WorkAction = "accept"
 	WorkActionRemediate       WorkAction = "remediate"
 	WorkActionVerify          WorkAction = "verify"
+	WorkActionVerifyAssurance WorkAction = "verify_assurance"
 	WorkActionClose           WorkAction = "close"
 	WorkActionSupersede       WorkAction = "supersede"
 )
@@ -127,10 +128,27 @@ type WorkItem struct {
 	VerificationEvidenceIDs []string             `json:"verification_evidence_ids,omitempty"`
 	VerifiedBy              string               `json:"verified_by,omitempty"`
 	LastRemediatedBy        string               `json:"last_remediated_by,omitempty"`
+	LastRemediatedAt        time.Time            `json:"last_remediated_at,omitempty"`
+	Verification            *WorkVerification    `json:"verification,omitempty"`
 	Occurrences             []WorkOccurrence     `json:"occurrences"`
 	LastReopenTrigger       WorkReopenTrigger    `json:"last_reopen_trigger,omitempty"`
 	Version                 uint64               `json:"version"`
 	UpdatedAt               time.Time            `json:"updated_at"`
+}
+
+// WorkVerification binds resolution to a qualified post-remediation assurance
+// decision. The referenced decision remains the immutable proof record; this
+// receipt carries the exact identity and digests needed to verify the link
+// without copying the decision snapshot into the work projection.
+type WorkVerification struct {
+	AssuranceDecisionID string    `json:"assurance_decision_id"`
+	AssessmentRunID     string    `json:"assessment_run_id"`
+	ObjectiveResultID   string    `json:"objective_result_id"`
+	DecisionDigest      string    `json:"decision_digest"`
+	RecordDigest        string    `json:"record_digest"`
+	EvidenceIDs         []string  `json:"evidence_ids,omitempty"`
+	EvaluatedAt         time.Time `json:"evaluated_at"`
+	DecisionAsOf        time.Time `json:"decision_as_of"`
 }
 
 // WorkItemInput creates one item and its first occurrence.
@@ -153,22 +171,24 @@ type WorkActionInput struct {
 	BlockerReason string
 	SnoozeUntil   time.Time
 	EvidenceIDs   []string
+	Verification  *WorkVerification
 	ActorID       string
 	At            time.Time
 }
 
 // WorkActionRecord is an immutable action record emitted with a work transition.
 type WorkActionRecord struct {
-	ID         string        `json:"id"`
-	WorkItemID string        `json:"work_item_id"`
-	Action     WorkAction    `json:"action"`
-	From       WorkItemState `json:"from"`
-	To         WorkItemState `json:"to"`
-	OwnerID    string        `json:"owner_id"`
-	Rationale  string        `json:"rationale"`
-	ActorID    string        `json:"actor_id"`
-	CreatedAt  time.Time     `json:"created_at"`
-	ActionHash string        `json:"action_hash"`
+	ID           string            `json:"id"`
+	WorkItemID   string            `json:"work_item_id"`
+	Action       WorkAction        `json:"action"`
+	From         WorkItemState     `json:"from"`
+	To           WorkItemState     `json:"to"`
+	OwnerID      string            `json:"owner_id"`
+	Rationale    string            `json:"rationale"`
+	ActorID      string            `json:"actor_id"`
+	Verification *WorkVerification `json:"verification,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	ActionHash   string            `json:"action_hash"`
 }
 
 // WorkReopenRecord is the immutable reason a terminal item became active again.
@@ -285,24 +305,37 @@ func ApplyWorkAction(current WorkItem, expectedVersion uint64, input WorkActionI
 	}
 	if input.Action == WorkActionRemediate {
 		next.LastRemediatedBy = actorID
+		next.LastRemediatedAt = at
 		next.VerificationEvidenceIDs = nil
 		next.VerifiedBy = ""
+		next.Verification = nil
 	}
 	if input.Action == WorkActionVerify {
 		next.VerificationEvidenceIDs = normalizedStrings(input.EvidenceIDs)
 		next.VerifiedBy = actorID
 	}
+	if input.Action == WorkActionVerifyAssurance {
+		verification := cloneWorkVerification(input.Verification)
+		next.VerificationEvidenceIDs = append([]string(nil), verification.EvidenceIDs...)
+		next.VerifiedBy = actorID
+		next.Verification = verification
+	}
 	next.Version++
 	next.UpdatedAt = at
+	var verification *WorkVerification
+	if input.Action == WorkActionVerifyAssurance {
+		verification = cloneWorkVerification(input.Verification)
+	}
 	record := WorkActionRecord{
-		WorkItemID: current.ID,
-		Action:     input.Action,
-		From:       current.State,
-		To:         next.State,
-		OwnerID:    next.OwnerID,
-		Rationale:  rationale,
-		ActorID:    actorID,
-		CreatedAt:  at,
+		WorkItemID:   current.ID,
+		Action:       input.Action,
+		From:         current.State,
+		To:           next.State,
+		OwnerID:      next.OwnerID,
+		Rationale:    rationale,
+		ActorID:      actorID,
+		Verification: verification,
+		CreatedAt:    at,
 	}
 	hash, err := hashDomainValue(record)
 	if err != nil {
@@ -337,6 +370,9 @@ func ReopenWorkItem(current WorkItem, expectedVersion uint64, trigger WorkReopen
 	next.SnoozeUntil = time.Time{}
 	next.VerificationEvidenceIDs = nil
 	next.VerifiedBy = ""
+	next.Verification = nil
+	next.LastRemediatedBy = ""
+	next.LastRemediatedAt = time.Time{}
 	next.LastReopenTrigger = trigger
 	next.Version++
 	next.UpdatedAt = at
@@ -413,12 +449,17 @@ func workActionTarget(current WorkItem, input WorkActionInput, at time.Time) (Wo
 			return "", fmt.Errorf("%w: terminal work cannot enter remediation", ErrInvalidTransition)
 		}
 		return WorkInProgress, nil
-	case WorkActionVerify:
+	case WorkActionVerify, WorkActionVerifyAssurance:
 		if current.State != WorkInProgress && current.State != WorkBlocked {
 			return "", fmt.Errorf("%w: only active work can resolve", ErrInvalidTransition)
 		}
+		if input.Action == WorkActionVerifyAssurance {
+			if err := validateWorkVerification(input.Verification); err != nil {
+				return "", err
+			}
+		}
 		if current.VerificationRequired {
-			if len(normalizedStrings(input.EvidenceIDs)) == 0 {
+			if input.Action == WorkActionVerify && len(normalizedStrings(input.EvidenceIDs)) == 0 {
 				return "", fmt.Errorf("%w: verification evidence is required", ErrInvalidTransition)
 			}
 			actorID := strings.TrimSpace(input.ActorID)
@@ -458,12 +499,31 @@ func normalizeWorkFingerprintInput(input WorkFingerprintInput) WorkFingerprintIn
 
 func cloneWorkItem(value WorkItem) WorkItem {
 	value.VerificationEvidenceIDs = append([]string(nil), value.VerificationEvidenceIDs...)
+	value.Verification = cloneWorkVerification(value.Verification)
 	value.Occurrences = append([]WorkOccurrence(nil), value.Occurrences...)
 	for index := range value.Occurrences {
 		value.Occurrences[index].EvidenceIDs = append([]string(nil), value.Occurrences[index].EvidenceIDs...)
 		value.Occurrences[index].FindingIDs = append([]string(nil), value.Occurrences[index].FindingIDs...)
 	}
 	return value
+}
+
+func cloneWorkVerification(value *WorkVerification) *WorkVerification {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.EvidenceIDs = append([]string(nil), value.EvidenceIDs...)
+	return &cloned
+}
+
+func validateWorkVerification(value *WorkVerification) error {
+	if value == nil || strings.TrimSpace(value.AssuranceDecisionID) == "" || strings.TrimSpace(value.AssessmentRunID) == "" ||
+		strings.TrimSpace(value.ObjectiveResultID) == "" || !validDigestString(strings.TrimSpace(value.DecisionDigest)) ||
+		!validDigestString(strings.TrimSpace(value.RecordDigest)) || CanonicalTime(value.EvaluatedAt).IsZero() || CanonicalTime(value.DecisionAsOf).IsZero() {
+		return fmt.Errorf("%w: assurance verification receipt is incomplete", ErrInvalidTransition)
+	}
+	return nil
 }
 
 func validWorkKind(value WorkItemKind) bool {

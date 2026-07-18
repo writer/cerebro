@@ -1,4 +1,8 @@
 import type {
+  ComplianceWorkCommand,
+  ComplianceWorkItemPage,
+  ComplianceWorkItemRecord,
+  ComplianceWorkItemState,
   CreatePlatformJobRequest,
   GetSourceRuntimeResponse,
   PlatformJobEventListResponse,
@@ -9,6 +13,15 @@ import type {
 } from "./generated/openapi-types.ts";
 
 export type {
+  ComplianceWorkActionRecord,
+  ComplianceWorkCommand,
+  ComplianceWorkItem,
+  ComplianceWorkItemKind,
+  ComplianceWorkItemPage,
+  ComplianceWorkItemRecord,
+  ComplianceWorkItemState,
+  ComplianceWorkOccurrence,
+  ComplianceWorkVerification,
   GetSourceRuntimeResponse,
   PlatformJob,
   PlatformJobEvent,
@@ -21,6 +34,14 @@ export type {
 
 export type * from "./generated/agent-service-lifecycle-contract.ts";
 export type * from "./generated/agent-service-lifecycle.ts";
+
+export interface ListComplianceWorkItemsOptions {
+  tenantId?: string;
+  state?: ComplianceWorkItemState;
+  ownerId?: string;
+  cursor?: string;
+  limit?: number;
+}
 
 export interface ClientConfig {
   baseUrl: string;
@@ -191,6 +212,35 @@ export class Client {
       query.set("limit", String(limit));
     }
     return this.requestJson<GraphNeighborhood>("GET", `/platform/graph/neighborhood?${query.toString()}`);
+  }
+
+  async listComplianceWorkItems(options: ListComplianceWorkItemsOptions = {}): Promise<ComplianceWorkItemPage> {
+    const query = new URLSearchParams();
+    if (options.tenantId) query.set("tenant_id", options.tenantId);
+    if (options.state) query.set("state", options.state);
+    if (options.ownerId) query.set("owner_id", options.ownerId);
+    if (options.cursor) query.set("cursor", options.cursor);
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.requestJson<ComplianceWorkItemPage>("GET", `/grc/work-items${suffix}`);
+  }
+
+  async getComplianceWorkItem(workItemId: string, tenantId = ""): Promise<ComplianceWorkItemRecord> {
+    const normalizedID = workItemId.trim();
+    if (!normalizedID) throw new Error("workItemId is required");
+    const query = new URLSearchParams();
+    if (tenantId) query.set("tenant_id", tenantId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.requestJson<ComplianceWorkItemRecord>("GET", `/grc/work-items/${encodeURIComponent(normalizedID)}${suffix}`);
+  }
+
+  async commandComplianceWorkItem(workItemId: string, command: ComplianceWorkCommand, tenantId = ""): Promise<ComplianceWorkItemRecord> {
+    const normalizedID = workItemId.trim();
+    if (!normalizedID) throw new Error("workItemId is required");
+    const query = new URLSearchParams();
+    if (tenantId) query.set("tenant_id", tenantId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.requestJson<ComplianceWorkItemRecord>("POST", `/grc/work-items/${encodeURIComponent(normalizedID)}/commands${suffix}`, command);
   }
 
   async createJob(request: CreateJobRequest, idempotencyKey = ""): Promise<PlatformJobResponse> {
