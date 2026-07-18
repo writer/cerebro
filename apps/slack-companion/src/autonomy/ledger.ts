@@ -159,6 +159,14 @@ export class MissionLedger {
         "mission transition cannot change stable mission identity",
       );
     }
+    if (input.occurrence_outcome !== undefined) {
+      validateOccurrenceOutcome(current, input.occurrence_outcome);
+      if (input.wake === undefined) {
+        throw new MissionLedgerInvariantError(
+          "a consumed wake must be cleared or replaced",
+        );
+      }
+    }
 
     const revision = current.revision + 1;
     const event = createMissionLifecycleEvent({
@@ -191,6 +199,9 @@ export class MissionLedger {
       wake,
     };
     return this.store.commitTransition({
+      ...(input.occurrence_outcome === undefined
+        ? {}
+        : { consumed_occurrence: structuredClone(input.occurrence_outcome) }),
       event,
       expected_revision: input.expected_revision,
       idempotency_key: idempotencyKey,
@@ -344,11 +355,34 @@ export class MissionLedger {
     if (stored === undefined) return undefined;
     assertMatchingIntent(stored, intentDigest);
     return {
+      consumed_occurrence: stored.consumed_occurrence,
       created: false,
       event: stored.event,
       occurrence: stored.occurrence,
       snapshot: stored.snapshot,
     };
+  }
+}
+
+function validateOccurrenceOutcome(
+  current: MissionSnapshotV1,
+  outcome: NonNullable<TransitionMissionInput["occurrence_outcome"]>,
+): void {
+  requireRef(outcome.occurrence_id, "occurrence_id");
+  requireRef(outcome.claim.lease_token, "scheduled_claim.lease_token");
+  requireRef(outcome.claim.owner_id, "scheduled_claim.owner_id");
+  requirePositiveInteger(
+    outcome.claim.fencing_token,
+    "scheduled_claim.fencing_token",
+  );
+  requirePositiveInteger(
+    outcome.claim.generation,
+    "scheduled_claim.generation",
+  );
+  if (current.wake?.occurrence_ref !== outcome.occurrence_id) {
+    throw new MissionLedgerInvariantError(
+      "scheduled occurrence does not match the current mission wake",
+    );
   }
 }
 
@@ -726,5 +760,12 @@ export class MissionLedgerOccurrenceConflictError extends Error {
   constructor() {
     super("mission scheduled occurrence changed concurrently");
     this.name = "MissionLedgerOccurrenceConflictError";
+  }
+}
+
+export class MissionLedgerStaleOccurrenceError extends Error {
+  constructor(message = "scheduled occurrence claim is stale") {
+    super(message);
+    this.name = "MissionLedgerStaleOccurrenceError";
   }
 }

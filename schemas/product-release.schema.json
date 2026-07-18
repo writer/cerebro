@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cerebro:schema:product-release:v1",
+  "title": "Cerebro product release",
+  "description": "One commit and the independently deployable runtime, web, Slack companion, SDK, and public contract artifacts produced from it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "channel",
+    "version",
+    "commit",
+    "components",
+    "contracts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro.product-release/v1"
+    },
+    "channel": {
+      "enum": ["candidate", "stable"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(candidate-[0-9a-f]{40}|v[0-9]+\\.[0-9]+\\.[0-9]+)$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime", "web", "slack_companion", "typescript_sdk"],
+      "properties": {
+        "runtime": { "$ref": "#/$defs/image" },
+        "web": { "$ref": "#/$defs/image" },
+        "slack_companion": { "$ref": "#/$defs/archive" },
+        "typescript_sdk": { "$ref": "#/$defs/archive" }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["openapi", "agent_service_lifecycle"],
+      "properties": {
+        "openapi": { "$ref": "#/$defs/file" },
+        "agent_service_lifecycle": { "$ref": "#/$defs/file" }
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "image", "digest"],
+      "properties": {
+        "kind": { "const": "oci-image" },
+        "image": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "archive": {
+      "allOf": [
+        { "$ref": "#/$defs/file" },
+        {
+          "type": "object",
+          "required": ["kind", "package", "package_version"],
+          "properties": {
+            "kind": { "const": "npm-archive" },
+            "package": {
+              "type": "string",
+              "pattern": "^@writer/[a-z0-9-]+$"
+            },
+            "package_version": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+            }
+          }
+        }
+      ]
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "kind": { "type": "string" },
+        "package": { "type": "string" },
+        "package_version": { "type": "string" },
+        "file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

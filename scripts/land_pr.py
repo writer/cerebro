@@ -38,6 +38,7 @@ DEFAULT_REQUIRED_CHECKS = (
     "govulncheck",
     "release-smoke",
     "docker-smoke",
+    "web-docker-smoke",
     "structural",
     "droid-review-preflight",
     "droid-review",
