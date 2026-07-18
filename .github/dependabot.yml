@@ -120,7 +120,6 @@ updates:
     labels:
       - "dependencies"
       - "docker"
-      - "web"
     groups:
       web-base-images:
         patterns:
