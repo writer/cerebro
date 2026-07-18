@@ -1,0 +1,29 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mastodon
+family: verify_credential
+case: verify_credentials
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMastodonFamilies
+request:
+    method: GET
+    url: https://mastodon.example.test/api/v1/accounts/verify_credentials
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-05-28T10:01:39Z"
+    sha256: 79313add9736fe64deadb7468a70b62295c22acd2ca9d16ad0d1e413b91e047d
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.username
+origin:
+    type: upstream_recording
+    repository: https://github.com/halcy/Mastodon.py
+    commit: e125dc87f3933e5c5b4c8be41883595f60bb5080
+    path: tests/cassettes/test_verify_credentials.yaml
+    artifact_sha256: b2252938d368078b0e7b9a097e6c8df1c9ad8751de59fcfc618042abcb8eb9b1
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: artifact_commit
