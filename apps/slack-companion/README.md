@@ -92,6 +92,11 @@ channel membership lookup, source queries, prompts, persistence, and delivery
 adapters. Those adapters persist the versioned records and transition events
 without changing the portable decision policy.
 
+The deterministic fallback accepts host-supplied alert text and research
+records. It never authorizes a reply: explicit test markers are non-actionable,
+and every other degraded result needs more context. Model and research calls,
+credentials, transport, persistence, and deployment remain host-owned.
+
 ## History learning admission
 
 `slackLearningCandidateRejection` classifies a host-supplied message projection
