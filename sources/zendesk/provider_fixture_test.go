@@ -65,6 +65,9 @@ func TestSourceReplaysCapturedZendeskFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover() error = %v", err)
 			}
+			if len(urns) != 1 || urns[0].String() != pull.Events[0].Attributes["resource_urn"] {
+				t.Fatalf("Discover() URNs = %#v, want read resource_urn %q", urns, pull.Events[0].Attributes["resource_urn"])
+			}
 			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
 				t.Fatalf("StabilizeEvents() error = %v", err)
 			}

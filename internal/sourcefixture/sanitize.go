@@ -317,9 +317,12 @@ func SanitizeImportedText(value string) string {
 }
 
 func sanitizePlainImportedText(value string) string {
-	value = zendeskTenantHost.ReplaceAllString(value, "zendesk.example.test")
-	value = auth0FixtureHost.ReplaceAllString(value, "auth0.example.test")
-	value = auth0TenantHost.ReplaceAllString(value, "auth0.example.test")
+	value = escapedZendeskTenantHost.ReplaceAllString(value, "${1}zendesk.example.test")
+	value = escapedAuth0FixtureHost.ReplaceAllString(value, "${1}auth0.example.test")
+	value = escapedAuth0TenantHost.ReplaceAllString(value, "${1}auth0.example.test")
+	value = zendeskTenantHost.ReplaceAllString(value, "${1}zendesk.example.test")
+	value = auth0FixtureHost.ReplaceAllString(value, "${1}auth0.example.test")
+	value = auth0TenantHost.ReplaceAllString(value, "${1}auth0.example.test")
 	value = auth0FixtureTenant.ReplaceAllString(value, "auth0-example-tenant")
 	value = ipv4Pattern.ReplaceAllStringFunc(value, sanitizePublicIPv4)
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {

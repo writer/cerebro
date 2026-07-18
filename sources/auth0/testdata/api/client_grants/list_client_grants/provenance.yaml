@@ -5,7 +5,7 @@ case: list_client_grants
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
 request:
     method: GET
-    url: https://auth0.example.test/api/v2/client-grants?audience=https%3A%2F%auth0.example.test%2Fclient-grant%2FTestAccClientGrant&client_id=example-client-id&include_totals=true&per_page=50
+    url: https://auth0.example.test/api/v2/client-grants?audience=https%3A%2F%2Fauth0.example.test%2Fclient-grant%2FTestAccClientGrant&client_id=example-client-id&include_totals=true&per_page=50
 response:
     status: 200
     content_type: application/json; charset=utf-8

@@ -3,6 +3,7 @@ package sourcefixture
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -145,6 +146,18 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	}
 	if got := SanitizeImportedText("terraform-provider-auth0-dev"); got != "auth0-example-tenant" {
 		t.Fatalf("SanitizeImportedText(Auth0 tenant) = %q", got)
+	}
+	encodedAudienceURL := "https://auth0.example.test/api/v2/client-grants?audience=https%3A%2F%2Fterraform-provider-auth0-dev.eu.auth0.com%2Fclient-grant%2Fexample"
+	sanitizedAudienceURL := SanitizeImportedText(encodedAudienceURL)
+	parsedAudienceURL, err := url.Parse(sanitizedAudienceURL)
+	if err != nil {
+		t.Fatalf("parse sanitized audience URL %q: %v", sanitizedAudienceURL, err)
+	}
+	if got := parsedAudienceURL.Query().Get("audience"); got != "https://auth0.example.test/client-grant/example" {
+		t.Fatalf("sanitized audience = %q from %q", got, sanitizedAudienceURL)
+	}
+	if strings.Contains(sanitizedAudienceURL, "%auth0") {
+		t.Fatalf("sanitized audience URL contains malformed percent escape: %q", sanitizedAudienceURL)
 	}
 	publicIP := "162.159.129.83"
 	if got := SanitizeImportedText(publicIP); got == publicIP || !strings.HasPrefix(got, "203.0.113.") {
