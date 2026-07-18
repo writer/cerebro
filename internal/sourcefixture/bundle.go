@@ -31,10 +31,12 @@ var (
 	ErrCredentialField = errors.New("provider response contains credential field")
 	ErrCredentialQuery = errors.New("request URL contains credential query parameter")
 	ErrPersonalEmail   = errors.New("provider response contains non-example email")
+	ErrTenantID        = errors.New("provider response contains tenant identifier")
 
 	emailPattern       = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
 	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
+	tenantIDPattern    = regexp.MustCompile(`(?i)(?:00[uoga]|0oa)[0-9a-z]{15,}`)
 	fullCommit         = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	sha256Digest       = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	replayTestName     = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
@@ -233,8 +235,16 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 			return fmt.Errorf("%w %q", ErrCredentialQuery, key)
 		}
 	}
+	if tenantIDPattern.MatchString(manifest.Request.URL) {
+		return fmt.Errorf("%w in request.url", ErrTenantID)
+	}
 	if manifest.Response.Status < 200 || manifest.Response.Status > 299 {
 		return fmt.Errorf("response.status = %d, want 2xx", manifest.Response.Status)
+	}
+	for name, value := range manifest.Response.Headers {
+		if tenantIDPattern.MatchString(value) {
+			return fmt.Errorf("%w in response.headers.%s", ErrTenantID, name)
+		}
 	}
 	if !strings.Contains(strings.ToLower(manifest.Response.ContentType), "json") {
 		return fmt.Errorf("response.content_type = %q, want JSON", manifest.Response.ContentType)
@@ -440,6 +450,9 @@ func walkJSON(value any, path string) error {
 			}
 		}
 	case string:
+		if tenantIDPattern.MatchString(typed) {
+			return fmt.Errorf("%w %s", ErrTenantID, path)
+		}
 		for _, email := range emailPattern.FindAllString(typed, -1) {
 			if strings.HasPrefix(typed, email+":") && (strings.HasPrefix(typed, "git@") || strings.HasPrefix(typed, "hg@")) {
 				continue

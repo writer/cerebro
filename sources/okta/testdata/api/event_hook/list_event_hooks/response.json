@@ -40,7 +40,7 @@
       "version": "1.0.0"
     },
     "created": "2020-08-27T18:15:27.000Z",
-    "createdBy": "00uc04qdrQsSHjsDO4x6",
+    "createdBy": "example-74050b6de2891b2b",
     "events": {
       "items": [
         "user.lifecycle.activate",
@@ -95,7 +95,7 @@
       "version": "1.0.0"
     },
     "created": "2020-08-27T18:15:27.000Z",
-    "createdBy": "00uc04qdrQsSHjsDO4x6",
+    "createdBy": "example-74050b6de2891b2b",
     "events": {
       "items": [
         "user.lifecycle.activate",
@@ -150,7 +150,7 @@
       "version": "1.0.0"
     },
     "created": "2020-08-27T18:15:27.000Z",
-    "createdBy": "00uc04qdrQsSHjsDO4x6",
+    "createdBy": "example-74050b6de2891b2b",
     "events": {
       "items": [
         "user.lifecycle.activate",

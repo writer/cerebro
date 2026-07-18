@@ -16,7 +16,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00unwlw0tbo8E6aVj5d7"
+        "href": "https://test.okta.com/api/v1/users/example-a537d6074a9d9d1a"
       }
     },
     "clientName": "Okta API",
@@ -29,7 +29,7 @@
       "connection": "ANYWHERE"
     },
     "tokenWindow": "P30D",
-    "userId": "00unwlw0tbo8E6aVj5d7"
+    "userId": "example-a537d6074a9d9d1a"
   },
   {
     "_links": {
@@ -48,7 +48,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00urzf0guohXNzvc65d7"
+        "href": "https://test.okta.com/api/v1/users/example-696d60f042f60ab4"
       }
     },
     "clientName": "Okta API",
@@ -61,6 +61,6 @@
       "connection": "ANYWHERE"
     },
     "tokenWindow": "P30D",
-    "userId": "00urzf0guohXNzvc65d7"
+    "userId": "example-696d60f042f60ab4"
   }
 ]

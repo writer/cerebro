@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-admin_role-efd917aff6f44b02",
+    "id": "okta-writer-okta-com-admin_role-5a17210b7b55331a",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.admin_role",
@@ -14,7 +14,7 @@
       "raw": {
         "_links": {
           "assignee": {
-            "href": "https://test.okta.com/api/v1/users/00usfex7wP9lvobJ84x6"
+            "href": "https://test.okta.com/api/v1/users/example-c90b95af0c0b6fef"
           }
         },
         "assignmentType": "USER",
@@ -28,12 +28,12 @@
       "status": "ACTIVE",
       "type": "USER_ADMIN",
       "user_email": "",
-      "user_id": "00usfex7wP9lvobJ84x6"
+      "user_id": "example-c90b95af0c0b6fef"
     },
     "attributes": {
       "action": "admin.role.assignment",
       "actor_privileged": "true",
-      "assigned_to": "00usfex7wP9lvobJ84x6",
+      "assigned_to": "example-c90b95af0c0b6fef",
       "assignment_type": "USER",
       "domain": "writer.okta.com",
       "event_type": "admin.role.assignment",
@@ -43,7 +43,7 @@
       "role_name": "User Administrator",
       "role_type": "USER_ADMIN",
       "status": "ACTIVE",
-      "subject_id": "00usfex7wP9lvobJ84x6",
+      "subject_id": "example-c90b95af0c0b6fef",
       "subject_type": "user"
     }
   }

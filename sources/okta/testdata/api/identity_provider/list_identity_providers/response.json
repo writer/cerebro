@@ -7,7 +7,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/oauth2/v1/authorize?idp=0oasfdcxsbNFQFf4J4x6\u0026client_id={clientId}\u0026response_type={responseType}\u0026response_mode={responseMode}\u0026scope={scopes}\u0026redirect_uri={redirectUri}\u0026state={state}\u0026nonce={nonce}",
+        "href": "https://test.okta.com/oauth2/v1/authorize?idp=example-007494a5c7e2905f\u0026client_id={clientId}\u0026response_type={responseType}\u0026response_mode={responseMode}\u0026scope={scopes}\u0026redirect_uri={redirectUri}\u0026state={state}\u0026nonce={nonce}",
         "templated": true
       },
       "clientRedirectUri": {
@@ -20,7 +20,7 @@
       }
     },
     "created": "2020-08-27T18:16:15.000Z",
-    "id": "0oasfdcxsbNFQFf4J4x6",
+    "id": "example-007494a5c7e2905f",
     "issuerMode": "ORG_URL",
     "lastUpdated": "2020-08-27T18:16:15.000Z",
     "name": "python_sdk generic",

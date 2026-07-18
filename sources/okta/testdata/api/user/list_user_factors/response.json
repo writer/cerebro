@@ -8,7 +8,7 @@
             "DELETE"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/crpFAKESIGNEDNONCE0001"
+        "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983/factors/crpFAKESIGNEDNONCE0001"
       },
       "user": {
         "hints": {
@@ -16,7 +16,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+        "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983"
       }
     },
     "created": "2025-01-01T00:00:00.000Z",
@@ -72,7 +72,7 @@
             "DELETE"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/ostFAKETOTP000000001"
+        "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983/factors/ostFAKETOTP000000001"
       },
       "user": {
         "hints": {
@@ -80,7 +80,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+        "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983"
       },
       "verify": {
         "hints": {
@@ -88,7 +88,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/ostFAKETOTP000000001/verify"
+        "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983/factors/ostFAKETOTP000000001/verify"
       }
     },
     "created": "2025-01-01T00:00:00.000Z",

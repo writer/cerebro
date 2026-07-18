@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -18,33 +19,34 @@ func TestSourceReplaysCapturedFamilies(t *testing.T) {
 	tests := []struct {
 		family      string
 		fixtureCase string
-		requestPath string
-		config      map[string]string
+		configKey   string
+		idSegment   int
 		captureTime bool
 	}{
-		{family: familyAdminRole, fixtureCase: "list_admin_roles", requestPath: "/api/v1/users/00usfex7wP9lvobJ84x6/roles", config: map[string]string{"user_id": "00usfex7wP9lvobJ84x6"}},
-		{family: familyAppAssign, fixtureCase: "list_app_assignments", requestPath: "/api/v1/apps/0oasf86d7hw9MMcnd4x6/users", config: map[string]string{"app_id": "0oasf86d7hw9MMcnd4x6"}},
-		{family: familyApplication, fixtureCase: "list_applications", requestPath: "/api/v1/apps"},
-		{family: "api_token", fixtureCase: "list_api_tokens", requestPath: "/api/v1/api-tokens"},
-		{family: "authorization_server", fixtureCase: "list_authorization_servers", requestPath: "/api/v1/authorizationServers"},
-		{family: familyAuthenticator, fixtureCase: "list_authenticators", requestPath: "/api/v1/authenticators"},
-		{family: "brand", fixtureCase: "list_brands", requestPath: "/api/v1/brands", captureTime: true},
-		{family: "device_assurance", fixtureCase: "list_device_assurance", requestPath: "/api/v1/device-assurances", captureTime: true},
-		{family: "event_hook", fixtureCase: "list_event_hooks", requestPath: "/api/v1/eventHooks"},
-		{family: familyGroup, fixtureCase: "list_groups", requestPath: "/api/v1/groups"},
-		{family: familyGroupMember, fixtureCase: "list_group_members", requestPath: "/api/v1/groups/00gsf7bj3rH2d9PvL4x6/users", config: map[string]string{"group_id": "00gsf7bj3rH2d9PvL4x6"}},
-		{family: familyIDP, fixtureCase: "list_identity_providers", requestPath: "/api/v1/idps"},
-		{family: "inline_hook", fixtureCase: "list_inline_hooks", requestPath: "/api/v1/inlineHooks"},
-		{family: "log_stream", fixtureCase: "list_log_streams", requestPath: "/api/v1/logStreams"},
-		{family: familyNetworkZone, fixtureCase: "list_network_zones", requestPath: "/api/v1/zones"},
-		{family: familyThreatInsight, fixtureCase: "get_threat_insight", requestPath: "/api/v1/threats/configuration"},
-		{family: familyTrustedOrigin, fixtureCase: "list_trusted_origins", requestPath: "/api/v1/trustedOrigins"},
+		{family: familyAdminRole, fixtureCase: "list_admin_roles", configKey: "user_id", idSegment: 3},
+		{family: familyAppAssign, fixtureCase: "list_app_assignments", configKey: "app_id", idSegment: 3},
+		{family: familyApplication, fixtureCase: "list_applications"},
+		{family: "api_token", fixtureCase: "list_api_tokens"},
+		{family: "authorization_server", fixtureCase: "list_authorization_servers"},
+		{family: familyAuthenticator, fixtureCase: "list_authenticators"},
+		{family: "brand", fixtureCase: "list_brands", captureTime: true},
+		{family: "device_assurance", fixtureCase: "list_device_assurance", captureTime: true},
+		{family: "event_hook", fixtureCase: "list_event_hooks"},
+		{family: familyGroup, fixtureCase: "list_groups"},
+		{family: familyGroupMember, fixtureCase: "list_group_members", configKey: "group_id", idSegment: 3},
+		{family: familyIDP, fixtureCase: "list_identity_providers"},
+		{family: "inline_hook", fixtureCase: "list_inline_hooks"},
+		{family: "log_stream", fixtureCase: "list_log_streams"},
+		{family: familyNetworkZone, fixtureCase: "list_network_zones"},
+		{family: familyThreatInsight, fixtureCase: "get_threat_insight"},
+		{family: familyTrustedOrigin, fixtureCase: "list_trusted_origins"},
 	}
 	for _, test := range tests {
 		t.Run(test.family, func(t *testing.T) {
 			bundle := capturedOktaBundle(t, test.family, test.fixtureCase)
+			requestPath := capturedOktaRequestPath(t, bundle)
 			server := capturedOktaServer(t, func(w http.ResponseWriter, r *http.Request) bool {
-				if r.URL.Path != test.requestPath {
+				if r.URL.Path != requestPath {
 					return false
 				}
 				writeCapturedOktaResponse(w, bundle)
@@ -53,7 +55,11 @@ func TestSourceReplaysCapturedFamilies(t *testing.T) {
 			defer server.Close()
 
 			source := capturedOktaSource(t)
-			cfg := capturedOktaConfig(server.URL, test.family, test.config)
+			config := map[string]string{}
+			if test.configKey != "" {
+				config[test.configKey] = capturedOktaPathSegment(t, requestPath, test.idSegment)
+			}
+			cfg := capturedOktaConfig(server.URL, test.family, config)
 			pull, err := source.Read(context.Background(), cfg, nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
@@ -82,12 +88,14 @@ func TestSourceReplaysCapturedFamilies(t *testing.T) {
 func testCapturedOktaUser(t *testing.T) {
 	userBundle := capturedOktaBundle(t, familyUser, "list_users")
 	factorBundle := capturedOktaBundle(t, familyUser, "list_user_factors")
+	userPath := capturedOktaRequestPath(t, userBundle)
+	factorPath := capturedOktaRequestPath(t, factorBundle)
 	server := capturedOktaServer(t, func(w http.ResponseWriter, r *http.Request) bool {
 		switch r.URL.Path {
-		case "/api/v1/users":
+		case userPath:
 			writeCapturedOktaResponse(w, userBundle)
 			return true
-		case "/api/v1/users/00uFAKEFASTPASS000001/factors":
+		case factorPath:
 			writeCapturedOktaResponse(w, factorBundle)
 			return true
 		default:
@@ -126,13 +134,15 @@ func testCapturedOktaUser(t *testing.T) {
 func testCapturedOktaPolicyRule(t *testing.T) {
 	policyBundle := capturedOktaBundle(t, familyPolicyRule, "list_policies")
 	ruleBundle := capturedOktaBundle(t, familyPolicyRule, "list_policy_rules")
-	const policyID = "00psfar1lATHw2WXj4x6"
+	policyPath := capturedOktaRequestPath(t, policyBundle)
+	rulePath := capturedOktaRequestPath(t, ruleBundle)
+	policyID := capturedOktaPathSegment(t, rulePath, 3)
 	server := capturedOktaServer(t, func(w http.ResponseWriter, r *http.Request) bool {
 		switch r.URL.Path {
-		case "/api/v1/policies":
+		case policyPath:
 			writeCapturedOktaResponse(w, policyBundle)
 			return true
-		case "/api/v1/policies/" + policyID + "/rules":
+		case rulePath:
 			writeCapturedOktaResponse(w, ruleBundle)
 			return true
 		default:
@@ -173,6 +183,24 @@ func capturedOktaBundle(t *testing.T, family, fixtureCase string) sourcefixture.
 		t.Fatalf("FindBundle(%s/%s) error = %v", family, fixtureCase, err)
 	}
 	return bundle
+}
+
+func capturedOktaRequestPath(t *testing.T, bundle sourcefixture.Bundle) string {
+	t.Helper()
+	parsed, err := url.Parse(bundle.Manifest.Request.URL)
+	if err != nil {
+		t.Fatalf("parse captured request URL: %v", err)
+	}
+	return parsed.Path
+}
+
+func capturedOktaPathSegment(t *testing.T, requestPath string, index int) string {
+	t.Helper()
+	segments := strings.Split(strings.Trim(requestPath, "/"), "/")
+	if index < 0 || index >= len(segments) {
+		t.Fatalf("request path %q has no segment %d", requestPath, index)
+	}
+	return segments[index]
 }
 
 func capturedOktaSource(t *testing.T) *Source {

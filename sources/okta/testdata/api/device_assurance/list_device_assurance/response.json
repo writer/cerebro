@@ -12,11 +12,11 @@
         "href": "https://test.okta.com/api/v1/device-assurances/daeq6wn2y7djC0be91d7"
       }
     },
-    "createdBy": "00unkw1sfbTw08c0g1d7",
+    "createdBy": "example-22cd34ebbfcf508e",
     "createdDate": "2025-09-18T17:51:39.000Z",
     "id": "daeq6wn2y7djC0be91d7",
     "lastUpdate": "2025-09-18T17:51:39.000Z",
-    "lastUpdatedBy": "00unkw1sfbTw08c0g1d7",
+    "lastUpdatedBy": "example-22cd34ebbfcf508e",
     "name": "Test List Device Assurance Policy",
     "osVersion": {
       "minimum": "10.0"

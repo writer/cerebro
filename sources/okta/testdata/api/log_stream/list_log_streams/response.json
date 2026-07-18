@@ -2,16 +2,16 @@
   {
     "_links": {
       "deactivate": {
-        "href": "https://test.okta.com/api/v1/logStreams/0oaqd63hmzGmzZgxG1d7/lifecycle/deactivate",
+        "href": "https://test.okta.com/api/v1/logStreams/example-032efd3817db72a9/lifecycle/deactivate",
         "method": "POST"
       },
       "self": {
-        "href": "https://test.okta.com/api/v1/logStreams/0oaqd63hmzGmzZgxG1d7",
+        "href": "https://test.okta.com/api/v1/logStreams/example-032efd3817db72a9",
         "method": "GET"
       }
     },
     "created": "2025-09-25T08:02:45.000Z",
-    "id": "0oaqd63hmzGmzZgxG1d7",
+    "id": "example-032efd3817db72a9",
     "lastUpdated": "2025-09-25T08:02:45.000Z",
     "name": "Test List AWS Log Stream",
     "settings": {

@@ -10,12 +10,21 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2025-12-25T14:53:29Z"
-    sha256: 6be7449ba06fde9c3492535936535068a3bd031bfb8ef75ef3c9224a1935f0d4
+    sha256: bcc51855f78c35ab57dde984c4a73a51086a4362d5a8efd6eb2b33d173d50ede
     headers:
         Link: <https://dev-20982288.okta.com/api/v1/apps?limit=10&q=QueryParamsTestApp>; rel="self"
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0]._links.appLinks[0].href
+        - $[0]._links.deactivate.href
+        - $[0]._links.groups.href
+        - $[0]._links.policies.href
+        - $[0]._links.uploadLogo.href
+        - $[0]._links.users.href
+        - $[0].id
+        - $[0].orn
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

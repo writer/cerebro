@@ -10,13 +10,17 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2025-12-31T08:16:44Z"
-    sha256: 2647d254b652dc6df41ac9e2c793e60a306751d15c11bf073f29d02eb20529fc
+    sha256: 2f5c2bdda9661da2279416fcef9be19e2e17bbe91b7d9d52b47cb8e963de1c81
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
+        - $[0]._links.user.href
         - $[0].name
+        - $[0].userId
+        - $[1]._links.user.href
         - $[1].name
+        - $[1].userId
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

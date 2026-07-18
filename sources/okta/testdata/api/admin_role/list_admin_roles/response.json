@@ -2,7 +2,7 @@
   {
     "_links": {
       "assignee": {
-        "href": "https://test.okta.com/api/v1/users/00usfex7wP9lvobJ84x6"
+        "href": "https://test.okta.com/api/v1/users/example-c90b95af0c0b6fef"
       }
     },
     "assignmentType": "USER",

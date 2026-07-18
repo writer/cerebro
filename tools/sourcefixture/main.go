@@ -165,11 +165,18 @@ func importRecording(arguments []string) {
 	if interaction.ContentType == "" {
 		fail(fmt.Errorf("recording response has no Content-Type header"))
 	}
+	originalRequestURL := interaction.Request.URL
+	interaction.Request.URL = sourcefixture.SanitizeImportedText(interaction.Request.URL)
+	if interaction.Request.URL != originalRequestURL {
+		declaredChangedFields = append(declaredChangedFields, "$request.url")
+	}
 	payload, changedFields, err := sourcefixture.SanitizeImportedJSONWithKeys(interaction.Payload, sanitizeKeys)
 	if err != nil {
 		fail(err)
 	}
 	changedFields = append(changedFields, declaredChangedFields...)
+	responseHeaders, headerChanges := recordingResponseHeaders(interaction.Headers)
+	changedFields = append(changedFields, headerChanges...)
 	manifest := sourcefixture.Manifest{
 		SourceID:   *sourceID,
 		Family:     *family,
@@ -180,7 +187,7 @@ func importRecording(arguments []string) {
 			Status:      interaction.Status,
 			ContentType: interaction.ContentType,
 			CapturedAt:  interaction.CapturedAt,
-			Headers:     recordingResponseHeaders(interaction.Headers),
+			Headers:     responseHeaders,
 		},
 		Sanitization: sourcefixture.Sanitization{ChangedFields: changedFields, RemovedFields: removedFields},
 		Origin: sourcefixture.Origin{
@@ -236,20 +243,25 @@ func readBoundedFile(fileName string, limit int64) ([]byte, error) {
 	return payload, nil
 }
 
-func recordingResponseHeaders(headers map[string]string) map[string]string {
+func recordingResponseHeaders(headers map[string]string) (map[string]string, []string) {
 	result := map[string]string{}
+	changed := []string{}
 	for name, value := range headers {
 		switch strings.ToLower(name) {
 		case "link", "x-next-page", "x-page", "x-per-page", "x-total", "x-total-pages":
 			if strings.TrimSpace(value) != "" {
-				result[name] = strings.TrimSpace(value)
+				sanitized := sourcefixture.SanitizeImportedText(strings.TrimSpace(value))
+				result[name] = sanitized
+				if sanitized != strings.TrimSpace(value) {
+					changed = append(changed, "$response.headers."+name)
+				}
 			}
 		}
 	}
 	if len(result) == 0 {
-		return nil
+		return nil, changed
 	}
-	return result
+	return result, changed
 }
 
 func packages(arguments []string) {

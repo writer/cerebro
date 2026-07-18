@@ -10,10 +10,13 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2025-09-18T17:51:40Z"
-    sha256: ae584112e077c460f3ea192914aec0f442313a45e19ff4998c607fc3c3f932b0
+    sha256: ba90e609f8557d9f221d236fd38f7860f5e64ef2ba542b1a2ec8bc63c2e1ea99
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0].createdBy
+        - $[0].lastUpdatedBy
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

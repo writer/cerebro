@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-trusted_origin-ab99983673c57a25",
+    "id": "okta-writer-okta-com-trusted_origin-50e6d2f4bcc94df2",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.trusted_origin",
@@ -33,10 +33,10 @@
           }
         },
         "created": "2020-05-13T18:49:36.000Z",
-        "createdBy": "00uc04qdrQsSHjsDO4x6",
+        "createdBy": "example-74050b6de2891b2b",
         "id": "tosc16b737nVjGaEb4x6",
         "lastUpdated": "2020-08-24T20:34:22.000Z",
-        "lastUpdatedBy": "00uc04qdrQsSHjsDO4x6",
+        "lastUpdatedBy": "example-74050b6de2891b2b",
         "name": "My SPA 196",
         "origin": "http://localhost:8080/",
         "scopes": [
@@ -77,7 +77,7 @@
     }
   },
   {
-    "id": "okta-writer-okta-com-trusted_origin-6de609b3e2f9d417",
+    "id": "okta-writer-okta-com-trusted_origin-7a718f33305eac61",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.trusted_origin",
@@ -110,10 +110,10 @@
           }
         },
         "created": "2020-08-27T18:17:18.000Z",
-        "createdBy": "00uc04qdrQsSHjsDO4x6",
+        "createdBy": "example-74050b6de2891b2b",
         "id": "tossfbr7iMZZbmW044x6",
         "lastUpdated": "2020-08-27T18:17:18.000Z",
-        "lastUpdatedBy": "00uc04qdrQsSHjsDO4x6",
+        "lastUpdatedBy": "example-74050b6de2891b2b",
         "name": "python_sdk_test_TO",
         "origin": "http://example.com",
         "scopes": [

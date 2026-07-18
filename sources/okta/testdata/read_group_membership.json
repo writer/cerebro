@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-group_membership-1029f4840e052f55",
+    "id": "okta-writer-okta-com-group_membership-0bcb1882acc6ec72",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.group_membership",
@@ -8,7 +8,7 @@
     "schema_ref": "okta/group_membership/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "group_id": "00gsf7bj3rH2d9PvL4x6",
+      "group_id": "example-cb373fbc662034f4",
       "profile": {
         "email": "example-62db0e0b",
         "firstName": "example-96d9632f",
@@ -20,7 +20,7 @@
       "raw": {
         "_links": {
           "self": {
-            "href": "https://test.okta.com/api/v1/users/00usfbpcapvcITLwi4x6"
+            "href": "https://test.okta.com/api/v1/users/example-e0faf9f9f6cee27e"
           }
         },
         "activated": null,
@@ -39,7 +39,7 @@
             "type": "OKTA"
           }
         },
-        "id": "00usfbpcapvcITLwi4x6",
+        "id": "example-e0faf9f9f6cee27e",
         "lastLogin": null,
         "lastUpdated": "2020-08-27T18:15:57.000Z",
         "passwordChanged": "2020-08-27T18:15:57.000Z",
@@ -57,20 +57,20 @@
           "id": "otyc04qb2rUDcq2YA4x6"
         }
       },
-      "user_id": "00usfbpcapvcITLwi4x6"
+      "user_id": "example-e0faf9f9f6cee27e"
     },
     "attributes": {
       "domain": "writer.okta.com",
       "email": "example-62db0e0b",
       "family": "group_membership",
-      "group_id": "00gsf7bj3rH2d9PvL4x6",
+      "group_id": "example-cb373fbc662034f4",
       "member_email": "example-62db0e0b",
-      "member_id": "00usfbpcapvcITLwi4x6",
+      "member_id": "example-e0faf9f9f6cee27e",
       "member_name": "example-96d9632f example-c205d7af",
       "member_status": "STAGED",
       "member_type": "user",
-      "member_user_id": "00usfbpcapvcITLwi4x6",
-      "user_id": "00usfbpcapvcITLwi4x6"
+      "member_user_id": "example-e0faf9f9f6cee27e",
+      "user_id": "example-e0faf9f9f6cee27e"
     }
   }
 ]

@@ -62,7 +62,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 				}
 			}
 			if text, ok := child.(string); ok && text != "" && shouldSanitizePersonalField(key, explicitKeys) {
-				typed[key] = sanitizedPersonalString(key, text)
+				typed[key] = SanitizeImportedText(sanitizedPersonalString(key, text))
 				*changed = append(*changed, childPath)
 				continue
 			}
@@ -84,6 +84,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 		return typed, nil
 	case string:
 		replaced := emailPattern.ReplaceAllStringFunc(typed, exampleEmail)
+		replaced = SanitizeImportedText(replaced)
 		if replaced != typed {
 			*changed = append(*changed, valuePath)
 		}
@@ -91,6 +92,15 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 	default:
 		return value, nil
 	}
+}
+
+// SanitizeImportedText replaces provider tenant identifier shapes with stable
+// example values so references remain consistent across response fields.
+func SanitizeImportedText(value string) string {
+	return tenantIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
+		digest := sha256.Sum256([]byte(identifier))
+		return "example-" + hex.EncodeToString(digest[:8])
+	})
 }
 
 func shouldSanitizePersonalField(key string, explicitKeys map[string]struct{}) bool {

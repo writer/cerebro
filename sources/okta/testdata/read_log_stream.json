@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-log_stream-e9e3fed704b2d5bb",
+    "id": "okta-writer-okta-com-log_stream-a3bf4fd5cc76e431",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.log_stream",
@@ -8,7 +8,7 @@
     "schema_ref": "okta/log_stream/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "id": "0oaqd63hmzGmzZgxG1d7",
+      "id": "example-032efd3817db72a9",
       "name": "Test List AWS Log Stream",
       "status": "ACTIVE",
       "type": "aws_eventbridge"
@@ -21,9 +21,9 @@
       "domain": "writer.okta.com",
       "family": "log_stream",
       "last_updated_at": "2025-09-25T08:02:45.000Z",
-      "log_stream_id": "0oaqd63hmzGmzZgxG1d7",
+      "log_stream_id": "example-032efd3817db72a9",
       "name": "Test List AWS Log Stream",
-      "resource_id": "0oaqd63hmzGmzZgxG1d7",
+      "resource_id": "example-032efd3817db72a9",
       "resource_type": "LogStream",
       "status": "ACTIVE",
       "type": "aws_eventbridge"

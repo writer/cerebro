@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 const (
 	RecordingFormatVCR      = "vcr"
 	RecordingFormatPyGitHub = "pygithub"
+	maxRecordedResponseSize = 4 << 20
 )
 
 var pythonHeaderPair = regexp.MustCompile(`\('([^']+)', '([^']*)'\)`)
@@ -279,11 +279,10 @@ func recordedAt(explicit string, headers map[string]string) (string, string) {
 		if strings.TrimSpace(candidate.value) == "" {
 			continue
 		}
-		if parsed, err := http.ParseTime(candidate.value); err == nil {
-			return parsed.UTC().Format(time.RFC3339), candidate.basis
-		}
-		if parsed, err := time.Parse(time.RFC3339, candidate.value); err == nil {
-			return parsed.UTC().Format(time.RFC3339), candidate.basis
+		for _, layout := range []string{time.RFC3339, time.RFC1123, time.RFC1123Z, time.RFC850, time.ANSIC} {
+			if parsed, err := time.Parse(layout, candidate.value); err == nil {
+				return parsed.UTC().Format(time.RFC3339), candidate.basis
+			}
 		}
 	}
 	return "", ""
@@ -297,13 +296,16 @@ func decodeRecordedBody(payload []byte, contentEncoding string) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("open gzip response body: %w", err)
 	}
-	decompressed, err := io.ReadAll(reader)
+	decompressed, err := io.ReadAll(io.LimitReader(reader, maxRecordedResponseSize+1))
 	closeErr := reader.Close()
 	if err != nil {
 		return nil, fmt.Errorf("decompress response body: %w", err)
 	}
 	if closeErr != nil {
 		return nil, fmt.Errorf("close gzip response body: %w", closeErr)
+	}
+	if len(decompressed) > maxRecordedResponseSize {
+		return nil, fmt.Errorf("decompressed response body exceeds %d bytes", maxRecordedResponseSize)
 	}
 	return decompressed, nil
 }

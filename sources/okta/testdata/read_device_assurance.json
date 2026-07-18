@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-device_assurance-3c0431ea987095a5",
+    "id": "okta-writer-okta-com-device_assurance-1199ea6ce17e5f5a",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.device_assurance",
@@ -23,11 +23,11 @@
             "href": "https://test.okta.com/api/v1/device-assurances/daeq6wn2y7djC0be91d7"
           }
         },
-        "createdBy": "00unkw1sfbTw08c0g1d7",
+        "createdBy": "example-22cd34ebbfcf508e",
         "createdDate": "2025-09-18T17:51:39.000Z",
         "id": "daeq6wn2y7djC0be91d7",
         "lastUpdate": "2025-09-18T17:51:39.000Z",
-        "lastUpdatedBy": "00unkw1sfbTw08c0g1d7",
+        "lastUpdatedBy": "example-22cd34ebbfcf508e",
         "name": "Test List Device Assurance Policy",
         "osVersion": {
           "minimum": "10.0"
@@ -43,12 +43,12 @@
     },
     "attributes": {
       "created_at": "2025-09-18T17:51:39.000Z",
-      "created_by": "00unkw1sfbTw08c0g1d7",
+      "created_by": "example-22cd34ebbfcf508e",
       "device_assurance_id": "daeq6wn2y7djC0be91d7",
       "domain": "writer.okta.com",
       "family": "device_assurance",
       "last_updated_at": "2025-09-18T17:51:39.000Z",
-      "last_updated_by": "00unkw1sfbTw08c0g1d7",
+      "last_updated_by": "example-22cd34ebbfcf508e",
       "name": "Test List Device Assurance Policy",
       "platform": "WINDOWS",
       "resource_id": "daeq6wn2y7djC0be91d7",

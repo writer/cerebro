@@ -10,12 +10,22 @@ response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:15:50Z"
-    sha256: bc1495bdce25cb0de5db1726c4e57051ac4128f1eb2eb1266418babd9316d796
+    sha256: 6b3e366de56547fab3bc3f06d219dc61e0be1aa8b3e941f5ab0d512d33c0317b
     headers:
         link: <https://test.okta.com/api/v1/groups?limit=10000>; rel="self"
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0]._links.apps.href
+        - $[0]._links.users.href
+        - $[0].id
+        - $[1]._links.apps.href
+        - $[1]._links.users.href
+        - $[1].id
+        - $[2]._links.apps.href
+        - $[2]._links.users.href
+        - $[2].id
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

@@ -5,15 +5,22 @@ case: list_user_factors
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
 request:
     method: GET
-    url: https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors
+    url: https://test.okta.com/api/v1/users/example-88aff4caddba9983/factors
 response:
     status: 200
     content_type: application/json
     captured_at: "2026-06-09T06:04:04Z"
-    sha256: a19350730a2ee9557213282f91f1a0e0ca80596f5d6b7cdcbf6f4c4f67e82c79
+    sha256: e10ab76d073c33e60a34102e592c7aea3fafe2e233688d22b33d176f620645dd
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0]._links.self.href
+        - $[0]._links.user.href
+        - $[1]._links.self.href
+        - $[1]._links.user.href
+        - $[1]._links.verify.href
+        - $request.url
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

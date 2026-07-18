@@ -1,13 +1,13 @@
 [
   {
-    "id": "okta-writer-okta-com-app_assignment-da45108eb3206848",
+    "id": "okta-writer-okta-com-app_assignment-bdb58ba3c680891d",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
     "occurred_at": "2020-08-27T18:14:07Z",
     "schema_ref": "okta/app_assignment/v1",
     "payload": {
-      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "app_id": "example-f0a6c6d9df5c0037",
       "credentials": {
         "userName": "example-da598035"
       },
@@ -16,10 +16,10 @@
       "raw": {
         "_links": {
           "app": {
-            "href": "https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6"
+            "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
           },
           "user": {
-            "href": "https://test.okta.com/api/v1/users/00usfdsvr3SOpwbqD4x6"
+            "href": "https://test.okta.com/api/v1/users/example-2cdfffa4b77eaf2a"
           }
         },
         "created": "2020-08-27T18:14:07.000Z",
@@ -27,7 +27,7 @@
           "userName": "example-da598035"
         },
         "externalId": null,
-        "id": "00usfdsvr3SOpwbqD4x6",
+        "id": "example-2cdfffa4b77eaf2a",
         "lastUpdated": "2020-08-27T18:14:07.000Z",
         "passwordChanged": null,
         "profile": {},
@@ -38,12 +38,12 @@
       },
       "scope": "USER",
       "status": "ACTIVE",
-      "subject_id": "00usfdsvr3SOpwbqD4x6",
+      "subject_id": "example-2cdfffa4b77eaf2a",
       "subject_type": "user"
     },
     "attributes": {
-      "app_id": "0oasf86d7hw9MMcnd4x6",
-      "assignee_id": "00usfdsvr3SOpwbqD4x6",
+      "app_id": "example-f0a6c6d9df5c0037",
+      "assignee_id": "example-2cdfffa4b77eaf2a",
       "assignee_type": "user",
       "domain": "writer.okta.com",
       "email": "example-da598035",
@@ -52,20 +52,20 @@
       "scope": "USER",
       "status": "ACTIVE",
       "subject_email": "example-da598035",
-      "subject_id": "00usfdsvr3SOpwbqD4x6",
+      "subject_id": "example-2cdfffa4b77eaf2a",
       "subject_name": "example-da598035",
       "subject_type": "user"
     }
   },
   {
-    "id": "okta-writer-okta-com-app_assignment-aa91c68e86125c7b",
+    "id": "okta-writer-okta-com-app_assignment-7c5744f31119f553",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
     "occurred_at": "2020-08-27T18:14:08Z",
     "schema_ref": "okta/app_assignment/v1",
     "payload": {
-      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "app_id": "example-f0a6c6d9df5c0037",
       "credentials": {
         "userName": "example-c3b2b853"
       },
@@ -74,10 +74,10 @@
       "raw": {
         "_links": {
           "app": {
-            "href": "https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6"
+            "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
           },
           "user": {
-            "href": "https://test.okta.com/api/v1/users/00usfcrxyLxrCzNan4x6"
+            "href": "https://test.okta.com/api/v1/users/example-052400848b73ab58"
           }
         },
         "created": "2020-08-27T18:14:08.000Z",
@@ -85,7 +85,7 @@
           "userName": "example-c3b2b853"
         },
         "externalId": null,
-        "id": "00usfcrxyLxrCzNan4x6",
+        "id": "example-052400848b73ab58",
         "lastUpdated": "2020-08-27T18:14:08.000Z",
         "passwordChanged": null,
         "profile": {},
@@ -96,12 +96,12 @@
       },
       "scope": "USER",
       "status": "ACTIVE",
-      "subject_id": "00usfcrxyLxrCzNan4x6",
+      "subject_id": "example-052400848b73ab58",
       "subject_type": "user"
     },
     "attributes": {
-      "app_id": "0oasf86d7hw9MMcnd4x6",
-      "assignee_id": "00usfcrxyLxrCzNan4x6",
+      "app_id": "example-f0a6c6d9df5c0037",
+      "assignee_id": "example-052400848b73ab58",
       "assignee_type": "user",
       "domain": "writer.okta.com",
       "email": "example-c3b2b853",
@@ -110,7 +110,7 @@
       "scope": "USER",
       "status": "ACTIVE",
       "subject_email": "example-c3b2b853",
-      "subject_id": "00usfcrxyLxrCzNan4x6",
+      "subject_id": "example-052400848b73ab58",
       "subject_name": "example-c3b2b853",
       "subject_type": "user"
     }

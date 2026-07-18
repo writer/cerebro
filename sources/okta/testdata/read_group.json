@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-group-4850ab3b7a3ea291",
+    "id": "okta-writer-okta-com-group-12bef75cc9e9df0d",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.group",
@@ -8,7 +8,7 @@
     "schema_ref": "okta/group/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "id": "00gc04qatkiyWnGoq4x6",
+      "id": "example-af29f00a5cced1cb",
       "profile": {
         "description": "All users in your organization",
         "name": "Everyone"
@@ -16,7 +16,7 @@
       "raw": {
         "_links": {
           "apps": {
-            "href": "https://test.okta.com/api/v1/groups/00gc04qatkiyWnGoq4x6/apps"
+            "href": "https://test.okta.com/api/v1/groups/example-af29f00a5cced1cb/apps"
           },
           "logo": [
             {
@@ -31,11 +31,11 @@
             }
           ],
           "users": {
-            "href": "https://test.okta.com/api/v1/groups/00gc04qatkiyWnGoq4x6/users"
+            "href": "https://test.okta.com/api/v1/groups/example-af29f00a5cced1cb/users"
           }
         },
         "created": "2020-05-13T13:29:23.000Z",
-        "id": "00gc04qatkiyWnGoq4x6",
+        "id": "example-af29f00a5cced1cb",
         "lastMembershipUpdated": "2020-08-27T18:15:41.000Z",
         "lastUpdated": "2020-05-13T13:29:23.000Z",
         "objectClass": [
@@ -53,14 +53,14 @@
       "description": "All users in your organization",
       "domain": "writer.okta.com",
       "family": "group",
-      "group_id": "00gc04qatkiyWnGoq4x6",
+      "group_id": "example-af29f00a5cced1cb",
       "group_name": "Everyone",
       "name": "Everyone",
       "type": "BUILT_IN"
     }
   },
   {
-    "id": "okta-writer-okta-com-group-7daa5ebc3a051af5",
+    "id": "okta-writer-okta-com-group-cef78bee58f3bcb3",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.group",
@@ -68,7 +68,7 @@
     "schema_ref": "okta/group/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "id": "00gsfaq86mwHfGtjb4x6",
+      "id": "example-2aae0a491f51515c",
       "profile": {
         "description": null,
         "name": "Group-Target-Test"
@@ -76,7 +76,7 @@
       "raw": {
         "_links": {
           "apps": {
-            "href": "https://test.okta.com/api/v1/groups/00gsfaq86mwHfGtjb4x6/apps"
+            "href": "https://test.okta.com/api/v1/groups/example-2aae0a491f51515c/apps"
           },
           "logo": [
             {
@@ -91,11 +91,11 @@
             }
           ],
           "users": {
-            "href": "https://test.okta.com/api/v1/groups/00gsfaq86mwHfGtjb4x6/users"
+            "href": "https://test.okta.com/api/v1/groups/example-2aae0a491f51515c/users"
           }
         },
         "created": "2020-08-27T18:15:50.000Z",
-        "id": "00gsfaq86mwHfGtjb4x6",
+        "id": "example-2aae0a491f51515c",
         "lastMembershipUpdated": "2020-08-27T18:15:50.000Z",
         "lastUpdated": "2020-08-27T18:15:50.000Z",
         "objectClass": [
@@ -112,14 +112,14 @@
     "attributes": {
       "domain": "writer.okta.com",
       "family": "group",
-      "group_id": "00gsfaq86mwHfGtjb4x6",
+      "group_id": "example-2aae0a491f51515c",
       "group_name": "Group-Target-Test",
       "name": "Group-Target-Test",
       "type": "OKTA_GROUP"
     }
   },
   {
-    "id": "okta-writer-okta-com-group-40a7ff737fda7983",
+    "id": "okta-writer-okta-com-group-b3fb44dd3935ce43",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.group",
@@ -127,7 +127,7 @@
     "schema_ref": "okta/group/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "id": "00gc0eqycaP2Eja9f4x6",
+      "id": "example-bc9e1537568b4142",
       "profile": {
         "description": "Professional Association of NBA Players",
         "name": "NBA Players"
@@ -135,7 +135,7 @@
       "raw": {
         "_links": {
           "apps": {
-            "href": "https://test.okta.com/api/v1/groups/00gc0eqycaP2Eja9f4x6/apps"
+            "href": "https://test.okta.com/api/v1/groups/example-bc9e1537568b4142/apps"
           },
           "logo": [
             {
@@ -150,11 +150,11 @@
             }
           ],
           "users": {
-            "href": "https://test.okta.com/api/v1/groups/00gc0eqycaP2Eja9f4x6/users"
+            "href": "https://test.okta.com/api/v1/groups/example-bc9e1537568b4142/users"
           }
         },
         "created": "2020-05-13T15:03:15.000Z",
-        "id": "00gc0eqycaP2Eja9f4x6",
+        "id": "example-bc9e1537568b4142",
         "lastMembershipUpdated": "2020-06-17T15:14:37.000Z",
         "lastUpdated": "2020-05-13T15:03:15.000Z",
         "objectClass": [
@@ -172,7 +172,7 @@
       "description": "Professional Association of NBA Players",
       "domain": "writer.okta.com",
       "family": "group",
-      "group_id": "00gc0eqycaP2Eja9f4x6",
+      "group_id": "example-bc9e1537568b4142",
       "group_name": "NBA Players",
       "name": "NBA Players",
       "type": "OKTA_GROUP"

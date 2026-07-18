@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-identity_provider-3ba946450724eb70",
+    "id": "okta-writer-okta-com-identity_provider-f301e5b16f62ffc3",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.identity_provider",
@@ -8,7 +8,7 @@
     "schema_ref": "okta/identity_provider/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "id": "0oasfdcxsbNFQFf4J4x6",
+      "id": "example-007494a5c7e2905f",
       "name": "python_sdk generic",
       "policy": {
         "accountLink": {
@@ -83,7 +83,7 @@
                 "GET"
               ]
             },
-            "href": "https://test.okta.com/oauth2/v1/authorize?idp=0oasfdcxsbNFQFf4J4x6\u0026client_id={clientId}\u0026response_type={responseType}\u0026response_mode={responseMode}\u0026scope={scopes}\u0026redirect_uri={redirectUri}\u0026state={state}\u0026nonce={nonce}",
+            "href": "https://test.okta.com/oauth2/v1/authorize?idp=example-007494a5c7e2905f\u0026client_id={clientId}\u0026response_type={responseType}\u0026response_mode={responseMode}\u0026scope={scopes}\u0026redirect_uri={redirectUri}\u0026state={state}\u0026nonce={nonce}",
             "templated": true
           },
           "clientRedirectUri": {
@@ -96,7 +96,7 @@
           }
         },
         "created": "2020-08-27T18:16:15.000Z",
-        "id": "0oasfdcxsbNFQFf4J4x6",
+        "id": "example-007494a5c7e2905f",
         "issuerMode": "ORG_URL",
         "lastUpdated": "2020-08-27T18:16:15.000Z",
         "name": "python_sdk generic",
@@ -175,13 +175,13 @@
       "client_id": "your-client-id",
       "domain": "writer.okta.com",
       "family": "identity_provider",
-      "identity_provider_id": "0oasfdcxsbNFQFf4J4x6",
-      "idp_id": "0oasfdcxsbNFQFf4J4x6",
+      "identity_provider_id": "example-007494a5c7e2905f",
+      "idp_id": "example-007494a5c7e2905f",
       "idp_name": "python_sdk generic",
       "idp_type": "OIDC",
       "name": "python_sdk generic",
       "protocol_type": "OIDC",
-      "resource_id": "0oasfdcxsbNFQFf4J4x6",
+      "resource_id": "example-007494a5c7e2905f",
       "resource_type": "IdentityProvider",
       "status": "ACTIVE",
       "type": "OIDC"

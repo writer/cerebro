@@ -5,20 +5,28 @@ case: list_app_assignments
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
 request:
     method: GET
-    url: https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6/users
+    url: https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037/users
 response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:14:08Z"
-    sha256: b401928994690a9f2c9939c654aff8688e41df05dbf00c262962935130ad238b
+    sha256: 7bd70548c69ed255eca64a769931c7d2ef3b7930eaa22d40111308e21b160d30
     headers:
-        link: <https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6/users?limit=50>; rel="self"
+        link: <https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037/users?limit=50>; rel="self"
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
+        - $[0]._links.app.href
+        - $[0]._links.user.href
         - $[0].credentials.userName
+        - $[0].id
+        - $[1]._links.app.href
+        - $[1]._links.user.href
         - $[1].credentials.userName
+        - $[1].id
+        - $request.url
+        - $response.headers.link
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

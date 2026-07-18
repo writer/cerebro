@@ -10,12 +10,16 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2025-09-25T08:02:46Z"
-    sha256: d4872c02b8df6368e3f7946b42cde9b1a06ca5bee897bc52a786789334d49a56
+    sha256: 6a789e203e774231a6668b018750513b69d864bd15e2d357b06af5bf6d6b2472
     headers:
         Link: <https://node-sdk-oie.oktapreview.com/api/v1/logStreams?limit=20>; rel="self"
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0]._links.deactivate.href
+        - $[0]._links.self.href
+        - $[0].id
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

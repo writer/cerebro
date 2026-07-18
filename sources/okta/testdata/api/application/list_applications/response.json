@@ -6,16 +6,16 @@
       },
       "appLinks": [
         {
-          "href": "https://test.okta.com/home/bookmark/0oas3jle9o3i2vpyG5d7/2557",
+          "href": "https://test.okta.com/home/bookmark/example-bdb6cb53760510ee/2557",
           "name": "login",
           "type": "text/html"
         }
       ],
       "deactivate": {
-        "href": "https://test.okta.com/api/v1/apps/0oas3jle9o3i2vpyG5d7/lifecycle/deactivate"
+        "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/lifecycle/deactivate"
       },
       "groups": {
-        "href": "https://test.okta.com/api/v1/apps/0oas3jle9o3i2vpyG5d7/groups"
+        "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/groups"
       },
       "logo": [
         {
@@ -30,7 +30,7 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/apps/0oas3jle9o3i2vpyG5d7/policies"
+        "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/policies"
       },
       "profileEnrollment": {
         "href": "https://test.okta.com/api/v1/policies/rstnwmp14geJLJ3fx5d7"
@@ -41,10 +41,10 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/apps/0oas3jle9o3i2vpyG5d7/logo"
+        "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/logo"
       },
       "users": {
-        "href": "https://test.okta.com/api/v1/apps/0oas3jle9o3i2vpyG5d7/users"
+        "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/users"
       }
     },
     "accessibility": {
@@ -61,11 +61,11 @@
       }
     },
     "features": [],
-    "id": "0oas3jle9o3i2vpyG5d7",
+    "id": "example-bdb6cb53760510ee",
     "label": "QueryParamsTestApp",
     "lastUpdated": "2025-12-25T14:53:28.000Z",
     "name": "bookmark",
-    "orn": "orn:okta:idp:00onwlw0o4KFVCgzO5d7:apps:bookmark:0oas3jle9o3i2vpyG5d7",
+    "orn": "orn:okta:idp:example-0d58ddedfb29a30c:apps:bookmark:example-bdb6cb53760510ee",
     "settings": {
       "app": {
         "requestIntegration": false,

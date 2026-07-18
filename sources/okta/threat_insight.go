@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/oktaasset"
 )
 
 const familyThreatInsight = "threat_insight"
@@ -44,7 +44,7 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			if err := s.getJSONWithRetry(ctx, settings, "/api/v1/threats/configuration", nil, &record, nil); err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel("okta threat insight", settings), err)
 			}
-			occurredAt := threatInsightOccurredAt(record)
+			occurredAt := firstRecordTime(oktaasset.ParseTime(record.LastUpdated), oktaasset.ParseTime(record.Created))
 			payload, err := json.Marshal(map[string]any{
 				"domain":        settings.domain,
 				"action":        record.Action,
@@ -78,16 +78,4 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			}, nil
 		},
 	}
-}
-
-func threatInsightOccurredAt(record threatInsightRecord) time.Time {
-	for _, value := range []string{record.LastUpdated, record.Created} {
-		for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05"} {
-			parsed, err := time.ParseInLocation(layout, value, time.UTC)
-			if err == nil {
-				return parsed.UTC()
-			}
-		}
-	}
-	return time.Now().UTC()
 }

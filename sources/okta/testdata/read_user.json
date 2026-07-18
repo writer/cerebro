@@ -1,13 +1,13 @@
 [
   {
-    "id": "okta-writer-okta-com-user-d3b5d6ed21e60fe9",
+    "id": "okta-writer-okta-com-user-3fa56cba230794bd",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.user",
     "occurred_at": "2025-01-01T00:00:00Z",
     "schema_ref": "okta/user/v1",
     "payload": {
-      "id": "00uFAKEFASTPASS000001",
+      "id": "example-88aff4caddba9983",
       "domain": "writer.okta.com",
       "status": "ACTIVE",
       "timestamps": {
@@ -30,7 +30,7 @@
       "raw": {
         "_links": {
           "self": {
-            "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+            "href": "https://test.okta.com/api/v1/users/example-88aff4caddba9983"
           }
         },
         "activated": null,
@@ -49,7 +49,7 @@
             "type": "OKTA"
           }
         },
-        "id": "00uFAKEFASTPASS000001",
+        "id": "example-88aff4caddba9983",
         "lastLogin": "2025-01-01T00:00:00.000Z",
         "lastUpdated": "2025-01-01T00:00:00.000Z",
         "passwordChanged": "2025-01-01T00:00:00.000Z",
@@ -79,7 +79,7 @@
       "mfa_phishing_resistant": "true",
       "status": "ACTIVE",
       "type_id": "otyFAKEUSERTYPE000001",
-      "user_id": "00uFAKEFASTPASS000001"
+      "user_id": "example-88aff4caddba9983"
     }
   }
 ]
