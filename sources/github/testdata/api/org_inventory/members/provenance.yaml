@@ -14,3 +14,5 @@ response:
 sanitization:
     tool: sourcefixture
     version: 1
+origin:
+    type: operator_request

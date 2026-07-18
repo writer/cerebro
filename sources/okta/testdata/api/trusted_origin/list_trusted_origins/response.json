@@ -1,0 +1,78 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/trustedOrigins/tosc16b737nVjGaEb4x6/lifecycle/deactivate"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/trustedOrigins/tosc16b737nVjGaEb4x6"
+      }
+    },
+    "created": "2020-05-13T18:49:36.000Z",
+    "createdBy": "example-74050b6de2891b2b",
+    "id": "tosc16b737nVjGaEb4x6",
+    "lastUpdated": "2020-08-24T20:34:22.000Z",
+    "lastUpdatedBy": "example-74050b6de2891b2b",
+    "name": "My SPA 196",
+    "origin": "http://localhost:8080/",
+    "scopes": [
+      {
+        "type": "CORS"
+      },
+      {
+        "type": "REDIRECT"
+      }
+    ],
+    "status": "ACTIVE"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/trustedOrigins/tossfbr7iMZZbmW044x6/lifecycle/deactivate"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/trustedOrigins/tossfbr7iMZZbmW044x6"
+      }
+    },
+    "created": "2020-08-27T18:17:18.000Z",
+    "createdBy": "example-74050b6de2891b2b",
+    "id": "tossfbr7iMZZbmW044x6",
+    "lastUpdated": "2020-08-27T18:17:18.000Z",
+    "lastUpdatedBy": "example-74050b6de2891b2b",
+    "name": "python_sdk_test_TO",
+    "origin": "http://example.com",
+    "scopes": [
+      {
+        "type": "CORS"
+      },
+      {
+        "type": "REDIRECT"
+      }
+    ],
+    "status": "ACTIVE"
+  }
+]
