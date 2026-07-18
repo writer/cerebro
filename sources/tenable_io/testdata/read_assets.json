@@ -1,6 +1,6 @@
 [
   {
-    "id": "tenable_io-tenant-assets-893845837846c557",
+    "id": "tenable_io-tenant-assets-3aa90c706bb395b0",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -18,10 +18,10 @@
       "hostname": [],
       "id": "example-ef08564a",
       "ipv4": [
-        "162.159.129.83"
+        "203.0.113.213"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.129.83",
+      "last_scan_target": "203.0.113.213",
       "last_seen": "2021-06-18T10:11:48.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -60,7 +60,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-ef08564a",
-      "resource_name": "162.159.129.83",
+      "resource_name": "203.0.113.213",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-ef08564a",
       "schema": "assets",
@@ -71,7 +71,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-0efaa63b2f1fb5ae",
+    "id": "tenable_io-tenant-assets-1dfabda36a9d3431",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -89,10 +89,10 @@
       "hostname": [],
       "id": "example-b2b17e04",
       "ipv4": [
-        "162.159.130.78"
+        "203.0.113.25"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.78",
+      "last_scan_target": "203.0.113.25",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -131,7 +131,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-b2b17e04",
-      "resource_name": "162.159.130.78",
+      "resource_name": "203.0.113.25",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-b2b17e04",
       "schema": "assets",
@@ -142,7 +142,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-84fedb375db35529",
+    "id": "tenable_io-tenant-assets-2b178a1cc3e86b83",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -160,10 +160,10 @@
       "hostname": [],
       "id": "example-89d241d3",
       "ipv4": [
-        "162.159.130.73"
+        "203.0.113.227"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.73",
+      "last_scan_target": "203.0.113.227",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -202,7 +202,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-89d241d3",
-      "resource_name": "162.159.130.73",
+      "resource_name": "203.0.113.227",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-89d241d3",
       "schema": "assets",
@@ -213,7 +213,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-c1dc06cf1e62e4c7",
+    "id": "tenable_io-tenant-assets-41204ae49a943f21",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -231,10 +231,10 @@
       "hostname": [],
       "id": "example-8e62c506",
       "ipv4": [
-        "162.159.130.74"
+        "203.0.113.193"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.74",
+      "last_scan_target": "203.0.113.193",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -273,7 +273,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-8e62c506",
-      "resource_name": "162.159.130.74",
+      "resource_name": "203.0.113.193",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-8e62c506",
       "schema": "assets",
@@ -284,7 +284,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-17a0f5562cb004b0",
+    "id": "tenable_io-tenant-assets-77a441721aea076e",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -302,10 +302,10 @@
       "hostname": [],
       "id": "example-665ff5f8",
       "ipv4": [
-        "162.159.130.76"
+        "203.0.113.11"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.76",
+      "last_scan_target": "203.0.113.11",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -344,7 +344,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-665ff5f8",
-      "resource_name": "162.159.130.76",
+      "resource_name": "203.0.113.11",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-665ff5f8",
       "schema": "assets",
@@ -355,7 +355,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-dff29c45b07e7173",
+    "id": "tenable_io-tenant-assets-1c21deeb47640ff9",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -373,10 +373,10 @@
       "hostname": [],
       "id": "example-d127d28a",
       "ipv4": [
-        "162.159.130.79"
+        "203.0.113.57"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.79",
+      "last_scan_target": "203.0.113.57",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -415,7 +415,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-d127d28a",
-      "resource_name": "162.159.130.79",
+      "resource_name": "203.0.113.57",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-d127d28a",
       "schema": "assets",
@@ -426,7 +426,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-4e1f7b9a79ad0ba7",
+    "id": "tenable_io-tenant-assets-5cb39f3d9903f737",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -459,10 +459,10 @@
       "hostname": [],
       "id": "example-43ed7f6f",
       "ipv4": [
-        "162.159.129.83"
+        "203.0.113.213"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.129.83",
+      "last_scan_target": "203.0.113.213",
       "last_seen": "2021-06-10T11:37:06.626Z",
       "mac_address": [],
       "netbios_name": [],
@@ -501,7 +501,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-43ed7f6f",
-      "resource_name": "162.159.129.83",
+      "resource_name": "203.0.113.213",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-43ed7f6f",
       "schema": "assets",
@@ -512,7 +512,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-83a3766b106b39b1",
+    "id": "tenable_io-tenant-assets-8f347ba61e895c71",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -530,10 +530,10 @@
       "hostname": [],
       "id": "example-0411f505",
       "ipv4": [
-        "162.159.130.75"
+        "203.0.113.45"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.75",
+      "last_scan_target": "203.0.113.45",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -572,7 +572,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-0411f505",
-      "resource_name": "162.159.130.75",
+      "resource_name": "203.0.113.45",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-0411f505",
       "schema": "assets",
@@ -583,7 +583,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-d371f7b7d0ba59f2",
+    "id": "tenable_io-tenant-assets-c358c73ff77fbb73",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -601,10 +601,10 @@
       "hostname": [],
       "id": "example-c5dfe291",
       "ipv4": [
-        "162.159.130.77"
+        "203.0.113.242"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.77",
+      "last_scan_target": "203.0.113.242",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -643,7 +643,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-c5dfe291",
-      "resource_name": "162.159.130.77",
+      "resource_name": "203.0.113.242",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c5dfe291",
       "schema": "assets",
@@ -654,7 +654,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-e98c4772170e4f63",
+    "id": "tenable_io-tenant-assets-613ab476b2cb764c",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -672,10 +672,10 @@
       "hostname": [],
       "id": "example-977cd5e2",
       "ipv4": [
-        "162.159.130.80"
+        "203.0.113.129"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.80",
+      "last_scan_target": "203.0.113.129",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -714,7 +714,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-977cd5e2",
-      "resource_name": "162.159.130.80",
+      "resource_name": "203.0.113.129",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-977cd5e2",
       "schema": "assets",
@@ -725,7 +725,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-3c7089032cde560f",
+    "id": "tenable_io-tenant-assets-b16ea2bac468fa2c",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -743,10 +743,10 @@
       "hostname": [],
       "id": "example-eca411e7",
       "ipv4": [
-        "162.159.130.81"
+        "203.0.113.217"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.81",
+      "last_scan_target": "203.0.113.217",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -785,7 +785,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-eca411e7",
-      "resource_name": "162.159.130.81",
+      "resource_name": "203.0.113.217",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-eca411e7",
       "schema": "assets",
@@ -796,7 +796,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-fbe0815cdb235537",
+    "id": "tenable_io-tenant-assets-5c3ddfbf4bbc6017",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -814,10 +814,10 @@
       "hostname": [],
       "id": "example-c915f6e3",
       "ipv4": [
-        "162.159.130.83"
+        "203.0.113.234"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.83",
+      "last_scan_target": "203.0.113.234",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -856,7 +856,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-c915f6e3",
-      "resource_name": "162.159.130.83",
+      "resource_name": "203.0.113.234",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c915f6e3",
       "schema": "assets",
@@ -867,7 +867,7 @@
     }
   },
   {
-    "id": "tenable_io-tenant-assets-ac870b97519816bf",
+    "id": "tenable_io-tenant-assets-1805e6b58519fade",
     "tenant_id": "tenant",
     "source_id": "tenable_io",
     "kind": "tenable_io.assets",
@@ -885,10 +885,10 @@
       "hostname": [],
       "id": "example-75bb0af3",
       "ipv4": [
-        "162.159.130.82"
+        "203.0.113.184"
       ],
       "ipv6": [],
-      "last_scan_target": "162.159.130.82",
+      "last_scan_target": "203.0.113.184",
       "last_seen": "2021-06-10T11:45:02.000Z",
       "mac_address": [],
       "netbios_name": [],
@@ -927,7 +927,7 @@
       "provider": "tenable_io",
       "record_class": "asset",
       "resource_id": "example-75bb0af3",
-      "resource_name": "162.159.130.82",
+      "resource_name": "203.0.113.184",
       "resource_type": "asset",
       "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-75bb0af3",
       "schema": "assets",

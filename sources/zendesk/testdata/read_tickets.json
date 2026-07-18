@@ -1,6 +1,6 @@
 [
   {
-    "id": "zendesk-tenant-tickets-6c4dc2b1e0fc761d",
+    "id": "zendesk-tenant-tickets-26c323e999f306d6",
     "tenant_id": "tenant",
     "source_id": "zendesk",
     "kind": "zendesk.tickets",
@@ -46,7 +46,7 @@
       "ticket_form_id": 6130830344474,
       "type": "incident",
       "updated_at": "2024-02-07T00:11:18Z",
-      "url": "https://example.zendesk.com/api/v2/tickets/1.json",
+      "url": "https://zendesk.example.test/api/v2/tickets/1.json",
       "via": {
         "channel": "sample_ticket",
         "source": {

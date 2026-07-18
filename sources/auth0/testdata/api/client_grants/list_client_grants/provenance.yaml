@@ -5,16 +5,17 @@ case: list_client_grants
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
 request:
     method: GET
-    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/client-grants?audience=https%3A%2F%2Fuat.tf.terraform-provider-auth0.com%2Fclient-grant%2FTestAccClientGrant&client_id=example-client-id&include_totals=true&per_page=50
+    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/client-grants?audience=https%3A%2F%auth0.example.test%2Fclient-grant%2FTestAccClientGrant&client_id=example-client-id&include_totals=true&per_page=50
 response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2026-07-16T11:27:27Z"
-    sha256: 9ca8ca95b60dab1a6f52236367debe54ddff56cde016d206ba1bda1b80a83cf8
+    sha256: e3eeb8ef4b0561466f02dacee31025ebd2714d23916e6a1381f92efa1339e581
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
+        - $.client_grants[0].audience
         - $.client_grants[0].client_id
         - $.client_grants[0].id
         - $request.url

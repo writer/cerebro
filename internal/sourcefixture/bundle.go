@@ -37,6 +37,8 @@ var (
 	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
 	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
 	zendeskTenantHost  = regexp.MustCompile(`(?i)\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.zendesk\.com\b`)
+	auth0FixtureHost   = regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*terraform-provider-auth0\.com\b`)
+	ipv4Pattern        = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
 	providerIDPattern  = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|auth0(?:\||%7c)[0-9a-z]{8,})\b`)
 	fullCommit         = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	sha256Digest       = regexp.MustCompile(`^[0-9a-f]{64}$`)

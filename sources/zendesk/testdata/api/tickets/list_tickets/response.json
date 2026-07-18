@@ -1,7 +1,7 @@
 {
   "links": {
-    "next": "https://example.zendesk.com/api/v2/tickets.json?page%5Bafter%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1",
-    "prev": "https://example.zendesk.com/api/v2/tickets.json?page%5Bbefore%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1"
+    "next": "https://zendesk.example.test/api/v2/tickets.json?page%5Bafter%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1",
+    "prev": "https://zendesk.example.test/api/v2/tickets.json?page%5Bbefore%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1"
   },
   "meta": {
     "after_cursor": "eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ==",
@@ -49,7 +49,7 @@
       "ticket_form_id": 6130830344474,
       "type": "incident",
       "updated_at": "2024-02-07T00:11:18Z",
-      "url": "https://example.zendesk.com/api/v2/tickets/1.json",
+      "url": "https://zendesk.example.test/api/v2/tickets/1.json",
       "via": {
         "channel": "sample_ticket",
         "source": {

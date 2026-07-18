@@ -1,13 +1,13 @@
 [
   {
-    "id": "auth0-tenant-client_grants-d4bd35c2e00fa450",
+    "id": "auth0-tenant-client_grants-c01604d159e495b6",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.client_grants",
     "occurred_at": "2026-07-16T11:27:27Z",
     "schema_ref": "auth0/client_grants/v1",
     "payload": {
-      "audience": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "audience": "https://auth0.example.test/client-grant/TestAccClientGrant",
       "authorization_details_types": [
         "payment"
       ],
@@ -18,17 +18,17 @@
     },
     "attributes": {
       "app_id": "example-76a278b1",
-      "audience": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "audience": "https://auth0.example.test/client-grant/TestAccClientGrant",
       "client_grant_id": "example-5c8ac27c02d63b0d",
       "client_id": "example-76a278b1",
-      "entitlement": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "entitlement": "https://auth0.example.test/client-grant/TestAccClientGrant",
       "entitlement_id": "example-5c8ac27c02d63b0d",
       "external_id": "example-5c8ac27c02d63b0d",
       "family": "client_grants",
       "provider": "auth0",
       "record_class": "identity_app_assignment",
       "resource_id": "example-5c8ac27c02d63b0d",
-      "resource_name": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "resource_name": "https://auth0.example.test/client-grant/TestAccClientGrant",
       "resource_type": "client_grant",
       "resource_urn": "urn:cerebro:tenant:runtime_client_grants:example-5c8ac27c02d63b0d",
       "schema": "client_grants",

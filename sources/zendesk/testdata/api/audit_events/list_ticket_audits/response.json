@@ -79,8 +79,8 @@
     }
   ],
   "links": {
-    "next": "https://example.zendesk.com/api/v2/ticket_audits.json?page%5Bafter%5D=eyJvIjoiY3JlYXRlZF9hdCxpZCIsInYiOiJaQ1VGL1dRQUFBQUFhWnJDU1hPVEJRQUEifQ%3D%3D\u0026page%5Bsize%5D=1",
-    "prev": "https://example.zendesk.com/api/v2/ticket_audits.json?page%5Bbefore%5D=eyJvIjoiY3JlYXRlZF9hdCxpZCIsInYiOiJaQ1VGL1dRQUFBQUFhWnJDU1hPVEJRQUEifQ%3D%3D\u0026page%5Bsize%5D=1"
+    "next": "https://zendesk.example.test/api/v2/ticket_audits.json?page%5Bafter%5D=eyJvIjoiY3JlYXRlZF9hdCxpZCIsInYiOiJaQ1VGL1dRQUFBQUFhWnJDU1hPVEJRQUEifQ%3D%3D\u0026page%5Bsize%5D=1",
+    "prev": "https://zendesk.example.test/api/v2/ticket_audits.json?page%5Bbefore%5D=eyJvIjoiY3JlYXRlZF9hdCxpZCIsInYiOiJaQ1VGL1dRQUFBQUFhWnJDU1hPVEJRQUEifQ%3D%3D\u0026page%5Bsize%5D=1"
   },
   "meta": {
     "after_cursor": "eyJvIjoiY3JlYXRlZF9hdCxpZCIsInYiOiJaQ1VGL1dRQUFBQUFhWnJDU1hPVEJRQUEifQ==",

@@ -6,8 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 )
+
+var documentationIPv4Prefixes = []netip.Prefix{
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+}
 
 // SanitizeImportedJSON clears string credential values and replaces personal
 // email addresses while preserving the provider response schema.
@@ -38,6 +45,51 @@ func SanitizeImportedCredentials(payload []byte) ([]byte, []string, error) {
 		return nil, nil, err
 	}
 	return canonical, normalizedList(changed), nil
+}
+
+// SanitizeImportedTextValues reapplies idempotent provider identifier, tenant
+// host, and public IP replacements without re-hashing personal-field values.
+func SanitizeImportedTextValues(payload []byte) ([]byte, []string, error) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return nil, nil, fmt.Errorf("decode imported JSON response: %w", err)
+	}
+	changed := []string{}
+	sanitized := sanitizeTextValues(value, "$", &changed)
+	encoded, err := json.Marshal(sanitized)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode sanitized JSON response: %w", err)
+	}
+	canonical, err := CanonicalJSON(encoded)
+	if err != nil {
+		return nil, nil, err
+	}
+	return canonical, normalizedList(changed), nil
+}
+
+func sanitizeTextValues(value any, valuePath string, changed *[]string) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			typed[key] = sanitizeTextValues(child, valuePath+"."+key, changed)
+		}
+		return typed
+	case []any:
+		for index, child := range typed {
+			typed[index] = sanitizeTextValues(child, fmt.Sprintf("%s[%d]", valuePath, index), changed)
+		}
+		return typed
+	case string:
+		sanitized := SanitizeImportedText(typed)
+		if sanitized != typed {
+			*changed = append(*changed, valuePath)
+		}
+		return sanitized
+	default:
+		return value
+	}
 }
 
 // SanitizeImportedJSONWithKeys also replaces values for explicitly declared
@@ -198,6 +250,16 @@ func sanitizeCredentialJSONValue(value any, valuePath string, changed *[]string)
 		}
 		*changed = append(*changed, valuePath)
 		return "", nil
+	case json.Number:
+		if typed == "0" {
+			return typed, nil
+		}
+		return nil, fmt.Errorf("credential field %s must be sanitized manually without changing its JSON type", valuePath)
+	case bool:
+		if !typed {
+			return typed, nil
+		}
+		return nil, fmt.Errorf("credential field %s must be sanitized manually without changing its JSON type", valuePath)
 	default:
 		return nil, fmt.Errorf("credential field %s must be sanitized manually without changing its JSON type", valuePath)
 	}
@@ -241,11 +303,27 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 // tenant data or resemble credentials with stable example values so references
 // remain consistent across response fields.
 func SanitizeImportedText(value string) string {
-	value = zendeskTenantHost.ReplaceAllString(value, "example.zendesk.com")
+	value = zendeskTenantHost.ReplaceAllString(value, "zendesk.example.test")
+	value = auth0FixtureHost.ReplaceAllString(value, "auth0.example.test")
+	value = ipv4Pattern.ReplaceAllStringFunc(value, sanitizePublicIPv4)
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
 		digest := sha256.Sum256([]byte(identifier))
 		return "example-" + hex.EncodeToString(digest[:8])
 	})
+}
+
+func sanitizePublicIPv4(value string) string {
+	address, err := netip.ParseAddr(value)
+	if err != nil || !address.Is4() || address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast() || address.IsUnspecified() || address.IsMulticast() {
+		return value
+	}
+	for _, prefix := range documentationIPv4Prefixes {
+		if prefix.Contains(address) {
+			return value
+		}
+	}
+	digest := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("203.0.113.%d", int(digest[0])%254+1)
 }
 
 func shouldSanitizePersonalField(key string, explicitKeys map[string]struct{}) bool {

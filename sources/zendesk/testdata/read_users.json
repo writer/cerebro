@@ -1,6 +1,6 @@
 [
   {
-    "id": "zendesk-tenant-users-6e87f1420a10c2ac",
+    "id": "zendesk-tenant-users-1ad20b7cff6a4b42",
     "tenant_id": "tenant",
     "source_id": "zendesk",
     "kind": "zendesk.users",
@@ -28,30 +28,30 @@
       "phone": null,
       "photo": {
         "content_type": "image/png",
-        "content_url": "https://example.zendesk.com/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
+        "content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
         "deleted": false,
         "file_name": "profile_image_6130869168922_18525119.png",
         "height": 80,
         "id": 6130876541082,
         "inline": false,
-        "mapped_content_url": "https://example.zendesk.com/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
+        "mapped_content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
         "size": 10157,
         "thumbnails": [
           {
             "content_type": "image/png",
-            "content_url": "https://example.zendesk.com/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
+            "content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
             "deleted": false,
             "file_name": "profile_image_6130869168922_18525119_thumb.png",
             "height": 32,
             "id": 6130869169818,
             "inline": false,
-            "mapped_content_url": "https://example.zendesk.com/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
+            "mapped_content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
             "size": 2330,
-            "url": "https://example.zendesk.com/api/v2/attachments/6130869169818.json",
+            "url": "https://zendesk.example.test/api/v2/attachments/6130869169818.json",
             "width": 32
           }
         ],
-        "url": "https://example.zendesk.com/api/v2/attachments/6130876541082.json",
+        "url": "https://zendesk.example.test/api/v2/attachments/6130876541082.json",
         "width": 80
       },
       "report_csv": false,
@@ -68,7 +68,7 @@
       "time_zone": "America/New_York",
       "two_factor_auth_enabled": null,
       "updated_at": "2023-09-09T23:52:06Z",
-      "url": "https://example.zendesk.com/api/v2/users/6130869168922.json",
+      "url": "https://zendesk.example.test/api/v2/users/6130869168922.json",
       "user_fields": {},
       "verified": false
     },

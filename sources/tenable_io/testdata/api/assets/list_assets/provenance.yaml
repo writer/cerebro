@@ -10,24 +10,50 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2021-07-06T09:44:40Z"
-    sha256: e8d152c7722fbd0d314b14b17fd190499f55db5d4b91a9a902284b75756c0494
+    sha256: 46989d259f912dbb527ff1db4dade31f6e3b38a30e25c645d0d670cf0f0d48ed
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
         - $.assets[0].id
+        - $.assets[0].ipv4[0]
+        - $.assets[0].last_scan_target
         - $.assets[10].id
+        - $.assets[10].ipv4[0]
+        - $.assets[10].last_scan_target
         - $.assets[11].id
+        - $.assets[11].ipv4[0]
+        - $.assets[11].last_scan_target
         - $.assets[12].id
+        - $.assets[12].ipv4[0]
+        - $.assets[12].last_scan_target
         - $.assets[1].id
+        - $.assets[1].ipv4[0]
+        - $.assets[1].last_scan_target
         - $.assets[2].id
+        - $.assets[2].ipv4[0]
+        - $.assets[2].last_scan_target
         - $.assets[3].id
+        - $.assets[3].ipv4[0]
+        - $.assets[3].last_scan_target
         - $.assets[4].id
+        - $.assets[4].ipv4[0]
+        - $.assets[4].last_scan_target
         - $.assets[5].id
+        - $.assets[5].ipv4[0]
+        - $.assets[5].last_scan_target
         - $.assets[6].id
+        - $.assets[6].ipv4[0]
+        - $.assets[6].last_scan_target
         - $.assets[7].id
+        - $.assets[7].ipv4[0]
+        - $.assets[7].last_scan_target
         - $.assets[8].id
+        - $.assets[8].ipv4[0]
+        - $.assets[8].last_scan_target
         - $.assets[9].id
+        - $.assets[9].ipv4[0]
+        - $.assets[9].last_scan_target
 origin:
     type: upstream_recording
     repository: https://github.com/Tenable/pyTenable

@@ -5,12 +5,12 @@ case: list_tickets
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedZendeskFamilies
 request:
     method: GET
-    url: https://example.zendesk.com/api/v2/tickets.json?page%5Bsize%5D=1
+    url: https://zendesk.example.test/api/v2/tickets.json?page%5Bsize%5D=1
 response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2024-02-08T17:44:44Z"
-    sha256: 5fe242e3105508055ae02ae51046184e0f281cfb314c6c3979221e2184a0c699
+    sha256: 958d3d9d9195963623ac8d30a304488bccc0821ebdb65b32e0b7e0f00e233d66
 sanitization:
     tool: sourcefixture
     version: 1

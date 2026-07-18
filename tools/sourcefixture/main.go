@@ -75,9 +75,26 @@ func resanitize(arguments []string) {
 		if readErr != nil {
 			fail(readErr)
 		}
-		sanitized, changedFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
+		credentialSanitized, credentialFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
 		if sanitizeErr != nil {
 			fail(fmt.Errorf("sanitize %s: %w", responsePath, sanitizeErr))
+		}
+		sanitized, textFields, sanitizeErr := sourcefixture.SanitizeImportedTextValues(credentialSanitized)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize text values in %s: %w", responsePath, sanitizeErr))
+		}
+		changedFields := append(credentialFields, textFields...)
+		originalRequestURL := manifest.Request.URL
+		manifest.Request.URL = sourcefixture.SanitizeImportedText(manifest.Request.URL)
+		if manifest.Request.URL != originalRequestURL {
+			changedFields = append(changedFields, "$request.url")
+		}
+		for name, value := range manifest.Response.Headers {
+			sanitizedValue := sourcefixture.SanitizeImportedText(value)
+			if sanitizedValue != value {
+				manifest.Response.Headers[name] = sanitizedValue
+				changedFields = append(changedFields, "$response.headers."+name)
+			}
 		}
 		if len(changedFields) == 0 {
 			continue

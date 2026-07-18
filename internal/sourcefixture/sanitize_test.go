@@ -73,6 +73,9 @@ func TestSanitizeImportedJSONRejectsNonStringCredentialLeaves(t *testing.T) {
 	if _, _, err := SanitizeImportedJSON([]byte(`{"tokens":[123]}`)); err == nil {
 		t.Fatal("SanitizeImportedJSON() error = nil, want manual-sanitization error")
 	}
+	if _, _, err := SanitizeImportedJSON([]byte(`{"issue_token":0,"secret":false}`)); err != nil {
+		t.Fatalf("SanitizeImportedJSON() sanitized typed credentials error = %v", err)
+	}
 }
 
 func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
@@ -99,6 +102,25 @@ func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
 	}
 }
 
+func TestSanitizeImportedTextValuesIsIdempotentForPersonalFields(t *testing.T) {
+	payload, changed, err := SanitizeImportedTextValues([]byte(`{
+		"email":"user-3a5ab2b2@example.test",
+		"ip":"162.159.129.83",
+		"url":"https://uat.tf.terraform-provider-auth0.com/client-grant/example"
+	}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedTextValues() error = %v", err)
+	}
+	text := string(payload)
+	if !strings.Contains(text, `"email": "user-3a5ab2b2@example.test"`) || !strings.Contains(text, `"ip": "203.0.113.`) || !strings.Contains(text, `"url": "https://auth0.example.test/client-grant/example"`) {
+		t.Fatalf("sanitized payload = %s", payload)
+	}
+	want := []string{"$.ip", "$.url"}
+	if len(changed) != len(want) || changed[0] != want[0] || changed[1] != want[1] {
+		t.Fatalf("changed fields = %#v, want %#v", changed, want)
+	}
+}
+
 func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	commit := "00a" + strings.Repeat("1", 37)
 	if got := SanitizeImportedText(commit); got != commit {
@@ -109,7 +131,20 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 		t.Fatalf("SanitizeImportedText(%q) retained provider identifier", identifier)
 	}
 	tenantURL := "https://tenant-name.zendesk.com/api/v2/users.json"
-	if got := SanitizeImportedText(tenantURL); got != "https://example.zendesk.com/api/v2/users.json" {
+	if got := SanitizeImportedText(tenantURL); got != "https://zendesk.example.test/api/v2/users.json" {
 		t.Fatalf("SanitizeImportedText(%q) = %q", tenantURL, got)
+	}
+	audienceURL := "https://uat.tf.terraform-provider-auth0.com/client-grant/example"
+	if got := SanitizeImportedText(audienceURL); got != "https://auth0.example.test/client-grant/example" {
+		t.Fatalf("SanitizeImportedText(%q) = %q", audienceURL, got)
+	}
+	publicIP := "162.159.129.83"
+	if got := SanitizeImportedText(publicIP); got == publicIP || !strings.HasPrefix(got, "203.0.113.") {
+		t.Fatalf("SanitizeImportedText(%q) = %q", publicIP, got)
+	}
+	for _, safeIP := range []string{"10.0.0.1", "127.0.0.1", "192.0.2.25", "198.51.100.25", "203.0.113.25"} {
+		if got := SanitizeImportedText(safeIP); got != safeIP {
+			t.Fatalf("SanitizeImportedText(%q) = %q", safeIP, got)
+		}
 	}
 }
