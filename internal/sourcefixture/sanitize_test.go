@@ -1,6 +1,7 @@
 package sourcefixture
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -138,6 +139,13 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	if got := SanitizeImportedText(audienceURL); got != "https://auth0.example.test/client-grant/example" {
 		t.Fatalf("SanitizeImportedText(%q) = %q", audienceURL, got)
 	}
+	auth0URL := "https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/clients"
+	if got := SanitizeImportedText(auth0URL); got != "https://auth0.example.test/api/v2/clients" {
+		t.Fatalf("SanitizeImportedText(%q) = %q", auth0URL, got)
+	}
+	if got := SanitizeImportedText("terraform-provider-auth0-dev"); got != "auth0-example-tenant" {
+		t.Fatalf("SanitizeImportedText(Auth0 tenant) = %q", got)
+	}
 	publicIP := "162.159.129.83"
 	if got := SanitizeImportedText(publicIP); got == publicIP || !strings.HasPrefix(got, "203.0.113.") {
 		t.Fatalf("SanitizeImportedText(%q) = %q", publicIP, got)
@@ -146,5 +154,25 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 		if got := SanitizeImportedText(safeIP); got != safeIP {
 			t.Fatalf("SanitizeImportedText(%q) = %q", safeIP, got)
 		}
+	}
+}
+
+func TestSanitizeImportedTextRewritesProviderIDsInsideBase64(t *testing.T) {
+	identifier := "auth0|69e90a4415cfe76760975a99"
+	decodedCursor := "2026-04-22 17:49:59.472000UTC," + identifier
+	cursor := base64.StdEncoding.EncodeToString([]byte(decodedCursor))
+	sanitized := SanitizeImportedText(cursor)
+	if sanitized == cursor {
+		t.Fatal("SanitizeImportedText(base64 cursor) retained encoded provider identifier")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(sanitized)
+	if err != nil {
+		t.Fatalf("decode sanitized cursor: %v", err)
+	}
+	if strings.Contains(string(decoded), identifier) || !strings.Contains(string(decoded), "example-39d11e9d") {
+		t.Fatalf("decoded sanitized cursor = %q", decoded)
+	}
+	if got := SanitizeImportedText(sanitized); got != sanitized {
+		t.Fatalf("second sanitization = %q, want idempotent %q", got, sanitized)
 	}
 }

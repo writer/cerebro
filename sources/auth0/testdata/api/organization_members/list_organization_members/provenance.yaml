@@ -5,17 +5,18 @@ case: list_organization_members
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
 request:
     method: GET
-    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/organizations/example-d1614e71f833b148/members?fields=user_id&include_fields=true&include_totals=true&per_page=50&take=100
+    url: https://auth0.example.test/api/v2/organizations/example-d1614e71f833b148/members?fields=user_id&include_fields=true&include_totals=true&per_page=50&take=100
 response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2026-07-16T11:27:27Z"
-    sha256: 5cea229533922998261e589330c71fff58b2f84db2ae1bc6b7fb400e0fb2619b
+    sha256: 5403f95962948970a7f77d2fedba94e3d44c064e6e4b4e1bcff23e38081c2654
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
         - $.members[0].user_id
+        - $.next
         - $request.url
 origin:
     type: upstream_recording

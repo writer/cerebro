@@ -5,7 +5,7 @@ case: list_user_roles
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
 request:
     method: GET
-    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/users/example-143233fb4ac8d6dd/roles?include_totals=true&per_page=50
+    url: https://auth0.example.test/api/v2/users/example-143233fb4ac8d6dd/roles?include_totals=true&per_page=50
 response:
     status: 200
     content_type: application/json; charset=utf-8

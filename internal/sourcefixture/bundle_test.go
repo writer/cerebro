@@ -1,6 +1,7 @@
 package sourcefixture
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -156,6 +157,17 @@ func TestScanPayloadAcceptsCommitSHABeginningWithProviderPrefix(t *testing.T) {
 	}
 	if err := scanPayload(payload); err != nil {
 		t.Fatalf("scanPayload(commit SHA) error = %v", err)
+	}
+}
+
+func TestScanPayloadRejectsBase64EncodedProviderIdentifier(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("cursor,auth0|69e90a4415cfe76760975a99"))
+	payload, err := CanonicalJSON([]byte(fmt.Sprintf(`{"next":%q}`, encoded)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanPayload(payload); !errors.Is(err, ErrProviderID) {
+		t.Fatalf("scanPayload(base64 provider ID) error = %v, want errors.Is(_, ErrProviderID)", err)
 	}
 }
 

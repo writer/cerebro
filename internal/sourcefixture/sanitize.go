@@ -3,17 +3,26 @@ package sourcefixture
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
+	"unicode/utf8"
 )
 
 var documentationIPv4Prefixes = []netip.Prefix{
 	netip.MustParsePrefix("192.0.2.0/24"),
 	netip.MustParsePrefix("198.51.100.0/24"),
 	netip.MustParsePrefix("203.0.113.0/24"),
+}
+
+var base64TextEncodings = []*base64.Encoding{
+	base64.StdEncoding,
+	base64.RawStdEncoding,
+	base64.URLEncoding,
+	base64.RawURLEncoding,
 }
 
 // SanitizeImportedJSON clears string credential values and replaces personal
@@ -303,13 +312,64 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 // tenant data or resemble credentials with stable example values so references
 // remain consistent across response fields.
 func SanitizeImportedText(value string) string {
+	sanitized := sanitizePlainImportedText(value)
+	return sanitizeEncodedImportedText(sanitized)
+}
+
+func sanitizePlainImportedText(value string) string {
 	value = zendeskTenantHost.ReplaceAllString(value, "zendesk.example.test")
 	value = auth0FixtureHost.ReplaceAllString(value, "auth0.example.test")
+	value = auth0TenantHost.ReplaceAllString(value, "auth0.example.test")
+	value = auth0FixtureTenant.ReplaceAllString(value, "auth0-example-tenant")
 	value = ipv4Pattern.ReplaceAllStringFunc(value, sanitizePublicIPv4)
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
-		digest := sha256.Sum256([]byte(identifier))
-		return "example-" + hex.EncodeToString(digest[:8])
+		digest := sha256.Sum256([]byte(strings.ToLower(identifier)))
+		length := 8
+		normalized := strings.ToLower(identifier)
+		if strings.HasPrefix(normalized, "auth0|") || strings.HasPrefix(normalized, "auth0%7c") {
+			length = 4
+		}
+		return "example-" + hex.EncodeToString(digest[:length])
 	})
+}
+
+func sanitizeEncodedImportedText(value string) string {
+	for _, encoding := range base64TextEncodings {
+		decoded, err := encoding.DecodeString(value)
+		if err != nil || !isPrintableText(decoded) {
+			continue
+		}
+		sanitized := sanitizePlainImportedText(string(decoded))
+		if sanitized != string(decoded) {
+			return encoding.EncodeToString([]byte(sanitized))
+		}
+	}
+	return value
+}
+
+func containsUnsanitizedProviderText(value string) bool {
+	if sanitizePlainImportedText(value) != value {
+		return true
+	}
+	for _, encoding := range base64TextEncodings {
+		decoded, err := encoding.DecodeString(value)
+		if err == nil && isPrintableText(decoded) && sanitizePlainImportedText(string(decoded)) != string(decoded) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPrintableText(value []byte) bool {
+	if len(value) == 0 || !utf8.Valid(value) {
+		return false
+	}
+	for _, character := range string(value) {
+		if character < ' ' || character == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func sanitizePublicIPv4(value string) string {

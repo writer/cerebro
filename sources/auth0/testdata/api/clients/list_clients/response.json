@@ -2,7 +2,7 @@
   "clients": [
     {
       "client_id": "example-2f83121d",
-      "tenant": "terraform-provider-auth0-dev"
+      "tenant": "auth0-example-tenant"
     }
   ],
   "limit": 50,

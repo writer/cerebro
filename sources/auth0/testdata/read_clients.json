@@ -1,6 +1,6 @@
 [
   {
-    "id": "auth0-tenant-clients-4e1b733477cc5c23",
+    "id": "auth0-tenant-clients-0b176b24d18d08a9",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.clients",
@@ -8,7 +8,7 @@
     "schema_ref": "auth0/clients/v1",
     "payload": {
       "client_id": "example-2f83121d",
-      "tenant": "terraform-provider-auth0-dev"
+      "tenant": "auth0-example-tenant"
     },
     "attributes": {
       "app_id": "example-2f83121d",
