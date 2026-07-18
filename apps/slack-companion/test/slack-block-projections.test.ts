@@ -4,6 +4,7 @@ import {
   MAX_SLACK_ACTIONS,
   MAX_SLACK_BLOCKS,
   projectSlackBlocks,
+  projectSlackEphemeralResponse,
   SlackBlockProjectionError,
 } from "../src/index.js";
 
@@ -119,5 +120,81 @@ test("block projections reject malformed, duplicate, and oversized input", () =>
   assert.throws(
     () => projectSlackBlocks({ projection_key: "run one", sections: ["Status"] }),
     /must not contain whitespace/,
+  );
+});
+
+test("ephemeral command responses are deterministic bounded projections", () => {
+  const input = {
+    actions: [{
+      action_key: "open_result",
+      label: "Open result",
+      value: "result://run/one",
+    }],
+    fallback_text: "The command completed.",
+    response_key: "command-one:result",
+    sections: ["The command completed for <@U_SAMPLE>."],
+    title: "Command result",
+  };
+
+  const first = projectSlackEphemeralResponse(input);
+  const repeat = projectSlackEphemeralResponse({ ...input });
+
+  assert.deepEqual(repeat, first);
+  assert.deepEqual(first.payload, {
+    blocks: first.payload.blocks,
+    response_type: "ephemeral",
+    text: "The command completed.",
+  });
+  assert.equal(JSON.stringify(first.payload).includes('"type":"mrkdwn"'), false);
+  assert.match(
+    first.projection_id,
+    /^cerebro\.ephemeral_response\.[0-9a-f]{32}:sha256:[0-9a-f]{64}$/,
+  );
+  assert.equal(Object.isFrozen(first), true);
+  assert.equal(Object.isFrozen(first.payload), true);
+  assert.equal(Object.isFrozen(first.payload.blocks), true);
+});
+
+test("ephemeral command responses snapshot input and reject unsafe shapes", () => {
+  const sections = ["Original result"];
+  const projection = projectSlackEphemeralResponse({
+    fallback_text: "Original result",
+    response_key: "command-two:result",
+    sections,
+  });
+  sections[0] = "Changed after projection";
+
+  assert.equal(projection.payload.text, "Original result");
+  assert.equal(projection.payload.blocks[0]?.type, "section");
+  assert.equal(
+    projection.payload.blocks[0]?.type === "section"
+      ? projection.payload.blocks[0].text.text
+      : undefined,
+    "Original result",
+  );
+  assert.throws(
+    () => projectSlackEphemeralResponse({
+      fallback_text: "Unsafe\u0000fallback",
+      response_key: "command-two:unsafe",
+      sections: ["Result"],
+    }),
+    SlackBlockProjectionError,
+  );
+  assert.throws(
+    () => projectSlackEphemeralResponse({
+      fallback_text: "x".repeat(3_001),
+      response_key: "command-two:oversized",
+      sections: ["Result"],
+    }),
+    /response fallback text is invalid/,
+  );
+  assert.throws(
+    () => projectSlackEphemeralResponse({
+      fallback_text: "Result",
+      response_key: "command-two:unexpected",
+      sections: ["Result"],
+      unexpected: true,
+    } as never),
+    /unsupported fields/,
   );
 });

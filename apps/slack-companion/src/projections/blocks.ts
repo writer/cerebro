@@ -61,7 +61,70 @@ export interface SlackBlocksProjectionV1 {
   readonly schema_version: "slack-blocks-projection/v1";
 }
 
+export interface SlackEphemeralResponseInputV1 {
+  readonly actions?: readonly SlackActionInputV1[];
+  readonly fallback_text: string;
+  readonly response_key: string;
+  readonly sections: readonly string[];
+  readonly title?: string;
+}
+
+export interface SlackEphemeralResponsePayloadV1 {
+  readonly blocks: readonly SlackBlockV1[];
+  readonly response_type: "ephemeral";
+  readonly text: string;
+}
+
+export interface SlackEphemeralResponseProjectionV1 {
+  readonly payload: SlackEphemeralResponsePayloadV1;
+  readonly projection_id: string;
+  readonly schema_version: "slack-ephemeral-response-projection/v1";
+}
+
 export class SlackBlockProjectionError extends Error {}
+
+/**
+ * Projects a command response without performing delivery. The private host
+ * owns the callback that submits this bounded payload to Slack.
+ */
+export function projectSlackEphemeralResponse(
+  input: SlackEphemeralResponseInputV1,
+): SlackEphemeralResponseProjectionV1 {
+  requireExactInputRecord(
+    input,
+    ["actions", "fallback_text", "response_key", "sections", "title"],
+    "Slack ephemeral response input",
+  );
+  const responseKey = requireSlackKey(input.response_key, "response key");
+  const fallbackText = normalizeSlackText(
+    input.fallback_text,
+    "response fallback text",
+    MAX_SLACK_SECTION_LENGTH,
+  );
+  const blockProjection = projectSlackBlocks({
+    ...(input.actions === undefined ? {} : { actions: input.actions }),
+    projection_key: responseKey,
+    sections: input.sections,
+    ...(input.title === undefined ? {} : { title: input.title }),
+  });
+  const payload = Object.freeze({
+    blocks: blockProjection.blocks,
+    response_type: "ephemeral" as const,
+    text: fallbackText,
+  });
+  const truth = {
+    payload,
+    schema_version: "slack-ephemeral-response-projection/v1" as const,
+  };
+  return Object.freeze({
+    ...truth,
+    projection_id: contentBoundSlackIdentifier(
+      "ephemeral_response",
+      responseKey,
+      truth,
+    ),
+  });
+}
 
 /**
  * Produces a bounded Block Kit subset. Display values are always plain_text,
@@ -272,4 +335,32 @@ function requireSlackActionKey(value: string): string {
     );
   }
   return normalized;
+}
+
+function requireExactInputRecord(
+  value: object,
+  allowedFields: readonly string[],
+  field: string,
+): void {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new SlackBlockProjectionError(`${field} must be a plain record.`);
+  }
+  const allowed = new Set(allowedFields);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || !allowed.has(key)) {
+      throw new SlackBlockProjectionError(`${field} contains unsupported fields.`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor === undefined
+      || descriptor.get !== undefined
+      || descriptor.set !== undefined
+    ) {
+      throw new SlackBlockProjectionError(`${field} must contain data fields.`);
+    }
+  }
 }
