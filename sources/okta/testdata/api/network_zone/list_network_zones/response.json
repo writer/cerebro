@@ -1,0 +1,66 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/zones/nzokqewqlRZEmDTI35d6/lifecycle/deactivate"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/zones/nzokqewqlRZEmDTI35d6"
+      }
+    },
+    "created": "2021-04-13T05:55:32.000Z",
+    "gateways": null,
+    "id": "nzokqewqlRZEmDTI35d6",
+    "lastUpdated": "2021-04-13T05:55:32.000Z",
+    "name": "BlockedIpZone",
+    "proxies": null,
+    "status": "ACTIVE",
+    "system": true,
+    "type": "IP",
+    "usage": "BLOCKLIST"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/zones/nzokqewqkySLYtl9W5d6/lifecycle/deactivate"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/zones/nzokqewqkySLYtl9W5d6"
+      }
+    },
+    "created": "2021-04-13T05:55:32.000Z",
+    "gateways": null,
+    "id": "nzokqewqkySLYtl9W5d6",
+    "lastUpdated": "2021-04-13T05:55:32.000Z",
+    "name": "LegacyIpZone",
+    "proxies": null,
+    "status": "ACTIVE",
+    "system": true,
+    "type": "IP",
+    "usage": "POLICY"
+  }
+]

@@ -1,0 +1,146 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfaj82EprbNriw4x6/lifecycle/deactivate"
+      },
+      "execute": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfaj82EprbNriw4x6/execute"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfaj82EprbNriw4x6"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header 0"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/inlineHook"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:16:46.000Z",
+    "id": "calsfaj82EprbNriw4x6",
+    "lastUpdated": "2020-08-27T18:16:46.000Z",
+    "name": "python_sdk IH0",
+    "status": "ACTIVE",
+    "type": "com.okta.oauth2.tokens.transform",
+    "version": "1.0.0"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdgb2Z4UaB54x6/lifecycle/deactivate"
+      },
+      "execute": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdgb2Z4UaB54x6/execute"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdgb2Z4UaB54x6"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header 1"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/inlineHook"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:16:46.000Z",
+    "id": "calsfbpdgb2Z4UaB54x6",
+    "lastUpdated": "2020-08-27T18:16:46.000Z",
+    "name": "python_sdk IH1",
+    "status": "ACTIVE",
+    "type": "com.okta.oauth2.tokens.transform",
+    "version": "1.0.0"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdhoeHw9xHe4x6/lifecycle/deactivate"
+      },
+      "execute": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdhoeHw9xHe4x6/execute"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/inlineHooks/calsfbpdhoeHw9xHe4x6"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header 2"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/inlineHook"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:16:46.000Z",
+    "id": "calsfbpdhoeHw9xHe4x6",
+    "lastUpdated": "2020-08-27T18:16:46.000Z",
+    "name": "python_sdk IH2",
+    "status": "ACTIVE",
+    "type": "com.okta.oauth2.tokens.transform",
+    "version": "1.0.0"
+  }
+]

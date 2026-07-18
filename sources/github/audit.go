@@ -175,7 +175,7 @@ func auditEvent(settings settings, entry *gogithub.AuditEntry, actorResolution a
 	if occurredAt.IsZero() {
 		return nil, fmt.Errorf("github audit event %q missing timestamps", entry.GetDocumentID())
 	}
-	raw, err := auditRaw(entry)
+	raw, err := githubaudit.RawEntry(entry)
 	if err != nil {
 		return nil, err
 	}
@@ -232,18 +232,6 @@ func auditOccurredAt(entry *gogithub.AuditEntry) time.Time {
 		return stamp.UTC()
 	}
 	return time.Time{}
-}
-
-func auditRaw(entry *gogithub.AuditEntry) (map[string]any, error) {
-	bytes, err := json.Marshal(entry)
-	if err != nil {
-		return nil, fmt.Errorf("marshal github audit raw payload: %w", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(bytes, &raw); err != nil {
-		return nil, fmt.Errorf("unmarshal github audit raw payload: %w", err)
-	}
-	return raw, nil
 }
 
 func auditEventID(entry *gogithub.AuditEntry, occurredAt time.Time) string {

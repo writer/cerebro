@@ -198,6 +198,7 @@ func TestProviderUnavailable() {}
 		ReplayTest: "source_test.go#TestLiveHTTP",
 		Request:    sourcefixture.Request{Method: "GET", URL: "https://api.provider.example/v1/audit"},
 		Response:   sourcefixture.Response{Status: 200, ContentType: "application/json", CapturedAt: "2026-07-18T00:00:00Z"},
+		Origin:     sourcefixture.Origin{Type: "operator_request"},
 	}, []byte(`{"items":[{"action":"repo.create","actor":"octocat"}]}`)); err != nil {
 		t.Fatalf("WriteBundle() error = %v", err)
 	}

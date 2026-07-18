@@ -1,0 +1,32 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: monitors
+case: list_monitors
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v1/monitor?page_size=2&page=0
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2025-01-09T22:03:04Z"
+    sha256: 1f054b96ea1c3b99c35d047dbdd901b34e742888ea688e43ee6580bdf9d1b5d6
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].creator.email
+        - $[0].creator.handle
+        - $[1].creator.email
+        - $[1].creator.handle
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v1/Feature_Monitors/Scenario_Get_all_monitors_returns_OK_response_with_pagination.yaml
+    artifact_sha256: bf19883af9447f0aefb1816f1660d84781b666bcdd46aa73b86c02a925f85059
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    freshness: historical
+    capture_time_basis: artifact_commit

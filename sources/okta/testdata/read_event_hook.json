@@ -1,36 +1,104 @@
 [
   {
-    "id": "okta-event-hook-fixture-1",
+    "id": "okta-writer-okta-com-event_hook-093c869be27d358f",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.event_hook",
-    "occurred_at": "2026-04-23T00:00:00Z",
+    "occurred_at": "2020-08-27T18:15:27Z",
     "schema_ref": "okta/event_hook/v1",
     "payload": {
-      "id": "hook-event-prod",
       "domain": "writer.okta.com",
-      "name": "Security event egress"
+      "id": "whosfap1oHfjrkCoP4x6",
+      "name": "EVENT_TYPE0",
+      "status": "ACTIVE"
     },
     "attributes": {
       "channel_type": "HTTP",
       "channel_version": "1.0.0",
-      "created_at": "2026-04-20T00:00:00Z",
-      "created_by": "00u1",
-      "description": "Send selected security events",
+      "created_at": "2020-08-27T18:15:27.000Z",
+      "created_by": "example-74050b6de2891b2b",
       "domain": "writer.okta.com",
-      "event_count": "1",
-      "event_hook_id": "hook-event-prod",
+      "event_count": "2",
+      "event_hook_id": "whosfap1oHfjrkCoP4x6",
       "event_subscription_type": "EVENT_TYPE",
       "family": "event_hook",
-      "last_updated_at": "2026-04-23T00:00:00Z",
+      "last_updated_at": "2020-08-27T18:15:27.000Z",
       "method": "POST",
-      "name": "Security event egress",
-      "resource_id": "hook-event-prod",
+      "name": "EVENT_TYPE0",
+      "resource_id": "whosfap1oHfjrkCoP4x6",
       "resource_type": "EventHook",
       "status": "ACTIVE",
-      "uri": "https://hooks.example.com/okta/events",
-      "uri_host": "hooks.example.com",
-      "verification_status": "VERIFIED"
+      "uri": "https://www.example.com/eventHooks",
+      "uri_host": "www.example.com",
+      "verification_status": "UNVERIFIED"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-event_hook-cb73b88fa618fbc0",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.event_hook",
+    "occurred_at": "2020-08-27T18:15:27Z",
+    "schema_ref": "okta/event_hook/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "whosf7biiVzubELOm4x6",
+      "name": "EVENT_TYPE1",
+      "status": "ACTIVE"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2020-08-27T18:15:27.000Z",
+      "created_by": "example-74050b6de2891b2b",
+      "domain": "writer.okta.com",
+      "event_count": "2",
+      "event_hook_id": "whosf7biiVzubELOm4x6",
+      "event_subscription_type": "EVENT_TYPE",
+      "family": "event_hook",
+      "last_updated_at": "2020-08-27T18:15:27.000Z",
+      "method": "POST",
+      "name": "EVENT_TYPE1",
+      "resource_id": "whosf7biiVzubELOm4x6",
+      "resource_type": "EventHook",
+      "status": "ACTIVE",
+      "uri": "https://www.example.com/eventHooks",
+      "uri_host": "www.example.com",
+      "verification_status": "UNVERIFIED"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-event_hook-7ca34325319add0f",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.event_hook",
+    "occurred_at": "2020-08-27T18:15:27Z",
+    "schema_ref": "okta/event_hook/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "whosfa0uabBHiwcoB4x6",
+      "name": "EVENT_TYPE2",
+      "status": "ACTIVE"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2020-08-27T18:15:27.000Z",
+      "created_by": "example-74050b6de2891b2b",
+      "domain": "writer.okta.com",
+      "event_count": "2",
+      "event_hook_id": "whosfa0uabBHiwcoB4x6",
+      "event_subscription_type": "EVENT_TYPE",
+      "family": "event_hook",
+      "last_updated_at": "2020-08-27T18:15:27.000Z",
+      "method": "POST",
+      "name": "EVENT_TYPE2",
+      "resource_id": "whosfa0uabBHiwcoB4x6",
+      "resource_type": "EventHook",
+      "status": "ACTIVE",
+      "uri": "https://www.example.com/eventHooks",
+      "uri_host": "www.example.com",
+      "verification_status": "UNVERIFIED"
     }
   }
 ]

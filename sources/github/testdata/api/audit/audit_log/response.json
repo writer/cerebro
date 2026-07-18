@@ -1,0 +1,14 @@
+[
+  {
+    "@timestamp": 1661836610662,
+    "_document_id": "DKjUdviTAq5bSG1TGm8lcA",
+    "action": "org.add_member",
+    "actor": "octokit",
+    "business": "codeforamerica",
+    "created_at": 1661836610662,
+    "operation_type": "create",
+    "org": "codeforamerica",
+    "permission": "read",
+    "user": "new-octokit"
+  }
+]

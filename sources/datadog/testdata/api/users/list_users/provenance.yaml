@@ -1,0 +1,32 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: users
+case: list_users
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v2/users?filter=user%40example.test
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2024-01-19T20:23:49Z"
+    sha256: 3ad889eba3ac50b60bf8965ec9f4bf170790b8b1ea3de1a7841fb69ec71454a6
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].attributes.email
+        - $.data[0].attributes.handle
+        - request.url.query.filter
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v2/Feature_Users/Scenario_List_all_users_returns_OK_response.yaml
+    artifact_sha256: de584ed753f757ea66a158ae4f3841f520a8533d438529b2027dd4b5183789d9
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    interaction_index: 1
+    freshness: historical
+    capture_time_basis: artifact_commit
