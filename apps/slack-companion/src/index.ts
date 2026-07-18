@@ -70,3 +70,5 @@ export * from "./transport/handler.js";
 export * from "./transport/normalization.js";
 export * from "./transport/readiness.js";
 export * from "./transport/signatures.js";
+export * from "./watch/contracts.js";
+export * from "./watch/policy.js";
