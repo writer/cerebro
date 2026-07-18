@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+coverage/
+tmp/
+.DS_Store
+vendor/product-release/
