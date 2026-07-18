@@ -138,6 +138,14 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
+
+## Dangerous-intent safety policy
+
+`src/safety` owns deterministic normalization, dangerous-intent classification,
+category precedence, safety decisions, and refusal text. Hosts decide where to
+apply the policy and own authorization, tool selection, configuration, logging,
+telemetry, persistence, and Slack transport.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
