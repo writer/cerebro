@@ -70,7 +70,13 @@ export interface ImprovementVerificationPort {
   ): Promise<ImprovementAuthorVerification>;
 }
 
-/** Evidence remains invalidated until every required exact-head receipt is fresh. */
+/**
+ * Evidence remains invalidated until every required exact-head receipt is fresh.
+ * `recordFresh` uses the immutable `(candidate_id, author_generation, kind)` tuple
+ * as its identity. An exact replay must return the stored snapshot. A replay that
+ * changes the head, evidence digest, or evidence reference must reject as a
+ * conflict instead of replacing the stored receipt.
+ */
 export interface ImprovementEvidencePort {
   invalidate(
     request: ImprovementEvidenceInvalidationRequest,
