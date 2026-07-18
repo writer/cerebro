@@ -4,6 +4,7 @@ import { execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -36,6 +37,7 @@ const neo4jUser = "neo4j";
 const neo4jCredential = randomBytes(24).toString("base64url");
 let apiBase;
 let webBase;
+let delayRelay = null;
 const proxyCacheProbeOptions = { cache: "default" };
 const adminURN = `urn:cerebro:${tenantID}:identity:privileged`;
 let workDir;
@@ -48,6 +50,7 @@ let postgresStarted = false;
 let neo4jStarted = false;
 let overallDeadlineAt = 0;
 let validationDeadlineAt = 0;
+let activeRunControl = null;
 
 export function parseArgs(argv) {
   const options = { artifactRoot: undefined, browser: true, timeoutMs: defaultTimeoutMs };
@@ -100,6 +103,91 @@ function timeoutError(label) {
   return error;
 }
 
+function abortReason(signal, label) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new Error(`${label} aborted`);
+}
+
+export function throwIfAborted(signal, label) {
+  if (signal?.aborted) throw abortReason(signal, label);
+}
+
+export function createRunControl(expiresAt, options = {}) {
+  const controller = new AbortController();
+  const pendingSettlements = new Set();
+  const timeout = options.setTimeoutFn ?? setTimeout;
+  const clear = options.clearTimeoutFn ?? clearTimeout;
+  const timer = timeout(() => controller.abort(timeoutError("full-stack web integration")), Math.max(0, expiresAt - Date.now()));
+  timer?.unref?.();
+  const control = {
+    signal: controller.signal,
+    abort(reason = new Error("Full-stack web integration aborted")) {
+      if (!controller.signal.aborted) controller.abort(reason);
+    },
+    assertActive(label) {
+      throwIfAborted(controller.signal, label);
+    },
+    trackSettlement(promise) {
+      const settlement = Promise.resolve(promise).then(() => undefined, () => undefined);
+      pendingSettlements.add(settlement);
+      void settlement.then(() => pendingSettlements.delete(settlement));
+      return promise;
+    },
+    async quiesce() {
+      while (pendingSettlements.size > 0) {
+        await Promise.allSettled([...pendingSettlements]);
+      }
+    },
+    disposeDeadline() {
+      clear(timer);
+    },
+  };
+  return control;
+}
+
+export async function startAfterPrerequisite(prerequisite, start, control, label) {
+  await prerequisite;
+  control.assertActive(label);
+  return start();
+}
+
+export async function acquireAbortableResource(create, dispose, control, label) {
+  control.assertActive(label);
+  const creation = Promise.resolve().then(() => {
+    control.assertActive(label);
+    return create();
+  });
+  const interrupted = new Promise((_, reject) => {
+    const onAbort = () => reject(abortReason(control.signal, label));
+    control.signal.addEventListener("abort", onAbort, { once: true });
+    void creation.finally(() => control.signal.removeEventListener("abort", onAbort)).catch(() => undefined);
+  });
+  try {
+    const resource = await Promise.race([creation, interrupted]);
+    control.assertActive(label);
+    return resource;
+  } catch (error) {
+    control.trackSettlement(creation.then((resource) => dispose(resource), () => undefined));
+    throw error;
+  }
+}
+
+function abortableSleep(ms, signal, label = "retry delay") {
+  throwIfAborted(signal, label);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortReason(signal, label));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export function createDeadlineAt(expiresAt) {
   const remaining = () => Math.max(0, expiresAt - Date.now());
   const run = async (promise, label) => {
@@ -132,7 +220,10 @@ export function parseDockerLoopbackPort(output) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const step = (message) => console.log(`\n[grc-e2e] ${message}`);
+const step = (message) => {
+  activeRunControl?.assertActive(message);
+  console.log(`\n[grc-e2e] ${message}`);
+};
 const expect = (condition, message) => {
   if (!condition) {
     throw new Error(message);
@@ -140,11 +231,9 @@ const expect = (condition, message) => {
 };
 
 async function main(options) {
+  const usedPorts = new Set();
+  activeRunControl.assertActive("integration startup");
   await access(backendRoot);
-  apiPort = await allocateLoopbackPort();
-  webPort = await allocateLoopbackPort();
-  apiBase = `http://127.0.0.1:${apiPort}`;
-  webBase = `http://127.0.0.1:${webPort}`;
   await requireCommand("docker", ["--version"]);
   await requireCommand("go", ["version"]);
   await requireCommand("npm", ["--version"]);
@@ -158,24 +247,30 @@ async function main(options) {
 
   step("starting local Cerebro API");
   const apiBinary = path.join(workDir, process.platform === "win32" ? "cerebro.exe" : "cerebro");
-  await run("go", ["-C", backendRoot, "build", "-o", apiBinary, "./cmd/cerebro"], {
+  const apiBuild = run("go", ["-C", backendRoot, "build", "-o", apiBinary, "./cmd/cerebro"], {
     env: portableChildEnvironment(),
     quiet: true,
   });
-  backendProcess = spawnLogged("cerebro-api", apiBinary, ["serve"], {
-    env: portableChildEnvironment(process.env, {
-      CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
-      CEREBRO_STATE_STORE_DRIVER: "postgres",
-      CEREBRO_POSTGRES_DSN: postgresDSN,
-      CEREBRO_GRAPH_STORE_DRIVER: "neo4j",
-      CEREBRO_NEO4J_URI: neo4jURI,
-      CEREBRO_NEO4J_USERNAME: neo4jUser,
-      CEREBRO_NEO4J_PASSWORD: neo4jCredential,
-      CEREBRO_API_AUTH_ENABLED: "false",
-      CEREBRO_DEV_MODE: "1",
-      CEREBRO_DEV_MODE_ACK: "1",
-    }),
-  });
+  backendProcess = await startAfterPrerequisite(apiBuild, async () => {
+    const reservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
+    apiPort = reservation.port;
+    usedPorts.add(apiPort);
+    apiBase = `http://127.0.0.1:${apiPort}`;
+    return handoffLoopbackReservation(reservation, () => spawnLogged("cerebro-api", apiBinary, ["serve"], {
+      env: portableChildEnvironment(process.env, {
+        CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
+        CEREBRO_STATE_STORE_DRIVER: "postgres",
+        CEREBRO_POSTGRES_DSN: postgresDSN,
+        CEREBRO_GRAPH_STORE_DRIVER: "neo4j",
+        CEREBRO_NEO4J_URI: neo4jURI,
+        CEREBRO_NEO4J_USERNAME: neo4jUser,
+        CEREBRO_NEO4J_PASSWORD: neo4jCredential,
+        CEREBRO_API_AUTH_ENABLED: "false",
+        CEREBRO_DEV_MODE: "1",
+        CEREBRO_DEV_MODE_ACK: "1",
+      }),
+    }), activeRunControl, "Cerebro API spawn");
+  }, activeRunControl, "Cerebro API port reservation");
   await waitFor("Cerebro API readiness", async () => {
     const health = await requestJSON(`${apiBase}/health`);
     expect(health.status === 200, `health status ${health.status}`);
@@ -189,18 +284,24 @@ async function main(options) {
   assertChildHealthy(backendProcess, "Cerebro API");
 
   step("starting cerebro-web");
-  webProcess = spawnLogged("cerebro-web", "npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(webPort)], {
-    cwd: webRoot,
-    env: portableChildEnvironment(process.env, {
-      CEREBRO_API_BASE: apiBase,
-      NEXT_PUBLIC_CEREBRO_API_BASE: "/api/cerebro",
-      CEREBRO_PROXY_TIMEOUT_MS: "5000",
-      CEREBRO_PROXY_CACHE_TTL_MS: String(proxyCacheTtlMs),
-      CEREBRO_PROXY_CACHE_STALE_MS: String(proxyCacheStaleMs),
-      CEREBRO_IDENTITY_PROFILE: "local",
-      CEREBRO_LOCAL_IDENTITY_FALLBACK: "1",
-    }),
-  });
+  delayRelay = await startDelayRelay(apiBase, activeRunControl);
+  usedPorts.add(delayRelay.port);
+  const webReservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
+  webPort = webReservation.port;
+  expect(webPort !== apiPort, "web and API ports must be distinct");
+  webBase = `http://127.0.0.1:${webPort}`;
+  webProcess = await handoffLoopbackReservation(webReservation, () => spawnLogged("cerebro-web", "npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(webPort)], {
+      cwd: webRoot,
+      env: portableChildEnvironment(process.env, {
+        CEREBRO_API_BASE: delayRelay.base,
+        NEXT_PUBLIC_CEREBRO_API_BASE: "/api/cerebro",
+        CEREBRO_PROXY_TIMEOUT_MS: "5000",
+        CEREBRO_PROXY_CACHE_TTL_MS: String(proxyCacheTtlMs),
+        CEREBRO_PROXY_CACHE_STALE_MS: String(proxyCacheStaleMs),
+        CEREBRO_IDENTITY_PROFILE: "local",
+        CEREBRO_LOCAL_IDENTITY_FALLBACK: "1",
+      }),
+    }), activeRunControl, "cerebro-web spawn");
   await waitFor("cerebro-web readiness", async () => {
     const config = await requestJSON(`${webBase}/api/config`);
     expect(config.status === 200, `config status ${config.status}`);
@@ -233,6 +334,7 @@ async function main(options) {
   assertChildHealthy(webProcess, "cerebro-web");
   await validateFailureModes();
   assertChildHealthy(webProcess, "cerebro-web");
+  activeRunControl.assertActive("integration completion");
 
   console.log("\n[grc-e2e] local GRC E2E passed");
 }
@@ -281,17 +383,58 @@ async function startNeo4j() {
   }, 120_000);
 }
 
-export async function allocateLoopbackPort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
+async function reserveLoopbackPort(signal = activeRunControl?.signal, control = activeRunControl) {
+  throwIfAborted(signal, "loopback port reservation");
+  const server = net.createServer();
+  let released = false;
+  const release = () => new Promise((resolve, reject) => {
+    if (released) {
+      resolve();
+      return;
+    }
+    released = true;
+    signal?.removeEventListener("abort", onAbort);
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  const onAbort = () => {
+    control?.trackSettlement(release());
+  };
+  const listening = new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.once("listening", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      server.close((error) => error ? reject(error) : resolve(port));
-    });
+    server.once("listening", resolve);
     server.listen(0, "127.0.0.1");
   });
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    await listening;
+    throwIfAborted(signal, "loopback port reservation");
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    expect(Number.isSafeInteger(port) && port > 0 && port <= 65_535, "loopback reservation returned an invalid port");
+    return { port, release };
+  } catch (error) {
+    await release().catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function reserveDistinctLoopbackPort(excludedPorts = new Set(), options = {}) {
+  const control = options.control ?? activeRunControl;
+  const reserve = options.reserve ?? (() => reserveLoopbackPort(control?.signal, control));
+  const maximumAttempts = options.maximumAttempts ?? 10;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    control?.assertActive("loopback port reservation");
+    const reservation = await reserve();
+    if (!excludedPorts.has(reservation.port)) return reservation;
+    await reservation.release();
+  }
+  throw new Error(`Unable to reserve a distinct loopback port after ${maximumAttempts} attempts`);
+}
+
+export async function handoffLoopbackReservation(reservation, start, control, label) {
+  await reservation.release();
+  control?.assertActive(label);
+  return start(reservation.port);
 }
 
 async function requireCommand(command, commandArgs) {
@@ -303,6 +446,8 @@ async function requireCommand(command, commandArgs) {
 }
 
 function spawnLogged(name, command, commandArgs, options = {}) {
+  const control = activeRunControl;
+  control?.assertActive(`${name} spawn`);
   const logPath = path.join(logDir, `${name}.log`);
   const stream = createWriteStream(logPath, { flags: "a" });
   const child = spawn(command, commandArgs, {
@@ -323,19 +468,49 @@ function spawnLogged(name, command, commandArgs, options = {}) {
   child.stderr.pipe(stream);
   child.logPath = logPath;
   child.logStream = stream;
+  child.processGroupId = child.pid;
+  child.stopPromise = null;
+  const onAbort = () => {
+    control?.trackSettlement(stopChild(child));
+  };
+  control?.signal.addEventListener("abort", onAbort, { once: true });
+  child.removeAbortListener = () => control?.signal.removeEventListener("abort", onAbort);
   return child;
 }
 
 async function run(command, commandArgs, options = {}) {
+  const control = activeRunControl;
+  const signal = Object.hasOwn(options, "signal") ? options.signal : control?.signal;
+  throwIfAborted(signal, `${command} command`);
   const child = spawn(command, commandArgs, {
     cwd: options.cwd,
     env: options.env ?? portableChildEnvironment(),
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  child.processGroupId = child.pid;
   const completion = new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
+    let abortError = null;
+    let abortStop = null;
+    const removeAbortListener = () => signal?.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      if (abortStop) return;
+      abortError = abortReason(signal, `${command} command`);
+      abortStop = stopProcessTree(child, { deadlineAt: Math.min(overallDeadlineAt, Date.now() + 10_000) });
+      control?.trackSettlement(abortStop);
+      void abortStop.then(
+        () => {
+          removeAbortListener();
+          reject(abortError);
+        },
+        (error) => {
+          removeAbortListener();
+          reject(error);
+        },
+      );
+    };
     child.stdout.on("data", (chunk) => {
       stdout = appendBounded(stdout, chunk);
       if (!options.quiet) {
@@ -348,16 +523,25 @@ async function run(command, commandArgs, options = {}) {
         process.stderr.write(chunk);
       }
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (!abortError) {
+        removeAbortListener();
+        reject(error);
+      }
+    });
     child.on("close", (code) => {
+      if (abortError) return;
+      removeAbortListener();
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
         reject(new Error(`${command} ${commandArgs.join(" ")} exited ${code}: ${stderr || stdout}`.trim()));
       }
     });
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
   });
-  const deadlineAt = options.deadlineAt ?? validationDeadlineAt;
+  const deadlineAt = options.deadlineAt ?? overallDeadlineAt;
   try {
     return await createDeadlineAt(deadlineAt).run(completion, `${command} command`);
   } catch (error) {
@@ -378,15 +562,18 @@ function remainingValidationMs() {
 
 export async function waitFor(label, action, timeoutMs = 60_000, child) {
   const deadline = Math.min(validationDeadlineAt, Date.now() + timeoutMs);
+  const signal = activeRunControl?.signal;
   let lastError;
   while (Date.now() < deadline) {
+    throwIfAborted(signal, label);
     assertChildHealthy(child, label);
     try {
-      await createDeadlineAt(deadline).run(action(), label);
+      await action();
       return;
     } catch (error) {
+      throwIfAborted(signal, label);
       lastError = error;
-      await createDeadlineAt(deadline).run(sleep(Math.min(1_000, Math.max(1, deadline - Date.now()))), `${label} retry delay`);
+      await abortableSleep(Math.min(1_000, Math.max(1, deadline - Date.now())), signal, `${label} retry delay`);
     }
   }
   throw new Error(`${label} timed out: ${lastError?.message ?? "unknown error"}`);
@@ -410,10 +597,15 @@ async function request(url, options = {}) {
     ...fetchOptions
   } = options;
   const boundedTimeoutMs = Math.max(1, Math.min(timeoutMs, remainingValidationMs()));
+  const signals = [AbortSignal.timeout(boundedTimeoutMs)];
+  if (activeRunControl?.signal) signals.push(activeRunControl.signal);
+  if (signal) signals.push(signal);
+  const requestSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+  throwIfAborted(requestSignal, `request ${url}`);
   const response = await fetch(url, {
     ...fetchOptions,
     cache,
-    signal: signal ?? AbortSignal.timeout(boundedTimeoutMs),
+    signal: requestSignal,
   });
   const body = await response.text();
   return { status: response.status, headers: response.headers, body, durationMs: Math.round(performance.now() - startedAt) };
@@ -431,6 +623,88 @@ async function requestJSON(url, options = {}) {
 export function componentReady(health, name) {
   return Array.isArray(health?.components)
     && health.components.some((component) => component.name === name && component.status === "ready");
+}
+
+async function startDelayRelay(upstreamBase, control) {
+  control.assertActive("delay relay startup");
+  const delayedRequests = new Map();
+  const server = http.createServer(async (incoming, outgoing) => {
+    try {
+      const upstreamUrl = new URL(incoming.url ?? "/", upstreamBase);
+      const delayKey = upstreamUrl.searchParams.get("e2e_delay_key") ?? "";
+      const parsedDelay = Number.parseInt(upstreamUrl.searchParams.get("e2e_delay_ms") ?? "0", 10);
+      const delayMs = Number.isSafeInteger(parsedDelay) ? Math.max(0, Math.min(parsedDelay, 2_000)) : 0;
+      upstreamUrl.searchParams.delete("e2e_delay_key");
+      upstreamUrl.searchParams.delete("e2e_delay_ms");
+      if (delayKey) delayedRequests.set(delayKey, (delayedRequests.get(delayKey) ?? 0) + 1);
+
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (value === undefined || ["accept-encoding", "connection", "content-length", "host", "transfer-encoding"].includes(name.toLowerCase())) continue;
+        headers.set(name, Array.isArray(value) ? value.join(",") : value);
+      }
+      const upstream = await fetch(upstreamUrl, {
+        headers,
+        method: incoming.method ?? "GET",
+        signal: control.signal,
+      });
+      const body = Buffer.from(await upstream.arrayBuffer());
+      if (delayMs > 0) await abortableSleep(delayMs, control.signal, "delayed upstream response");
+      const responseHeaders = {};
+      upstream.headers.forEach((value, name) => {
+        if (!["connection", "content-encoding", "content-length", "transfer-encoding"].includes(name.toLowerCase())) responseHeaders[name] = value;
+      });
+      outgoing.writeHead(upstream.status, responseHeaders);
+      outgoing.end(body);
+    } catch {
+      if (control.signal.aborted) {
+        outgoing.destroy();
+        return;
+      }
+      if (!outgoing.headersSent) outgoing.writeHead(502, { "content-type": "application/json" });
+      outgoing.end(JSON.stringify({ error: "local upstream relay failed" }));
+    }
+  });
+
+  let closePromise = null;
+  let removeAbortListener = () => undefined;
+  const close = () => {
+    if (closePromise) return closePromise;
+    removeAbortListener();
+    closePromise = new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+      server.closeAllConnections?.();
+    });
+    return closePromise;
+  };
+  let rejectStartup = () => undefined;
+  const listening = new Promise((resolve, reject) => {
+    rejectStartup = reject;
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const onAbort = () => {
+    control.trackSettlement(close());
+    rejectStartup(abortReason(control.signal, "delay relay startup"));
+  };
+  control.signal.addEventListener("abort", onAbort, { once: true });
+  removeAbortListener = () => control.signal.removeEventListener("abort", onAbort);
+  try {
+    await listening;
+    control.assertActive("delay relay startup");
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    expect(Number.isSafeInteger(port) && port > 0, "delay relay returned an invalid port");
+    return {
+      base: `http://127.0.0.1:${port}`,
+      close,
+      delayedRequestCount: (key) => delayedRequests.get(key) ?? 0,
+      port,
+    };
+  } catch (error) {
+    await close().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function validateBackend() {
@@ -498,19 +772,23 @@ async function validateProxyCache() {
 }
 
 async function validateConcurrentProxyRequests() {
-  const url = `${webBase}/api/cerebro/grc/dashboard?tenant_id=${tenantID}&limit=100&cache_probe=dedupe-${Date.now()}`;
+  const delayKey = `dedupe-${Date.now()}`;
+  const url = `${webBase}/api/cerebro/grc/dashboard?tenant_id=${tenantID}&limit=100&cache_probe=${delayKey}&e2e_delay_key=${delayKey}&e2e_delay_ms=300`;
   const responses = await Promise.all(Array.from({ length: 12 }, () => requestJSON(url, proxyCacheProbeOptions)));
   assertConcurrentProxyResponses(responses);
+  expect(delayRelay?.delayedRequestCount(delayKey) === 1, `expected one delayed upstream request, got ${delayRelay?.delayedRequestCount(delayKey) ?? 0}`);
 }
 
 export function assertConcurrentProxyResponses(responses) {
   const bodies = new Set(responses.map((response) => JSON.stringify(response.json.summary)));
   const states = responses.map((response) => response.headers.get("x-cerebro-cache"));
   const missCount = states.filter((state) => state === "miss").length;
+  const dedupeCount = states.filter((state) => state === "dedupe").length;
   expect(responses.every((response) => response.status === 200), `concurrent statuses ${responses.map((response) => response.status).join(",")}`);
   expect(bodies.size === 1, "concurrent responses diverged");
-  expect(missCount <= 1, `expected at most one upstream miss under concurrency, got states ${states.join(",")}`);
   expect(states.every((state) => ["miss", "dedupe", "hit"].includes(state)), `unexpected cache states ${states.join(",")}`);
+  expect(missCount === 1, `expected exactly one upstream miss under concurrency, got states ${states.join(",")}`);
+  expect(dedupeCount >= 1, `expected at least one deduplicated response, got states ${states.join(",")}`);
 }
 
 async function validateRoutes() {
@@ -525,16 +803,45 @@ async function validateBrowser() {
   await validatePlaywrightBrowser();
 }
 
+export function browserDataContract(route) {
+  return route === "/risk-inbox"
+    ? {
+        apiPath: "/api/cerebro/grc/findings",
+        findingID: "e2e-finding-critical",
+        navigationPath: `/risk-inbox?tenant_id=${encodeURIComponent(tenantID)}`,
+        tenantID,
+        visibleText: "Privileged identity missing verification",
+      }
+    : null;
+}
+
 async function validatePlaywrightBrowser() {
   const { chromium } = await import("@playwright/test");
-  const browser = await createDeadlineAt(validationDeadlineAt).run(chromium.launch({ headless: true }), "Chromium launch");
+  const control = activeRunControl;
+  const browser = await acquireAbortableResource(
+    () => chromium.launch({ headless: true }),
+    (resource) => createDeadlineAt(overallDeadlineAt).run(resource.close(), "aborted Chromium shutdown"),
+    control,
+    "Chromium launch",
+  );
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error));
     for (const { route, pageId, heading } of grcBrowserRouteContracts({ adminURN })) {
+      control.assertActive(`${route} browser validation`);
       pageErrors.length = 0;
-      const response = await page.goto(`${webBase}${route}`, {
+      const dataContract = browserDataContract(route);
+      const apiResponse = dataContract
+          ? page.waitForResponse((candidate) => {
+            const url = new URL(candidate.url());
+            return url.pathname === dataContract.apiPath
+              && url.searchParams.get("tenant_id") === dataContract.tenantID
+              && candidate.status() === 200;
+          }, { timeout: Math.max(1, Math.min(15_000, remainingValidationMs())) })
+            .then((candidate) => ({ candidate }), (error) => ({ error }))
+        : null;
+      const response = await page.goto(`${webBase}${dataContract?.navigationPath ?? route}`, {
         timeout: Math.max(1, Math.min(15_000, remainingValidationMs())),
         waitUntil: "domcontentloaded",
       });
@@ -546,6 +853,16 @@ async function validatePlaywrightBrowser() {
           state: "visible",
           timeout: Math.max(1, Math.min(15_000, remainingValidationMs())),
         });
+        if (dataContract) {
+          const result = await apiResponse;
+          if (result.error) throw result.error;
+          const payload = await result.candidate.json();
+          expect(payload.findings?.some((finding) => finding.id === dataContract.findingID), `${route} API payload missing seeded finding`);
+          await page.getByText(dataContract.visibleText, { exact: true }).first().waitFor({
+            state: "visible",
+            timeout: Math.max(1, Math.min(15_000, remainingValidationMs())),
+          });
+        }
       } catch (error) {
         const body = await page.locator("body").innerText().catch(() => "");
         throw new Error(`${route} missing browser page contract ${pageId}: ${body.slice(0, 500)}`, { cause: error });
@@ -554,6 +871,7 @@ async function validatePlaywrightBrowser() {
       expect(!/Application error|Unhandled Runtime Error|Cerebro request failed \([45][0-9][0-9]\)/i.test(body), `${route} contains error text`);
       expect(pageErrors.length === 0, `${route} raised a client error: ${pageErrors[0]?.message ?? "unknown"}`);
       await page.screenshot({ path: path.join(workDir, `${safeRouteName(route)}.png`), fullPage: true });
+      control.assertActive(`${route} browser evidence`);
     }
   } finally {
     await createDeadlineAt(overallDeadlineAt).run(browser.close(), "Chromium shutdown");
@@ -581,7 +899,7 @@ async function validateFailureModes() {
   expect(warmImpact.headers.get("x-cerebro-cache") === "miss", `warm impact cache ${warmImpact.headers.get("x-cerebro-cache")}`);
   const warmDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
   expect(warmDashboard.status === 200, `warm dashboard status ${warmDashboard.status}`);
-  await sleep(proxyCacheTtlMs + 500);
+  await abortableSleep(proxyCacheTtlMs + 500, activeRunControl?.signal, "proxy cache expiry");
   await stopNeo4j();
   const staleImpact = await requestJSON(staleImpactUrl, proxyCacheProbeOptions);
   expect(staleImpact.status === 200, `stale impact status ${staleImpact.status}`);
@@ -612,8 +930,16 @@ async function stopNeo4j() {
 
 async function stopChild(child) {
   if (!child) return;
-  await stopProcessTree(child, { deadlineAt: overallDeadlineAt });
-  await closeLogStream(child.logStream, overallDeadlineAt);
+  if (child.stopPromise) return child.stopPromise;
+  child.stopPromise = (async () => {
+    try {
+      await stopProcessTree(child, { deadlineAt: overallDeadlineAt });
+    } finally {
+      child.removeAbortListener?.();
+      await closeLogStream(child.logStream, overallDeadlineAt);
+    }
+  })();
+  return child.stopPromise;
 }
 
 export function windowsTaskkillArgs(pid, force) {
@@ -631,46 +957,73 @@ function taskkill(pid, force, timeoutMs) {
   });
 }
 
-async function waitForExit(exited, expiresAt) {
+function defaultProcessGroupAlive(processGroupId) {
   try {
-    await createDeadlineAt(expiresAt).run(exited, "process exit");
+    process.kill(-processGroupId, 0);
     return true;
   } catch (error) {
-    if (error.code === "ETIMEDOUT") return false;
+    if (error?.code === "ESRCH") return false;
+    if (error?.code === "EPERM") return true;
     throw error;
   }
 }
 
-export async function stopProcessTree(child, options = {}) {
-  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+async function waitForProcessGroupGone(processGroupId, deadlineAt, processGroupAlive, pollMs) {
+  while (Date.now() < deadlineAt) {
+    if (!processGroupAlive(processGroupId)) return true;
+    await sleep(Math.min(pollMs, Math.max(1, deadlineAt - Date.now())));
+  }
+  return !processGroupAlive(processGroupId);
+}
+
+async function stopProcessTreeOnce(child, options) {
+  if (!child?.pid) return;
   const deadlineAt = options.deadlineAt ?? Date.now() + 10_000;
   const graceDeadlineAt = Math.min(deadlineAt, Date.now() + (options.graceMs ?? 5_000));
   const platform = options.platform ?? process.platform;
   const taskkillProcess = options.taskkillProcess ?? taskkill;
-  const signalProcessGroup = options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal));
-  const exited = new Promise((resolve) => child.once("exit", resolve));
-  const signal = async (force, signalDeadlineAt) => {
-    if (platform === "win32") {
-      try {
-        await createDeadlineAt(signalDeadlineAt).run(
-          taskkillProcess(child.pid, force, Math.max(1, signalDeadlineAt - Date.now())),
-          force ? "forced Windows descendant termination" : "Windows descendant termination",
-        );
-      } catch (error) {
-        if (force && error.code === "ETIMEDOUT") throw error;
-      }
+  if (platform === "win32") {
+    try {
+      await createDeadlineAt(graceDeadlineAt).run(
+        taskkillProcess(child.pid, false, Math.max(1, graceDeadlineAt - Date.now())),
+        "Windows descendant termination",
+      );
+      return;
+    } catch {
+      await createDeadlineAt(deadlineAt).run(
+        taskkillProcess(child.pid, true, Math.max(1, deadlineAt - Date.now())),
+        "forced Windows descendant termination",
+      );
       return;
     }
-    try {
-      signalProcessGroup(child.pid, force ? "SIGKILL" : "SIGTERM");
-    } catch (error) {
-      if (error?.code !== "ESRCH") throw error;
-    }
-  };
-  await signal(false, graceDeadlineAt);
-  if (await waitForExit(exited, graceDeadlineAt)) return;
-  await signal(true, deadlineAt);
-  if (!await waitForExit(exited, deadlineAt)) throw timeoutError("forced descendant termination");
+  }
+
+  const processGroupId = child.processGroupId ?? child.pid;
+  const processGroupAlive = options.processGroupAlive ?? defaultProcessGroupAlive;
+  const signalProcessGroup = options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal));
+  const pollMs = options.pollMs ?? 25;
+  if (!processGroupAlive(processGroupId)) return;
+  try {
+    signalProcessGroup(processGroupId, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  if (await waitForProcessGroupGone(processGroupId, graceDeadlineAt, processGroupAlive, pollMs)) return;
+  try {
+    signalProcessGroup(processGroupId, "SIGKILL");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  if (!await waitForProcessGroupGone(processGroupId, deadlineAt, processGroupAlive, pollMs)) {
+    throw timeoutError("forced descendant termination");
+  }
+}
+
+export async function stopProcessTree(child, options = {}) {
+  if (!child?.pid) return;
+  if (child.processTreeStopPromise) return child.processTreeStopPromise;
+  child.processTreeStopPromise = stopProcessTreeOnce(child, options);
+  return child.processTreeStopPromise;
 }
 
 export async function closeLogStream(stream, deadlineAt) {
@@ -690,16 +1043,27 @@ export async function closeLogStream(stream, deadlineAt) {
 
 async function cleanup() {
   const errors = [];
-  for (const child of [webProcess, backendProcess]) {
+  try {
+    await stopChild(webProcess);
+  } catch (error) {
+    errors.push(error);
+  }
+  if (delayRelay) {
     try {
-      await stopChild(child);
+      await delayRelay.close();
     } catch (error) {
       errors.push(error);
     }
+    delayRelay = null;
+  }
+  try {
+    await stopChild(backendProcess);
+  } catch (error) {
+    errors.push(error);
   }
   if (neo4jStarted) {
     try {
-      await run("docker", ["rm", "-f", neo4jContainer], { deadlineAt: overallDeadlineAt, quiet: true });
+      await run("docker", ["rm", "-f", neo4jContainer], { deadlineAt: overallDeadlineAt, quiet: true, signal: null });
       neo4jStarted = false;
     } catch (error) {
       if (!error.message.includes("No such container")) errors.push(error);
@@ -708,7 +1072,7 @@ async function cleanup() {
   }
   if (postgresStarted) {
     try {
-      await run("docker", ["rm", "-f", postgresContainer], { deadlineAt: overallDeadlineAt, quiet: true });
+      await run("docker", ["rm", "-f", postgresContainer], { deadlineAt: overallDeadlineAt, quiet: true, signal: null });
       postgresStarted = false;
     } catch (error) {
       if (!error.message.includes("No such container")) errors.push(error);
@@ -739,21 +1103,18 @@ async function seedStores() {
   });
 }
 
-function interruptedRun() {
+function interruptedRun(control) {
   const handlers = new Map();
-  const promise = new Promise((_, reject) => {
-    for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]]) {
-      const handler = () => {
-        const error = new Error(`Full-stack integration interrupted by ${signal}`);
-        error.exitCode = exitCode;
-        reject(error);
-      };
-      handlers.set(signal, handler);
-      process.once(signal, handler);
-    }
-  });
+  for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]]) {
+    const handler = () => {
+      const error = new Error(`Full-stack integration interrupted by ${signal}`);
+      error.exitCode = exitCode;
+      control.abort(error);
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
   return {
-    promise,
     remove: () => {
       for (const [signal, handler] of handlers) process.removeListener(signal, handler);
     },
@@ -766,35 +1127,48 @@ export async function runLocalGrcE2E(options = {}) {
   const reserveMs = Math.min(cleanupReserveMs, Math.max(25, Math.floor(timeoutMs / 2)));
   overallDeadlineAt = Date.now() + timeoutMs;
   validationDeadlineAt = overallDeadlineAt - reserveMs;
+  activeRunControl = createRunControl(validationDeadlineAt);
   failed = false;
   backendProcess = null;
   webProcess = null;
+  delayRelay = null;
+  workDir = undefined;
+  logDir = undefined;
+  apiBase = undefined;
+  webBase = undefined;
   neo4jStopped = false;
   postgresStarted = false;
   neo4jStarted = false;
 
-  const artifactRoot = effectiveOptions.artifactRoot ? path.resolve(effectiveOptions.artifactRoot) : os.tmpdir();
-  await createDeadlineAt(validationDeadlineAt).run(mkdir(artifactRoot, { recursive: true }), "artifact root creation");
-  workDir = await createDeadlineAt(validationDeadlineAt).run(
-    mkdtemp(path.join(artifactRoot, effectiveOptions.artifactRoot ? "run-" : "cerebro-grc-e2e-")),
-    "artifact directory creation",
-  );
-  logDir = path.join(workDir, "logs");
-  await createDeadlineAt(validationDeadlineAt).run(mkdir(logDir, { recursive: true }), "log directory creation");
-
-  const interruption = interruptedRun();
+  const control = activeRunControl;
+  const interruption = interruptedRun(control);
   let primaryError;
+  let mainPromise;
   try {
-    await Promise.race([
-      createDeadlineAt(validationDeadlineAt).run(main(effectiveOptions), "full-stack web integration"),
-      interruption.promise,
-    ]);
+    const artifactRoot = effectiveOptions.artifactRoot ? path.resolve(effectiveOptions.artifactRoot) : os.tmpdir();
+    control.assertActive("artifact root creation");
+    await mkdir(artifactRoot, { recursive: true });
+    control.assertActive("artifact directory creation");
+    workDir = await mkdtemp(path.join(artifactRoot, effectiveOptions.artifactRoot ? "run-" : "cerebro-grc-e2e-"));
+    control.assertActive("integration log directory creation");
+    logDir = path.join(workDir, "logs");
+    await mkdir(logDir, { recursive: true });
+    control.assertActive("integration execution");
+    mainPromise = main(effectiveOptions);
+    await mainPromise;
   } catch (error) {
     failed = true;
-    error.message = `${error.message}\nFull-stack integration artifacts: ${workDir}`;
+    control.abort(error);
+    if (mainPromise) await Promise.allSettled([mainPromise]);
+    await control.quiesce();
+    if (workDir) error.message = `${error.message}\nFull-stack integration artifacts: ${workDir}`;
     primaryError = error;
   } finally {
     interruption.remove();
+    control.disposeDeadline();
+    if (primaryError) control.abort(primaryError);
+    if (mainPromise) await Promise.allSettled([mainPromise]);
+    await control.quiesce();
     const cleanupErrors = await cleanup();
     if (cleanupErrors.length > 0) {
       primaryError = new AggregateError(
@@ -802,6 +1176,7 @@ export async function runLocalGrcE2E(options = {}) {
         primaryError?.message ?? "Full-stack integration cleanup failed",
       );
     }
+    activeRunControl = null;
   }
   if (primaryError) throw primaryError;
   return { browserChecked: effectiveOptions.browser };

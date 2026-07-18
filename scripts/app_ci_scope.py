@@ -45,6 +45,10 @@ WEB_INTEGRATION_PREFIXES = (
     "internal/graphstore/neo4j/",
     "internal/grc",
     "internal/ports/",
+    "internal/querycache/",
+    "internal/sourcecoverage/",
+    "internal/sourcehttp/",
+    "internal/sourceruntime/",
     "internal/statestore/postgres/",
 )
 SLACK_CONTRACT_PREFIXES = (

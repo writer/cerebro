@@ -98,6 +98,10 @@ class AppCIScopeTests(unittest.TestCase):
             "cmd/cerebro/main.go",
             "internal/bootstrap/grc.go",
             "internal/graphstore/neo4j/store.go",
+            "internal/querycache/cache.go",
+            "internal/sourcecoverage/coverage.go",
+            "internal/sourcehttp/responseview/response_view.go",
+            "internal/sourceruntime/runtime.go",
             "internal/statestore/postgres/store.go",
         ):
             with self.subTest(path=path):
