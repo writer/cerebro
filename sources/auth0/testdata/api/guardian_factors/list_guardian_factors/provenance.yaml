@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: auth0
+family: guardian_factors
+case: list_guardian_factors
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
+request:
+    method: GET
+    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/guardian/factors
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-16T11:27:27Z"
+    sha256: 38421daba795a2b8ca929118460a83875d24b7c8bc29f24ca71e660d12959113
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/auth0/terraform-provider-auth0
+    commit: 7ab86e5310e6553889f5eef35dcbd6aa4dd1546b
+    path: test/data/recordings/TestAccGuardian.yaml
+    artifact_sha256: 1244dd9a182c70bb564dc39d89a781fad4a6f9c5091c7c9a9514ac3de9727f40
+    license: MPL-2.0
+    recording_tool: go-vcr-v3
+    harness_path: internal/acctest/http_recorder.go
+    interaction_index: 3
+    freshness: current
+    capture_time_basis: artifact_commit

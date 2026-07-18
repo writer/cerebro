@@ -182,7 +182,7 @@ func importRecording(arguments []string) {
 	var sanitizeKeys stringList
 	flags.Var(&declaredChangedFields, "changed-field", "manually sanitized request or JSON field path (repeatable)")
 	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
-	flags.Var(&sanitizeKeys, "sanitize-key", "replace every string field with this exact key (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every value with this exact key while preserving its JSON type (repeatable)")
 	if err := flags.Parse(arguments); err != nil {
 		fail(err)
 	}

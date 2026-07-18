@@ -1,61 +1,341 @@
 [
   {
+    "id": "gitguardian_secrets-tenant-sources-ed5bd913aeb85269",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian_secrets",
+    "kind": "gitguardian_secrets.sources",
+    "occurred_at": "2026-06-23T12:45:15Z",
+    "schema_ref": "gitguardian_secrets/sources/v1",
+    "payload": {
+      "closed_incidents_count": 0,
+      "default_branch": null,
+      "default_branch_head": null,
+      "deleted": false,
+      "external_id": "example-535fa30d",
+      "full_name": "example-e1bc9cb2",
+      "health": "unknown",
+      "id": 12259,
+      "last_scan": null,
+      "monitored": true,
+      "monitoring_status": "deleted_on_remote",
+      "open_incidents_count": 0,
+      "provider_metadata": {
+        "archived": false
+      },
+      "secret_incidents_breakdown": {
+        "closed_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        },
+        "open_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        }
+      },
+      "source_criticality": "unknown",
+      "type": "github",
+      "url": "example-d475e86b",
+      "visibility": "private"
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/sources",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-gitguardian_secrets-sources-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gitguardian_secrets-sources-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/gitguardian_secrets/sources/source-gitguardian_secrets-sources-1",
-      "external_id": "source-gitguardian_secrets-sources-1",
+      "external_id": "12259",
       "family": "sources",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "gitguardian_secrets",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-gitguardian_secrets-sources-1",
-      "resource_name": "Gitguardian Secrets Sources Fixture",
-      "resource_type": "sources",
-      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:source-gitguardian_secrets-sources-1",
+      "resource_id": "12259",
+      "resource_name": "example-e1bc9cb2",
+      "resource_type": "github",
       "schema": "sources",
-      "source_event_id": "source-gitguardian_secrets-sources-1",
+      "source_event_id": "12259",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets",
-      "tenant_id": "tenant"
-    },
-    "id": "source-gitguardian_secrets-sources-event-1",
-    "kind": "gitguardian_secrets.sources",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/sources",
-      "event_id": "source-gitguardian_secrets-sources-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-gitguardian_secrets-sources-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-gitguardian_secrets-sources-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/gitguardian_secrets/sources/source-gitguardian_secrets-sources-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/gitguardian_secrets/sources/source-gitguardian_secrets-sources-1",
-      "family": "sources",
-      "id": "source-gitguardian_secrets-sources-1",
-      "name": "Gitguardian Secrets Sources Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-gitguardian_secrets-sources-1",
-      "resource_type": "sources",
-      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:source-gitguardian_secrets-sources-1",
-      "schema_ref": "gitguardian_secrets/sources/v1",
-      "source_id": "gitguardian_secrets",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "gitguardian_secrets/sources/v1",
+      "source_system": "gitguardian_secrets"
+    }
+  },
+  {
+    "id": "gitguardian_secrets-tenant-sources-f4d1669010ddca0a",
+    "tenant_id": "tenant",
     "source_id": "gitguardian_secrets",
-    "tenant_id": "tenant"
+    "kind": "gitguardian_secrets.sources",
+    "occurred_at": "2026-06-23T12:45:15Z",
+    "schema_ref": "gitguardian_secrets/sources/v1",
+    "payload": {
+      "closed_incidents_count": 0,
+      "default_branch": null,
+      "default_branch_head": null,
+      "deleted": false,
+      "external_id": "example-785f3ec7",
+      "full_name": "example-e8a82b68",
+      "health": "unknown",
+      "id": 12260,
+      "last_scan": null,
+      "monitored": true,
+      "monitoring_status": "deleted_on_remote",
+      "open_incidents_count": 0,
+      "provider_metadata": {
+        "archived": false
+      },
+      "secret_incidents_breakdown": {
+        "closed_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        },
+        "open_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        }
+      },
+      "source_criticality": "unknown",
+      "type": "github",
+      "url": "example-acede9f3",
+      "visibility": "public"
+    },
+    "attributes": {
+      "external_id": "12260",
+      "family": "sources",
+      "provider": "gitguardian_secrets",
+      "record_class": "asset",
+      "resource_id": "12260",
+      "resource_name": "example-e8a82b68",
+      "resource_type": "github",
+      "schema": "sources",
+      "source_event_id": "12260",
+      "source_provider": "gitguardian_secrets",
+      "source_system": "gitguardian_secrets"
+    }
+  },
+  {
+    "id": "gitguardian_secrets-tenant-sources-7b4ea293787c2b25",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian_secrets",
+    "kind": "gitguardian_secrets.sources",
+    "occurred_at": "2026-06-23T12:45:15Z",
+    "schema_ref": "gitguardian_secrets/sources/v1",
+    "payload": {
+      "closed_incidents_count": 0,
+      "default_branch": null,
+      "default_branch_head": null,
+      "deleted": false,
+      "external_id": "example-b7a56873",
+      "full_name": "example-c5378648",
+      "health": "unknown",
+      "id": 12261,
+      "last_scan": null,
+      "monitored": true,
+      "monitoring_status": "deleted_on_remote",
+      "open_incidents_count": 0,
+      "provider_metadata": {
+        "archived": false
+      },
+      "secret_incidents_breakdown": {
+        "closed_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        },
+        "open_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        }
+      },
+      "source_criticality": "unknown",
+      "type": "github",
+      "url": "example-b30e21e6",
+      "visibility": "public"
+    },
+    "attributes": {
+      "external_id": "12261",
+      "family": "sources",
+      "provider": "gitguardian_secrets",
+      "record_class": "asset",
+      "resource_id": "12261",
+      "resource_name": "example-c5378648",
+      "resource_type": "github",
+      "schema": "sources",
+      "source_event_id": "12261",
+      "source_provider": "gitguardian_secrets",
+      "source_system": "gitguardian_secrets"
+    }
+  },
+  {
+    "id": "gitguardian_secrets-tenant-sources-3114279287b52f39",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian_secrets",
+    "kind": "gitguardian_secrets.sources",
+    "occurred_at": "2026-06-23T12:45:15Z",
+    "schema_ref": "gitguardian_secrets/sources/v1",
+    "payload": {
+      "closed_incidents_count": 0,
+      "default_branch": null,
+      "default_branch_head": null,
+      "deleted": false,
+      "external_id": "example-c2356069",
+      "full_name": "example-47287026",
+      "health": "unknown",
+      "id": 12262,
+      "last_scan": null,
+      "monitored": true,
+      "monitoring_status": "deleted_on_remote",
+      "open_incidents_count": 0,
+      "provider_metadata": {
+        "archived": false
+      },
+      "secret_incidents_breakdown": {
+        "closed_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        },
+        "open_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        }
+      },
+      "source_criticality": "unknown",
+      "type": "github",
+      "url": "example-f34d6186",
+      "visibility": "public"
+    },
+    "attributes": {
+      "external_id": "12262",
+      "family": "sources",
+      "provider": "gitguardian_secrets",
+      "record_class": "asset",
+      "resource_id": "12262",
+      "resource_name": "example-47287026",
+      "resource_type": "github",
+      "schema": "sources",
+      "source_event_id": "12262",
+      "source_provider": "gitguardian_secrets",
+      "source_system": "gitguardian_secrets"
+    }
+  },
+  {
+    "id": "gitguardian_secrets-tenant-sources-99e0b89dce063714",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian_secrets",
+    "kind": "gitguardian_secrets.sources",
+    "occurred_at": "2026-06-23T12:45:15Z",
+    "schema_ref": "gitguardian_secrets/sources/v1",
+    "payload": {
+      "closed_incidents_count": 0,
+      "default_branch": null,
+      "default_branch_head": null,
+      "deleted": false,
+      "external_id": "example-6b51d431",
+      "full_name": "example-197d9ce2",
+      "health": "safe",
+      "id": 12263,
+      "last_scan": {
+        "branches_scanned": 1,
+        "commits_scanned": 1,
+        "date": "2020-09-24T09:06:39.211442Z",
+        "duration": "1.218169",
+        "failing_reason": "",
+        "progress": 100,
+        "status": "finished"
+      },
+      "monitored": true,
+      "monitoring_status": "deleted_on_remote",
+      "open_incidents_count": 0,
+      "provider_metadata": {
+        "archived": false
+      },
+      "secret_incidents_breakdown": {
+        "closed_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        },
+        "open_secret_incidents": {
+          "severity_breakdown": {
+            "critical": 0,
+            "high": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "unknown": 0
+          },
+          "total": 0
+        }
+      },
+      "source_criticality": "unknown",
+      "type": "github",
+      "url": "example-8e1c83a6",
+      "visibility": "public"
+    },
+    "attributes": {
+      "external_id": "12263",
+      "family": "sources",
+      "observed_at": "2020-09-24T09:06:39.211442Z",
+      "provider": "gitguardian_secrets",
+      "record_class": "asset",
+      "resource_id": "12263",
+      "resource_name": "example-197d9ce2",
+      "resource_type": "github",
+      "schema": "sources",
+      "source_event_id": "12263",
+      "source_provider": "gitguardian_secrets",
+      "source_system": "gitguardian_secrets"
+    }
   }
 ]

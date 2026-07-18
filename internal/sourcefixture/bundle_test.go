@@ -90,7 +90,9 @@ func TestValidateManifestAllowsEmptyCredentialShapesAndMetadataFields(t *testing
 		"credential_id":"credential-1",
 		"credential_name":"primary",
 		"api_key_id":"key-1",
-		"credentials":{"provider":{"type":""}}
+		"credentials":{"provider":{"type":""}},
+		"issue_token":0,
+		"credential_enabled":false
 	}`))
 	if err != nil {
 		t.Fatal(err)

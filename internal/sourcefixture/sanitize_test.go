@@ -24,19 +24,21 @@ func TestSanitizeImportedJSONPreservesShape(t *testing.T) {
 func TestSanitizeImportedJSONReplacesTokenShapedProviderIdentifiers(t *testing.T) {
 	payload, changed, err := SanitizeImportedJSON([]byte(`[
 		{"id":"00T3kinb0wOUpDUdV5d7","_links":{"self":{"href":"https://example.okta.com/api/v1/api-tokens/00T3kinb0wOUpDUdV5d7"}}},
-		{"id":"autl0by7reTh1KIzB5d6"}
+		{"id":"autl0by7reTh1KIzB5d6"},
+		{"user_id":"auth0|6581a1f11c2a8abf544cc91c","url":"https://example.auth0.com/api/v2/users/auth0%7C6581a1f11c2a8abf544cc91c"},
+		{"id":"org_5GOvOhO924a08wZJ","url":"https://example.auth0.com/api/v2/organizations/org_5GOvOhO924a08wZJ"}
 	]`))
 	if err != nil {
 		t.Fatalf("SanitizeImportedJSON() error = %v", err)
 	}
 	text := string(payload)
-	for _, identifier := range []string{"00T3kinb0wOUpDUdV5d7", "autl0by7reTh1KIzB5d6"} {
+	for _, identifier := range []string{"00T3kinb0wOUpDUdV5d7", "autl0by7reTh1KIzB5d6", "auth0|6581a1f11c2a8abf544cc91c", "auth0%7C6581a1f11c2a8abf544cc91c", "org_5GOvOhO924a08wZJ"} {
 		if strings.Contains(text, identifier) {
 			t.Fatalf("sanitized payload retained provider identifier %q: %s", identifier, payload)
 		}
 	}
-	if len(changed) != 3 {
-		t.Fatalf("changed fields = %#v, want 3 provider identifier locations", changed)
+	if len(changed) != 7 {
+		t.Fatalf("changed fields = %#v, want 7 provider identifier locations", changed)
 	}
 }
 
@@ -73,6 +75,30 @@ func TestSanitizeImportedJSONRejectsNonStringCredentialLeaves(t *testing.T) {
 	}
 }
 
+func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSONWithKeys([]byte(`{
+		"issue_token":73062,
+		"target_ids":["34205503"],
+		"sensitive":true
+	}`), []string{"issue_token", "target_ids", "sensitive"})
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSONWithKeys() error = %v", err)
+	}
+	text := string(payload)
+	if !strings.Contains(text, `"issue_token": 0`) || !strings.Contains(text, `"target_ids": [`) || !strings.Contains(text, `"example-`) || !strings.Contains(text, `"sensitive": false`) {
+		t.Fatalf("sanitized payload = %s", payload)
+	}
+	want := []string{"$.issue_token", "$.sensitive", "$.target_ids[0]"}
+	if len(changed) != len(want) {
+		t.Fatalf("changed fields = %#v, want %#v", changed, want)
+	}
+	for index := range want {
+		if changed[index] != want[index] {
+			t.Fatalf("changed fields = %#v, want %#v", changed, want)
+		}
+	}
+}
+
 func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	commit := "00a" + strings.Repeat("1", 37)
 	if got := SanitizeImportedText(commit); got != commit {
@@ -81,5 +107,9 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	identifier := "00u" + "1234567890ABCDEFG"
 	if got := SanitizeImportedText(identifier); got == identifier {
 		t.Fatalf("SanitizeImportedText(%q) retained provider identifier", identifier)
+	}
+	tenantURL := "https://tenant-name.zendesk.com/api/v2/users.json"
+	if got := SanitizeImportedText(tenantURL); got != "https://example.zendesk.com/api/v2/users.json" {
+		t.Fatalf("SanitizeImportedText(%q) = %q", tenantURL, got)
 	}
 }

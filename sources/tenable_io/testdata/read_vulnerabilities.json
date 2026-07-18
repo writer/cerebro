@@ -1,71 +1,90 @@
 [
   {
+    "id": "tenable_io-tenant-vulnerabilities-6ce2b4bd6cc1aca8",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.vulnerabilities",
+    "occurred_at": "2021-06-15T17:20:58Z",
+    "schema_ref": "tenable_io/vulnerabilities/v1",
+    "payload": {
+      "accepted_count": 0,
+      "count": 1,
+      "counts_by_severity": [
+        {
+          "count": 1,
+          "value": 2
+        }
+      ],
+      "cvss3_base_score": 8.1,
+      "cvss_base_score": 6.8,
+      "plugin_family": "CentOS Local Security Checks",
+      "plugin_id": 141584,
+      "plugin_name": "CentOS 7 : httpd (CESA-2020:3958)",
+      "recasted_count": 0,
+      "severity": 2,
+      "vpr_score": 6.7,
+      "vulnerability_state": "New"
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/vulnerabilities",
-      "description": "Tenable Io Vulnerabilities Fixture finding",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-tenable_io-vulnerabilities-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-tenable_io-vulnerabilities-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/tenable_io/vulnerabilities/source-tenable_io-vulnerabilities-1",
-      "external_id": "source-tenable_io-vulnerabilities-1",
+      "external_id": "141584",
       "family": "vulnerabilities",
-      "finding_id": "source-tenable_io-vulnerabilities-1",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "finding_id": "141584",
       "provider": "tenable_io",
       "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-tenable_io-vulnerabilities-1",
-      "resource_name": "Tenable Io Vulnerabilities Fixture",
-      "resource_type": "vulnerabilities",
-      "resource_urn": "urn:cerebro:tenant:tenable_io_vulnerabilities:source-tenable_io-vulnerabilities-1",
+      "resource_id": "141584",
+      "resource_name": "CentOS 7 : httpd (CESA-2020:3958)",
+      "resource_type": "vulnerability",
       "schema": "vulnerabilities",
-      "severity": "high",
-      "source_event_id": "source-tenable_io-vulnerabilities-1",
+      "severity": "2",
+      "source_event_id": "141584",
       "source_provider": "tenable_io",
       "source_system": "tenable_io",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Tenable Io Vulnerabilities Fixture"
-    },
-    "id": "source-tenable_io-vulnerabilities-event-1",
-    "kind": "tenable_io.vulnerabilities",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/vulnerabilities",
-      "description": "Tenable Io Vulnerabilities Fixture finding",
-      "event_id": "source-tenable_io-vulnerabilities-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-tenable_io-vulnerabilities-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-tenable_io-vulnerabilities-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/tenable_io/vulnerabilities/source-tenable_io-vulnerabilities-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/tenable_io/vulnerabilities/source-tenable_io-vulnerabilities-1",
-      "family": "vulnerabilities",
-      "finding_id": "source-tenable_io-vulnerabilities-1",
-      "id": "source-tenable_io-vulnerabilities-1",
-      "name": "Tenable Io Vulnerabilities Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-tenable_io-vulnerabilities-1",
-      "resource_type": "vulnerabilities",
-      "resource_urn": "urn:cerebro:tenant:tenable_io_vulnerabilities:source-tenable_io-vulnerabilities-1",
-      "schema_ref": "tenable_io/vulnerabilities/v1",
-      "severity": "high",
-      "source_id": "tenable_io",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Tenable Io Vulnerabilities Fixture",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "tenable_io/vulnerabilities/v1",
+      "status": "New",
+      "title": "CentOS 7 : httpd (CESA-2020:3958)"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-vulnerabilities-9dd6ecf01b613b2e",
+    "tenant_id": "tenant",
     "source_id": "tenable_io",
-    "tenant_id": "tenant"
+    "kind": "tenable_io.vulnerabilities",
+    "occurred_at": "2021-06-15T17:20:58Z",
+    "schema_ref": "tenable_io/vulnerabilities/v1",
+    "payload": {
+      "accepted_count": 0,
+      "count": 1,
+      "counts_by_severity": [
+        {
+          "count": 1,
+          "value": 2
+        }
+      ],
+      "cvss3_base_score": 6.5,
+      "cvss_base_score": 4.3,
+      "plugin_family": "CentOS Local Security Checks",
+      "plugin_id": 142598,
+      "plugin_name": "CentOS 7 : freetype (CESA-2020:4907)",
+      "recasted_count": 0,
+      "severity": 2,
+      "vpr_score": 7.3,
+      "vulnerability_state": "New"
+    },
+    "attributes": {
+      "external_id": "142598",
+      "family": "vulnerabilities",
+      "finding_id": "142598",
+      "provider": "tenable_io",
+      "record_class": "finding",
+      "resource_id": "142598",
+      "resource_name": "CentOS 7 : freetype (CESA-2020:4907)",
+      "resource_type": "vulnerability",
+      "schema": "vulnerabilities",
+      "severity": "2",
+      "source_event_id": "142598",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "status": "New",
+      "title": "CentOS 7 : freetype (CESA-2020:4907)"
+    }
   }
 ]

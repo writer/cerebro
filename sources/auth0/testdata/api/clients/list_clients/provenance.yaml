@@ -1,0 +1,29 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: auth0
+family: clients
+case: list_clients
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
+request:
+    method: GET
+    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/clients?fields=client_id&include_fields=true&include_totals=true&is_global=true&per_page=50
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-16T11:27:27Z"
+    sha256: 3ac50c4caed223a65b3d0866e815e8c8177d4d9393aedfcacf9766c95630ecb6
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.clients[0].client_id
+origin:
+    type: upstream_recording
+    repository: https://github.com/auth0/terraform-provider-auth0
+    commit: 7ab86e5310e6553889f5eef35dcbd6aa4dd1546b
+    path: test/data/recordings/TestAccDataGlobalClient.yaml
+    artifact_sha256: 5ee2f0a88c9702f60a949a4910ea0c821599cac549cb26d2dbdc782fb5e14944
+    license: MPL-2.0
+    recording_tool: go-vcr-v3
+    harness_path: internal/acctest/http_recorder.go
+    freshness: current
+    capture_time_basis: artifact_commit

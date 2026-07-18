@@ -1,0 +1,17 @@
+{
+  "client_grants": [
+    {
+      "audience": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "authorization_details_types": [
+        "payment"
+      ],
+      "client_id": "example-76a278b1",
+      "id": "example-5c8ac27c02d63b0d",
+      "scope": [],
+      "subject_type": "user"
+    }
+  ],
+  "limit": 50,
+  "start": 0,
+  "total": 1
+}

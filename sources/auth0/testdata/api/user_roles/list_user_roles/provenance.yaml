@@ -1,0 +1,31 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: auth0
+family: user_roles
+case: list_user_roles
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
+request:
+    method: GET
+    url: https://terraform-provider-auth0-dev.eu.auth0.com/api/v2/users/example-143233fb4ac8d6dd/roles?include_totals=true&per_page=50
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-16T11:27:27Z"
+    sha256: b69bde2abb8cd44d23c95896481fc9b8340ebef88e3128a7fdc9aa6ad4917217
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.roles[0].id
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/auth0/terraform-provider-auth0
+    commit: 7ab86e5310e6553889f5eef35dcbd6aa4dd1546b
+    path: test/data/recordings/TestAccUserRole.yaml
+    artifact_sha256: 8b042f06194fe33c911f93bf9a58577a0898eb782672cdc5b6a0f5166164808b
+    license: MPL-2.0
+    recording_tool: go-vcr-v3
+    harness_path: internal/acctest/http_recorder.go
+    interaction_index: 7
+    freshness: current
+    capture_time_basis: artifact_commit

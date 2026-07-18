@@ -787,17 +787,17 @@ func TestNewFixtureReplaysAuth0Families(t *testing.T) {
 		kind            string
 		wantResourceURN string
 	}{
-		{family: auth0api.FamilyUsers, kind: "auth0.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:auth0%7Cuser-1"},
-		{family: auth0api.FamilyRoles, kind: "auth0.roles", wantResourceURN: "urn:cerebro:tenant:runtime_roles:role-1"},
+		{family: auth0api.FamilyUsers, kind: "auth0.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:example-bbbdecc3"},
+		{family: auth0api.FamilyRoles, kind: "auth0.roles", wantResourceURN: "urn:cerebro:tenant:runtime_roles:example-63ecf2c0004baf32"},
 		{family: auth0api.FamilyAuditEvents, kind: "auth0.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_applications:client-1"},
 		{family: auth0api.FamilyOrganizations, kind: "auth0.organizations", wantResourceURN: "urn:cerebro:tenant:runtime_organizations:org-1"},
-		{family: auth0api.FamilyOrganizationMembers, kind: "auth0.organization_members", wantResourceURN: "urn:cerebro:tenant:runtime_organization_members:auth0%7Cuser-1"},
-		{family: auth0api.FamilyClients, kind: "auth0.clients", wantResourceURN: "urn:cerebro:tenant:runtime_applications:client-1"},
+		{family: auth0api.FamilyOrganizationMembers, kind: "auth0.organization_members", wantResourceURN: "urn:cerebro:tenant:runtime_organization_members:example-39d11e9d"},
+		{family: auth0api.FamilyClients, kind: "auth0.clients", wantResourceURN: "urn:cerebro:tenant:runtime_applications:example-2f83121d"},
 		{family: auth0api.FamilyConnections, kind: "auth0.connections", wantResourceURN: "urn:cerebro:tenant:runtime_connections:conn-1"},
 		{family: auth0api.FamilyResourceServers, kind: "auth0.resource_servers", wantResourceURN: "urn:cerebro:tenant:runtime_resource_servers:api-1"},
-		{family: auth0api.FamilyClientGrants, kind: "auth0.client_grants", wantResourceURN: "urn:cerebro:tenant:runtime_client_grants:grant-1"},
+		{family: auth0api.FamilyClientGrants, kind: "auth0.client_grants", wantResourceURN: "urn:cerebro:tenant:runtime_client_grants:example-5c8ac27c02d63b0d"},
 		{family: auth0api.FamilyGrants, kind: "auth0.grants", wantResourceURN: "urn:cerebro:tenant:runtime_grants:user-grant-1"},
-		{family: auth0api.FamilyUserRoles, kind: "auth0.user_roles", wantResourceURN: "urn:cerebro:tenant:runtime_user_roles:role-1"},
+		{family: auth0api.FamilyUserRoles, kind: "auth0.user_roles", wantResourceURN: "urn:cerebro:tenant:runtime_user_roles:example-3106dd3f6ca5c5b5"},
 		{family: auth0api.FamilyUserAuthenticationMethods, kind: "auth0.user_authentication_methods", wantResourceURN: "urn:cerebro:tenant:runtime_authentication_methods:auth-method-1"},
 		{family: auth0api.FamilyGuardianFactors, kind: "auth0.guardian_factors", wantResourceURN: "urn:cerebro:tenant:runtime_guardian_factors:sms"},
 	} {
@@ -806,8 +806,8 @@ func TestNewFixtureReplaysAuth0Families(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Read(%s) error = %v", tt.family, err)
 			}
-			if len(pull.Events) != 1 {
-				t.Fatalf("events = %d, want 1", len(pull.Events))
+			if len(pull.Events) == 0 {
+				t.Fatal("events are empty")
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("event kind = %q, want %q", got, tt.kind)

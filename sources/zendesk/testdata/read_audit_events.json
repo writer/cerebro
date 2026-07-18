@@ -1,73 +1,103 @@
 [
   {
+    "id": "zendesk-tenant-audit_events-b881a2aaedd8050d",
+    "tenant_id": "tenant",
+    "source_id": "zendesk",
+    "kind": "zendesk.audit_events",
+    "occurred_at": "2023-09-09T23:52:05Z",
+    "schema_ref": "zendesk/audit_events/v1",
+    "payload": {
+      "author_id": 6130907993114,
+      "created_at": "2023-09-09T23:52:05Z",
+      "events": [
+        {
+          "attachments": [],
+          "audit_id": 6130852545178,
+          "author_id": 6130869168922,
+          "body": "example-b3fdc5e5",
+          "html_body": "example-9d782932",
+          "id": 6130852545306,
+          "plain_body": "example-48ae0408",
+          "public": true,
+          "type": "Comment"
+        },
+        {
+          "field_name": "requester_id",
+          "id": 6130852545434,
+          "type": "Create",
+          "value": "example-ecbefbc0"
+        },
+        {
+          "field_name": "assignee_id",
+          "id": 6130852545562,
+          "type": "Create",
+          "value": "example-73e81358"
+        },
+        {
+          "field_name": "subject",
+          "id": 6130852545690,
+          "type": "Create",
+          "value": "example-4d497be8"
+        },
+        {
+          "field_name": "tags",
+          "id": 6130852545818,
+          "type": "Create",
+          "value": [
+            "sample",
+            "support",
+            "zendesk"
+          ]
+        },
+        {
+          "field_name": "status",
+          "id": 6130852545946,
+          "type": "Create",
+          "value": "example-2348f998"
+        },
+        {
+          "field_name": "group_id",
+          "id": 6130852546074,
+          "type": "Create",
+          "value": "example-c6aa0cb4"
+        },
+        {
+          "field_name": "ticket_form_id",
+          "id": 6130852546202,
+          "type": "Create",
+          "value": "example-66d0da95"
+        }
+      ],
+      "id": 6130852545178,
+      "metadata": {
+        "custom": {},
+        "system": {}
+      },
+      "ticket_id": 1,
+      "via": {
+        "channel": "sample_ticket",
+        "source": {
+          "from": {},
+          "rel": null,
+          "to": {}
+        }
+      }
+    },
     "attributes": {
-      "actor_email": "actor@zendesk.example.test",
-      "actor_id": "zendesk-users-1",
-      "actor_name": "actor-name-source-zendesk-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit/events",
-      "event_type": "zendesk.audit_events.observed",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-zendesk-audit_events-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zendesk-audit_events-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/zendesk/audit_events/source-zendesk-audit_events-1",
-      "external_id": "source-zendesk-audit_events-1",
+      "actor_id": "6130907993114",
+      "event_type": "ticket_audit",
+      "external_id": "6130852545178",
       "family": "audit_events",
-      "id": "source-zendesk-audit_events-1",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "6130852545178",
+      "observed_at": "2023-09-09T23:52:05Z",
       "provider": "zendesk",
       "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@zendesk.example.test",
-      "resource_id": "source-zendesk-audit_events-1",
-      "resource_name": "Zendesk Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:zendesk_audit_events:source-zendesk-audit_events-1",
+      "resource_id": "1",
+      "resource_type": "ticket",
       "schema": "audit_events",
-      "source_event_id": "source-zendesk-audit_events-1",
+      "source_event_id": "6130852545178",
       "source_provider": "zendesk",
-      "source_system": "zendesk",
-      "tenant_id": "tenant"
-    },
-    "id": "source-zendesk-audit_events-event-1",
-    "kind": "zendesk.audit_events",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "actor_email": "actor@zendesk.example.test",
-      "actor_id": "zendesk-users-1",
-      "actor_name": "actor-name-source-zendesk-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit/events",
-      "event_id": "source-zendesk-audit_events-1",
-      "event_type": "zendesk.audit_events.observed",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-zendesk-audit_events-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-zendesk-audit_events-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/zendesk/audit_events/source-zendesk-audit_events-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/zendesk/audit_events/source-zendesk-audit_events-1",
-      "family": "audit_events",
-      "id": "source-zendesk-audit_events-1",
-      "name": "Zendesk Audit Events Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@zendesk.example.test",
-      "resource_id": "source-zendesk-audit_events-1",
-      "resource_name": "Zendesk Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:zendesk_audit_events:source-zendesk-audit_events-1",
-      "schema_ref": "zendesk/audit_events/v1",
-      "source_id": "zendesk",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "zendesk/audit_events/v1",
-    "source_id": "zendesk",
-    "tenant_id": "tenant"
+      "source_system": "zendesk"
+    }
   }
 ]

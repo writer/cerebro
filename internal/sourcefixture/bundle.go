@@ -36,7 +36,8 @@ var (
 	emailPattern       = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
 	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
-	providerIDPattern  = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15})\b`)
+	zendeskTenantHost  = regexp.MustCompile(`(?i)\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.zendesk\.com\b`)
+	providerIDPattern  = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|auth0(?:\||%7c)[0-9a-z]{8,})\b`)
 	fullCommit         = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	sha256Digest       = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	replayTestName     = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
@@ -484,6 +485,14 @@ func validateCredentialJSONValue(value any, path string) error {
 		return nil
 	case string:
 		if typed == "" {
+			return nil
+		}
+	case json.Number:
+		if typed == "0" {
+			return nil
+		}
+	case bool:
+		if !typed {
 			return nil
 		}
 	}

@@ -1,32 +1,60 @@
 [
   {
-    "id": "auth0-user-auth0-user-1",
+    "id": "auth0-tenant-users-ecb2a04c5dbbfcab",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.users",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2025-01-31T00:41:28Z",
     "schema_ref": "auth0/users/v1",
     "payload": {
-      "user_id": "auth0|user-1",
-      "name": "User One",
-      "email": "user@example.test",
-      "created_at": "2026-05-01T00:00:00Z",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "blocked": false,
-      "email_verified": true
+      "app_metadata": {
+        "baz": "qux",
+        "foo": "bar"
+      },
+      "created_at": "2025-01-31T00:41:28.398Z",
+      "email": "user-d7f843fb@example.test",
+      "email_verified": false,
+      "family_name": "Lastname",
+      "given_name": "Firstname",
+      "identities": [
+        {
+          "connection": "Username-Password-Authentication",
+          "isSocial": false,
+          "provider": "auth0",
+          "user_id": "example-c19bea14"
+        }
+      ],
+      "name": "example-81d63650",
+      "nickname": "example-c19bea14",
+      "picture": "https://www.example.com/picture.jpg",
+      "updated_at": "2025-01-31T00:41:28.398Z",
+      "user_id": "example-bbbdecc3",
+      "user_metadata": {
+        "baz": "qux",
+        "foo": "bar"
+      },
+      "username": "example-c19bea14"
     },
     "attributes": {
-      "display_name": "User One",
-      "email": "user@example.test",
-      "primary_email": "user@example.test",
-      "resource_id": "auth0|user-1",
-      "resource_name": "User One",
+      "created_at": "2025-01-31T00:41:28.398Z",
+      "display_name": "example-81d63650",
+      "email": "user-d7f843fb@example.test",
+      "external_id": "example-bbbdecc3",
+      "family": "users",
+      "login": "example-c19bea14",
+      "observed_at": "2025-01-31T00:41:28.398Z",
+      "primary_email": "user-d7f843fb@example.test",
+      "provider": "auth0",
+      "record_class": "identity_user",
+      "resource_id": "example-bbbdecc3",
+      "resource_name": "example-81d63650",
       "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:runtime_users:auth0%7Cuser-1",
-      "source_event_id": "auth0|user-1",
-      "status": "active",
-      "tenant_id": "tenant",
-      "user_id": "auth0|user-1"
+      "resource_urn": "urn:cerebro:tenant:runtime_users:example-bbbdecc3",
+      "schema": "users",
+      "source_event_id": "example-bbbdecc3",
+      "source_provider": "auth0",
+      "source_system": "auth0",
+      "user_id": "example-bbbdecc3"
     }
   }
 ]

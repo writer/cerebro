@@ -1,39 +1,518 @@
 [
   {
+    "id": "gitguardian-tenant-incidents-e6d7094dc2d4eb2d",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.incidents",
+    "occurred_at": "2020-10-29T13:19:59Z",
+    "schema_ref": "gitguardian/incidents/v1",
+    "payload": {
+      "assignee_email": "user-74281974@example.test",
+      "assignee_id": null,
+      "custom_tags": [],
+      "date": "2020-10-29T13:19:59.005564Z",
+      "destination_tickets": [
+        {
+          "id": "example-d3039a1f",
+          "link": "example-4bf655c0",
+          "type": "jira_cloud"
+        }
+      ],
+      "detector": {
+        "category": "cloud_provider",
+        "detector_group_display_name": "AWS IAM Keys",
+        "detector_group_name": "aws_iam",
+        "display_name": "example-e4a26135",
+        "family": "credentials",
+        "name": "aws_iam",
+        "nature": "specific"
+      },
+      "feedback_list": [
+        {
+          "answers": [
+            {
+              "boolean": true,
+              "field_label": "Is this an actual secret?",
+              "field_ref": "actual_secret_yes_no",
+              "type": "boolean"
+            },
+            {
+              "boolean": true,
+              "field_label": "Does this secret give or has given access to any sensitive information or services?",
+              "field_ref": "access_to_sensitive_yes_no",
+              "type": "boolean"
+            },
+            {
+              "boolean": false,
+              "field_label": "Has this secret been revoked?",
+              "field_ref": "revoked_yes_no",
+              "type": "boolean"
+            },
+            {
+              "field_label": "Additional remarks",
+              "field_ref": "remarks_text",
+              "text": "example-c491644c",
+              "type": "text"
+            }
+          ],
+          "created_at": "2022-07-20T13:22:52.756189Z",
+          "email": "user-1a0bc62d@example.test",
+          "member_id": null,
+          "updated_at": "2022-07-20T13:22:52.756207Z"
+        }
+      ],
+      "gitguardian_url": "example-39a399ca",
+      "hmsl_hash": "example-bd770bfe",
+      "id": 21460,
+      "ignore_reason": null,
+      "ignored_at": null,
+      "ignorer_api_token_id": null,
+      "ignorer_id": null,
+      "incident_name": "AWS IAM Keys",
+      "is_vaulted": false,
+      "occurrences": null,
+      "occurrences_count": 2,
+      "public_exposure": {
+        "leaked_outside_perimeter": false,
+        "public_incident_linked": false,
+        "source_publicly_visible": true
+      },
+      "regression": false,
+      "resolved_at": "2026-03-11T22:41:04.525493Z",
+      "resolver_api_token_id": null,
+      "resolver_id": 492181,
+      "risk_score": 100,
+      "secret_hash": "example-fab0a142",
+      "secret_id": 70588,
+      "secret_presence": {
+        "files_fixed": 0,
+        "files_pending_merge": 0,
+        "files_requiring_code_fix": 0,
+        "in_vcs": 0,
+        "outside_vcs": 0,
+        "removed_in_vcs": 2,
+        "removed_outside_vcs": 0
+      },
+      "secret_revoked": true,
+      "severity": "medium",
+      "severity_rule_id": null,
+      "share_url": "[REDACTED]",
+      "status": "RESOLVED",
+      "tags": [
+        "REVOCABLE_BY_GG",
+        "PUBLICLY_LEAKED"
+      ],
+      "triggered_at": "2021-02-11T14:23:22.947577Z",
+      "validity": "invalid"
+    },
     "attributes": {
-      "external_id": "3759",
+      "external_id": "21460",
       "family": "incidents",
-      "finding_id": "3759",
-      "observed_at": "2026-06-25T10:00:00Z",
+      "finding_id": "21460",
+      "observed_at": "2020-10-29T13:19:59.005564Z",
       "provider": "gitguardian",
       "record_class": "finding",
-      "resource_id": "3759",
-      "resource_name": "Stripe Token",
-      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:3759",
+      "resource_id": "21460",
+      "resource_name": "AWS IAM Keys",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:21460",
       "schema": "incidents",
-      "severity": "high",
-      "source_event_id": "3759",
+      "severity": "medium",
+      "source_event_id": "21460",
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
-      "status": "TRIGGERED",
-      "tenant_id": "tenant",
-      "title": "Stripe Token"
-    },
-    "id": "gitguardian-incidents-3759",
-    "kind": "gitguardian.incidents",
-    "occurred_at": "2026-06-25T10:00:00Z",
-    "payload": {
-      "date": "2026-06-25T10:00:00Z",
-      "id": 3759,
-      "incident_name": "Stripe Token",
-      "occurrences_count": 4,
-      "secret_id": 1,
-      "severity": "high",
-      "status": "TRIGGERED",
-      "validity": "valid"
-    },
-    "schema_ref": "gitguardian/incidents/v1",
+      "status": "RESOLVED",
+      "title": "AWS IAM Keys"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-incidents-123561d109a91ba2",
+    "tenant_id": "tenant",
     "source_id": "gitguardian",
-    "tenant_id": "tenant"
+    "kind": "gitguardian.incidents",
+    "occurred_at": "2020-10-29T09:19:54Z",
+    "schema_ref": "gitguardian/incidents/v1",
+    "payload": {
+      "assignee_email": "user-4278f7fb@example.test",
+      "assignee_id": 270722,
+      "custom_tags": [],
+      "date": "2020-10-29T09:19:54.249454Z",
+      "destination_tickets": [
+        {
+          "id": "example-969c76cf",
+          "link": "example-9fa17a46",
+          "type": "jira_cloud"
+        },
+        {
+          "id": "example-6227e5f9",
+          "link": "example-335fa8a3",
+          "type": "jira_cloud"
+        }
+      ],
+      "detector": {
+        "category": "private_key",
+        "detector_group_display_name": "DSA Private Key",
+        "detector_group_name": "private_key_dsa",
+        "display_name": "example-bac5ac0a",
+        "family": "cryptographic_key",
+        "name": "private_key_dsa",
+        "nature": "specific"
+      },
+      "feedback_list": [
+        {
+          "answers": [
+            {
+              "boolean": true,
+              "field_label": "Is this an actual secret?",
+              "field_ref": "actual_secret_yes_no",
+              "type": "boolean"
+            },
+            {
+              "boolean": true,
+              "field_label": "Does this secret give or has given access to any sensitive information or services?",
+              "field_ref": "access_to_sensitive_yes_no",
+              "type": "boolean"
+            },
+            {
+              "boolean": false,
+              "field_label": "Has this secret been revoked?",
+              "field_ref": "revoked_yes_no",
+              "type": "boolean"
+            },
+            {
+              "field_label": "Additional remarks",
+              "field_ref": "remarks_text",
+              "text": "example-2462198a",
+              "type": "text"
+            }
+          ],
+          "created_at": "2024-06-28T07:01:19.458759Z",
+          "email": "user-e2de71a9@example.test",
+          "member_id": null,
+          "updated_at": "2024-06-28T07:01:19.458771Z"
+        }
+      ],
+      "gitguardian_url": "example-fc1988f0",
+      "hmsl_hash": "example-3df7cada",
+      "id": 21461,
+      "ignore_reason": null,
+      "ignored_at": null,
+      "ignorer_api_token_id": null,
+      "ignorer_id": null,
+      "incident_name": "DSA Private Key",
+      "is_vaulted": false,
+      "occurrences": null,
+      "occurrences_count": 2,
+      "public_exposure": {
+        "leaked_outside_perimeter": false,
+        "public_incident_linked": false,
+        "source_publicly_visible": true
+      },
+      "regression": false,
+      "resolved_at": null,
+      "resolver_api_token_id": null,
+      "resolver_id": null,
+      "risk_score": 72,
+      "secret_hash": "example-366dc4af",
+      "secret_id": 70589,
+      "secret_presence": {
+        "files_fixed": 0,
+        "files_pending_merge": 0,
+        "files_requiring_code_fix": 0,
+        "in_vcs": 0,
+        "outside_vcs": 0,
+        "removed_in_vcs": 2,
+        "removed_outside_vcs": 0
+      },
+      "secret_revoked": false,
+      "severity": "critical",
+      "severity_rule_id": 11883,
+      "share_url": "[REDACTED]",
+      "status": "ASSIGNED",
+      "tags": [
+        "PUBLICLY_LEAKED"
+      ],
+      "triggered_at": "2021-02-11T14:23:22.947605Z",
+      "validity": "no_checker"
+    },
+    "attributes": {
+      "external_id": "21461",
+      "family": "incidents",
+      "finding_id": "21461",
+      "observed_at": "2020-10-29T09:19:54.249454Z",
+      "provider": "gitguardian",
+      "record_class": "finding",
+      "resource_id": "21461",
+      "resource_name": "DSA Private Key",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:21461",
+      "schema": "incidents",
+      "severity": "critical",
+      "source_event_id": "21461",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "status": "ASSIGNED",
+      "title": "DSA Private Key"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-incidents-9fa650dbb5678ff6",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.incidents",
+    "occurred_at": "2020-10-29T07:19:30Z",
+    "schema_ref": "gitguardian/incidents/v1",
+    "payload": {
+      "assignee_email": "user-324427de@example.test",
+      "assignee_id": 10,
+      "custom_tags": [],
+      "date": "2020-10-29T07:19:30.598398Z",
+      "destination_tickets": [],
+      "detector": {
+        "category": "crm",
+        "detector_group_display_name": "Salesforce Oauth2 Keys",
+        "detector_group_name": "salesforce_oauth2_keys",
+        "display_name": "example-d4f662df",
+        "family": "credentials",
+        "name": "salesforce_oauth2",
+        "nature": "specific"
+      },
+      "feedback_list": [],
+      "gitguardian_url": "example-815691db",
+      "hmsl_hash": "example-58775a8a",
+      "id": 21462,
+      "ignore_reason": "invalid",
+      "ignored_at": "2025-07-28T09:27:09.871747Z",
+      "ignorer_api_token_id": null,
+      "ignorer_id": 492181,
+      "incident_name": "Salesforce Oauth2 Keys",
+      "is_vaulted": false,
+      "occurrences": null,
+      "occurrences_count": 2,
+      "public_exposure": {
+        "leaked_outside_perimeter": false,
+        "public_incident_linked": false,
+        "source_publicly_visible": true
+      },
+      "regression": false,
+      "resolved_at": null,
+      "resolver_api_token_id": null,
+      "resolver_id": null,
+      "risk_score": 23,
+      "secret_hash": "example-77f38224",
+      "secret_id": 70590,
+      "secret_presence": {
+        "files_fixed": 0,
+        "files_pending_merge": 0,
+        "files_requiring_code_fix": 0,
+        "in_vcs": 0,
+        "outside_vcs": 0,
+        "removed_in_vcs": 2,
+        "removed_outside_vcs": 0
+      },
+      "secret_revoked": false,
+      "severity": "high",
+      "severity_rule_id": 31,
+      "share_url": "[REDACTED]",
+      "status": "IGNORED",
+      "tags": [
+        "PUBLICLY_LEAKED"
+      ],
+      "triggered_at": "2021-02-11T14:23:22.947632Z",
+      "validity": "invalid"
+    },
+    "attributes": {
+      "external_id": "21462",
+      "family": "incidents",
+      "finding_id": "21462",
+      "observed_at": "2020-10-29T07:19:30.598398Z",
+      "provider": "gitguardian",
+      "record_class": "finding",
+      "resource_id": "21462",
+      "resource_name": "Salesforce Oauth2 Keys",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:21462",
+      "schema": "incidents",
+      "severity": "high",
+      "source_event_id": "21462",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "status": "IGNORED",
+      "title": "Salesforce Oauth2 Keys"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-incidents-3898cd6e84d27e44",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.incidents",
+    "occurred_at": "2020-10-29T06:20:15Z",
+    "schema_ref": "gitguardian/incidents/v1",
+    "payload": {
+      "assignee_email": null,
+      "assignee_id": null,
+      "custom_tags": [],
+      "date": "2020-10-29T06:20:15.521071Z",
+      "destination_tickets": [],
+      "detector": {
+        "category": "private_key",
+        "detector_group_display_name": "RSA Private Key",
+        "detector_group_name": "private_key_rsa",
+        "display_name": "example-fe63f504",
+        "family": "cryptographic_key",
+        "name": "private_key_rsa",
+        "nature": "specific"
+      },
+      "feedback_list": [],
+      "gitguardian_url": "example-f98d3b00",
+      "hmsl_hash": "example-52fdd880",
+      "id": 21463,
+      "ignore_reason": null,
+      "ignored_at": null,
+      "ignorer_api_token_id": null,
+      "ignorer_id": null,
+      "incident_name": "RSA Private Key",
+      "is_vaulted": false,
+      "occurrences": null,
+      "occurrences_count": 2,
+      "public_exposure": {
+        "leaked_outside_perimeter": false,
+        "public_incident_linked": false,
+        "source_publicly_visible": true
+      },
+      "regression": false,
+      "resolved_at": "2023-04-21T12:50:04.503620Z",
+      "resolver_api_token_id": null,
+      "resolver_id": null,
+      "risk_score": 57,
+      "secret_hash": "example-d19689c9",
+      "secret_id": 70591,
+      "secret_presence": {
+        "files_fixed": 0,
+        "files_pending_merge": 0,
+        "files_requiring_code_fix": 0,
+        "in_vcs": 0,
+        "outside_vcs": 0,
+        "removed_in_vcs": 2,
+        "removed_outside_vcs": 0
+      },
+      "secret_revoked": true,
+      "severity": "high",
+      "severity_rule_id": 31,
+      "share_url": "[REDACTED]",
+      "status": "RESOLVED",
+      "tags": [
+        "PUBLICLY_LEAKED"
+      ],
+      "triggered_at": "2021-02-11T14:23:22.947664Z",
+      "validity": "failed_to_check"
+    },
+    "attributes": {
+      "external_id": "21463",
+      "family": "incidents",
+      "finding_id": "21463",
+      "observed_at": "2020-10-29T06:20:15.521071Z",
+      "provider": "gitguardian",
+      "record_class": "finding",
+      "resource_id": "21463",
+      "resource_name": "RSA Private Key",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:21463",
+      "schema": "incidents",
+      "severity": "high",
+      "source_event_id": "21463",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "status": "RESOLVED",
+      "title": "RSA Private Key"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-incidents-73adcd2ca30bdf9c",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.incidents",
+    "occurred_at": "2020-10-29T04:19:56Z",
+    "schema_ref": "gitguardian/incidents/v1",
+    "payload": {
+      "assignee_email": "user-324427de@example.test",
+      "assignee_id": 10,
+      "custom_tags": [],
+      "date": "2020-10-29T04:19:56.388169Z",
+      "destination_tickets": [
+        {
+          "id": "example-66372913",
+          "link": "example-009788fc",
+          "type": "jira_cloud"
+        }
+      ],
+      "detector": {
+        "category": "cloud_provider",
+        "detector_group_display_name": "AWS IAM Keys",
+        "detector_group_name": "aws_iam",
+        "display_name": "example-e4a26135",
+        "family": "credentials",
+        "name": "aws_iam",
+        "nature": "specific"
+      },
+      "feedback_list": [],
+      "gitguardian_url": "example-ec20ef21",
+      "hmsl_hash": "example-975f44ef",
+      "id": 21464,
+      "ignore_reason": null,
+      "ignored_at": null,
+      "ignorer_api_token_id": null,
+      "ignorer_id": null,
+      "incident_name": "AWS IAM Keys",
+      "is_vaulted": false,
+      "occurrences": null,
+      "occurrences_count": 2,
+      "public_exposure": {
+        "leaked_outside_perimeter": false,
+        "public_incident_linked": false,
+        "source_publicly_visible": true
+      },
+      "regression": false,
+      "resolved_at": "2026-03-11T22:41:04.525493Z",
+      "resolver_api_token_id": null,
+      "resolver_id": 492181,
+      "risk_score": 100,
+      "secret_hash": "example-a8d96343",
+      "secret_id": 70592,
+      "secret_presence": {
+        "files_fixed": 0,
+        "files_pending_merge": 0,
+        "files_requiring_code_fix": 0,
+        "in_vcs": 0,
+        "outside_vcs": 0,
+        "removed_in_vcs": 2,
+        "removed_outside_vcs": 0
+      },
+      "secret_revoked": true,
+      "severity": "high",
+      "severity_rule_id": 28,
+      "share_url": "[REDACTED]",
+      "status": "RESOLVED",
+      "tags": [
+        "REVOCABLE_BY_GG",
+        "PUBLICLY_LEAKED"
+      ],
+      "triggered_at": "2021-02-11T14:23:22.947692Z",
+      "validity": "invalid"
+    },
+    "attributes": {
+      "external_id": "21464",
+      "family": "incidents",
+      "finding_id": "21464",
+      "observed_at": "2020-10-29T04:19:56.388169Z",
+      "provider": "gitguardian",
+      "record_class": "finding",
+      "resource_id": "21464",
+      "resource_name": "AWS IAM Keys",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_incidents:21464",
+      "schema": "incidents",
+      "severity": "high",
+      "source_event_id": "21464",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "status": "RESOLVED",
+      "title": "AWS IAM Keys"
+    }
   }
 ]

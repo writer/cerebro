@@ -40,8 +40,8 @@ func SanitizeImportedCredentials(payload []byte) ([]byte, []string, error) {
 	return canonical, normalizedList(changed), nil
 }
 
-// SanitizeImportedJSONWithKeys also replaces string values for explicitly
-// declared field keys, such as a provider's free-form token name field.
+// SanitizeImportedJSONWithKeys also replaces values for explicitly declared
+// field keys while preserving their JSON types and response shape.
 func SanitizeImportedJSONWithKeys(payload []byte, fieldKeys []string) ([]byte, []string, error) {
 	var value any
 	decoder := json.NewDecoder(bytes.NewReader(payload))
@@ -76,6 +76,14 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 	case map[string]any:
 		for key, child := range typed {
 			childPath := valuePath + "." + key
+			if _, ok := explicitKeys[normalizedJSONKey(key)]; ok {
+				sanitized, err := sanitizeExplicitJSONValue(child, childPath, changed)
+				if err != nil {
+					return nil, err
+				}
+				typed[key] = sanitized
+				continue
+			}
 			if credentialFieldKey.MatchString(key) {
 				sanitized, err := sanitizeCredentialJSONValue(child, childPath, changed)
 				if err != nil {
@@ -114,6 +122,51 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 		return replaced, nil
 	default:
 		return value, nil
+	}
+}
+
+func sanitizeExplicitJSONValue(value any, valuePath string, changed *[]string) (any, error) {
+	switch typed := value.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		for key, child := range typed {
+			sanitized, err := sanitizeExplicitJSONValue(child, valuePath+"."+key, changed)
+			if err != nil {
+				return nil, err
+			}
+			typed[key] = sanitized
+		}
+		return typed, nil
+	case []any:
+		for index, child := range typed {
+			sanitized, err := sanitizeExplicitJSONValue(child, fmt.Sprintf("%s[%d]", valuePath, index), changed)
+			if err != nil {
+				return nil, err
+			}
+			typed[index] = sanitized
+		}
+		return typed, nil
+	case string:
+		if typed == "" {
+			return typed, nil
+		}
+		*changed = append(*changed, valuePath)
+		return SanitizeImportedText(sanitizedPersonalString(valuePath, typed)), nil
+	case json.Number:
+		if typed == "0" {
+			return typed, nil
+		}
+		*changed = append(*changed, valuePath)
+		return json.Number("0"), nil
+	case bool:
+		if !typed {
+			return typed, nil
+		}
+		*changed = append(*changed, valuePath)
+		return false, nil
+	default:
+		return nil, fmt.Errorf("explicit field %s has unsupported JSON value type %T", valuePath, value)
 	}
 }
 
@@ -188,6 +241,7 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 // tenant data or resemble credentials with stable example values so references
 // remain consistent across response fields.
 func SanitizeImportedText(value string) string {
+	value = zendeskTenantHost.ReplaceAllString(value, "example.zendesk.com")
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
 		digest := sha256.Sum256([]byte(identifier))
 		return "example-" + hex.EncodeToString(digest[:8])

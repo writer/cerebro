@@ -1,33 +1,42 @@
 [
   {
-    "id": "auth0-client-grant-grant-1",
+    "id": "auth0-tenant-client_grants-d4bd35c2e00fa450",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.client_grants",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-07-16T11:27:27Z",
     "schema_ref": "auth0/client_grants/v1",
     "payload": {
-      "id": "grant-1",
-      "client_id": "client-1",
-      "audience": "https://api.example.test",
-      "scope": ["read:reports"]
+      "audience": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "authorization_details_types": [
+        "payment"
+      ],
+      "client_id": "example-76a278b1",
+      "id": "example-5c8ac27c02d63b0d",
+      "scope": [],
+      "subject_type": "user"
     },
     "attributes": {
-      "app_id": "client-1",
-      "audience": "https://api.example.test",
-      "client_grant_id": "grant-1",
-      "client_id": "client-1",
-      "entitlement": "read:reports",
-      "entitlement_id": "grant-1",
-      "resource_id": "grant-1",
-      "resource_name": "https://api.example.test",
+      "app_id": "example-76a278b1",
+      "audience": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "client_grant_id": "example-5c8ac27c02d63b0d",
+      "client_id": "example-76a278b1",
+      "entitlement": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
+      "entitlement_id": "example-5c8ac27c02d63b0d",
+      "external_id": "example-5c8ac27c02d63b0d",
+      "family": "client_grants",
+      "provider": "auth0",
+      "record_class": "identity_app_assignment",
+      "resource_id": "example-5c8ac27c02d63b0d",
+      "resource_name": "https://uat.tf.terraform-provider-auth0.com/client-grant/TestAccClientGrant",
       "resource_type": "client_grant",
-      "resource_urn": "urn:cerebro:tenant:runtime_client_grants:grant-1",
-      "scope": "read:reports",
-      "source_event_id": "grant-1",
-      "subject_id": "client-1",
-      "subject_type": "application",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:runtime_client_grants:example-5c8ac27c02d63b0d",
+      "schema": "client_grants",
+      "source_event_id": "example-5c8ac27c02d63b0d",
+      "source_provider": "auth0",
+      "source_system": "auth0",
+      "subject_id": "example-76a278b1",
+      "subject_type": "application"
     }
   }
 ]

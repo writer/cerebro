@@ -1,28 +1,37 @@
 [
   {
-    "id": "auth0-user-role-role-1",
+    "id": "auth0-tenant-user_roles-62ff36eeb534419a",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.user_roles",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-07-16T11:27:27Z",
     "schema_ref": "auth0/user_roles/v1",
     "payload": {
-      "id": "role-1",
-      "name": "Security Administrators"
+      "description": "Owner testaccuserrole",
+      "id": "example-3106dd3f6ca5c5b5",
+      "name": "Test Owner testaccuserrole",
+      "user_id": "example-143233fb4ac8d6dd"
     },
     "attributes": {
-      "group_id": "role-1",
-      "group_name": "Security Administrators",
+      "description": "Owner testaccuserrole",
+      "external_id": "example-3106dd3f6ca5c5b5",
+      "family": "user_roles",
+      "group_id": "example-3106dd3f6ca5c5b5",
+      "group_name": "Test Owner testaccuserrole",
       "member_type": "user",
-      "member_user_id": "auth0|user-1",
-      "resource_id": "role-1",
-      "resource_name": "Security Administrators",
+      "member_user_id": "example-143233fb4ac8d6dd",
+      "provider": "auth0",
+      "record_class": "identity_group_membership",
+      "resource_id": "example-3106dd3f6ca5c5b5",
+      "resource_name": "Test Owner testaccuserrole",
       "resource_type": "role_membership",
-      "resource_urn": "urn:cerebro:tenant:runtime_user_roles:role-1",
-      "role": "Security Administrators",
-      "source_event_id": "role-1",
-      "tenant_id": "tenant",
-      "user_id": "auth0|user-1"
+      "resource_urn": "urn:cerebro:tenant:runtime_user_roles:example-3106dd3f6ca5c5b5",
+      "role": "Test Owner testaccuserrole",
+      "schema": "user_roles",
+      "source_event_id": "example-3106dd3f6ca5c5b5",
+      "source_provider": "auth0",
+      "source_system": "auth0",
+      "user_id": "example-143233fb4ac8d6dd"
     }
   }
 ]

@@ -1,26 +1,32 @@
 [
   {
-    "id": "auth0-role-role-1",
+    "id": "auth0-tenant-roles-2df57b4df14177b6",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.roles",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-07-16T11:27:27Z",
     "schema_ref": "auth0/roles/v1",
     "payload": {
-      "id": "role-1",
-      "name": "Security Administrators",
-      "description": "Manage identity security settings"
+      "description": "The One - Acceptance Test",
+      "id": "example-63ecf2c0004baf32",
+      "name": "The One - Acceptance Test - testaccdatasourcerole"
     },
     "attributes": {
-      "description": "Manage identity security settings",
-      "group_id": "role-1",
-      "group_name": "Security Administrators",
-      "resource_id": "role-1",
-      "resource_name": "Security Administrators",
+      "description": "The One - Acceptance Test",
+      "external_id": "example-63ecf2c0004baf32",
+      "family": "roles",
+      "group_id": "example-63ecf2c0004baf32",
+      "group_name": "The One - Acceptance Test - testaccdatasourcerole",
+      "provider": "auth0",
+      "record_class": "identity_group",
+      "resource_id": "example-63ecf2c0004baf32",
+      "resource_name": "The One - Acceptance Test - testaccdatasourcerole",
       "resource_type": "role",
-      "resource_urn": "urn:cerebro:tenant:runtime_roles:role-1",
-      "source_event_id": "role-1",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:runtime_roles:example-63ecf2c0004baf32",
+      "schema": "roles",
+      "source_event_id": "example-63ecf2c0004baf32",
+      "source_provider": "auth0",
+      "source_system": "auth0"
     }
   }
 ]

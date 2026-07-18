@@ -1,0 +1,36 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: zendesk
+family: tickets
+case: list_tickets
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedZendeskFamilies
+request:
+    method: GET
+    url: https://example.zendesk.com/api/v2/tickets.json?page%5Bsize%5D=1
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2024-02-08T17:44:44Z"
+    sha256: 5fe242e3105508055ae02ae51046184e0f281cfb314c6c3979221e2184a0c699
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.links.next
+        - $.links.prev
+        - $.tickets[0].description
+        - $.tickets[0].raw_subject
+        - $.tickets[0].subject
+        - $.tickets[0].url
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/facetoe/zenpy
+    commit: fa6aab1de6880c9c0a9c5232bdfc9fa5e2effa0f
+    path: tests/test_api/betamax/TestTicketsPagination.test_values.json
+    artifact_sha256: 4ad0cd88ee6c010dde8e886f099f21687c6c468ab53e258d005d4468ab488e2d
+    license: GPL-3.0-only
+    recording_tool: betamax-0.8.1
+    harness_path: tests/test_api/__init__.py
+    interaction_index: 4
+    freshness: current
+    capture_time_basis: response_header
