@@ -37,6 +37,30 @@ type WorkItemRecord struct {
 	Actions     []complianceassessment.WorkActionRecord `json:"actions"`
 }
 
+// WorkItemListFilter selects one bounded page from the canonical work queue.
+type WorkItemListFilter struct {
+	State   complianceassessment.WorkItemState
+	OwnerID string
+	Cursor  string
+	Limit   uint32
+}
+
+// WorkItemPage is a keyset-paginated canonical work queue page.
+type WorkItemPage struct {
+	Items      []complianceassessment.WorkItem `json:"items"`
+	NextCursor string                          `json:"next_cursor,omitempty"`
+}
+
+// WorkItemLister is optional so existing Store implementations retain their
+// read/write contract while durable stores can expose the shared queue.
+type WorkItemLister interface {
+	ListWorkItems(context.Context, string, WorkItemListFilter) (WorkItemPage, error)
+}
+
+type assuranceDecisionReader interface {
+	GetAssuranceDecision(context.Context, string, string) (complianceassessment.AssuranceDecision, error)
+}
+
 // Store is the tenant-scoped current-state read boundary.
 type Store interface {
 	GetWorkItem(context.Context, string, string) (WorkItemRecord, error)
@@ -128,21 +152,45 @@ func (s *Service) GetWorkItem(ctx context.Context, tenantID, workItemID string) 
 	return s.store.GetWorkItem(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(workItemID))
 }
 
+// ListWorkItems reads one bounded tenant-scoped page from the canonical queue.
+func (s *Service) ListWorkItems(ctx context.Context, tenantID string, filter WorkItemListFilter) (WorkItemPage, error) {
+	if err := s.ready(); err != nil {
+		return WorkItemPage{}, err
+	}
+	lister, ok := s.store.(WorkItemLister)
+	if !ok {
+		return WorkItemPage{}, ErrUnavailable
+	}
+	filter.OwnerID = strings.TrimSpace(filter.OwnerID)
+	filter.Cursor = strings.TrimSpace(filter.Cursor)
+	if filter.State != "" && !validWorkItemStateFilter(filter.State) {
+		return WorkItemPage{}, fmt.Errorf("%w: unknown work item state %q", ErrInvalidRequest, filter.State)
+	}
+	if filter.Limit == 0 {
+		filter.Limit = 50
+	}
+	if filter.Limit > 200 {
+		return WorkItemPage{}, fmt.Errorf("%w: limit must not exceed 200", ErrInvalidRequest)
+	}
+	return lister.ListWorkItems(ctx, strings.TrimSpace(tenantID), filter)
+}
+
 // WorkCommand applies an explicit operating action or invalidation.
 type WorkCommand struct {
-	Operation       string                                 `json:"operation"`
-	ExpectedVersion uint64                                 `json:"expected_version"`
-	Action          complianceassessment.WorkAction        `json:"action,omitempty"`
-	OwnerID         string                                 `json:"owner_id,omitempty"`
-	Rationale       string                                 `json:"rationale,omitempty"`
-	BlockerReason   string                                 `json:"blocker_reason,omitempty"`
-	SnoozeUntil     time.Time                              `json:"snooze_until,omitempty"`
-	EvidenceIDs     []string                               `json:"evidence_ids,omitempty"`
-	Trigger         complianceassessment.WorkReopenTrigger `json:"trigger,omitempty"`
-	SourceRef       string                                 `json:"source_ref,omitempty"`
-	DueAt           time.Time                              `json:"due_at,omitempty"`
-	ActorID         string                                 `json:"actor_id"`
-	At              time.Time                              `json:"at"`
+	Operation           string                                 `json:"operation"`
+	ExpectedVersion     uint64                                 `json:"expected_version"`
+	Action              complianceassessment.WorkAction        `json:"action,omitempty"`
+	OwnerID             string                                 `json:"owner_id,omitempty"`
+	Rationale           string                                 `json:"rationale,omitempty"`
+	BlockerReason       string                                 `json:"blocker_reason,omitempty"`
+	SnoozeUntil         time.Time                              `json:"snooze_until,omitempty"`
+	EvidenceIDs         []string                               `json:"evidence_ids,omitempty"`
+	AssuranceDecisionID string                                 `json:"assurance_decision_id,omitempty"`
+	Trigger             complianceassessment.WorkReopenTrigger `json:"trigger,omitempty"`
+	SourceRef           string                                 `json:"source_ref,omitempty"`
+	DueAt               time.Time                              `json:"due_at,omitempty"`
+	ActorID             string                                 `json:"actor_id"`
+	At                  time.Time                              `json:"at"`
 }
 
 // ApplyWorkCommand records a state transition without executing an external action.
@@ -159,10 +207,22 @@ func (s *Service) ApplyWorkCommand(ctx context.Context, tenantID, workItemID str
 	}
 	switch strings.TrimSpace(command.Operation) {
 	case "action":
+		var verification *complianceassessment.WorkVerification
+		if command.Action == complianceassessment.WorkActionVerifyAssurance {
+			if record.Item.Version != command.ExpectedVersion {
+				return WorkItemRecord{}, fmt.Errorf("%w: expected %d, current %d", complianceassessment.ErrVersionConflict, command.ExpectedVersion, record.Item.Version)
+			}
+			verification, err = s.verifyWorkAssurance(ctx, strings.TrimSpace(tenantID), record.Item, command)
+			if err != nil {
+				return WorkItemRecord{}, err
+			}
+		} else if strings.TrimSpace(command.AssuranceDecisionID) != "" {
+			return WorkItemRecord{}, fmt.Errorf("%w: assurance_decision_id requires verify_assurance", ErrInvalidRequest)
+		}
 		next, action, err := complianceassessment.ApplyWorkAction(record.Item, command.ExpectedVersion, complianceassessment.WorkActionInput{
 			Action: command.Action, OwnerID: command.OwnerID, Rationale: command.Rationale,
 			BlockerReason: command.BlockerReason, SnoozeUntil: command.SnoozeUntil,
-			EvidenceIDs: command.EvidenceIDs, ActorID: command.ActorID, At: command.At,
+			EvidenceIDs: command.EvidenceIDs, Verification: verification, ActorID: command.ActorID, At: command.At,
 		})
 		if err != nil {
 			return WorkItemRecord{}, err
@@ -195,6 +255,75 @@ func (s *Service) ApplyWorkCommand(ctx context.Context, tenantID, workItemID str
 		return WorkItemRecord{}, fmt.Errorf("%w: operation must be action or invalidate", ErrInvalidRequest)
 	}
 	return s.store.GetWorkItem(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(workItemID))
+}
+
+func (s *Service) verifyWorkAssurance(ctx context.Context, tenantID string, item complianceassessment.WorkItem, command WorkCommand) (*complianceassessment.WorkVerification, error) {
+	decisionID := strings.TrimSpace(command.AssuranceDecisionID)
+	reader, ok := s.store.(assuranceDecisionReader)
+	if !ok {
+		return nil, ErrUnavailable
+	}
+	if decisionID == "" {
+		return nil, fmt.Errorf("%w: assurance_decision_id is required", ErrInvalidRequest)
+	}
+	decision, err := reader.GetAssuranceDecision(ctx, tenantID, decisionID)
+	if errors.Is(err, complianceassessment.ErrAssuranceDecisionNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := decision.Decision.AuthorizeProductionUse(); err != nil {
+		return nil, fmt.Errorf("%w: assurance decision is not qualified", ErrInvalidRequest)
+	}
+	result := complianceassessment.NormalizeResult(decision.InputSnapshot.Result)
+	remediatedAt := complianceassessment.CanonicalTime(item.LastRemediatedAt)
+	decisionAsOf := complianceassessment.CanonicalTime(decision.Decision.AsOf)
+	evaluatedAt := complianceassessment.CanonicalTime(result.EvaluatedAt)
+	if remediatedAt.IsZero() || !evaluatedAt.After(remediatedAt) || !decisionAsOf.After(remediatedAt) || !decision.RecordedAt.After(remediatedAt) {
+		return nil, fmt.Errorf("%w: assurance decision must be recorded from a post-remediation assessment", ErrInvalidRequest)
+	}
+	if decision.ProgramID != item.Basis.ProgramID || decision.ScopeRevisionID != item.Basis.ScopeRevisionID ||
+		decision.ObjectiveID != item.Basis.ObjectiveID || result.ControlRef.ControlID != item.Basis.ControlID {
+		return nil, fmt.Errorf("%w: assurance decision does not match the work basis", ErrInvalidRequest)
+	}
+	if result.AutomatedOutcome != complianceassessment.OutcomeSatisfied {
+		return nil, fmt.Errorf("%w: assurance decision result is not satisfied", ErrInvalidRequest)
+	}
+	if !containsString(result.SourceRuntimeIDs, item.Basis.SourceID) {
+		return nil, fmt.Errorf("%w: assurance decision does not cover the work source", ErrInvalidRequest)
+	}
+	return &complianceassessment.WorkVerification{
+		AssuranceDecisionID: decision.ID,
+		AssessmentRunID:     decision.RunID,
+		ObjectiveResultID:   decision.ResultID,
+		DecisionDigest:      decision.Decision.DecisionDigest,
+		RecordDigest:        decision.RecordDigest,
+		EvidenceIDs:         append([]string(nil), result.EvidenceIDs...),
+		EvaluatedAt:         evaluatedAt,
+		DecisionAsOf:        decisionAsOf,
+	}, nil
+}
+
+func containsString(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func validWorkItemStateFilter(state complianceassessment.WorkItemState) bool {
+	switch state {
+	case complianceassessment.WorkOpen, complianceassessment.WorkInProgress, complianceassessment.WorkBlocked,
+		complianceassessment.WorkResolved, complianceassessment.WorkAccepted, complianceassessment.WorkSnoozed,
+		complianceassessment.WorkSuperseded:
+		return true
+	default:
+		return false
+	}
 }
 
 // CreateRemediationPlan creates an owned plan with mandatory independent verification.

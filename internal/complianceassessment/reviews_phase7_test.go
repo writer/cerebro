@@ -108,7 +108,8 @@ func TestWorkFingerprintOccurrencesAndReopenTriggers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReopenWorkItem(%s) error = %v", trigger, err)
 		}
-		if reopened.State != WorkOpen || reopened.OwnerID != "owner-b" || record.Trigger != trigger || record.RecordHash == "" {
+		if reopened.State != WorkOpen || reopened.OwnerID != "owner-b" || record.Trigger != trigger || record.RecordHash == "" ||
+			reopened.LastRemediatedBy != "" || !reopened.LastRemediatedAt.IsZero() {
 			t.Fatalf("ReopenWorkItem(%s) = %+v / %+v", trigger, reopened, record)
 		}
 	}
@@ -140,6 +141,57 @@ func TestVerificationRequiredWorkCannotBeSelfClosed(t *testing.T) {
 	resolved, _, err := ApplyWorkAction(inProgress, inProgress.Version, WorkActionInput{Action: WorkActionVerify, Rationale: "Verify the change.", EvidenceIDs: []string{"evidence-a"}, ActorID: "reviewer-a", At: now.Add(2 * time.Hour)})
 	if err != nil || resolved.State != WorkResolved || resolved.VerifiedBy != "reviewer-a" {
 		t.Fatalf("ApplyWorkAction(independent verify) = %+v, %v", resolved, err)
+	}
+}
+
+func TestAssuranceVerificationRecordsImmutableReceipt(t *testing.T) {
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	item, _, err := NewWorkItem(WorkItemInput{
+		Basis: WorkFingerprintInput{
+			TenantID: "tenant-a", ProgramID: "program-a", ScopeRevisionID: "scope-r1", ControlID: "CC-1",
+			ObjectiveID: "objective-a", Kind: WorkRemediateFinding, SubjectID: "subject-a", Reason: ReasonActiveFinding, SourceID: "source-a",
+		},
+		OwnerID: "owner-a", DueAt: now.Add(24 * time.Hour), Priority: "high", VerificationRequired: true,
+		Occurrence: WorkOccurrenceInput{AssessmentRunID: "run-a", ObjectiveResultID: "result-a", AutomatedResultHash: "sha256:" + strings.Repeat("e", 64), OccurredAt: now},
+	})
+	if err != nil {
+		t.Fatalf("NewWorkItem() error = %v", err)
+	}
+	inProgress, _, err := ApplyWorkAction(item, item.Version, WorkActionInput{
+		Action: WorkActionRemediate, Rationale: "Apply the control change.", ActorID: "owner-a", At: now.Add(time.Hour),
+	})
+	if err != nil || !inProgress.LastRemediatedAt.Equal(now.Add(time.Hour)) {
+		t.Fatalf("ApplyWorkAction(remediate) = %+v, %v", inProgress, err)
+	}
+	receipt := &WorkVerification{
+		AssuranceDecisionID: "assurance-decision-a", AssessmentRunID: "run-b", ObjectiveResultID: "result-b",
+		DecisionDigest: "sha256:" + strings.Repeat("a", 64), RecordDigest: "sha256:" + strings.Repeat("b", 64),
+		EvidenceIDs: []string{"evidence-b"}, EvaluatedAt: now.Add(2 * time.Hour), DecisionAsOf: now.Add(3 * time.Hour),
+	}
+	resolved, action, err := ApplyWorkAction(inProgress, inProgress.Version, WorkActionInput{
+		Action: WorkActionVerifyAssurance, Rationale: "Verify the post-change assessment.", Verification: receipt,
+		ActorID: "reviewer-a", At: now.Add(4 * time.Hour),
+	})
+	if err != nil || resolved.State != WorkResolved || resolved.Verification == nil || action.Verification == nil {
+		t.Fatalf("ApplyWorkAction(verify assurance) = %+v / %+v, %v", resolved, action, err)
+	}
+	receipt.EvidenceIDs[0] = "mutated"
+	if resolved.Verification.EvidenceIDs[0] != "evidence-b" || action.Verification.EvidenceIDs[0] != "evidence-b" {
+		t.Fatalf("verification receipt aliases caller input: %+v / %+v", resolved.Verification, action.Verification)
+	}
+}
+
+func TestAssuranceVerificationRequiresReceiptForAllWork(t *testing.T) {
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	current := WorkItem{
+		ID: "work-a", State: WorkInProgress, OwnerID: "owner-a", Version: 1,
+	}
+	_, _, err := ApplyWorkAction(current, current.Version, WorkActionInput{
+		Action: WorkActionVerifyAssurance, Rationale: "Verify the assessment result.",
+		ActorID: "reviewer-a", At: now,
+	})
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("ApplyWorkAction(verify assurance without receipt) error = %v, want ErrInvalidTransition", err)
 	}
 }
 
