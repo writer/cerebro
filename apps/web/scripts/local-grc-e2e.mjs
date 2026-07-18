@@ -360,21 +360,30 @@ export async function runLocalGrcE2E(options = {}) {
   const workDir = await overallDeadline.run(mkdtemp(path.join(os.tmpdir(), "cerebro-web-local-e2e-")), "temporary directory creation");
   const logDir = path.join(workDir, "logs");
   const logPath = path.join(logDir, "web.log");
-  await overallDeadline.run(mkdir(logDir, { recursive: true }), "log directory creation");
-  const logStream = createWriteStream(logPath, { flags: "a" });
-  const child = spawn(process.execPath, [fixtureDevScript, "--port", String(options.port ?? 0)], {
-    cwd: webRoot,
-    detached: process.platform !== "win32",
-    env: createFixtureEnvironment(process.env, runNonce),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout.pipe(logStream, { end: false });
-  child.stderr.pipe(logStream, { end: false });
-  const interruption = interruptedRun();
+  let logStream;
+  let child;
+  let interruption;
   let result;
   let primaryError;
   let passed = false;
   try {
+    await overallDeadline.run(mkdir(logDir, { recursive: true }), "log directory creation");
+    const createLog = options.createLogStream ?? ((filePath) => createWriteStream(filePath, { flags: "a" }));
+    logStream = createLog(logPath);
+    const logStreamFailure = new Promise((_, reject) => {
+      logStream.once("error", (error) => reject(new Error(`Local E2E log stream failed: ${error.message}`, { cause: error })));
+    });
+    logStreamFailure.catch(() => {});
+    const spawnFixture = options.spawnFixture ?? spawn;
+    child = spawnFixture(process.execPath, [fixtureDevScript, "--port", String(options.port ?? 0)], {
+      cwd: webRoot,
+      detached: process.platform !== "win32",
+      env: createFixtureEnvironment(process.env, runNonce),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.pipe(logStream, { end: false });
+    child.stderr.pipe(logStream, { end: false });
+    interruption = interruptedRun();
     const validation = async () => {
       const port = await waitForFixtureEndpoint(child.stdout, runNonce, validationDeadline);
       const baseUrl = `http://127.0.0.1:${port}`;
@@ -400,6 +409,7 @@ export async function runLocalGrcE2E(options = {}) {
     result = await Promise.race([
       validationDeadline.run(validation(), "local E2E validation"),
       fixtureAppExit(child),
+      logStreamFailure,
       interruption.promise,
     ]);
     passed = true;
@@ -407,7 +417,7 @@ export async function runLocalGrcE2E(options = {}) {
     error.message = `${error.message}\nLocal E2E log: ${logPath}`;
     primaryError = error;
   } finally {
-    interruption.remove();
+    interruption?.remove();
     const cleanupErrors = [];
     try {
       await stopProcessTree(child, { deadlineAt: overallDeadline.expiresAt });

@@ -62,7 +62,7 @@ export function normalizeFixtureDevArgs(argv) {
   let port;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--hostname" || arg === "-H" || arg.startsWith("--hostname=")) {
+    if (arg === "--hostname" || arg.startsWith("--hostname=") || arg.startsWith("-H")) {
       throw new Error("Fixture development is restricted to 127.0.0.1");
     }
     if (arg === "--port" || arg === "-p") {
@@ -70,6 +70,8 @@ export function normalizeFixtureDevArgs(argv) {
       index += 1;
     } else if (arg.startsWith("--port=")) {
       port = parsePort(arg.slice("--port=".length));
+    } else if (arg.startsWith("-p") && arg.length > 2) {
+      port = parsePort(arg.slice(2));
     } else {
       forwarded.push(arg);
     }

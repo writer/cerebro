@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,6 +12,7 @@ import {
   createDeadline,
   parseArgs,
   parseFixtureReadyLine,
+  runLocalGrcE2E,
   stopProcessTree,
   validateHttpContracts,
   waitForFixtureEndpoint,
@@ -134,6 +137,39 @@ const waitForProcessExit = async (pid, timeoutMs = 2_000) => {
 };
 
 describe("local GRC E2E cleanup", () => {
+  it.runIf(process.platform !== "win32")("owns fixture cleanup when the log stream fails before readiness", async () => {
+    let child;
+    const createLogStream = () => {
+      const stream = new Writable({
+        write(_chunk, _encoding, callback) { callback(); },
+      });
+      queueMicrotask(() => stream.emit("error", new Error("simulated log open failure")));
+      return stream;
+    };
+    const spawnFixture = () => {
+      child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      return child;
+    };
+    let caught;
+    try {
+      await runLocalGrcE2E({
+        browser: false,
+        createLogStream,
+        spawnFixture,
+        timeoutMs: 2_000,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught?.message).toContain("Local E2E log stream failed: simulated log open failure");
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+    const logPath = caught?.message.match(/Local E2E log: (.+)$/m)?.[1];
+    if (logPath) await rm(path.dirname(path.dirname(logPath)), { force: true, recursive: true });
+  });
+
   it.runIf(process.platform !== "win32")("terminates a real descendant in the fixture process group", async () => {
     const program = [
       'const { spawn } = require("node:child_process");',
