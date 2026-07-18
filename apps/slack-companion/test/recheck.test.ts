@@ -4,13 +4,13 @@ import type { DeliveryReceiptV1 } from "@writer/cerebro-sdk";
 import type {
   AdmitEvidenceRecheckInputV1,
   DurableEvidenceRecheckAdmissionPort,
+  DeliveredAnswerEvidenceBindingLookupV1,
   EvidenceRecheckAdmissionCommitResultV1,
   EvidenceRecheckAdmissionCommitV1,
   EvidenceRecheckAdmissionReceiptLookupV1,
   EvidenceRecheckAdmissionReceiptV1,
 } from "../src/recheck/contracts.js";
 import {
-  EvidenceRecheckInvariantError,
   admitEvidenceRecheck,
   authorizeEvidenceRecheck,
   bindDeliveredAnswerEvidence,
@@ -152,7 +152,12 @@ describe("durable evidence recheck admission", () => {
   test("commits request, canonical run, transitions, and queue item before acknowledgement", async () => {
     const input = admissionInput();
     const store = new RecordingStore();
-    const result = await admitEvidenceRecheck(input, missingLookup(input), store);
+    const result = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      store,
+    );
 
     assert.equal(store.commits.length, 1);
     assert.equal(result.acknowledgement_permitted, true);
@@ -166,7 +171,7 @@ describe("durable evidence recheck admission", () => {
     assert.equal(result.receipt.run.state, "queued");
     assert.equal(result.receipt.recheck.run_id, result.receipt.run.run_id);
     assert.equal(result.receipt.queue_item.run_id, result.receipt.run.run_id);
-    assert.equal(result.receipt.queue_item.thread_ref, input.binding.thread_ref);
+    assert.equal(result.receipt.queue_item.thread_ref, foundBindingLookup(input).binding.thread_ref);
     assert.equal(result.receipt.queue_item.available_at, result.receipt.run.admitted_at);
   });
 
@@ -174,7 +179,12 @@ describe("durable evidence recheck admission", () => {
     const input = admissionInput();
     const store = new RecordingStore();
     store.failure = new Error("storage unavailable");
-    const result = await admitEvidenceRecheck(input, missingLookup(input), store);
+    const result = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      store,
+    );
     assert.deepEqual(result, {
       acknowledgement_permitted: false,
       authorization: {
@@ -193,12 +203,18 @@ describe("durable evidence recheck admission", () => {
   test("replays the durable receipt without another transaction", async () => {
     const input = admissionInput();
     const firstStore = new RecordingStore();
-    const first = await admitEvidenceRecheck(input, missingLookup(input), firstStore);
+    const first = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      firstStore,
+    );
     assert(first.acknowledgement_permitted);
 
     const replayStore = new RecordingStore();
     const replay = await admitEvidenceRecheck(
       { ...input, admitted_at: "2026-07-18T12:05:00.000Z" },
+      foundBindingLookup(input),
       foundLookup(first.receipt),
       replayStore,
     );
@@ -209,20 +225,80 @@ describe("durable evidence recheck admission", () => {
     assert.deepEqual(replay.receipt, first.receipt);
   });
 
-  test("returns duplicate for an exact concurrent commit race", async () => {
-    const input = admissionInput();
+  test("returns the persisted winner for a concurrent commit race", async () => {
+    const winnerInput = admissionInput({ admitted_at: "2026-07-18T12:00:02.000Z" });
+    const winner = await admitEvidenceRecheck(
+      winnerInput,
+      foundBindingLookup(winnerInput),
+      missingLookup(winnerInput),
+      new RecordingStore(),
+    );
+    assert(winner.acknowledgement_permitted);
+
+    const loserInput = admissionInput({ admitted_at: "2026-07-18T12:00:03.000Z" });
     const store = new RecordingStore();
     store.created = false;
-    const result = await admitEvidenceRecheck(input, missingLookup(input), store);
+    store.mutateReceipt = () => structuredClone(winner.receipt);
+    const result = await admitEvidenceRecheck(
+      loserInput,
+      foundBindingLookup(loserInput),
+      missingLookup(loserInput),
+      store,
+    );
     assert.equal(result.acknowledgement_permitted, true);
     assert.equal(result.status, "duplicate");
     assert.equal(result.duplicate, true);
+    assert.deepEqual(result.receipt, winner.receipt);
+  });
+
+  test("requires the host-resolved binding and ignores caller-forged authorization data", async () => {
+    const forgedBinding = makeBinding({ requester_ref: "actor:attacker" });
+    const input = admissionInput({ actor_ref: "actor:attacker" });
+    const store = new RecordingStore();
+
+    const denied = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      store,
+    );
+    assert.equal(denied.status, "rejected");
+    assert.equal(store.commits.length, 0);
+
+    await assert.rejects(
+      admitEvidenceRecheck(
+        { ...input, binding: forgedBinding } as unknown as AdmitEvidenceRecheckInputV1,
+        foundBindingLookup(input),
+        missingLookup(input),
+        store,
+      ),
+      /unsupported fields/,
+    );
+
+    const missingBinding: DeliveredAnswerEvidenceBindingLookupV1 = {
+      binding_ref: input.binding_ref,
+      found: false,
+      schema_version: "delivered-answer-evidence-binding-lookup/v1",
+    };
+    const missing = await admitEvidenceRecheck(
+      input,
+      missingBinding,
+      missingLookup(input),
+      store,
+    );
+    assert.equal(missing.status, "rejected");
+    assert.equal(missing.acknowledgement_permitted, false);
   });
 
   test("fails closed on conflicting receipt reuse or a malformed transaction receipt", async () => {
     const input = admissionInput();
     const firstStore = new RecordingStore();
-    const first = await admitEvidenceRecheck(input, missingLookup(input), firstStore);
+    const first = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      firstStore,
+    );
     assert(first.acknowledgement_permitted);
 
     await assert.rejects(
@@ -231,6 +307,7 @@ describe("durable evidence recheck admission", () => {
           ...input,
           run_context: { ...input.run_context, tenant_id: "tenant:changed" },
         },
+        foundBindingLookup(input),
         foundLookup(first.receipt),
         new RecordingStore(),
       ),
@@ -243,7 +320,12 @@ describe("durable evidence recheck admission", () => {
       run: { ...receipt.run, run_id: "evidence-recheck-run:changed" },
     });
     await assert.rejects(
-      admitEvidenceRecheck(input, missingLookup(input), malformedStore),
+      admitEvidenceRecheck(
+        input,
+        foundBindingLookup(input),
+        missingLookup(input),
+        malformedStore,
+      ),
       /canonical run receipt is invalid/,
     );
   });
@@ -275,6 +357,14 @@ describe("durable evidence recheck admission", () => {
       }),
       (receipt) => ({
         ...receipt,
+        queue_item: { ...receipt.queue_item, queue_item_id: "queue-item:forged" },
+      }),
+      (receipt) => ({
+        ...receipt,
+        queue_item: { ...receipt.queue_item, idempotency_key: "queue:forged" },
+      }),
+      (receipt) => ({
+        ...receipt,
         run: {
           ...receipt.run,
           raw_payload: "not portable",
@@ -286,8 +376,13 @@ describe("durable evidence recheck admission", () => {
       const store = new RecordingStore();
       store.mutateReceipt = mutateReceipt;
       await assert.rejects(
-        admitEvidenceRecheck(input, missingLookup(input), store),
-        /mismatched recheck|unsupported fields/,
+        admitEvidenceRecheck(
+          input,
+          foundBindingLookup(input),
+          missingLookup(input),
+          store,
+        ),
+        /mismatched recheck|not correlated|unsupported fields|updated_at cannot precede/,
       );
     }
   });
@@ -297,6 +392,7 @@ describe("durable evidence recheck admission", () => {
     const deniedStore = new RecordingStore();
     const denied = await admitEvidenceRecheck(
       unauthorized,
+      foundBindingLookup(unauthorized),
       missingLookup(unauthorized),
       deniedStore,
     );
@@ -308,6 +404,7 @@ describe("durable evidence recheck admission", () => {
     await assert.rejects(
       admitEvidenceRecheck(
         { ...admissionInput(), raw_payload: "not portable" } as unknown as AdmitEvidenceRecheckInputV1,
+        foundBindingLookup(admissionInput()),
         missingLookup(admissionInput()),
         unmodeledStore,
       ),
@@ -319,6 +416,7 @@ describe("durable evidence recheck admission", () => {
     await assert.rejects(
       admitEvidenceRecheck(
         oversizedInput,
+        foundBindingLookup(oversizedInput),
         missingLookup(admissionInput()),
         new RecordingStore(),
       ),
@@ -342,12 +440,18 @@ describe("durable evidence recheck admission", () => {
 describe("Slack-visible evidence recheck status", () => {
   test("projects queued, duplicate, degraded, rejected, running, and completed truth", async () => {
     const input = admissionInput();
-    const first = await admitEvidenceRecheck(input, missingLookup(input), new RecordingStore());
+    const first = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      new RecordingStore(),
+    );
     assert(first.acknowledgement_permitted);
     assert.equal(projectAdmission(first).status, "queued");
 
     const duplicate = await admitEvidenceRecheck(
       input,
+      foundBindingLookup(input),
       foundLookup(first.receipt),
       new RecordingStore(),
     );
@@ -357,6 +461,7 @@ describe("Slack-visible evidence recheck status", () => {
     failedStore.failure = new Error("unavailable");
     const degradedAdmission = await admitEvidenceRecheck(
       input,
+      foundBindingLookup(input),
       missingLookup(input),
       failedStore,
     );
@@ -365,6 +470,7 @@ describe("Slack-visible evidence recheck status", () => {
     const rejectedInput = admissionInput({ actor_ref: "actor:other" });
     const rejected = await admitEvidenceRecheck(
       rejectedInput,
+      foundBindingLookup(rejectedInput),
       missingLookup(rejectedInput),
       new RecordingStore(),
     );
@@ -375,7 +481,7 @@ describe("Slack-visible evidence recheck status", () => {
       projectRecheck({
         ...first.receipt.recheck,
         completed_at: "2026-07-18T12:05:00.000Z",
-        outcome_digest: "sha256:recheck-outcome",
+        outcome_digest: `sha256:${"a".repeat(64)}`,
         outcome_ref: "evidence-recheck-outcome:1",
         reason_code: "evidence_rechecked",
         revision: 3,
@@ -398,7 +504,12 @@ describe("Slack-visible evidence recheck status", () => {
 
   test("rejects invalid runtime states and incomplete completion truth", async () => {
     const input = admissionInput();
-    const result = await admitEvidenceRecheck(input, missingLookup(input), new RecordingStore());
+    const result = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      new RecordingStore(),
+    );
     assert(result.acknowledgement_permitted);
     assert.throws(
       () => projectRecheck({ ...result.receipt.recheck, state: "unknown" as "queued" }),
@@ -423,6 +534,30 @@ describe("Slack-visible evidence recheck status", () => {
     assert.throws(
       () => projectRecheck({ ...result.receipt.recheck, state: "completed" }),
       /require a durable outcome/,
+    );
+    assert.throws(
+      () =>
+        projectRecheck({
+          ...result.receipt.recheck,
+          completed_at: "2026-07-18T12:05:00.000Z",
+          outcome_digest: "not-a-digest",
+          outcome_ref: "evidence-recheck-outcome:1",
+          state: "completed",
+          updated_at: "2026-07-18T12:05:00.000Z",
+        }),
+      /outcome_digest must be a canonical SHA-256 digest/,
+    );
+    assert.throws(
+      () =>
+        projectRecheck({
+          ...result.receipt.recheck,
+          completed_at: "2000-01-01T00:00:00.000Z",
+          outcome_digest: `sha256:${"b".repeat(64)}`,
+          outcome_ref: "evidence-recheck-outcome:1",
+          state: "completed",
+          updated_at: "2000-01-01T00:00:00.000Z",
+        }),
+      /updated_at cannot precede created_at|timestamps must be monotonic/,
     );
     assert.throws(
       () =>
@@ -478,7 +613,7 @@ function projectRecheck(
 function missingLookup(
   input: AdmitEvidenceRecheckInputV1,
 ): EvidenceRecheckAdmissionReceiptLookupV1 {
-  const recheckId = evidenceRecheckIdentity(input.binding.binding_ref, input.request_key);
+  const recheckId = evidenceRecheckIdentity(input.binding_ref, input.request_key);
   return {
     found: false,
     receipt_id: evidenceRecheckAdmissionReceiptIdentity(recheckId),
@@ -499,12 +634,10 @@ function foundLookup(
 function admissionInput(
   overrides: Partial<AdmitEvidenceRecheckInputV1> = {},
 ): AdmitEvidenceRecheckInputV1 {
-  const binding = overrides.binding ?? makeBinding();
   return {
     actor_ref: "actor:requester",
     admitted_at: ADMITTED_AT,
-    binding,
-    binding_ref: binding.binding_ref,
+    binding_ref: makeBinding().binding_ref,
     received_at: RECEIVED_AT,
     request_key: "event:recheck-1",
     run_context: {
@@ -517,6 +650,18 @@ function admissionInput(
       tenant_id: "tenant:1",
     },
     ...overrides,
+  };
+}
+
+function foundBindingLookup(
+  input: AdmitEvidenceRecheckInputV1,
+  binding = makeBinding(),
+): Extract<DeliveredAnswerEvidenceBindingLookupV1, { found: true }> {
+  assert.equal(binding.binding_ref, input.binding_ref);
+  return {
+    binding,
+    found: true,
+    schema_version: "delivered-answer-evidence-binding-lookup/v1",
   };
 }
 

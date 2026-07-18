@@ -87,12 +87,27 @@ export interface EvidenceRecheckRunContextV1 {
 export interface AdmitEvidenceRecheckInputV1 {
   actor_ref: string;
   admitted_at: string;
-  binding: DeliveredAnswerEvidenceBindingV1;
   binding_ref: string;
   received_at: string;
   request_key: string;
   run_context: EvidenceRecheckRunContextV1;
 }
+
+/**
+ * Trusted, host-resolved lookup for the immutable binding. This receipt is a
+ * policy dependency, never a field accepted from the interactive request.
+ */
+export type DeliveredAnswerEvidenceBindingLookupV1 =
+  | {
+      binding_ref: string;
+      found: false;
+      schema_version: "delivered-answer-evidence-binding-lookup/v1";
+    }
+  | {
+      binding: DeliveredAnswerEvidenceBindingV1;
+      found: true;
+      schema_version: "delivered-answer-evidence-binding-lookup/v1";
+    };
 
 export interface EvidenceRecheckV1 {
   actor_ref: string;

@@ -7,6 +7,7 @@ import {
   type AdmitEvidenceRecheckResultV1,
   type BindDeliveredAnswerEvidenceInputV1,
   type DeliveredAnswerEvidenceBindingV1,
+  type DeliveredAnswerEvidenceBindingLookupV1,
   type DurableEvidenceRecheckAdmissionPort,
   type EvidenceRecheckAdmissionCommitResultV1,
   type EvidenceRecheckAdmissionReceiptLookupV1,
@@ -120,14 +121,29 @@ export function evidenceRecheckAdmissionReceiptIdentity(recheckId: string): stri
 
 export async function admitEvidenceRecheck(
   input: AdmitEvidenceRecheckInputV1,
+  bindingLookup: DeliveredAnswerEvidenceBindingLookupV1,
   receiptLookup: EvidenceRecheckAdmissionReceiptLookupV1,
   store: DurableEvidenceRecheckAdmissionPort,
 ): Promise<AdmitEvidenceRecheckResultV1> {
   validateAdmissionInput(input);
+  validateBindingLookup(bindingLookup, input.binding_ref);
+  if (!bindingLookup.found) {
+    const authorization = deniedAuthorization("binding_reference_mismatch");
+    return {
+      acknowledgement_permitted: false,
+      authorization,
+      duplicate: false,
+      reason_code: authorization.reason_code,
+      retryable: false,
+      schema_version: "admit-evidence-recheck-result/v1",
+      status: "rejected",
+    };
+  }
+  const binding = bindingLookup.binding;
   const authorization = authorizeEvidenceRecheck(
     input.actor_ref,
     input.binding_ref,
-    input.binding,
+    binding,
   );
   if (!authorization.allowed) {
     return {
@@ -147,15 +163,15 @@ export async function admitEvidenceRecheck(
     throw new EvidenceRecheckInvariantError("admitted_at cannot precede received_at.");
   }
   const capabilities = canonicalCapabilities(input.run_context.required_capabilities);
-  const recheckId = evidenceRecheckIdentity(input.binding.binding_ref, input.request_key);
+  const recheckId = evidenceRecheckIdentity(binding.binding_ref, input.request_key);
   const runId = evidenceRecheckRunIdentity(recheckId);
   const receiptId = evidenceRecheckAdmissionReceiptIdentity(recheckId);
-  const inputDigest = evidenceRecheckInputDigest(input, receivedAt, capabilities);
+  const inputDigest = evidenceRecheckInputDigest(input, binding, receivedAt, capabilities);
   validateReceiptLookup(receiptLookup, receiptId);
 
   if (receiptLookup.found) {
     validateAdmissionReceipt(receiptLookup.receipt, {
-      binding: input.binding,
+      binding,
       actor_ref: input.actor_ref,
       admitted_at: receiptLookup.receipt.run.admitted_at,
       capabilities,
@@ -173,7 +189,7 @@ export async function admitEvidenceRecheck(
   const receipt = createAdmissionReceipt({
     admitted_at: admittedAt,
     actor_ref: input.actor_ref,
-    binding: input.binding,
+    binding,
     capabilities,
     input_digest: inputDigest,
     receipt_id: receiptId,
@@ -210,8 +226,8 @@ export async function admitEvidenceRecheck(
   }
   validateAdmissionReceipt(committed.receipt, {
     actor_ref: input.actor_ref,
-    admitted_at: admittedAt,
-    binding: input.binding,
+    admitted_at: committed.created ? admittedAt : committed.receipt.run.admitted_at,
+    binding,
     capabilities,
     input_digest: inputDigest,
     receipt_id: receiptId,
@@ -398,6 +414,9 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
   requireRequestKey(recheck.request_key);
   requireCanonicalTimestamp(recheck.created_at, "created_at");
   requireCanonicalTimestamp(recheck.updated_at, "updated_at");
+  if (Date.parse(recheck.updated_at) < Date.parse(recheck.created_at)) {
+    throw new EvidenceRecheckInvariantError("updated_at cannot precede created_at.");
+  }
   requirePositiveInteger(recheck.revision, "revision");
   const artifactIds = canonicalArtifactIds(recheck.evidence_artifact_ids);
   if (!sameStrings(artifactIds, recheck.evidence_artifact_ids)) {
@@ -409,8 +428,16 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
       throw new EvidenceRecheckInvariantError("Completed evidence rechecks require a durable outcome.");
     }
     requireCanonicalTimestamp(recheck.completed_at!, "completed_at");
-    requireRef(recheck.outcome_digest!, "outcome_digest");
+    requireSha256Digest(recheck.outcome_digest!, "outcome_digest");
     requireRef(recheck.outcome_ref!, "outcome_ref");
+    if (
+      Date.parse(recheck.completed_at!) < Date.parse(recheck.created_at) ||
+      Date.parse(recheck.updated_at) < Date.parse(recheck.completed_at!)
+    ) {
+      throw new EvidenceRecheckInvariantError(
+        "Completed evidence recheck timestamps must be monotonic.",
+      );
+    }
   } else if (outcomeFields.some((value) => value !== undefined)) {
     throw new EvidenceRecheckInvariantError("Only completed evidence rechecks may carry an outcome.");
   }
@@ -490,7 +517,6 @@ function validateAdmissionInput(input: AdmitEvidenceRecheckInputV1): void {
   assertExactKeys(input, [
     "actor_ref",
     "admitted_at",
-    "binding",
     "binding_ref",
     "received_at",
     "request_key",
@@ -675,9 +701,46 @@ function validateQueueItem(queueItem: EvidenceRecheckQueueItemV1, recheck: Evide
     queueItem.binding_ref !== recheck.binding_ref ||
     queueItem.binding_digest !== recheck.binding_digest ||
     queueItem.thread_ref !== recheck.thread_ref ||
+    queueItem.idempotency_key !==
+      `evidence-recheck-queue:${stableDigest([recheck.recheck_id])}` ||
+    queueItem.queue_item_id !==
+      `evidence-recheck-queue-item:${stableDigest([recheck.recheck_id])}` ||
     !sameStrings(artifactIds, recheck.evidence_artifact_ids)
   ) {
     throw new EvidenceRecheckInvariantError("Evidence recheck queue item is not correlated to the recheck.");
+  }
+}
+
+function validateBindingLookup(
+  lookup: DeliveredAnswerEvidenceBindingLookupV1,
+  expectedBindingRef: string,
+): void {
+  if (lookup.found !== true && lookup.found !== false) {
+    throw new EvidenceRecheckInvariantError("Delivered answer evidence binding lookup is invalid.");
+  }
+  assertExactKeys(
+    lookup,
+    lookup.found
+      ? ["binding", "found", "schema_version"]
+      : ["binding_ref", "found", "schema_version"],
+    "delivered answer evidence binding lookup",
+  );
+  if (lookup.schema_version !== "delivered-answer-evidence-binding-lookup/v1") {
+    throw new EvidenceRecheckInvariantError(
+      "Delivered answer evidence binding lookup version is unsupported.",
+    );
+  }
+  if (lookup.found) {
+    validateDeliveredAnswerEvidenceBinding(lookup.binding);
+    if (lookup.binding.binding_ref !== expectedBindingRef) {
+      throw new EvidenceRecheckInvariantError(
+        "Delivered answer evidence binding lookup returned another binding.",
+      );
+    }
+  } else if (lookup.binding_ref !== expectedBindingRef) {
+    throw new EvidenceRecheckInvariantError(
+      "Delivered answer evidence binding lookup used another identity.",
+    );
   }
 }
 
@@ -809,13 +872,14 @@ function completedDeliveryDigest(
 
 function evidenceRecheckInputDigest(
   input: AdmitEvidenceRecheckInputV1,
+  binding: DeliveredAnswerEvidenceBindingV1,
   receivedAt: string,
   capabilities: CapabilityRequirement[],
 ): string {
   return `sha256:${stableDigest([
     input.actor_ref,
-    input.binding.binding_ref,
-    input.binding.binding_digest,
+    binding.binding_ref,
+    binding.binding_digest,
     input.request_key,
     receivedAt,
     input.run_context.service_binding_id,

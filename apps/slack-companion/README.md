@@ -68,8 +68,10 @@ unchanged. A missing or conflicting receipt lookup fails closed.
 
 `src/recheck` admits a recheck only for evidence already bound server-side to a
 fully delivered answer and its durable conversation thread. The requester does
-not select an evidence location. Only the original requester or a recorded
-operator can use the binding. The binding includes a canonical digest of the
+not select an evidence location or submit the binding contents. A required
+host-owned lookup resolves the immutable binding before authorization policy
+runs. Only the original requester or a recorded operator can use the binding.
+The binding includes a canonical digest of the
 completed delivery receipt and its ordered part receipts; duplicate part or
 idempotency identities fail closed.
 
