@@ -18,15 +18,28 @@ import type {
 import type { DurableExecutionPort } from "../execution/ports.js";
 import { stableIdentity } from "../delivery/coordinator.js";
 import {
+  decideAssistantTurnPromotion,
+  type AssistantTurnEvaluationV1,
+  type AssistantTurnPromotionDecisionV1,
+} from "../assistant-turn/evaluation.js";
+import {
   IMPROVEMENT_EVIDENCE_KINDS,
+  IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS,
   type ImprovementAuthoringIntent,
   type ImprovementAuthoringOutcome,
   type ImprovementAuthoringRequest,
   type ImprovementCandidateInput,
   type ImprovementCandidateV1,
+  type ImprovementEvidenceRecord,
   type ImprovementEvidenceSnapshot,
   type ImprovementFreshEvidenceInput,
+  type ImprovementOutcomeEvidenceInput,
+  type ImprovementOutcomeEvidenceOutcome,
 } from "./contracts.js";
+import {
+  ImprovementEvaluationSetReceiptError,
+  validateImprovementOutcomeEvaluationSet,
+} from "./evaluation-set-receipt.js";
 import type {
   DurableImprovementCandidatePort,
   ImprovementAuthorPort,
@@ -37,6 +50,8 @@ import type {
 
 export class ImprovementConflictError extends Error {}
 export class ImprovementInputError extends Error {}
+
+const MAXIMUM_OUTCOME_EVALUATIONS_PER_POLICY = 512;
 
 export interface ImprovementCoordinatorOptions {
   author: ImprovementAuthorPort;
@@ -232,20 +247,81 @@ export class ImprovementCoordinator {
     input: ImprovementFreshEvidenceInput,
   ): Promise<ImprovementCandidateV1> {
     validateFreshEvidence(input);
-    const candidate = await this.requireCandidate(input.candidate_id);
-    if (
-      (candidate.status !== "awaiting_evidence" && candidate.status !== "ready") ||
-      candidate.revision !== input.expected_revision ||
-      candidate.author_generation !== input.author_generation ||
-      candidate.head_digest !== input.head_digest
-    ) {
-      throw new ImprovementConflictError("Fresh evidence does not match the candidate head.");
+    if (!(IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS as readonly string[]).includes(input.kind)) {
+      throw new ImprovementInputError(
+        "Outcome evidence must pass the assistant-turn promotion gate.",
+      );
     }
+    const candidate = await this.requireCandidate(input.candidate_id);
+    assertEvidenceCandidate(candidate, input);
+    return this.recordEvidence(candidate, input);
+  }
+
+  async recordOutcomeEvidence(
+    input: ImprovementOutcomeEvidenceInput,
+  ): Promise<ImprovementOutcomeEvidenceOutcome> {
+    validateOutcomeEvidence(input);
+    const candidate = await this.requireCandidate(input.candidate_id);
+    assertEvidenceCandidate(candidate, input);
+    if (
+      candidate.authoring_prior_head_digest === undefined ||
+      input.baseline.receipt.evaluated_head_digest !==
+        candidate.authoring_prior_head_digest ||
+      input.candidate.receipt.evaluated_head_digest !== candidate.head_digest
+    ) {
+      throw new ImprovementConflictError(
+        "Outcome evidence does not match the baseline and candidate heads.",
+      );
+    }
+    const decision = decideAssistantTurnPromotion(
+      input.baseline.evaluations,
+      input.candidate.evaluations,
+    );
+    if (!decision.promotion_ready) return { candidate, decision };
+
+    const evidence = outcomeEvidenceRecords(input, decision);
+    let current = candidate;
+    for (const record of evidence) {
+      const recorded = await this.recordEvidence(current, record);
+      if (recorded === current) {
+        const snapshot = await this.evidence.read(
+          current.candidate_id,
+          current.author_generation,
+        );
+        if (!isBoundEvidenceSnapshot(snapshot, current)) {
+          return { candidate: current, decision };
+        }
+      }
+      current = recorded;
+    }
+    return { candidate: current, decision };
+  }
+
+  private async recordEvidence(
+    candidate: ImprovementCandidateV1,
+    input: ImprovementEvidenceRecord,
+  ): Promise<ImprovementCandidateV1> {
     const snapshot = await this.evidence.recordFresh(input);
-    if (!isExactEvidenceSnapshot(snapshot, candidate, {
-      head_digest: candidate.head_digest,
-      state: "fresh",
-    })) {
+    const exactSnapshot = isBoundEvidenceSnapshot(snapshot, candidate) &&
+      snapshotContainsEvidence(snapshot, input);
+    if (!exactSnapshot) {
+      if (candidate.status === "ready") {
+        throw new ImprovementConflictError(
+          "Ready evidence replay did not return the exact stored snapshot.",
+        );
+      }
+      return candidate;
+    }
+    if (!snapshot.states.every((state) => state.state === "fresh")) return candidate;
+    if (candidate.status === "ready") {
+      if (
+        candidate.fresh_evidence_digest !== snapshot.bundle_digest ||
+        candidate.fresh_evidence_ref !== snapshot.bundle_ref
+      ) {
+        throw new ImprovementConflictError(
+          "Ready evidence completion conflicts with the stored snapshot.",
+        );
+      }
       return candidate;
     }
     return this.candidates.markEvidenceReady({
@@ -608,7 +684,7 @@ function validateAuthoringRequest(request: ImprovementAuthoringRequest): void {
   assertSafeRef(request.rollback_plan_ref, "rollback");
 }
 
-function validateFreshEvidence(input: ImprovementFreshEvidenceInput): void {
+function validateFreshEvidence(input: ImprovementEvidenceRecord): void {
   if (!IMPROVEMENT_EVIDENCE_KINDS.includes(input.kind)) {
     throw new ImprovementInputError("Evidence kind is not supported.");
   }
@@ -624,6 +700,197 @@ function validateFreshEvidence(input: ImprovementFreshEvidenceInput): void {
   assertDigest(input.head_digest, "evidence head");
   assertDigest(input.evidence_digest, "evidence");
   assertSafeRef(input.evidence_ref, "evidence");
+}
+
+function validateOutcomeEvidence(input: ImprovementOutcomeEvidenceInput): void {
+  if (
+    !/^improvement-[a-f0-9]{32}$/.test(input.candidate_id) ||
+    !Number.isSafeInteger(input.author_generation) ||
+    input.author_generation < 1 ||
+    !Number.isSafeInteger(input.expected_revision) ||
+    input.expected_revision < 1
+  ) {
+    throw new ImprovementInputError("Outcome evidence candidate revision is invalid.");
+  }
+  assertDigest(input.head_digest, "outcome head");
+  if (
+    !Array.isArray(input.baseline.evaluations) ||
+    !Array.isArray(input.candidate.evaluations) ||
+    input.baseline.evaluations.length === 0 ||
+    input.candidate.evaluations.length === 0 ||
+    input.baseline.evaluations.length > MAXIMUM_OUTCOME_EVALUATIONS_PER_POLICY ||
+    input.candidate.evaluations.length > MAXIMUM_OUTCOME_EVALUATIONS_PER_POLICY
+  ) {
+    throw new ImprovementInputError(
+      "Baseline and candidate outcome evaluations are required and bounded.",
+    );
+  }
+  try {
+    validateImprovementOutcomeEvaluationSet(input.baseline);
+    validateImprovementOutcomeEvaluationSet(input.candidate);
+  } catch (error) {
+    if (error instanceof ImprovementEvaluationSetReceiptError) {
+      throw new ImprovementInputError(error.message);
+    }
+    throw error;
+  }
+  assertSafeRef(input.held_out_evidence_ref, "held-out evidence");
+  assertSafeRef(input.shadow_evidence_ref, "shadow evidence");
+  assertSafeRef(input.promotion_evidence_ref, "promotion evidence");
+}
+
+function assertEvidenceCandidate(
+  candidate: ImprovementCandidateV1,
+  input: Pick<
+    ImprovementEvidenceRecord,
+    "author_generation" | "candidate_id" | "expected_revision" | "head_digest"
+  >,
+): void {
+  const exactAwaitingRevision = candidate.status === "awaiting_evidence" &&
+    candidate.revision === input.expected_revision;
+  const exactReadyReplay = candidate.status === "ready" &&
+    (candidate.revision === input.expected_revision ||
+      candidate.revision === input.expected_revision + 1) &&
+    candidate.fresh_evidence_digest !== undefined &&
+    candidate.fresh_evidence_ref !== undefined;
+  if (
+    (!exactAwaitingRevision && !exactReadyReplay) ||
+    candidate.candidate_id !== input.candidate_id ||
+    candidate.author_generation !== input.author_generation ||
+    candidate.head_digest !== input.head_digest
+  ) {
+    throw new ImprovementConflictError("Fresh evidence does not match the candidate head.");
+  }
+}
+
+function outcomeEvidenceRecords(
+  input: ImprovementOutcomeEvidenceInput,
+  decision: AssistantTurnPromotionDecisionV1,
+): ImprovementEvidenceRecord[] {
+  const heldOut = outcomePartition(input, "held_out");
+  const shadow = outcomePartition(input, "shadow");
+  const common = {
+    author_generation: input.author_generation,
+    candidate_id: input.candidate_id,
+    expected_revision: input.expected_revision,
+    head_digest: input.head_digest,
+  };
+  return [
+    {
+      ...common,
+      evidence_digest: digest(JSON.stringify(heldOut)),
+      evidence_ref: input.held_out_evidence_ref,
+      kind: "eval",
+    },
+    {
+      ...common,
+      evidence_digest: digest(JSON.stringify(shadow)),
+      evidence_ref: input.shadow_evidence_ref,
+      kind: "shadow",
+    },
+    {
+      ...common,
+      evidence_digest: digest(JSON.stringify({
+        candidate_evaluation_receipt_digest: input.candidate.receipt.receipt_digest,
+        candidate_head_digest: input.candidate.receipt.evaluated_head_digest,
+        decision,
+        baseline_evaluation_receipt_digest: input.baseline.receipt.receipt_digest,
+        baseline_head_digest: input.baseline.receipt.evaluated_head_digest,
+      })),
+      evidence_ref: input.promotion_evidence_ref,
+      kind: "promotion",
+    },
+  ];
+}
+
+function outcomePartition(
+  input: ImprovementOutcomeEvidenceInput,
+  partition: "held_out" | "shadow",
+): {
+  baseline: AssistantTurnEvaluationV1[];
+  baseline_evaluation_receipt_digest: string;
+  baseline_head_digest: string;
+  candidate: AssistantTurnEvaluationV1[];
+  candidate_evaluation_receipt_digest: string;
+  candidate_head_digest: string;
+  partition: "held_out" | "shadow";
+  schema_version: "improvement-outcome-evidence/v1";
+} {
+  return {
+    baseline: canonicalEvaluations(input.baseline.evaluations, partition),
+    baseline_evaluation_receipt_digest: input.baseline.receipt.receipt_digest,
+    baseline_head_digest: input.baseline.receipt.evaluated_head_digest,
+    candidate: canonicalEvaluations(input.candidate.evaluations, partition),
+    candidate_evaluation_receipt_digest: input.candidate.receipt.receipt_digest,
+    candidate_head_digest: input.candidate.receipt.evaluated_head_digest,
+    partition,
+    schema_version: "improvement-outcome-evidence/v1",
+  };
+}
+
+function canonicalEvaluations(
+  evaluations: readonly AssistantTurnEvaluationV1[],
+  partition: "held_out" | "shadow",
+): AssistantTurnEvaluationV1[] {
+  return evaluations
+    .filter((evaluation) => evaluation.partition === partition)
+    .slice()
+    .sort((left, right) => (
+      left.case_ref < right.case_ref ? -1 : left.case_ref > right.case_ref ? 1 : 0
+    ));
+}
+
+function isBoundEvidenceSnapshot(
+  snapshot: ImprovementEvidenceSnapshot | undefined,
+  candidate: Pick<
+    ImprovementCandidateV1,
+    "author_generation" | "candidate_id" | "head_digest"
+  >,
+): snapshot is ImprovementEvidenceSnapshot {
+  if (
+    snapshot === undefined ||
+    snapshot.candidate_id !== candidate.candidate_id ||
+    snapshot.author_generation !== candidate.author_generation ||
+    !/^sha256:[a-f0-9]{64}$/.test(snapshot.bundle_digest) ||
+    !/^[a-z][a-z0-9+.-]*:\/\/[a-z0-9][a-z0-9._-]{0,127}$/.test(snapshot.bundle_ref) ||
+    snapshot.states.length !== IMPROVEMENT_EVIDENCE_KINDS.length
+  ) return false;
+
+  const kinds = new Set<string>();
+  for (const state of snapshot.states) {
+    if (
+      state.candidate_id !== candidate.candidate_id ||
+      state.author_generation !== candidate.author_generation ||
+      !IMPROVEMENT_EVIDENCE_KINDS.includes(state.kind) ||
+      (state.state !== "fresh" && state.state !== "invalidated") ||
+      kinds.has(state.kind)
+    ) return false;
+    if (
+      state.state === "fresh" &&
+      (state.head_digest !== candidate.head_digest ||
+        state.evidence_digest === undefined ||
+        state.evidence_ref === undefined)
+    ) return false;
+    if (
+      state.state === "invalidated" &&
+      (state.head_digest !== undefined ||
+        state.evidence_digest !== undefined ||
+        state.evidence_ref !== undefined)
+    ) return false;
+    kinds.add(state.kind);
+  }
+  return kinds.size === IMPROVEMENT_EVIDENCE_KINDS.length;
+}
+
+function snapshotContainsEvidence(
+  snapshot: ImprovementEvidenceSnapshot,
+  input: ImprovementEvidenceRecord,
+): boolean {
+  const state = snapshot.states.find((value) => value.kind === input.kind);
+  return state?.state === "fresh"
+    && state.head_digest === input.head_digest
+    && state.evidence_digest === input.evidence_digest
+    && state.evidence_ref === input.evidence_ref;
 }
 
 function isExactEvidenceSnapshot(
