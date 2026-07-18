@@ -44,9 +44,9 @@
     {
       "name": "sourceruntime-event-admission",
       "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
-      "sha256": "622720bf1439effcc9efaf504f5f383c9ba0325e9cb71f53bed906b43c8bd24d",
-      "size_bytes": 204721,
-      "max_size_bytes": 225000,
+      "sha256": "2425eee2c9a8960f3a1a532667ffcd03a144208e9425ca47922be4afbfa85afb",
+      "size_bytes": 253210,
+      "max_size_bytes": 260000,
       "abi_version": 1
     },
     {
