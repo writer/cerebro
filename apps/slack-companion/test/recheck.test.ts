@@ -142,6 +142,14 @@ describe("server-bound delivered answer evidence", () => {
         }),
       /part timestamps must be monotonic/,
     );
+    assert.throws(
+      () => makeBinding({ bound_at: new Date("2026-07-18T11:59:00.000Z") as unknown as string }),
+      /RFC 3339 timestamp/,
+    );
+    assert.throws(
+      () => makeBinding({ bound_at: "July 18, 2026 11:59 UTC" }),
+      /RFC 3339 timestamp/,
+    );
   });
 
   test("accepts no caller-selected evidence location or unmodeled content", () => {
@@ -456,6 +464,19 @@ describe("durable evidence recheck admission", () => {
         new RecordingStore(),
       ),
       /request_key is not a bounded canonical value/,
+    );
+
+    const dateObjectInput = admissionInput({
+      admitted_at: new Date(ADMITTED_AT) as unknown as string,
+    });
+    await assert.rejects(
+      admitEvidenceRecheck(
+        dateObjectInput,
+        foundBindingLookup(dateObjectInput),
+        missingLookup(dateObjectInput),
+        new RecordingStore(),
+      ),
+      /RFC 3339 timestamp/,
     );
   });
 

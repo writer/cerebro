@@ -21,6 +21,8 @@ import {
 
 const UNSAFE_TEXT_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const OPAQUE_ARTIFACT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const RFC3339_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 const RECHECK_STATES: readonly EvidenceRecheckV1["state"][] = [
   "queued",
@@ -1362,6 +1364,11 @@ function requirePositiveInteger(value: number, label: string): void {
 }
 
 function normalizeTimestamp(value: string, label: string): string {
+  if (typeof value !== "string" || !RFC3339_TIMESTAMP.test(value)) {
+    throw new EvidenceRecheckInvariantError(
+      `${label} must be an RFC 3339 timestamp with a timezone.`,
+    );
+  }
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds)) {
     throw new EvidenceRecheckInvariantError(`${label} must be an ISO timestamp.`);
