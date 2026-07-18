@@ -86,9 +86,11 @@ when every referenced receipt is current, accessible, and within its validity
 window. Planning uses stable caller-provided action identity so a retry produces
 the same suggestion identity.
 
-The host owns source queries, channel admission, prompts, persistence, and
-delivery adapters. Those adapters persist the versioned records and transition
-events without changing the portable decision policy.
+The portable channel policy classifies host-supplied message text and applies
+host-supplied channel membership and confidence thresholds. The host owns
+channel membership lookup, source queries, prompts, persistence, and delivery
+adapters. Those adapters persist the versioned records and transition events
+without changing the portable decision policy.
 
 ## History learning admission
 

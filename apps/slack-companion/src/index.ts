@@ -93,6 +93,8 @@ export * from "./risk-attestation/policy.js";
 export * from "./thread-binding.js";
 export * from "./tools/catalog.js";
 export * from "./tools/contracts.js";
+export * from "./triage/alert-triage-signals.js";
+export * from "./triage/channel-policy.js";
 export * from "./triage/contracts.js";
 export * from "./triage/policy.js";
 export * from "./transport/contracts.js";
