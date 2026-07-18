@@ -182,8 +182,6 @@ jobs:
             command: make release-smoke
           - name: docker-smoke
             command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha --cache-to type=gha,mode=max,ignore-error=true' make docker-smoke
-          - name: web-docker-smoke
-            command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=cerebro-web-ci --cache-to type=gha,mode=max,ignore-error=true,scope=cerebro-web-ci' make web-docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
@@ -253,7 +251,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-go-v2-
 
       - name: Set up Docker Buildx
-        if: matrix.name == 'docker-smoke' || matrix.name == 'web-docker-smoke'
+        if: matrix.name == 'docker-smoke'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Run ${{ matrix.name }}
@@ -531,6 +529,12 @@ jobs:
     if: always()
     steps:
       - name: Check selected CI scopes
+        env:
+          CI_SCOPE_CORE: ${{ needs.ci-scope.outputs.core }}
+          CI_SCOPE_SDK: ${{ needs.ci-scope.outputs.sdk }}
+          CI_SCOPE_SLACK: ${{ needs.ci-scope.outputs.slack }}
+          CI_SCOPE_WEB: ${{ needs.ci-scope.outputs.web }}
+          CI_SCOPE_WEB_IMAGE: ${{ needs.ci-scope.outputs.web_image }}
         run: |
           if [ "${{ needs.ci-scope.result }}" != "success" ]; then
             echo "CI scope selection failed"
@@ -541,29 +545,29 @@ jobs:
             exit 1
           fi
 
-          if [ "${{ needs.ci-scope.outputs.web }}" = "true" ] && [ "${{ needs.web.result }}" != "success" ]; then
+          if [ "${CI_SCOPE_WEB}" = "true" ] && [ "${{ needs.web.result }}" != "success" ]; then
             echo "Web workspace checks failed"
             exit 1
           fi
-          if [ "${{ needs.ci-scope.outputs.web_image }}" = "true" ] && [ "${{ needs.web-image.result }}" != "success" ]; then
+          if [ "${CI_SCOPE_WEB_IMAGE}" = "true" ] && [ "${{ needs.web-image.result }}" != "success" ]; then
             echo "Web image checks failed"
             exit 1
           fi
-          if [ "${{ needs.ci-scope.outputs.slack }}" = "true" ] && [ "${{ needs.slack-companion.result }}" != "success" ]; then
+          if [ "${CI_SCOPE_SLACK}" = "true" ] && [ "${{ needs.slack-companion.result }}" != "success" ]; then
             echo "Slack companion checks failed"
             exit 1
           fi
-          if [ "${{ needs.ci-scope.outputs.sdk }}" = "true" ] && [ "${{ needs.typescript-sdk.result }}" != "success" ]; then
+          if [ "${CI_SCOPE_SDK}" = "true" ] && [ "${{ needs.typescript-sdk.result }}" != "success" ]; then
             echo "TypeScript SDK checks failed"
             exit 1
           fi
-          if { [ "${{ needs.ci-scope.outputs.web }}" = "true" ] || [ "${{ needs.ci-scope.outputs.slack }}" = "true" ] || [ "${{ needs.ci-scope.outputs.sdk }}" = "true" ]; } \
+          if { [ "${CI_SCOPE_WEB}" = "true" ] || [ "${CI_SCOPE_SLACK}" = "true" ] || [ "${CI_SCOPE_SDK}" = "true" ]; } \
             && [ "${{ needs.javascript-dependency-audit.result }}" != "success" ]; then
             echo "JavaScript dependency audit failed"
             exit 1
           fi
 
-          if [ "${{ needs.ci-scope.outputs.core }}" = "true" ]; then
+          if [ "${CI_SCOPE_CORE}" = "true" ]; then
             if [ "${{ needs.verify-shard.result }}" != "success" ]; then
               echo "One or more core verify shards failed"
               exit 1

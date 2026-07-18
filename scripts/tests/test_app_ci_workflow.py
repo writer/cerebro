@@ -54,6 +54,34 @@ class AppCIWorkflowTests(unittest.TestCase):
         self.assertIn("npm run check --workspace @writer/cerebro-slack-companion", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-sdk", self.workflow)
 
+    def test_verify_binds_scope_outputs_before_using_them(self):
+        verify_job = self.workflow.split("\n  verify:\n", 1)[1]
+        step = verify_job.split("- name: Check selected CI scopes", 1)[1]
+        environment, run_block = step.split("run: |", 1)
+        variables = {
+            "CI_SCOPE_CORE": "core",
+            "CI_SCOPE_SDK": "sdk",
+            "CI_SCOPE_SLACK": "slack",
+            "CI_SCOPE_WEB": "web",
+            "CI_SCOPE_WEB_IMAGE": "web_image",
+        }
+        for variable, output in variables.items():
+            with self.subTest(variable=variable):
+                self.assertIn(
+                    f"{variable}: ${{{{ needs.ci-scope.outputs.{output} }}}}",
+                    environment,
+                )
+                self.assertIn(f'"${{{variable}}}"', run_block)
+        self.assertNotIn("needs.ci-scope.outputs.", run_block)
+
+    def test_first_class_web_image_job_is_the_only_image_smoke_owner(self):
+        self.assertEqual(self.workflow.count("make web-docker-smoke"), 1)
+        verify_matrix = self.workflow.split("\n  verify-shard:\n", 1)[1].split(
+            "\n  go-lint-shard:\n",
+            1,
+        )[0]
+        self.assertNotIn("web-docker-smoke", verify_matrix)
+
     def test_javascript_audit_blocks_production_advisories_at_moderate(self):
         self.assertIn("npm audit --omit=dev --audit-level=moderate", self.workflow)
         self.assertNotIn("npm audit --audit-level=high", self.workflow)
