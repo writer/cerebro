@@ -53,6 +53,10 @@ export function projectAssistantTurnProgress(
 ): SlackStatusProjectionV1 {
   const normalized = normalizeAssistantTurnProgress(progress);
   const run = requiredKey(runId, "assistant progress run_id");
+  const observedAt = requiredTimestamp(
+    normalized.occurred_at,
+    "assistant progress occurred_at",
+  );
   return Object.freeze({
     code: `assistant_${normalized.phase}`,
     ...(normalized.capability_ref === undefined
@@ -64,7 +68,7 @@ export function projectAssistantTurnProgress(
           ),
         }),
     kind: "assistant_progress",
-    observed_at: normalized.occurred_at,
+    observed_at: observedAt,
     operation: "upsert",
     projection_id: `${run}:assistant-progress:${normalized.sequence}`,
     run_id: run,
@@ -76,8 +80,11 @@ export function projectAssistantTurnProgress(
 
 function requiredTimestamp(value: string, field: string): string {
   const normalized = requiredText(value, field, 64);
-  if (!Number.isFinite(Date.parse(normalized))) {
-    throw new SlackProjectionError(`${field} must be a timestamp.`);
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalized) {
+    throw new SlackProjectionError(
+      `${field} must be a canonical ISO-8601 timestamp.`,
+    );
   }
   return normalized;
 }

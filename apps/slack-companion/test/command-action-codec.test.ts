@@ -76,4 +76,15 @@ test("action codec rejects unknown, malformed, and oversized values", () => {
       }),
     /payload is invalid/,
   );
+  assert.throws(
+    () =>
+      encodeSlackActionEnvelope({
+        action: "execute",
+        command: "case.command",
+        idempotency_key: "action-123",
+        issued_at: "2026-07-18T10:00:01Z",
+        schema_version: "slack-action-envelope/v1",
+      }),
+    /canonical ISO-8601 timestamp/,
+  );
 });

@@ -84,6 +84,88 @@ test("multipart projections reject contradictory or duplicate receipts", () => {
   );
 });
 
+test("multipart projections reject false pending and delivering aggregates", () => {
+  const receipt = deliveryReceipt();
+  assert.throws(
+    () => projectSlackMultipartDelivery({ ...receipt, state: "pending" }),
+    /every part to be pending/,
+  );
+  assert.throws(
+    () =>
+      projectSlackMultipartDelivery({
+        ...receipt,
+        parts: receipt.parts.map((part) => ({
+          ...part,
+          delivered_at: undefined,
+          destination_receipt: undefined,
+          state: "pending" as const,
+        })),
+      }),
+    /requires a started part/,
+  );
+  assert.throws(
+    () =>
+      projectSlackMultipartDelivery({
+        ...receipt,
+        parts: receipt.parts.map((part, index) => ({
+          ...part,
+          delivered_at: `2026-07-18T10:00:0${index + 2}.000Z`,
+          destination_receipt: `slack-receipt://message/${index + 1}`,
+          state: "delivered" as const,
+        })),
+      }),
+    /requires an unfinished part/,
+  );
+  for (const state of ["paused", "failed", "abandoned"] as const) {
+    assert.throws(
+      () =>
+        projectSlackMultipartDelivery({
+          ...receipt,
+          parts: [
+            receipt.parts[0]!,
+            { ...receipt.parts[1]!, state },
+          ],
+        }),
+      /cannot contain terminal or paused parts/,
+    );
+  }
+});
+
+test("Slack projections reject equivalent non-canonical timestamps", () => {
+  assert.throws(
+    () =>
+      projectSlackVisibleStatus({
+        code: "queued",
+        expires_at: "2026-07-18T10:05:00.000Z",
+        idempotency_key: "run-1:queued:1",
+        message: "Cerebro saved this request. It is queued for execution.",
+        observed_at: "2026-07-18T10:00:00Z",
+        run_id: "run-1",
+      }),
+    /canonical ISO-8601 timestamp/,
+  );
+  assert.throws(
+    () =>
+      projectAssistantTurnProgress("run-1", {
+        occurred_at: "2026-07-18T10:00:01Z",
+        phase: "checking",
+        schema_version: "assistant-turn-progress/v1",
+        sequence: 2,
+        status: "Checking the available evidence",
+      }),
+    /canonical ISO-8601 timestamp/,
+  );
+  const receipt = deliveryReceipt();
+  assert.throws(
+    () =>
+      projectSlackMultipartDelivery({
+        ...receipt,
+        updated_at: "2026-07-18T10:00:02Z",
+      }),
+    /canonical ISO-8601 timestamp/,
+  );
+});
+
 function deliveryReceipt(): DeliveryReceiptV1 {
   return {
     created_at: "2026-07-18T10:00:00.000Z",

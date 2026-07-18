@@ -122,6 +122,32 @@ function validateAggregateState(
   state: DeliveryReceiptV1["state"],
   parts: readonly SlackMultipartPartProjectionV1[],
 ): void {
+  if (state === "pending" && parts.some((part) => part.state !== "pending")) {
+    throw new SlackProjectionError(
+      "Pending Slack multipart delivery requires every part to be pending.",
+    );
+  }
+  if (state === "delivering") {
+    if (
+      parts.some((part) =>
+        !["pending", "sending", "delivered"].includes(part.state)
+      )
+    ) {
+      throw new SlackProjectionError(
+        "Delivering Slack multipart delivery cannot contain terminal or paused parts.",
+      );
+    }
+    if (parts.every((part) => part.state === "pending")) {
+      throw new SlackProjectionError(
+        "Delivering Slack multipart delivery requires a started part.",
+      );
+    }
+    if (parts.every((part) => part.state === "delivered")) {
+      throw new SlackProjectionError(
+        "Delivering Slack multipart delivery requires an unfinished part.",
+      );
+    }
+  }
   if (state === "completed" && parts.some((part) => part.state !== "delivered")) {
     throw new SlackProjectionError(
       "Completed Slack multipart delivery requires every part acceptance.",
@@ -151,8 +177,11 @@ function uniqueKey(value: string, field: string, seen: Set<string>): string {
 
 function requiredTimestamp(value: string, field: string): string {
   const normalized = requiredText(value, field, 64);
-  if (!Number.isFinite(Date.parse(normalized))) {
-    throw new SlackProjectionError(`Slack multipart ${field} must be a timestamp.`);
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalized) {
+    throw new SlackProjectionError(
+      `Slack multipart ${field} must be a canonical ISO-8601 timestamp.`,
+    );
   }
   return normalized;
 }

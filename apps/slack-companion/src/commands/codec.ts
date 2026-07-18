@@ -185,8 +185,11 @@ function opaqueValue(value: unknown, field: string): string {
 
 function timestamp(value: unknown, field: string): string {
   const normalized = boundedText(value, field, 64);
-  if (!Number.isFinite(Date.parse(normalized))) {
-    throw new SlackCommandCodecError(`${field} must be a timestamp.`);
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalized) {
+    throw new SlackCommandCodecError(
+      `${field} must be a canonical ISO-8601 timestamp.`,
+    );
   }
   return normalized;
 }
