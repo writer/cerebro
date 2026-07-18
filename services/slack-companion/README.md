@@ -195,13 +195,7 @@ npm run check
 
 `npm run check` runs typecheck, architecture checks, and tests.
 
-Update the vendored Cerebro SDK after backend contract changes:
-
-```sh
-npm run sync:cerebro-sdk
-```
-
-The generated SDK lives in [vendor/cerebro-sdk](vendor/cerebro-sdk).
+The host consumes `@writer/cerebro-sdk` from the monorepo workspace. Run installs and builds from the repository root so the host and SDK stay on the same commit.
 
 ## Configuration
 
