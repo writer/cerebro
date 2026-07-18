@@ -15,6 +15,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./triage/transcript": {
+      "types": "./dist/src/triage/alert-triage-transcript.d.ts",
+      "default": "./dist/src/triage/alert-triage-transcript.js"
     }
   },
   "repository": {
