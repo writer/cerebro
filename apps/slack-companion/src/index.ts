@@ -59,6 +59,7 @@ export * from "./operations/migration.js";
 export * from "./operations/schedules.js";
 export * from "./operations/status.js";
 export * from "./ports.js";
+export * from "./projections/multipart.js";
 export * from "./question-work/contracts.js";
 export * from "./question-work/coordinator.js";
 export * from "./question-work/dispatch-policy.js";
