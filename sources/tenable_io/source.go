@@ -19,7 +19,7 @@ const (
 	defaultFamily          = familyAssets
 	defaultHealthPath      = "/users"
 	defaultBaseURLTemplate = "https://cloud.tenable.com"
-	tokenHeader            = ""
+	tokenHeader            = "X-ApiKeys"
 	tokenScheme            = "Token"
 	familyAssets           = "assets"
 	familyFindings         = "findings"
@@ -48,16 +48,15 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyAssets,
-				Path:             "/v1/assets",
+				Path:             "/assets",
 				URNKind:          "tenable_io_assets",
 				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "assets", "source_system": "tenable_io"},
+				DisablePageSize:  true,
+				ListKeys:         []string{"assets"},
+				TimestampKeys:    []string{"last_seen", "updated_at", "created_at"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "last_seen|updated_at|created_at", "resource_id": "id", "resource_name": "name|display_name|last_scan_target|hostname", "resource_urn": "resource_urn|urn", "source_event_id": "id", "tenant_id": "tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "asset", "schema": "assets", "source_system": "tenable_io"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "tenable_io_assets"},
 			},
 			{
 				Name:             familyFindings,
@@ -74,16 +73,15 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyVulnerabilities,
-				Path:             "/v1/vulnerabilities",
+				Path:             "/workbenches/vulnerabilities",
 				URNKind:          "tenable_io_vulnerabilities",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
+				IDKeys:           []string{"plugin_id", "id", "finding_id", "resource_urn"},
+				DisablePageSize:  true,
+				ListKeys:         []string{"vulnerabilities"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "vulnerabilities", "source_system": "tenable_io"},
+				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "plugin_id|id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "plugin_id|resource_id|id", "resource_name": "plugin_name|name|title", "resource_urn": "resource_urn|urn", "severity": "severity|risk|priority", "source_event_id": "plugin_id|event_id|id", "status": "vulnerability_state|status|state", "tenant_id": "tenant_id", "title": "plugin_name|title|name|summary"},
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "vulnerability", "schema": "vulnerabilities", "source_system": "tenable_io"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "tenable_io_vulnerabilities"},
 			},
 		},
 	})

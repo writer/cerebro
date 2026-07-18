@@ -1,32 +1,96 @@
 [
   {
-    "id": "okta-policy-rule-rul-sign-on-inactive-1776925200000",
+    "id": "okta-writer-okta-com-policy_rule-3b493fa27fbdcbc1",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.policy_rule",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2020-08-27T18:17:06Z",
     "schema_ref": "okta/policy_rule/v1",
     "payload": {
       "domain": "writer.okta.com",
-      "name": "Block risky sign-ons",
-      "policy_id": "pol-sign-on",
-      "policy_rule_id": "rul-sign-on-inactive",
+      "name": "python_sdk Test-Sign-On-Rule",
+      "policy_id": "00psfar1lATHw2WXj4x6",
+      "policy_rule_id": "0prsfe5f85pTFjdRU4x6",
       "policy_type": "OKTA_SIGN_ON",
       "priority": 1,
-      "status": "INACTIVE",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/policies/00psfar1lATHw2WXj4x6/rules/0prsfe5f85pTFjdRU4x6/lifecycle/deactivate"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT",
+                "DELETE"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/policies/00psfar1lATHw2WXj4x6/rules/0prsfe5f85pTFjdRU4x6"
+          }
+        },
+        "actions": {
+          "signon": {
+            "access": "ALLOW",
+            "primaryFactor": "PASSWORD_IDP",
+            "rememberDeviceByDefault": false,
+            "requireFactor": false,
+            "session": {
+              "maxSessionIdleMinutes": 720,
+              "maxSessionLifetimeMinutes": 0,
+              "usePersistentCookie": false
+            }
+          }
+        },
+        "conditions": {
+          "authContext": {
+            "authType": "ANY"
+          },
+          "network": {
+            "connection": "ANYWHERE"
+          },
+          "people": {
+            "users": {
+              "exclude": []
+            }
+          }
+        },
+        "created": "2020-08-27T18:17:06.000Z",
+        "id": "0prsfe5f85pTFjdRU4x6",
+        "lastUpdated": "2020-08-27T18:17:06.000Z",
+        "name": "python_sdk Test-Sign-On-Rule",
+        "priority": 1,
+        "status": "ACTIVE",
+        "system": false,
+        "type": "SIGN_ON"
+      },
+      "status": "ACTIVE",
       "system": false
     },
     "attributes": {
+      "access": "ALLOW",
       "domain": "writer.okta.com",
       "family": "policy_rule",
-      "name": "Block risky sign-ons",
-      "policy_id": "pol-sign-on",
-      "policy_rule_id": "rul-sign-on-inactive",
+      "name": "python_sdk Test-Sign-On-Rule",
+      "network_connection": "ANYWHERE",
+      "policy_id": "00psfar1lATHw2WXj4x6",
+      "policy_name": "",
+      "policy_rule_id": "0prsfe5f85pTFjdRU4x6",
+      "policy_rule_status": "ACTIVE",
+      "policy_status": "ACTIVE",
       "policy_type": "OKTA_SIGN_ON",
       "priority": "1",
-      "resource_id": "rul-sign-on-inactive",
+      "requires_mfa": "false",
+      "resource_id": "0prsfe5f85pTFjdRU4x6",
       "resource_type": "PolicyRule",
-      "status": "INACTIVE",
+      "session_idle_minutes": "720",
+      "session_persistent": "false",
+      "status": "ACTIVE",
       "system": "false"
     }
   }

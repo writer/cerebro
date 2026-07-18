@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: dashboards
+case: list_dashboards
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v1/dashboard?count=2
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2024-01-19T20:23:49Z"
+    sha256: 8e7687e0114da8ff783687068fae5214ad13946e90945a7d6805d98b726cb329
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.dashboards[0].author_handle
+        - $.dashboards[1].author_handle
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v1/Feature_Dashboards/Scenario_Get_all_dashboards_returns_OK_response_with_pagination.yaml
+    artifact_sha256: 576ac22f504b39fe3618d103d99b00c4440a3179d736ceadca9e565ac0a1b0ca
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    freshness: historical
+    capture_time_basis: artifact_commit

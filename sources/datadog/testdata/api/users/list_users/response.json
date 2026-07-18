@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "allowed_login_methods": [],
+        "created_at": "2022-05-12T09:53:43.305109+00:00",
+        "disabled": false,
+        "email": "user-3a5ab2b2@example.test",
+        "handle": "user-3a5ab2b2@example.test",
+        "icon": "https://secure.gravatar.com/avatar/b120ea663af2577e015c19831dd91cd6?s=48\u0026d=retro",
+        "modified_at": "2022-05-12T09:53:43.351606+00:00",
+        "name": null,
+        "service_account": false,
+        "status": "Pending",
+        "title": "user title",
+        "verified": false
+      },
+      "id": "688172d2-d1d9-11ec-ad3d-da7ad0900002",
+      "relationships": {
+        "org": {
+          "data": {
+            "id": "4dee724d-00cc-11ea-a77b-570c9d03c6c5",
+            "type": "orgs"
+          }
+        },
+        "roles": {
+          "data": []
+        }
+      },
+      "type": "users"
+    }
+  ],
+  "meta": {
+    "page": {
+      "total_count": 57061,
+      "total_filtered_count": 1
+    }
+  }
+}

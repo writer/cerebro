@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
@@ -11,7 +12,28 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	findingrules "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/sources/internal/githubaudit"
 )
+
+func TestAuditRawNormalizesProviderTimestampsToUTC(t *testing.T) {
+	providerZone := time.FixedZone("provider", -7*60*60)
+	stamp := time.Date(2022, 8, 29, 22, 16, 50, 662000000, providerZone)
+	raw, err := githubaudit.RawEntry(&gogithub.AuditEntry{
+		Timestamp: &gogithub.Timestamp{Time: stamp},
+		CreatedAt: &gogithub.Timestamp{Time: stamp},
+	})
+	if err != nil {
+		t.Fatalf("auditRaw() error = %v", err)
+	}
+	for _, key := range []string{"@timestamp", "created_at"} {
+		if got := raw[key]; got != "2022-08-30T05:16:50.662Z" {
+			t.Fatalf("auditRaw()[%q] = %#v, want normalized UTC timestamp", key, got)
+		}
+	}
+	if _, err := json.Marshal(raw); err != nil {
+		t.Fatalf("marshal auditRaw() result: %v", err)
+	}
+}
 
 func TestAuditAttributesForwardGitHubAuditRuleRequiredAttributes(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{

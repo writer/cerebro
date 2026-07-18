@@ -37,6 +37,7 @@ class AppCIWorkflowTests(unittest.TestCase):
             "app-workspace-contract",
             "web",
             "web-image",
+            "web-integration",
             "slack-companion",
             "typescript-sdk",
             "javascript-dependency-audit",
@@ -44,13 +45,15 @@ class AppCIWorkflowTests(unittest.TestCase):
         for job in expected_jobs:
             self.assertIn(f"  {job}:\n", self.workflow)
         self.assertIn(
-            "needs: [ci-scope, app-workspace-contract, web, web-image, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]",
+            "needs: [ci-scope, app-workspace-contract, web, web-image, web-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]",
             self.workflow,
         )
 
     def test_app_jobs_run_owned_checks(self):
         self.assertIn("npm run check --workspace @writer/cerebro-web", self.workflow)
         self.assertIn("make web-docker-smoke", self.workflow)
+        self.assertIn("npm run e2e:grc:local --workspace @writer/cerebro-web", self.workflow)
+        self.assertIn("if: needs.ci-scope.outputs.web_integration == 'true'", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-slack-companion", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-sdk", self.workflow)
 
@@ -64,6 +67,7 @@ class AppCIWorkflowTests(unittest.TestCase):
             "CI_SCOPE_SLACK": "slack",
             "CI_SCOPE_WEB": "web",
             "CI_SCOPE_WEB_IMAGE": "web_image",
+            "CI_SCOPE_WEB_INTEGRATION": "web_integration",
         }
         for variable, output in variables.items():
             with self.subTest(variable=variable):

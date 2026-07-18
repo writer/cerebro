@@ -1,32 +1,129 @@
 [
   {
-    "id": "datadog-slos-slo-1",
+    "id": "datadog-tenant-slos-a51756940787ba91",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.slos",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2022-11-14T11:54:22Z",
     "schema_ref": "datadog/slos/v1",
     "payload": {
-      "id": "slo-1",
-      "name": "Checkout availability",
-      "type": "monitor",
-      "target_threshold": 99.9,
-      "monitor_ids": [123],
-      "tags": ["service:checkout", "team:platform"]
+      "created_at": 1668426862,
+      "creator": {
+        "email": "user-e0c1fd41@example.test",
+        "handle": "user-e0c1fd41@example.test",
+        "name": null
+      },
+      "description": "",
+      "id": "70e82706f4ae56ff8bdd7f02e767f97c",
+      "modified_at": 1668426862,
+      "monitor_tags": [],
+      "name": "test SLO 1668426861",
+      "query": {
+        "denominator": "sum:my.custom.metric{!type:ignored}.as_count()",
+        "numerator": "sum:my.custom.metric{type:good,!type:ignored}.as_count()"
+      },
+      "tags": [
+        "type:test"
+      ],
+      "target_threshold": 90.0,
+      "thresholds": [
+        {
+          "target": 90.0,
+          "target_display": "90.",
+          "timeframe": "7d"
+        }
+      ],
+      "timeframe": "7d",
+      "type": "metric",
+      "type_id": 1
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "slo-1",
-      "external_id": "slo-1",
+      "created_at": "1668426862",
+      "creator_name": "user-e0c1fd41@example.test",
+      "external_id": "70e82706f4ae56ff8bdd7f02e767f97c",
       "family": "slos",
-      "source_provider": "datadog",
+      "modified_at": "1668426862",
+      "name": "test SLO 1668426861",
+      "provider": "datadog",
+      "slo_id": "70e82706f4ae56ff8bdd7f02e767f97c",
       "source_product": "datadog",
-      "slo_id": "slo-1",
-      "name": "Checkout availability",
-      "type": "monitor",
-      "target": "99.9",
-      "monitor_ids": "123",
-      "tags": "service:checkout,team:platform"
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "tags": "type:test",
+      "target": "90.0",
+      "type": "metric"
+    }
+  },
+  {
+    "id": "datadog-tenant-slos-e6489246e02dd78b",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.slos",
+    "occurred_at": "2023-01-12T17:19:05Z",
+    "schema_ref": "datadog/slos/v1",
+    "payload": {
+      "created_at": 1673543944,
+      "creator": {
+        "email": "user-e0c1fd41@example.test",
+        "handle": "user-e0c1fd41@example.test",
+        "name": null
+      },
+      "description": "some updated description about foo SLO",
+      "id": "955ab6301fa656e7b061de4a05ad4774",
+      "modified_at": 1673543945,
+      "monitor_tags": [],
+      "name": "tf-TestAccDatadogServiceLevelObjective_Basic-local-1673543942-updated",
+      "query": {
+        "denominator": "sum:my.metric{type:good}.as_count() + sum:my.metric{type:bad}.as_count()",
+        "numerator": "sum:my.metric{type:good}.as_count()"
+      },
+      "tags": [
+        "foo:bar",
+        "baz"
+      ],
+      "target_threshold": 99.5,
+      "thresholds": [
+        {
+          "target": 99.5,
+          "target_display": "99.5",
+          "timeframe": "7d",
+          "warning": 99.8,
+          "warning_display": "99.8"
+        },
+        {
+          "target": 98.0,
+          "target_display": "98.",
+          "timeframe": "30d",
+          "warning": 99.0,
+          "warning_display": "99."
+        },
+        {
+          "target": 99.9,
+          "target_display": "99.9",
+          "timeframe": "90d"
+        }
+      ],
+      "timeframe": "7d",
+      "type": "metric",
+      "type_id": 1,
+      "warning_threshold": 99.8
+    },
+    "attributes": {
+      "created_at": "1673543944",
+      "creator_name": "user-e0c1fd41@example.test",
+      "external_id": "955ab6301fa656e7b061de4a05ad4774",
+      "family": "slos",
+      "modified_at": "1673543945",
+      "name": "tf-TestAccDatadogServiceLevelObjective_Basic-local-1673543942-updated",
+      "provider": "datadog",
+      "slo_id": "955ab6301fa656e7b061de4a05ad4774",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "tags": "foo:bar,baz",
+      "target": "99.5",
+      "type": "metric",
+      "warning": "99.8"
     }
   }
 ]

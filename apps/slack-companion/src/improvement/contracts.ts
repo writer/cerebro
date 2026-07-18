@@ -3,6 +3,10 @@ import type {
   ExecutionSession,
   WorkLeaseV1,
 } from "../execution/model.js";
+import type {
+  AssistantTurnEvaluationV1,
+  AssistantTurnPromotionDecisionV1,
+} from "../assistant-turn/evaluation.js";
 
 export const IMPROVEMENT_EVIDENCE_KINDS = [
   "ci",
@@ -14,6 +18,11 @@ export const IMPROVEMENT_EVIDENCE_KINDS = [
 
 export type ImprovementEvidenceKind =
   (typeof IMPROVEMENT_EVIDENCE_KINDS)[number];
+
+export const IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS = ["ci", "canary"] as const;
+
+export type ImprovementIndependentEvidenceKind =
+  (typeof IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS)[number];
 
 export type ImprovementCandidateStatus =
   | "open"
@@ -182,7 +191,7 @@ export interface ImprovementEvidenceInvalidationReceipt {
   invalidation_ref: string;
 }
 
-export interface ImprovementFreshEvidenceInput {
+export interface ImprovementEvidenceRecord {
   author_generation: number;
   candidate_id: string;
   evidence_digest: string;
@@ -190,6 +199,36 @@ export interface ImprovementFreshEvidenceInput {
   expected_revision: number;
   head_digest: string;
   kind: ImprovementEvidenceKind;
+}
+
+export interface ImprovementFreshEvidenceInput extends Omit<
+  ImprovementEvidenceRecord,
+  "kind"
+> {
+  kind: ImprovementIndependentEvidenceKind;
+}
+
+export interface ImprovementOutcomeEvaluationSetV1 {
+  /** Exact source head used to produce every evaluation in this set. */
+  evaluated_head_digest: string;
+  evaluations: readonly AssistantTurnEvaluationV1[];
+}
+
+export interface ImprovementOutcomeEvidenceInput {
+  author_generation: number;
+  baseline: ImprovementOutcomeEvaluationSetV1;
+  candidate: ImprovementOutcomeEvaluationSetV1;
+  candidate_id: string;
+  expected_revision: number;
+  head_digest: string;
+  held_out_evidence_ref: string;
+  promotion_evidence_ref: string;
+  shadow_evidence_ref: string;
+}
+
+export interface ImprovementOutcomeEvidenceOutcome {
+  candidate: ImprovementCandidateV1;
+  decision: AssistantTurnPromotionDecisionV1;
 }
 
 export interface ImprovementAuthorCompletion {

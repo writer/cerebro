@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { DeliveryPartV1, DeliveryReceiptV1 } from "../delivery/contracts.js";
 
+export const MAX_SLACK_MULTIPART_PARTS = 40;
+
 export interface SlackMultipartAcceptanceV1 {
   readonly accepted_at: string;
   readonly destination_receipt: string;
@@ -45,9 +47,13 @@ export function projectSlackMultipartDelivery(
       "Slack multipart delivery version is unsupported.",
     );
   }
-  if (!Array.isArray(receipt.parts) || receipt.parts.length === 0) {
+  if (
+    !Array.isArray(receipt.parts)
+    || receipt.parts.length === 0
+    || receipt.parts.length > MAX_SLACK_MULTIPART_PARTS
+  ) {
     throw new SlackMultipartProjectionError(
-      "Slack multipart delivery requires at least one part.",
+      `Slack multipart delivery requires between 1 and ${MAX_SLACK_MULTIPART_PARTS} parts.`,
     );
   }
   const deliveryId = requiredKey(receipt.delivery_id, "delivery_id");

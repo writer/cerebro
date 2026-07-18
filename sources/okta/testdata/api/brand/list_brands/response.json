@@ -1,0 +1,26 @@
+[
+  {
+    "_links": {
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/brands/bnd1vfbcisOVD11TW5d7"
+      },
+      "themes": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/brands/bnd1vfbcisOVD11TW5d7/themes"
+      }
+    },
+    "customPrivacyPolicyUrl": null,
+    "id": "bnd1vfbcisOVD11TW5d7",
+    "removePoweredByOkta": false
+  }
+]

@@ -7,8 +7,17 @@ import scripts.oss_audit as oss_audit
 
 class OSSAuditTests(unittest.TestCase):
     def test_fixture_host_allows_exact_public_provider_origins(self):
-        self.assertTrue(oss_audit.fixture_host_allowed("fivetran.com"))
-        self.assertFalse(oss_audit.fixture_host_allowed("tenant.fivetran.com"))
+        for host in (
+            "api.datadoghq.com",
+            "docs.datadoghq.com",
+            "fivetran.com",
+            "nvd.nist.gov",
+            "ok11static.oktacdn.com",
+            "ok12static.oktacdn.com",
+        ):
+            with self.subTest(host=host):
+                self.assertTrue(oss_audit.fixture_host_allowed(host))
+                self.assertFalse(oss_audit.fixture_host_allowed("tenant." + host))
 
     def test_fixture_url_scan_ignores_markdown_closing_punctuation(self):
         findings = oss_audit.check_fixture_value(

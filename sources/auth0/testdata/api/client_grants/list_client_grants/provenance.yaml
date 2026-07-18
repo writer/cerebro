@@ -1,0 +1,33 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: auth0
+family: client_grants
+case: list_client_grants
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedAuth0Families
+request:
+    method: GET
+    url: https://auth0.example.test/api/v2/client-grants?audience=https%3A%2F%2Fauth0.example.test%2Fclient-grant%2FTestAccClientGrant&client_id=example-client-id&include_totals=true&per_page=50
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-16T11:27:27Z"
+    sha256: e3eeb8ef4b0561466f02dacee31025ebd2714d23916e6a1381f92efa1339e581
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.client_grants[0].audience
+        - $.client_grants[0].client_id
+        - $.client_grants[0].id
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/auth0/terraform-provider-auth0
+    commit: 7ab86e5310e6553889f5eef35dcbd6aa4dd1546b
+    path: test/data/recordings/TestAccClientGrant.yaml
+    artifact_sha256: 89c655b9c094fcc672440a96dd4bee115d4b691e75a44181cce032459e241212
+    license: MPL-2.0
+    recording_tool: go-vcr-v3
+    harness_path: internal/acctest/http_recorder.go
+    interaction_index: 75
+    freshness: current
+    capture_time_basis: artifact_commit

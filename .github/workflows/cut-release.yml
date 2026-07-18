@@ -309,6 +309,55 @@ jobs:
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
 
+  scan-images:
+    runs-on: ubuntu-latest
+    needs: [resolve, manifest, web-manifest]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Verify candidate image platforms
+        shell: bash
+        env:
+          RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+          WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+            platforms="$(
+              docker buildx imagetools inspect --raw "${image}" \
+                | jq -c '[.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture)"] | sort'
+            )"
+            test "${platforms}" = '["linux/amd64","linux/arm64"]'
+          done
+      - name: Scan candidate images
+        shell: bash
+        env:
+          RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+          WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
+          TRIVY_IMAGE: aquasec/trivy:0.66.0@sha256:086971aaf400beebd94e8300fd8ea623774419597169156cec56eec5b00dfb1e
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+            for platform in linux/amd64 linux/arm64; do
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "${image}"
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity CRITICAL --ignore-unfixed --exit-code 1 "${image}"
+            done
+          done
+
   portable-artifacts:
     runs-on: ubuntu-latest
     needs: resolve
@@ -333,51 +382,11 @@ jobs:
           cp api/openapi.yaml .dist/product/cerebro-openapi.yaml
           cp schemas/agent-service-lifecycle.schema.json .dist/product/agent-service-lifecycle.schema.json
           cp schemas/product-release.schema.json .dist/product/product-release.schema.json
+          cp schemas/product-release-published.schema.json .dist/product/product-release-published.schema.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: product-input-${{ needs.resolve.outputs.sha }}
           path: .dist/product
-          if-no-files-found: error
-          include-hidden-files: true
-
-  contracts:
-    runs-on: ubuntu-latest
-    needs: resolve
-    permissions:
-      contents: read
-      id-token: write
-    strategy:
-      matrix:
-        target: [sec-dev, go-prod]
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Render candidate runtime contract
-        env:
-          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          mkdir -p .dist
-          go run ./cmd/sourcedeploy -env "${TARGET}" -tenant writer -format contract-json \
-            -image-tag "${IMAGE_TAG}" -out ".dist/cerebro-runtime-contract-${TARGET}.json"
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v2.6.1
-      - name: Sign candidate runtime contract
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          cosign sign-blob --yes --output-signature ".dist/cerebro-runtime-contract-${TARGET}.json.sig" \
-            --output-certificate ".dist/cerebro-runtime-contract-${TARGET}.json.pem" \
-            ".dist/cerebro-runtime-contract-${TARGET}.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: candidate-contract-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
-          path: .dist
           if-no-files-found: error
           include-hidden-files: true
 
@@ -435,7 +444,7 @@ jobs:
 
   receipt:
     runs-on: ubuntu-latest
-    needs: [resolve, binaries, manifest, web-manifest, contracts, product-release]
+    needs: [resolve, binaries, manifest, web-manifest, scan-images, product-release]
     permissions:
       actions: read
       contents: read

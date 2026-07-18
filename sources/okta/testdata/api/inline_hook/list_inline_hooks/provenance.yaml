@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: inline_hook
+case: list_inline_hooks
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/inlineHooks
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:16:46Z"
+    sha256: d8cfb2e84770708c02c36280b6e6d5eefb31231d23fab4979e307bf9f88f21b7
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_inline_hooks_it/TestInlineHooksResource.test_list_inline_hooks.yaml
+    artifact_sha256: 966ec994c2a91b89653cda0e4eeae64288ab101732bd5e74dbf5eca393df22cc
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 3
+    freshness: historical
+    capture_time_basis: response_header

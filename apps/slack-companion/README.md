@@ -45,6 +45,14 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+`evaluateAssistantTurn` scores one text-free observation derived from durable delivery, claim, source, feedback, and outcome records. An unwanted response, missed response, incomplete delivery, omitted required action, ungrounded or subject-misbound claim, unused available source, missing coverage boundary, hidden source failure, exposed internal machinery, redundant tool call, unnecessary clarification, user correction, or negative feedback is explicit in the receipt. `decideAssistantTurnPromotion` compares one candidate with its exact baseline on at least eight sealed static cases and eight independently generated shadow cases. Duplicate case content cannot count in both partitions. Promotion requires a strict score gain, no blocker increase, fewer blockers when the baseline has any, no material case regression, and no new per-case blocker.
+
+`ImprovementCoordinator.recordOutcomeEvidence` is the only path that can make evaluation, shadow, and promotion evidence fresh. It binds the baseline rows to the pre-authoring head, binds candidate rows to the authored head, runs the promotion decision, and records those three evidence classes only when the decision passes. Generic CI and canary receipts cannot bypass the outcome gate. A candidate becomes ready only when all five exact-head evidence classes are fresh.
+
+## Command and delivery projections
+
+`encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
+
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the
 same due times after a restart or topology change and materializes occurrences
@@ -81,6 +89,14 @@ the same suggestion identity.
 The host owns source queries, channel admission, prompts, persistence, and
 delivery adapters. Those adapters persist the versioned records and transition
 events without changing the portable decision policy.
+
+## History learning admission
+
+`slackLearningCandidateRejection` classifies a host-supplied message projection
+before it can become a learning candidate. Machine-authored messages, Slack
+subtypes, incomplete records, empty text, and direct mentions of the companion
+are rejected with stable reason codes. Slack history fetching, authorization,
+storage, and learning execution remain host-owned.
 
 ## Durable answer watches
 
@@ -122,7 +138,6 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
-
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.

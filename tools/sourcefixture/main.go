@@ -2,19 +2,24 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"gopkg.in/yaml.v3"
 )
 
 const maxResponseBytes = 4 << 20
+const maxArtifactBytes = 32 << 20
 
 type stringList []string
 
@@ -26,11 +31,15 @@ func (values *stringList) Set(value string) error {
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(fmt.Errorf("usage: sourcefixture <capture|verify|packages>"))
+		fail(fmt.Errorf("usage: sourcefixture <capture|import|resanitize|verify|packages>"))
 	}
 	switch os.Args[1] {
 	case "capture":
 		capture(os.Args[2:])
+	case "import":
+		importRecording(os.Args[2:])
+	case "resanitize":
+		resanitize(os.Args[2:])
 	case "verify":
 		verify(os.Args[2:])
 	case "packages":
@@ -38,6 +47,65 @@ func main() {
 	default:
 		fail(fmt.Errorf("unknown command %q", os.Args[1]))
 	}
+}
+
+func resanitize(arguments []string) {
+	flags := flag.NewFlagSet("resanitize", flag.ExitOnError)
+	root := flags.String("root", ".", "repository root")
+	if err := flags.Parse(arguments); err != nil {
+		fail(err)
+	}
+	manifestPaths, err := filepath.Glob(filepath.Join(*root, "sources", "*", "testdata", "api", "*", "*", "provenance.yaml"))
+	if err != nil {
+		fail(err)
+	}
+	sort.Strings(manifestPaths)
+	changedBundles := 0
+	for _, manifestPath := range manifestPaths {
+		manifestPayload, readErr := os.ReadFile(manifestPath) // #nosec G304 -- paths come from a fixed repository fixture glob.
+		if readErr != nil {
+			fail(readErr)
+		}
+		var manifest sourcefixture.Manifest
+		if decodeErr := yaml.Unmarshal(manifestPayload, &manifest); decodeErr != nil {
+			fail(fmt.Errorf("decode provenance %s: %w", manifestPath, decodeErr))
+		}
+		responsePath := filepath.Join(filepath.Dir(manifestPath), "response.json")
+		payload, readErr := os.ReadFile(responsePath) // #nosec G304 -- response is fixed beside the globbed provenance file.
+		if readErr != nil {
+			fail(readErr)
+		}
+		credentialSanitized, credentialFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize %s: %w", responsePath, sanitizeErr))
+		}
+		sanitized, textFields, sanitizeErr := sourcefixture.SanitizeImportedTextValues(credentialSanitized)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize text values in %s: %w", responsePath, sanitizeErr))
+		}
+		changedFields := append(credentialFields, textFields...)
+		originalRequestURL := manifest.Request.URL
+		manifest.Request.URL = sourcefixture.SanitizeImportedText(manifest.Request.URL)
+		if manifest.Request.URL != originalRequestURL {
+			changedFields = append(changedFields, "$request.url")
+		}
+		for name, value := range manifest.Response.Headers {
+			sanitizedValue := sourcefixture.SanitizeImportedText(value)
+			if sanitizedValue != value {
+				manifest.Response.Headers[name] = sanitizedValue
+				changedFields = append(changedFields, "$response.headers."+name)
+			}
+		}
+		if len(changedFields) == 0 {
+			continue
+		}
+		manifest.Sanitization.ChangedFields = append(manifest.Sanitization.ChangedFields, changedFields...)
+		if _, writeErr := sourcefixture.WriteBundle(*root, manifest, sanitized); writeErr != nil {
+			fail(fmt.Errorf("rewrite %s: %w", manifestPath, writeErr))
+		}
+		changedBundles++
+	}
+	fmt.Printf("sourcefixture: resanitized bundles=%d\n", changedBundles)
 }
 
 func capture(arguments []string) {
@@ -97,12 +165,167 @@ func capture(arguments []string) {
 			Headers:     responseHeaders,
 		},
 		Sanitization: sourcefixture.Sanitization{ChangedFields: changedFields, RemovedFields: removedFields},
+		Origin:       sourcefixture.Origin{Type: "operator_request"},
 	}
 	bundle, err := sourcefixture.WriteBundle(*root, manifest, payload)
 	if err != nil {
 		fail(err)
 	}
 	fmt.Printf("sourcefixture: captured source=%s family=%s case=%s status=%d digest=%s path=%s\n", bundle.Manifest.SourceID, bundle.Manifest.Family, bundle.Manifest.Case, bundle.Manifest.Response.Status, bundle.Manifest.Response.SHA256, bundle.ResponsePath)
+}
+
+func importRecording(arguments []string) {
+	flags := flag.NewFlagSet("import", flag.ExitOnError)
+	root := flags.String("root", ".", "repository root")
+	sourceID := flags.String("source", "", "source id")
+	family := flags.String("family", "", "runtime family")
+	fixtureCase := flags.String("case", "response", "fixture case")
+	replayTest := flags.String("replay-test", "", "source test reference in source_test.go#TestName format")
+	input := flags.String("input", "", "local upstream recording artifact")
+	format := flags.String("format", "", "recording format: vcr or pygithub")
+	interactionIndex := flags.Int("interaction", 0, "zero-based interaction index")
+	requestURL := flags.String("url", "", "sanitized request URL override")
+	capturedAt := flags.String("captured-at", "", "RFC3339 capture time when the recording omits one")
+	captureTimeBasis := flags.String("capture-time-basis", "", "response_header, recorded_at, or artifact_commit")
+	repository := flags.String("repository", "", "upstream repository HTTPS URL")
+	commit := flags.String("commit", "", "upstream full Git commit")
+	artifactPath := flags.String("artifact-path", "", "upstream repository-relative artifact path")
+	license := flags.String("license", "", "upstream SPDX license identifier")
+	recordingTool := flags.String("recording-tool", "", "upstream recording tool")
+	harnessPath := flags.String("harness-path", "", "upstream repository-relative recording harness path")
+	freshness := flags.String("freshness", "current", "current or historical provider-contract compatibility")
+	var declaredChangedFields stringList
+	var removedFields stringList
+	var sanitizeKeys stringList
+	flags.Var(&declaredChangedFields, "changed-field", "manually sanitized request or JSON field path (repeatable)")
+	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every value with this exact key while preserving its JSON type (repeatable)")
+	if err := flags.Parse(arguments); err != nil {
+		fail(err)
+	}
+	artifact, err := readBoundedFile(*input, maxArtifactBytes)
+	if err != nil {
+		fail(err)
+	}
+	interaction, err := sourcefixture.ExtractRecording(artifact, *format, *interactionIndex)
+	if err != nil {
+		fail(err)
+	}
+	if strings.TrimSpace(*requestURL) != "" {
+		if err := validateSanitizedRequestURL(interaction.Request.URL, strings.TrimSpace(*requestURL)); err != nil {
+			fail(err)
+		}
+		interaction.Request.URL = strings.TrimSpace(*requestURL)
+	}
+	if strings.TrimSpace(*capturedAt) != "" {
+		interaction.CapturedAt = strings.TrimSpace(*capturedAt)
+	}
+	if strings.TrimSpace(*captureTimeBasis) != "" {
+		interaction.CaptureTimeBasis = strings.TrimSpace(*captureTimeBasis)
+	}
+	if interaction.CapturedAt == "" {
+		fail(fmt.Errorf("recording has no capture time; provide -captured-at and -capture-time-basis artifact_commit"))
+	}
+	if interaction.ContentType == "" {
+		fail(fmt.Errorf("recording response has no Content-Type header"))
+	}
+	originalRequestURL := interaction.Request.URL
+	interaction.Request.URL = sourcefixture.SanitizeImportedText(interaction.Request.URL)
+	if interaction.Request.URL != originalRequestURL {
+		declaredChangedFields = append(declaredChangedFields, "$request.url")
+	}
+	payload, changedFields, err := sourcefixture.SanitizeImportedJSONWithKeys(interaction.Payload, sanitizeKeys)
+	if err != nil {
+		fail(err)
+	}
+	changedFields = append(changedFields, declaredChangedFields...)
+	responseHeaders, headerChanges := recordingResponseHeaders(interaction.Headers)
+	changedFields = append(changedFields, headerChanges...)
+	manifest := sourcefixture.Manifest{
+		SourceID:   *sourceID,
+		Family:     *family,
+		Case:       *fixtureCase,
+		ReplayTest: *replayTest,
+		Request:    interaction.Request,
+		Response: sourcefixture.Response{
+			Status:      interaction.Status,
+			ContentType: interaction.ContentType,
+			CapturedAt:  interaction.CapturedAt,
+			Headers:     responseHeaders,
+		},
+		Sanitization: sourcefixture.Sanitization{ChangedFields: changedFields, RemovedFields: removedFields},
+		Origin: sourcefixture.Origin{
+			Type:             "upstream_recording",
+			Repository:       *repository,
+			Commit:           *commit,
+			Path:             *artifactPath,
+			ArtifactSHA256:   sourcefixture.Digest(artifact),
+			License:          *license,
+			RecordingTool:    *recordingTool,
+			HarnessPath:      *harnessPath,
+			InteractionIndex: *interactionIndex,
+			Freshness:        *freshness,
+			CaptureTimeBasis: interaction.CaptureTimeBasis,
+		},
+	}
+	bundle, err := sourcefixture.WriteBundle(*root, manifest, payload)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("sourcefixture: imported source=%s family=%s case=%s interaction=%d digest=%s path=%s\n", bundle.Manifest.SourceID, bundle.Manifest.Family, bundle.Manifest.Case, *interactionIndex, bundle.Manifest.Response.SHA256, bundle.ResponsePath)
+}
+
+func validateSanitizedRequestURL(recorded, sanitized string) error {
+	recordedURL, recordedErr := url.ParseRequestURI(recorded)
+	sanitizedURL, sanitizedErr := url.ParseRequestURI(sanitized)
+	if recordedErr != nil || sanitizedErr != nil || recordedURL.Scheme != sanitizedURL.Scheme || !strings.EqualFold(recordedURL.Host, sanitizedURL.Host) || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
+		return errors.New("-url may sanitize query values but must preserve the recorded scheme, host, and path")
+	}
+	return nil
+}
+
+func readBoundedFile(fileName string, limit int64) ([]byte, error) {
+	fileName = strings.TrimSpace(fileName)
+	if fileName == "" {
+		return nil, errors.New("-input is required")
+	}
+	file, err := os.Open(fileName) // #nosec G304 -- operator selects the local upstream artifact.
+	if err != nil {
+		return nil, fmt.Errorf("open recording artifact: %w", err)
+	}
+	payload, readErr := io.ReadAll(io.LimitReader(file, limit+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read recording artifact: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close recording artifact: %w", closeErr)
+	}
+	if int64(len(payload)) > limit {
+		return nil, fmt.Errorf("recording artifact exceeds %d bytes", limit)
+	}
+	return payload, nil
+}
+
+func recordingResponseHeaders(headers map[string]string) (map[string]string, []string) {
+	result := map[string]string{}
+	changed := []string{}
+	for name, value := range headers {
+		switch strings.ToLower(name) {
+		case "link", "x-next-page", "x-page", "x-per-page", "x-total", "x-total-pages":
+			if strings.TrimSpace(value) != "" {
+				sanitized := sourcefixture.SanitizeImportedText(strings.TrimSpace(value))
+				result[name] = sanitized
+				if sanitized != strings.TrimSpace(value) {
+					changed = append(changed, "$response.headers."+name)
+				}
+			}
+		}
+	}
+	if len(result) == 0 {
+		return nil, changed
+	}
+	return result, changed
 }
 
 func packages(arguments []string) {

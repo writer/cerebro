@@ -3,23 +3,23 @@ import {
   securityProducerForFinding,
   securityProducerResponseActionCandidates,
 } from "@/lib/security-producer-response";
-import { securityProducers, type SecurityProducer } from "@/lib/security-producers";
+import type { SecurityProducer } from "@/lib/security-producers";
 
 type FindingLike = Pick<GRCFinding, "attributes" | "external_refs" | "runtime_id" | "source_id">;
 
 export const isAperioOwnedFinding = (
   finding: FindingLike,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => securityProducerForFinding(finding, producers)?.id === "aperio";
 
 export const aperioResponseOwner = (
   finding: FindingLike,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => isAperioOwnedFinding(finding, producers) ? "aperio" : undefined;
 
 export const aperioResponseActionCandidates = (
   finding: FindingLike,
-  producers: SecurityProducer[] = securityProducers,
+  producers: SecurityProducer[],
 ) => isAperioOwnedFinding(finding, producers)
   ? securityProducerResponseActionCandidates(finding, producers)
   : [];

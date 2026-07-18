@@ -1,0 +1,12 @@
+{
+  "limit": 100,
+  "roles": [
+    {
+      "description": "The One - Acceptance Test",
+      "id": "example-63ecf2c0004baf32",
+      "name": "The One - Acceptance Test - testaccdatasourcerole"
+    }
+  ],
+  "start": 0,
+  "total": 1
+}

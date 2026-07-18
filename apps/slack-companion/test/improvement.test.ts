@@ -6,6 +6,10 @@ import { ExecutionCoordinator } from "../src/execution/coordinator.js";
 import type { ExecutionSession } from "../src/execution/model.js";
 import { ReferenceMemoryExecutionStore } from "../src/execution/reference-store.js";
 import { stableIdentity } from "../src/delivery/coordinator.js";
+import type {
+  AssistantTurnEvaluationBlockerV1,
+  AssistantTurnEvaluationV1,
+} from "../src/assistant-turn/evaluation.js";
 import {
   ImprovementConflictError,
   ImprovementCoordinator,
@@ -27,9 +31,11 @@ import type {
   ImprovementDraftSnapshot,
   ImprovementEvidenceCompletion,
   ImprovementEvidenceInvalidationRequest,
+  ImprovementEvidenceRecord,
   ImprovementEvidenceSnapshot,
   ImprovementEvidenceStateV1,
   ImprovementFreshEvidenceInput,
+  ImprovementOutcomeEvidenceInput,
 } from "../src/improvement/contracts.js";
 import { IMPROVEMENT_EVIDENCE_KINDS } from "../src/improvement/contracts.js";
 import type {
@@ -188,7 +194,7 @@ describe("ImprovementCoordinator", () => {
     );
   });
 
-  test("keeps every evidence class invalidated until exact-head receipts are fresh", async () => {
+  test("requires gated outcomes before every exact-head evidence class can become fresh", async () => {
     const fixture = makeFixture();
     const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
     const session = await fixture.session(1);
@@ -205,16 +211,30 @@ describe("ImprovementCoordinator", () => {
       ImprovementConflictError,
     );
 
-    let current = authored.candidate;
-    for (const kind of IMPROVEMENT_EVIDENCE_KINDS.slice(0, -1)) {
-      current = await fixture.coordinator.recordFreshEvidence(
-        freshEvidence(current, kind),
+    for (const kind of ["eval", "shadow", "promotion"] as const) {
+      const bypass = {
+        ...freshEvidence(authored.candidate, "ci"),
+        kind,
+      } as unknown as ImprovementFreshEvidenceInput;
+      await assert.rejects(
+        fixture.coordinator.recordFreshEvidence(bypass),
+        /must pass the assistant-turn promotion gate/,
       );
-      assert.equal(current.status, "awaiting_evidence");
     }
-    current = await fixture.coordinator.recordFreshEvidence(
-      freshEvidence(current, "promotion"),
+
+    let current = await fixture.coordinator.recordFreshEvidence(
+      freshEvidence(authored.candidate, "ci"),
     );
+    current = await fixture.coordinator.recordFreshEvidence(
+      freshEvidence(current, "canary"),
+    );
+    assert.equal(current.status, "awaiting_evidence");
+
+    const outcome = await fixture.coordinator.recordOutcomeEvidence(
+      outcomeEvidence(current),
+    );
+    current = outcome.candidate;
+    assert.equal(outcome.decision.promotion_ready, true);
     assert.equal(current.status, "ready");
     assert.equal(current.fresh_evidence_ref, fixture.evidence.bundleRef);
     assert.equal(
@@ -224,23 +244,113 @@ describe("ImprovementCoordinator", () => {
     );
   });
 
-  test("rejects fresh evidence snapshots from another candidate or generation", async () => {
-    for (const corruption of ["candidate", "generation"] as const) {
+  test("does not record outcome evidence when the candidate fails the promotion gate", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    );
+
+    const outcome = await fixture.coordinator.recordOutcomeEvidence(
+      outcomeEvidence(authored.candidate, {
+        candidate_score: 0.71,
+        candidate_blockers: ["outcome_unknown"],
+      }),
+    );
+
+    assert.equal(outcome.decision.promotion_ready, false);
+    assert.equal(outcome.candidate.status, "awaiting_evidence");
+    const states = (await fixture.evidence.read(
+      outcome.candidate.candidate_id,
+      outcome.candidate.author_generation,
+    ))?.states;
+    assert.equal(states?.every((state) => state.state === "invalidated"), true);
+  });
+
+  test("binds outcome evidence to the exact baseline and candidate heads", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    );
+
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(
+        outcomeEvidence(authored.candidate, {
+          baseline_head_digest: sha("wrong-baseline-head"),
+        }),
+      ),
+      /does not match the baseline and candidate heads/,
+    );
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(
+        outcomeEvidence(authored.candidate, {
+          candidate_head_digest: sha("wrong-candidate-head"),
+        }),
+      ),
+      /does not match the baseline and candidate heads/,
+    );
+
+    const oversized = outcomeEvidence(authored.candidate);
+    oversized.candidate = {
+      ...oversized.candidate,
+      evaluations: Array.from(
+        { length: 513 },
+        (_, index) => oversized.candidate.evaluations[
+          index % oversized.candidate.evaluations.length
+        ]!,
+      ),
+    };
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(oversized),
+      /evaluations are required and bounded/,
+    );
+  });
+
+  test("recovers idempotently when outcome evidence persists before a response failure", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    let current = (await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    )).candidate;
+    current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "ci"));
+    current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "canary"));
+    fixture.evidence.failNextFreshResponse();
+
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(outcomeEvidence(current)),
+      /injected fresh evidence response failure/,
+    );
+
+    const recovered = await fixture.coordinator.recordOutcomeEvidence(
+      outcomeEvidence(current),
+    );
+    assert.equal(recovered.candidate.status, "ready");
+    assert.equal(recovered.decision.promotion_ready, true);
+  });
+
+  test("rejects fresh evidence snapshots with changed identity or receipt content", async () => {
+    for (const corruption of ["candidate", "generation", "evidence"] as const) {
       const fixture = makeFixture();
       const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
       const session = await fixture.session(1);
       let current = (await fixture.coordinator.authorCandidate(
         authorRequest(candidate, session),
       )).candidate;
-      for (const kind of IMPROVEMENT_EVIDENCE_KINDS.slice(0, -1)) {
-        current = await fixture.coordinator.recordFreshEvidence(
-          freshEvidence(current, kind),
-        );
-      }
+      const outcomes = await fixture.coordinator.recordOutcomeEvidence(
+        outcomeEvidence(current),
+      );
+      current = outcomes.candidate;
+      current = await fixture.coordinator.recordFreshEvidence(
+        freshEvidence(current, "ci"),
+      );
 
       fixture.evidence.corruptNextFreshSnapshot(corruption);
       const rejected = await fixture.coordinator.recordFreshEvidence(
-        freshEvidence(current, "promotion"),
+        freshEvidence(current, "canary"),
       );
       assert.equal(rejected.status, "awaiting_evidence", corruption);
       assert.equal(rejected.fresh_evidence_ref, undefined, corruption);
@@ -455,7 +565,8 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
 class MemoryEvidencePort implements ImprovementEvidencePort {
   readonly bundleRef = "evidence-bundle://opaque-improvement";
   observedIntentFirst = false;
-  private nextFreshCorruption?: "candidate" | "generation";
+  private nextFreshCorruption?: "candidate" | "generation" | "evidence";
+  private nextFreshResponseFailure = false;
   private nextInvalidationCorruption?: "duplicate" | "missing";
   private readonly records = new Map<string, ImprovementEvidenceSnapshot>();
 
@@ -468,8 +579,12 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     return this.records.size;
   }
 
-  corruptNextFreshSnapshot(corruption: "candidate" | "generation"): void {
+  corruptNextFreshSnapshot(corruption: "candidate" | "generation" | "evidence"): void {
     this.nextFreshCorruption = corruption;
+  }
+
+  failNextFreshResponse(): void {
+    this.nextFreshResponseFailure = true;
   }
 
   corruptNextInvalidation(corruption: "duplicate" | "missing"): void {
@@ -530,7 +645,7 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     return Promise.resolve(snapshot === undefined ? undefined : clone(snapshot));
   }
 
-  recordFresh(input: ImprovementFreshEvidenceInput) {
+  recordFresh(input: ImprovementEvidenceRecord) {
     const key = evidenceKey(input.candidate_id, input.author_generation);
     const snapshot = this.records.get(key);
     if (snapshot === undefined) return Promise.reject(new ImprovementConflictError("Evidence was not invalidated."));
@@ -555,6 +670,10 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     });
     const next = this.snapshot(input.candidate_id, input.author_generation, states);
     this.records.set(key, next);
+    if (this.nextFreshResponseFailure) {
+      this.nextFreshResponseFailure = false;
+      return Promise.reject(new Error("injected fresh evidence response failure"));
+    }
     if (this.nextFreshCorruption === undefined) {
       return Promise.resolve(clone(next));
     }
@@ -565,12 +684,16 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
         ...state,
         candidate_id: corrupted.candidate_id,
       }));
-    } else {
+    } else if (this.nextFreshCorruption === "generation") {
       corrupted.author_generation += 1;
       corrupted.states = corrupted.states.map((state) => ({
         ...state,
         author_generation: corrupted.author_generation,
       }));
+    } else {
+      corrupted.states = corrupted.states.map((state) => state.kind === input.kind
+        ? { ...state, evidence_digest: sha("corrupt-evidence") }
+        : state);
     }
     this.nextFreshCorruption = undefined;
     return Promise.resolve(corrupted);
@@ -775,7 +898,7 @@ function leaseProof(generation: number, fencingToken: number): WorkLeaseV1 {
 
 function freshEvidence(
   candidate: ImprovementCandidateV1,
-  kind: (typeof IMPROVEMENT_EVIDENCE_KINDS)[number],
+  kind: ImprovementFreshEvidenceInput["kind"],
   overrides: Partial<ImprovementFreshEvidenceInput> = {},
 ): ImprovementFreshEvidenceInput {
   return {
@@ -788,6 +911,78 @@ function freshEvidence(
     kind,
     ...overrides,
   };
+}
+
+function outcomeEvidence(
+  candidate: ImprovementCandidateV1,
+  overrides: {
+    baseline_head_digest?: string;
+    candidate_blockers?: AssistantTurnEvaluationBlockerV1[];
+    candidate_head_digest?: string;
+    candidate_score?: number;
+  } = {},
+): ImprovementOutcomeEvidenceInput {
+  const baselineHead = overrides.baseline_head_digest
+    ?? candidate.authoring_prior_head_digest
+    ?? assert.fail("authored candidate must preserve its prior head");
+  return {
+    author_generation: candidate.author_generation,
+    baseline: {
+      evaluated_head_digest: baselineHead,
+      evaluations: promotionEvaluations(
+        "policy://baseline",
+        0.72,
+        ["outcome_unknown"],
+      ),
+    },
+    candidate: {
+      evaluated_head_digest: overrides.candidate_head_digest ?? candidate.head_digest,
+      evaluations: promotionEvaluations(
+        "policy://candidate",
+        overrides.candidate_score ?? 0.94,
+        overrides.candidate_blockers ?? [],
+      ),
+    },
+    candidate_id: candidate.candidate_id,
+    expected_revision: candidate.revision,
+    head_digest: candidate.head_digest,
+    held_out_evidence_ref: "evidence://held-out-outcomes",
+    promotion_evidence_ref: "evidence://outcome-promotion",
+    shadow_evidence_ref: "evidence://shadow-outcomes",
+  };
+}
+
+function promotionEvaluations(
+  policyRef: string,
+  score: number,
+  blockers: AssistantTurnEvaluationBlockerV1[],
+): AssistantTurnEvaluationV1[] {
+  return (["held_out", "shadow"] as const).flatMap((partition) => (
+    Array.from({ length: 8 }, (_, index) => ({
+      blockers: [...blockers],
+      case_digest: sha(`case-${partition}-${index}`),
+      case_ref: `case://${partition}-${index}`,
+      dimensions: {
+        coverage_honesty: score,
+        delivery_completeness: score,
+        evidence_use: score,
+        execution_efficiency: score,
+        grounding: score,
+        human_burden: score,
+        intervention_fit: score,
+        latency_budget: score,
+        outcome_closure: score,
+      },
+      evaluator_ref: "evaluation://sealed-outcomes",
+      observation_digest: sha(`observation-${partition}-${index}`),
+      observation_ref: `observation://${partition}-${index}`,
+      partition,
+      passed: blockers.length === 0 && score >= 0.8,
+      policy_ref: policyRef,
+      schema_version: "assistant-turn-evaluation/v1" as const,
+      score,
+    }))
+  ));
 }
 
 function authorResult(intent: ImprovementAuthoringIntent): ImprovementAuthorResult {
