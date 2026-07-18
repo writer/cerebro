@@ -108,6 +108,32 @@ test("delivery, clarification, correction, and feedback failures stay explicit",
   ]);
 });
 
+test("action, coverage, subject, and machinery failures stay explicit", () => {
+  const receipt = evaluateAssistantTurn(observation({
+    claim_count: 2,
+    coverage_boundary_required: true,
+    delivered_action_count: 1,
+    grounded_claim_count: 2,
+    internal_machinery_exposure_count: 1,
+    relevant_evidence_source_count: 1,
+    required_action_count: 2,
+    requires_evidence: true,
+    subject_bound_claim_count: 1,
+    used_evidence_source_count: 1,
+  }));
+
+  assert.deepEqual(receipt.blockers, [
+    "required_action_missing",
+    "claim_subject_misbound",
+    "coverage_boundary_missing",
+    "internal_machinery_exposed",
+  ]);
+  assert.equal(receipt.dimensions.delivery_completeness, 0.5);
+  assert.equal(receipt.dimensions.grounding, 0.5);
+  assert.equal(receipt.dimensions.coverage_honesty, 0);
+  assert.equal(receipt.dimensions.human_burden, 0);
+});
+
 test("observation counts and suppressed delivery fail closed", () => {
   assert.throws(
     () => evaluateAssistantTurn(observation({
@@ -289,15 +315,20 @@ test("promotion rejects a receipt whose score does not match its dimensions", ()
 function observation(
   changes: Partial<AssistantTurnEvaluationInputV1> = {},
 ): AssistantTurnEvaluationInputV1 {
+  const claimCount = changes.claim_count ?? 0;
   return {
     case_digest: "sha256:case",
     case_ref: "case://turn-1",
-    claim_count: 0,
+    claim_count: claimCount,
+    coverage_boundary_disclosed: false,
+    coverage_boundary_required: false,
     delivery: completeDelivery(),
+    delivered_action_count: 0,
     disclosed_source_failure_count: 0,
     evaluator_ref: "evaluation://held-out-1",
     execution_lane: "continue",
     grounded_claim_count: 0,
+    internal_machinery_exposure_count: 0,
     latency_ms: 1_000,
     observation_digest: "sha256:observation",
     observation_ref: "observation://turn-1",
@@ -306,10 +337,12 @@ function observation(
     policy_ref: "policy://candidate",
     redundant_tool_call_count: 0,
     relevant_evidence_source_count: 0,
+    required_action_count: 0,
     requires_evidence: false,
     response_expected: true,
     selected_capability_count: 0,
     source_failure_count: 0,
+    subject_bound_claim_count: claimCount,
     tool_call_count: 0,
     unnecessary_clarification_count: 0,
     used_evidence_source_count: 0,

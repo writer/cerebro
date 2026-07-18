@@ -16,9 +16,13 @@ export const ASSISTANT_TURN_EVALUATION_BLOCKERS = [
   "unwanted_intervention",
   "missed_response",
   "incomplete_delivery",
+  "required_action_missing",
   "claim_not_grounded",
+  "claim_subject_misbound",
   "available_evidence_not_used",
+  "coverage_boundary_missing",
   "source_failure_not_disclosed",
+  "internal_machinery_exposed",
   "redundant_tool_call",
   "tool_budget_exceeded",
   "latency_budget_exceeded",
@@ -57,12 +61,16 @@ export interface AssistantTurnEvaluationInputV1 {
   case_digest: string;
   case_ref: string;
   claim_count: number;
+  coverage_boundary_disclosed: boolean;
+  coverage_boundary_required: boolean;
   delivery: AssistantTurnDeliveryObservationV1;
+  delivered_action_count: number;
   disclosed_source_failure_count: number;
   evaluator_ref: string;
   execution_lane: AssistantExecutionLaneV1;
   explicit_feedback?: "positive" | "negative";
   grounded_claim_count: number;
+  internal_machinery_exposure_count: number;
   latency_ms: number;
   observation_digest: string;
   observation_ref: string;
@@ -71,10 +79,12 @@ export interface AssistantTurnEvaluationInputV1 {
   policy_ref: string;
   redundant_tool_call_count: number;
   relevant_evidence_source_count: number;
+  required_action_count: number;
   requires_evidence: boolean;
   response_expected: boolean;
   selected_capability_count: number;
   source_failure_count: number;
+  subject_bound_claim_count: number;
   tool_call_count: number;
   unnecessary_clarification_count: number;
   used_evidence_source_count: number;
@@ -144,16 +154,24 @@ export function evaluateAssistantTurn(
   const shouldRespond = input.response_expected;
   const didRespond = input.delivery.disposition === "respond";
   const interventionFit = shouldRespond === didRespond ? 1 : 0;
-  const deliveryCompleteness = deliveryScore(input.delivery, shouldRespond);
-  const grounding = input.requires_evidence
-    ? ratio(input.grounded_claim_count, input.claim_count)
-    : 1;
+  const physicalDelivery = deliveryScore(input.delivery, shouldRespond);
+  const deliveryCompleteness = physicalDelivery
+    * ratio(input.delivered_action_count, input.required_action_count);
+  const grounding = Math.min(
+    input.requires_evidence
+      ? ratio(input.grounded_claim_count, input.claim_count)
+      : 1,
+    ratio(input.subject_bound_claim_count, input.claim_count),
+  );
   const evidenceUse = input.requires_evidence
     ? ratio(input.used_evidence_source_count, input.relevant_evidence_source_count)
     : 1;
-  const coverageHonesty = input.source_failure_count === 0
-    ? 1
-    : ratio(input.disclosed_source_failure_count, input.source_failure_count);
+  const coverageHonesty = Math.min(
+    input.source_failure_count === 0
+      ? 1
+      : ratio(input.disclosed_source_failure_count, input.source_failure_count),
+    input.coverage_boundary_required && !input.coverage_boundary_disclosed ? 0 : 1,
+  );
   const executionEfficiency = (input.redundant_tool_call_count === 0 ? 1 : 0)
     * boundedEfficiency(input.tool_call_count, budget.max_tool_calls)
     * boundedEfficiency(
@@ -166,16 +184,33 @@ export function evaluateAssistantTurn(
   const humanBurden = input.unnecessary_clarification_count === 0
     && !input.user_correction
     && input.explicit_feedback !== "negative"
+    && input.internal_machinery_exposure_count === 0
     ? 1
     : 0;
   const outcomeClosure = outcomeScore(input.outcome_state);
   const blockers: AssistantTurnEvaluationBlockerV1[] = [
     !shouldRespond && didRespond ? "unwanted_intervention" : undefined,
     shouldRespond && !didRespond ? "missed_response" : undefined,
-    deliveryCompleteness === 0 ? "incomplete_delivery" : undefined,
-    grounding < 1 ? "claim_not_grounded" : undefined,
+    physicalDelivery === 0 ? "incomplete_delivery" : undefined,
+    input.delivered_action_count < input.required_action_count
+      ? "required_action_missing"
+      : undefined,
+    input.requires_evidence && input.grounded_claim_count < input.claim_count
+      ? "claim_not_grounded"
+      : undefined,
+    input.subject_bound_claim_count < input.claim_count
+      ? "claim_subject_misbound"
+      : undefined,
     evidenceUse < 1 ? "available_evidence_not_used" : undefined,
-    coverageHonesty < 1 ? "source_failure_not_disclosed" : undefined,
+    input.coverage_boundary_required && !input.coverage_boundary_disclosed
+      ? "coverage_boundary_missing"
+      : undefined,
+    input.disclosed_source_failure_count < input.source_failure_count
+      ? "source_failure_not_disclosed"
+      : undefined,
+    input.internal_machinery_exposure_count > 0
+      ? "internal_machinery_exposed"
+      : undefined,
     input.redundant_tool_call_count > 0 ? "redundant_tool_call" : undefined,
     !executionWithinBudget ? "tool_budget_exceeded" : undefined,
     latencyBudget === 0 ? "latency_budget_exceeded" : undefined,
@@ -321,6 +356,10 @@ function validateEvaluationInput(input: AssistantTurnEvaluationInputV1): void {
   for (const [name, value] of [
     ["claim_count", input.claim_count],
     ["grounded_claim_count", input.grounded_claim_count],
+    ["subject_bound_claim_count", input.subject_bound_claim_count],
+    ["required_action_count", input.required_action_count],
+    ["delivered_action_count", input.delivered_action_count],
+    ["internal_machinery_exposure_count", input.internal_machinery_exposure_count],
     ["source_failure_count", input.source_failure_count],
     ["disclosed_source_failure_count", input.disclosed_source_failure_count],
     ["relevant_evidence_source_count", input.relevant_evidence_source_count],
@@ -340,6 +379,11 @@ function validateEvaluationInput(input: AssistantTurnEvaluationInputV1): void {
   if (input.grounded_claim_count > input.claim_count) {
     throw new AssistantTurnEvaluationInputError(
       "Grounded claims cannot exceed observed claims.",
+    );
+  }
+  if (input.subject_bound_claim_count > input.claim_count) {
+    throw new AssistantTurnEvaluationInputError(
+      "Subject-bound claims cannot exceed observed claims.",
     );
   }
   if (input.disclosed_source_failure_count > input.source_failure_count) {
@@ -394,6 +438,8 @@ function validateEvaluationInput(input: AssistantTurnEvaluationInputV1): void {
   }
   for (const [name, value] of [
     ["delivery.complete", input.delivery.complete],
+    ["coverage_boundary_disclosed", input.coverage_boundary_disclosed],
+    ["coverage_boundary_required", input.coverage_boundary_required],
     ["requires_evidence", input.requires_evidence],
     ["response_expected", input.response_expected],
     ["user_correction", input.user_correction],
