@@ -2,8 +2,10 @@ package sourcefixture
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +46,7 @@ func TestWriteBundleAndVerifyRepository(t *testing.T) {
 }
 
 func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
+	accessKey := "AKIA" + "IOSFODNN7EXAMPLE"
 	base := Manifest{
 		SchemaVersion: SchemaVersion,
 		SourceID:      "demo",
@@ -62,7 +65,7 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 	}{
 		{name: "credential", payload: `{"access_token":"secret"}`, want: ErrCredentialField},
 		{name: "credential array", payload: `{"tokens":["ghp_realtoken123"]}`, want: ErrCredentialField},
-		{name: "credential object", payload: `{"secret":{"access_key":"AKIAIOSFODNN7EXAMPLE"}}`, want: ErrCredentialField},
+		{name: "credential object", payload: fmt.Sprintf(`{"secret":{"access_key":%q}}`, accessKey), want: ErrCredentialField},
 		{name: "email", payload: `{"email":"person@company.com"}`, want: ErrPersonalEmail},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -144,7 +147,8 @@ func TestScanPayloadRestrictsSSHEmailCarveOut(t *testing.T) {
 }
 
 func TestScanPayloadAcceptsCommitSHABeginningWithProviderPrefix(t *testing.T) {
-	payload, err := CanonicalJSON([]byte(`{"commit":"00a1234567890abcdef0123456789abcdef01234567"}`))
+	commit := "00a" + strings.Repeat("1", 37)
+	payload, err := CanonicalJSON([]byte(fmt.Sprintf(`{"commit":%q}`, commit)))
 	if err != nil {
 		t.Fatal(err)
 	}

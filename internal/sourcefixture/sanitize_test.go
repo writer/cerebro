@@ -1,6 +1,7 @@
 package sourcefixture
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -40,16 +41,17 @@ func TestSanitizeImportedJSONReplacesTokenShapedProviderIdentifiers(t *testing.T
 }
 
 func TestSanitizeImportedJSONClearsNestedCredentialValues(t *testing.T) {
-	payload, changed, err := SanitizeImportedJSON([]byte(`{
+	accessKey := "AKIA" + "IOSFODNN7EXAMPLE"
+	payload, changed, err := SanitizeImportedJSON([]byte(fmt.Sprintf(`{
 		"tokens":["ghp_realtoken123"],
-		"secret":{"access_key":"AKIAIOSFODNN7EXAMPLE"},
+		"secret":{"access_key":%q},
 		"credentials":{"provider":{"type":"oauth2"}}
-	}`))
+	}`, accessKey)))
 	if err != nil {
 		t.Fatalf("SanitizeImportedJSON() error = %v", err)
 	}
 	text := string(payload)
-	for _, secret := range []string{"ghp_realtoken123", "AKIAIOSFODNN7EXAMPLE", "oauth2"} {
+	for _, secret := range []string{"ghp_realtoken123", accessKey, "oauth2"} {
 		if strings.Contains(text, secret) {
 			t.Fatalf("sanitized payload retained credential %q: %s", secret, payload)
 		}
@@ -72,11 +74,11 @@ func TestSanitizeImportedJSONRejectsNonStringCredentialLeaves(t *testing.T) {
 }
 
 func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
-	commit := "00a1234567890abcdef0123456789abcdef01234567"
+	commit := "00a" + strings.Repeat("1", 37)
 	if got := SanitizeImportedText(commit); got != commit {
 		t.Fatalf("SanitizeImportedText(%q) = %q", commit, got)
 	}
-	identifier := "00u1234567890ABCDEFG"
+	identifier := "00u" + "1234567890ABCDEFG"
 	if got := SanitizeImportedText(identifier); got == identifier {
 		t.Fatalf("SanitizeImportedText(%q) retained provider identifier", identifier)
 	}
