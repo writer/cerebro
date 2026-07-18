@@ -55,6 +55,11 @@ type identityTablesReady struct {
 	directory bool
 }
 
+type connectorTablesReady struct {
+	credentials bool
+	definitions bool
+}
+
 type platformTablesReady struct {
 	auditEvents bool
 }
@@ -109,8 +114,7 @@ type Store struct {
 	grc                       grcTablesReady
 	identity                  identityTablesReady
 	platform                  platformTablesReady
-	connectorCredentialReady  bool
-	connectorDefinitionReady  bool
+	connector                 connectorTablesReady
 	appendLog                 appendLogTablesReady
 	userPreferencesReady      bool
 }

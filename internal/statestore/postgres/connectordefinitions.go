@@ -258,7 +258,7 @@ ORDER BY version DESC`, id)
 }
 
 func (s *Store) ensureConnectorDefinitionTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.connectorDefinitionReady, "connector definition", ensureConnectorDefinitionStatements)
+	return s.ensureStatements(ctx, &s.connector.definitions, "connector definition", ensureConnectorDefinitionStatements)
 }
 
 func validateConnectorDefinitionRecord(record *ports.ConnectorDefinitionRecord) error {
