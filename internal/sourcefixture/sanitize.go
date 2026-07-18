@@ -145,7 +145,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 				typed[key] = sanitized
 				continue
 			}
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				sanitized, err := sanitizeCredentialJSONValue(child, childPath, changed)
 				if err != nil {
 					return nil, err
@@ -283,7 +283,7 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 				sanitized any
 				err       error
 			)
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				sanitized, err = sanitizeCredentialJSONValue(child, childPath, changed)
 			} else {
 				sanitized, err = sanitizeCredentialFields(child, childPath, changed)

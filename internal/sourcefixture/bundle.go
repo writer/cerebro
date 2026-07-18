@@ -440,7 +440,7 @@ func walkJSON(value any, path string) error {
 	case map[string]any:
 		for key, child := range typed {
 			childPath := path + "." + key
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				if err := validateCredentialJSONValue(child, childPath); err != nil {
 					return err
 				}
@@ -504,6 +504,15 @@ func validateCredentialJSONValue(value any, path string) error {
 		}
 	}
 	return fmt.Errorf("%w %s", ErrCredentialField, path)
+}
+
+func isCredentialFieldKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "continuation_token", "cursor_token", "delta_token", "next_page_token", "next_token", "page_token", "pagination_token", "sync_token":
+		return false
+	default:
+		return credentialFieldKey.MatchString(key)
+	}
 }
 
 func isCredentialQueryKey(key string) bool {

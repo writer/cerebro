@@ -80,6 +80,20 @@ func TestSanitizeImportedJSONRejectsNonStringCredentialLeaves(t *testing.T) {
 	}
 }
 
+func TestSanitizeImportedJSONPreservesPaginationTokens(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSON([]byte(`{"meta":{"next_token":"4611686018799963893","pagination_token":"page-2"}}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("changed fields = %#v, want pagination tokens preserved", changed)
+	}
+	text := string(payload)
+	if !strings.Contains(text, `"next_token": "4611686018799963893"`) || !strings.Contains(text, `"pagination_token": "page-2"`) {
+		t.Fatalf("sanitized payload = %s, want pagination tokens preserved", payload)
+	}
+}
+
 func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
 	payload, changed, err := SanitizeImportedJSONWithKeys([]byte(`{
 		"issue_token":73062,
