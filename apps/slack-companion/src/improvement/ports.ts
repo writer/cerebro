@@ -14,8 +14,8 @@ import type {
   ImprovementEvidenceCompletion,
   ImprovementEvidenceInvalidationReceipt,
   ImprovementEvidenceInvalidationRequest,
+  ImprovementEvidenceRecord,
   ImprovementEvidenceSnapshot,
-  ImprovementFreshEvidenceInput,
 } from "./contracts.js";
 
 export interface ImprovementClockPort {
@@ -80,5 +80,5 @@ export interface ImprovementEvidencePort {
     candidateId: string,
     authorGeneration: number,
   ): Promise<ImprovementEvidenceSnapshot | undefined>;
-  recordFresh(input: ImprovementFreshEvidenceInput): Promise<ImprovementEvidenceSnapshot>;
+  recordFresh(input: ImprovementEvidenceRecord): Promise<ImprovementEvidenceSnapshot>;
 }
