@@ -1,0 +1,63 @@
+{
+  "links": {
+    "next": "https://zendesk.example.test/api/v2/tickets.json?page%5Bafter%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1",
+    "prev": "https://zendesk.example.test/api/v2/tickets.json?page%5Bbefore%5D=eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ%3D%3D\u0026page%5Bsize%5D=1"
+  },
+  "meta": {
+    "after_cursor": "eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ==",
+    "before_cursor": "eyJvIjoibmljZV9pZCIsInYiOiJhUUVBQUFBQUFBQUEifQ==",
+    "has_more": true
+  },
+  "tickets": [
+    {
+      "allow_attachments": true,
+      "allow_channelback": false,
+      "assignee_id": 6130907993114,
+      "brand_id": 6130830354842,
+      "collaborator_ids": [],
+      "created_at": "2023-09-09T23:52:05Z",
+      "custom_fields": [],
+      "custom_status_id": 6130892426138,
+      "description": "example-741efe9b",
+      "due_at": null,
+      "email_cc_ids": [],
+      "external_id": null,
+      "follower_ids": [],
+      "followup_ids": [],
+      "forum_topic_id": null,
+      "from_messaging_channel": false,
+      "group_id": 6130852536346,
+      "has_incidents": false,
+      "id": 1,
+      "is_public": true,
+      "organization_id": null,
+      "priority": "normal",
+      "problem_id": null,
+      "raw_subject": "example-4d497be8",
+      "recipient": null,
+      "requester_id": 6130869168922,
+      "satisfaction_rating": null,
+      "sharing_agreement_ids": [],
+      "status": "open",
+      "subject": "example-4d497be8",
+      "submitter_id": 6130907993114,
+      "tags": [
+        "sample",
+        "support",
+        "zendesk"
+      ],
+      "ticket_form_id": 6130830344474,
+      "type": "incident",
+      "updated_at": "2024-02-07T00:11:18Z",
+      "url": "https://zendesk.example.test/api/v2/tickets/1.json",
+      "via": {
+        "channel": "sample_ticket",
+        "source": {
+          "from": {},
+          "rel": null,
+          "to": {}
+        }
+      }
+    }
+  ]
+}

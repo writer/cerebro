@@ -1,3 +1,10 @@
 [
-  "urn:cerebro:tenant:runtime_guardian_factors:sms"
+  "urn:cerebro:tenant:runtime_guardian_factors:sms",
+  "urn:cerebro:tenant:runtime_guardian_factors:push-notification",
+  "urn:cerebro:tenant:runtime_guardian_factors:otp",
+  "urn:cerebro:tenant:runtime_guardian_factors:email",
+  "urn:cerebro:tenant:runtime_guardian_factors:duo",
+  "urn:cerebro:tenant:runtime_guardian_factors:webauthn-roaming",
+  "urn:cerebro:tenant:runtime_guardian_factors:webauthn-platform",
+  "urn:cerebro:tenant:runtime_guardian_factors:recovery-code"
 ]

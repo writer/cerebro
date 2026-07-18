@@ -1,0 +1,11 @@
+{
+  "clients": [
+    {
+      "client_id": "example-2f83121d",
+      "tenant": "auth0-example-tenant"
+    }
+  ],
+  "limit": 50,
+  "start": 0,
+  "total": 1
+}

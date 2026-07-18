@@ -1,0 +1,12 @@
+{
+  "limit": 50,
+  "roles": [
+    {
+      "description": "Owner testaccuserrole",
+      "id": "example-3106dd3f6ca5c5b5",
+      "name": "Test Owner testaccuserrole"
+    }
+  ],
+  "start": 0,
+  "total": 1
+}

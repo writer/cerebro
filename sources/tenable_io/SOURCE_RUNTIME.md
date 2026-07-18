@@ -18,9 +18,9 @@ Generated Source Runtime SDK scaffold for `tenable_io`.
 
 ## Families
 
-- `assets`, emits `tenable_io.assets`, reads `/v1/assets`
+- `assets`, emits `tenable_io.assets`, reads `/assets`
 - `findings`, emits `tenable_io.findings`, reads `/v1/findings`
-- `vulnerabilities`, emits `tenable_io.vulnerabilities`, reads `/v1/vulnerabilities`
+- `vulnerabilities`, emits `tenable_io.vulnerabilities`, reads `/workbenches/vulnerabilities`
 
 ## Tests
 

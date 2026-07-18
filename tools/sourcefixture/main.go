@@ -75,9 +75,26 @@ func resanitize(arguments []string) {
 		if readErr != nil {
 			fail(readErr)
 		}
-		sanitized, changedFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
+		credentialSanitized, credentialFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
 		if sanitizeErr != nil {
 			fail(fmt.Errorf("sanitize %s: %w", responsePath, sanitizeErr))
+		}
+		sanitized, textFields, sanitizeErr := sourcefixture.SanitizeImportedTextValues(credentialSanitized)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize text values in %s: %w", responsePath, sanitizeErr))
+		}
+		changedFields := append(credentialFields, textFields...)
+		originalRequestURL := manifest.Request.URL
+		manifest.Request.URL = sourcefixture.SanitizeImportedText(manifest.Request.URL)
+		if manifest.Request.URL != originalRequestURL {
+			changedFields = append(changedFields, "$request.url")
+		}
+		for name, value := range manifest.Response.Headers {
+			sanitizedValue := sourcefixture.SanitizeImportedText(value)
+			if sanitizedValue != value {
+				manifest.Response.Headers[name] = sanitizedValue
+				changedFields = append(changedFields, "$response.headers."+name)
+			}
 		}
 		if len(changedFields) == 0 {
 			continue
@@ -182,7 +199,7 @@ func importRecording(arguments []string) {
 	var sanitizeKeys stringList
 	flags.Var(&declaredChangedFields, "changed-field", "manually sanitized request or JSON field path (repeatable)")
 	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
-	flags.Var(&sanitizeKeys, "sanitize-key", "replace every string field with this exact key (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every value with this exact key while preserving its JSON type (repeatable)")
 	if err := flags.Parse(arguments); err != nil {
 		fail(err)
 	}

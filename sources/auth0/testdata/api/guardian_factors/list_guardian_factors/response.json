@@ -1,0 +1,42 @@
+[
+  {
+    "enabled": false,
+    "name": "sms",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "push-notification",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "otp",
+    "trial_expired": false
+  },
+  {
+    "enabled": true,
+    "name": "email",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "duo",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "webauthn-roaming",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "webauthn-platform",
+    "trial_expired": false
+  },
+  {
+    "enabled": false,
+    "name": "recovery-code",
+    "trial_expired": false
+  }
+]
