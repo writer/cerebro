@@ -55,6 +55,10 @@ type identityTablesReady struct {
 	directory bool
 }
 
+type platformTablesReady struct {
+	auditEvents bool
+}
+
 type grcTablesReady struct {
 	inventoryScope        bool
 	inventoryAssetReport  bool
@@ -104,6 +108,7 @@ type Store struct {
 	runtimeBlocklistReady     bool
 	grc                       grcTablesReady
 	identity                  identityTablesReady
+	platform                  platformTablesReady
 	connectorCredentialReady  bool
 	connectorDefinitionReady  bool
 	appendLog                 appendLogTablesReady

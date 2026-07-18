@@ -135,6 +135,13 @@ activate policy. Dataset reads use a dedicated least-privilege scope, while
 proposal and approval scopes are reserved separately from candidate execution;
 direct dataset revision writes remain operator-only.
 
+Portable audit-event reads add authenticated route registration, tenant
+resolution, safe error mapping, and state-store capability wiring in bootstrap.
+`internal/auditevents` owns query bounds, deterministic cursors, record
+normalization, and the public response allowlist. Postgres stores a rebuildable
+read projection tied to an existing append-log sequence; it is not a second log
+of record. This contract does not activate an event producer or projector.
+
 The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
 grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in
 [docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
