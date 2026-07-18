@@ -5,28 +5,35 @@ import type {
 
 export interface ConsecutiveFailurePolicy {
   block_after_consecutive_failures: number;
+  observation_receipt_limit: number;
 }
 
-export interface FailureObservationV1 {
+export interface FailureObservationReceiptV1 {
+  consecutive_failures: number;
   failure_fingerprint?: string;
   idempotency_key: string;
   kind: "failure" | "success";
+  status: "blocked" | "degraded" | "reset";
 }
 
 export interface ConsecutiveFailureStateV1 {
+  block_after_consecutive_failures: number;
   consecutive_failures: number;
   failure_fingerprint?: string;
-  last_observation?: FailureObservationV1;
+  observation_receipt_limit: number;
+  observation_receipts: FailureObservationReceiptV1[];
   schema_version: "consecutive-failure-state/v1";
 }
 
 export interface ConsecutiveFailureResult {
+  receipt: FailureObservationReceiptV1;
   replayed: boolean;
   state: ConsecutiveFailureStateV1;
   status: "blocked" | "degraded";
 }
 
 export interface FailureResetResult {
+  receipt: FailureObservationReceiptV1;
   replayed: boolean;
   state: ConsecutiveFailureStateV1;
   status: "reset";
@@ -100,12 +107,25 @@ type DependencyInvocationResult =
 
 interface DependencyCircuitState {
   failures: ConsecutiveFailureStateV1;
+  in_flight: Map<string, InFlightDependencyInvocation>;
   invocations: Map<string, DependencyInvocationResult>;
 }
 
-export function emptyConsecutiveFailureState(): ConsecutiveFailureStateV1 {
+interface InFlightDependencyInvocation {
+  input_fingerprint: string;
+  promise: Promise<unknown>;
+}
+
+export function emptyConsecutiveFailureState(
+  inputPolicy: ConsecutiveFailurePolicy,
+): ConsecutiveFailureStateV1 {
+  const policy = validatePolicy(inputPolicy);
   return {
+    block_after_consecutive_failures:
+      policy.block_after_consecutive_failures,
     consecutive_failures: 0,
+    observation_receipt_limit: policy.observation_receipt_limit,
+    observation_receipts: [],
     schema_version: "consecutive-failure-state/v1",
   };
 }
@@ -117,7 +137,7 @@ export function recordConsecutiveFailure(input: {
   state: ConsecutiveFailureStateV1;
 }): ConsecutiveFailureResult {
   const policy = validatePolicy(input.policy);
-  const state = validateState(input.state);
+  const state = validateState(input.state, policy);
   const idempotencyKey = requiredValue(
     input.idempotency_key,
     "idempotency_key",
@@ -126,59 +146,86 @@ export function recordConsecutiveFailure(input: {
     input.failure_fingerprint,
     "failure_fingerprint",
   );
-  const observation: FailureObservationV1 = {
-    failure_fingerprint: failureFingerprint,
-    idempotency_key: idempotencyKey,
-    kind: "failure",
-  };
-
-  if (state.last_observation?.idempotency_key === idempotencyKey) {
-    assertSameObservation(state.last_observation, observation);
+  const prior = findObservationReceipt(state, idempotencyKey);
+  if (prior !== undefined) {
+    assertSameObservation(prior, "failure", failureFingerprint);
+    if (prior.status === "reset") {
+      throw new FailurePolicyInvariantError(
+        "a failure receipt cannot have reset status",
+      );
+    }
     return {
+      receipt: prior,
       replayed: true,
       state,
-      status: failureStatus(state.consecutive_failures, policy),
+      status: prior.status,
     };
   }
 
+  assertObservationCapacity(state);
   const consecutiveFailures =
     state.failure_fingerprint === failureFingerprint
       ? state.consecutive_failures + 1
       : 1;
-  const next: ConsecutiveFailureStateV1 = {
+  const status = failureStatus(consecutiveFailures, policy);
+  const receipt: FailureObservationReceiptV1 = {
     consecutive_failures: consecutiveFailures,
     failure_fingerprint: failureFingerprint,
-    last_observation: observation,
-    schema_version: "consecutive-failure-state/v1",
+    idempotency_key: idempotencyKey,
+    kind: "failure",
+    status,
+  };
+  const next: ConsecutiveFailureStateV1 = {
+    ...state,
+    consecutive_failures: consecutiveFailures,
+    failure_fingerprint: failureFingerprint,
+    observation_receipts: [...state.observation_receipts, receipt],
   };
   return {
+    receipt,
     replayed: false,
     state: next,
-    status: failureStatus(consecutiveFailures, policy),
+    status,
   };
 }
 
 export function resetConsecutiveFailures(input: {
   idempotency_key: string;
+  policy: ConsecutiveFailurePolicy;
   state: ConsecutiveFailureStateV1;
 }): FailureResetResult {
-  const state = validateState(input.state);
-  const observation: FailureObservationV1 = {
-    idempotency_key: requiredValue(input.idempotency_key, "idempotency_key"),
-    kind: "success",
-  };
-
-  if (state.last_observation?.idempotency_key === observation.idempotency_key) {
-    assertSameObservation(state.last_observation, observation);
-    return { replayed: true, state, status: "reset" };
+  const policy = validatePolicy(input.policy);
+  const state = validateState(input.state, policy);
+  const idempotencyKey = requiredValue(
+    input.idempotency_key,
+    "idempotency_key",
+  );
+  const prior = findObservationReceipt(state, idempotencyKey);
+  if (prior !== undefined) {
+    assertSameObservation(prior, "success");
+    if (prior.status !== "reset") {
+      throw new FailurePolicyInvariantError(
+        "a success receipt must have reset status",
+      );
+    }
+    return { receipt: prior, replayed: true, state, status: "reset" };
   }
 
+  assertObservationCapacity(state);
+  const receipt: FailureObservationReceiptV1 = {
+    consecutive_failures: 0,
+    idempotency_key: idempotencyKey,
+    kind: "success",
+    status: "reset",
+  };
   return {
+    receipt,
     replayed: false,
     state: {
+      ...state,
       consecutive_failures: 0,
-      last_observation: observation,
-      schema_version: "consecutive-failure-state/v1",
+      failure_fingerprint: undefined,
+      observation_receipts: [...state.observation_receipts, receipt],
     },
     status: "reset",
   };
@@ -249,11 +296,75 @@ export class TurnDependencyCircuit {
       return prior.value as T;
     }
 
+    const inFlight = dependency.in_flight.get(idempotencyKey);
+    if (inFlight !== undefined) {
+      if (inFlight.input_fingerprint !== inputFingerprint) {
+        throw new FailurePolicyIdempotencyConflictError();
+      }
+      return inFlight.promise as Promise<T>;
+    }
+
     const snapshot = this.snapshot(dependencyRef);
     if (snapshot.open) {
       throw new DependencyCircuitOpenError(dependencyRef, snapshot);
     }
+    assertObservationCapacity(
+      dependency.failures,
+      dependency.in_flight.size,
+    );
 
+    const promise = this.runInvocation(
+      dependency,
+      idempotencyKey,
+      inputFingerprint,
+      operation,
+    );
+    dependency.in_flight.set(idempotencyKey, {
+      input_fingerprint: inputFingerprint,
+      promise,
+    });
+    try {
+      return await promise;
+    } finally {
+      const current = dependency.in_flight.get(idempotencyKey);
+      if (current?.promise === promise) {
+        dependency.in_flight.delete(idempotencyKey);
+      }
+    }
+  }
+
+  snapshot(dependencyRef: string): DependencyCircuitSnapshot {
+    const dependency = this.dependency(
+      requiredValue(dependencyRef, "dependency_ref"),
+    );
+    return {
+      consecutive_failures: dependency.failures.consecutive_failures,
+      failure_fingerprint: dependency.failures.failure_fingerprint,
+      open:
+        dependency.failures.consecutive_failures >=
+        this.policy.block_after_consecutive_failures,
+    };
+  }
+
+  private dependency(dependencyRef: string): DependencyCircuitState {
+    let dependency = this.dependencies.get(dependencyRef);
+    if (dependency === undefined) {
+      dependency = {
+        failures: emptyConsecutiveFailureState(this.policy),
+        in_flight: new Map(),
+        invocations: new Map(),
+      };
+      this.dependencies.set(dependencyRef, dependency);
+    }
+    return dependency;
+  }
+
+  private async runInvocation<T>(
+    dependency: DependencyCircuitState,
+    idempotencyKey: string,
+    inputFingerprint: string,
+    operation: () => T | Promise<T>,
+  ): Promise<T> {
     let value: T;
     try {
       value = await operation();
@@ -278,6 +389,7 @@ export class TurnDependencyCircuit {
 
     dependency.failures = resetConsecutiveFailures({
       idempotency_key: idempotencyKey,
+      policy: this.policy,
       state: dependency.failures,
     }).state;
     dependency.invocations.set(idempotencyKey, {
@@ -286,31 +398,6 @@ export class TurnDependencyCircuit {
       value,
     });
     return value;
-  }
-
-  snapshot(dependencyRef: string): DependencyCircuitSnapshot {
-    const dependency = this.dependency(
-      requiredValue(dependencyRef, "dependency_ref"),
-    );
-    return {
-      consecutive_failures: dependency.failures.consecutive_failures,
-      failure_fingerprint: dependency.failures.failure_fingerprint,
-      open:
-        dependency.failures.consecutive_failures >=
-        this.policy.block_after_consecutive_failures,
-    };
-  }
-
-  private dependency(dependencyRef: string): DependencyCircuitState {
-    let dependency = this.dependencies.get(dependencyRef);
-    if (dependency === undefined) {
-      dependency = {
-        failures: emptyConsecutiveFailureState(),
-        invocations: new Map(),
-      };
-      this.dependencies.set(dependencyRef, dependency);
-    }
-    return dependency;
   }
 }
 
@@ -325,6 +412,13 @@ export class FailurePolicyIdempotencyConflictError extends Error {
   constructor() {
     super("idempotency key belongs to a different observation");
     this.name = "FailurePolicyIdempotencyConflictError";
+  }
+}
+
+export class FailureObservationLimitError extends FailurePolicyInvariantError {
+  constructor() {
+    super("failure observation receipt limit is exhausted");
+    this.name = "FailureObservationLimitError";
   }
 }
 
@@ -356,11 +450,28 @@ function validatePolicy(
       "block_after_consecutive_failures must be a positive integer",
     );
   }
+  if (
+    !Number.isSafeInteger(policy.observation_receipt_limit) ||
+    policy.observation_receipt_limit <= 0
+  ) {
+    throw new FailurePolicyInvariantError(
+      "observation_receipt_limit must be a positive integer",
+    );
+  }
+  if (
+    policy.observation_receipt_limit <
+    policy.block_after_consecutive_failures
+  ) {
+    throw new FailurePolicyInvariantError(
+      "observation_receipt_limit must cover the failure threshold",
+    );
+  }
   return policy;
 }
 
 function validateState(
   state: ConsecutiveFailureStateV1,
+  policy: ConsecutiveFailurePolicy,
 ): ConsecutiveFailureStateV1 {
   if (state.schema_version !== "consecutive-failure-state/v1") {
     throw new FailurePolicyInvariantError(
@@ -368,53 +479,85 @@ function validateState(
     );
   }
   if (
-    !Number.isSafeInteger(state.consecutive_failures) ||
-    state.consecutive_failures < 0
+    state.block_after_consecutive_failures !==
+      policy.block_after_consecutive_failures ||
+    state.observation_receipt_limit !== policy.observation_receipt_limit
   ) {
     throw new FailurePolicyInvariantError(
-      "consecutive_failures must be a non-negative integer",
+      "failure policy does not match the persisted state",
+    );
+  }
+  if (!Array.isArray(state.observation_receipts)) {
+    throw new FailurePolicyInvariantError(
+      "observation_receipts must be an array",
     );
   }
   if (
-    (state.consecutive_failures === 0) !==
-    (state.failure_fingerprint === undefined)
+    state.observation_receipts.length > state.observation_receipt_limit
   ) {
     throw new FailurePolicyInvariantError(
-      "failure fingerprint and consecutive count must describe the same streak",
+      "observation receipt limit was exceeded",
     );
   }
-  if (state.failure_fingerprint !== undefined) {
-    assertCanonicalValue(state.failure_fingerprint, "failure_fingerprint");
-  }
-  if (state.last_observation !== undefined) {
-    assertCanonicalValue(
-      state.last_observation.idempotency_key,
-      "idempotency_key",
-    );
-    if (state.last_observation.kind === "failure") {
+
+  const idempotencyKeys = new Set<string>();
+  let consecutiveFailures = 0;
+  let failureFingerprint: string | undefined;
+  for (const receipt of state.observation_receipts) {
+    assertCanonicalValue(receipt.idempotency_key, "idempotency_key");
+    if (idempotencyKeys.has(receipt.idempotency_key)) {
+      throw new FailurePolicyInvariantError(
+        "observation receipts must have unique idempotency keys",
+      );
+    }
+    idempotencyKeys.add(receipt.idempotency_key);
+
+    if (receipt.kind === "failure") {
       assertCanonicalValue(
-        state.last_observation.failure_fingerprint,
+        receipt.failure_fingerprint,
         "failure_fingerprint",
       );
-      if (
-        state.last_observation.failure_fingerprint !==
-        state.failure_fingerprint
-      ) {
+      consecutiveFailures =
+        failureFingerprint === receipt.failure_fingerprint
+          ? consecutiveFailures + 1
+          : 1;
+      failureFingerprint = receipt.failure_fingerprint;
+      if (receipt.consecutive_failures !== consecutiveFailures) {
         throw new FailurePolicyInvariantError(
-          "the latest failure observation must match the active streak",
+          "failure receipt count does not match its history",
         );
       }
-    } else if (state.last_observation.kind !== "success") {
+      if (receipt.status !== failureStatus(consecutiveFailures, policy)) {
+        throw new FailurePolicyInvariantError(
+          "failure receipt status does not match its history",
+        );
+      }
+    } else if (receipt.kind !== "success") {
       throw new FailurePolicyInvariantError("unknown failure observation kind");
-    } else if (state.last_observation.failure_fingerprint !== undefined) {
+    } else if (receipt.failure_fingerprint !== undefined) {
       throw new FailurePolicyInvariantError(
         "a success observation cannot carry a failure fingerprint",
       );
-    } else if (state.consecutive_failures !== 0) {
+    } else if (
+      receipt.consecutive_failures !== 0 ||
+      receipt.status !== "reset"
+    ) {
       throw new FailurePolicyInvariantError(
-        "a success observation must reset the active streak",
+        "a success receipt must record a reset streak",
       );
+    } else {
+      consecutiveFailures = 0;
+      failureFingerprint = undefined;
     }
+  }
+
+  if (
+    state.consecutive_failures !== consecutiveFailures ||
+    state.failure_fingerprint !== failureFingerprint
+  ) {
+    throw new FailurePolicyInvariantError(
+      "failure streak does not match observation receipt history",
+    );
   }
   return state;
 }
@@ -429,14 +572,36 @@ function failureStatus(
 }
 
 function assertSameObservation(
-  prior: FailureObservationV1,
-  next: FailureObservationV1,
+  prior: FailureObservationReceiptV1,
+  kind: FailureObservationReceiptV1["kind"],
+  failureFingerprint?: string,
 ): void {
   if (
-    prior.kind !== next.kind ||
-    prior.failure_fingerprint !== next.failure_fingerprint
+    prior.kind !== kind ||
+    prior.failure_fingerprint !== failureFingerprint
   ) {
     throw new FailurePolicyIdempotencyConflictError();
+  }
+}
+
+function findObservationReceipt(
+  state: ConsecutiveFailureStateV1,
+  idempotencyKey: string,
+): FailureObservationReceiptV1 | undefined {
+  return state.observation_receipts.find(
+    (receipt) => receipt.idempotency_key === idempotencyKey,
+  );
+}
+
+function assertObservationCapacity(
+  state: ConsecutiveFailureStateV1,
+  reservedObservations = 0,
+): void {
+  if (
+    state.observation_receipts.length + reservedObservations >=
+    state.observation_receipt_limit
+  ) {
+    throw new FailureObservationLimitError();
   }
 }
 
