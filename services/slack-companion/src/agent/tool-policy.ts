@@ -112,11 +112,29 @@ const TOOL_POLICIES = new Map<string, Omit<SecurityAgentToolPolicy, "name">>([
     approvalRequired: false,
     summary: "Start one durable GitHub security-alert case after current evidence identifies its finding and repository.",
   }],
+  ["operator_security_case_open_work_item", {
+    tier: "autonomy_write",
+    allowedIntents: ["security_answer", "code_change", "response_action"],
+    approvalRequired: false,
+    summary: "Open one durable operator case for an existing canonical Cerebro work item.",
+  }],
   ["operator_security_case_attach_fix", {
     tier: "autonomy_write",
     allowedIntents: ["code_change", "response_action"],
     approvalRequired: false,
     summary: "Attach a bounded reviewable fix and verified-closure journey to one security case.",
+  }],
+  ["operator_security_case_command", {
+    tier: "autonomy_write",
+    allowedIntents: ["response_action"],
+    approvalRequired: false,
+    summary: "Attach one version-checked canonical work-item command to a durable approval flow.",
+  }],
+  ["operator_security_case_execute_command", {
+    tier: "approval",
+    allowedIntents: ["response_action"],
+    approvalRequired: true,
+    summary: "Apply one approved, version-checked command to a canonical Cerebro work item.",
   }],
   ["operator_task_artifact_record", {
     tier: "autonomy_write",
@@ -322,7 +340,7 @@ export function toolPolicyManifest(tools: ToolPolicySummary[]): Record<string, u
   });
   return {
     default_policy: "Tools are read-only unless listed as memory, workspace, shell, GitHub, Slack message, or ticket write tools.",
-    write_boundary: "Policy-candidate tools may store, prove, and shadow private redacted hypotheses, but cannot promote a rule, create findings, write the graph, open a pull request, or merge code. Self-improvement can submit one operator-bound draft PR to the configured companion repository. General workspace writes, bounded shell, and GitHub PR creation require a code-change or explicit security-case response-action intent. Jira and Linear ticket writes require an explicit response-action ticket request. A Slack risk check requires current identity and risk evidence in a configured security channel and remains self-attestation. Cerebro source refreshes, finding writes, and provider actions require execute=true plus reviewed approval.",
+    write_boundary: "Policy-candidate tools may store, prove, and shadow private redacted hypotheses, but cannot promote a rule, create findings, write the graph, open a pull request, or merge code. Self-improvement can submit one operator-bound draft PR to the configured companion repository. General workspace writes, bounded shell, and GitHub PR creation require a code-change or explicit security-case response-action intent. Jira and Linear ticket writes require an explicit response-action ticket request. A Slack risk check requires current identity and risk evidence in a configured security channel and remains self-attestation. Cerebro source refreshes, finding writes, canonical work-item writes, and provider actions require execute=true plus reviewed approval.",
     tools: rows,
   };
 }
@@ -342,7 +360,7 @@ export function toolPolicyPrompt(tools: ToolPolicySummary[]): string {
     "Jira and Linear ticket write tools are available only for explicit ticket requests.",
     "The Slack risk-check tool may contact one evidence-linked person from a configured security channel. Treat every answer as unverified self-attestation and continue source verification.",
     "Policy-candidate tools may create, prove, and shadow a private host-derived hypothesis for a configured operator or configured security-triage channel. Cross-candidate reads require an operator. They cannot promote a policy, create findings, write the graph, open a pull request, or merge code.",
-    "Cerebro source refreshes, finding writes, and provider actions need execute=true and reviewed approval; do read-only checks, dry runs, and approval-ready plans first.",
+    "Cerebro source refreshes, finding writes, canonical work-item writes, and provider actions need execute=true and reviewed approval; do read-only checks, dry runs, and approval-ready plans first.",
     ...rows,
   ].join("\n");
 }

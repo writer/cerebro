@@ -23,6 +23,10 @@ import type {
   ClaimVerification,
   DecisionPacket,
   DecisionPacketBuildRequest,
+  ComplianceWorkCommand,
+  ComplianceWorkItemPage,
+  ComplianceWorkItemRecord,
+  ComplianceWorkItemState,
   Finding,
   FindingEvidence,
   GraphActionRequest,
@@ -243,6 +247,32 @@ export class CerebroClient {
     const query = new URLSearchParams({ finding_id: findingId, limit: String(limit) });
     const response = await this.requestJson<JsonRecord>("read", "GET", `/source-runtimes/${encodeURIComponent(runtimeId)}/finding-evidence?${query}`);
     return arrayFrom(response, "evidence") as FindingEvidence[];
+  }
+
+  async listComplianceWorkItems(options: {
+    state?: ComplianceWorkItemState;
+    ownerId?: string;
+    cursor?: string;
+    limit?: number;
+  } = {}): Promise<ComplianceWorkItemPage> {
+    const query = new URLSearchParams({ tenant_id: this.config.cerebro.tenantId });
+    if (options.state) query.set("state", options.state);
+    if (options.ownerId) query.set("owner_id", options.ownerId);
+    if (options.cursor) query.set("cursor", options.cursor);
+    if (options.limit) query.set("limit", String(options.limit));
+    return this.requestJson<ComplianceWorkItemPage>("read", "GET", `/grc/work-items?${query}`);
+  }
+
+  async getComplianceWorkItem(workItemId: string): Promise<ComplianceWorkItemRecord> {
+    const id = requiredPathSegment(workItemId, "work item ID");
+    const query = new URLSearchParams({ tenant_id: this.config.cerebro.tenantId });
+    return this.requestJson<ComplianceWorkItemRecord>("read", "GET", `/grc/work-items/${encodeURIComponent(id)}?${query}`);
+  }
+
+  async commandComplianceWorkItem(workItemId: string, command: ComplianceWorkCommand): Promise<ComplianceWorkItemRecord> {
+    const id = requiredPathSegment(workItemId, "work item ID");
+    const query = new URLSearchParams({ tenant_id: this.config.cerebro.tenantId });
+    return this.requestJson<ComplianceWorkItemRecord>("findings", "POST", `/grc/work-items/${encodeURIComponent(id)}/commands?${query}`, command);
   }
 
   async buildEvidencePacket(request: JsonRecord): Promise<JsonRecord> {
@@ -492,10 +522,17 @@ function normalizeCerebroRoute(path: string): string {
     .replace(/\/connectors\/[^/?]+/g, "/connectors/{sourceID}")
     .replace(/\/connector-definitions\/[^/?]+/g, "/connector-definitions/{definitionID}")
     .replace(/\/findings\/[^/?]+/g, "/findings/{findingID}")
+    .replace(/\/grc\/work-items\/[^/?]+/g, "/grc/work-items/{workItemID}")
     .replace(/\/platform\/jobs\/[^/?]+/g, "/platform/jobs/{jobID}")
     .replace(/\/policy-candidates\/[^/?]+/g, "/policy-candidates/{candidateID}")
     .replace(/\/api\/v1\/platform\/decision-packets\/[^/?]+/g, "/api/v1/platform/decision-packets/{packetID}")
     .replace(/\/entities\/[^/?]+/g, "/entities/{entityID}");
+}
+
+function requiredPathSegment(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${label} is required.`);
+  return normalized;
 }
 
 function httpStatusClass(statusCode: number): string {

@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { canonicalResourceRef, type AgentAcceptanceCriterion, type AgentResourceRef } from "../autonomy/agent-run.js";
 import type { AutonomyPlanStep, AutonomousGoalRecord } from "../autonomy/goals.js";
-import { securityCaseContextSchema, type SecurityCaseContext, type SecurityCaseState } from "./types.js";
+import type { ComplianceWorkItem } from "../cerebro/types.js";
+import {
+  securityCaseContextSchema,
+  githubSecurityCaseContextSchema,
+  type CerebroWorkItemCaseContext,
+  type GithubSecurityCaseContext,
+  type SecurityCaseContext,
+  type SecurityCaseState,
+} from "./types.js";
 
 export interface GithubSecurityCaseInput {
   title: string;
@@ -28,10 +36,14 @@ export interface SecurityCaseView {
   state: SecurityCaseState;
   owner?: string;
   nextAction?: string;
-  alertRef: string;
-  repository: string;
-  runtimeId: string;
-  findingId: string;
+  alertRef?: string;
+  repository?: string;
+  runtimeId?: string;
+  findingId?: string;
+  workItemId?: string;
+  workItemVersion?: number;
+  workItemState?: ComplianceWorkItem["state"];
+  assuranceDecisionId?: string;
   goalId: string;
   goalStatus: AutonomousGoalRecord["status"];
   blockers: string[];
@@ -42,13 +54,41 @@ export interface SecurityCaseView {
   updatedAt: string;
 }
 
-export function createGithubSecurityCase(input: GithubSecurityCaseInput): {
-  context: SecurityCaseContext;
+export function createCerebroWorkItemSecurityCase(item: ComplianceWorkItem, title?: string): {
+  context: CerebroWorkItemCaseContext;
   plan: AutonomyPlanStep[];
   resourceRefs: AgentResourceRef[];
   acceptanceCriteria: AgentAcceptanceCriterion[];
 } {
-  const context = securityCaseContextSchema.parse({
+  const context = cerebroWorkItemCaseContext(item, title);
+  return {
+    context,
+    plan: cerebroWorkItemCasePlan(item),
+    resourceRefs: cerebroWorkItemCaseResources(item),
+    acceptanceCriteria: cerebroWorkItemCaseCriteria(item),
+  };
+}
+
+export function syncCerebroWorkItemCase(
+  current: CerebroWorkItemCaseContext,
+  item: ComplianceWorkItem,
+  assuranceDecisionId?: string,
+): { context: CerebroWorkItemCaseContext; plan: AutonomyPlanStep[]; resourceRefs: AgentResourceRef[] } {
+  if (current.workItemId !== item.id) throw new Error("Canonical work item does not match this security case.");
+  return {
+    context: cerebroWorkItemCaseContext(item, current.title, assuranceDecisionId ?? current.assuranceDecisionId),
+    plan: cerebroWorkItemCasePlan(item),
+    resourceRefs: cerebroWorkItemCaseResources(item),
+  };
+}
+
+export function createGithubSecurityCase(input: GithubSecurityCaseInput): {
+  context: GithubSecurityCaseContext;
+  plan: AutonomyPlanStep[];
+  resourceRefs: AgentResourceRef[];
+  acceptanceCriteria: AgentAcceptanceCriterion[];
+} {
+  const context = githubSecurityCaseContextSchema.parse({
     id: `case-${randomUUID()}`,
     kind: "github_security_alert",
     title: input.title,
@@ -71,7 +111,7 @@ export function attachGithubSecurityCaseFix(
   goal: AutonomousGoalRecord,
   fix: GithubSecurityCaseFixInput,
 ): AutonomyPlanStep[] {
-  const context = requiredSecurityCase(goal);
+  const context = requiredGithubSecurityCase(goal);
   if (fix.files.length === 0) throw new Error("At least one changed file is required before a reviewable fix can be attached.");
   const existing = new Map(goal.currentPlan.map((step) => [step.id, step]));
   const initial = initialGithubSecurityCasePlan(context);
@@ -166,17 +206,13 @@ export function securityCaseView(goal: AutonomousGoalRecord): SecurityCaseView |
   const context = goal.securityCase;
   if (!context) return undefined;
   const next = nextCaseStep(goal);
-  return {
+  const shared = {
     id: context.id,
     kind: context.kind,
     title: context.title,
     state: securityCaseState(goal, next),
     owner: context.owner,
     nextAction: next?.title,
-    alertRef: context.alertRef,
-    repository: context.repository,
-    runtimeId: context.runtimeId,
-    findingId: context.findingId,
     goalId: goal.id,
     goalStatus: goal.status,
     blockers: [...goal.blockers],
@@ -186,9 +222,24 @@ export function securityCaseView(goal: AutonomousGoalRecord): SecurityCaseView |
     verification: goal.completionReceipt,
     updatedAt: goal.updatedAt,
   };
+  return context.kind === "github_security_alert"
+    ? {
+        ...shared,
+        alertRef: context.alertRef,
+        repository: context.repository,
+        runtimeId: context.runtimeId,
+        findingId: context.findingId,
+      }
+    : {
+        ...shared,
+        workItemId: context.workItemId,
+        workItemVersion: context.workItemVersion,
+        workItemState: context.workItemState,
+        assuranceDecisionId: context.assuranceDecisionId,
+      };
 }
 
-function initialGithubSecurityCasePlan(context: SecurityCaseContext): AutonomyPlanStep[] {
+function initialGithubSecurityCasePlan(context: GithubSecurityCaseContext): AutonomyPlanStep[] {
   return [
     {
       id: "investigate-finding",
@@ -218,7 +269,7 @@ function initialGithubSecurityCasePlan(context: SecurityCaseContext): AutonomyPl
   ];
 }
 
-function githubSecurityCaseResources(context: SecurityCaseContext): AgentResourceRef[] {
+function githubSecurityCaseResources(context: GithubSecurityCaseContext): AgentResourceRef[] {
   return [
     canonicalResourceRef({ kind: "github", id: context.alertRef, source: "github_security_alert", label: context.title }),
     canonicalResourceRef({ kind: "github", id: context.repository, source: "github", label: context.repository }),
@@ -235,6 +286,93 @@ function githubSecurityCaseCriteria(): AgentAcceptanceCriterion[] {
   ];
 }
 
+function cerebroWorkItemCaseContext(
+  item: ComplianceWorkItem,
+  title?: string,
+  assuranceDecisionId?: string,
+): CerebroWorkItemCaseContext {
+  return securityCaseContextSchema.parse({
+    id: item.id,
+    kind: "cerebro_work_item",
+    title: (title?.trim() || `${item.basis.control_id}: ${item.basis.subject_id}`).slice(0, 300),
+    owner: item.owner_id || undefined,
+    desiredOutcome: "Record remediation, evaluate fresh evidence, and resolve the canonical Cerebro work item.",
+    workItemId: item.id,
+    workItemVersion: item.version,
+    workItemState: item.state,
+    programId: item.basis.program_id,
+    scopeRevisionId: item.basis.scope_revision_id,
+    controlId: item.basis.control_id,
+    objectiveId: item.basis.objective_id,
+    subjectId: item.basis.subject_id,
+    sourceId: item.basis.source_id,
+    findingIds: workItemFindingIds(item),
+    assuranceDecisionId: assuranceDecisionId ?? item.verification?.assurance_decision_id,
+  }) as CerebroWorkItemCaseContext;
+}
+
+function cerebroWorkItemCasePlan(item: ComplianceWorkItem): AutonomyPlanStep[] {
+  const remediated = Boolean(item.last_remediated_at || item.verification);
+  const verified = Boolean(item.verification);
+  return [
+    {
+      id: "inspect-work-item",
+      title: "Inspect the canonical work item",
+      status: "completed",
+      dependsOn: [],
+    },
+    {
+      id: "record-remediation",
+      title: "Record the completed remediation",
+      status: remediated ? "completed" : "pending",
+      dependsOn: ["inspect-work-item"],
+    },
+    {
+      id: "record-post-change-assurance",
+      title: "Record a fresh post-change assurance decision",
+      status: verified ? "completed" : "pending",
+      dependsOn: ["record-remediation"],
+    },
+    {
+      id: "verify-canonical-work",
+      title: "Verify and resolve the canonical work item",
+      status: verified && item.state === "resolved" ? "completed" : "pending",
+      dependsOn: ["record-post-change-assurance"],
+    },
+  ];
+}
+
+function cerebroWorkItemCaseResources(item: ComplianceWorkItem): AgentResourceRef[] {
+  return [
+    canonicalResourceRef({ kind: "cerebro", id: `grc/work-items/${item.id}`, source: "cerebro_compliance_work", label: item.id }),
+    canonicalResourceRef({ kind: "generic", id: item.basis.subject_id, source: item.basis.source_id, label: item.basis.subject_id }),
+    ...workItemFindingIds(item).map((findingId) => canonicalResourceRef({
+      kind: "cerebro",
+      id: `findings/${findingId}`,
+      source: "cerebro_findings",
+      label: findingId,
+    })),
+  ];
+}
+
+function cerebroWorkItemCaseCriteria(item: ComplianceWorkItem): AgentAcceptanceCriterion[] {
+  return [
+    {
+      ...criterion("canonical-work-loaded", "The current canonical work item was loaded from Cerebro.", "tool_success"),
+      status: "passed",
+      checkedAt: item.updated_at,
+      result: "The canonical work item was loaded from Cerebro.",
+    },
+    criterion("remediation-recorded", "Cerebro records the completed remediation and its actor.", "field_present", "work_item.item.last_remediated_at"),
+    criterion("assurance-decision-recorded", "The work item references a fresh post-change assurance decision.", "field_present", "work_item.item.verification.assurance_decision_id"),
+    criterion("canonical-work-resolved", "Cerebro reports the canonical work item as resolved.", "field_equals", "work_item.item.state", "resolved"),
+  ];
+}
+
+function workItemFindingIds(item: ComplianceWorkItem): string[] {
+  return [...new Set(item.occurrences.flatMap((occurrence) => occurrence.finding_ids ?? []))].slice(0, 100);
+}
+
 function criterion(
   id: string,
   description: string,
@@ -245,8 +383,9 @@ function criterion(
   return { id, description, kind, field, expected, status: "pending", evidenceRefs: [] };
 }
 
-function requiredSecurityCase(goal: AutonomousGoalRecord): SecurityCaseContext {
+function requiredGithubSecurityCase(goal: AutonomousGoalRecord): GithubSecurityCaseContext {
   if (!goal.securityCase) throw new Error("Security case not found on this durable run.");
+  if (goal.securityCase.kind !== "github_security_alert") throw new Error("This action requires a GitHub security-alert case.");
   return goal.securityCase;
 }
 
@@ -264,6 +403,22 @@ function nextCaseStep(goal: AutonomousGoalRecord): AutonomyPlanStep | undefined 
 }
 
 function securityCaseState(goal: AutonomousGoalRecord, next: AutonomyPlanStep | undefined): SecurityCaseState {
+  if (goal.securityCase?.kind === "cerebro_work_item") {
+    switch (goal.securityCase.workItemState) {
+      case "resolved":
+      case "accepted":
+      case "superseded":
+        return "closed";
+      case "blocked":
+        return "blocked";
+      case "snoozed":
+        return "waiting_on_owner";
+      case "in_progress":
+        return goal.securityCase.assuranceDecisionId ? "verifying" : "needs_evidence";
+      case "open":
+        return "ready_to_act";
+    }
+  }
   if (goal.status === "completed" && goal.completionReceipt?.status === "complete") return "closed";
   if (goal.status === "blocked" || goal.status === "cancelled") return "blocked";
   if (goal.status === "approval_needed") return "needs_decision";

@@ -125,6 +125,7 @@ test("security agent tool policy allows a reviewable fix for an explicit securit
 
   assert.equal(intent, "response_action");
   assert.equal(evaluateSecurityAgentToolCall("operator_security_case_start", intent).allowed, true);
+  assert.equal(evaluateSecurityAgentToolCall("operator_security_case_open_work_item", intent).allowed, true);
   assert.equal(evaluateSecurityAgentToolCall("operator_security_case_attach_fix", intent).allowed, true);
   assert.equal(evaluateSecurityAgentToolCall("cerebro_code_workspace_patch", intent).allowed, true);
   assert.equal(evaluateSecurityAgentToolCall("cerebro_code_github_pr", intent).allowed, true);
@@ -138,11 +139,20 @@ test("security agent tool policy approval-gates Cerebro response writes", () => 
   assert.equal(findingIntent, "response_action");
   const sourceDecision = evaluateSecurityAgentToolCall("source_run_trigger", sourceIntent);
   const findingDecision = evaluateSecurityAgentToolCall("finding_update", findingIntent);
+  const workItemPlanDecision = evaluateSecurityAgentToolCall("operator_security_case_command", findingIntent);
+  const workItemDecision = evaluateSecurityAgentToolCall("operator_security_case_execute_command", findingIntent);
   assert.equal(sourceDecision.allowed, true);
   assert.equal(sourceDecision.policy.tier, "approval");
   assert.equal(sourceDecision.policy.approvalRequired, true);
   assert.equal(findingDecision.allowed, true);
   assert.equal(findingDecision.policy.tier, "approval");
+  assert.equal(workItemPlanDecision.allowed, true);
+  assert.equal(workItemPlanDecision.policy.tier, "autonomy_write");
+  assert.equal(workItemPlanDecision.policy.approvalRequired, false);
+  assert.equal(workItemDecision.allowed, true);
+  assert.equal(workItemDecision.policy.tier, "approval");
+  assert.equal(workItemDecision.policy.approvalRequired, true);
+  assert.equal(evaluateSecurityAgentToolCall("operator_security_case_execute_command", "security_answer").allowed, false);
   assert.equal(evaluateSecurityAgentToolCall("finding_update", "security_answer").allowed, false);
 });
 

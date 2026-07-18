@@ -54,6 +54,7 @@ export type SecurityToolSideEffect =
   | "autonomy_goal"
   | "cerebro_finding_update"
   | "cerebro_policy_candidate"
+  | "cerebro_work_item_update"
   | "cerebro_source_run"
   | "cerebro_graph_action"
   | "none"
@@ -393,14 +394,39 @@ const EXACT_METADATA = exactMetadata([
     sideEffect: "autonomy_goal",
     targetSource: "model_arguments",
   }],
+  ["operator_security_case_open_work_item", {
+    authority: "autonomy_write",
+    credentialScope: "cerebro_read_key",
+    family: "operator",
+    sideEffect: "autonomy_goal",
+    targetSource: "model_arguments",
+  }],
   ["operator_security_case_attach_fix", {
     authority: "autonomy_write",
     family: "operator",
     sideEffect: "autonomy_goal",
     targetSource: "model_arguments",
   }],
+  ["operator_security_case_command", {
+    authority: "autonomy_write",
+    family: "operator",
+    sideEffect: "autonomy_goal",
+    targetSource: "model_arguments",
+  }],
+  ["operator_security_case_execute_command", {
+    authority: "cerebro_write",
+    credentialScope: "cerebro_findings_key",
+    family: "compliance",
+    sideEffect: "cerebro_work_item_update",
+    targetSource: "model_arguments",
+  }],
   ["operator_security_case_status", {
     family: "operator",
+    targetSource: "model_arguments",
+  }],
+  ["operator_security_case_work_item_status", {
+    credentialScope: "cerebro_read_key",
+    family: "compliance",
     targetSource: "model_arguments",
   }],
   ["operator_security_case_list", {

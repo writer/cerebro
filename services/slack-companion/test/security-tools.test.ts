@@ -101,8 +101,12 @@ test("security agent exposes Slack research and posture tools", async () => {
   assert.equal(names.has("operator_memory_record"), true);
   assert.equal(names.has("operator_goal_create"), true);
   assert.equal(names.has("operator_security_case_start"), true);
+  assert.equal(names.has("operator_security_case_open_work_item"), true);
   assert.equal(names.has("operator_security_case_attach_fix"), true);
+  assert.equal(names.has("operator_security_case_command"), true);
+  assert.equal(names.has("operator_security_case_execute_command"), true);
   assert.equal(names.has("operator_security_case_status"), true);
+  assert.equal(names.has("operator_security_case_work_item_status"), true);
   assert.equal(names.has("operator_security_case_list"), true);
   assert.equal(names.has("operator_tool_catalog_search"), true);
   assert.equal(names.has("operator_context_resolve"), true);

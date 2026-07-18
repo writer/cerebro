@@ -139,6 +139,90 @@ export interface FindingEvidence {
   [key: string]: unknown;
 }
 
+export type ComplianceWorkItemState = "open" | "in_progress" | "blocked" | "resolved" | "accepted" | "snoozed" | "superseded";
+
+export interface ComplianceWorkBasis {
+  tenant_id: string;
+  program_id: string;
+  scope_revision_id: string;
+  control_id: string;
+  objective_id: string;
+  kind: string;
+  subject_id: string;
+  reason: string;
+  source_id: string;
+}
+
+export interface ComplianceWorkOccurrence {
+  id: string;
+  work_item_id: string;
+  assessment_run_id: string;
+  objective_result_id: string;
+  automated_result_hash: string;
+  evidence_ids?: string[];
+  finding_ids?: string[];
+  occurred_at: string;
+  occurrence_hash: string;
+}
+
+export interface ComplianceWorkVerification {
+  assurance_decision_id: string;
+  assessment_run_id: string;
+  objective_result_id: string;
+  decision_digest: string;
+  record_digest: string;
+  evidence_ids?: string[];
+  evaluated_at: string;
+  decision_as_of: string;
+}
+
+export interface ComplianceWorkItem {
+  id: string;
+  fingerprint_version: string;
+  fingerprint: string;
+  basis: ComplianceWorkBasis;
+  state: ComplianceWorkItemState;
+  owner_id: string;
+  due_at: string;
+  priority: string;
+  blocker_reason?: string;
+  verification_required: boolean;
+  verification_evidence_ids?: string[];
+  verified_by?: string;
+  last_remediated_by?: string;
+  last_remediated_at?: string;
+  verification?: ComplianceWorkVerification;
+  occurrences: ComplianceWorkOccurrence[];
+  version: number;
+  updated_at: string;
+}
+
+export interface ComplianceWorkItemRecord {
+  item: ComplianceWorkItem;
+  occurrences: ComplianceWorkOccurrence[];
+  actions: JsonRecord[];
+}
+
+export interface ComplianceWorkItemPage {
+  items: ComplianceWorkItem[];
+  next_cursor?: string;
+}
+
+export interface ComplianceWorkCommand {
+  operation: "action" | "invalidate";
+  expected_version: number;
+  action?: "assign" | "request_evidence" | "block" | "snooze" | "accept" | "remediate" | "verify" | "verify_assurance" | "close" | "supersede";
+  owner_id?: string;
+  rationale?: string;
+  blocker_reason?: string;
+  snooze_until?: string;
+  due_at?: string;
+  evidence_ids?: string[];
+  assurance_decision_id?: string;
+  trigger?: "exception_expired" | "evidence_stale" | "evidence_revoked" | "finding_reopened" | "source_coverage_lost" | "scope_subject_added";
+  source_ref?: string;
+}
+
 export interface RuntimeResponseCapability {
   action: string;
   mode: string;

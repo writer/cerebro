@@ -24,7 +24,7 @@ This service handles Slack commands, app mentions, alert triage, scheduled check
 
 ## Security Cases
 
-Security cases add one durable work record for a GitHub security alert without changing the existing commands, findings, goals, schedules, or evidence workflows.
+Security cases give operators a durable view of GitHub security alerts and canonical Cerebro compliance work items without changing the existing commands, findings, goals, schedules, or evidence workflows. Cerebro owns the compliance work queue; the companion stores the Slack case and approval history.
 
 An operator can ask Cerebro to handle an alert in a normal Slack thread. The assistant resolves the Cerebro runtime, finding, repository, and alert reference through the existing Pi work loop, then starts a case. The case records the current state, owner, next action, blockers, evidence-backed resources, pull request, approvals, and completion receipt.
 
@@ -36,7 +36,9 @@ The first supported journey is:
 4. Request reviewed approval for a fresh finding evaluation.
 5. Read the finding again and close the case only when the current status is `resolved`.
 
-Case states use operator work language: `investigating`, `needs_evidence`, `needs_decision`, `ready_to_act`, `waiting_on_owner`, `verifying`, `closed`, and `blocked`. The agent tools `operator_security_case_start`, `operator_security_case_attach_fix`, `operator_security_case_status`, and `operator_security_case_list` expose this journey without adding deterministic Slack routing or new slash commands.
+For canonical compliance work, the assistant opens one case per Cerebro work-item ID, reads live state from Cerebro, and submits commands with the current item version. Each write becomes an approval-required durable goal step. Remediation records the change first; a separate `verify_assurance` command can resolve the item only after Cerebro accepts a fresh post-change assurance decision.
+
+Case states use operator work language: `investigating`, `needs_evidence`, `needs_decision`, `ready_to_act`, `waiting_on_owner`, `verifying`, `closed`, and `blocked`. The agent tools preserve the GitHub alert journey and add canonical work-item open, list, status, command planning, approved execution, and independent verification. See [Canonical compliance work cases](docs/canonical-compliance-work-cases.md) for the data contract and rollout gates.
 
 Unknown `/cerebro ...` text is treated as a graph-backed question.
 
