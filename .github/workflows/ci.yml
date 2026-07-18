@@ -104,6 +104,22 @@ jobs:
       - name: Check Slack companion workspace
         run: npm run check --workspace @writer/cerebro-slack-companion
 
+      - name: Inspect Slack companion package
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack_dir="${RUNNER_TEMP}/slack-companion-package"
+          mkdir -p "${pack_dir}"
+          npm pack --workspace @writer/cerebro-slack-companion --pack-destination "${pack_dir}"
+          mapfile -t archives < <(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print)
+          if [ "${#archives[@]}" -ne 1 ]; then
+            echo "Expected one Slack companion package, found ${#archives[@]}" >&2
+            exit 1
+          fi
+          tar -tzf "${archives[0]}" > "${pack_dir}/contents.txt"
+          grep -Fxq 'package/dist/src/index.js' "${pack_dir}/contents.txt"
+          grep -Fxq 'package/dist/src/index.d.ts' "${pack_dir}/contents.txt"
+
   typescript-sdk:
     runs-on: ubuntu-latest
     needs: ci-scope
