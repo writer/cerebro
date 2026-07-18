@@ -36,6 +36,7 @@ export {
 } from "./execution/coordinator.js";
 export * from "./execution/effect-reconciliation.js";
 export * from "./execution/effect-intent.js";
+export * from "./execution/repeated-failure-policy.js";
 export type {
   EffectIntentValue,
   ExecutionSession,
