@@ -1,6 +1,6 @@
 [
   {
-    "id": "github-api-playground-audit-4d5ab302322d06aa",
+    "id": "github-api-playground-audit-80b1a5c33a4e8e7b",
     "tenant_id": "api-playground",
     "source_id": "github",
     "kind": "github.audit",
@@ -18,12 +18,12 @@
       "scope": "organization",
       "user": "new-octokit",
       "raw": {
-        "@timestamp": "2022-08-29T22:16:50.662-07:00",
+        "@timestamp": "2022-08-30T05:16:50.662Z",
         "_document_id": "DKjUdviTAq5bSG1TGm8lcA",
         "action": "org.add_member",
         "actor": "octokit",
         "business": "codeforamerica",
-        "created_at": "2022-08-29T22:16:50.662-07:00",
+        "created_at": "2022-08-30T05:16:50.662Z",
         "operation_type": "create",
         "org": "codeforamerica",
         "permission": "read",

@@ -243,6 +243,15 @@ func auditRaw(entry *gogithub.AuditEntry) (map[string]any, error) {
 	if err := json.Unmarshal(bytes, &raw); err != nil {
 		return nil, fmt.Errorf("unmarshal github audit raw payload: %w", err)
 	}
+	// go-github converts numeric audit timestamps through time.Local before it
+	// marshals AuditEntry. Normalize the typed fields so payloads and event IDs
+	// are identical on hosts with different local time zones.
+	if entry.Timestamp != nil && !entry.Timestamp.IsZero() {
+		raw["@timestamp"] = entry.Timestamp.UTC().Format(time.RFC3339Nano)
+	}
+	if entry.CreatedAt != nil && !entry.CreatedAt.IsZero() {
+		raw["created_at"] = entry.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
 	return raw, nil
 }
 
