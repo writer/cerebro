@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:local:cerebro": "CEREBRO_API_BASE=http://127.0.0.1:8080 NEXT_PUBLIC_CEREBRO_API_BASE=http://127.0.0.1:8080 CEREBRO_FORWARD_AUTH_HEADERS=true CEREBRO_PROXY_CACHE_TTL_MS=0 next dev --hostname 127.0.0.1",
-    "dev:fixtures": "CEREBRO_WEB_FIXTURE_MODE=1 CEREBRO_API_BASE=fixture://local NEXT_PUBLIC_CEREBRO_API_BASE=fixture://local CEREBRO_IDENTITY_PROFILE=local CEREBRO_IDENTITY_REQUIRED=false CEREBRO_LOCAL_IDENTITY_FALLBACK=1 CEREBRO_PROXY_CACHE_TTL_MS=0 next dev --hostname 127.0.0.1",
+    "dev:fixtures": "node scripts/dev-fixtures.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/apps/web/server.js",
@@ -28,6 +28,7 @@
     "verify:docker": "docker build -f Dockerfile -t cerebro-web:verify ../.. && npm run smoke:docker -- cerebro-web:verify",
     "verify:devex": "npm run doctor -- --ci && npm run verify:fast && npm run verify:build",
     "benchmark:grc-scale": "node scripts/grc-scale-benchmark.mjs",
+    "e2e:web:fixtures": "node scripts/portable-web-fixture-e2e.mjs",
     "eval:ask:local": "node scripts/eval-ask-local.mjs",
     "eval:ask:adversarial": "node scripts/eval-ask-adversarial.mjs",
     "eval:ask:candidates": "node scripts/generate-ask-eval-candidates.mjs",

@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { Script } from "node:vm";
 
 const JAVASCRIPT_CONTENT_TYPES = [
   "application/javascript",
@@ -67,6 +68,11 @@ export function assertJavaScriptChunkResponse(response) {
   }
   if (!response.body.trim()) {
     throw new Error(`JavaScript chunk ${response.url} returned an empty body`);
+  }
+  try {
+    new Script(response.body, { filename: response.url });
+  } catch (error) {
+    throw new Error(`JavaScript chunk ${response.url} was not executable: ${error.message}`);
   }
 }
 
