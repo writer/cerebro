@@ -7,6 +7,7 @@ import {
   MissionLedger,
   MissionLedgerIdempotencyConflictError,
   MissionLedgerStaleLeaseError,
+  MissionLedgerStaleOccurrenceError,
   MissionLedgerStaleRevisionError,
 } from "../src/autonomy/ledger.js";
 import { ReferenceMemoryMissionLedgerStore } from "../src/autonomy/reference-store.js";
@@ -318,6 +319,171 @@ describe("portable autonomy mission ledger", () => {
       await store.readOccurrence(wake.occurrence.occurrence_id),
       reclaimed.occurrence,
     );
+  });
+
+  test("consumes a claimed wake with the mission transition and records its replacement", async () => {
+    const authority = new MutableMissionLeaseAuthority(BASE_TIME);
+    const store = new ReferenceMemoryMissionLedgerStore({
+      lease_authority: authority,
+    });
+    const ledger = new MissionLedger({ store });
+    const run = runReceipt("run-consume-wake", "subject-consume-wake");
+    const plan = missionPlan(run, "mission-consume-wake");
+    const wake = createMissionWake({
+      created_at: "2026-07-16T11:00:00.000Z",
+      due_at: "2026-07-16T11:30:00.000Z",
+      generation: 1,
+      misfire_policy: "coalesce_once",
+      mission_ref: plan.mission_ref,
+      mission_revision: plan.mission_revision,
+      wake_condition_ref: "wake/consume",
+    });
+    await ledger.initialize({
+      event: eventContext("2026-07-16T11:00:00.000Z", "mission.created"),
+      operation_id: "create-consume-wake",
+      seed: { plan, run, wake },
+    });
+
+    const claim = {
+      fencing_token: 5,
+      generation: 2,
+      lease_expires_at: "2026-07-16T12:01:00.000Z",
+      lease_token: "scheduled-lease-consume",
+      now: BASE_TIME,
+      owner_id: "scheduler-consume",
+    };
+    const due = (await ledger.listDue(BASE_TIME, 1))[0]!;
+    const claimed = await ledger.claimDue(due, claim);
+    if (!claimed.acquired) assert.fail("expected scheduled claim");
+
+    const execution = executionFixture(run, 2);
+    const session = await execution.session;
+    authority.install(session.lease);
+    const nextWake = createMissionWake({
+      created_at: BASE_TIME,
+      due_at: "2026-07-16T13:00:00.000Z",
+      generation: 2,
+      misfire_policy: "coalesce_once",
+      mission_ref: plan.mission_ref,
+      mission_revision: plan.mission_revision,
+      wake_condition_ref: "wake/consume",
+    });
+    const input = {
+      ...transitionInput(
+        session,
+        1,
+        "consume-scheduled-wake",
+        "2026-07-16T12:00:01.000Z",
+      ),
+      occurrence_outcome: {
+        claim: {
+          fencing_token: claim.fencing_token,
+          generation: claim.generation,
+          lease_token: claim.lease_token,
+          owner_id: claim.owner_id,
+        },
+        occurrence_id: claimed.occurrence.occurrence_id,
+        state: "completed" as const,
+      },
+      wake: nextWake,
+    };
+
+    const committed = await ledger.transition(input);
+    const replay = await ledger.transition(input);
+
+    assert.equal(committed.created, true);
+    assert.equal(committed.consumed_occurrence?.state, "completed");
+    assert.equal(
+      committed.consumed_occurrence?.updated_at,
+      new Date(BASE_TIME).toISOString(),
+    );
+    assert.deepEqual(committed.occurrence, nextWake.occurrence);
+    assert.equal(
+      committed.snapshot.wake?.occurrence_ref,
+      nextWake.occurrence.occurrence_id,
+    );
+    assert.deepEqual(
+      await store.readOccurrence(claimed.occurrence.occurrence_id),
+      committed.consumed_occurrence,
+    );
+    assert.deepEqual(
+      await store.readOccurrence(nextWake.occurrence.occurrence_id),
+      nextWake.occurrence,
+    );
+    assert.equal((await ledger.listDue(BASE_TIME, 10)).length, 0);
+    assert.equal(replay.created, false);
+    assert.deepEqual(replay.consumed_occurrence, committed.consumed_occurrence);
+    assert.deepEqual(replay.snapshot, committed.snapshot);
+  });
+
+  test("rejects an expired scheduled claim without partially committing the mission", async () => {
+    const authority = new MutableMissionLeaseAuthority(BASE_TIME);
+    const store = new ReferenceMemoryMissionLedgerStore({
+      lease_authority: authority,
+    });
+    const ledger = new MissionLedger({ store });
+    const run = runReceipt("run-expired-wake", "subject-expired-wake");
+    const plan = missionPlan(run, "mission-expired-wake");
+    const wake = createMissionWake({
+      created_at: "2026-07-16T11:00:00.000Z",
+      due_at: "2026-07-16T11:30:00.000Z",
+      generation: 1,
+      misfire_policy: "coalesce_once",
+      mission_ref: plan.mission_ref,
+      mission_revision: plan.mission_revision,
+      wake_condition_ref: "wake/expired",
+    });
+    await ledger.initialize({
+      event: eventContext("2026-07-16T11:00:00.000Z", "mission.created"),
+      operation_id: "create-expired-wake",
+      seed: { plan, run, wake },
+    });
+    const claim = {
+      fencing_token: 8,
+      generation: 2,
+      lease_expires_at: "2026-07-16T12:00:30.000Z",
+      lease_token: "scheduled-lease-expired",
+      now: BASE_TIME,
+      owner_id: "scheduler-expired",
+    };
+    const due = (await ledger.listDue(BASE_TIME, 1))[0]!;
+    const claimed = await ledger.claimDue(due, claim);
+    if (!claimed.acquired) assert.fail("expected scheduled claim");
+
+    const execution = executionFixture(run, 2);
+    const session = await execution.session;
+    authority.install(session.lease);
+    authority.setObservedAt("2026-07-16T12:00:45.000Z");
+
+    await assert.rejects(
+      ledger.transition({
+        ...transitionInput(
+          session,
+          1,
+          "consume-expired-wake",
+          "2026-07-16T12:00:01.000Z",
+        ),
+        occurrence_outcome: {
+          claim: {
+            fencing_token: claim.fencing_token,
+            generation: claim.generation,
+            lease_token: claim.lease_token,
+            owner_id: claim.owner_id,
+          },
+          occurrence_id: claimed.occurrence.occurrence_id,
+          state: "completed",
+        },
+        wake: null,
+      }),
+      MissionLedgerStaleOccurrenceError,
+    );
+
+    assert.deepEqual(
+      await store.readOccurrence(claimed.occurrence.occurrence_id),
+      claimed.occurrence,
+    );
+    assert.equal((await ledger.readBySubject(run.subject_ref))?.revision, 1);
+    assert.equal((await ledger.listEvents(run.subject_ref, 0, 10)).length, 1);
   });
 
   test("retries scheduled claims after a transient snapshot revision race", async () => {
