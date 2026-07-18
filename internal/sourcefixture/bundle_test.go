@@ -1,9 +1,9 @@
 package sourcefixture
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -56,10 +56,10 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		payload string
-		want    string
+		want    error
 	}{
-		{name: "credential", payload: `{"access_token":"secret"}`, want: "credential field"},
-		{name: "email", payload: `{"email":"person@company.com"}`, want: "non-example email"},
+		{name: "credential", payload: `{"access_token":"secret"}`, want: ErrCredentialField},
+		{name: "email", payload: `{"email":"person@company.com"}`, want: ErrPersonalEmail},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			payload, err := CanonicalJSON([]byte(test.payload))
@@ -69,8 +69,8 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 			manifest := base
 			manifest.Response.SHA256 = Digest(payload)
 			err = ValidateManifest(manifest, payload)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("ValidateManifest() error = %v, want %q", err, test.want)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("ValidateManifest() error = %v, want errors.Is(_, %v)", err, test.want)
 			}
 		})
 	}

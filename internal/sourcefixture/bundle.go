@@ -27,6 +27,9 @@ const (
 )
 
 var (
+	ErrCredentialField = errors.New("provider response contains credential field")
+	ErrPersonalEmail   = errors.New("provider response contains non-example email")
+
 	emailPattern     = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialKey    = regexp.MustCompile(`(?i)(authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|credential)`)
 	allowedEmailHost = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
@@ -392,7 +395,7 @@ func walkJSON(value any, path string) error {
 		for key, child := range typed {
 			childPath := path + "." + key
 			if credentialKey.MatchString(key) && !emptyJSONValue(child) {
-				return fmt.Errorf("provider response contains credential field %s", childPath)
+				return fmt.Errorf("%w %s", ErrCredentialField, childPath)
 			}
 			if err := walkJSON(child, childPath); err != nil {
 				return err
@@ -410,7 +413,7 @@ func walkJSON(value any, path string) error {
 				continue
 			}
 			if !allowedEmailHost.MatchString(email) {
-				return fmt.Errorf("provider response contains non-example email at %s", path)
+				return fmt.Errorf("%w at %s", ErrPersonalEmail, path)
 			}
 		}
 	}
