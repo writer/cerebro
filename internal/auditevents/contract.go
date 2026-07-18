@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	MaxIdentifierBytes = 200
-	MaxSummaryBytes    = 500
-	MaxQueryBytes      = 200
-	MaxCursorBytes     = 1024
-	DefaultLimit       = 100
-	MaxLimit           = 500
-	DefaultMinutes     = 60
-	MinMinutes         = 5
-	MaxMinutes         = 24 * 60
+	MaxIdentifierCharacters = 200
+	MaxSummaryCharacters    = 500
+	MaxQueryCharacters      = 200
+	MaxCursorCharacters     = 2048
+	DefaultLimit            = 100
+	MaxLimit                = 500
+	DefaultMinutes          = 60
+	MinMinutes              = 5
+	MaxMinutes              = 24 * 60
 )
 
 // Normalize validates and copies one event into the fixed public allowlist.
@@ -40,19 +40,19 @@ func Normalize(input *ports.AuditEventV1) (*ports.AuditEventV1, error) {
 	if event.Action, err = requiredIdentifierText("action", event.Action); err != nil {
 		return nil, err
 	}
-	if event.Category, err = optionalText("category", event.Category, MaxIdentifierBytes); err != nil {
+	if event.Category, err = optionalText("category", event.Category, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if event.RequestID, err = optionalText("request_id", event.RequestID, MaxIdentifierBytes); err != nil {
+	if event.RequestID, err = optionalText("request_id", event.RequestID, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if event.Service, err = optionalText("service", event.Service, MaxIdentifierBytes); err != nil {
+	if event.Service, err = optionalText("service", event.Service, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if event.Summary, err = optionalText("summary", event.Summary, MaxSummaryBytes); err != nil {
+	if event.Summary, err = optionalText("summary", event.Summary, MaxSummaryCharacters); err != nil {
 		return nil, err
 	}
-	if event.TraceID, err = optionalText("trace_id", event.TraceID, MaxIdentifierBytes); err != nil {
+	if event.TraceID, err = optionalText("trace_id", event.TraceID, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
 	event.Outcome = strings.ToLower(strings.TrimSpace(event.Outcome))
@@ -105,7 +105,7 @@ func ValidateQuery(query ports.AuditEventQueryV1) error {
 	if query.PageBeforeOccurredAt.IsZero() && strings.TrimSpace(query.PageBeforeID) != "" {
 		return fmt.Errorf("%w: page boundary time is required", ports.ErrAuditEventInvalid)
 	}
-	if _, err := optionalText("page boundary id", query.PageBeforeID, MaxIdentifierBytes); err != nil {
+	if _, err := optionalText("page boundary id", query.PageBeforeID, MaxIdentifierCharacters); err != nil {
 		return err
 	}
 	if !query.PageBeforeOccurredAt.IsZero() &&
@@ -119,7 +119,7 @@ func ValidateQuery(query ports.AuditEventQueryV1) error {
 		"action": query.Action, "actor": query.Actor, "q": query.Query,
 		"resource_type": query.ResourceType, "service": query.Service, "trace_id": query.TraceID,
 	} {
-		if _, err := optionalText(field, value, MaxQueryBytes); err != nil {
+		if _, err := optionalText(field, value, MaxQueryCharacters); err != nil {
 			return err
 		}
 	}
@@ -177,13 +177,13 @@ func normalizeActor(actor *ports.AuditEventActorV1) (*ports.AuditEventActorV1, e
 	}
 	copy := *actor
 	var err error
-	if copy.ID, err = optionalText("actor.id", copy.ID, MaxIdentifierBytes); err != nil {
+	if copy.ID, err = optionalText("actor.id", copy.ID, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if copy.Kind, err = optionalText("actor.kind", copy.Kind, MaxIdentifierBytes); err != nil {
+	if copy.Kind, err = optionalText("actor.kind", copy.Kind, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if copy.Label, err = optionalText("actor.label", copy.Label, MaxIdentifierBytes); err != nil {
+	if copy.Label, err = optionalText("actor.label", copy.Label, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
 	if copy.ID == "" && copy.Kind == "" && copy.Label == "" {
@@ -198,13 +198,13 @@ func normalizeResource(resource *ports.AuditEventResourceV1) (*ports.AuditEventR
 	}
 	copy := *resource
 	var err error
-	if copy.ID, err = optionalText("resource.id", copy.ID, MaxIdentifierBytes); err != nil {
+	if copy.ID, err = optionalText("resource.id", copy.ID, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if copy.Type, err = optionalText("resource.type", copy.Type, MaxIdentifierBytes); err != nil {
+	if copy.Type, err = optionalText("resource.type", copy.Type, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
-	if copy.Label, err = optionalText("resource.label", copy.Label, MaxIdentifierBytes); err != nil {
+	if copy.Label, err = optionalText("resource.label", copy.Label, MaxIdentifierCharacters); err != nil {
 		return nil, err
 	}
 	if copy.ID == "" && copy.Type == "" && copy.Label == "" {
@@ -214,7 +214,7 @@ func normalizeResource(resource *ports.AuditEventResourceV1) (*ports.AuditEventR
 }
 
 func requiredIdentifierText(field string, value string) (string, error) {
-	value, err := optionalText(field, value, MaxIdentifierBytes)
+	value, err := optionalText(field, value, MaxIdentifierCharacters)
 	if err != nil {
 		return "", err
 	}
@@ -224,13 +224,13 @@ func requiredIdentifierText(field string, value string) (string, error) {
 	return value, nil
 }
 
-func optionalText(field string, value string, maxBytes int) (string, error) {
+func optionalText(field string, value string, maxCharacters int) (string, error) {
 	value = strings.TrimSpace(value)
 	if !utf8.ValidString(value) {
 		return "", fmt.Errorf("%w: %s must be valid UTF-8", ports.ErrAuditEventInvalid, field)
 	}
-	if len(value) > maxBytes {
-		return "", fmt.Errorf("%w: %s must be at most %d bytes", ports.ErrAuditEventInvalid, field, maxBytes)
+	if utf8.RuneCountInString(value) > maxCharacters {
+		return "", fmt.Errorf("%w: %s must be at most %d characters", ports.ErrAuditEventInvalid, field, maxCharacters)
 	}
 	return value, nil
 }

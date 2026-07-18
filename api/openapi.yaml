@@ -2036,7 +2036,7 @@ paths:
     get:
       operationId: listAuditEvents
       summary: List normalized audit events
-      description: Returns one tenant-scoped, descending keyset page from a bounded time window. The contract exposes only normalized allowlisted fields and never returns raw payloads or provider attributes.
+      description: Returns one tenant-scoped, descending keyset page from a bounded time window. The contract exposes only normalized allowlisted fields and never returns raw payloads or provider attributes. Text maxLength values are enforced as Unicode code-point counts after UTF-8 validation.
       tags:
         - Platform
       parameters:
@@ -2067,10 +2067,10 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque continuation cursor bound to the tenant, filters, and first page time window.
+          description: Client-controlled base64url-encoded resume state. Its unkeyed checksum detects accidental corruption but is not an integrity or authentication token. The server reauthorizes the tenant and validates the filters, time window, and keyset boundary on every request; no authorization or evidence decision relies on cursor contents.
           schema:
             type: string
-            maxLength: 1024
+            maxLength: 2048
         - name: action
           in: query
           required: false
@@ -7012,7 +7012,8 @@ components:
             $ref: '#/components/schemas/AuditEventV1'
         next_cursor:
           type: string
-          maxLength: 1024
+          maxLength: 2048
+          description: Client-controlled encoded resume state for the next page. It carries no authority; the server validates and reauthorizes every request.
         status:
           type: string
           enum: [complete, partial]

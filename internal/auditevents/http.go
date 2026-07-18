@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -66,11 +67,14 @@ type cursorV1 struct {
 	Before         string `json:"b"`
 	LastOccurredAt string `json:"t"`
 	LastID         string `json:"i"`
-	QueryDigest    string `json:"q"`
+	Checksum       string `json:"c"`
 }
 
 // ParseHTTPQuery converts bounded public query parameters into the stable
-// reader contract. The authorized tenant is supplied by the transport layer.
+// reader contract. Cursor content is client-controlled resume state, so the
+// authorized tenant is always supplied independently by the transport layer.
+// The cursor checksum detects accidental corruption; it is not a MAC and no
+// authorization or evidence decision relies on it.
 func ParseHTTPQuery(values url.Values, tenantID string, now time.Time) (ports.AuditEventQueryV1, error) {
 	limit, err := strictInteger(values.Get("limit"), DefaultLimit, 1, MaxLimit, "limit")
 	if err != nil {
@@ -99,11 +103,11 @@ func ParseHTTPQuery(values url.Values, tenantID string, now time.Time) (ports.Au
 	if query.Outcome != "" && !ValidOutcome(query.Outcome) {
 		return ports.AuditEventQueryV1{}, fmt.Errorf("%w: invalid outcome", ports.ErrAuditEventInvalid)
 	}
-	cursorValue := strings.TrimSpace(values.Get("cursor"))
+	cursorValue, err := optionalText("cursor", values.Get("cursor"), MaxCursorCharacters)
+	if err != nil {
+		return ports.AuditEventQueryV1{}, err
+	}
 	if cursorValue != "" {
-		if len(cursorValue) > MaxCursorBytes {
-			return ports.AuditEventQueryV1{}, fmt.Errorf("%w: cursor is too long", ports.ErrAuditEventInvalid)
-		}
 		cursor, err := decodeCursor(cursorValue)
 		if err != nil {
 			return ports.AuditEventQueryV1{}, err
@@ -125,11 +129,8 @@ func ParseHTTPQuery(values url.Values, tenantID string, now time.Time) (ports.Au
 			query.Before.After(now.UTC().Add(time.Minute)) || query.Before.Before(now.UTC().Add(-auditEventCursorMaxAge)) {
 			return ports.AuditEventQueryV1{}, fmt.Errorf("%w: cursor window is expired or invalid", ports.ErrAuditEventInvalid)
 		}
-		if len(query.PageBeforeID) > MaxIdentifierBytes {
-			return ports.AuditEventQueryV1{}, fmt.Errorf("%w: cursor boundary is too long", ports.ErrAuditEventInvalid)
-		}
-		if cursor.QueryDigest != queryDigest(query, minutes) {
-			return ports.AuditEventQueryV1{}, fmt.Errorf("%w: cursor does not match query", ports.ErrAuditEventInvalid)
+		if cursor.Checksum != cursorCorruptionChecksum(query, minutes) {
+			return ports.AuditEventQueryV1{}, fmt.Errorf("%w: cursor checksum does not match resume state", ports.ErrAuditEventInvalid)
 		}
 	}
 	if err := ValidateQuery(query); err != nil {
@@ -164,6 +165,9 @@ func NewHTTPPage(query ports.AuditEventQueryV1, page ports.AuditEventPageV1) (HT
 		if err != nil || normalized.TenantID != query.TenantID || normalized.OccurredAt.Before(query.After) || normalized.OccurredAt.After(query.Before) {
 			return HTTPPageV1{}, errors.New("reader returned an invalid tenant-scoped audit event")
 		}
+		if !query.PageBeforeOccurredAt.IsZero() && !strictlyOlderThanBoundary(normalized, query.PageBeforeOccurredAt, query.PageBeforeID) {
+			return HTTPPageV1{}, errors.New("reader returned an audit event that does not advance the page boundary")
+		}
 		if previous != nil && (previous.OccurredAt.Before(normalized.OccurredAt) ||
 			(previous.OccurredAt.Equal(normalized.OccurredAt) && previous.ID <= normalized.ID)) {
 			return HTTPPageV1{}, errors.New("reader returned audit events outside deterministic order")
@@ -197,11 +201,7 @@ func strictInteger(raw string, fallback int, minimum int, maximum int, field str
 }
 
 func filterText(field string, raw string) (string, error) {
-	value := strings.TrimSpace(raw)
-	if len(value) > MaxQueryBytes {
-		return "", fmt.Errorf("%w: %s is too long", ports.ErrAuditEventInvalid, field)
-	}
-	return value, nil
+	return optionalText(field, raw, MaxQueryCharacters)
 }
 
 func encodeCursor(query ports.AuditEventQueryV1, last *ports.AuditEventV1) (string, error) {
@@ -209,18 +209,21 @@ func encodeCursor(query ports.AuditEventQueryV1, last *ports.AuditEventV1) (stri
 		return "", errors.New("invalid audit-event page boundary")
 	}
 	minutes := int(query.Before.Sub(query.After) / time.Minute)
+	resumeQuery := query
+	resumeQuery.PageBeforeOccurredAt = last.OccurredAt.UTC()
+	resumeQuery.PageBeforeID = strings.TrimSpace(last.ID)
 	cursor := cursorV1{
 		Version: auditEventCursorVersion, After: query.After.UTC().Format(time.RFC3339Nano),
 		Before:         query.Before.UTC().Format(time.RFC3339Nano),
 		LastOccurredAt: last.OccurredAt.UTC().Format(time.RFC3339Nano), LastID: strings.TrimSpace(last.ID),
-		QueryDigest: queryDigest(query, minutes),
+		Checksum: cursorCorruptionChecksum(resumeQuery, minutes),
 	}
 	payload, err := json.Marshal(cursor)
 	if err != nil {
 		return "", fmt.Errorf("encode audit event cursor: %w", err)
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	if len(encoded) > MaxCursorBytes {
+	if utf8.RuneCountInString(encoded) > MaxCursorCharacters {
 		return "", errors.New("encoded audit-event cursor is too long")
 	}
 	return encoded, nil
@@ -240,20 +243,24 @@ func decodeCursor(value string) (cursorV1, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return cursorV1{}, fmt.Errorf("%w: invalid cursor", ports.ErrAuditEventInvalid)
 	}
-	if cursor.Version != auditEventCursorVersion || len(cursor.QueryDigest) != sha256.Size*2 {
+	if cursor.Version != auditEventCursorVersion || len(cursor.Checksum) != sha256.Size*2 {
 		return cursorV1{}, fmt.Errorf("%w: unsupported cursor", ports.ErrAuditEventInvalid)
 	}
 	return cursor, nil
 }
 
-func queryDigest(query ports.AuditEventQueryV1, minutes int) string {
+// cursorCorruptionChecksum is an unkeyed checksum over the complete resume
+// state, including the keyset boundary. It detects accidental corruption only;
+// clients can recompute it and it must never be treated as authentication.
+func cursorCorruptionChecksum(query ports.AuditEventQueryV1, minutes int) string {
 	values := []string{
 		strings.TrimSpace(query.TenantID), strings.ToLower(strings.TrimSpace(query.Action)),
 		strings.ToLower(strings.TrimSpace(query.Actor)), strings.ToLower(strings.TrimSpace(query.Outcome)),
 		strings.TrimSpace(query.Query), strings.ToLower(strings.TrimSpace(query.ResourceType)),
 		strings.ToLower(strings.TrimSpace(query.Service)), strings.ToLower(strings.TrimSpace(query.TraceID)),
 		query.After.UTC().Format(time.RFC3339Nano), query.Before.UTC().Format(time.RFC3339Nano),
-		strconv.Itoa(minutes),
+		query.PageBeforeOccurredAt.UTC().Format(time.RFC3339Nano), strings.TrimSpace(query.PageBeforeID),
+		strconv.Itoa(minutes), strconv.FormatUint(uint64(query.Limit), 10),
 	}
 	hash := sha256.New()
 	for _, value := range values {
@@ -262,6 +269,13 @@ func queryDigest(query ports.AuditEventQueryV1, minutes int) string {
 		_, _ = hash.Write([]byte(value))
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func strictlyOlderThanBoundary(event *ports.AuditEventV1, occurredAt time.Time, eventID string) bool {
+	if event.OccurredAt.Before(occurredAt) {
+		return true
+	}
+	return event.OccurredAt.Equal(occurredAt) && event.ID < strings.TrimSpace(eventID)
 }
 
 func newHTTPEvent(event *ports.AuditEventV1) HTTPEventV1 {

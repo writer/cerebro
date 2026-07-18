@@ -59,7 +59,7 @@ type AuditEventV1 struct {
 	TraceID    string
 }
 
-// AuditEventQueryV1 is the normalized store query. Before/After bind every
+// AuditEventQueryV1 is the normalized store query. Before/After define every
 // page to one immutable time window. PageBeforeOccurredAt and PageBeforeID
 // form the stable descending keyset boundary.
 type AuditEventQueryV1 struct {

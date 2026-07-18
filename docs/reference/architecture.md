@@ -141,6 +141,12 @@ resolution, safe error mapping, and state-store capability wiring in bootstrap.
 normalization, and the public response allowlist. Postgres stores a rebuildable
 read projection tied to an existing append-log sequence; it is not a second log
 of record. This contract does not activate an event producer or projector.
+Audit-event cursors are client-controlled encoded resume state, not integrity or
+authentication tokens. Their unkeyed checksum covers filters, window, and the
+keyset boundary only to detect accidental corruption. Every page independently
+reauthorizes the tenant and validates the cursor fields; no authorization or
+evidence decision relies on cursor contents. Text bounds use Unicode code-point
+counts after UTF-8 validation.
 
 The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
 grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in

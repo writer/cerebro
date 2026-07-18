@@ -28,9 +28,27 @@ func TestAuditEventV1FieldAllowlist(t *testing.T) {
 
 func TestNormalizeRejectsFieldsOutsideBounds(t *testing.T) {
 	event := validEvent()
-	event.Summary = strings.Repeat("x", MaxSummaryBytes+1)
+	event.Summary = strings.Repeat("界", MaxSummaryCharacters+1)
 	if _, err := Normalize(event); !errors.Is(err, ports.ErrAuditEventInvalid) {
 		t.Fatalf("Normalize() error = %v, want ErrAuditEventInvalid", err)
+	}
+}
+
+func TestNormalizeCountsUnicodeCodePoints(t *testing.T) {
+	event := validEvent()
+	event.ID = strings.Repeat("🧠", MaxIdentifierCharacters)
+	event.Summary = strings.Repeat("界", MaxSummaryCharacters)
+	if _, err := Normalize(event); err != nil {
+		t.Fatalf("Normalize(multibyte max) error = %v", err)
+	}
+	event.ID += "🧠"
+	if _, err := Normalize(event); !errors.Is(err, ports.ErrAuditEventInvalid) {
+		t.Fatalf("Normalize(multibyte over max) error = %v", err)
+	}
+	event = validEvent()
+	event.Summary = string([]byte{0xff})
+	if _, err := Normalize(event); !errors.Is(err, ports.ErrAuditEventInvalid) {
+		t.Fatalf("Normalize(invalid UTF-8) error = %v", err)
 	}
 }
 
