@@ -1,12 +1,64 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultSecurityProducers, mergeSecurityProducers, parseSecurityProducers } from "./security-producers";
+import {
+  defaultSecurityProducers,
+  mergeSecurityProducers,
+  parseSecurityProducers,
+  securityProducers,
+  securityProducersFromValue,
+} from "./security-producers";
 
 describe("security producer configuration", () => {
   it("has no built-in environment producers", () => {
     expect(defaultSecurityProducers).toEqual([]);
+    expect(securityProducers).toEqual([]);
     expect(parseSecurityProducers()).toEqual([]);
     expect(parseSecurityProducers("not-json")).toEqual([]);
+    expect(securityProducersFromValue({ producers: [] })).toEqual([]);
+  });
+
+  it("keeps only portable catalog fields", () => {
+    expect(securityProducersFromValue([
+      {
+        id: "producer-one",
+        label: "Producer One",
+        extra: "not-portable",
+        responseActions: [
+          {
+            id: "OPEN_TICKET",
+            label: "Open ticket",
+            extra: "not-portable-either",
+          },
+        ],
+      },
+    ])).toEqual([
+      {
+        id: "producer-one",
+        label: "Producer One",
+        description: undefined,
+        repo: "",
+        runtimeIds: [],
+        sourceIds: [],
+        mcpTools: [],
+        resourceTemplates: [],
+        contextKeys: [],
+        responseActions: [
+          {
+            id: "OPEN_TICKET",
+            label: "Open ticket",
+            providers: [],
+            targetTypes: [],
+            requiredContextKeys: [],
+            mode: "external_workflow",
+            mcpTool: undefined,
+            runtimeAction: undefined,
+            externalOwner: undefined,
+            dryRun: true,
+            requiresApproval: true,
+          },
+        ],
+      },
+    ]);
   });
 
   it("normalizes configured security producers and proposal actions", () => {

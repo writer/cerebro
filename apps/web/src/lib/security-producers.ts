@@ -81,12 +81,15 @@ const producerFromRecord = (value: unknown): SecurityProducer | null => {
   };
 };
 
+export const securityProducersFromValue = (value: unknown): SecurityProducer[] =>
+  Array.isArray(value)
+    ? value.map(producerFromRecord).filter((producer): producer is SecurityProducer => Boolean(producer))
+    : [];
+
 export const parseSecurityProducers = (raw?: string): SecurityProducer[] => {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(producerFromRecord).filter((producer): producer is SecurityProducer => Boolean(producer));
+    return securityProducersFromValue(JSON.parse(raw) as unknown);
   } catch {
     return [];
   }
@@ -110,7 +113,4 @@ export const mergeSecurityProducers = (
   return merged;
 };
 
-export const securityProducers = mergeSecurityProducers(
-  defaultSecurityProducers,
-  parseSecurityProducers(process.env.NEXT_PUBLIC_CEREBRO_SECURITY_PRODUCERS_JSON),
-);
+export const securityProducers = defaultSecurityProducers;

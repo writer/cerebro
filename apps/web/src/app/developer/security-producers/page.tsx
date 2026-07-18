@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 
 import { PageHeader, Panel } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { securityProducers } from "@/lib/security-producers";
+import { fetchSecurityProducers } from "@/lib/security-producers-client";
+import type { SecurityProducer } from "@/lib/security-producers";
 
 type RuntimeSnapshot = {
   ok: boolean;
@@ -14,6 +15,8 @@ type RuntimeSnapshot = {
 
 export default function SecurityProducersPage() {
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
+  const [producers, setProducers] = useState<SecurityProducer[]>([]);
+  const [producerCatalogLoaded, setProducerCatalogLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +33,21 @@ export default function SecurityProducersPage() {
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    fetchSecurityProducers({ signal: controller.signal }).then((configured) => {
+      if (!cancelled) {
+        setProducers(configured);
+        setProducerCatalogLoaded(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -50,13 +68,17 @@ export default function SecurityProducersPage() {
       </Panel>
 
       <Panel title="Producer Coverage">
-        {securityProducers.length === 0 ? (
+        {!producerCatalogLoaded ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
+            Loading producer catalog...
+          </div>
+        ) : producers.length === 0 ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
             No security producers are configured for this deployment.
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-3">
-            {securityProducers.map((producer) => (
+            {producers.map((producer) => (
               <div key={producer.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
                 <div className="text-[13px] font-semibold text-slate-900">{producer.label}</div>
                 {producer.description && <div className="mt-1 text-[12px] leading-5 text-slate-600">{producer.description}</div>}
