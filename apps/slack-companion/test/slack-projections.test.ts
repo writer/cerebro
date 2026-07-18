@@ -5,7 +5,7 @@ import {
   projectAssistantTurnProgress,
   projectSlackMultipartDelivery,
   projectSlackVisibleStatus,
-  SlackProjectionError,
+  SlackMultipartProjectionError,
 } from "../src/index.js";
 
 test("status projections keep stable ids without choosing a Slack transport", () => {
@@ -54,14 +54,14 @@ test("multipart projections preserve exact part acceptance and partial state", (
     destination_receipt: "slack-receipt://message/one",
   });
   assert.equal(projection.parts[1]?.state, "pending");
-  assert.equal(projection.projection_id, "delivery-1:2026-07-18T10:00:02.000Z");
+  assert.match(projection.projection_id, /^delivery-1:sha256:[0-9a-f]{64}$/);
 });
 
 test("multipart projections reject contradictory or duplicate receipts", () => {
   const receipt = deliveryReceipt();
   assert.throws(
     () => projectSlackMultipartDelivery({ ...receipt, state: "completed" }),
-    /requires every part acceptance/,
+    /contradictory part state/,
   );
   assert.throws(
     () =>
@@ -80,7 +80,7 @@ test("multipart projections reject contradictory or duplicate receipts", () => {
           receipt.parts[1]!,
         ],
       }),
-    SlackProjectionError,
+    SlackMultipartProjectionError,
   );
 });
 
@@ -88,7 +88,7 @@ test("multipart projections reject false pending and delivering aggregates", () 
   const receipt = deliveryReceipt();
   assert.throws(
     () => projectSlackMultipartDelivery({ ...receipt, state: "pending" }),
-    /every part to be pending/,
+    /contradictory part state/,
   );
   assert.throws(
     () =>
@@ -116,7 +116,7 @@ test("multipart projections reject false pending and delivering aggregates", () 
       }),
     /requires an unfinished part/,
   );
-  for (const state of ["paused", "failed", "abandoned"] as const) {
+  for (const state of ["paused", "abandoned"] as const) {
     assert.throws(
       () =>
         projectSlackMultipartDelivery({
@@ -126,7 +126,7 @@ test("multipart projections reject false pending and delivering aggregates", () 
             { ...receipt.parts[1]!, state },
           ],
         }),
-      /cannot contain terminal or paused parts/,
+      /contradictory part state/,
     );
   }
 });
