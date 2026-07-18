@@ -64,6 +64,8 @@ export * from "./question-work/coordinator.js";
 export * from "./question-work/dispatch-policy.js";
 export * from "./question-work/ports.js";
 export * from "./question-work/reference-store.js";
+export * from "./recheck/contracts.js";
+export * from "./recheck/policy.js";
 export * from "./thread-binding.js";
 export * from "./transport/contracts.js";
 export * from "./transport/handler.js";
