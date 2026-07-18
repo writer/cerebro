@@ -63,6 +63,41 @@ func (s *Service) RecordAssuranceDecision(ctx context.Context, request Assurance
 	if request.TenantID == "" || request.RunID == "" || request.ResultID == "" || request.IdempotencyKey == "" || request.RecordedBy == "" {
 		return AssuranceDecision{}, false, fmt.Errorf("%w: decision request identity is incomplete", ErrInvalidResult)
 	}
+	run, err := s.store.GetRun(ctx, request.TenantID, request.RunID)
+	if err != nil {
+		return AssuranceDecision{}, false, err
+	}
+	if run.State != RunComplete || run.InputManifest == nil || run.InputHash == "" || run.AutomatedResultHash == "" || run.CompletedAt.IsZero() {
+		return AssuranceDecision{}, false, fmt.Errorf("%w: assessment run is not complete", ErrAssessmentConflict)
+	}
+	storedManifest := NormalizeManifest(*run.InputManifest)
+	storedManifestHash, err := CanonicalManifestDigest(storedManifest)
+	if err != nil || storedManifestHash != run.InputHash {
+		return AssuranceDecision{}, false, fmt.Errorf("%w: persisted assessment manifest does not match its input hash", ErrAssessmentConflict)
+	}
+	if !qualificationManifestEmpty(request.Input.Manifest) {
+		manifestHash, manifestErr := CanonicalManifestDigest(request.Input.Manifest)
+		if manifestErr != nil || manifestHash != storedManifestHash {
+			return AssuranceDecision{}, false, fmt.Errorf("%w: decision manifest does not match assessment run", ErrAssessmentConflict)
+		}
+	}
+	result, err := s.findRunResult(ctx, request.TenantID, request.RunID, request.ResultID, run.AutomatedResultHash, run.ResultCount)
+	if err != nil {
+		return AssuranceDecision{}, false, err
+	}
+	wantResultHash, err := CanonicalResultDigest(result)
+	if err != nil {
+		return AssuranceDecision{}, false, err
+	}
+	if !qualificationResultEmpty(request.Input.Result) {
+		requestResultHash, resultErr := CanonicalResultDigest(request.Input.Result)
+		if resultErr != nil || requestResultHash != wantResultHash {
+			return AssuranceDecision{}, false, fmt.Errorf("%w: decision result does not match assessment result", ErrAssessmentConflict)
+		}
+	}
+	request.Input.Manifest = storedManifest
+	request.Input.Result = result
+	request = normalizeAssuranceDecisionRequest(request)
 	requestHash, err := semanticHash(request)
 	if err != nil {
 		return AssuranceDecision{}, false, err
@@ -74,34 +109,6 @@ func (s *Service) RecordAssuranceDecision(ctx context.Context, request Assurance
 		return existing, false, nil
 	} else if !errors.Is(findErr, ErrAssuranceDecisionNotFound) {
 		return AssuranceDecision{}, false, findErr
-	}
-
-	run, err := s.store.GetRun(ctx, request.TenantID, request.RunID)
-	if err != nil {
-		return AssuranceDecision{}, false, err
-	}
-	if run.State != RunComplete || run.InputManifest == nil || run.InputHash == "" || run.AutomatedResultHash == "" || run.CompletedAt.IsZero() {
-		return AssuranceDecision{}, false, fmt.Errorf("%w: assessment run is not complete", ErrAssessmentConflict)
-	}
-	manifestHash, err := CanonicalManifestDigest(request.Input.Manifest)
-	if err != nil || manifestHash != run.InputHash {
-		return AssuranceDecision{}, false, fmt.Errorf("%w: decision manifest does not match assessment run", ErrAssessmentConflict)
-	}
-	storedManifestHash, err := CanonicalManifestDigest(*run.InputManifest)
-	if err != nil || storedManifestHash != manifestHash {
-		return AssuranceDecision{}, false, fmt.Errorf("%w: persisted assessment manifest does not match its input hash", ErrAssessmentConflict)
-	}
-	result, err := s.findRunResult(ctx, request.TenantID, request.RunID, request.ResultID, run.AutomatedResultHash, run.ResultCount)
-	if err != nil {
-		return AssuranceDecision{}, false, err
-	}
-	wantResultHash, err := CanonicalResultDigest(result)
-	if err != nil {
-		return AssuranceDecision{}, false, err
-	}
-	requestResultHash, err := CanonicalResultDigest(request.Input.Result)
-	if err != nil || requestResultHash != wantResultHash {
-		return AssuranceDecision{}, false, fmt.Errorf("%w: decision result does not match assessment result", ErrAssessmentConflict)
 	}
 	recordedAt := CanonicalTime(s.now())
 	if request.Input.AsOf.Before(run.CompletedAt) || request.Input.AsOf.After(recordedAt) {
@@ -201,6 +208,8 @@ func (s *Service) findRunResult(ctx context.Context, tenantID, runID, resultID, 
 }
 
 func normalizeAssuranceDecisionRequest(request AssuranceDecisionRequest) AssuranceDecisionRequest {
+	sourceProofsDeclared := request.Input.SourceProofs != nil
+	evidenceProofsDeclared := request.Input.EvidenceProofs != nil
 	limitationsDeclared := request.Input.Limitations != nil
 	reviewsDeclared := request.Input.RequiredReviews != nil
 	request.TenantID = strings.TrimSpace(request.TenantID)
@@ -208,13 +217,17 @@ func normalizeAssuranceDecisionRequest(request AssuranceDecisionRequest) Assuran
 	request.ResultID = strings.TrimSpace(request.ResultID)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.RecordedBy = strings.TrimSpace(request.RecordedBy)
-	request.Input.Manifest = NormalizeManifest(request.Input.Manifest)
-	request.Input.Result = NormalizeResult(request.Input.Result)
 	request.Input.AsOf = CanonicalTime(request.Input.AsOf)
 	request.Input.SourceProofs = normalizeSourceProofs(request.Input.SourceProofs)
 	request.Input.EvidenceProofs = normalizeEvidenceProofs(request.Input.EvidenceProofs)
 	request.Input.Limitations = normalizeLimitations(request.Input.Limitations)
 	request.Input.RequiredReviews = normalizeReviews(request.Input.RequiredReviews)
+	if sourceProofsDeclared && request.Input.SourceProofs == nil {
+		request.Input.SourceProofs = []SourceProof{}
+	}
+	if evidenceProofsDeclared && request.Input.EvidenceProofs == nil {
+		request.Input.EvidenceProofs = []EvidenceProof{}
+	}
 	if limitationsDeclared && request.Input.Limitations == nil {
 		request.Input.Limitations = []Limitation{}
 	}
@@ -225,6 +238,16 @@ func normalizeAssuranceDecisionRequest(request AssuranceDecisionRequest) Assuran
 	request.Input.Verification.VerifiedAt = CanonicalTime(request.Input.Verification.VerifiedAt)
 	request.Input.Verification.ValidUntil = CanonicalTime(request.Input.Verification.ValidUntil)
 	return request
+}
+
+func qualificationManifestEmpty(value InputManifest) bool {
+	return strings.TrimSpace(value.ProgramID) == "" && strings.TrimSpace(value.ScopeRevisionID) == "" &&
+		strings.TrimSpace(value.PlanRevisionID) == "" && strings.TrimSpace(value.RequestedScopeDigest) == "" &&
+		len(value.Revisions) == 0 && len(value.Receipts) == 0
+}
+
+func qualificationResultEmpty(value ObjectiveResult) bool {
+	return strings.TrimSpace(value.ID) == "" && strings.TrimSpace(value.ObjectiveID) == ""
 }
 
 func assuranceDecisionDigest(record AssuranceDecision) (string, error) {

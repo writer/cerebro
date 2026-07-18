@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/complianceassessment"
+	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/config"
 )
 
@@ -203,6 +204,10 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 	storedWork, err := store.GetComplianceWorkItem(ctx, tenantID, item.ID)
 	if err != nil || storedWork.Item.Version != 2 || len(storedWork.Occurrences) != 1 || len(storedWork.Actions) != 1 {
 		t.Fatalf("GetComplianceWorkItem() = %+v, %v", storedWork, err)
+	}
+	page, err := store.ListWorkItems(ctx, tenantID, complianceremediation.WorkItemListFilter{State: complianceassessment.WorkInProgress, OwnerID: "owner-a", Limit: 1})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != item.ID || page.NextCursor != "" {
+		t.Fatalf("ListWorkItems() = %+v, %v", page, err)
 	}
 
 	plan, err := complianceassessment.NewRemediationPlan(complianceassessment.RemediationPlanInput{

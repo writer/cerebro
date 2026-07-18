@@ -144,7 +144,13 @@ import (
 // Dedicated evaluation-dataset read, proposal, and approval scope constants
 // keep future agent credentials separate from candidate execution. Bootstrap
 // owns only their route-policy and OAuth discovery catalog entries.
-const bootstrapProductionGoLineBudget = 28960
+// Assurance decision routes add only service composition and route/auth
+// registration; decision validation and persistence remain in
+// internal/complianceassessment.
+// Canonical compliance work adds query composition and response mapping;
+// bounded queries and assurance verification remain in the domain and
+// state-store packages.
+const bootstrapProductionGoLineBudget = 28997
 
 type bootstrapFileLineCount struct {
 	path  string
