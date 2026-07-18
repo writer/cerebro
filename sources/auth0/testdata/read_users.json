@@ -54,6 +54,7 @@
       "source_event_id": "example-bbbdecc3",
       "source_provider": "auth0",
       "source_system": "auth0",
+      "tenant_id": "tenant",
       "user_id": "example-bbbdecc3"
     }
   }

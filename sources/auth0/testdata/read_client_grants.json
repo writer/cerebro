@@ -36,7 +36,8 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "subject_id": "example-76a278b1",
-      "subject_type": "application"
+      "subject_type": "application",
+      "tenant_id": "tenant"
     }
   }
 ]

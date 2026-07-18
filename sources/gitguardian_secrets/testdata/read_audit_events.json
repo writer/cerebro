@@ -33,10 +33,12 @@
       "provider": "gitguardian_secrets",
       "record_class": "audit_event",
       "resource_id": "23983381",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_audit_events:23983381",
       "schema": "audit_events",
       "source_event_id": "23983381",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -75,10 +77,12 @@
       "provider": "gitguardian_secrets",
       "record_class": "audit_event",
       "resource_id": "23983251",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_audit_events:23983251",
       "schema": "audit_events",
       "source_event_id": "23983251",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -117,10 +121,12 @@
       "provider": "gitguardian_secrets",
       "record_class": "audit_event",
       "resource_id": "23982412",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_audit_events:23982412",
       "schema": "audit_events",
       "source_event_id": "23982412",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -159,10 +165,12 @@
       "provider": "gitguardian_secrets",
       "record_class": "audit_event",
       "resource_id": "23982141",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_audit_events:23982141",
       "schema": "audit_events",
       "source_event_id": "23982141",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -202,10 +210,12 @@
       "provider": "gitguardian_secrets",
       "record_class": "audit_event",
       "resource_id": "23982136",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_audit_events:23982136",
       "schema": "audit_events",
       "source_event_id": "23982136",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   }
 ]

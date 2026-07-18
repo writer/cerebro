@@ -65,10 +65,12 @@
       "resource_id": "1",
       "resource_name": "example-4d497be8",
       "resource_type": "incident",
+      "resource_urn": "urn:cerebro:tenant:zendesk_tickets:1",
       "schema": "tickets",
       "source_event_id": "1",
       "source_provider": "zendesk",
-      "source_system": "zendesk"
+      "source_system": "zendesk",
+      "tenant_id": "tenant"
     }
   }
 ]

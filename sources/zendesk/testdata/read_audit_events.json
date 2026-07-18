@@ -94,10 +94,12 @@
       "record_class": "audit_event",
       "resource_id": "1",
       "resource_type": "ticket",
+      "resource_urn": "urn:cerebro:tenant:zendesk_audit_events:1",
       "schema": "audit_events",
       "source_event_id": "6130852545178",
       "source_provider": "zendesk",
-      "source_system": "zendesk"
+      "source_system": "zendesk",
+      "tenant_id": "tenant"
     }
   }
 ]

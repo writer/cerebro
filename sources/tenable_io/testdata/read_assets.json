@@ -62,10 +62,12 @@
       "resource_id": "example-ef08564a",
       "resource_name": "162.159.129.83",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-ef08564a",
       "schema": "assets",
       "source_event_id": "example-ef08564a",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -131,10 +133,12 @@
       "resource_id": "example-b2b17e04",
       "resource_name": "162.159.130.78",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-b2b17e04",
       "schema": "assets",
       "source_event_id": "example-b2b17e04",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -200,10 +204,12 @@
       "resource_id": "example-89d241d3",
       "resource_name": "162.159.130.73",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-89d241d3",
       "schema": "assets",
       "source_event_id": "example-89d241d3",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -269,10 +275,12 @@
       "resource_id": "example-8e62c506",
       "resource_name": "162.159.130.74",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-8e62c506",
       "schema": "assets",
       "source_event_id": "example-8e62c506",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -338,10 +346,12 @@
       "resource_id": "example-665ff5f8",
       "resource_name": "162.159.130.76",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-665ff5f8",
       "schema": "assets",
       "source_event_id": "example-665ff5f8",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -407,10 +417,12 @@
       "resource_id": "example-d127d28a",
       "resource_name": "162.159.130.79",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-d127d28a",
       "schema": "assets",
       "source_event_id": "example-d127d28a",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -491,10 +503,12 @@
       "resource_id": "example-43ed7f6f",
       "resource_name": "162.159.129.83",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-43ed7f6f",
       "schema": "assets",
       "source_event_id": "example-43ed7f6f",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -560,10 +574,12 @@
       "resource_id": "example-0411f505",
       "resource_name": "162.159.130.75",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-0411f505",
       "schema": "assets",
       "source_event_id": "example-0411f505",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -629,10 +645,12 @@
       "resource_id": "example-c5dfe291",
       "resource_name": "162.159.130.77",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c5dfe291",
       "schema": "assets",
       "source_event_id": "example-c5dfe291",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -698,10 +716,12 @@
       "resource_id": "example-977cd5e2",
       "resource_name": "162.159.130.80",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-977cd5e2",
       "schema": "assets",
       "source_event_id": "example-977cd5e2",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -767,10 +787,12 @@
       "resource_id": "example-eca411e7",
       "resource_name": "162.159.130.81",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-eca411e7",
       "schema": "assets",
       "source_event_id": "example-eca411e7",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -836,10 +858,12 @@
       "resource_id": "example-c915f6e3",
       "resource_name": "162.159.130.83",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c915f6e3",
       "schema": "assets",
       "source_event_id": "example-c915f6e3",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -905,10 +929,12 @@
       "resource_id": "example-75bb0af3",
       "resource_name": "162.159.130.82",
       "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-75bb0af3",
       "schema": "assets",
       "source_event_id": "example-75bb0af3",
       "source_provider": "tenable_io",
-      "source_system": "tenable_io"
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
     }
   }
 ]

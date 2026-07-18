@@ -121,6 +121,7 @@
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "status": "RESOLVED",
+      "tenant_id": "tenant",
       "title": "AWS IAM Keys"
     }
   },
@@ -250,6 +251,7 @@
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "status": "ASSIGNED",
+      "tenant_id": "tenant",
       "title": "DSA Private Key"
     }
   },
@@ -335,6 +337,7 @@
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "status": "IGNORED",
+      "tenant_id": "tenant",
       "title": "Salesforce Oauth2 Keys"
     }
   },
@@ -420,6 +423,7 @@
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "status": "RESOLVED",
+      "tenant_id": "tenant",
       "title": "RSA Private Key"
     }
   },
@@ -512,6 +516,7 @@
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "status": "RESOLVED",
+      "tenant_id": "tenant",
       "title": "AWS IAM Keys"
     }
   }

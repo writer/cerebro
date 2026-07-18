@@ -85,10 +85,12 @@
       "record_class": "identity_user",
       "resource_id": "6130869168922",
       "resource_name": "example-33c83fea",
+      "resource_urn": "urn:cerebro:tenant:zendesk_users:6130869168922",
       "schema": "users",
       "source_event_id": "6130869168922",
       "source_provider": "zendesk",
       "source_system": "zendesk",
+      "tenant_id": "tenant",
       "user_id": "6130869168922"
     }
   }

@@ -66,7 +66,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - plugin_id
+      - id
   - kind: tenable_io.findings
     schema_ref: tenable_io/findings/v1
     required_attributes:
@@ -88,4 +88,4 @@ event_contracts:
       - severity
       - status
     required_payload_fields:
-      - id
+      - plugin_id

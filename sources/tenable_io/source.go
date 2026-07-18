@@ -56,6 +56,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"last_seen", "updated_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "last_seen|updated_at|created_at", "resource_id": "id", "resource_name": "name|display_name|last_scan_target|hostname", "resource_urn": "resource_urn|urn", "source_event_id": "id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "asset", "schema": "assets", "source_system": "tenable_io"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "tenable_io_assets"},
 			},
 			{
 				Name:             familyFindings,
@@ -80,6 +81,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "plugin_id|id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "plugin_id|resource_id|id", "resource_name": "plugin_name|name|title", "resource_urn": "resource_urn|urn", "severity": "severity|risk|priority", "source_event_id": "plugin_id|event_id|id", "status": "vulnerability_state|status|state", "tenant_id": "tenant_id", "title": "plugin_name|title|name|summary"},
 				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "vulnerability", "schema": "vulnerabilities", "source_system": "tenable_io"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "tenable_io_vulnerabilities"},
 			},
 		},
 	})

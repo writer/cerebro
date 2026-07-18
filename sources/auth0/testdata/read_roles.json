@@ -26,7 +26,8 @@
       "schema": "roles",
       "source_event_id": "example-63ecf2c0004baf32",
       "source_provider": "auth0",
-      "source_system": "auth0"
+      "source_system": "auth0",
+      "tenant_id": "tenant"
     }
   }
 ]

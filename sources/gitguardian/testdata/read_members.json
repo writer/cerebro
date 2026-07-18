@@ -34,6 +34,7 @@
       "source_event_id": "6",
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
+      "tenant_id": "tenant",
       "user_id": "6"
     }
   },
@@ -71,6 +72,7 @@
       "source_event_id": "16",
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
+      "tenant_id": "tenant",
       "user_id": "16"
     }
   }

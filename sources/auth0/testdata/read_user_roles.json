@@ -31,6 +31,7 @@
       "source_event_id": "example-3106dd3f6ca5c5b5",
       "source_provider": "auth0",
       "source_system": "auth0",
+      "tenant_id": "tenant",
       "user_id": "example-143233fb4ac8d6dd"
     }
   }

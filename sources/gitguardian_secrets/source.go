@@ -72,6 +72,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"last_scan.date", "updated_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "last_scan.date|updated_at|created_at", "resource_id": "id", "resource_name": "full_name|name|display_name", "resource_type": "type", "resource_urn": "resource_urn|urn", "source_event_id": "id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "sources", "source_system": "gitguardian_secrets"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "gitguardian_secrets_sources"},
 			},
 			{
 				Name:             familyAuditEvents,
@@ -86,6 +87,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"date", "observed_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "member_email|actor_email|actor.email|email", "actor_id": "member_id|actor_id|actor.id|user_id", "actor_name": "member_name|actor_name|actor.name", "event_type": "event_name|event_type|action_type|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "date|observed_at|created_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|object_id|id", "resource_name": "resource_name|target_name|target.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn", "source_event_id": "id|event_id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "gitguardian_secrets"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "gitguardian_secrets_audit_events"},
 			},
 		},
 	})

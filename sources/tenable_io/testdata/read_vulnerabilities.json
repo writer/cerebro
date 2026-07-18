@@ -34,12 +34,14 @@
       "resource_id": "141584",
       "resource_name": "CentOS 7 : httpd (CESA-2020:3958)",
       "resource_type": "vulnerability",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_vulnerabilities:141584",
       "schema": "vulnerabilities",
       "severity": "2",
       "source_event_id": "141584",
       "source_provider": "tenable_io",
       "source_system": "tenable_io",
       "status": "New",
+      "tenant_id": "tenant",
       "title": "CentOS 7 : httpd (CESA-2020:3958)"
     }
   },
@@ -78,12 +80,14 @@
       "resource_id": "142598",
       "resource_name": "CentOS 7 : freetype (CESA-2020:4907)",
       "resource_type": "vulnerability",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_vulnerabilities:142598",
       "schema": "vulnerabilities",
       "severity": "2",
       "source_event_id": "142598",
       "source_provider": "tenable_io",
       "source_system": "tenable_io",
       "status": "New",
+      "tenant_id": "tenant",
       "title": "CentOS 7 : freetype (CESA-2020:4907)"
     }
   }

@@ -59,10 +59,12 @@
       "resource_id": "12259",
       "resource_name": "example-e1bc9cb2",
       "resource_type": "github",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:12259",
       "schema": "sources",
       "source_event_id": "12259",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -125,10 +127,12 @@
       "resource_id": "12260",
       "resource_name": "example-e8a82b68",
       "resource_type": "github",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:12260",
       "schema": "sources",
       "source_event_id": "12260",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -191,10 +195,12 @@
       "resource_id": "12261",
       "resource_name": "example-c5378648",
       "resource_type": "github",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:12261",
       "schema": "sources",
       "source_event_id": "12261",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -257,10 +263,12 @@
       "resource_id": "12262",
       "resource_name": "example-47287026",
       "resource_type": "github",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:12262",
       "schema": "sources",
       "source_event_id": "12262",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -332,10 +340,12 @@
       "resource_id": "12263",
       "resource_name": "example-197d9ce2",
       "resource_type": "github",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_secrets_sources:12263",
       "schema": "sources",
       "source_event_id": "12263",
       "source_provider": "gitguardian_secrets",
-      "source_system": "gitguardian_secrets"
+      "source_system": "gitguardian_secrets",
+      "tenant_id": "tenant"
     }
   }
 ]

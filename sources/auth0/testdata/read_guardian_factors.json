@@ -29,6 +29,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -62,6 +63,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -95,6 +97,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -128,6 +131,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "true",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -161,6 +165,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -194,6 +199,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -227,6 +233,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   },
@@ -260,6 +267,7 @@
       "source_provider": "auth0",
       "source_system": "auth0",
       "status": "false",
+      "tenant_id": "tenant",
       "trial_expired": "false"
     }
   }
