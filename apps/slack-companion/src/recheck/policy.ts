@@ -247,10 +247,13 @@ export function projectEvidenceRecheckStatus(
     throw new EvidenceRecheckInvariantError("Evidence recheck status input version is unsupported.");
   }
   if (input.kind === "admission") {
+    assertExactKeys(
+      input,
+      ["kind", "result", "schema_version"],
+      "evidence recheck admission status input",
+    );
     const result = input.result;
-    if (result.schema_version !== "admit-evidence-recheck-result/v1") {
-      throw new EvidenceRecheckInvariantError("Evidence recheck admission result version is unsupported.");
-    }
+    validateAdmissionResultForStatus(result);
     if (result.status === "queued") {
       return slackStatus("queued", "Evidence recheck queued.", false, false, result.receipt.recheck.recheck_id);
     }
@@ -284,6 +287,11 @@ export function projectEvidenceRecheckStatus(
   if (input.kind !== "recheck") {
     throw new EvidenceRecheckInvariantError("Evidence recheck status input kind is unsupported.");
   }
+  assertExactKeys(
+    input,
+    ["kind", "recheck", "schema_version"],
+    "evidence recheck lifecycle status input",
+  );
   validateEvidenceRecheck(input.recheck);
   switch (input.recheck.state) {
     case "queued":
@@ -412,6 +420,7 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
     requireRef(value, label);
   }
   requireRequestKey(recheck.request_key);
+  requireSha256Digest(recheck.binding_digest, "binding_digest");
   requireCanonicalTimestamp(recheck.created_at, "created_at");
   requireCanonicalTimestamp(recheck.updated_at, "updated_at");
   if (Date.parse(recheck.updated_at) < Date.parse(recheck.created_at)) {
@@ -421,6 +430,13 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
   const artifactIds = canonicalArtifactIds(recheck.evidence_artifact_ids);
   if (!sameStrings(artifactIds, recheck.evidence_artifact_ids)) {
     throw new EvidenceRecheckInvariantError("Recheck evidence artifact ids must be canonical.");
+  }
+  const expectedRecheckId = evidenceRecheckIdentity(recheck.binding_ref, recheck.request_key);
+  if (
+    recheck.recheck_id !== expectedRecheckId ||
+    recheck.run_id !== evidenceRecheckRunIdentity(expectedRecheckId)
+  ) {
+    throw new EvidenceRecheckInvariantError("Evidence recheck identities are invalid.");
   }
   const outcomeFields = [recheck.completed_at, recheck.outcome_digest, recheck.outcome_ref];
   if (recheck.state === "completed") {
@@ -605,6 +621,178 @@ function validateAdmissionReceipt(
   }
 }
 
+function validateAdmissionResultForStatus(result: AdmitEvidenceRecheckResultV1): void {
+  if (result.schema_version !== "admit-evidence-recheck-result/v1") {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission result version is unsupported.");
+  }
+  if (result.status === "queued" || result.status === "duplicate") {
+    assertExactKeys(result, [
+      "acknowledgement_permitted",
+      "authorization",
+      "duplicate",
+      "receipt",
+      "retryable",
+      "schema_version",
+      "status",
+    ], "accepted evidence recheck admission result");
+    if (
+      result.acknowledgement_permitted !== true ||
+      result.retryable !== false ||
+      result.duplicate !== (result.status === "duplicate")
+    ) {
+      throw new EvidenceRecheckInvariantError(
+        "Accepted evidence recheck admission result is contradictory.",
+      );
+    }
+    validateAllowedAuthorization(result.authorization);
+    validateAdmissionReceiptForStatus(result.receipt);
+    return;
+  }
+  if (result.status === "degraded") {
+    assertExactKeys(result, [
+      "acknowledgement_permitted",
+      "authorization",
+      "duplicate",
+      "reason_code",
+      "retryable",
+      "schema_version",
+      "status",
+    ], "degraded evidence recheck admission result");
+    if (
+      result.acknowledgement_permitted !== false ||
+      result.duplicate !== false ||
+      result.reason_code !== "durable_admission_unavailable" ||
+      result.retryable !== true
+    ) {
+      throw new EvidenceRecheckInvariantError(
+        "Degraded evidence recheck admission result is contradictory.",
+      );
+    }
+    validateAllowedAuthorization(result.authorization);
+    return;
+  }
+  if (result.status !== "rejected") {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission status is unsupported.");
+  }
+  assertExactKeys(result, [
+    "acknowledgement_permitted",
+    "authorization",
+    "duplicate",
+    "reason_code",
+    "retryable",
+    "schema_version",
+    "status",
+  ], "rejected evidence recheck admission result");
+  if (
+    result.acknowledgement_permitted !== false ||
+    result.duplicate !== false ||
+    result.retryable !== false
+  ) {
+    throw new EvidenceRecheckInvariantError(
+      "Rejected evidence recheck admission result is contradictory.",
+    );
+  }
+  validateDeniedAuthorization(result.authorization);
+  if (result.reason_code !== result.authorization.reason_code) {
+    throw new EvidenceRecheckInvariantError(
+      "Rejected evidence recheck reason does not match authorization.",
+    );
+  }
+}
+
+function validateAllowedAuthorization(
+  authorization: Extract<EvidenceRecheckAuthorizationV1, { allowed: true }>,
+): void {
+  assertExactKeys(
+    authorization,
+    ["allowed", "role", "schema_version"],
+    "allowed evidence recheck authorization",
+  );
+  if (
+    authorization.allowed !== true ||
+    (authorization.role !== "requester" && authorization.role !== "operator") ||
+    authorization.schema_version !== "evidence-recheck-authorization/v1"
+  ) {
+    throw new EvidenceRecheckInvariantError("Allowed evidence recheck authorization is invalid.");
+  }
+}
+
+function validateDeniedAuthorization(
+  authorization: Extract<EvidenceRecheckAuthorizationV1, { allowed: false }>,
+): void {
+  assertExactKeys(
+    authorization,
+    ["allowed", "reason_code", "schema_version"],
+    "denied evidence recheck authorization",
+  );
+  if (
+    authorization.allowed !== false ||
+    (authorization.reason_code !== "actor_not_authorized" &&
+      authorization.reason_code !== "binding_reference_mismatch") ||
+    authorization.schema_version !== "evidence-recheck-authorization/v1"
+  ) {
+    throw new EvidenceRecheckInvariantError("Denied evidence recheck authorization is invalid.");
+  }
+}
+
+function validateAdmissionReceiptForStatus(
+  receipt: EvidenceRecheckAdmissionReceiptV1,
+): void {
+  assertExactKeys(receipt, [
+    "input_digest",
+    "queue_item",
+    "receipt_id",
+    "recheck",
+    "run",
+    "schema_version",
+  ], "evidence recheck admission receipt");
+  if (receipt.schema_version !== "evidence-recheck-admission-receipt/v1") {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission receipt version is unsupported.");
+  }
+  validateEvidenceRecheck(receipt.recheck);
+  requireSha256Digest(receipt.input_digest, "admission input_digest");
+  if (
+    receipt.receipt_id !== evidenceRecheckAdmissionReceiptIdentity(receipt.recheck.recheck_id) ||
+    receipt.recheck.state !== "queued" ||
+    receipt.recheck.reason_code !== "admitted" ||
+    receipt.recheck.revision !== 1
+  ) {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission receipt is not queued truth.");
+  }
+  const capabilities = canonicalCapabilities(receipt.run.required_capabilities);
+  const expectedInputDigest = evidenceRecheckInputDigestFromReceipt(
+    receipt.recheck,
+    receipt.run,
+    capabilities,
+  );
+  if (receipt.input_digest !== expectedInputDigest) {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission input digest is invalid.");
+  }
+  validateRunReceipt(receipt.run, {
+    admitted_at: receipt.recheck.created_at,
+    capabilities,
+    input_digest: receipt.input_digest,
+    recheck_id: receipt.recheck.recheck_id,
+    received_at: receipt.run.received_at,
+    run_context: {
+      required_capabilities: capabilities,
+      retention_policy_ref: receipt.run.retention_policy_ref,
+      service_binding_id: receipt.run.binding_id,
+      subject_ref: receipt.run.subject_ref,
+      tenant_id: receipt.run.tenant_id,
+    },
+    run_id: receipt.recheck.run_id,
+  });
+  validateQueueItem(receipt.queue_item, receipt.recheck);
+  if (
+    receipt.recheck.created_at !== receipt.run.admitted_at ||
+    receipt.recheck.updated_at !== receipt.run.admitted_at ||
+    receipt.queue_item.available_at !== receipt.run.admitted_at
+  ) {
+    throw new EvidenceRecheckInvariantError("Evidence recheck admission timestamps are not atomic.");
+  }
+}
+
 function validateRunReceipt(
   run: RunReceiptV1,
   expected: {
@@ -655,13 +843,30 @@ function validateRunReceipt(
     throw new EvidenceRecheckInvariantError("Evidence recheck canonical run receipt is invalid.");
   }
   requireCanonicalTimestamp(run.admitted_at, "run admitted_at");
+  requireCanonicalTimestamp(run.received_at, "run received_at");
   requireCanonicalTimestamp(run.updated_at, "run updated_at");
+  requireSha256Digest(run.input_digest, "run input_digest");
+  for (const [value, label] of [
+    [run.binding_id, "run binding_id"],
+    [run.retention_policy_ref, "run retention_policy_ref"],
+    [run.subject_ref, "run subject_ref"],
+    [run.tenant_id, "run tenant_id"],
+  ] as const) {
+    requireRef(value, label);
+  }
   requireRef(run.receipt_id, "run receipt_id");
   requireRef(run.idempotency_key, "run idempotency_key");
-  if (run.updated_at !== run.admitted_at) {
+  if (
+    run.updated_at !== run.admitted_at ||
+    Date.parse(run.admitted_at) < Date.parse(run.received_at)
+  ) {
     throw new EvidenceRecheckInvariantError("Queued evidence recheck run timestamps must match.");
   }
-  if (!sameCapabilities(canonicalCapabilities(run.required_capabilities), expected.capabilities)) {
+  const canonicalRunCapabilities = canonicalCapabilities(run.required_capabilities);
+  if (
+    !sameCapabilities(run.required_capabilities, canonicalRunCapabilities) ||
+    !sameCapabilities(canonicalRunCapabilities, expected.capabilities)
+  ) {
     throw new EvidenceRecheckInvariantError("Evidence recheck run capabilities do not match admission.");
   }
 }
@@ -894,6 +1099,29 @@ function evidenceRecheckInputDigest(
   ])}`;
 }
 
+function evidenceRecheckInputDigestFromReceipt(
+  recheck: EvidenceRecheckV1,
+  run: RunReceiptV1,
+  capabilities: CapabilityRequirement[],
+): string {
+  return `sha256:${stableDigest([
+    recheck.actor_ref,
+    recheck.binding_ref,
+    recheck.binding_digest,
+    recheck.request_key,
+    run.received_at,
+    run.binding_id,
+    run.tenant_id,
+    run.subject_ref,
+    run.retention_policy_ref,
+    ...capabilities.flatMap((capability) => [
+      capability.capability_id,
+      capability.level,
+      capability.version,
+    ]),
+  ])}`;
+}
+
 function deliveredAnswerEvidenceBindingDigest(input: {
   answer_ref: string;
   answer_run_id: string;
@@ -1034,16 +1262,19 @@ function canonicalCapabilities(
       throw new EvidenceRecheckInvariantError("Capability requirement level is unsupported.");
     }
     return structuredClone(capability);
-  }).sort((left, right) =>
-    `${left.capability_id}\u0000${left.version}\u0000${left.level}`.localeCompare(
-      `${right.capability_id}\u0000${right.version}\u0000${right.level}`,
-    ),
-  );
+  }).sort((left, right) => compareOrdinal(
+    `${left.capability_id}\u0000${left.version}\u0000${left.level}`,
+    `${right.capability_id}\u0000${right.version}\u0000${right.level}`,
+  ));
   const identities = result.map((capability) => `${capability.capability_id}\u0000${capability.version}`);
   if (new Set(identities).size !== identities.length) {
     throw new EvidenceRecheckInvariantError("Required capability identities must be distinct.");
   }
   return result;
+}
+
+function compareOrdinal(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sameCapabilities(

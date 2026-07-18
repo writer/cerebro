@@ -382,7 +382,7 @@ describe("durable evidence recheck admission", () => {
           missingLookup(input),
           store,
         ),
-        /mismatched recheck|not correlated|unsupported fields|updated_at cannot precede/,
+        /identities are invalid|mismatched recheck|not correlated|unsupported fields|updated_at cannot precede/,
       );
     }
   });
@@ -434,6 +434,46 @@ describe("durable evidence recheck admission", () => {
       evidenceRecheckAdmissionReceiptIdentity(first),
       /^evidence-recheck-admission-receipt:[a-f0-9]{64}$/,
     );
+  });
+
+  test("canonicalizes capability identity without host locale ordering", async () => {
+    const input = admissionInput({
+      run_context: {
+        ...admissionInput().run_context,
+        required_capabilities: [
+          { capability_id: "ä", level: "required", version: "v1" },
+          { capability_id: "z", level: "required", version: "v1" },
+        ],
+      },
+    });
+    const first = await admitEvidenceRecheck(
+      input,
+      foundBindingLookup(input),
+      missingLookup(input),
+      new RecordingStore(),
+    );
+    assert(first.acknowledgement_permitted);
+    assert.deepEqual(
+      first.receipt.run.required_capabilities.map((capability) => capability.capability_id),
+      ["z", "ä"],
+    );
+
+    const replayInput = {
+      ...input,
+      admitted_at: "2026-07-18T12:05:00.000Z",
+      run_context: {
+        ...input.run_context,
+        required_capabilities: [...input.run_context.required_capabilities].reverse(),
+      },
+    };
+    const replay = await admitEvidenceRecheck(
+      replayInput,
+      foundBindingLookup(replayInput),
+      foundLookup(first.receipt),
+      new RecordingStore(),
+    );
+    assert(replay.acknowledgement_permitted);
+    assert.deepEqual(replay.receipt, first.receipt);
   });
 });
 
@@ -532,6 +572,39 @@ describe("Slack-visible evidence recheck status", () => {
       /status is unsupported/,
     );
     assert.throws(
+      () =>
+        projectAdmission({
+          ...result,
+          acknowledgement_permitted: false,
+          authorization: {
+            allowed: false,
+            reason_code: "actor_not_authorized",
+            schema_version: "evidence-recheck-authorization/v1",
+          },
+          duplicate: true,
+          receipt: {
+            recheck: { recheck_id: "forged:recheck" },
+          },
+          retryable: true,
+          status: "queued",
+        } as unknown as Awaited<ReturnType<typeof admitEvidenceRecheck>>),
+      /contradictory/,
+    );
+    assert.throws(
+      () =>
+        projectAdmission({
+          ...result,
+          receipt: {
+            ...result.receipt,
+            queue_item: {
+              ...result.receipt.queue_item,
+              queue_item_id: "queue-item:forged",
+            },
+          },
+        }),
+      /not correlated/,
+    );
+    assert.throws(
       () => projectRecheck({ ...result.receipt.recheck, state: "completed" }),
       /require a durable outcome/,
     );
@@ -566,6 +639,33 @@ describe("Slack-visible evidence recheck status", () => {
           created_at: "2026-07-18T05:00:01-07:00",
         }),
       /canonical UTC form/,
+    );
+    assert.throws(
+      () =>
+        projectRecheck({
+          ...result.receipt.recheck,
+          binding_digest: "not-a-digest",
+        }),
+      /binding_digest must be a canonical SHA-256 digest/,
+    );
+    assert.throws(
+      () =>
+        projectRecheck({
+          ...result.receipt.recheck,
+          recheck_id: "recheck:unrelated",
+          run_id: "run:unrelated",
+        }),
+      /identities are invalid/,
+    );
+    assert.throws(
+      () =>
+        projectEvidenceRecheckStatus({
+          kind: "recheck",
+          raw_payload: "not portable",
+          recheck: result.receipt.recheck,
+          schema_version: "evidence-recheck-status-input/v1",
+        } as unknown as Parameters<typeof projectEvidenceRecheckStatus>[0]),
+      /unsupported fields/,
     );
   });
 });
