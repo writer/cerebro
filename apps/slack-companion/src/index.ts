@@ -63,6 +63,7 @@ export * from "./mission/model.js";
 export * from "./operations/compatibility.js";
 export * from "./operations/maintenance.js";
 export * from "./operations/migration.js";
+export * from "./operations/schedule-definitions.js";
 export * from "./operations/schedules.js";
 export * from "./operations/status.js";
 export * from "./ports.js";

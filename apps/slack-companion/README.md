@@ -51,6 +51,18 @@ Hosts should record the message parts Slack accepted, not an internal draft. Eva
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
 
+## Schedule cadence
+
+`normalizeScheduleDefinition` validates a portable cadence, work reference, and
+revision. `planScheduleDueTimes` returns the due timestamps in one bounded
+window. Interval schedules retain their original anchor, and calendar schedules
+apply the configured time zone consistently across daylight-saving changes.
+Paused and retired definitions do not produce due timestamps.
+
+The cadence planner does not create work, acquire a lease, choose a deployment
+generation, or persist a schedule. Hosts own those actions outside this pure
+planning boundary.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with
