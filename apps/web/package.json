@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:local:cerebro": "CEREBRO_API_BASE=http://127.0.0.1:8080 NEXT_PUBLIC_CEREBRO_API_BASE=http://127.0.0.1:8080 CEREBRO_FORWARD_AUTH_HEADERS=true CEREBRO_PROXY_CACHE_TTL_MS=0 next dev --hostname 127.0.0.1",
-    "dev:fixtures": "CEREBRO_WEB_FIXTURE_MODE=1 CEREBRO_API_BASE=fixture://local NEXT_PUBLIC_CEREBRO_API_BASE=fixture://local CEREBRO_IDENTITY_PROFILE=local CEREBRO_IDENTITY_REQUIRED=false CEREBRO_LOCAL_IDENTITY_FALLBACK=1 CEREBRO_PROXY_CACHE_TTL_MS=0 next dev --hostname 127.0.0.1",
+    "dev:fixtures": "node scripts/dev-fixtures.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/apps/web/server.js",

@@ -68,6 +68,12 @@ jobs:
       - name: Check web workspace
         run: npm run check --workspace @writer/cerebro-web
 
+      - name: Install Chromium for portable web validation
+        run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
+
+      - name: Validate portable local web flow
+        run: npm run e2e:grc:local --workspace @writer/cerebro-web
+
       - name: Build and smoke web workspace
         run: |
           npm run build --workspace @writer/cerebro-web
