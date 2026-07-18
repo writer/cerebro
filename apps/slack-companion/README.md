@@ -64,6 +64,28 @@ commit with the watch update. Later retries return that receipt even after
 other observations or retirement, while the current watch revision remains
 unchanged. A missing or conflicting receipt lookup fails closed.
 
+## Evidence rechecks
+
+`src/recheck` admits a recheck only for evidence already bound server-side to a
+fully delivered answer and its durable conversation thread. The requester does
+not select an evidence location or submit the binding contents. A required
+host-owned lookup resolves the immutable binding before authorization policy
+runs. Only the original requester or a recorded operator can use the binding.
+The binding includes a canonical digest of the
+completed delivery receipt and its ordered part receipts; duplicate part or
+idempotency identities fail closed.
+
+Admission derives stable recheck, run, queue-item, and receipt identities. The
+host must commit the immutable request, canonical reconciliation run, admission
+transitions, queue item, and receipt in one durable transaction before transport
+acknowledgement is permitted. Exact retries return the existing receipt;
+conflicting receipt reuse fails closed. Portable status projections show queued,
+duplicate, in-progress, completed, degraded, and rejected states.
+
+The public module contains only records, validation, deterministic policy, and
+synthetic tests. Evidence resolution, persistence, execution, authorization
+lookup, and Slack transport remain host-owned.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
