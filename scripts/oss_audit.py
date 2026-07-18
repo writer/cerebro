@@ -80,6 +80,7 @@ ALLOWED_FIXTURE_HOST_SUFFIXES = (
 # responses. Keep these exact: broad provider suffixes could admit tenant URLs.
 ALLOWED_PUBLIC_PROVIDER_HOSTS = {
     "api.datadoghq.com",
+    "api.fastly.com",
     "archive.ubuntu.com",
     "avatars.githubusercontent.com",
     "bugs.launchpad.net",
