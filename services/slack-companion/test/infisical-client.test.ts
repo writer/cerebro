@@ -98,7 +98,7 @@ function fakeInfisicalFetch(calls: Array<{ url: string; body?: string }>, secret
     calls.push({ url, body: typeof init?.body === "string" ? init.body : undefined });
     if (url.includes("/api/v1/auth/aws-auth/login")) {
       return new Response(JSON.stringify({
-        accessToken: "infisical-access-token",
+        accessToken: "fixture-access",
         expiresIn: 900,
         tokenType: "Bearer",
       }));

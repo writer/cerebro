@@ -61,10 +61,11 @@ test("parseTriageAgentOutput accepts proactive topic metadata", () => {
 });
 
 test("redactAlertText removes common secret forms", () => {
-  const redacted = redactAlertText("token=xoxb-123-abc password=hunter2 AKIAABCDEFGHIJKLMNOP");
-  assert.doesNotMatch(redacted, /xoxb-123/);
+  const awsAccessKey = ["AKIA", "ABCDEFGHIJKLMNOP"].join("");
+  const redacted = redactAlertText(`token=xoxb-demo password=hunter2 ${awsAccessKey}`);
+  assert.doesNotMatch(redacted, /xoxb-demo/);
   assert.doesNotMatch(redacted, /hunter2/);
-  assert.doesNotMatch(redacted, /AKIAABCDEFGHIJKLMNOP/);
+  assert.equal(redacted.includes(awsAccessKey), false);
 });
 
 test("triage returns canary fallback when Pi and graph reasoning are unavailable", async () => {

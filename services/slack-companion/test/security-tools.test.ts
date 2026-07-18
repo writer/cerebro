@@ -1685,7 +1685,7 @@ test("companion self context explains Cerebro without leaking secrets", async ()
   const tools = createSecurityAgentTools({
     config: testConfig({
       slack: {
-        botToken: "xoxb-secret-token",
+        botToken: "xoxb-demo",
         appToken: "xapp-secret-token",
         auditLogsToken: "audit-secret-token",
         operatorUserIds: new Set(["UOWNER"]),
@@ -1730,7 +1730,7 @@ test("companion self context explains Cerebro without leaking secrets", async ()
   assert.match(JSON.stringify(result.details.agent_tool_policy), /cerebro_code_github_pr/);
   assert.match(serialized, /inspect the actual source and tests at an immutable commit SHA/);
   assert.match(serialized, /open or update the same draft PR and inspect its checks/);
-  assert.doesNotMatch(serialized, /xoxb-secret-token|xapp-secret-token|audit-secret-token|read-secret|source-secret|evidence-secret/);
+  assert.doesNotMatch(serialized, /xoxb-demo|xapp-secret-token|audit-secret-token|read-secret|source-secret|evidence-secret/);
   assert.equal(result.details.capabilities.cerebro_api_credentials.read, true);
   assert.equal(result.details.capabilities.slack.operator_user_count, 1);
   assert.equal(result.details.capabilities.evidence_cas.configured, true);

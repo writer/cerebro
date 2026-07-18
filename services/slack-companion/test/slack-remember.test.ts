@@ -204,7 +204,7 @@ test("remember command refuses secrets", async () => {
       ts: "1.1",
       event_ts: "1.1",
       team: "TWRITER",
-      text: "<@U0BOT> remember token=xoxb-123-secret",
+      text: "<@U0BOT> remember token=xoxb-demo",
     },
     client: fakeClient(posts, reactions),
     say: async (message: any) => posts.push(message),

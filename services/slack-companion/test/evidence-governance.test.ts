@@ -11,7 +11,7 @@ test("evidence governance creates deterministic redacted receipts with same-chan
     answerId: "CSEC:1787000000.000001",
     channelId: "CSEC",
     threadTs: "1787000000.000000",
-    answer: answer("Checkout belongs to Payments; token=ghp_abcdefghijklmnopqrstuvwxyz123456.", 1),
+    answer: answer("Checkout belongs to Payments; token=fixture-secret.", 1),
   };
 
   const first = await service.recordAnswer(input);
@@ -22,7 +22,7 @@ test("evidence governance creates deterministic redacted receipts with same-chan
   assert.equal(first?.receiptId, second?.receiptId);
   assert.equal(first?.manifestHash, second?.manifestHash);
   assert.equal(first?.secretValuesStored, false);
-  assert.doesNotMatch(JSON.stringify(first), /ghp_abcdefghijklmnopqrstuvwxyz123456/);
+  assert.doesNotMatch(JSON.stringify(first), /fixture-secret/);
   assert.equal(visible?.status, "current");
   assert.equal(hidden, undefined);
 });

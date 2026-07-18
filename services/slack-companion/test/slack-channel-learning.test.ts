@@ -20,7 +20,7 @@ test("joined channel learning sends only a redacted bounded batch to required cu
   const first = service.observe({
     channelId: "GTEAM",
     ts: "1.1",
-    text: "<@U123> owns the deploy token=xoxb-private-value",
+    text: "<@U123> owns the deploy token=xoxb-demo",
   });
   const second = service.observe({
     channelId: "GTEAM",
@@ -36,7 +36,7 @@ test("joined channel learning sends only a redacted bounded batch to required cu
   assert.equal(writes[0].channelId, "GTEAM");
   assert.match(writes[0].details, /@participant/);
   assert.match(writes[0].details, /\[redacted_(?:slack_token|secret)\]/);
-  assert.doesNotMatch(writes[0].details, /U123|xoxb-private-value/);
+  assert.doesNotMatch(writes[0].details, /U123|xoxb-demo/);
   assert.deepEqual(writes[0].sourceArtifacts, ["slack:GTEAM:1.1", "slack:GTEAM:1.2"]);
 });
 

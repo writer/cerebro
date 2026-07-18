@@ -317,8 +317,8 @@ test("interaction ledger joins a redacted human answer to later structured feedb
     channelHash: "0123456789abcdef",
     threadHash: "2222222222222222",
     occurredAt: "2026-07-14T18:00:00.000Z",
-    question: "Check token=xoxb-private-value",
-    answer: "The token=xoxb-private-value check failed.",
+    question: "Check token=xoxb-demo",
+    answer: "The token=xoxb-demo check failed.",
     answerSource: "flue",
     toolNames: ["runtime_status"],
     evidenceCount: 1,
@@ -358,7 +358,7 @@ test("interaction ledger joins a redacted human answer to later structured feedb
 
   const values = [...artifacts.values.values()] as Array<Record<string, unknown>>;
   assert.equal(values.length, 4);
-  assert.doesNotMatch(JSON.stringify(values), /xoxb-private-value/);
+  assert.doesNotMatch(JSON.stringify(values), /xoxb-demo/);
   assert.equal(values.some((value) => value.vote === "down" && value.answerHash === "abcdef0123456789"), true);
   assert.equal(values.some((value) => (value.providedBy as Record<string, unknown> | undefined)?.displayName === "Jonathan Haas"), true);
   assert.equal(values.every((value) => value.interactionId === "1111111111111111"), true);
