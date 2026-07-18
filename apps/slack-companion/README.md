@@ -53,6 +53,43 @@ Hosts should record the message parts Slack accepted, not an internal draft. Eva
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
 
+Durable schedule definitions keep a stable schedule identity, revision, work
+digest, cadence anchor, and misfire policy. The portable planner derives the
+same due times after a restart or topology change and materializes occurrences
+with the existing `(schedule_id, due_at, schedule_revision)` identity. Runtime
+stores, destination bindings, and scheduler deployment policy remain host-owned.
+
+## Canonical work cases
+
+`src/canonical-work` projects a Cerebro compliance work item into a resumable
+Slack-facing case. Cerebro remains authoritative for queue state, ownership,
+versions, occurrences, remediation, and assurance verification. The companion
+stores the case projection, exact command intent, and digest-bound approval
+receipt.
+
+Every write is fenced by the current work-item version. A retry after an
+unknown command result first reads canonical state and does not repeat an
+effect that Cerebro already applied. Remediation and fresh assurance remain
+separate commands; the case closes only after the canonical response reaches a
+terminal state.
+
+Hosts implement `CanonicalWorkItemPort` with the public Cerebro SDK and provide
+a durable `DurableCanonicalWorkCasePort`. Credentials, endpoints, deployment
+configuration, and provider-specific stores are outside this workspace.
+
+## Alert triage
+
+`src/triage` owns portable alert-triage, evidence, and suggestion lifecycles.
+Machine-specific transitions keep triage, evidence freshness, and suggestion
+delivery states distinct. An actionable decision can plan a suggestion only
+when every referenced receipt is current, accessible, and within its validity
+window. Planning uses stable caller-provided action identity so a retry produces
+the same suggestion identity.
+
+The host owns source queries, channel admission, prompts, persistence, and
+delivery adapters. Those adapters persist the versioned records and transition
+events without changing the portable decision policy.
+
 ## History learning admission
 
 `slackLearningCandidateRejection` classifies a host-supplied message projection
