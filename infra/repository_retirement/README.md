@@ -82,3 +82,34 @@ bash infra/scripts/validate_final_archive_contract.sh \
 ```
 
 Add `--inventory-receipt` for a web ledger. The validator prints only a bounded result or reason code.
+
+## Web dry-run producer
+
+`infra/scripts/produce_web_final_archive_dry_run.sh` creates normalized lock and receipt artifacts for
+the two logical web source IDs. The private adapter maps those IDs to its fixed repository allowlist;
+the command does not accept repository names.
+
+The producer reads the current source commit and tree, verifies that the ledger covers every source
+blob, checks that open pull-request and issue counts are zero, and requires the active migration
+freeze ruleset and required check with no bypass actors. It also reads current public and private
+target commits and confirms that the caller has administration capability without changing any
+repository setting. GitHub calls are read-only.
+
+The supplied cutover and rollback receipts are bound by byte digest. Their contents remain upstream
+authority inputs and must come from the reviewed cutover and rollback workflows. The producer invokes
+the final archive validator before writing either output artifact. It emits a `dry-run` receipt only;
+it has no apply or archive mode.
+
+```bash
+bash infra/scripts/produce_web_final_archive_dry_run.sh \
+  --source-id web_public \
+  --ledger public-source-disposition.tsv \
+  --inventory-receipt public-source-inventory.json \
+  --representation-proof representation-proof.json \
+  --cutover-receipt cutover.receipt \
+  --rollback-receipt rollback.receipt \
+  --output-directory final-archive-output
+```
+
+The output files contain logical repository IDs and contract evidence only. Command output is limited
+to a bounded success result or failure reason.

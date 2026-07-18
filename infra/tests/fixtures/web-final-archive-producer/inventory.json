@@ -1,0 +1,10 @@
+{
+  "schema_version": "repository-retirement-inventory/v1",
+  "verified": true,
+  "unclassified_rows": 0,
+  "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_path_inventory_sha256": "1e5e28930b06e68adfa6c5dfbed3f05324bb5459e04797096828c57588f11a93",
+  "rows": 3,
+  "ledger_sha256": "784660ce548187a43cd75962ee2eb872089a32b18a3d371702a35eb49b6712b4"
+}

@@ -1,0 +1,9 @@
+{
+  "truncated": false,
+  "tree": [
+    {"path":".github/workflows/legacy-freeze.yml","type":"blob"},
+    {"path":"README.md","type":"blob"},
+    {"path":"src","type":"tree"},
+    {"path":"src/host.go","type":"blob"}
+  ]
+}

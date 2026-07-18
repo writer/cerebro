@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "name": "Legacy migration freeze",
+    "target": "branch",
+    "source_type": "Repository",
+    "enforcement": "active"
+  }
+]

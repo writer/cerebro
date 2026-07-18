@@ -1,0 +1,4 @@
+path	category	disposition	target	note
+.github/workflows/legacy-freeze.yml	standalone_repository_ci	obsolete_or_replaced	public-core:ci	Retirement-only freeze.
+README.md	docs	represented_public	public-core:docs	Portable documentation represented.
+src/host.go	runtime	private_host_ops	private-ops:host	Private host retained.

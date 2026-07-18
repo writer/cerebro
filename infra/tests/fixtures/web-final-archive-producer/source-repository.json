@@ -1,0 +1,5 @@
+{
+  "archived": false,
+  "default_branch": "main",
+  "permissions": {"admin": true, "maintain": true, "push": true, "pull": true}
+}
