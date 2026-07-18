@@ -145,7 +145,7 @@ func NewHTTPPage(query ports.AuditEventQueryV1, page ports.AuditEventPageV1) (HT
 	if err := ValidateQuery(query); err != nil {
 		return HTTPPageV1{}, err
 	}
-	if len(page.Events) > int(query.Limit) {
+	if uint64(len(page.Events)) > uint64(query.Limit) {
 		return HTTPPageV1{}, errors.New("reader returned an oversized audit-event page")
 	}
 	response := HTTPPageV1{

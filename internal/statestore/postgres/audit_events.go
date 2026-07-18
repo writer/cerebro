@@ -167,7 +167,7 @@ func (s *Store) ListAuditEvents(ctx context.Context, query ports.AuditEventQuery
 	if err := rows.Err(); err != nil {
 		return ports.AuditEventPageV1{}, fmt.Errorf("list audit events: %w", err)
 	}
-	hasMore := len(events) > int(query.Limit)
+	hasMore := uint64(len(events)) > uint64(query.Limit)
 	if hasMore {
 		events = events[:query.Limit]
 	}
