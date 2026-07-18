@@ -9,7 +9,7 @@ class AppCIScopeTests(unittest.TestCase):
     def test_web_only_change_skips_core_and_selects_image(self):
         self.assertEqual(
             select_scope(["apps/web/src/app/page.tsx"]),
-            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
+            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True, web_integration=True),
         )
 
     def test_slack_only_change_skips_core(self):
@@ -21,13 +21,13 @@ class AppCIScopeTests(unittest.TestCase):
     def test_deleted_known_app_path_selects_its_owned_checks(self):
         self.assertEqual(
             select_scope(["apps/web/src/removed.ts"]),
-            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
+            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True, web_integration=True),
         )
 
     def test_type_changed_known_app_path_selects_its_owned_checks(self):
         self.assertEqual(
             select_scope(["apps/web/src/linked-config.ts"]),
-            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
+            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True, web_integration=True),
         )
 
     def test_rename_old_and_new_paths_cannot_hide_owned_checks(self):
@@ -62,7 +62,7 @@ class AppCIScopeTests(unittest.TestCase):
     def test_root_npm_change_selects_every_javascript_workspace(self):
         self.assertEqual(
             select_scope(["package-lock.json"]),
-            CIScope(core=False, sdk=True, slack=True, web=True, web_image=True),
+            CIScope(core=False, sdk=True, slack=True, web=True, web_image=True, web_integration=True),
         )
 
     def test_core_contract_changes_select_consuming_apps(self):
@@ -72,7 +72,10 @@ class AppCIScopeTests(unittest.TestCase):
                 "schemas/agent-service-lifecycle.schema.json",
             ]
         )
-        self.assertEqual(scope, CIScope(core=True, sdk=True, slack=True, web=True, web_image=True))
+        self.assertEqual(
+            scope,
+            CIScope(core=True, sdk=True, slack=True, web=True, web_image=True, web_integration=True),
+        )
 
     def test_ci_controller_changes_run_every_scope(self):
         for path in (
@@ -87,8 +90,27 @@ class AppCIScopeTests(unittest.TestCase):
     def test_mixed_change_runs_core_and_changed_app(self):
         self.assertEqual(
             select_scope(["apps/web/src/app/page.tsx", "internal/bootstrap/bootstrap.go"]),
-            CIScope(core=True, sdk=False, slack=False, web=True, web_image=True),
+            CIScope(core=True, sdk=False, slack=False, web=True, web_image=True, web_integration=True),
         )
+
+    def test_relevant_service_paths_select_real_web_integration(self):
+        for path in (
+            "cmd/cerebro/main.go",
+            "internal/bootstrap/grc.go",
+            "internal/graphstore/neo4j/store.go",
+            "internal/statestore/postgres/store.go",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(select_scope([path]).web_integration)
+
+    def test_docs_and_unrelated_core_paths_skip_real_web_integration(self):
+        for path in (
+            "apps/web/README.md",
+            "docs/engineering/monorepo.md",
+            "internal/unrelated/example.go",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(select_scope([path]).web_integration)
 
     def test_empty_diff_and_explicit_all_fail_safe_to_every_scope(self):
         self.assertEqual(select_scope([]), CIScope.all())
@@ -100,7 +122,7 @@ class AppCIScopeTests(unittest.TestCase):
         write_github_outputs(scope, output)
         self.assertEqual(
             output.getvalue(),
-            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\n",
+            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\nweb_integration=true\n",
         )
 
 
