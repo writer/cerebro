@@ -206,11 +206,35 @@ export interface AnswerWatchUpdateV1 {
 
 export interface ApplyAnswerWatchObservationResultV1 {
   occurrence: AnswerWatchOccurrenceV1;
+  receipt: AnswerWatchObservationReceiptV1;
   replayed: boolean;
   schema_version: "apply-answer-watch-observation-result/v1";
   update: AnswerWatchUpdateV1;
   watch: AnswerWatchV1;
 }
+
+export interface AnswerWatchObservationReceiptV1 {
+  observation_digest: string;
+  observation_id: string;
+  occurrence: AnswerWatchOccurrenceV1;
+  receipt_id: string;
+  schema_version: "answer-watch-observation-receipt/v1";
+  update: AnswerWatchUpdateV1;
+  watch_id: string;
+}
+
+/** The host must resolve this durable lookup before policy execution. */
+export type AnswerWatchObservationReceiptLookupV1 =
+  | {
+      found: false;
+      receipt_id: string;
+      schema_version: "answer-watch-observation-receipt-lookup/v1";
+    }
+  | {
+      found: true;
+      receipt: AnswerWatchObservationReceiptV1;
+      schema_version: "answer-watch-observation-receipt-lookup/v1";
+    };
 
 export interface StopAnswerWatchRequestV1 {
   occurred_at: string;
@@ -222,11 +246,33 @@ export interface StopAnswerWatchRequestV1 {
 }
 
 export interface StopAnswerWatchResultV1 {
+  receipt: StopAnswerWatchReceiptV1;
   replayed: boolean;
   schema_version: "stop-answer-watch-result/v1";
   update: AnswerWatchUpdateV1;
   watch: AnswerWatchV1;
 }
+
+export interface StopAnswerWatchReceiptV1 {
+  receipt_id: string;
+  request_digest: string;
+  schema_version: "stop-answer-watch-receipt/v1";
+  update: AnswerWatchUpdateV1;
+  watch_id: string;
+}
+
+/** The host must resolve this durable lookup before policy execution. */
+export type StopAnswerWatchReceiptLookupV1 =
+  | {
+      found: false;
+      receipt_id: string;
+      schema_version: "stop-answer-watch-receipt-lookup/v1";
+    }
+  | {
+      found: true;
+      receipt: StopAnswerWatchReceiptV1;
+      schema_version: "stop-answer-watch-receipt-lookup/v1";
+    };
 
 export interface SlackAnswerWatchStatusV1 {
   schema_version: "slack-answer-watch-status/v1";

@@ -15,6 +15,8 @@ import type {
   AnswerWatchAuthorizationV1,
   AnswerWatchMaterialStateV1,
   AnswerWatchObservationV1,
+  AnswerWatchObservationReceiptLookupV1,
+  AnswerWatchObservationReceiptV1,
   AnswerWatchOccurrenceClaimV1,
   AnswerWatchOccurrenceV1,
   AnswerWatchStateV1,
@@ -28,11 +30,37 @@ import type {
   StartAnswerWatchInputV1,
   StartAnswerWatchResultV1,
   StopAnswerWatchRequestV1,
+  StopAnswerWatchReceiptLookupV1,
+  StopAnswerWatchReceiptV1,
   StopAnswerWatchResultV1,
 } from "./contracts.js";
 import { ANSWER_WATCH_LIMITS } from "./contracts.js";
 
 const UNSAFE_TEXT_CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000d\u000e-\u001f\u007f]/;
+
+const WATCH_STATES: readonly AnswerWatchStateV1[] = [
+  "queued",
+  "active",
+  "degraded",
+  "completed",
+  "closed",
+  "failed",
+  "cancelled",
+  "retired",
+];
+const OBSERVATION_STATUSES: readonly AnswerWatchObservationV1["status"][] = [
+  "pending",
+  "satisfied",
+  "closed",
+  "unavailable",
+  "failed",
+];
+const MATERIAL_TERMINAL_STATES: readonly AnswerWatchMaterialStateV1["terminal_state"][] = [
+  "open",
+  "satisfied",
+  "closed_without_satisfaction",
+  "failed",
+];
 
 const WATCH_TRANSITIONS: Readonly<Record<AnswerWatchStateV1, readonly AnswerWatchStateV1[]>> = {
   active: ["degraded", "completed", "closed", "failed", "cancelled"],
@@ -199,6 +227,15 @@ export function answerWatchMaterialDigest(
   ])}`;
 }
 
+export function answerWatchObservationReceiptIdentity(
+  watchId: string,
+  observationId: string,
+): string {
+  requireRef(watchId, "watch_id");
+  requireRef(observationId, "observation_id");
+  return `answer-watch-observation-receipt:${stableDigest([watchId, observationId])}`;
+}
+
 /**
  * Constructs the only accepted observation identity. The digest binds a
  * retryable observation id to the exact occurrence and material payload.
@@ -293,11 +330,13 @@ export function applyAnswerWatchObservation(input: {
   claim: ScheduledLeaseClaim;
   occurrence: AnswerWatchOccurrenceV1;
   observation: AnswerWatchObservationV1;
+  receipt_lookup: AnswerWatchObservationReceiptLookupV1;
   watch: AnswerWatchV1;
 }): ApplyAnswerWatchObservationResultV1 {
   validateWatch(input.watch);
   validateOccurrence(input.occurrence);
   validateObservation(input.observation);
+  validateObservationReceiptLookup(input.receipt_lookup);
   if (
     input.occurrence.watch_id !== input.watch.watch_id ||
     input.observation.watch_id !== input.watch.watch_id ||
@@ -307,20 +346,39 @@ export function applyAnswerWatchObservation(input: {
     throw new AnswerWatchInvariantError("Observation, occurrence, and watch identities must match.");
   }
 
-  if (input.watch.last_observation_id === input.observation.observation_id) {
+  const receiptId = answerWatchObservationReceiptIdentity(
+    input.watch.watch_id,
+    input.observation.observation_id,
+  );
+  if (input.receipt_lookup.found) {
+    const receipt = input.receipt_lookup.receipt;
     if (
-      input.watch.last_observation_digest !== input.observation.observation_digest ||
-      input.watch.last_update === undefined
+      receipt.receipt_id !== receiptId ||
+      receipt.watch_id !== input.watch.watch_id ||
+      receipt.observation_id !== input.observation.observation_id ||
+      receipt.observation_digest !== input.observation.observation_digest
     ) {
-      throw new AnswerWatchInvariantError("Observation idempotency key has different content.");
+      throw new AnswerWatchInvariantError(
+        "Observation receipt lookup returned different content.",
+      );
     }
+    validateObservationReceiptAgainstObservation(receipt, input.observation);
     return {
-      occurrence: structuredClone(input.occurrence),
+      occurrence: structuredClone(receipt.occurrence),
+      receipt: structuredClone(receipt),
       replayed: true,
       schema_version: "apply-answer-watch-observation-result/v1",
-      update: structuredClone(input.watch.last_update),
+      update: structuredClone(receipt.update),
       watch: structuredClone(input.watch),
     };
+  }
+  if (input.receipt_lookup.receipt_id !== receiptId) {
+    throw new AnswerWatchInvariantError("Observation receipt lookup identity does not match.");
+  }
+  if (input.watch.last_observation_id === input.observation.observation_id) {
+    throw new AnswerWatchInvariantError(
+      "Durable observation receipt lookup missed an already recorded observation.",
+    );
   }
 
   assertWatchNotTerminal(input.watch.state);
@@ -385,8 +443,19 @@ export function applyAnswerWatchObservation(input: {
     state_sequence: stateSequence,
     updated_at: observedAt,
   };
+  const receipt: AnswerWatchObservationReceiptV1 = {
+    observation_digest: input.observation.observation_digest,
+    observation_id: input.observation.observation_id,
+    occurrence: structuredClone(occurrence),
+    receipt_id: receiptId,
+    schema_version: "answer-watch-observation-receipt/v1",
+    update: structuredClone(update),
+    watch_id: input.watch.watch_id,
+  };
+  validateObservationReceiptAgainstObservation(receipt, input.observation);
   return {
     occurrence,
+    receipt,
     replayed: false,
     schema_version: "apply-answer-watch-observation-result/v1",
     update,
@@ -397,29 +466,39 @@ export function applyAnswerWatchObservation(input: {
 export function stopAnswerWatch(
   current: AnswerWatchV1,
   request: StopAnswerWatchRequestV1,
+  receiptLookup: StopAnswerWatchReceiptLookupV1,
 ): StopAnswerWatchResultV1 {
   validateWatch(current);
   validateStopRequest(request);
+  validateStopReceiptLookup(receiptLookup);
   if (request.watch_id !== current.watch_id) {
     throw new AnswerWatchInvariantError("Stop request must belong to the watch.");
   }
-  const idempotencyKey = stopIdempotencyKey(current.watch_id, request.request_key);
-  if (current.last_update?.idempotency_key === idempotencyKey) {
-    if (
-      current.last_update.to_state !== request.to_state ||
-      current.last_update.reason_code !== request.reason_code ||
-      current.last_update.occurred_at !== request.occurred_at
-    ) {
+  const receiptId = answerWatchStopReceiptIdentity(current.watch_id, request.request_key);
+  const requestDigest = stopRequestDigest(request);
+  if (receiptLookup.found) {
+    const receipt = receiptLookup.receipt;
+    if (receipt.receipt_id !== receiptId || receipt.request_digest !== requestDigest) {
       throw new AnswerWatchInvariantError(
-        "Stop request idempotency key was reused with different content.",
+        "Stop receipt lookup returned different content for the request key.",
       );
     }
+    validateStopReceiptAgainstRequest(receipt, request);
     return {
+      receipt: structuredClone(receipt),
       replayed: true,
       schema_version: "stop-answer-watch-result/v1",
-      update: structuredClone(current.last_update),
+      update: structuredClone(receipt.update),
       watch: structuredClone(current),
     };
+  }
+  if (receiptLookup.receipt_id !== receiptId) {
+    throw new AnswerWatchInvariantError("Stop receipt lookup identity does not match.");
+  }
+  if (current.last_update?.idempotency_key === receiptId) {
+    throw new AnswerWatchInvariantError(
+      "Durable stop receipt lookup missed an already recorded transition.",
+    );
   }
   if (current.state === request.to_state) {
     throw new AnswerWatchInvariantError(
@@ -437,7 +516,7 @@ export function stopAnswerWatch(
   const update: AnswerWatchUpdateV1 = {
     event_id: `${current.watch_id}:update:${current.revision + 1}`,
     from_state: current.state,
-    idempotency_key: idempotencyKey,
+    idempotency_key: receiptId,
     material_change: true,
     observation_ref: `watch://${current.watch_id}/transition/${sequence}`,
     occurred_at: normalizedOccurredAt,
@@ -450,7 +529,16 @@ export function stopAnswerWatch(
     to_state: request.to_state,
     watch_id: current.watch_id,
   };
+  const receipt: StopAnswerWatchReceiptV1 = {
+    receipt_id: receiptId,
+    request_digest: requestDigest,
+    schema_version: "stop-answer-watch-receipt/v1",
+    update: structuredClone(update),
+    watch_id: current.watch_id,
+  };
+  validateStopReceiptAgainstRequest(receipt, request);
   return {
+    receipt,
     replayed: false,
     schema_version: "stop-answer-watch-result/v1",
     update,
@@ -473,10 +561,150 @@ function validateStopRequest(request: StopAnswerWatchRequestV1): void {
   requireRef(request.reason_code, "reason_code");
   requireRequestKey(request.request_key);
   requireRef(request.watch_id, "watch_id");
+  requireEnum(request.to_state, ["cancelled", "retired"], "to_state");
 }
 
-function stopIdempotencyKey(watchId: string, requestKey: string): string {
+export function answerWatchStopReceiptIdentity(watchId: string, requestKey: string): string {
+  requireRef(watchId, "watch_id");
+  requireRequestKey(requestKey);
   return `answer-watch-stop:${stableDigest([watchId, requestKey])}`;
+}
+
+function stopRequestDigest(request: StopAnswerWatchRequestV1): string {
+  return `sha256:${stableDigest([
+    request.watch_id,
+    request.request_key,
+    request.to_state,
+    request.occurred_at,
+    request.reason_code,
+  ])}`;
+}
+
+function validateObservationReceiptLookup(
+  lookup: AnswerWatchObservationReceiptLookupV1,
+): void {
+  if (lookup.schema_version !== "answer-watch-observation-receipt-lookup/v1") {
+    throw new AnswerWatchInvariantError(
+      "Unsupported answer watch observation receipt lookup version.",
+    );
+  }
+  if (typeof lookup.found !== "boolean") {
+    throw new AnswerWatchInvariantError("Observation receipt lookup found must be boolean.");
+  }
+  if (lookup.found) validateObservationReceipt(lookup.receipt);
+  else requireRef(lookup.receipt_id, "receipt_id");
+}
+
+function validateObservationReceipt(receipt: AnswerWatchObservationReceiptV1): void {
+  if (receipt.schema_version !== "answer-watch-observation-receipt/v1") {
+    throw new AnswerWatchInvariantError(
+      "Unsupported answer watch observation receipt version.",
+    );
+  }
+  for (const [label, value] of Object.entries({
+    observation_digest: receipt.observation_digest,
+    observation_id: receipt.observation_id,
+    receipt_id: receipt.receipt_id,
+    watch_id: receipt.watch_id,
+  })) requireRef(value, label);
+  validateOccurrence(receipt.occurrence);
+  validateUpdate(receipt.update);
+  if (
+    receipt.receipt_id !== answerWatchObservationReceiptIdentity(
+      receipt.watch_id,
+      receipt.observation_id,
+    ) ||
+    receipt.occurrence.watch_id !== receipt.watch_id ||
+    receipt.occurrence.observation_ref !== receipt.observation_id ||
+    receipt.update.watch_id !== receipt.watch_id ||
+    receipt.update.observation_ref !== receipt.observation_id ||
+    receipt.update.idempotency_key !==
+      `${receipt.watch_id}:observation:${receipt.observation_id}` ||
+    receipt.update.occurred_at !== receipt.occurrence.occurrence.updated_at
+  ) {
+    throw new AnswerWatchInvariantError(
+      "Observation receipt fields do not describe one recorded update.",
+    );
+  }
+}
+
+function validateObservationReceiptAgainstObservation(
+  receipt: AnswerWatchObservationReceiptV1,
+  observation: AnswerWatchObservationV1,
+): void {
+  validateObservationReceipt(receipt);
+  const expectedState = observationState(observation.status);
+  const expectedOccurrenceState = observation.status === "failed" ? "failed" : "completed";
+  if (
+    receipt.observation_digest !== observation.observation_digest ||
+    receipt.observation_id !== observation.observation_id ||
+    receipt.watch_id !== observation.watch_id ||
+    receipt.occurrence.occurrence.occurrence_id !== observation.occurrence_id ||
+    receipt.occurrence.occurrence.state !== expectedOccurrenceState ||
+    receipt.update.occurred_at !== observation.observed_at ||
+    receipt.update.reason_code !== observation.reason_code ||
+    receipt.update.summary !== observation.summary ||
+    receipt.update.terminal !== isTerminal(expectedState) ||
+    receipt.update.to_state !== expectedState
+  ) {
+    throw new AnswerWatchInvariantError(
+      "Observation receipt does not match the canonical observation.",
+    );
+  }
+}
+
+function validateStopReceiptLookup(lookup: StopAnswerWatchReceiptLookupV1): void {
+  if (lookup.schema_version !== "stop-answer-watch-receipt-lookup/v1") {
+    throw new AnswerWatchInvariantError("Unsupported answer watch stop receipt lookup version.");
+  }
+  if (typeof lookup.found !== "boolean") {
+    throw new AnswerWatchInvariantError("Stop receipt lookup found must be boolean.");
+  }
+  if (lookup.found) validateStopReceipt(lookup.receipt);
+  else requireRef(lookup.receipt_id, "receipt_id");
+}
+
+function validateStopReceipt(receipt: StopAnswerWatchReceiptV1): void {
+  if (receipt.schema_version !== "stop-answer-watch-receipt/v1") {
+    throw new AnswerWatchInvariantError("Unsupported answer watch stop receipt version.");
+  }
+  for (const [label, value] of Object.entries({
+    receipt_id: receipt.receipt_id,
+    request_digest: receipt.request_digest,
+    watch_id: receipt.watch_id,
+  })) requireRef(value, label);
+  validateUpdate(receipt.update);
+  if (
+    receipt.update.idempotency_key !== receipt.receipt_id ||
+    receipt.update.watch_id !== receipt.watch_id
+  ) {
+    throw new AnswerWatchInvariantError(
+      "Stop receipt fields do not describe one recorded update.",
+    );
+  }
+}
+
+function validateStopReceiptAgainstRequest(
+  receipt: StopAnswerWatchReceiptV1,
+  request: StopAnswerWatchRequestV1,
+): void {
+  validateStopReceipt(receipt);
+  if (
+    receipt.receipt_id !== answerWatchStopReceiptIdentity(
+      request.watch_id,
+      request.request_key,
+    ) ||
+    receipt.request_digest !== stopRequestDigest(request) ||
+    receipt.watch_id !== request.watch_id ||
+    receipt.update.occurred_at !== request.occurred_at ||
+    receipt.update.reason_code !== request.reason_code ||
+    receipt.update.to_state !== request.to_state ||
+    receipt.update.terminal !== true
+  ) {
+    throw new AnswerWatchInvariantError(
+      "Stop receipt does not match the canonical stop request.",
+    );
+  }
 }
 
 export function projectSlackAnswerWatchStatus(watch: AnswerWatchV1): SlackAnswerWatchStatusV1 {
@@ -584,8 +812,12 @@ function validateWatch(watch: AnswerWatchV1): void {
   if (watch.authority !== "read") {
     throw new AnswerWatchInvariantError("Answer watches require read-only authority.");
   }
+  requireEnum(watch.state, WATCH_STATES, "state");
   requirePositiveInteger(watch.revision, "revision");
   requireNonNegativeInteger(watch.state_sequence, "state_sequence");
+  if (watch.state_sequence > watch.revision - 1) {
+    throw new AnswerWatchInvariantError("Watch state sequence cannot exceed its update count.");
+  }
   const createdAt = requireCanonicalTimestamp(watch.created_at, "created_at");
   const updatedAt = requireCanonicalTimestamp(watch.updated_at, "updated_at");
   if (Date.parse(updatedAt) < Date.parse(createdAt)) {
@@ -604,9 +836,37 @@ function validateWatch(watch: AnswerWatchV1): void {
   }
   if (watch.last_update !== undefined) {
     validateUpdate(watch.last_update);
-    if (watch.last_update.watch_id !== watch.watch_id) {
-      throw new AnswerWatchInvariantError("Watch update must belong to the watch.");
+    if (
+      watch.last_update.watch_id !== watch.watch_id ||
+      watch.last_update.sequence !== watch.revision ||
+      watch.last_update.event_id !== `${watch.watch_id}:update:${watch.revision}` ||
+      watch.last_update.to_state !== watch.state ||
+      watch.last_update.occurred_at !== watch.updated_at
+    ) {
+      throw new AnswerWatchInvariantError(
+        "Watch revision, state, identity, and time must match its last update.",
+      );
     }
+  }
+  if ((watch.revision === 1) !== (watch.last_update === undefined)) {
+    throw new AnswerWatchInvariantError(
+      "Initial watches have no update; later revisions require the last update.",
+    );
+  }
+  if (
+    watch.revision === 1 &&
+    (
+      watch.state !== "queued" ||
+      watch.state_sequence !== 0 ||
+      watch.last_material_digest !== undefined ||
+      watch.last_observation_digest !== undefined ||
+      watch.last_observation_id !== undefined ||
+      watch.last_target_version !== undefined
+    )
+  ) {
+    throw new AnswerWatchInvariantError(
+      "Initial watch state must be queued without observation state.",
+    );
   }
 }
 
@@ -658,6 +918,7 @@ function validateObservation(observation: AnswerWatchObservationV1): void {
     target_version: observation.target_version,
     watch_id: observation.watch_id,
   })) requireRef(value, label);
+  requireEnum(observation.status, OBSERVATION_STATUSES, "status");
   requireSummary(observation.summary);
   requireCanonicalTimestamp(observation.observed_at, "observed_at");
   const canonicalDigest = answerWatchMaterialDigest(observation.material_state);
@@ -698,9 +959,20 @@ function validateUpdate(update: AnswerWatchUpdateV1): void {
     reason_code: update.reason_code,
     watch_id: update.watch_id,
   })) requireRef(value, label);
+  requireEnum(update.from_state, WATCH_STATES, "from_state");
+  requireEnum(update.to_state, WATCH_STATES, "to_state");
+  requireBoolean(update.material_change, "material_change");
+  requireBoolean(update.publish, "publish");
+  requireBoolean(update.terminal, "terminal");
   requirePositiveInteger(update.sequence, "sequence");
   requireSummary(update.summary);
   requireCanonicalTimestamp(update.occurred_at, "occurred_at");
+  requireWatchTransitionIfChanged(update.from_state, update.to_state);
+  if (update.terminal !== isTerminal(update.to_state)) {
+    throw new AnswerWatchInvariantError(
+      "Update terminal flag must match its destination state.",
+    );
+  }
 }
 
 function validateMaterialState(state: AnswerWatchMaterialStateV1): void {
@@ -710,8 +982,10 @@ function validateMaterialState(state: AnswerWatchMaterialStateV1): void {
   requireNonNegativeInteger(state.checks.passed, "checks.passed");
   requireNonNegativeInteger(state.checks.pending, "checks.pending");
   requireNonNegativeInteger(state.checks.failed, "checks.failed");
+  requireBoolean(state.draft, "draft");
   requireRef(state.head_ref, "head_ref");
   requireRef(state.merge_state, "merge_state");
+  requireEnum(state.terminal_state, MATERIAL_TERMINAL_STATES, "terminal_state");
 }
 
 function requireWatchTransitionIfChanged(from: AnswerWatchStateV1, to: AnswerWatchStateV1): void {
@@ -807,6 +1081,22 @@ function requirePositiveInteger(value: number, label: string): void {
 function requireNonNegativeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new AnswerWatchInvariantError(`${label} must be a non-negative integer.`);
+  }
+}
+
+function requireBoolean(value: boolean, label: string): void {
+  if (typeof value !== "boolean") {
+    throw new AnswerWatchInvariantError(`${label} must be boolean.`);
+  }
+}
+
+function requireEnum<T extends string>(
+  value: T,
+  allowed: readonly T[],
+  label: string,
+): void {
+  if (!allowed.includes(value)) {
+    throw new AnswerWatchInvariantError(`${label} has an unsupported value.`);
   }
 }
 

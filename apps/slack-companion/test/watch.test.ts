@@ -3,13 +3,17 @@ import { describe, test } from "node:test";
 import type {
   AnswerWatchAuthorityV1,
   AnswerWatchMaterialStateV1,
+  AnswerWatchObservationReceiptV1,
   AnswerWatchObservationStatusV1,
   AnswerWatchObservationV1,
+  StopAnswerWatchReceiptV1,
   AnswerWatchV1,
 } from "../src/watch/contracts.js";
 import { ANSWER_WATCH_LIMITS } from "../src/watch/contracts.js";
 import {
   answerWatchMaterialDigest,
+  answerWatchObservationReceiptIdentity,
+  answerWatchStopReceiptIdentity,
   applyAnswerWatchObservation,
   authorizeAnswerWatch,
   beginAnswerWatchOccurrence,
@@ -328,6 +332,7 @@ describe("answer watch observation policy", () => {
       claim: first.claim,
       occurrence: first.occurrence,
       observation: first.observation,
+      receipt_lookup: observationReceiptFound(first.receipt),
       watch: first.watch,
     });
     assert.equal(replay.replayed, true);
@@ -338,6 +343,7 @@ describe("answer watch observation policy", () => {
         claim: first.claim,
         occurrence: first.occurrence,
         observation: { ...first.observation, summary: "Changed after digesting." },
+        receipt_lookup: observationReceiptFound(first.receipt),
         watch: first.watch,
       }),
       /digest does not match its canonical payload/,
@@ -356,9 +362,36 @@ describe("answer watch observation policy", () => {
           ...first.observation,
           occurrence_id: otherOccurrence.occurrence.occurrence_id,
         },
+        receipt_lookup: observationReceiptFound(first.receipt),
         watch: first.watch,
       }),
       /digest does not match its canonical payload/,
+    );
+
+    const later = observe(first.watch, {
+      observation_id: "observation://sample/later",
+      summary: "A later observation is now current.",
+    });
+    const nonAdjacentReplay = applyAnswerWatchObservation({
+      claim: first.claim,
+      occurrence: first.occurrence,
+      observation: first.observation,
+      receipt_lookup: observationReceiptFound(first.receipt),
+      watch: later.watch,
+    });
+    assert.equal(nonAdjacentReplay.replayed, true);
+    assert.deepEqual(nonAdjacentReplay.update, first.update);
+    assert.deepEqual(nonAdjacentReplay.watch, later.watch);
+
+    assert.throws(
+      () => applyAnswerWatchObservation({
+        claim: first.claim,
+        occurrence: first.occurrence,
+        observation: first.observation,
+        receipt_lookup: observationReceiptMiss(first.observation),
+        watch: first.watch,
+      }),
+      /lookup missed an already recorded observation/,
     );
   });
 
@@ -373,6 +406,9 @@ describe("answer watch observation policy", () => {
         claim: { ...acquired.claim, fencing_token: acquired.claim.fencing_token + 1 },
         occurrence: acquired.occurrence,
         observation: observation(acquired.occurrence.occurrence.occurrence_id, watch),
+        receipt_lookup: observationReceiptMiss(
+          observation(acquired.occurrence.occurrence.occurrence_id, watch),
+        ),
         watch,
       }),
       /active generation and fencing claim/,
@@ -387,7 +423,7 @@ describe("answer watch observation policy", () => {
       request_key: "cancel-request-1",
       to_state: "cancelled",
     });
-    const cancelled = stopAnswerWatch(queued, cancelRequest);
+    const cancelled = stopAnswerWatch(queued, cancelRequest, stopReceiptMiss(cancelRequest));
     assert.equal(cancelled.replayed, false);
     assert.deepEqual(projectSlackAnswerWatchStatus(cancelled.watch), {
       schema_version: "slack-answer-watch-status/v1",
@@ -398,48 +434,146 @@ describe("answer watch observation policy", () => {
       watch_id: queued.watch_id,
     });
 
-    const replay = stopAnswerWatch(cancelled.watch, cancelRequest);
+    const replay = stopAnswerWatch(
+      cancelled.watch,
+      cancelRequest,
+      stopReceiptFound(cancelled.receipt),
+    );
     assert.equal(replay.replayed, true);
     assert.deepEqual(replay.watch, cancelled.watch);
     assert.deepEqual(replay.update, cancelled.update);
 
     assert.throws(
-      () => stopAnswerWatch(cancelled.watch, {
-        ...cancelRequest,
-        reason_code: "operator_cancelled",
-      }),
-      /reused with different content/,
+      () => stopAnswerWatch(
+        cancelled.watch,
+        { ...cancelRequest, reason_code: "operator_cancelled" },
+        stopReceiptFound(cancelled.receipt),
+      ),
+      /different content/,
     );
     assert.throws(
-      () => stopAnswerWatch(cancelled.watch, {
-        ...cancelRequest,
-        to_state: "retired",
-      }),
-      /reused with different content/,
+      () => stopAnswerWatch(
+        cancelled.watch,
+        { ...cancelRequest, to_state: "retired" },
+        stopReceiptFound(cancelled.receipt),
+      ),
+      /different content/,
     );
 
-    assert.equal(stopAnswerWatch(cancelled.watch, stopRequest(cancelled.watch, {
+    const retireRequest = stopRequest(cancelled.watch, {
       occurred_at: "2030-01-02T03:06:00.000Z",
       reason_code: "retention_complete",
       request_key: "retire-request-1",
       to_state: "retired",
-    })).watch.state, "retired");
+    });
+    const retired = stopAnswerWatch(
+      cancelled.watch,
+      retireRequest,
+      stopReceiptMiss(retireRequest),
+    );
+    assert.equal(retired.watch.state, "retired");
+
+    const nonAdjacentCancelReplay = stopAnswerWatch(
+      retired.watch,
+      cancelRequest,
+      stopReceiptFound(cancelled.receipt),
+    );
+    assert.equal(nonAdjacentCancelReplay.replayed, true);
+    assert.deepEqual(nonAdjacentCancelReplay.update, cancelled.update);
+    assert.deepEqual(nonAdjacentCancelReplay.watch, retired.watch);
   });
 
   test("bounds stop request identities", () => {
     const queued = startedWatch();
-    assert.doesNotThrow(() => stopAnswerWatch(queued, stopRequest(queued, {
+    const boundaryRequest = stopRequest(queued, {
       request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes),
-    })));
+    });
+    assert.doesNotThrow(() => stopAnswerWatch(
+      queued,
+      boundaryRequest,
+      stopReceiptMiss(boundaryRequest),
+    ));
+    const overflowRequest = stopRequest(queued, {
+      request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes + 1),
+    });
     assert.throws(
-      () => stopAnswerWatch(queued, stopRequest(queued, {
-        request_key: "k".repeat(ANSWER_WATCH_LIMITS.request_key_utf8_bytes + 1),
-      })),
+      () => stopAnswerWatch(queued, overflowRequest, {
+        found: false,
+        receipt_id: "receipt://overflow",
+        schema_version: "stop-answer-watch-receipt-lookup/v1",
+      }),
       /UTF-8 bytes/,
     );
+    const whitespaceRequest = stopRequest(queued, { request_key: "bad key" });
     assert.throws(
-      () => stopAnswerWatch(queued, stopRequest(queued, { request_key: "bad key" })),
+      () => stopAnswerWatch(queued, whitespaceRequest, {
+        found: false,
+        receipt_id: "receipt://whitespace",
+        schema_version: "stop-answer-watch-receipt-lookup/v1",
+      }),
       /without whitespace/,
+    );
+  });
+
+  test("fails closed on invalid discriminants and watch update correlations", () => {
+    assert.throws(
+      () => projectSlackAnswerWatchStatus({
+        ...startedWatch(),
+        state: "unknown",
+      } as unknown as AnswerWatchV1),
+      /state has an unsupported value/,
+    );
+    assert.throws(
+      () => projectSlackAnswerWatchStatus({
+        ...startedWatch(),
+        state: "active",
+      }),
+      /Initial watch state must be queued/,
+    );
+
+    const activeResult = observe(startedWatch());
+    const active = activeResult.watch;
+    assert.throws(
+      () => projectSlackAnswerWatchStatus({
+        ...active,
+        last_update: { ...active.last_update!, to_state: "unknown" },
+      } as unknown as AnswerWatchV1),
+      /to_state has an unsupported value/,
+    );
+    for (const changed of [
+      { ...active, revision: active.revision + 1 },
+      { ...active, state: "degraded" as const },
+      { ...active, updated_at: "2030-01-02T03:07:00.000Z" },
+      {
+        ...active,
+        last_update: { ...active.last_update!, watch_id: "answer-watch://other" },
+      },
+    ]) {
+      assert.throws(
+        () => projectSlackAnswerWatchStatus(changed),
+        /revision, state, identity, and time/,
+      );
+    }
+
+    assert.throws(
+      () => answerWatchMaterialDigest({
+        ...activeResult.observation.material_state,
+        terminal_state: "unknown",
+      } as unknown as AnswerWatchMaterialStateV1),
+      /terminal_state has an unsupported value/,
+    );
+    assert.throws(
+      () => applyAnswerWatchObservation({
+        claim: activeResult.claim,
+        occurrence: activeResult.occurrence,
+        observation: {
+          ...activeResult.observation,
+          status: "unknown",
+        } as unknown as AnswerWatchObservationV1,
+        receipt_lookup: observationReceiptFound(activeResult.receipt),
+        watch: active,
+      }),
+      /status has an unsupported value/,
     );
   });
 });
@@ -530,6 +664,45 @@ function stopRequest(
   };
 }
 
+function observationReceiptMiss(observationValue: AnswerWatchObservationV1) {
+  return {
+    found: false as const,
+    receipt_id: answerWatchObservationReceiptIdentity(
+      observationValue.watch_id,
+      observationValue.observation_id,
+    ),
+    schema_version: "answer-watch-observation-receipt-lookup/v1" as const,
+  };
+}
+
+function observationReceiptFound(
+  receipt: AnswerWatchObservationReceiptV1,
+) {
+  return {
+    found: true as const,
+    receipt,
+    schema_version: "answer-watch-observation-receipt-lookup/v1" as const,
+  };
+}
+
+function stopReceiptMiss(request: ReturnType<typeof stopRequest>) {
+  return {
+    found: false as const,
+    receipt_id: answerWatchStopReceiptIdentity(request.watch_id, request.request_key),
+    schema_version: "stop-answer-watch-receipt-lookup/v1" as const,
+  };
+}
+
+function stopReceiptFound(
+  receipt: StopAnswerWatchReceiptV1,
+) {
+  return {
+    found: true as const,
+    receipt,
+    schema_version: "stop-answer-watch-receipt-lookup/v1" as const,
+  };
+}
+
 function observe(
   watch: AnswerWatchV1,
   options: {
@@ -555,6 +728,7 @@ function observe(
       claim: acquired.claim,
       occurrence: acquired.occurrence,
       observation: recordedObservation,
+      receipt_lookup: observationReceiptMiss(recordedObservation),
       watch,
     }),
     claim: acquired.claim,

@@ -58,6 +58,12 @@ suppresses unchanged checks, shows degraded and recovered states, and
 distinguishes a satisfied condition from a target that closed first. The host
 owns source polling, durable storage, authorization lookup, and Slack transport.
 
+Observation and stop retries require a durable receipt lookup before portable
+policy runs. A first execution returns an immutable receipt that the host must
+commit with the watch update. Later retries return that receipt even after
+other observations or retirement, while the current watch revision remains
+unchanged. A missing or conflicting receipt lookup fails closed.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
