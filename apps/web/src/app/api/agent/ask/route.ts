@@ -20,7 +20,12 @@ import {
 } from "@/lib/ask";
 import { mcpUrlFromApiBase } from "@/lib/ask-agent-config";
 import { ASK_AGENT_FALLBACK_STATUS } from "@/lib/ask-agent-status";
-import { securityProducerResponseCandidateHint } from "@/lib/security-producer-response";
+import {
+  resolveSecurityProducerGuidance,
+  securityProducerResponseCandidateHint,
+} from "@/lib/security-producer-response";
+import type { SecurityProducer, SecurityProducerCatalog } from "@/lib/security-producers";
+import { runtimeSecurityProducerCatalog } from "@/lib/security-producers-runtime";
 import {
   authorizationErrorResponse,
   authorizeCurrentUser,
@@ -279,10 +284,14 @@ async function streamAgentRun(
       detail: contextLabel(payload),
       mode: "agent",
     }));
+    const runtimeInstructions = buildRuntimeAgentInstructions(payload);
+    span.annotate({
+      security_producer_catalog_state: runtimeInstructions.catalogState,
+    });
 
     const agent = new Agent({
       name: "Cerebro Operator",
-      instructions: buildAgentInstructions(payload),
+      instructions: runtimeInstructions.instructions,
       model: AGENT_MODEL,
       mcpServers: [server],
       mcpConfig: {
@@ -475,7 +484,10 @@ const headersForMcp = (request: NextRequest) => {
   return headers;
 };
 
-export const buildAgentInstructions = (payload: NormalizedAgentRequest) => `
+export const buildAgentInstructions = (
+  payload: NormalizedAgentRequest,
+  catalog: SecurityProducerCatalog = { state: "invalid" },
+) => `
 You are Cerebro AI, the security graph operator inside the Cerebro web platform.
 
 Use the Cerebro MCP tools as the source of truth for findings, assets, evidence, risk summaries, graph neighborhoods, impact paths, and investigation context. Do not invent graph facts, identifiers, evidence, ownership, or counts that are not returned by a tool. Treat tenant-forbidden, not-found, and redacted values as hard boundaries.
@@ -483,7 +495,7 @@ Use the Cerebro MCP tools as the source of truth for findings, assets, evidence,
 Prefer narrow, high-signal tool calls. If the user is on a scoped screen, start with that entity, finding, resource, or route context before broad search. For changes or refreshes, only use propose/dry-run tools and clearly label the result as a proposal.
 
 Fast tool routing:
-${buildFastToolGuidance(payload)}
+${buildFastToolGuidance(payload, catalog.state === "ready" ? catalog.producers : [])}
 - Avoid decomposing a request into findings, evidence, asset, and graph calls when one bundled tool already returns the needed context.
 
 Answer in concise Markdown. Lead with the actionable answer, then give supporting evidence, caveats, and suggested next action when useful. Mention the MCP tool names you used only when it helps auditability.
@@ -496,7 +508,18 @@ Current request metadata:
 - Page title: ${quotedInstructionMetadata(payload.context?.title ?? payload.context?.routeLabel, "unknown", 256)}
 `;
 
-const buildFastToolGuidance = (payload: NormalizedAgentRequest) => {
+export const buildRuntimeAgentInstructions = (payload: NormalizedAgentRequest) => {
+  const catalog = runtimeSecurityProducerCatalog();
+  return {
+    catalogState: catalog.state,
+    instructions: buildAgentInstructions(payload, catalog),
+  };
+};
+
+const buildFastToolGuidance = (
+  payload: NormalizedAgentRequest,
+  producers: SecurityProducer[],
+) => {
   const findingId = instructionMetadata(payload.context?.findingId, "", 256);
   const route = payload.context?.route ?? "";
   const scopedUrn = instructionMetadata(
@@ -506,11 +529,20 @@ const buildFastToolGuidance = (payload: NormalizedAgentRequest) => {
   );
   const oauthAppID = instructionMetadata(contextString(payload.context, "oauth_app_id"), "", 256);
   const oauthGrantID = instructionMetadata(contextString(payload.context, "oauth_grant_id"), "", 256);
-  const securityProducerID = instructionMetadata(contextString(payload.context, "security_producer_id"), "", 256);
-  const responseActionCandidates = contextStringList(payload.context, "response_action_candidates")
+  const requestedSecurityProducerID = instructionMetadata(contextString(payload.context, "security_producer_id"), "", 256);
+  const requestedResponseActionCandidates = contextStringList(payload.context, "response_action_candidates")
     .map((candidate) => instructionMetadata(candidate, "", 160))
     .filter(Boolean);
-  const responseActionCandidateHint = securityProducerResponseCandidateHint(responseActionCandidates);
+  const producerGuidance = resolveSecurityProducerGuidance(
+    requestedSecurityProducerID,
+    requestedResponseActionCandidates,
+    producers,
+  );
+  const securityProducerID = producerGuidance?.producer.id ?? "";
+  const responseActionCandidates = producerGuidance?.candidates ?? [];
+  const responseActionCandidateHint = producerGuidance
+    ? securityProducerResponseCandidateHint(responseActionCandidates, producerGuidance.producer)
+    : "";
   const hints = [
     findingId
       ? `- For this finding-scoped request, call cerebro.investigation.context first with finding_id=${JSON.stringify(findingId)} and compact=true unless the user explicitly asks for raw evidence.`
