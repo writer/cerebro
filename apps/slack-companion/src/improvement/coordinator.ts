@@ -36,6 +36,10 @@ import {
   type ImprovementOutcomeEvidenceInput,
   type ImprovementOutcomeEvidenceOutcome,
 } from "./contracts.js";
+import {
+  ImprovementEvaluationSetReceiptError,
+  validateImprovementOutcomeEvaluationSet,
+} from "./evaluation-set-receipt.js";
 import type {
   DurableImprovementCandidatePort,
   ImprovementAuthorPort,
@@ -261,8 +265,9 @@ export class ImprovementCoordinator {
     assertEvidenceCandidate(candidate, input);
     if (
       candidate.authoring_prior_head_digest === undefined ||
-      input.baseline.evaluated_head_digest !== candidate.authoring_prior_head_digest ||
-      input.candidate.evaluated_head_digest !== candidate.head_digest
+      input.baseline.receipt.evaluated_head_digest !==
+        candidate.authoring_prior_head_digest ||
+      input.candidate.receipt.evaluated_head_digest !== candidate.head_digest
     ) {
       throw new ImprovementConflictError(
         "Outcome evidence does not match the baseline and candidate heads.",
@@ -297,13 +302,28 @@ export class ImprovementCoordinator {
     input: ImprovementEvidenceRecord,
   ): Promise<ImprovementCandidateV1> {
     const snapshot = await this.evidence.recordFresh(input);
-    if (
-      !isBoundEvidenceSnapshot(snapshot, candidate) ||
-      !snapshotContainsEvidence(snapshot, input)
-    ) {
+    const exactSnapshot = isBoundEvidenceSnapshot(snapshot, candidate) &&
+      snapshotContainsEvidence(snapshot, input);
+    if (!exactSnapshot) {
+      if (candidate.status === "ready") {
+        throw new ImprovementConflictError(
+          "Ready evidence replay did not return the exact stored snapshot.",
+        );
+      }
       return candidate;
     }
     if (!snapshot.states.every((state) => state.state === "fresh")) return candidate;
+    if (candidate.status === "ready") {
+      if (
+        candidate.fresh_evidence_digest !== snapshot.bundle_digest ||
+        candidate.fresh_evidence_ref !== snapshot.bundle_ref
+      ) {
+        throw new ImprovementConflictError(
+          "Ready evidence completion conflicts with the stored snapshot.",
+        );
+      }
+      return candidate;
+    }
     return this.candidates.markEvidenceReady({
       author_generation: candidate.author_generation,
       candidate_id: candidate.candidate_id,
@@ -693,14 +713,11 @@ function validateOutcomeEvidence(input: ImprovementOutcomeEvidenceInput): void {
     throw new ImprovementInputError("Outcome evidence candidate revision is invalid.");
   }
   assertDigest(input.head_digest, "outcome head");
-  assertDigest(input.baseline.evaluated_head_digest, "baseline outcome head");
-  assertDigest(input.candidate.evaluated_head_digest, "candidate outcome head");
-  assertSafeRef(input.held_out_evidence_ref, "held-out evidence");
-  assertSafeRef(input.shadow_evidence_ref, "shadow evidence");
-  assertSafeRef(input.promotion_evidence_ref, "promotion evidence");
   if (
     !Array.isArray(input.baseline.evaluations) ||
     !Array.isArray(input.candidate.evaluations) ||
+    input.baseline.evaluations.length === 0 ||
+    input.candidate.evaluations.length === 0 ||
     input.baseline.evaluations.length > MAXIMUM_OUTCOME_EVALUATIONS_PER_POLICY ||
     input.candidate.evaluations.length > MAXIMUM_OUTCOME_EVALUATIONS_PER_POLICY
   ) {
@@ -708,6 +725,18 @@ function validateOutcomeEvidence(input: ImprovementOutcomeEvidenceInput): void {
       "Baseline and candidate outcome evaluations are required and bounded.",
     );
   }
+  try {
+    validateImprovementOutcomeEvaluationSet(input.baseline);
+    validateImprovementOutcomeEvaluationSet(input.candidate);
+  } catch (error) {
+    if (error instanceof ImprovementEvaluationSetReceiptError) {
+      throw new ImprovementInputError(error.message);
+    }
+    throw error;
+  }
+  assertSafeRef(input.held_out_evidence_ref, "held-out evidence");
+  assertSafeRef(input.shadow_evidence_ref, "shadow evidence");
+  assertSafeRef(input.promotion_evidence_ref, "promotion evidence");
 }
 
 function assertEvidenceCandidate(
@@ -717,10 +746,16 @@ function assertEvidenceCandidate(
     "author_generation" | "candidate_id" | "expected_revision" | "head_digest"
   >,
 ): void {
+  const exactAwaitingRevision = candidate.status === "awaiting_evidence" &&
+    candidate.revision === input.expected_revision;
+  const exactReadyReplay = candidate.status === "ready" &&
+    (candidate.revision === input.expected_revision ||
+      candidate.revision === input.expected_revision + 1) &&
+    candidate.fresh_evidence_digest !== undefined &&
+    candidate.fresh_evidence_ref !== undefined;
   if (
-    (candidate.status !== "awaiting_evidence" && candidate.status !== "ready") ||
+    (!exactAwaitingRevision && !exactReadyReplay) ||
     candidate.candidate_id !== input.candidate_id ||
-    candidate.revision !== input.expected_revision ||
     candidate.author_generation !== input.author_generation ||
     candidate.head_digest !== input.head_digest
   ) {
@@ -756,9 +791,11 @@ function outcomeEvidenceRecords(
     {
       ...common,
       evidence_digest: digest(JSON.stringify({
-        candidate_head_digest: input.candidate.evaluated_head_digest,
+        candidate_evaluation_receipt_digest: input.candidate.receipt.receipt_digest,
+        candidate_head_digest: input.candidate.receipt.evaluated_head_digest,
         decision,
-        baseline_head_digest: input.baseline.evaluated_head_digest,
+        baseline_evaluation_receipt_digest: input.baseline.receipt.receipt_digest,
+        baseline_head_digest: input.baseline.receipt.evaluated_head_digest,
       })),
       evidence_ref: input.promotion_evidence_ref,
       kind: "promotion",
@@ -771,17 +808,21 @@ function outcomePartition(
   partition: "held_out" | "shadow",
 ): {
   baseline: AssistantTurnEvaluationV1[];
+  baseline_evaluation_receipt_digest: string;
   baseline_head_digest: string;
   candidate: AssistantTurnEvaluationV1[];
+  candidate_evaluation_receipt_digest: string;
   candidate_head_digest: string;
   partition: "held_out" | "shadow";
   schema_version: "improvement-outcome-evidence/v1";
 } {
   return {
     baseline: canonicalEvaluations(input.baseline.evaluations, partition),
-    baseline_head_digest: input.baseline.evaluated_head_digest,
+    baseline_evaluation_receipt_digest: input.baseline.receipt.receipt_digest,
+    baseline_head_digest: input.baseline.receipt.evaluated_head_digest,
     candidate: canonicalEvaluations(input.candidate.evaluations, partition),
-    candidate_head_digest: input.candidate.evaluated_head_digest,
+    candidate_evaluation_receipt_digest: input.candidate.receipt.receipt_digest,
+    candidate_head_digest: input.candidate.receipt.evaluated_head_digest,
     partition,
     schema_version: "improvement-outcome-evidence/v1",
   };

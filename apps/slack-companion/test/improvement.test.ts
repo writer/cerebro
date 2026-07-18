@@ -38,6 +38,9 @@ import type {
   ImprovementOutcomeEvidenceInput,
 } from "../src/improvement/contracts.js";
 import { IMPROVEMENT_EVIDENCE_KINDS } from "../src/improvement/contracts.js";
+import {
+  sealImprovementOutcomeEvaluationSet,
+} from "../src/improvement/evaluation-set-receipt.js";
 import type {
   DurableImprovementCandidatePort,
   ImprovementAuthorPort,
@@ -309,6 +312,64 @@ describe("ImprovementCoordinator", () => {
     );
   });
 
+  test("rejects relabeled, reordered, row-tampered, and evaluator-tampered evaluation sets", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    );
+
+    const relabeled = outcomeEvidence(authored.candidate);
+    relabeled.candidate = {
+      ...relabeled.candidate,
+      receipt: {
+        ...relabeled.candidate.receipt,
+        evaluated_head_digest: sha("relabeled-head"),
+      },
+    };
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(relabeled),
+      /receipt integrity is invalid/,
+    );
+
+    const reordered = outcomeEvidence(authored.candidate);
+    reordered.candidate = {
+      ...reordered.candidate,
+      evaluations: reordered.candidate.evaluations.slice().reverse(),
+    };
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(reordered),
+      /receipt rows changed/,
+    );
+
+    const rowTampered = outcomeEvidence(authored.candidate);
+    rowTampered.candidate = {
+      ...rowTampered.candidate,
+      evaluations: rowTampered.candidate.evaluations.map((evaluation, index) =>
+        index === 0
+          ? { ...evaluation, observation_digest: sha("changed-observation") }
+          : evaluation),
+    };
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(rowTampered),
+      /receipt rows changed/,
+    );
+
+    const evaluatorTampered = outcomeEvidence(authored.candidate);
+    evaluatorTampered.candidate = {
+      ...evaluatorTampered.candidate,
+      evaluations: evaluatorTampered.candidate.evaluations.map((evaluation, index) =>
+        index === 0
+          ? { ...evaluation, evaluator_ref: "evaluation://changed-evaluator" }
+          : evaluation),
+    };
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(evaluatorTampered),
+      /receipt evaluator identity changed/,
+    );
+  });
+
   test("recovers idempotently when outcome evidence persists before a response failure", async () => {
     const fixture = makeFixture();
     const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
@@ -330,6 +391,60 @@ describe("ImprovementCoordinator", () => {
     );
     assert.equal(recovered.candidate.status, "ready");
     assert.equal(recovered.decision.promotion_ready, true);
+  });
+
+  test("returns the exact ready candidate when its commit response was lost", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    let current = (await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    )).candidate;
+    current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "ci"));
+    current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "canary"));
+    fixture.candidates.failNextReadyResponse = true;
+    const request = outcomeEvidence(current);
+
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence(request),
+      /injected ready response failure/,
+    );
+    assert.equal((await fixture.candidates.read(current.candidate_id))?.status, "ready");
+
+    const recovered = await fixture.coordinator.recordOutcomeEvidence(request);
+    assert.equal(recovered.candidate.status, "ready");
+    assert.equal(recovered.candidate.revision, current.revision + 1);
+    assert.equal(recovered.decision.promotion_ready, true);
+    assert.equal(fixture.candidates.markEvidenceReadyCalls, 1);
+  });
+
+  test("replays one immutable evidence identity exactly and rejects conflicting content", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = (await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    )).candidate;
+    const input = freshEvidence(authored, "ci");
+
+    const first = await fixture.evidence.recordFresh(input);
+    const replay = await fixture.evidence.recordFresh(input);
+    assert.deepEqual(replay, first);
+
+    for (const conflict of [
+      { evidence_digest: sha("changed-evidence") },
+      { evidence_ref: "evidence://changed-ref" },
+      { head_digest: sha("changed-head") },
+    ]) {
+      await assert.rejects(
+        async () => fixture.evidence.recordFresh({ ...input, ...conflict }),
+        /Fresh evidence changed/,
+      );
+    }
+    assert.deepEqual(
+      await fixture.evidence.read(input.candidate_id, input.author_generation),
+      first,
+    );
   });
 
   test("rejects fresh evidence snapshots with changed identity or receipt content", async () => {
@@ -408,6 +523,8 @@ function makeFixture() {
 
 class MemoryCandidateStore implements DurableImprovementCandidatePort {
   failNextCompletion = false;
+  failNextReadyResponse = false;
+  markEvidenceReadyCalls = 0;
   private readonly fingerprints = new Map<string, string>();
   private readonly records = new Map<string, ImprovementCandidateV1>();
 
@@ -524,8 +641,18 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
   }
 
   markEvidenceReady(completion: ImprovementEvidenceCompletion) {
+    this.markEvidenceReadyCalls += 1;
     const candidate = this.require(completion.candidate_id);
-    if (candidate.status === "ready") return Promise.resolve(clone(candidate));
+    if (candidate.status === "ready") {
+      if (
+        candidate.revision === completion.expected_revision + 1 &&
+        candidate.author_generation === completion.author_generation &&
+        candidate.head_digest === completion.head_digest &&
+        candidate.fresh_evidence_digest === completion.fresh_evidence_digest &&
+        candidate.fresh_evidence_ref === completion.fresh_evidence_ref
+      ) return Promise.resolve(clone(candidate));
+      return Promise.reject(new ImprovementConflictError("Evidence completion changed."));
+    }
     if (
       candidate.status !== "awaiting_evidence" ||
       candidate.revision !== completion.expected_revision ||
@@ -541,6 +668,10 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
       updated_at: completion.updated_at,
     };
     this.records.set(candidate.candidate_id, clone(next));
+    if (this.failNextReadyResponse) {
+      this.failNextReadyResponse = false;
+      return Promise.reject(new Error("injected ready response failure"));
+    }
     return Promise.resolve(clone(next));
   }
 
@@ -925,24 +1056,26 @@ function outcomeEvidence(
   const baselineHead = overrides.baseline_head_digest
     ?? candidate.authoring_prior_head_digest
     ?? assert.fail("authored candidate must preserve its prior head");
+  const baselineEvaluations = promotionEvaluations(
+    "policy://baseline",
+    0.72,
+    ["outcome_unknown"],
+  );
+  const candidateEvaluations = promotionEvaluations(
+    "policy://candidate",
+    overrides.candidate_score ?? 0.94,
+    overrides.candidate_blockers ?? [],
+  );
   return {
     author_generation: candidate.author_generation,
-    baseline: {
-      evaluated_head_digest: baselineHead,
-      evaluations: promotionEvaluations(
-        "policy://baseline",
-        0.72,
-        ["outcome_unknown"],
-      ),
-    },
-    candidate: {
-      evaluated_head_digest: overrides.candidate_head_digest ?? candidate.head_digest,
-      evaluations: promotionEvaluations(
-        "policy://candidate",
-        overrides.candidate_score ?? 0.94,
-        overrides.candidate_blockers ?? [],
-      ),
-    },
+    baseline: sealImprovementOutcomeEvaluationSet(
+      baselineHead,
+      baselineEvaluations,
+    ),
+    candidate: sealImprovementOutcomeEvaluationSet(
+      overrides.candidate_head_digest ?? candidate.head_digest,
+      candidateEvaluations,
+    ),
     candidate_id: candidate.candidate_id,
     expected_revision: candidate.revision,
     head_digest: candidate.head_digest,
