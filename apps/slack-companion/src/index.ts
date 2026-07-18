@@ -90,6 +90,7 @@ export * from "./research/contracts.js";
 export * from "./research/policy.js";
 export * from "./risk-attestation/contracts.js";
 export * from "./risk-attestation/policy.js";
+export * from "./security/redaction.js";
 export * from "./thread-binding.js";
 export * from "./tools/catalog.js";
 export * from "./tools/contracts.js";
