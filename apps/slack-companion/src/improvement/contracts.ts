@@ -201,6 +201,26 @@ export interface ImprovementEvidenceRecord extends ImprovementEvidenceIdentityV1
   readonly head_digest: string;
 }
 
+export interface ImprovementEvidencePutCommit {
+  /**
+   * Fingerprint of the immutable evidence payload. The candidate revision is a
+   * coordinator CAS value and is intentionally not part of this fingerprint so
+   * an exact retry can recover after the candidate advances to `ready`.
+   */
+  readonly payload_fingerprint: string;
+  readonly record: ImprovementEvidenceRecord;
+}
+
+export interface ImprovementEvidencePutReceiptV1 extends ImprovementEvidenceIdentityV1 {
+  readonly receipt_digest: string;
+  readonly receipt_ref: string;
+  readonly requested_payload_fingerprint: string;
+  readonly schema_version: "improvement-evidence-put-receipt/v1";
+  readonly snapshot: ImprovementEvidenceSnapshot;
+  readonly status: "conflict" | "created" | "replayed";
+  readonly stored_payload_fingerprint: string;
+}
+
 export interface ImprovementFreshEvidenceInput extends Omit<
   ImprovementEvidenceRecord,
   "kind"
@@ -209,9 +229,14 @@ export interface ImprovementFreshEvidenceInput extends Omit<
 }
 
 export interface ImprovementOutcomeEvaluationSetV1 {
-  /** Rows are sealed by the evaluator receipt; a caller-supplied head label is not authoritative. */
+  /** Rows are resolved from the trusted evaluator port, never supplied by the caller. */
   readonly evaluations: readonly AssistantTurnEvaluationV1[];
   readonly receipt: ImprovementOutcomeEvaluationSetReceiptV1;
+}
+
+export interface ImprovementOutcomeEvaluationReceiptReferenceV1 {
+  readonly receipt_digest: string;
+  readonly receipt_ref: string;
 }
 
 export interface ImprovementOutcomeEvaluationSetReceiptV1 {
@@ -225,8 +250,8 @@ export interface ImprovementOutcomeEvaluationSetReceiptV1 {
 
 export interface ImprovementOutcomeEvidenceInput {
   author_generation: number;
-  baseline: ImprovementOutcomeEvaluationSetV1;
-  candidate: ImprovementOutcomeEvaluationSetV1;
+  baseline_evaluation_receipt: ImprovementOutcomeEvaluationReceiptReferenceV1;
+  candidate_evaluation_receipt: ImprovementOutcomeEvaluationReceiptReferenceV1;
   candidate_id: string;
   expected_revision: number;
   head_digest: string;
