@@ -1,48 +1,59 @@
 [
   {
-    "attributes": {
-      "external_id": "zone-group-1",
-      "family": "zone_access_group",
-      "group_id": "zone-group-1",
-      "include": "{\"email_domain\":{\"domain\":\"example.com\"}}",
-      "name": "Zone Employees",
-      "require": "{\"group\":{\"id\":\"idp-group-1\"}}",
-      "resource_id": "zone-group-1",
-      "resource_name": "Zone Employees",
-      "resource_type": "zone_access_group",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_zone_access_group:zone-group-1",
-      "source_event_id": "zone-group-1",
-      "source_product": "cloudflare",
-      "provider": "cloudflare",
-      "source_provider": "cloudflare",
-      "source_system": "cloudflare",
-      "tenant_id": "tenant",
-      "zone_id": "zone-1"
-    },
-    "id": "cloudflare-zone_access_group-event-1",
+    "id": "cloudflare-tenant-zone_access_group-3bf4f2086e92dde4",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
     "kind": "cloudflare.zone_access_group",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2014-01-01T05:20:00Z",
+    "schema_ref": "cloudflare/zone_access_group/v1",
     "payload": {
-      "id": "zone-group-1",
-      "name": "Zone Employees",
-      "include": [
+      "created_at": "2014-01-01T05:20:00.12345Z",
+      "exclude": [
         {
-          "email_domain": {
-            "domain": "example.com"
+          "email": {
+            "email": "example-973dfe46"
           }
         }
       ],
-      "exclude": [],
-      "require": [
+      "id": "example-0602a3e7",
+      "include": [
         {
-          "group": {
-            "id": "idp-group-1"
+          "email": {
+            "email": "example-973dfe46"
           }
         }
-      ]
+      ],
+      "name": "Allow devs",
+      "require": [
+        {
+          "email": {
+            "email": "example-973dfe46"
+          }
+        }
+      ],
+      "updated_at": "2014-01-01T05:20:00.12345Z",
+      "zone_id": "example-26a2e403"
     },
-    "schema_ref": "cloudflare/zone_access_group/v1",
-    "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    "attributes": {
+      "exclude": "{\"email\":{\"email\":\"example-973dfe46\"}}",
+      "external_id": "example-0602a3e7",
+      "family": "zone_access_group",
+      "group_id": "example-0602a3e7",
+      "include": "{\"email\":{\"email\":\"example-973dfe46\"}}",
+      "name": "Allow devs",
+      "observed_at": "2014-01-01T05:20:00.12345Z",
+      "provider": "cloudflare",
+      "require": "{\"email\":{\"email\":\"example-973dfe46\"}}",
+      "resource_id": "example-0602a3e7",
+      "resource_name": "Allow devs",
+      "resource_type": "zone_access_group",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone_access_group:example-0602a3e7",
+      "source_event_id": "example-0602a3e7",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "zone_id": "example-26a2e403"
+    }
   }
 ]

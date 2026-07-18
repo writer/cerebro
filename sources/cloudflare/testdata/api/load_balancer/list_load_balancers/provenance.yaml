@@ -1,0 +1,36 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: cloudflare
+family: load_balancer
+case: list_load_balancers
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedCloudflareFamilies
+request:
+    method: GET
+    url: https://api.cloudflare.com/client/v4/zones/example-26a2e403/load_balancers
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-05-26T21:44:02Z"
+    sha256: b8352bc6b7ae7cb1c8ca92f445dffd6a8bb47153fb9001151a3746528974ae2b
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.result[0].default_pools[0]
+        - $.result[0].fallback_pool
+        - $.result[0].id
+        - $.result[1].default_pools[0]
+        - $.result[1].fallback_pool
+        - $.result[1].id
+        - $.result[1].rules[2].overrides.region_pools.ENAM[0]
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/cloudflare/cf-terraforming
+    commit: 4eca5a200300865607a000226e85581aec5d50bc
+    path: testdata/cloudflare/v5/cloudflare_load_balancer.yaml
+    artifact_sha256: fe677c93bc89bb28bebb8eae789d4407f96bf9aab0ecc412ca69aaacf1d20743
+    license: MPL-2.0
+    recording_tool: go-vcr-v1
+    harness_path: internal/app/cf-terraforming/cmd/generate_test.go
+    freshness: current
+    capture_time_basis: artifact_commit

@@ -2,6 +2,7 @@ package sourcefixture
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -77,6 +78,53 @@ func TestSanitizeImportedJSONRejectsNonStringCredentialLeaves(t *testing.T) {
 	}
 	if _, _, err := SanitizeImportedJSON([]byte(`{"issue_token":0,"secret":false}`)); err != nil {
 		t.Fatalf("SanitizeImportedJSON() sanitized typed credentials error = %v", err)
+	}
+}
+
+func TestSanitizeImportedJSONPreservesPaginationTokens(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSON([]byte(`{"meta":{"next_token":"4611686018799963893","pagination_token":"page-2"}}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("changed fields = %#v, want pagination tokens preserved", changed)
+	}
+	text := string(payload)
+	if !strings.Contains(text, `"next_token": "4611686018799963893"`) || !strings.Contains(text, `"pagination_token": "page-2"`) {
+		t.Fatalf("sanitized payload = %s, want pagination tokens preserved", payload)
+	}
+}
+
+func TestSanitizeImportedJSONRewritesEmbeddedURLHosts(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSON([]byte(`{"links":{"next":"https://api.fastly.com/events?page[number]=2&page[size]=1"}}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	var decoded struct {
+		Links map[string]string `json:"links"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode sanitized payload: %v", err)
+	}
+	parsed, err := url.Parse(decoded.Links["next"])
+	if err != nil {
+		t.Fatalf("parse sanitized link: %v", err)
+	}
+	if parsed.Scheme != "https" || !strings.HasSuffix(parsed.Hostname(), ".example.test") || parsed.Hostname() == "api.fastly.com" {
+		t.Fatalf("sanitized link = %q", decoded.Links["next"])
+	}
+	if parsed.EscapedPath() != "/events" || parsed.Query().Get("page[number]") != "2" || parsed.Query().Get("page[size]") != "1" {
+		t.Fatalf("sanitized link changed provider path or query: %q", decoded.Links["next"])
+	}
+	if len(changed) != 1 || changed[0] != "$.links.next" {
+		t.Fatalf("changed fields = %#v", changed)
+	}
+	second, secondChanged, err := SanitizeImportedJSON(payload)
+	if err != nil {
+		t.Fatalf("second SanitizeImportedJSON() error = %v", err)
+	}
+	if string(second) != string(payload) || len(secondChanged) != 0 {
+		t.Fatalf("second sanitization = %s, changed = %#v", second, secondChanged)
 	}
 }
 

@@ -1,48 +1,46 @@
 [
   {
-    "attributes": {
-      "account_id": "account-1",
-      "external_id": "group-1",
-      "family": "access_group",
-      "group_id": "group-1",
-      "include": "{\"email_domain\":{\"domain\":\"example.com\"}}",
-      "name": "Employees",
-      "require": "{\"group\":{\"id\":\"idp-group-1\"}}",
-      "resource_id": "group-1",
-      "resource_name": "Employees",
-      "resource_type": "access_group",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_access_group:group-1",
-      "source_event_id": "group-1",
-      "source_product": "cloudflare",
-      "provider": "cloudflare",
-      "source_provider": "cloudflare",
-      "source_system": "cloudflare",
-      "tenant_id": "tenant"
-    },
-    "id": "cloudflare-access_group-event-1",
+    "id": "cloudflare-tenant-access_group-04c6c3bb90873c6f",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
     "kind": "cloudflare.access_group",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2025-03-18T21:12:24Z",
+    "schema_ref": "cloudflare/access_group/v1",
     "payload": {
-      "id": "group-1",
-      "name": "Employees",
+      "account_id": "example-7b47ad6c",
+      "created_at": "2025-03-18T21:12:24Z",
+      "exclude": [],
+      "id": "example-7d51c5b3",
       "include": [
         {
-          "email_domain": {
-            "domain": "example.com"
+          "email_list": {
+            "id": "example-6080367b"
           }
         }
       ],
-      "exclude": [],
-      "require": [
-        {
-          "group": {
-            "id": "idp-group-1"
-          }
-        }
-      ]
+      "name": "kskryelbix",
+      "require": [],
+      "uid": "example-7d51c5b3",
+      "updated_at": "2025-03-18T21:12:24Z"
     },
-    "schema_ref": "cloudflare/access_group/v1",
-    "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    "attributes": {
+      "account_id": "example-7b47ad6c",
+      "external_id": "example-7d51c5b3",
+      "family": "access_group",
+      "group_id": "example-7d51c5b3",
+      "include": "{\"email_list\":{\"id\":\"example-6080367b\"}}",
+      "name": "kskryelbix",
+      "observed_at": "2025-03-18T21:12:24Z",
+      "provider": "cloudflare",
+      "resource_id": "example-7d51c5b3",
+      "resource_name": "kskryelbix",
+      "resource_type": "access_group",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_access_group:example-7d51c5b3",
+      "source_event_id": "example-7d51c5b3",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant"
+    }
   }
 ]

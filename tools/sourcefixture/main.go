@@ -278,8 +278,15 @@ func importRecording(arguments []string) {
 func validateSanitizedRequestURL(recorded, sanitized string) error {
 	recordedURL, recordedErr := url.ParseRequestURI(recorded)
 	sanitizedURL, sanitizedErr := url.ParseRequestURI(sanitized)
-	if recordedErr != nil || sanitizedErr != nil || recordedURL.Scheme != sanitizedURL.Scheme || !strings.EqualFold(recordedURL.Host, sanitizedURL.Host) || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
-		return errors.New("-url may sanitize query values but must preserve the recorded scheme, host, and path")
+	if recordedErr != nil || sanitizedErr != nil || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
+		return errors.New("-url may sanitize query values and the provider host but must preserve the recorded path")
+	}
+	if recordedURL.Scheme == sanitizedURL.Scheme && strings.EqualFold(recordedURL.Host, sanitizedURL.Host) {
+		return nil
+	}
+	sanitizedHost := strings.ToLower(strings.TrimSuffix(sanitizedURL.Hostname(), "."))
+	if sanitizedURL.Scheme != "https" || (sanitizedHost != "example.test" && !strings.HasSuffix(sanitizedHost, ".example.test")) {
+		return errors.New("-url may replace the recorded scheme and host only with an HTTPS example.test host")
 	}
 	return nil
 }

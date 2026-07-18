@@ -93,6 +93,8 @@ func TestValidateManifestAllowsEmptyCredentialShapesAndMetadataFields(t *testing
 		"api_key_id":"key-1",
 		"credentials":{"provider":{"type":""}},
 		"issue_token":0,
+		"next_token":"4611686018799963893",
+		"pagination_token":"page-2",
 		"credential_enabled":false
 	}`))
 	if err != nil {

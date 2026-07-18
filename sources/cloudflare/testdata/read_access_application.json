@@ -1,52 +1,59 @@
 [
   {
-    "attributes": {
-      "account_id": "account-1",
-      "allowed_idps": "idp-1",
-      "application_id": "app-1",
-      "aud": "aud-app-1",
-      "auto_redirect_to_identity": "true",
-      "domain": "admin.example.com",
-      "external_id": "app-1",
-      "family": "access_application",
-      "name": "Admin Console",
-      "policies": "{\"decision\":\"allow\",\"id\":\"policy-1\"}",
-      "resource_id": "app-1",
-      "resource_name": "Admin Console",
-      "resource_type": "access_application",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_access_application:app-1",
+    "id": "cloudflare-tenant-access_application-f550697781f03cdd",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.access_application",
+    "occurred_at": "2025-03-19T20:20:42Z",
+    "schema_ref": "cloudflare/access_application/v1",
+    "payload": {
+      "account_id": "example-7b47ad6c",
+      "allowed_idps": [],
+      "app_launcher_visible": true,
+      "aud": "example-4ada32bc",
+      "auto_redirect_to_identity": false,
+      "created_at": "2025-03-19T20:20:42Z",
+      "destinations": [
+        {
+          "type": "public",
+          "uri": "gpfqbfyfcx.terraform.cfapi.net"
+        }
+      ],
+      "domain": "gpfqbfyfcx.terraform.cfapi.net",
+      "enable_binding_cookie": false,
+      "http_only_cookie_attribute": true,
+      "id": "example-ee19609e",
+      "name": "gpfqbfyfcx",
+      "options_preflight_bypass": false,
+      "policies": [],
       "session_duration": "24h",
-      "source_event_id": "app-1",
-      "source_product": "cloudflare",
+      "tags": [],
+      "type": "self_hosted",
+      "uid": "example-ee19609e",
+      "updated_at": "2025-03-19T20:20:42Z"
+    },
+    "attributes": {
+      "account_id": "example-7b47ad6c",
+      "application_id": "example-ee19609e",
+      "aud": "example-4ada32bc",
+      "auto_redirect_to_identity": "false",
+      "domain": "gpfqbfyfcx.terraform.cfapi.net",
+      "external_id": "example-ee19609e",
+      "family": "access_application",
+      "name": "gpfqbfyfcx",
+      "observed_at": "2025-03-19T20:20:42Z",
       "provider": "cloudflare",
+      "resource_id": "example-ee19609e",
+      "resource_name": "gpfqbfyfcx",
+      "resource_type": "access_application",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_access_application:example-ee19609e",
+      "session_duration": "24h",
+      "source_event_id": "example-ee19609e",
+      "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tenant_id": "tenant",
       "type": "self_hosted"
-    },
-    "id": "cloudflare-access_application-event-1",
-    "kind": "cloudflare.access_application",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "id": "app-1",
-      "name": "Admin Console",
-      "domain": "admin.example.com",
-      "type": "self_hosted",
-      "aud": "aud-app-1",
-      "session_duration": "24h",
-      "policies": [
-        {
-          "id": "policy-1",
-          "decision": "allow"
-        }
-      ],
-      "allowed_idps": [
-        "idp-1"
-      ],
-      "auto_redirect_to_identity": true
-    },
-    "schema_ref": "cloudflare/access_application/v1",
-    "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    }
   }
 ]
