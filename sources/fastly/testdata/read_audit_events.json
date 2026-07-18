@@ -45,7 +45,8 @@
       "schema": "audit_events",
       "source_event_id": "example-2d2f8042",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   }
 ]

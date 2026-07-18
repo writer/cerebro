@@ -60,8 +60,19 @@ func TestSourceReplaysCapturedFastlyFamilies(t *testing.T) {
 				if event.Kind != "fastly."+test.family {
 					t.Fatalf("event kind = %q, want fastly.%s", event.Kind, test.family)
 				}
+				if event.Attributes["tenant_id"] != "tenant" {
+					t.Fatalf("tenant_id = %q for event %q, want tenant", event.Attributes["tenant_id"], event.Id)
+				}
 				if strings.TrimSpace(event.Attributes["resource_id"]) == "" {
 					t.Fatalf("resource_id is empty for event %q", event.Id)
+				}
+				if test.family != familyAuditEvents {
+					if strings.TrimSpace(event.Attributes["resource_type"]) == "" {
+						t.Fatalf("resource_type is empty for event %q", event.Id)
+					}
+					if strings.TrimSpace(event.Attributes["resource_urn"]) == "" {
+						t.Fatalf("resource_urn is empty for event %q", event.Id)
+					}
 				}
 			}
 			if test.family == familyAuditEvents {

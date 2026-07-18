@@ -26,11 +26,14 @@
       "record_class": "asset",
       "resource_id": "example-4e4bfa60",
       "resource_name": "example-9fb6a467",
+      "resource_type": "acl_entry",
+      "resource_urn": "urn:cerebro:tenant:fastly_acl_entries:example-4e4bfa60",
       "schema": "acl_entries",
       "service_id": "oW70YCrn5btjFLVUQ1ewJ3",
       "source_event_id": "example-4e4bfa60",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   }
 ]

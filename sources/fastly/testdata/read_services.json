@@ -42,10 +42,12 @@
       "resource_id": "example-1d4ae4b3",
       "resource_name": "example-cedb87f0",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-1d4ae4b3",
       "schema": "services",
       "source_event_id": "example-1d4ae4b3",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -91,10 +93,12 @@
       "resource_id": "example-6c8ac722",
       "resource_name": "example-b2afd063",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6c8ac722",
       "schema": "services",
       "source_event_id": "example-6c8ac722",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -179,10 +183,12 @@
       "resource_id": "example-0580a372",
       "resource_name": "example-f3adca98",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-0580a372",
       "schema": "services",
       "source_event_id": "example-0580a372",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -228,10 +234,12 @@
       "resource_id": "example-a1e50c8f",
       "resource_name": "example-cb5c4add",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-a1e50c8f",
       "schema": "services",
       "source_event_id": "example-a1e50c8f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -329,10 +337,12 @@
       "resource_id": "example-916f1f57",
       "resource_name": "example-908e89da",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-916f1f57",
       "schema": "services",
       "source_event_id": "example-916f1f57",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -378,10 +388,12 @@
       "resource_id": "example-503856eb",
       "resource_name": "example-3bed1a6a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-503856eb",
       "schema": "services",
       "source_event_id": "example-503856eb",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -440,10 +452,12 @@
       "resource_id": "example-b80228be",
       "resource_name": "example-51a22f48",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-b80228be",
       "schema": "services",
       "source_event_id": "example-b80228be",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -489,10 +503,12 @@
       "resource_id": "example-69e0efa7",
       "resource_name": "example-349143ac",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-69e0efa7",
       "schema": "services",
       "source_event_id": "example-69e0efa7",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -577,10 +593,12 @@
       "resource_id": "example-feea6886",
       "resource_name": "example-abd25f1a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-feea6886",
       "schema": "services",
       "source_event_id": "example-feea6886",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -639,10 +657,12 @@
       "resource_id": "example-eb61529d",
       "resource_name": "example-0a657f28",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-eb61529d",
       "schema": "services",
       "source_event_id": "example-eb61529d",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -688,10 +708,12 @@
       "resource_id": "example-f35d0e51",
       "resource_name": "example-d351f491",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-f35d0e51",
       "schema": "services",
       "source_event_id": "example-f35d0e51",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -789,10 +811,12 @@
       "resource_id": "example-31a0cc57",
       "resource_name": "example-c4a5eef7",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-31a0cc57",
       "schema": "services",
       "source_event_id": "example-31a0cc57",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -838,10 +862,12 @@
       "resource_id": "example-6a6ce6a2",
       "resource_name": "example-a0423e3f",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6a6ce6a2",
       "schema": "services",
       "source_event_id": "example-6a6ce6a2",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -913,10 +939,12 @@
       "resource_id": "example-8551586a",
       "resource_name": "example-605cfb0e",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-8551586a",
       "schema": "services",
       "source_event_id": "example-8551586a",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -962,10 +990,12 @@
       "resource_id": "example-3111f120",
       "resource_name": "example-b73002ec",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-3111f120",
       "schema": "services",
       "source_event_id": "example-3111f120",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1128,10 +1158,12 @@
       "resource_id": "example-aeb54c7b",
       "resource_name": "example-73b95758",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-aeb54c7b",
       "schema": "services",
       "source_event_id": "example-aeb54c7b",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1177,10 +1209,12 @@
       "resource_id": "example-ee66a2fb",
       "resource_name": "example-5914c890",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-ee66a2fb",
       "schema": "services",
       "source_event_id": "example-ee66a2fb",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1226,10 +1260,12 @@
       "resource_id": "example-0833485c",
       "resource_name": "example-2f4165ee",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-0833485c",
       "schema": "services",
       "source_event_id": "example-0833485c",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1288,10 +1324,12 @@
       "resource_id": "example-38c9bc50",
       "resource_name": "example-cd25a3ec",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-38c9bc50",
       "schema": "services",
       "source_event_id": "example-38c9bc50",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1428,10 +1466,12 @@
       "resource_id": "example-ed45d983",
       "resource_name": "example-6b04263f",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-ed45d983",
       "schema": "services",
       "source_event_id": "example-ed45d983",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1477,10 +1517,12 @@
       "resource_id": "example-58089339",
       "resource_name": "example-f1821eeb",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-58089339",
       "schema": "services",
       "source_event_id": "example-58089339",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1539,10 +1581,12 @@
       "resource_id": "example-2c845bca",
       "resource_name": "example-8ef41b4b",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2c845bca",
       "schema": "services",
       "source_event_id": "example-2c845bca",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1601,10 +1645,12 @@
       "resource_id": "example-484b084a",
       "resource_name": "example-990e4f79",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-484b084a",
       "schema": "services",
       "source_event_id": "example-484b084a",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1819,10 +1865,12 @@
       "resource_id": "example-bce84d56",
       "resource_name": "example-f4f9e8af",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-bce84d56",
       "schema": "services",
       "source_event_id": "example-bce84d56",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1933,10 +1981,12 @@
       "resource_id": "example-4691cc9e",
       "resource_name": "example-1b453f33",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-4691cc9e",
       "schema": "services",
       "source_event_id": "example-4691cc9e",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2021,10 +2071,12 @@
       "resource_id": "example-9cb80ce8",
       "resource_name": "example-52bd0973",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-9cb80ce8",
       "schema": "services",
       "source_event_id": "example-9cb80ce8",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2070,10 +2122,12 @@
       "resource_id": "example-768fcb96",
       "resource_name": "example-f30588cd",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-768fcb96",
       "schema": "services",
       "source_event_id": "example-768fcb96",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2119,10 +2173,12 @@
       "resource_id": "example-1e6c5a5e",
       "resource_name": "example-39b0bbae",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-1e6c5a5e",
       "schema": "services",
       "source_event_id": "example-1e6c5a5e",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2168,10 +2224,12 @@
       "resource_id": "example-c7c16229",
       "resource_name": "example-e299d5fa",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-c7c16229",
       "schema": "services",
       "source_event_id": "example-c7c16229",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2217,10 +2275,12 @@
       "resource_id": "example-ff7ffa7a",
       "resource_name": "example-98149908",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-ff7ffa7a",
       "schema": "services",
       "source_event_id": "example-ff7ffa7a",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2279,10 +2339,12 @@
       "resource_id": "example-0362ebd1",
       "resource_name": "example-025f4c3b",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-0362ebd1",
       "schema": "services",
       "source_event_id": "example-0362ebd1",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2328,10 +2390,12 @@
       "resource_id": "example-a7de3f02",
       "resource_name": "example-06174ff7",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-a7de3f02",
       "schema": "services",
       "source_event_id": "example-a7de3f02",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2416,10 +2480,12 @@
       "resource_id": "example-79e3330e",
       "resource_name": "example-64acd66e",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-79e3330e",
       "schema": "services",
       "source_event_id": "example-79e3330e",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2465,10 +2531,12 @@
       "resource_id": "example-cf3f52f6",
       "resource_name": "example-1489ac35",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-cf3f52f6",
       "schema": "services",
       "source_event_id": "example-cf3f52f6",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2514,10 +2582,12 @@
       "resource_id": "example-2dc647e8",
       "resource_name": "example-b3aa8229",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2dc647e8",
       "schema": "services",
       "source_event_id": "example-2dc647e8",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2563,10 +2633,12 @@
       "resource_id": "example-6dd01791",
       "resource_name": "example-7bff94c0",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6dd01791",
       "schema": "services",
       "source_event_id": "example-6dd01791",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2625,10 +2697,12 @@
       "resource_id": "example-789802ce",
       "resource_name": "example-8d21f448",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-789802ce",
       "schema": "services",
       "source_event_id": "example-789802ce",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2700,10 +2774,12 @@
       "resource_id": "example-21419af1",
       "resource_name": "example-c8867daa",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-21419af1",
       "schema": "services",
       "source_event_id": "example-21419af1",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2749,10 +2825,12 @@
       "resource_id": "example-9ef1662d",
       "resource_name": "example-c3d9d36a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-9ef1662d",
       "schema": "services",
       "source_event_id": "example-9ef1662d",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2798,10 +2876,12 @@
       "resource_id": "example-4ecb21e7",
       "resource_name": "example-7164877e",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-4ecb21e7",
       "schema": "services",
       "source_event_id": "example-4ecb21e7",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2847,10 +2927,12 @@
       "resource_id": "example-2a6dede3",
       "resource_name": "example-3e270863",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2a6dede3",
       "schema": "services",
       "source_event_id": "example-2a6dede3",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3065,10 +3147,12 @@
       "resource_id": "example-1f35a9ca",
       "resource_name": "example-2a97516c",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-1f35a9ca",
       "schema": "services",
       "source_event_id": "example-1f35a9ca",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3166,10 +3250,12 @@
       "resource_id": "example-df150949",
       "resource_name": "example-d3a741a0",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-df150949",
       "schema": "services",
       "source_event_id": "example-df150949",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3215,10 +3301,12 @@
       "resource_id": "example-2697141b",
       "resource_name": "example-b67b6f8c",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2697141b",
       "schema": "services",
       "source_event_id": "example-2697141b",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3277,10 +3365,12 @@
       "resource_id": "example-4200bbab",
       "resource_name": "example-c60cdc49",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-4200bbab",
       "schema": "services",
       "source_event_id": "example-4200bbab",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3404,10 +3494,12 @@
       "resource_id": "example-b4cabaec",
       "resource_name": "example-d0d7a3ca",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-b4cabaec",
       "schema": "services",
       "source_event_id": "example-b4cabaec",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3479,10 +3571,12 @@
       "resource_id": "example-b6ac3f59",
       "resource_name": "example-1859b1db",
       "resource_type": "wasm",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-b6ac3f59",
       "schema": "services",
       "source_event_id": "example-b6ac3f59",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3528,10 +3622,12 @@
       "resource_id": "example-59629af5",
       "resource_name": "example-74bc843a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-59629af5",
       "schema": "services",
       "source_event_id": "example-59629af5",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3577,10 +3673,12 @@
       "resource_id": "example-41b76577",
       "resource_name": "example-f50bf6ab",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-41b76577",
       "schema": "services",
       "source_event_id": "example-41b76577",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3626,10 +3724,12 @@
       "resource_id": "example-e24edfa9",
       "resource_name": "example-7a675f6b",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-e24edfa9",
       "schema": "services",
       "source_event_id": "example-e24edfa9",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3675,10 +3775,12 @@
       "resource_id": "example-70a3b8bf",
       "resource_name": "example-ef16d1ac",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-70a3b8bf",
       "schema": "services",
       "source_event_id": "example-70a3b8bf",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3724,10 +3826,12 @@
       "resource_id": "example-e0ad87d7",
       "resource_name": "example-f5e9f35b",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-e0ad87d7",
       "schema": "services",
       "source_event_id": "example-e0ad87d7",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3773,10 +3877,12 @@
       "resource_id": "example-6fe0e253",
       "resource_name": "example-ae50a2d8",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6fe0e253",
       "schema": "services",
       "source_event_id": "example-6fe0e253",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3822,10 +3928,12 @@
       "resource_id": "example-d9d12678",
       "resource_name": "example-9362c294",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-d9d12678",
       "schema": "services",
       "source_event_id": "example-d9d12678",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3871,10 +3979,12 @@
       "resource_id": "example-99e93677",
       "resource_name": "example-6f2ce4a6",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-99e93677",
       "schema": "services",
       "source_event_id": "example-99e93677",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3920,10 +4030,12 @@
       "resource_id": "example-80e4d9a4",
       "resource_name": "example-ec14c693",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-80e4d9a4",
       "schema": "services",
       "source_event_id": "example-80e4d9a4",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3969,10 +4081,12 @@
       "resource_id": "example-df359af4",
       "resource_name": "example-96553db5",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-df359af4",
       "schema": "services",
       "source_event_id": "example-df359af4",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4018,10 +4132,12 @@
       "resource_id": "example-6747b2c1",
       "resource_name": "example-7b0f0994",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6747b2c1",
       "schema": "services",
       "source_event_id": "example-6747b2c1",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4067,10 +4183,12 @@
       "resource_id": "example-5d01ebf1",
       "resource_name": "example-e4a1c571",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-5d01ebf1",
       "schema": "services",
       "source_event_id": "example-5d01ebf1",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4116,10 +4234,12 @@
       "resource_id": "example-58bf56e7",
       "resource_name": "example-9a75692b",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-58bf56e7",
       "schema": "services",
       "source_event_id": "example-58bf56e7",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4165,10 +4285,12 @@
       "resource_id": "example-1bb26e3e",
       "resource_name": "example-0f6ff68f",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-1bb26e3e",
       "schema": "services",
       "source_event_id": "example-1bb26e3e",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4214,10 +4336,12 @@
       "resource_id": "example-696b3cfd",
       "resource_name": "example-0ddee662",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-696b3cfd",
       "schema": "services",
       "source_event_id": "example-696b3cfd",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4263,10 +4387,12 @@
       "resource_id": "example-2b39a61f",
       "resource_name": "example-1d8062b3",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2b39a61f",
       "schema": "services",
       "source_event_id": "example-2b39a61f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4312,10 +4438,12 @@
       "resource_id": "example-2f361e2a",
       "resource_name": "example-2b319506",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2f361e2a",
       "schema": "services",
       "source_event_id": "example-2f361e2a",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4361,10 +4489,12 @@
       "resource_id": "example-80cf621f",
       "resource_name": "example-3345ba55",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-80cf621f",
       "schema": "services",
       "source_event_id": "example-80cf621f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4410,10 +4540,12 @@
       "resource_id": "example-54960c3c",
       "resource_name": "example-bd40edcb",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-54960c3c",
       "schema": "services",
       "source_event_id": "example-54960c3c",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4459,10 +4591,12 @@
       "resource_id": "example-c9bebd75",
       "resource_name": "example-afc01d06",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-c9bebd75",
       "schema": "services",
       "source_event_id": "example-c9bebd75",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4508,10 +4642,12 @@
       "resource_id": "example-73a83622",
       "resource_name": "example-509f94db",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-73a83622",
       "schema": "services",
       "source_event_id": "example-73a83622",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4557,10 +4693,12 @@
       "resource_id": "example-5f3dc1ec",
       "resource_name": "example-cd5faa25",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-5f3dc1ec",
       "schema": "services",
       "source_event_id": "example-5f3dc1ec",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4606,10 +4744,12 @@
       "resource_id": "example-1ddeb6ba",
       "resource_name": "example-3ea4615a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-1ddeb6ba",
       "schema": "services",
       "source_event_id": "example-1ddeb6ba",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4655,10 +4795,12 @@
       "resource_id": "example-9682cb00",
       "resource_name": "example-384d8667",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-9682cb00",
       "schema": "services",
       "source_event_id": "example-9682cb00",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4704,10 +4846,12 @@
       "resource_id": "example-6bb52249",
       "resource_name": "example-2136b91f",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6bb52249",
       "schema": "services",
       "source_event_id": "example-6bb52249",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4753,10 +4897,12 @@
       "resource_id": "example-5404b87b",
       "resource_name": "example-e193b375",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-5404b87b",
       "schema": "services",
       "source_event_id": "example-5404b87b",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4802,10 +4948,12 @@
       "resource_id": "example-163a7529",
       "resource_name": "example-be2fa531",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-163a7529",
       "schema": "services",
       "source_event_id": "example-163a7529",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4851,10 +4999,12 @@
       "resource_id": "example-7b37787f",
       "resource_name": "example-77fa5b2e",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-7b37787f",
       "schema": "services",
       "source_event_id": "example-7b37787f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4900,10 +5050,12 @@
       "resource_id": "example-49babb19",
       "resource_name": "example-4b5de73d",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-49babb19",
       "schema": "services",
       "source_event_id": "example-49babb19",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4949,10 +5101,12 @@
       "resource_id": "example-de8837c6",
       "resource_name": "example-5df5b4ff",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-de8837c6",
       "schema": "services",
       "source_event_id": "example-de8837c6",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4998,10 +5152,12 @@
       "resource_id": "example-8ac33f1e",
       "resource_name": "example-28646e3a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-8ac33f1e",
       "schema": "services",
       "source_event_id": "example-8ac33f1e",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5047,10 +5203,12 @@
       "resource_id": "example-d0068018",
       "resource_name": "example-4ece2456",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-d0068018",
       "schema": "services",
       "source_event_id": "example-d0068018",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5096,10 +5254,12 @@
       "resource_id": "example-f5ccee48",
       "resource_name": "example-08c15171",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-f5ccee48",
       "schema": "services",
       "source_event_id": "example-f5ccee48",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5145,10 +5305,12 @@
       "resource_id": "example-f4213d92",
       "resource_name": "example-53f739a3",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-f4213d92",
       "schema": "services",
       "source_event_id": "example-f4213d92",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5194,10 +5356,12 @@
       "resource_id": "example-2b34617d",
       "resource_name": "example-83c799e1",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-2b34617d",
       "schema": "services",
       "source_event_id": "example-2b34617d",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5243,10 +5407,12 @@
       "resource_id": "example-d3a586ee",
       "resource_name": "example-a4a0df37",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-d3a586ee",
       "schema": "services",
       "source_event_id": "example-d3a586ee",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5292,10 +5458,12 @@
       "resource_id": "example-019a322a",
       "resource_name": "example-d16e36ec",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-019a322a",
       "schema": "services",
       "source_event_id": "example-019a322a",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5341,10 +5509,12 @@
       "resource_id": "example-eeddba13",
       "resource_name": "example-f29c3e85",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-eeddba13",
       "schema": "services",
       "source_event_id": "example-eeddba13",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5403,10 +5573,12 @@
       "resource_id": "example-428810bf",
       "resource_name": "example-e631f280",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-428810bf",
       "schema": "services",
       "source_event_id": "example-428810bf",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5452,10 +5624,12 @@
       "resource_id": "example-eacd02c7",
       "resource_name": "example-132faa21",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-eacd02c7",
       "schema": "services",
       "source_event_id": "example-eacd02c7",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5501,10 +5675,12 @@
       "resource_id": "example-5583f7c0",
       "resource_name": "example-847be9f7",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-5583f7c0",
       "schema": "services",
       "source_event_id": "example-5583f7c0",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5550,10 +5726,12 @@
       "resource_id": "example-6c10ead3",
       "resource_name": "example-dbfe5e19",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-6c10ead3",
       "schema": "services",
       "source_event_id": "example-6c10ead3",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5599,10 +5777,12 @@
       "resource_id": "example-13c0723c",
       "resource_name": "example-26a31168",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-13c0723c",
       "schema": "services",
       "source_event_id": "example-13c0723c",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5648,10 +5828,12 @@
       "resource_id": "example-e3bb5dad",
       "resource_name": "example-0b2d5418",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-e3bb5dad",
       "schema": "services",
       "source_event_id": "example-e3bb5dad",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5697,10 +5879,12 @@
       "resource_id": "example-e4bc227f",
       "resource_name": "example-29e12525",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-e4bc227f",
       "schema": "services",
       "source_event_id": "example-e4bc227f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5746,10 +5930,12 @@
       "resource_id": "example-7bab20b9",
       "resource_name": "example-abe00458",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-7bab20b9",
       "schema": "services",
       "source_event_id": "example-7bab20b9",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5795,10 +5981,12 @@
       "resource_id": "example-73c7d7fc",
       "resource_name": "example-949fbf5d",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-73c7d7fc",
       "schema": "services",
       "source_event_id": "example-73c7d7fc",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5844,10 +6032,12 @@
       "resource_id": "example-e944a851",
       "resource_name": "example-a75fa44a",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-e944a851",
       "schema": "services",
       "source_event_id": "example-e944a851",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5893,10 +6083,12 @@
       "resource_id": "example-170368ac",
       "resource_name": "example-98e91bd4",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-170368ac",
       "schema": "services",
       "source_event_id": "example-170368ac",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5942,10 +6134,12 @@
       "resource_id": "example-eff89a5f",
       "resource_name": "example-06ff79fd",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-eff89a5f",
       "schema": "services",
       "source_event_id": "example-eff89a5f",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5991,10 +6185,12 @@
       "resource_id": "example-72b53a75",
       "resource_name": "example-2e1fa088",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-72b53a75",
       "schema": "services",
       "source_event_id": "example-72b53a75",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -6040,10 +6236,12 @@
       "resource_id": "example-82dfedf8",
       "resource_name": "example-f57720b5",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-82dfedf8",
       "schema": "services",
       "source_event_id": "example-82dfedf8",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -6089,10 +6287,12 @@
       "resource_id": "example-22a7c2a9",
       "resource_name": "example-506c3951",
       "resource_type": "vcl",
+      "resource_urn": "urn:cerebro:tenant:fastly_services:example-22a7c2a9",
       "schema": "services",
       "source_event_id": "example-22a7c2a9",
       "source_provider": "fastly",
-      "source_system": "fastly"
+      "source_system": "fastly",
+      "tenant_id": "tenant"
     }
   }
 ]
