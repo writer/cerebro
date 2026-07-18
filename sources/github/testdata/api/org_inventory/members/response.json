@@ -1,0 +1,23 @@
+[
+  {
+    "avatar_url": "https://avatars.githubusercontent.com/u/1176726?v=4",
+    "events_url": "https://api.github.com/users/aashah/events{/privacy}",
+    "followers_url": "https://api.github.com/users/aashah/followers",
+    "following_url": "https://api.github.com/users/aashah/following{/other_user}",
+    "gists_url": "https://api.github.com/users/aashah/gists{/gist_id}",
+    "gravatar_id": "",
+    "html_url": "https://github.com/aashah",
+    "id": 1176726,
+    "login": "aashah",
+    "node_id": "MDQ6VXNlcjExNzY3MjY=",
+    "organizations_url": "https://api.github.com/users/aashah/orgs",
+    "received_events_url": "https://api.github.com/users/aashah/received_events",
+    "repos_url": "https://api.github.com/users/aashah/repos",
+    "site_admin": true,
+    "starred_url": "https://api.github.com/users/aashah/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/aashah/subscriptions",
+    "type": "User",
+    "url": "https://api.github.com/users/aashah",
+    "user_view_type": "public"
+  }
+]

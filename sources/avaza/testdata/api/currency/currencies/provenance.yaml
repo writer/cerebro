@@ -1,0 +1,16 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: avaza
+family: currency
+case: currencies
+replay_test: source_test.go#TestSourceReplaysCapturedCurrencies
+request:
+    method: GET
+    url: https://api.avaza.com/api/Currency
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-18T08:06:27Z"
+    sha256: 0fd45460adfcc343fe61cd6257ed7645eb61a3a8425892757782bb301ee116d0
+sanitization:
+    tool: sourcefixture
+    version: 1

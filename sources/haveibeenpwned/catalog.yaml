@@ -67,7 +67,7 @@ event_contracts:
       - severity
       - status
     required_payload_fields:
-      - id
+      - Name
   - kind: haveibeenpwned.affected_accounts
     schema_ref: haveibeenpwned/affected_accounts/v1
     required_attributes:

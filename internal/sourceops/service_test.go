@@ -62,7 +62,7 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if len(discoverResp.Urns) != 1 {
 		t.Fatalf("len(Discover().Urns) = %d, want 1", len(discoverResp.Urns))
 	}
-	if got := discoverResp.Urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := discoverResp.Urns[0]; got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("Discover().Urns[0] = %q, want default GitHub repository URN", got)
 	}
 
@@ -76,8 +76,8 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if len(readResp.Events) != 1 {
 		t.Fatalf("len(Read().Events) = %d, want 1", len(readResp.Events))
 	}
-	if readResp.NextCursor == nil {
-		t.Fatal("Read().NextCursor = nil, want non-nil")
+	if readResp.NextCursor != nil {
+		t.Fatal("Read().NextCursor != nil, want nil after the captured page")
 	}
 	if len(readResp.PreviewEvents) != 1 {
 		t.Fatalf("len(Read().PreviewEvents) = %d, want 1", len(readResp.PreviewEvents))
@@ -118,7 +118,7 @@ func TestReadEmitsSourceOperationTelemetry(t *testing.T) {
 		"source_id":           "github",
 		"event_count":         float64(1),
 		"preview_event_count": float64(1),
-		"has_next_cursor":     true,
+		"has_next_cursor":     false,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)

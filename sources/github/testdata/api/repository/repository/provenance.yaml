@@ -1,0 +1,16 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: repository
+case: repository
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRepositoryShapes
+request:
+    method: GET
+    url: https://api.github.com/repos/octocat/Hello-World
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:06:53Z"
+    sha256: 3c79af08083706ab2d4caf9528f56e5b0d3110659f52e1a672f1b767d74cc78b
+sanitization:
+    tool: sourcefixture
+    version: 1
