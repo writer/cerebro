@@ -125,6 +125,27 @@ class AppWorkspaceContractTests(unittest.TestCase):
         self.assertIn("application packages must not declare publishConfig", messages)
         self.assertIn("application packages must not declare publish scripts", messages)
 
+    def test_rejects_application_without_ci_scope_mapping(self):
+        self.write_json(
+            "apps/new-surface/package.json",
+            {
+                "name": "@writer/cerebro-new-surface",
+                "private": True,
+                "license": "Apache-2.0",
+                "repository": {
+                    "type": "git",
+                    "url": CANONICAL_REPOSITORY,
+                    "directory": "apps/new-surface",
+                },
+                "scripts": {"build": "build", "check": "check", "test": "test"},
+            },
+        )
+        lock = json.loads((self.repo / "package-lock.json").read_text(encoding="utf-8"))
+        lock["packages"]["apps/new-surface"] = {"name": "@writer/cerebro-new-surface"}
+        self.write_json("package-lock.json", lock)
+
+        self.assertIn("application has no CI scope mapping", self.messages())
+
     def test_rejects_repository_or_directory_drift(self):
         manifest = self.manifest()
         manifest["repository"]["url"] = "https://example.invalid/other.git"

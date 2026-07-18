@@ -12,6 +12,7 @@ from typing import TextIO
 
 
 ROOT_NPM_PATHS = frozenset({"package.json", "package-lock.json"})
+MAPPED_APP_DIRS = frozenset({"slack-companion", "web"})
 CI_CONTROLLER_PATHS = frozenset(
     {
         ".github/workflows/ci.yml",
@@ -68,6 +69,13 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
     if run_all or not normalized:
         return CIScope.all()
     if any(path in CI_CONTROLLER_PATHS for path in normalized):
+        return CIScope.all()
+    if any(
+        len(parts := path.split("/", 2)) == 3
+        and parts[0] == "apps"
+        and parts[1] not in MAPPED_APP_DIRS
+        for path in normalized
+    ):
         return CIScope.all()
 
     root_npm_changed = any(path in ROOT_NPM_PATHS for path in normalized)

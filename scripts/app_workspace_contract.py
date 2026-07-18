@@ -14,6 +14,7 @@ from typing import Any
 
 
 CANONICAL_REPOSITORY = "git+https://github.com/writer/cerebro.git"
+MAPPED_APP_DIRS = frozenset({"slack-companion", "web"})
 DIGEST_PINNED_IMAGE_PATTERN = r"^[^\s@]+:[^\s/@:]+@sha256:[0-9a-f]{64}$"
 
 
@@ -163,6 +164,8 @@ def validate_app_workspaces(repo: Path) -> list[ContractFailure]:
         manifest = load_json(app_dir / "package.json")
         expected_name = f"@writer/cerebro-{app_dir.name}"
 
+        if app_dir.name not in MAPPED_APP_DIRS:
+            failures.append(ContractFailure(manifest_path, "application has no CI scope mapping"))
         if not workspace_matches(workspaces, relative):
             failures.append(ContractFailure(manifest_path, "application is not covered by root workspaces"))
         if manifest.get("name") != expected_name:

@@ -1,7 +1,8 @@
 import io
 import unittest
 
-from scripts.app_ci_scope import CIScope, select_scope, write_github_outputs
+from scripts.app_ci_scope import CIScope, MAPPED_APP_DIRS, select_scope, write_github_outputs
+from scripts.app_workspace_contract import MAPPED_APP_DIRS as CONTRACT_MAPPED_APP_DIRS
 
 
 class AppCIScopeTests(unittest.TestCase):
@@ -16,6 +17,29 @@ class AppCIScopeTests(unittest.TestCase):
             select_scope(["apps/slack-companion/src/admission.ts"]),
             CIScope(core=False, sdk=False, slack=True, web=False, web_image=False),
         )
+
+    def test_deleted_known_app_path_selects_its_owned_checks(self):
+        self.assertEqual(
+            select_scope(["apps/web/src/removed.ts"]),
+            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
+        )
+
+    def test_rename_old_and_new_paths_cannot_hide_owned_checks(self):
+        self.assertEqual(
+            select_scope(
+                [
+                    "apps/slack-companion/src/old-name.ts",
+                    "docs/new-name.ts",
+                ]
+            ),
+            CIScope(core=True, sdk=False, slack=True, web=False, web_image=False),
+        )
+
+    def test_unknown_application_path_fails_safe_to_every_scope(self):
+        self.assertEqual(select_scope(["apps/new-surface/package.json"]), CIScope.all())
+
+    def test_scope_and_workspace_contract_share_the_same_app_mapping(self):
+        self.assertEqual(MAPPED_APP_DIRS, CONTRACT_MAPPED_APP_DIRS)
 
     def test_sdk_change_checks_sdk_and_its_consumer(self):
         self.assertEqual(

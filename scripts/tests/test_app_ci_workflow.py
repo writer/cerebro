@@ -25,6 +25,13 @@ class AppCIWorkflowTests(unittest.TestCase):
         for job in ("verify-shard", "go-lint-shard", "catalog-shard", "go-test-shard", "go-race-shard"):
             self.assertIn(f"  {job}:\n", self.workflow)
 
+    def test_scope_diff_includes_deletions_and_both_rename_paths(self):
+        self.assertIn(
+            "git diff --name-only --no-renames --diff-filter=ACMRD -z",
+            self.workflow,
+        )
+        self.assertNotIn("--diff-filter=ACMR -z", self.workflow)
+
     def test_app_jobs_are_first_class_verify_dependencies(self):
         expected_jobs = (
             "app-workspace-contract",
