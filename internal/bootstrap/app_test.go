@@ -1950,8 +1950,12 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(oktaDiscoverResp.Body).Decode(&oktaDiscoverPayload); err != nil {
 		t.Fatalf("decode /sources/okta/discover response: %v", err)
 	}
-	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
-		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
+	oktaURNs, ok := oktaDiscoverPayload["urns"].([]any)
+	if !ok || len(oktaURNs) != 1 {
+		t.Fatalf("okta discover urns = %#v, want 1 captured entry", oktaDiscoverPayload["urns"])
+	}
+	if got, ok := oktaURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("okta discover urns[0] = %#v, want Okta user URN", oktaURNs[0])
 	}
 	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -2007,7 +2011,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(datadogURNs) != 1 {
 		t.Fatalf("datadog discover urns = %#v, want 1 entry", datadogDiscoverPayload["urns"])
 	}
-	if got := datadogURNs[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+	if got, ok := datadogURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:tenant:datadog_users:") {
 		t.Fatalf("datadog discover urns[0] = %#v, want Datadog users URN", got)
 	}
 	datadogReadResp, err := sourceGet(t, server, "/sources/datadog/read?family=users", datadogConfig)
@@ -2139,8 +2143,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverSource(okta) error = %v", err)
 	}
-	if len(oktaDiscoverSourceResp.Msg.Urns) != 2 {
-		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 2", len(oktaDiscoverSourceResp.Msg.Urns))
+	if len(oktaDiscoverSourceResp.Msg.Urns) != 1 {
+		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 1 captured entry", len(oktaDiscoverSourceResp.Msg.Urns))
+	}
+	if got := oktaDiscoverSourceResp.Msg.Urns[0]; !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("DiscoverSource(okta).Urns[0] = %q, want Okta user URN", got)
 	}
 	oktaReadSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
 		SourceId: "okta",
@@ -5321,11 +5328,11 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
 		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
 	}
-	if got := runRecord["checkpoint_cursor"]; got != "1" {
-		t.Fatalf("graph ingest checkpoint_cursor = %#v, want next page cursor 1", got)
+	if got := runRecord["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest checkpoint_cursor = %#v, want no cursor after captured page", got)
 	}
-	if got := runRecord["checkpoint_complete"]; got != false {
-		t.Fatalf("graph ingest checkpoint_complete = %#v, want false for bounded partial ingest", got)
+	if got := runRecord["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest checkpoint_complete = %#v, want true after captured page", got)
 	}
 	overrideReq, err := http.NewRequest(
 		http.MethodPost,
@@ -5377,11 +5384,11 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if !ok || getRun["id"] != runID {
 		t.Fatalf("graph ingest get run = %#v, want id %q", getPayload["run"], runID)
 	}
-	if got := getRun["checkpoint_complete"]; got != false {
-		t.Fatalf("graph ingest get checkpoint_complete = %#v, want false", got)
+	if got := getRun["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest get checkpoint_complete = %#v, want true", got)
 	}
-	if got := getRun["checkpoint_cursor"]; got != "1" {
-		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want next page cursor 1", got)
+	if got := getRun["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want no cursor after captured page", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)

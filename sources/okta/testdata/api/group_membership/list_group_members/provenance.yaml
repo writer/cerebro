@@ -1,0 +1,44 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: group_membership
+case: list_group_members
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/groups/example-cb373fbc662034f4/users
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:15:58Z"
+    sha256: 9b91f8a891af33673ed86284f85ddddacc14d61bb32ad4edbaaab19b801c08d9
+    headers:
+        link: <https://test.okta.com/api/v1/groups/example-cb373fbc662034f4/users?limit=1000>; rel="self"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0]._links.self.href
+        - $[0].credentials.emails[0].status
+        - $[0].credentials.emails[0].type
+        - $[0].credentials.emails[0].value
+        - $[0].credentials.provider.name
+        - $[0].credentials.provider.type
+        - $[0].id
+        - $[0].profile.email
+        - $[0].profile.firstName
+        - $[0].profile.lastName
+        - $[0].profile.login
+        - $request.url
+        - $response.headers.link
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_groups_it/TestGroupsResource.test_group_users_operations.yaml
+    artifact_sha256: c946bf949344374474048c452f472231a2670b9c097740d6f4b285311c212fe2
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 3
+    freshness: historical
+    capture_time_basis: response_header

@@ -1,23 +1,137 @@
 [
   {
-    "id": "okta-application-fixture-1",
+    "id": "okta-writer-okta-com-application-eb108a0f4064aa32",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.application",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2025-12-25T14:53:28Z",
     "schema_ref": "okta/application/v1",
     "payload": {
-      "id": "app-prod",
       "domain": "writer.okta.com",
-      "label": "Production Console",
-      "name": "oidc_client"
+      "id": "example-bdb6cb53760510ee",
+      "label": "QueryParamsTestApp",
+      "name": "bookmark",
+      "raw": {
+        "_links": {
+          "accessPolicy": {
+            "href": "https://test.okta.com/api/v1/policies/rstnwmp14ceJQ76Lj5d7"
+          },
+          "appLinks": [
+            {
+              "href": "https://test.okta.com/home/bookmark/example-bdb6cb53760510ee/2557",
+              "name": "login",
+              "type": "text/html"
+            }
+          ],
+          "deactivate": {
+            "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/lifecycle/deactivate"
+          },
+          "groups": {
+            "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/groups"
+          },
+          "logo": [
+            {
+              "href": "https://ok12static.oktacdn.com/assets/img/logos/bookmark-app.b81c03e2607468e5b5f9c9351c99313e.png",
+              "name": "medium",
+              "type": "image/png"
+            }
+          ],
+          "policies": {
+            "hints": {
+              "allow": [
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/policies"
+          },
+          "profileEnrollment": {
+            "href": "https://test.okta.com/api/v1/policies/rstnwmp14geJLJ3fx5d7"
+          },
+          "uploadLogo": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/logo"
+          },
+          "users": {
+            "href": "https://test.okta.com/api/v1/apps/example-bdb6cb53760510ee/users"
+          }
+        },
+        "accessibility": {
+          "errorRedirectUrl": null,
+          "loginRedirectUrl": null,
+          "selfService": false
+        },
+        "created": "2025-12-25T14:53:28.000Z",
+        "credentials": {
+          "signing": {},
+          "userNameTemplate": {
+            "template": "",
+            "type": ""
+          }
+        },
+        "features": [],
+        "id": "example-bdb6cb53760510ee",
+        "label": "QueryParamsTestApp",
+        "lastUpdated": "2025-12-25T14:53:28.000Z",
+        "name": "bookmark",
+        "orn": "orn:okta:idp:example-0d58ddedfb29a30c:apps:bookmark:example-bdb6cb53760510ee",
+        "settings": {
+          "app": {
+            "requestIntegration": false,
+            "url": "https://example.com/bookmark-query-params.htm"
+          },
+          "implicitAssignment": false,
+          "manualProvisioning": false,
+          "notes": {
+            "admin": null,
+            "enduser": null
+          },
+          "notifications": {
+            "vpn": {
+              "helpUrl": null,
+              "message": null,
+              "network": {
+                "connection": "DISABLED"
+              }
+            }
+          }
+        },
+        "signOnMode": "BOOKMARK",
+        "status": "ACTIVE",
+        "universalLogout": null,
+        "visibility": {
+          "appLinks": {
+            "login": true
+          },
+          "autoLaunch": false,
+          "autoSubmitToolbar": false,
+          "hide": {
+            "iOS": false,
+            "web": false
+          }
+        }
+      },
+      "sign_on_mode": "BOOKMARK",
+      "status": "ACTIVE"
     },
     "attributes": {
-      "app_id": "app-prod",
-      "app_name": "Production Console",
+      "app_id": "example-bdb6cb53760510ee",
+      "app_label": "QueryParamsTestApp",
+      "app_name": "QueryParamsTestApp",
       "domain": "writer.okta.com",
       "family": "application",
-      "oauth2": "true"
+      "name": "bookmark",
+      "oauth2": "false",
+      "oauth_public_client": "false",
+      "post_logout_redirect_uri_count": "0",
+      "redirect_uri_count": "0",
+      "saml": "false",
+      "sign_on_mode": "BOOKMARK",
+      "status": "ACTIVE",
+      "wildcard_redirect": "false"
     }
   }
 ]

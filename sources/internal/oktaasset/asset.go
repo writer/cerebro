@@ -218,15 +218,19 @@ func (r Record) String(key string) string {
 }
 
 func (r Record) Time(key string) *time.Time {
-	value := r.String(key)
+	return ParseTime(r.String(key))
+}
+
+func ParseTime(value string) *time.Time {
 	if value == "" {
 		return nil
 	}
-	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return nil
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05"} {
+		if parsed, err := time.ParseInLocation(layout, value, time.UTC); err == nil {
+			return &parsed
+		}
 	}
-	return &parsed
+	return nil
 }
 
 func (r Record) mapValue(key string) map[string]any {

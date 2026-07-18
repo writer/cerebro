@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: secret_scanning_alert
+case: secret_scanning_alerts
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRestrictedFamilies
+request:
+    method: GET
+    url: https://api.github.com/orgs/github/secret-scanning/alerts
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2025-08-27T18:39:41Z"
+    sha256: f6aa033767cc456e04bd9ab77be435b84db53f12fc5aa8457556263a5421f3ae
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].secret
+        - $[1].secret
+origin:
+    type: upstream_recording
+    repository: https://github.com/PyGithub/PyGithub
+    commit: e36ffcbb02ed5584e0dc46307e9a98c3214d98a6
+    path: tests/ReplayData/OrganizationSecretScanAlert.testMultipleAlerts.txt
+    artifact_sha256: 368afb9cb62bbd04039b023596021319ed4c72376a6c4fd0a94d738241e3ad5b
+    license: LGPL-3.0-or-later
+    recording_tool: PyGithub-ReplayData
+    harness_path: tests/Framework.py
+    freshness: historical
+    capture_time_basis: response_header

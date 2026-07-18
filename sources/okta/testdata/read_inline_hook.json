@@ -1,32 +1,100 @@
 [
   {
-    "id": "okta-inline-hook-fixture-1",
+    "id": "okta-writer-okta-com-inline_hook-54079813d4a78885",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.inline_hook",
-    "occurred_at": "2026-04-23T00:00:00Z",
+    "occurred_at": "2020-08-27T18:16:46Z",
     "schema_ref": "okta/inline_hook/v1",
     "payload": {
-      "id": "hook-inline-prod",
       "domain": "writer.okta.com",
-      "name": "Token transform"
+      "id": "calsfaj82EprbNriw4x6",
+      "name": "python_sdk IH0",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform"
     },
     "attributes": {
       "channel_type": "HTTP",
       "channel_version": "1.0.0",
-      "created_at": "2026-04-20T00:00:00Z",
+      "created_at": "2020-08-27T18:16:46.000Z",
       "domain": "writer.okta.com",
       "family": "inline_hook",
-      "inline_hook_id": "hook-inline-prod",
-      "last_updated_at": "2026-04-23T00:00:00Z",
+      "inline_hook_id": "calsfaj82EprbNriw4x6",
+      "last_updated_at": "2020-08-27T18:16:46.000Z",
       "method": "POST",
-      "name": "Token transform",
-      "resource_id": "hook-inline-prod",
+      "name": "python_sdk IH0",
+      "resource_id": "calsfaj82EprbNriw4x6",
       "resource_type": "InlineHook",
       "status": "ACTIVE",
       "type": "com.okta.oauth2.tokens.transform",
-      "uri": "https://token-hooks.example.com/transform",
-      "uri_host": "token-hooks.example.com",
+      "uri": "https://www.example.com/inlineHook",
+      "uri_host": "www.example.com",
+      "version": "1.0.0"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-inline_hook-edd0b961c7a3b1fd",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.inline_hook",
+    "occurred_at": "2020-08-27T18:16:46Z",
+    "schema_ref": "okta/inline_hook/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "calsfbpdgb2Z4UaB54x6",
+      "name": "python_sdk IH1",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2020-08-27T18:16:46.000Z",
+      "domain": "writer.okta.com",
+      "family": "inline_hook",
+      "inline_hook_id": "calsfbpdgb2Z4UaB54x6",
+      "last_updated_at": "2020-08-27T18:16:46.000Z",
+      "method": "POST",
+      "name": "python_sdk IH1",
+      "resource_id": "calsfbpdgb2Z4UaB54x6",
+      "resource_type": "InlineHook",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform",
+      "uri": "https://www.example.com/inlineHook",
+      "uri_host": "www.example.com",
+      "version": "1.0.0"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-inline_hook-e954246d4831cbb7",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.inline_hook",
+    "occurred_at": "2020-08-27T18:16:46Z",
+    "schema_ref": "okta/inline_hook/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "calsfbpdhoeHw9xHe4x6",
+      "name": "python_sdk IH2",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2020-08-27T18:16:46.000Z",
+      "domain": "writer.okta.com",
+      "family": "inline_hook",
+      "inline_hook_id": "calsfbpdhoeHw9xHe4x6",
+      "last_updated_at": "2020-08-27T18:16:46.000Z",
+      "method": "POST",
+      "name": "python_sdk IH2",
+      "resource_id": "calsfbpdhoeHw9xHe4x6",
+      "resource_type": "InlineHook",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform",
+      "uri": "https://www.example.com/inlineHook",
+      "uri_host": "www.example.com",
       "version": "1.0.0"
     }
   }

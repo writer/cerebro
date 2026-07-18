@@ -305,8 +305,11 @@ func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover(okta) error = %v", err)
 	}
-	if len(discoverResp.Urns) != 2 {
-		t.Fatalf("len(Discover(okta).Urns) = %d, want 2", len(discoverResp.Urns))
+	if len(discoverResp.Urns) != 1 {
+		t.Fatalf("len(Discover(okta).Urns) = %d, want 1 captured entry", len(discoverResp.Urns))
+	}
+	if got := discoverResp.Urns[0]; !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("Discover(okta).Urns[0] = %q, want Okta user URN", got)
 	}
 
 	readResp, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
@@ -361,7 +364,7 @@ func TestCheckDiscoverAndReadDatadog(t *testing.T) {
 	if len(discoverResp.Urns) != 1 {
 		t.Fatalf("len(Discover(datadog).Urns) = %d, want 1", len(discoverResp.Urns))
 	}
-	if got := discoverResp.Urns[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+	if got := discoverResp.Urns[0]; !strings.HasPrefix(got, "urn:cerebro:tenant:datadog_users:") {
 		t.Fatalf("Discover(datadog).Urns[0] = %q, want Datadog users URN", got)
 	}
 

@@ -1,0 +1,58 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/00psfar1lATHw2WXj4x6/rules/0prsfe5f85pTFjdRU4x6/lifecycle/deactivate"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/00psfar1lATHw2WXj4x6/rules/0prsfe5f85pTFjdRU4x6"
+      }
+    },
+    "actions": {
+      "signon": {
+        "access": "ALLOW",
+        "primaryFactor": "PASSWORD_IDP",
+        "rememberDeviceByDefault": false,
+        "requireFactor": false,
+        "session": {
+          "maxSessionIdleMinutes": 720,
+          "maxSessionLifetimeMinutes": 0,
+          "usePersistentCookie": false
+        }
+      }
+    },
+    "conditions": {
+      "authContext": {
+        "authType": "ANY"
+      },
+      "network": {
+        "connection": "ANYWHERE"
+      },
+      "people": {
+        "users": {
+          "exclude": []
+        }
+      }
+    },
+    "created": "2020-08-27T18:17:06.000Z",
+    "id": "0prsfe5f85pTFjdRU4x6",
+    "lastUpdated": "2020-08-27T18:17:06.000Z",
+    "name": "python_sdk Test-Sign-On-Rule",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "SIGN_ON"
+  }
+]
