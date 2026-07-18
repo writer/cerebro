@@ -68,4 +68,20 @@ describe("HTTP audit event reader", () => {
       status: 502,
     });
   });
+
+  it("rejects JSON that does not match the event page contract", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ status: "complete" }), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    })) as unknown as typeof fetch;
+    const reader = createHttpAuditLogReader({
+      endpoint: new URL("https://example.invalid/platform/audit-events"),
+      fetcher,
+    });
+
+    await expect(reader.list(defaultAuditLogQuery())).rejects.toMatchObject({
+      message: "Audit events response was invalid.",
+      status: 502,
+    });
+  });
 });

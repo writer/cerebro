@@ -122,6 +122,12 @@ describe("audit event contracts", () => {
     expect(normalizeAuditOutcome("forbidden")).toBe("denied");
     expect(normalizeAuditOutcome("pending")).toBe("unknown");
   });
+
+  it("rejects payloads without the contract event collection", () => {
+    expect(() => normalizeAuditLogPage({ status: "complete" })).toThrow(
+      "Audit event response must include an events array.",
+    );
+  });
 });
 
 const event = (overrides: Record<string, unknown>) => ({

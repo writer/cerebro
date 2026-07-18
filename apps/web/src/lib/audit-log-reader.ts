@@ -62,7 +62,11 @@ export function createHttpAuditLogReader({
       } catch {
         throw new AuditLogReaderError("Audit events response was invalid.");
       }
-      return normalizeAuditLogPage(payload);
+      try {
+        return normalizeAuditLogPage(payload);
+      } catch {
+        throw new AuditLogReaderError("Audit events response was invalid.");
+      }
     },
   };
 }

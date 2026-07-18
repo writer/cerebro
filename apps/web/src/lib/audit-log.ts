@@ -115,7 +115,10 @@ export function auditLogSearchParams(query: AuditLogQuery): URLSearchParams {
 
 export function normalizeAuditLogPage(value: unknown): AuditLogPage {
   const record = objectValue(value);
-  const inputEvents = Array.isArray(record.events) ? record.events : [];
+  if (!Array.isArray(record.events)) {
+    throw new TypeError("Audit event response must include an events array.");
+  }
+  const inputEvents = record.events;
   const events = inputEvents
     .map(normalizeAuditEvent)
     .filter((event): event is AuditEvent => event !== null);
@@ -126,7 +129,9 @@ export function normalizeAuditLogPage(value: unknown): AuditLogPage {
   return {
     events,
     nextCursor: boundedText(record.next_cursor ?? record.nextCursor, MAX_CURSOR_LENGTH),
-    status: boundedText(record.status, 40).toLowerCase() === "partial" ? "partial" : "complete",
+    status: boundedText(record.status, 40).toLowerCase() === "partial" || events.length !== inputEvents.length
+      ? "partial"
+      : "complete",
     summary: summarizeAuditLog(events),
     window: startTime && endTime ? { startTime, endTime } : null,
   };
