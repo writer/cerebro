@@ -180,6 +180,24 @@ describe("local GRC E2E cleanup", () => {
     expect(windowsTaskkillArgs(43123, true)).toEqual(["/PID", "43123", "/T", "/F"]);
   });
 
+  it("escalates when graceful Windows tree termination stalls", async () => {
+    const child = Object.assign(new EventEmitter(), { exitCode: null, pid: 43123, signalCode: null });
+    const calls = [];
+    const taskkillProcess = vi.fn(async (_pid, force) => {
+      calls.push(force);
+      if (!force) return new Promise(() => {});
+      child.exitCode = 1;
+      child.emit("exit", 1, null);
+    });
+    await stopProcessTree(child, {
+      deadlineAt: Date.now() + 250,
+      graceMs: 20,
+      platform: "win32",
+      taskkillProcess,
+    });
+    expect(calls).toEqual([false, true]);
+  });
+
   it("bounds the final process-exit wait after forced termination", async () => {
     const child = Object.assign(new EventEmitter(), { exitCode: null, pid: 43123, signalCode: null });
     const startedAt = Date.now();

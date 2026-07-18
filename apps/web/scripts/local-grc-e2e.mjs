@@ -308,15 +308,15 @@ export async function stopProcessTree(child, options = {}) {
   const taskkillProcess = options.taskkillProcess ?? taskkill;
   const signalProcessGroup = options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal));
   const exited = new Promise((resolve) => child.once("exit", resolve));
-  const signal = async (force) => {
+  const signal = async (force, signalDeadlineAt) => {
     if (platform === "win32") {
       try {
-        await createDeadlineAt(deadlineAt).run(
-          taskkillProcess(child.pid, force, Math.max(1, deadlineAt - Date.now())),
+        await createDeadlineAt(signalDeadlineAt).run(
+          taskkillProcess(child.pid, force, Math.max(1, signalDeadlineAt - Date.now())),
           force ? "forced Windows process-tree termination" : "Windows process-tree termination",
         );
       } catch (error) {
-        if (error.code === "ETIMEDOUT") throw error;
+        if (force && error.code === "ETIMEDOUT") throw error;
       }
       return;
     }
@@ -326,10 +326,10 @@ export async function stopProcessTree(child, options = {}) {
       if (error?.code !== "ESRCH") throw error;
     }
   };
-  await signal(false);
   const graceDeadline = Math.min(deadlineAt, Date.now() + graceMs);
+  await signal(false, graceDeadline);
   if (await waitForExitUntil(exited, graceDeadline)) return;
-  await signal(true);
+  await signal(true, deadlineAt);
   if (!await waitForExitUntil(exited, deadlineAt)) {
     throw timeoutError("forced fixture process-tree termination");
   }
