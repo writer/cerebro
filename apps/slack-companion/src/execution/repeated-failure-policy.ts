@@ -319,15 +319,16 @@ export class TurnDependencyCircuit {
       inputFingerprint,
       operation,
     );
-    dependency.in_flight.set(idempotencyKey, {
+    const inFlightEntry: InFlightDependencyInvocation = {
       input_fingerprint: inputFingerprint,
       promise,
-    });
+    };
+    dependency.in_flight.set(idempotencyKey, inFlightEntry);
     try {
       return await promise;
     } finally {
       const current = dependency.in_flight.get(idempotencyKey);
-      if (current?.promise === promise) {
+      if (current === inFlightEntry) {
         dependency.in_flight.delete(idempotencyKey);
       }
     }
