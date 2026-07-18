@@ -13,6 +13,8 @@ import {
   createDeadlineAt,
   createRunControl,
   handoffLoopbackReservation,
+  internalLoopbackPort,
+  localRelayPath,
   parseArgs,
   parseDockerLoopbackPort,
   portableChildEnvironment,
@@ -49,6 +51,20 @@ describe("real-service E2E options", () => {
 });
 
 describe("real-service E2E isolation", () => {
+  it("keeps relay requests on a relative path", () => {
+    expect(localRelayPath("/grc/findings?tenant_id=e2e-local#ignored")).toBe("/grc/findings?tenant_id=e2e-local");
+    for (const target of ["grc/findings", "//example.test/grc/findings", "https://example.test/grc/findings", "/\\example.test/grc/findings"]) {
+      expect(() => localRelayPath(target)).toThrow(/relative|absolute/);
+    }
+  });
+
+  it("accepts only an internally reserved numeric loopback port", () => {
+    expect(internalLoopbackPort(49152)).toBe(49152);
+    for (const port of ["49152", 0, -1, 65_536, Number.NaN]) {
+      expect(() => internalLoopbackPort(port)).toThrow("delay relay upstream port is invalid");
+    }
+  });
+
   it("passes only portable tool settings plus explicit synthetic service values", () => {
     const environment = portableChildEnvironment({
       CLOUD_ACCESS_TOKEN: "must-not-pass",

@@ -284,7 +284,7 @@ async function main(options) {
   assertChildHealthy(backendProcess, "Cerebro API");
 
   step("starting cerebro-web");
-  delayRelay = await startDelayRelay(apiBase, activeRunControl);
+  delayRelay = await startDelayRelay(apiPort, activeRunControl);
   usedPorts.add(delayRelay.port);
   const webReservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
   webPort = webReservation.port;
@@ -625,37 +625,99 @@ export function componentReady(health, name) {
     && health.components.some((component) => component.name === name && component.status === "ready");
 }
 
-async function startDelayRelay(upstreamBase, control) {
+export function localRelayPath(rawTarget) {
+  if (typeof rawTarget !== "string" || !rawTarget.startsWith("/") || rawTarget.startsWith("//")) {
+    throw new Error("delay relay requires a relative request target");
+  }
+  const sentinel = new URL("http://local-relay.invalid");
+  const parsed = new URL(rawTarget, sentinel);
+  if (parsed.origin !== sentinel.origin || parsed.username || parsed.password) {
+    throw new Error("delay relay rejected an absolute request target");
+  }
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+export function internalLoopbackPort(port) {
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) throw new Error("delay relay upstream port is invalid");
+  return port;
+}
+
+async function requestLoopbackUpstream(upstreamPort, requestPath, headers, signal) {
+  const port = internalLoopbackPort(upstreamPort);
+  throwIfAborted(signal, "delay relay upstream request");
+  return await new Promise((resolve, reject) => {
+    let removeAbortListener = () => undefined;
+    const request = http.request({
+      headers,
+      hostname: "127.0.0.1",
+      method: "GET",
+      path: requestPath,
+      port,
+      protocol: "http:",
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      response.once("error", (error) => {
+        removeAbortListener();
+        reject(error);
+      });
+      response.once("end", () => {
+        removeAbortListener();
+        resolve({
+          body: Buffer.concat(chunks),
+          headers: response.headers,
+          status: response.statusCode ?? 502,
+        });
+      });
+    });
+    const onAbort = () => request.destroy(abortReason(signal, "delay relay upstream request"));
+    removeAbortListener = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    request.once("error", (error) => {
+      removeAbortListener();
+      reject(error);
+    });
+    request.end();
+  });
+}
+
+async function startDelayRelay(upstreamPort, control) {
   control.assertActive("delay relay startup");
+  const fixedUpstreamPort = internalLoopbackPort(upstreamPort);
   const delayedRequests = new Map();
   const server = http.createServer(async (incoming, outgoing) => {
     try {
-      const upstreamUrl = new URL(incoming.url ?? "/", upstreamBase);
-      const delayKey = upstreamUrl.searchParams.get("e2e_delay_key") ?? "";
-      const parsedDelay = Number.parseInt(upstreamUrl.searchParams.get("e2e_delay_ms") ?? "0", 10);
+      if (incoming.method !== "GET") {
+        outgoing.writeHead(405, { allow: "GET", "content-type": "application/json" });
+        outgoing.end(JSON.stringify({ error: "local upstream relay only accepts GET" }));
+        return;
+      }
+      const relayTarget = new URL(localRelayPath(incoming.url ?? "/"), "http://local-relay.invalid");
+      const delayKey = relayTarget.searchParams.get("e2e_delay_key") ?? "";
+      const parsedDelay = Number.parseInt(relayTarget.searchParams.get("e2e_delay_ms") ?? "0", 10);
       const delayMs = Number.isSafeInteger(parsedDelay) ? Math.max(0, Math.min(parsedDelay, 2_000)) : 0;
-      upstreamUrl.searchParams.delete("e2e_delay_key");
-      upstreamUrl.searchParams.delete("e2e_delay_ms");
+      relayTarget.searchParams.delete("e2e_delay_key");
+      relayTarget.searchParams.delete("e2e_delay_ms");
       if (delayKey) delayedRequests.set(delayKey, (delayedRequests.get(delayKey) ?? 0) + 1);
 
-      const headers = new Headers();
+      const headers = {};
       for (const [name, value] of Object.entries(incoming.headers)) {
         if (value === undefined || ["accept-encoding", "connection", "content-length", "host", "transfer-encoding"].includes(name.toLowerCase())) continue;
-        headers.set(name, Array.isArray(value) ? value.join(",") : value);
+        headers[name] = Array.isArray(value) ? value.join(",") : value;
       }
-      const upstream = await fetch(upstreamUrl, {
+      const upstream = await requestLoopbackUpstream(
+        fixedUpstreamPort,
+        `${relayTarget.pathname}${relayTarget.search}`,
         headers,
-        method: incoming.method ?? "GET",
-        signal: control.signal,
-      });
-      const body = Buffer.from(await upstream.arrayBuffer());
+        control.signal,
+      );
       if (delayMs > 0) await abortableSleep(delayMs, control.signal, "delayed upstream response");
       const responseHeaders = {};
-      upstream.headers.forEach((value, name) => {
-        if (!["connection", "content-encoding", "content-length", "transfer-encoding"].includes(name.toLowerCase())) responseHeaders[name] = value;
-      });
+      for (const [name, value] of Object.entries(upstream.headers)) {
+        if (value !== undefined && !["connection", "content-length", "transfer-encoding"].includes(name.toLowerCase())) responseHeaders[name] = value;
+      }
       outgoing.writeHead(upstream.status, responseHeaders);
-      outgoing.end(body);
+      outgoing.end(upstream.body);
     } catch {
       if (control.signal.aborted) {
         outgoing.destroy();
