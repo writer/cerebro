@@ -1,0 +1,16 @@
+[
+  {
+    "_links": {
+      "assignee": {
+        "href": "https://test.okta.com/api/v1/users/example-c90b95af0c0b6fef"
+      }
+    },
+    "assignmentType": "USER",
+    "created": "2020-08-27T18:19:43.000Z",
+    "id": "KVJUKUS7IFCE2SKO",
+    "label": "User Administrator",
+    "lastUpdated": "2020-08-27T18:19:43.000Z",
+    "status": "ACTIVE",
+    "type": "USER_ADMIN"
+  }
+]

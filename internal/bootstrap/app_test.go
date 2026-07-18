@@ -1652,6 +1652,13 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	return nil
 }
 
+func (s *stubGraphStore) CountProjectedLinksMissingAssertions(context.Context, string, []string) (uint32, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 0, nil
+}
+
 func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -1869,7 +1876,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(urns) != 1 {
 		t.Fatalf("discover urns = %#v, want one default GitHub repository URN", discoverPayload["urns"])
 	}
-	if got := urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := urns[0]; got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("discover urns[0] = %#v, want default GitHub repository URN", got)
 	}
 	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
@@ -1901,21 +1908,18 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(repeatedCursorResp.Body).Decode(&repeatedCursorPayload); err != nil {
 		t.Fatalf("decode repeated cursor response: %v", err)
 	}
-	repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any)
-	if !ok || len(repeatedCursorEvents) != 1 {
-		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
-	}
-	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
-	if !ok || repeatedCursorEvent["id"] != "github-pr-2" {
-		t.Fatalf("repeated cursor event = %#v, want github-pr-2", repeatedCursorEvents[0])
+	if repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any); ok && len(repeatedCursorEvents) != 0 {
+		t.Fatalf("repeated cursor events = %#v, want no entries after the captured page", repeatedCursorEvents)
+	} else if !ok && repeatedCursorPayload["events"] != nil {
+		t.Fatalf("repeated cursor events = %#v, want an empty list or null", repeatedCursorPayload["events"])
 	}
 	previewEvents, ok := readPayload["preview_events"].([]any)
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
 	previewEvent, ok := previewEvents[0].(map[string]any)
-	if !ok || previewEvent["event_id"] != "github-pr-1" {
-		t.Fatalf("read preview_event = %#v, want event_id github-pr-1", previewEvents[0])
+	if !ok || previewEvent["event_id"] != "github-octocat-pull_request-bbd1ead563f42f7f" {
+		t.Fatalf("read preview_event = %#v, want captured GitHub event id", previewEvents[0])
 	}
 	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -1946,8 +1950,12 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(oktaDiscoverResp.Body).Decode(&oktaDiscoverPayload); err != nil {
 		t.Fatalf("decode /sources/okta/discover response: %v", err)
 	}
-	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
-		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
+	oktaURNs, ok := oktaDiscoverPayload["urns"].([]any)
+	if !ok || len(oktaURNs) != 1 {
+		t.Fatalf("okta discover urns = %#v, want 1 captured entry", oktaDiscoverPayload["urns"])
+	}
+	if got, ok := oktaURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("okta discover urns[0] = %#v, want Okta user URN", oktaURNs[0])
 	}
 	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -2003,7 +2011,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(datadogURNs) != 1 {
 		t.Fatalf("datadog discover urns = %#v, want 1 entry", datadogDiscoverPayload["urns"])
 	}
-	if got := datadogURNs[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+	if got, ok := datadogURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:tenant:datadog_users:") {
 		t.Fatalf("datadog discover urns[0] = %#v, want Datadog users URN", got)
 	}
 	datadogReadResp, err := sourceGet(t, server, "/sources/datadog/read?family=users", datadogConfig)
@@ -2091,7 +2099,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if len(discoverSourceResp.Msg.Urns) != 1 {
 		t.Fatalf("len(DiscoverSource.Urns) = %d, want 1", len(discoverSourceResp.Msg.Urns))
 	}
-	if got := discoverSourceResp.Msg.Urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := discoverSourceResp.Msg.Urns[0]; got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("DiscoverSource.Urns[0] = %q, want default GitHub repository URN", got)
 	}
 	readSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
@@ -2135,8 +2143,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverSource(okta) error = %v", err)
 	}
-	if len(oktaDiscoverSourceResp.Msg.Urns) != 2 {
-		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 2", len(oktaDiscoverSourceResp.Msg.Urns))
+	if len(oktaDiscoverSourceResp.Msg.Urns) != 1 {
+		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 1 captured entry", len(oktaDiscoverSourceResp.Msg.Urns))
+	}
+	if got := oktaDiscoverSourceResp.Msg.Urns[0]; !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("DiscoverSource(okta).Urns[0] = %q, want Okta user URN", got)
 	}
 	oktaReadSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
 		SourceId: "okta",
@@ -4962,10 +4973,12 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 				EventsRead:        8,
 				EntitiesProjected: 12,
 				LinksProjected:    16,
-				GraphNodesBefore:  100,
-				GraphNodesAfter:   109,
-				GraphLinksBefore:  200,
-				GraphLinksAfter:   211,
+				IngestRunGraphCounts: graphstore.IngestRunGraphCounts{
+					GraphNodesBefore: 100,
+					GraphNodesAfter:  109,
+					GraphLinksBefore: 200,
+					GraphLinksAfter:  211,
+				},
 			},
 		},
 	}
@@ -5315,11 +5328,11 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
 		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
 	}
-	if got := runRecord["checkpoint_cursor"]; got != "1" {
-		t.Fatalf("graph ingest checkpoint_cursor = %#v, want next page cursor 1", got)
+	if got := runRecord["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest checkpoint_cursor = %#v, want no cursor after captured page", got)
 	}
-	if got := runRecord["checkpoint_complete"]; got != false {
-		t.Fatalf("graph ingest checkpoint_complete = %#v, want false for bounded partial ingest", got)
+	if got := runRecord["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest checkpoint_complete = %#v, want true after captured page", got)
 	}
 	overrideReq, err := http.NewRequest(
 		http.MethodPost,
@@ -5371,11 +5384,11 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if !ok || getRun["id"] != runID {
 		t.Fatalf("graph ingest get run = %#v, want id %q", getPayload["run"], runID)
 	}
-	if got := getRun["checkpoint_complete"]; got != false {
-		t.Fatalf("graph ingest get checkpoint_complete = %#v, want false", got)
+	if got := getRun["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest get checkpoint_complete = %#v, want true", got)
 	}
-	if got := getRun["checkpoint_cursor"]; got != "1" {
-		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want next page cursor 1", got)
+	if got := getRun["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want no cursor after captured page", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)

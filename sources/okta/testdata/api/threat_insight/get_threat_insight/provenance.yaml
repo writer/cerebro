@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: threat_insight
+case: get_threat_insight
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/threats/configuration
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2021-06-14T15:04:48Z"
+    sha256: 4f93c6469f0cd8f10715d07c38efc5bd35d78e8d9f5c5d02295b1a04db413185
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_threat_insight_it/TestThreatInsightConfiguration.test_get_threat_insight_configuration.yaml
+    artifact_sha256: 3033bad1f62cc8a9aea31833a4520a1a4f9faa8bc3acf8de64ebdf42dabe2ae0
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: historical
+    capture_time_basis: response_header

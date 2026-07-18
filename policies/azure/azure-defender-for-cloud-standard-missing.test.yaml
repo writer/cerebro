@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        defender_for_cloud_standard_missing: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        defender_for_cloud_standard_missing: false
+      wantFinding: false

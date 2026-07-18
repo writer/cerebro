@@ -1,0 +1,167 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfap1oHfjrkCoP4x6/lifecycle/deactivate"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfap1oHfjrkCoP4x6"
+      },
+      "verify": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfap1oHfjrkCoP4x6/lifecycle/verify"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header value"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/eventHooks"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:15:27.000Z",
+    "createdBy": "example-74050b6de2891b2b",
+    "events": {
+      "items": [
+        "user.lifecycle.activate",
+        "user.lifecycle.create"
+      ],
+      "type": "EVENT_TYPE"
+    },
+    "id": "whosfap1oHfjrkCoP4x6",
+    "lastUpdated": "2020-08-27T18:15:27.000Z",
+    "name": "EVENT_TYPE0",
+    "status": "ACTIVE",
+    "verificationStatus": "UNVERIFIED"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosf7biiVzubELOm4x6/lifecycle/deactivate"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/eventHooks/whosf7biiVzubELOm4x6"
+      },
+      "verify": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosf7biiVzubELOm4x6/lifecycle/verify"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header value"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/eventHooks"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:15:27.000Z",
+    "createdBy": "example-74050b6de2891b2b",
+    "events": {
+      "items": [
+        "user.lifecycle.activate",
+        "user.lifecycle.create"
+      ],
+      "type": "EVENT_TYPE"
+    },
+    "id": "whosf7biiVzubELOm4x6",
+    "lastUpdated": "2020-08-27T18:15:27.000Z",
+    "name": "EVENT_TYPE1",
+    "status": "ACTIVE",
+    "verificationStatus": "UNVERIFIED"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfa0uabBHiwcoB4x6/lifecycle/deactivate"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfa0uabBHiwcoB4x6"
+      },
+      "verify": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/eventHooks/whosfa0uabBHiwcoB4x6/lifecycle/verify"
+      }
+    },
+    "channel": {
+      "config": {
+        "authScheme": {
+          "key": "Authorization",
+          "type": "HEADER"
+        },
+        "headers": [
+          {
+            "key": "X-Test-Header",
+            "value": "Test Header value"
+          }
+        ],
+        "method": "POST",
+        "uri": "https://www.example.com/eventHooks"
+      },
+      "type": "HTTP",
+      "version": "1.0.0"
+    },
+    "created": "2020-08-27T18:15:27.000Z",
+    "createdBy": "example-74050b6de2891b2b",
+    "events": {
+      "items": [
+        "user.lifecycle.activate",
+        "user.lifecycle.create"
+      ],
+      "type": "EVENT_TYPE"
+    },
+    "id": "whosfa0uabBHiwcoB4x6",
+    "lastUpdated": "2020-08-27T18:15:27.000Z",
+    "name": "EVENT_TYPE2",
+    "status": "ACTIVE",
+    "verificationStatus": "UNVERIFIED"
+  }
+]

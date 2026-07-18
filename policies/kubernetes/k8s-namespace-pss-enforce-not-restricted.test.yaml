@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        namespace_pss_enforce_not_restricted_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        namespace_pss_enforce_not_restricted_compliant: true
+      wantFinding: false

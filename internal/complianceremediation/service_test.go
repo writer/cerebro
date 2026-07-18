@@ -104,6 +104,75 @@ func TestFailedResultWorkReplaysOldestFirstAndReopensAfterInvalidation(t *testin
 	}
 }
 
+func TestVerifyAssuranceRequiresQualifiedPostRemediationDecision(t *testing.T) {
+	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	runtime := newMemoryRuntime()
+	service := New(runtime, runtime, runtime, runtime)
+	record, err := service.DeriveWork(context.Background(), failedResultInput(now), "assessor-a")
+	if err != nil {
+		t.Fatalf("DeriveWork() error = %v", err)
+	}
+	record, err = service.ApplyWorkCommand(context.Background(), "tenant-a", record.Item.ID, WorkCommand{
+		Operation: "action", ExpectedVersion: record.Item.Version, Action: complianceassessment.WorkActionRemediate,
+		Rationale: "Apply the control change.", ActorID: "owner-a", At: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ApplyWorkCommand(remediate) error = %v", err)
+	}
+	decision := qualifiedWorkDecision(now.Add(2*time.Hour), now.Add(3*time.Hour), now.Add(4*time.Hour))
+	runtime.decisions["tenant-a\x00"+decision.ID] = decision
+	record, err = service.ApplyWorkCommand(context.Background(), "tenant-a", record.Item.ID, WorkCommand{
+		Operation: "action", ExpectedVersion: record.Item.Version, Action: complianceassessment.WorkActionVerifyAssurance,
+		AssuranceDecisionID: decision.ID, EvidenceIDs: []string{"caller-supplied"},
+		Rationale: "Verify the post-change assessment.", ActorID: "reviewer-a", At: now.Add(5 * time.Hour),
+	})
+	if err != nil || record.Item.State != complianceassessment.WorkResolved || record.Item.Verification == nil {
+		t.Fatalf("ApplyWorkCommand(verify assurance) = %+v, %v", record.Item, err)
+	}
+	if got := record.Item.Verification.EvidenceIDs; len(got) != 1 || got[0] != "evidence-fresh" {
+		t.Fatalf("verification evidence = %v, want decision evidence", got)
+	}
+
+	secondRuntime := newMemoryRuntime()
+	secondService := New(secondRuntime, secondRuntime, secondRuntime, secondRuntime)
+	stale, err := secondService.DeriveWork(context.Background(), failedResultInput(now), "assessor-a")
+	if err != nil {
+		t.Fatalf("DeriveWork(stale) error = %v", err)
+	}
+	stale, err = secondService.ApplyWorkCommand(context.Background(), "tenant-a", stale.Item.ID, WorkCommand{
+		Operation: "action", ExpectedVersion: stale.Item.Version, Action: complianceassessment.WorkActionRemediate,
+		Rationale: "Apply the control change.", ActorID: "owner-a", At: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ApplyWorkCommand(remediate stale) error = %v", err)
+	}
+	staleDecision := qualifiedWorkDecision(now, now.Add(3*time.Hour), now.Add(4*time.Hour))
+	secondRuntime.decisions["tenant-a\x00"+staleDecision.ID] = staleDecision
+	before := len(secondRuntime.events)
+	_, err = secondService.ApplyWorkCommand(context.Background(), "tenant-a", stale.Item.ID, WorkCommand{
+		Operation: "action", ExpectedVersion: stale.Item.Version, Action: complianceassessment.WorkActionVerifyAssurance,
+		AssuranceDecisionID: staleDecision.ID, Rationale: "Verify stale assessment.", ActorID: "reviewer-a", At: now.Add(5 * time.Hour),
+	})
+	if !errors.Is(err, ErrInvalidRequest) || len(secondRuntime.events) != before {
+		t.Fatalf("stale verification error/events = %v/%d, want rejection before append", err, len(secondRuntime.events))
+	}
+}
+
+func qualifiedWorkDecision(evaluatedAt, asOf, recordedAt time.Time) complianceassessment.AssuranceDecision {
+	digest := "sha256:" + strings.Repeat("b", 64)
+	return complianceassessment.AssuranceDecision{
+		ID: "assurance-decision-fresh", TenantID: "tenant-a", RunID: "run-fresh", ResultID: "result-fresh",
+		ObjectiveID: "objective-a", ProgramID: "program-a", ScopeRevisionID: "scope-a",
+		InputSnapshot: complianceassessment.QualificationInput{Result: complianceassessment.ObjectiveResult{
+			ID: "result-fresh", ControlRef: compliance.ControlRef{FrameworkID: "framework-a", ControlID: "control-a"},
+			ObjectiveID: "objective-a", AutomatedOutcome: complianceassessment.OutcomeSatisfied,
+			EvidenceIDs: []string{"evidence-fresh"}, SourceRuntimeIDs: []string{"runtime-a"}, EvaluatedAt: evaluatedAt,
+		}},
+		Decision:   complianceassessment.QualifiedDecision{Qualified: true, ProofDigest: digest, DecisionDigest: digest, AsOf: asOf},
+		RecordedAt: recordedAt, RecordDigest: digest,
+	}
+}
+
 func TestAppendSuccessProjectionFailureRecoversWork(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	runtime := newMemoryRuntime()
@@ -210,11 +279,12 @@ type memoryRuntime struct {
 	work           map[string]WorkItemRecord
 	plans          map[string]complianceassessment.RemediationPlan
 	receipts       map[string]struct{}
+	decisions      map[string]complianceassessment.AssuranceDecision
 	failProjection bool
 }
 
 func newMemoryRuntime() *memoryRuntime {
-	return &memoryRuntime{work: map[string]WorkItemRecord{}, plans: map[string]complianceassessment.RemediationPlan{}, receipts: map[string]struct{}{}}
+	return &memoryRuntime{work: map[string]WorkItemRecord{}, plans: map[string]complianceassessment.RemediationPlan{}, receipts: map[string]struct{}{}, decisions: map[string]complianceassessment.AssuranceDecision{}}
 }
 
 func (m *memoryRuntime) Ping(context.Context) error { return nil }
@@ -274,6 +344,14 @@ func (m *memoryRuntime) GetRemediationPlan(_ context.Context, tenantID, planID s
 		return complianceassessment.RemediationPlan{}, ErrNotFound
 	}
 	return plan, nil
+}
+
+func (m *memoryRuntime) GetAssuranceDecision(_ context.Context, tenantID, decisionID string) (complianceassessment.AssuranceDecision, error) {
+	decision, ok := m.decisions[tenantID+"\x00"+decisionID]
+	if !ok {
+		return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
+	}
+	return decision, nil
 }
 
 func (m *memoryRuntime) ProjectWorkOccurrence(_ context.Context, metadata ProjectionMetadata, item complianceassessment.WorkItem, occurrence complianceassessment.WorkOccurrence) error {

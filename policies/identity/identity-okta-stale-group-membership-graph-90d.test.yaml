@@ -1,22 +1,45 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRuleTest
 cases:
-  - name: stale group membership fails
-    queryRows:
-      - primary_urn: urn:cerebro:writer:okta_user:00u-dormant
-        primary_label: dormant@example.com
-        primary_type: okta.user
-        fingerprint_key: urn:cerebro:writer:okta_user:00u-dormant|urn:cerebro:writer:okta_group:finance-users
-        resource_urns:
-          - urn:cerebro:writer:okta_user:00u-dormant
-          - urn:cerebro:writer:okta_group:finance-users
-        severity: HIGH
-        summary: Okta group membership for dormant@example.com is stale in Finance Users
-        action: Remove stale group membership or document the approved need
-        evidence:
-          - urn: urn:cerebro:writer:okta_group:finance-users
+  - name: stale user through group to application path produces a finding
+    graphFixture:
+      tenantId: test-stale-group
+      nodes: &nodes
+        - urn: urn:cerebro:test-stale-group:okta:user:bob
+          sourceId: okta
+          entityType: okta.user
+          label: bob@example.com
+          attributes:
+            status: active
+            last_login_at: "2020-01-01T00:00:00Z"
+        - urn: urn:cerebro:test-stale-group:okta:group:engineering-admins
+          sourceId: okta
+          entityType: okta.group
+          label: Engineering administrators
+        - urn: urn:cerebro:test-stale-group:okta:application:deployment-console
+          sourceId: okta
+          entityType: okta.application
+          label: Deployment console
+      edges:
+        - fromUrn: urn:cerebro:test-stale-group:okta:user:bob
+          toUrn: urn:cerebro:test-stale-group:okta:group:engineering-admins
+          sourceId: okta
+          relation: member_of
+        - fromUrn: urn:cerebro:test-stale-group:okta:group:engineering-admins
+          toUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
+          sourceId: okta
+          relation: assigned_to
+    wantEvidenceUrns:
+      - urn:cerebro:test-stale-group:okta:group:engineering-admins
+      - urn:cerebro:test-stale-group:okta:application:deployment-console
     wantFinding: true
-  - name: recent group member passes
-    resource:
-      placeholder: true
+  - name: group application path without stale membership passes
+    graphFixture:
+      tenantId: test-stale-group
+      nodes: *nodes
+      edges:
+        - fromUrn: urn:cerebro:test-stale-group:okta:group:engineering-admins
+          toUrn: urn:cerebro:test-stale-group:okta:application:deployment-console
+          sourceId: okta
+          relation: assigned_to
     wantFinding: false

@@ -1,9 +1,13 @@
 .DEFAULT_GOAL := help
 
 .PHONY: release-train-test
+.PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
-.PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-event-admission-benchmark rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-event-admission-generate sourceruntime-event-admission-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
+.PHONY: rust-event-admission-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -17,6 +21,8 @@ RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
 RUST_VALIDATOR_FUZZ_DIR := internal/graphagent/staticvalidator/fuzz
 RUST_VALIDATOR_FUZZ_CORPUS ?= tmp/rust-validator-fuzz-corpus
+RUST_SECURITY_PATH_FUZZ_DIR := crates/security-path-kernel/fuzz
+RUST_SECURITY_PATH_FUZZ_CORPUS ?= tmp/rust-security-path-fuzz-corpus
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
@@ -33,6 +39,8 @@ SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
+WEB_DOCKER_SMOKE_IMAGE ?= cerebro-web-smoke:local
+WEB_DOCKER_IMAGE_REVISION ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 DOCKER_SMOKE_GOARCH ?= amd64
 DOCKER_RUNTIME_BASE_IMAGE ?= alpine:3.24
 DOCKER_SMOKE_BASE_IMAGES ?= $(DOCKER_RUNTIME_BASE_IMAGE) public.ecr.aws/docker/library/alpine:3.24 mirror.gcr.io/library/alpine:3.24
@@ -223,11 +231,26 @@ sdk-python-build-check: ## Build and validate the Python SDK package artifacts.
 	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m build --sdist --wheel --outdir "$(SDK_PYTHON_DIST)" sdk/python
 	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m twine check "$(SDK_PYTHON_DIST)"/*
 
-sdk-typescript-test: ## Run TypeScript SDK tests.
-	cd sdk/typescript && npm test
+sdk-typescript-test: workspace-install ## Run TypeScript SDK tests.
+	npm test --workspace @writer/cerebro-sdk
 
-sdk-typescript-check: ## Install TypeScript SDK dependencies and run type checks.
-	cd sdk/typescript && npm ci && npm run typecheck
+sdk-typescript-check: workspace-install ## Install workspace dependencies and run TypeScript SDK type checks.
+	npm run typecheck --workspace @writer/cerebro-sdk
+
+workspace-install: ## Install root npm workspace dependencies from the shared lockfile.
+	npm ci
+
+app-workspace-check: ## Verify public applications remain owned npm workspaces.
+	$(PYTHON) scripts/app_workspace_contract.py
+
+workspace-build: workspace-install ## Build every npm workspace that declares a build script.
+	npm run build:workspaces
+
+workspace-check: workspace-install ## Run declared checks in every npm workspace.
+	npm run check:workspaces
+
+workspace-test: workspace-install ## Run declared tests in every npm workspace.
+	npm run test:workspaces
 
 sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
 	$(PYTHON) -m unittest scripts.test_sdk_dependency_audit
@@ -254,6 +277,11 @@ finding-rule-scaffold-test: ## Run finding rule scaffold generator tests.
 
 sourcegen-test: ## Run source generator and generated runtime projection tests.
 	go test ./internal/sourcegen ./internal/sourcegen/grammarproof ./internal/sourcegen/reproproof ./internal/providercontractlock ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen ./tools/sourcegrammarcheck ./tools/sourcegenreprocheck ./tools/sourceproofcheck -count=1
+
+source-fixture-check: ## Verify genuine provider response fixtures and provenance.
+	go test ./internal/sourcefixture -count=1
+	go run ./tools/sourcefixture verify -root .
+	go test $$(go run ./tools/sourcefixture packages -root .) -count=1
 
 sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
 	go run ./tools/sourcegrammarcheck
@@ -312,8 +340,11 @@ candidate-smoke: ## Run source candidate smoke checks for RUNTIME_ID.
 
 # ==== MCP ====
 ##@ MCP
-mcp-contract-check: ## Validate MCP contract fixtures.
+mcp-contract-check: mcp-tool-eval ## Validate MCP contract fixtures.
 	python3 scripts/mcp_contract_check.py
+
+mcp-tool-eval: ## Score the ten advertised task tools against the checked-in hillclimb baseline.
+	go test ./internal/bootstrap -run '^TestMCPTaskToolSelectionHillclimbBaseline$$' -count=1 -v
 
 mcp-smoke: ## Run MCP smoke checks.
 	python3 scripts/mcp_smoke.py
@@ -474,6 +505,15 @@ rust-event-admission-benchmark: ## Measure admission cost by boundary and repres
 	@CEREBRO_EVENT_ADMISSION_WORKER="$(abspath $(EVENT_ADMISSION_WORKER))" go test ./internal/sourceruntime -run '^TestSyncRuntimeNativeAdmissionCommitsOnlyAcceptedEvents$$'
 	@ADMISSION_BENCH_SAMPLE_MS=$(ADMISSION_BENCH_SAMPLE_MS) ADMISSION_BENCH_SAMPLES=$(ADMISSION_BENCH_SAMPLES) $(CARGO) bench --locked -p cerebro-sourceruntime-eventadmission --bench admission > tmp/rust-event-admission-native-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-native-benchmark.txt; exit $$status
 
+rust-security-path-properties: ## Run deterministic security path kernel properties.
+	$(CARGO) test --locked -p cerebro-security-path-kernel --test properties
+
+rust-security-path-fuzz-smoke: ## Run a bounded security path kernel fuzz session (requires cargo-fuzz).
+	rm -rf "$(RUST_SECURITY_PATH_FUZZ_CORPUS)"
+	mkdir -p "$(RUST_SECURITY_PATH_FUZZ_CORPUS)"
+	cp $(RUST_SECURITY_PATH_FUZZ_DIR)/corpus/evaluate/* "$(RUST_SECURITY_PATH_FUZZ_CORPUS)/"
+	$(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run evaluate --fuzz-dir $(RUST_SECURITY_PATH_FUZZ_DIR) "$(RUST_SECURITY_PATH_FUZZ_CORPUS)" -- -runs=$(RUST_FUZZ_RUNS) -max_len=$(RUST_FUZZ_MAX_LEN)
+
 graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
 
@@ -506,6 +546,12 @@ sourceruntime-event-admission-generate: ## Rebuild the embedded source event adm
 
 sourceruntime-event-admission-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded source event admission kernel is current.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check sourceruntime-event-admission
+
+security-path-evaluator-generate: ## Rebuild the embedded security path evaluator.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate security-path-evaluator
+
+security-path-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded security path evaluator is current.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check security-path-evaluator
 
 rust-wasm-manifest-generate: ## Regenerate embedded Wasm artifact evidence and size budgets.
 	go run ./tools/wasmartifactmanifest -write
@@ -571,6 +617,15 @@ openapi-ts-generate: ## Generate TypeScript types from the OpenAPI spec.
 openapi-ts-check: ## Verify generated TypeScript types are current.
 	go run ./tools/openapitsgen/cmd -spec api/openapi.yaml -out sdk/typescript/src/generated/openapi-types.ts -check
 
+agent-service-lifecycle-generate: ## Generate Go and TypeScript lifecycle contract bindings.
+	go run ./tools/agentlifecyclegen
+	go run ./tools/agentlifecyclegen -schema schemas/agent-service-lifecycle.schema.json -go-out internal/agentplatform/lifecyclecontract/generated.go -go-package lifecyclecontract -ts-out sdk/typescript/src/generated/agent-service-lifecycle.ts
+
+agent-service-lifecycle-check: ## Verify lifecycle schemas and generated bindings are current.
+	go run ./tools/agentlifecyclegen -check
+	go run ./tools/agentlifecyclegen -schema schemas/agent-service-lifecycle.schema.json -go-out internal/agentplatform/lifecyclecontract/generated.go -go-package lifecyclecontract -ts-out sdk/typescript/src/generated/agent-service-lifecycle.ts -check
+	go test ./internal/agentplatform ./internal/agentplatform/lifecyclecontract ./tools/agentlifecyclegen -count=1
+
 connector-onboard: ## Onboard a connector from an OpenAPI spec (SPEC=path/to/spec.yaml SOURCE_ID=name).
 	@test -n "$(SPEC)" || (echo "SPEC is required, e.g. make connector-onboard SPEC=spec.yaml SOURCE_ID=example" && exit 1)
 	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" -output-dir="$(if $(OUTPUT_DIR),$(OUTPUT_DIR),.)" -catalog-out="$(CATALOG_OUT)" -dry-run="$(if $(DRY_RUN),$(DRY_RUN),true)" -wire="$(if $(WIRE),$(WIRE),true)"
@@ -601,7 +656,7 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate codegen-catalog-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate agent-service-lifecycle-generate codegen-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	go run ./tools/codegencatalog -check
@@ -722,8 +777,17 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 	fi
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
+web-docker-smoke: ## Build and smoke-test the standalone web image.
+	@command -v docker >/dev/null || { echo "docker is required for web-docker-smoke" >&2; exit 2; }
+	$(DOCKER_BUILD) --build-arg SOURCE_REVISION="$(WEB_DOCKER_IMAGE_REVISION)" $(DOCKER_BUILD_CACHE_ARGS) -f apps/web/Dockerfile -t "$(WEB_DOCKER_SMOKE_IMAGE)" .
+	@test "$$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$(WEB_DOCKER_SMOKE_IMAGE)")" = "$(WEB_DOCKER_IMAGE_REVISION)"
+	@docker image inspect --format '{{ json .Config.Healthcheck.Test }}' "$(WEB_DOCKER_SMOKE_IMAGE)" | grep -q '/api/health'
+	@test "$$(docker run --rm "$(WEB_DOCKER_SMOKE_IMAGE)" id -u)" = "10001"
+	npm run smoke:docker --workspace @writer/cerebro-web -- "$(WEB_DOCKER_SMOKE_IMAGE)"
+
 release-train-test: ## Validate release notes and release-train workflow contracts.
 	bash scripts/release/test_validate_release_notes.sh
+	python3 -m unittest scripts.release.test_product_release
 
 release-smoke: release-train-test ## Validate release-train configuration.
 
@@ -823,4 +887,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

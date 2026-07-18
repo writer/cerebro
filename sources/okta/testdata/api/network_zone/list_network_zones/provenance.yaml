@@ -1,0 +1,29 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: network_zone
+case: list_network_zones
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/zones
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2021-06-14T15:06:09Z"
+    sha256: 89aa562ee1ea87307fbb08b0d567c6d7e5df3e533271eb2b35f05e7f22493cb8
+    headers:
+        Link: <https://test-org.okta.com/api/v1/zones?limit=20>; rel="self"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_network_zone_it/TestNetworkZoneResource.test_list_network_zones.yaml
+    artifact_sha256: b2105a22f4a4d9b2045fd7986041904167d0b54eba6e2d7d60619f2c18213edf
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: historical
+    capture_time_basis: response_header

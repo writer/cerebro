@@ -5,6 +5,10 @@ losing auditability, replayability, tenant safety, or public-repo clarity.
 
 The machine-readable vocabulary lives in `internal/agentplatform`.
 
+The proposed [Agent Service Lifecycle Contract](agent-service-lifecycle-contract.md) sits beside this contract. It
+defines topology-neutral service availability and durable run continuity while this contract remains authoritative
+for Cerebro capabilities, evidence, missions, actions, and policy.
+
 ## North Star
 
 Cerebro agents should explain and operate on security knowledge through typed contracts, governed capabilities,

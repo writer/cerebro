@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_self_hosted_runners: true
+        visibility: public
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_self_hosted_runners: true
+        visibility: public-passing
+      wantFinding: false

@@ -88,4 +88,4 @@ event_contracts:
       - severity
       - status
     required_payload_fields:
-      - id
+      - plugin_id

@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        code_security_enabled: "false"
+        resource_type: repository_code_security
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        code_security_enabled: "false"
+        resource_type: repository_code_security-passing
+      wantFinding: false

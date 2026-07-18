@@ -1,0 +1,52 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: gitguardian
+family: audit_events
+case: list_audit_logs
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedGitGuardianFamilies
+request:
+    method: GET
+    url: https://api.gitguardian.com/v1/audit_logs?per_page=5
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-06-23T12:43:56Z"
+    sha256: 3d1925e88082c8d0654687235fbf07e985f6a3b9f8124c04cfed6977fb9b24eb
+    headers:
+        link: <https://api.gitguardian.com/v1/audit_logs?cursor=cD0yMzk4MjEzNg%3D%3D&per_page=5>; rel="next"
+        x-per-page: "5"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].ip_address
+        - $[0].member_email
+        - $[0].member_name
+        - $[0].target_ids[0]
+        - $[1].ip_address
+        - $[1].member_email
+        - $[1].member_name
+        - $[1].target_ids[0]
+        - $[2].ip_address
+        - $[2].member_email
+        - $[2].member_name
+        - $[2].target_ids[0]
+        - $[3].data.issue_token
+        - $[3].ip_address
+        - $[3].member_email
+        - $[3].member_name
+        - $[3].target_ids[0]
+        - $[4].ip_address
+        - $[4].member_email
+        - $[4].member_name
+        - $[4].target_ids[0]
+origin:
+    type: upstream_recording
+    repository: https://github.com/GitGuardian/ggmcp
+    commit: edb604c340d15da42b4927f6a6a04705efcb0421
+    path: tests/cassettes/client/vcr/test_get_audit_logs_with_limit.yaml
+    artifact_sha256: 9ed71623d0e94cda5e6fccf07e7f4ed9dc8915a6340b291b66be777c5f46dd09
+    license: MIT
+    recording_tool: vcrpy-8
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: response_header

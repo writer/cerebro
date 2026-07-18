@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        cloudformation_stack_termination_protection_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        cloudformation_stack_termination_protection_compliant: true
+      wantFinding: false

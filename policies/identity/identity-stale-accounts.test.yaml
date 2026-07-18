@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        account_active: true
+        days_since_last_login: 91
+        is_service_account: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        account_active: true
+        days_since_last_login: 90
+        is_service_account: false
+      wantFinding: false

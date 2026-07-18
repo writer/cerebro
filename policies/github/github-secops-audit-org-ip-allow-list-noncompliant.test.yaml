@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        allowed_cidrs_compliant: "false"
+        resource_type: ip_allow_list
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        allowed_cidrs_compliant: "false"
+        resource_type: ip_allow_list-passing
+      wantFinding: false

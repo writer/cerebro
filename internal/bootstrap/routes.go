@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
+	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -49,6 +50,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	registerHTTPRoute(mux, "GET /identity/users", routeSurfacePlatformHTTP, identityHandler.ListUsers)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
+	app.registerPolicyCandidateRoutes(mux)
 	app.registerSourceRoutes(mux)
 	app.registerConnectorRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
@@ -59,6 +61,26 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerSourceRuntimeRoutes(mux)
 	app.registerMCPRoutes(mux)
 	app.registerDeviceRoutes(mux)
+}
+func (app *App) registerPolicyCandidateRoutes(mux *http.ServeMux) {
+	datasets := policyevaluationdatasets.NewHandler(app.policyCandidateService(), effectiveTenantFilter, authorizeTenantID, customDashboardActorID, writePolicyCandidateError)
+	registerHTTPRoute(mux, "POST /policy-candidates", routeSurfacePlatformHTTP, app.handleCreatePolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-candidates", routeSurfacePlatformHTTP, app.handleListPolicyCandidates)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}", routeSurfacePlatformHTTP, app.handleGetPolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.Create)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.List)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleCreatePolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleListPolicyExperiments)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/prove", routeSurfacePlatformHTTP, app.handleProvePolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/shadow", routeSurfacePlatformHTTP, app.handleShadowPolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}", routeSurfacePlatformHTTP, datasets.Get)
+	registerHTTPRoute(mux, "POST /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.AppendRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.ListRevisions)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}", routeSurfacePlatformHTTP, datasets.GetRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}/cases", routeSurfacePlatformHTTP, datasets.ListCases)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}", routeSurfacePlatformHTTP, app.handleGetPolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}/observations", routeSurfacePlatformHTTP, app.handleListPolicyExperimentObservations)
+	registerHTTPRoute(mux, "POST /policy-experiments/{experimentID}/run", routeSurfacePlatformHTTP, app.handleRunPolicyExperiment)
 }
 func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions, decisionPackets: app.services.decisionPackets, runtimeOps: app.services.runtimeOps}
@@ -79,6 +101,7 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/a2a", routeSurfacePlatformHTTP, app.handleA2AJSONRPC)
 	registerHTTPRoute(mux, "GET /api/v1/agent/context", routeSurfacePlatformHTTP, agentTasks.Context)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/service-lifecycle/contract", routeSurfacePlatformHTTP, app.handleAgentServiceLifecycleContract)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/security-control-plane", routeSurfacePlatformHTTP, app.handleAgentPlatformSecurityControlPlane)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/missions/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformMissionContract)
@@ -142,6 +165,8 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/assessment-runs", routeSurfacePlatformHTTP, assessments.RequestRun)
 	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}", routeSurfacePlatformHTTP, assessments.GetRun)
 	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}/results", routeSurfacePlatformHTTP, assessments.ListResults)
+	registerHTTPRoute(mux, "POST /grc/assurance-decisions", routeSurfacePlatformHTTP, assessments.RecordAssuranceDecision)
+	registerHTTPRoute(mux, "GET /grc/assurance-decisions/{decisionID}", routeSurfacePlatformHTTP, assessments.GetAssuranceDecision)
 	registerHTTPRoute(mux, "GET /grc/report-catalog", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("report.catalog", 5*time.Minute), app.handleGRCReportCatalog))
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))
@@ -157,6 +182,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "DELETE /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handleDeleteRiskScoringConfig)
 	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("findings", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCFindings))
 	registerHTTPRoute(mux, "POST /grc/work-items", routeSurfacePlatformHTTP, app.handleDeriveComplianceWork)
+	registerHTTPRoute(mux, "GET /grc/work-items", routeSurfacePlatformHTTP, app.handleListComplianceWorkItems)
 	registerHTTPRoute(mux, "GET /grc/work-items/{workItemID}", routeSurfacePlatformHTTP, app.handleGetComplianceWorkItem)
 	registerHTTPRoute(mux, "POST /grc/work-items/{workItemID}/commands", routeSurfacePlatformHTTP, app.handleComplianceWorkCommand)
 	registerHTTPRoute(mux, "POST /grc/remediation-plans", routeSurfacePlatformHTTP, app.handleCreateComplianceRemediationPlan)

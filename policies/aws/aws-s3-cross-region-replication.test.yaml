@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        replication_configuration: null
+        tags:
+            critical: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        replication_configuration: true
+        tags:
+            critical: true
+      wantFinding: false

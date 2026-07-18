@@ -34,6 +34,9 @@ func postgresAdvisoryLockKey(parts ...string) string {
 // still giving each table a persistent, process-lifetime readiness flag.
 type findingIntelReady struct {
 	candidate         bool
+	policyCandidate   bool
+	policyExperiment  bool
+	policyDataset     bool
 	memory            bool
 	riskScoringConfig bool
 	remediation       bool
@@ -53,23 +56,24 @@ type identityTablesReady struct {
 }
 
 type grcTablesReady struct {
-	inventoryScope       bool
-	inventoryAssetReport bool
-	findingDisposition   bool
-	customDashboards     bool
-	vendorDiscovery      bool
-	questionnaireRun     bool
-	complianceProgram    bool
-	sourceTrust          bool
-	complianceExchange   bool
-	complianceMonitor    bool
-	assessmentSampling   bool
-	complianceAssessment bool
-	complianceReview     bool
-	evidenceLedger       bool
-	auditState           bool
-	auditPackets         bool
-	decisionPackets      bool
+	inventoryScope        bool
+	inventoryAssetReport  bool
+	findingDisposition    bool
+	customDashboards      bool
+	vendorDiscovery       bool
+	questionnaireRun      bool
+	complianceProgram     bool
+	sourceTrust           bool
+	complianceExchange    bool
+	complianceMonitor     bool
+	assessmentSampling    bool
+	complianceAssessment  bool
+	complianceReview      bool
+	complianceImprovement bool
+	evidenceLedger        bool
+	auditState            bool
+	auditPackets          bool
+	decisionPackets       bool
 }
 
 type appendLogTablesReady struct {

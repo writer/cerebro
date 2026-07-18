@@ -162,7 +162,7 @@ This repository defines the runtime contract. Your deployment system owns the co
 
 | Area | Cerebro release provides | Deployment system owns |
 | --- | --- | --- |
-| Runtime artifact | Container image, binary behavior, CLI/API contracts, source catalog, and release contract | Immutable tag selection, registry mirror, rollout record, and rollback tag |
+| Product artifacts | Runtime image, web image, portable Slack companion and SDK archives, CLI/API contracts, source catalog, and signed product-release manifest | Component selection, immutable digest pins, registry mirror, rollout record, and rollback versions |
 | API service | HTTP listen address, health routes, auth behavior, proxy-aware origin settings, and metrics | Load balancer, TLS certificate, DNS, ingress rules, replica count, CPU and memory sizing |
 | Backing stores | Supported Postgres, NATS JetStream, Neo4j/Aura, and optional cache configuration | Store provisioning, network access, backups, retention, maintenance windows, and capacity limits |
 | Secrets | Environment variable names, `env:` source config references, and file-backed secret support | Secret values, secret manager paths, rotation, and service-identity access |
@@ -521,7 +521,7 @@ If a release includes storage or event-shape changes, follow the migration notes
 
 ## Public release handoff
 
-This repository intentionally stops at public runtime artifacts and contracts. Environment-specific deployment repositories or platforms should own:
+This repository intentionally stops at public product artifacts and contracts. Environment-specific deployment repositories or platforms should own:
 
 - cloud accounts and regions,
 - registry paths,
@@ -536,9 +536,12 @@ This repository intentionally stops at public runtime artifacts and contracts. E
 
 The public handoff is:
 
-- the container image,
+- the signed product-release manifest,
+- the runtime and web container images,
+- the portable Slack companion and TypeScript SDK archives,
 - the binary behavior,
-- the environment-specific `cerebro-runtime-contract-<environment>.json` when produced by release tooling,
+- the topology-neutral product-release consumer event,
+- the runtime deploy contract renderer and schema,
 - API and proto contracts,
 - the documented environment variable surface.
 

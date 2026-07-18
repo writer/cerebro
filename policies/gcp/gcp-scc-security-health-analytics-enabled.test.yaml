@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        scc_security_health_analytics_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        scc_security_health_analytics_enabled: true
+      wantFinding: false

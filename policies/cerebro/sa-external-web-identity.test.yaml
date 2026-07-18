@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_high_privilege: true
+        trust_policy:
+            allows_external_web_identity: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_high_privilege: false
+        trust_policy:
+            allows_external_web_identity: true
+      wantFinding: false

@@ -127,7 +127,35 @@ import (
 // restart behavior, and receipt validation remain in
 // internal/sourceruntime/eventadmission; the boundary is recorded in
 // docs/engineering/rust-source-runtime-adr.md.
-const bootstrapProductionGoLineBudget = 28336
+// Agent service lifecycle discovery adds only authenticated route registration
+// and response mapping; the state machines, records, validation, and generated
+// bindings remain behind internal/agentplatform.
+// Policy discovery candidates add only HTTP request/response mapping,
+// tenant/scope enforcement, safe transport views, and configured model/store
+// composition, including the narrow findings-registry coverage adapter.
+// Candidate lifecycle, graph grounding, duplicate-coverage decisions,
+// proof/shadow orchestration, redaction boundaries, and optimistic revisions
+// stay behind internal/policycandidate; durable persistence stays in the
+// concrete Postgres state-store package.
+// Policy evaluation experiments add operator-scoped HTTP mapping, platform-job
+// normalization, and dependency wiring only. Immutable pins, transitions,
+// checkpoint verification, current-canary execution, and append-only receipts
+// stay behind internal/policycandidate.
+// Policy evaluation datasets add only route/auth registration, tenant/actor
+// resolution, and state-store capability wiring. Fixture validation, immutable
+// revisions, digest verification, and append semantics stay behind
+// internal/policycandidate; transport mapping stays in
+// internal/sourcehttp/policyevaluationdatasets.
+// Dedicated evaluation-dataset read, proposal, and approval scope constants
+// keep future agent credentials separate from candidate execution. Bootstrap
+// owns only their route-policy and OAuth discovery catalog entries.
+// Assurance decision routes add only service composition and route/auth
+// registration; decision validation and persistence remain in
+// internal/complianceassessment.
+// Canonical compliance work adds query composition and response mapping;
+// bounded queries and assurance verification remain in the domain and
+// state-store packages.
+const bootstrapProductionGoLineBudget = 29044
 
 type bootstrapFileLineCount struct {
 	path  string

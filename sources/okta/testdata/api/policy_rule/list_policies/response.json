@@ -1,0 +1,333 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp13cg3r0SMK5d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp13cg3r0SMK5d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp13cg3r0SMK5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp13cg3r0SMK5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:46.000Z",
+    "id": "rstnwmp13cg3r0SMK5d7",
+    "lastUpdated": "2025-03-19T09:20:46.000Z",
+    "name": "Okta Admin Console",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14ceJQ76Lj5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14ceJQ76Lj5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:47.000Z",
+    "description": "Require two factors to access.",
+    "id": "rstnwmp14ceJQ76Lj5d7",
+    "lastUpdated": "2025-03-19T09:20:47.000Z",
+    "name": "Any two factors",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": true,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14eRfwWzKF5d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14eRfwWzKF5d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14eRfwWzKF5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmp14eRfwWzKF5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:47.000Z",
+    "description": "Policy created during OIE upgrade and applied to all applications that were protected by the default app-sign on policy in Classic.",
+    "id": "rstnwmp14eRfwWzKF5d7",
+    "lastUpdated": "2025-03-19T09:20:47.000Z",
+    "name": "Classic Migrated",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgxzKeG7Mlz5d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgxzKeG7Mlz5d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgxzKeG7Mlz5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgxzKeG7Mlz5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:48.000Z",
+    "description": "Allow seamless log in with Okta FastPass for low risk authentication scenarios with enhanced security for medium and high risk.",
+    "id": "rstnwmsgxzKeG7Mlz5d7",
+    "lastUpdated": "2025-03-19T09:20:48.000Z",
+    "name": "Seamless access based on risk context",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy4vwheBsP5d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy4vwheBsP5d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy4vwheBsP5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy4vwheBsP5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:48.000Z",
+    "description": "Require only a password. Suggested for low risk or consumer-facing applications.",
+    "id": "rstnwmsgy4vwheBsP5d7",
+    "lastUpdated": "2025-03-19T09:20:48.000Z",
+    "name": "Password only",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy6QGR9VMs5d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy6QGR9VMs5d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy6QGR9VMs5d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy6QGR9VMs5d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:48.000Z",
+    "description": "Allow access with any one factor. Suggested for low risk or consumer-facing applications.",
+    "id": "rstnwmsgy6QGR9VMs5d7",
+    "lastUpdated": "2025-03-19T09:20:48.000Z",
+    "name": "One factor access",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy8YzjNdN15d7/lifecycle/deactivate"
+      },
+      "mappings": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy8YzjNdN15d7/mappings"
+      },
+      "rules": {
+        "hints": {
+          "allow": [
+            "GET",
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy8YzjNdN15d7/rules"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/policies/rstnwmsgy8YzjNdN15d7"
+      }
+    },
+    "conditions": null,
+    "created": "2025-03-19T09:20:48.000Z",
+    "description": "Require 2FA if the user is off network. Configure your network zones to include them here.",
+    "id": "rstnwmsgy8YzjNdN15d7",
+    "lastUpdated": "2025-03-19T09:20:48.000Z",
+    "name": "Seamless access based on network context",
+    "priority": 1,
+    "status": "ACTIVE",
+    "system": false,
+    "type": "ACCESS_POLICY"
+  }
+]

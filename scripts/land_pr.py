@@ -38,6 +38,7 @@ DEFAULT_REQUIRED_CHECKS = (
     "govulncheck",
     "release-smoke",
     "docker-smoke",
+    "web-docker-smoke",
     "structural",
     "droid-review-preflight",
     "droid-review",
@@ -267,7 +268,7 @@ def check_droid_finished(comments: list[dict[str, object]]) -> tuple[bool, str]:
         superseded = "Superseded Droid error" in body or "Superseded Droid review" in body
         if "Droid encountered an error" in body and not superseded:
             return False, f"Droid has an unsuperseded error comment: {comment.get('url') or ''}"
-        if "Droid is reviewing code and running a security check" in body and not superseded:
+        if "Droid is reviewing code and running a security check" in body and not superseded and not is_finished_droid_review(body):
             return False, f"Droid has an unsuperseded in progress comment: {comment.get('url') or ''}"
     comment = latest_droid_comment(comments)
     if not comment:

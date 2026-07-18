@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_sensitive_data: true
+        object_lock_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_sensitive_data: false
+        object_lock_enabled: false
+      wantFinding: false

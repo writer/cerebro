@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -231,13 +231,13 @@ jobs:
             --strip-components=1 -C .dist
           chmod +x .dist/cerebro
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build and publish candidate image
         shell: bash
         env:
@@ -261,12 +261,12 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Publish candidate manifest
         id: publish
         shell: bash
@@ -295,54 +295,232 @@ jobs:
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
 
-  contracts:
+  web-image:
     runs-on: ubuntu-latest
     needs: resolve
     permissions:
       contents: read
-      id-token: write
+      packages: write
     strategy:
+      fail-fast: false
       matrix:
-        target: [sec-dev, go-prod]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          go-version-file: go.mod
-      - name: Render candidate runtime contract
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Build and publish candidate web image
         env:
-          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
-          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web:${{ needs.resolve.outputs.image_tag }}-${{ matrix.arch }}
+          CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
-          mkdir -p .dist
-          go run ./cmd/sourcedeploy -env "${TARGET}" -tenant writer -format contract-json \
-            -image-tag "${IMAGE_TAG}" -out ".dist/cerebro-runtime-contract-${TARGET}.json"
+          set -euo pipefail
+          docker buildx build --platform "${PLATFORM}" -f apps/web/Dockerfile \
+            --build-arg SOURCE_REVISION="${CANDIDATE_SHA}" \
+            --build-arg NEXT_PUBLIC_CEREBRO_WEB_VERSION="candidate-${CANDIDATE_SHA}" \
+            --tag "${IMAGE}" --provenance=mode=max --sbom=true --push .
+
+  web-manifest:
+    runs-on: ubuntu-latest
+    needs: [resolve, web-image]
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Publish candidate web manifest
+        id: publish
+        env:
+          IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cerebro-web
+          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${IMAGE_BASE}:${IMAGE_TAG}" \
+            "${IMAGE_BASE}:${IMAGE_TAG}-amd64" "${IMAGE_BASE}:${IMAGE_TAG}-arm64"
+          digest="$(docker buildx imagetools inspect "${IMAGE_BASE}:${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v2.6.1
-      - name: Sign candidate runtime contract
+      - name: Sign candidate web image by digest
         env:
-          TARGET: ${{ matrix.target }}
+          IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/cerebro-web
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
+      - name: Attest candidate web image provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/cerebro-web
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+  scan-images:
+    runs-on: ubuntu-latest
+    needs: [resolve, manifest, web-manifest]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Verify candidate image platforms
+        shell: bash
+        env:
+          RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+          WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
         run: |
-          cosign sign-blob --yes --output-signature ".dist/cerebro-runtime-contract-${TARGET}.json.sig" \
-            --output-certificate ".dist/cerebro-runtime-contract-${TARGET}.json.pem" \
-            ".dist/cerebro-runtime-contract-${TARGET}.json"
+          set -euo pipefail
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+            platforms="$(
+              docker buildx imagetools inspect --raw "${image}" \
+                | jq -c '[.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture)"] | sort'
+            )"
+            test "${platforms}" = '["linux/amd64","linux/arm64"]'
+          done
+      - name: Scan candidate images
+        shell: bash
+        env:
+          RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+          WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
+          TRIVY_IMAGE: aquasec/trivy:0.66.0@sha256:086971aaf400beebd94e8300fd8ea623774419597169156cec56eec5b00dfb1e
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+            for platform in linux/amd64 linux/arm64; do
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "${image}"
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity CRITICAL --ignore-unfixed --exit-code 1 "${image}"
+            done
+          done
+
+  portable-artifacts:
+    runs-on: ubuntu-latest
+    needs: resolve
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Build portable Slack companion and SDK archives
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build --workspace @writer/cerebro-slack-companion
+          mkdir -p .dist/product
+          npm pack --workspace @writer/cerebro-slack-companion --pack-destination .dist/product
+          npm pack --workspace @writer/cerebro-sdk --pack-destination .dist/product
+          cp api/openapi.yaml .dist/product/cerebro-openapi.yaml
+          cp schemas/agent-service-lifecycle.schema.json .dist/product/agent-service-lifecycle.schema.json
+          cp schemas/product-release.schema.json .dist/product/product-release.schema.json
+          cp schemas/product-release-published.schema.json .dist/product/product-release-published.schema.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: candidate-contract-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
-          path: .dist
+          name: product-input-${{ needs.resolve.outputs.sha }}
+          path: .dist/product
+          if-no-files-found: error
+          include-hidden-files: true
+
+  product-release:
+    runs-on: ubuntu-latest
+    needs: [resolve, manifest, web-manifest, portable-artifacts]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: product-input-${{ needs.resolve.outputs.sha }}
+          path: .dist/product
+      - name: Write candidate product release
+        env:
+          CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
+          RUNTIME_DIGEST: ${{ needs.manifest.outputs.digest }}
+          WEB_DIGEST: ${{ needs.web-manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          slack_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-slack-companion-*.tgz' -print -quit)"
+          sdk_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-sdk-*.tgz' -print -quit)"
+          test -n "${slack_archive}"
+          test -n "${sdk_archive}"
+          python3 scripts/release/product_release.py build \
+            --channel candidate --version "${IMAGE_TAG}" --commit "${CANDIDATE_SHA}" \
+            --runtime-image "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}" --runtime-digest "${RUNTIME_DIGEST}" \
+            --web-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${IMAGE_TAG}" --web-digest "${WEB_DIGEST}" \
+            --slack-archive "${slack_archive}" --slack-version "$(jq -r .version apps/slack-companion/package.json)" \
+            --sdk-archive "${sdk_archive}" --sdk-version "$(jq -r .version sdk/typescript/package.json)" \
+            --openapi .dist/product/cerebro-openapi.yaml \
+            --lifecycle-schema .dist/product/agent-service-lifecycle.schema.json \
+            --bundle-root .dist/product --out .dist/product/cerebro-product-release.json
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.1
+      - name: Sign candidate product release
+        run: |
+          cosign sign-blob --yes \
+            --output-signature .dist/product/cerebro-product-release.json.sig \
+            --output-certificate .dist/product/cerebro-product-release.json.pem \
+            .dist/product/cerebro-product-release.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-product-${{ needs.resolve.outputs.sha }}
+          path: .dist/product
           if-no-files-found: error
           include-hidden-files: true
 
   receipt:
     runs-on: ubuntu-latest
-    needs: [resolve, binaries, manifest, contracts]
+    needs: [resolve, binaries, manifest, web-manifest, scan-images, product-release]
     permissions:
       actions: read
       contents: read
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: candidate-*-${{ needs.resolve.outputs.sha }}
@@ -353,11 +531,18 @@ jobs:
           CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
           IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
           IMAGE_DIGEST: ${{ needs.manifest.outputs.digest }}
+          WEB_IMAGE_DIGEST: ${{ needs.web-manifest.outputs.digest }}
         run: |
+          set -euo pipefail
+          python3 scripts/release/product_release.py validate candidate/cerebro-product-release.json --bundle-root candidate
+          test "$(jq -r .schema_version candidate/cerebro-product-release.json)" = "cerebro.product-release/v1"
+          product_manifest_sha256="$(sha256sum candidate/cerebro-product-release.json | awk '{print $1}')"
           jq -n --arg schema_version "cerebro.release-candidate/v1" --arg commit "${CANDIDATE_SHA}" \
             --arg image "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}" --arg digest "${IMAGE_DIGEST}" \
+            --arg web_image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${IMAGE_TAG}" \
+            --arg web_digest "${WEB_IMAGE_DIGEST}" --arg product_manifest_sha256 "${product_manifest_sha256}" \
             --arg run_id "${GITHUB_RUN_ID}" --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
-            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,run_id:$run_id,run_attempt:$run_attempt}' \
+            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,web_image:$web_image,web_image_digest:$web_digest,product_manifest_sha256:$product_manifest_sha256,run_id:$run_id,run_attempt:$run_attempt}' \
             > candidate/candidate-receipt.json
           checksum_file="$(mktemp)"
           (cd candidate && find . -type f ! -name bundle-checksums.txt -print0 | sort -z | xargs -0 sha256sum) > "${checksum_file}"

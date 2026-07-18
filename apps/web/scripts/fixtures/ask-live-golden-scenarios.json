@@ -1,0 +1,774 @@
+[
+  {
+    "id": "live-findings-by-source",
+    "name": "Live-backed finding source aggregation",
+    "tenant_id": "example",
+    "model": "claude-sonnet-4-6",
+    "question": "Count findings by source family.",
+    "expected_entities": [
+      "source_family_83258826",
+      "source_family_f5278d06",
+      "source_family_7ce67cd2",
+      "source_family_58aa91bf"
+    ],
+    "min_citations": 0,
+    "max_rows": 25,
+    "live_observation": {
+      "source": "configured /grc/ask endpoint",
+      "observed_row_count": 7,
+      "observed_event_names": [
+        "progress",
+        "rationale",
+        "query_plan",
+        "progress",
+        "cypher",
+        "progress",
+        "rows",
+        "progress",
+        "summary",
+        "done"
+      ],
+      "observed_trace_hash": "96eb6ccd5f7433c078436d22"
+    },
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Live-derived aggregate_findings_by_source golden path from configured graph shape."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": {
+            "intent": "aggregate_findings_by_source",
+            "confidence": 0.95,
+            "limit": 100
+          },
+          "diagnostics": [
+            {
+              "level": "info",
+              "code": "canonicalized_to_template",
+              "message": "Live-derived canonicalized_to_template diagnostic."
+            },
+            {
+              "level": "info",
+              "code": "deterministic_query_plan",
+              "message": "Live-derived deterministic_query_plan diagnostic."
+            }
+          ],
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": true
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})\nWHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn\nWITH DISTINCT f,\n     coalesce(\n       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '\"source_family\":\"' THEN split(split(f.attributes_json, '\"source_family\":\"')[1], '\"')[0] END,\n       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '\"sourceFamily\":\"' THEN split(split(f.attributes_json, '\"sourceFamily\":\"')[1], '\"')[0] END,\n       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '\"source_system\":\"' THEN split(split(f.attributes_json, '\"source_system\":\"')[1], '\"')[0] END,\n       f.source_id,\n       'Unknown'\n     ) AS source_family\nRETURN source_family, count(DISTINCT f) AS finding_count\nORDER BY finding_count DESC, source_family\nLIMIT 10",
+          "validator": {
+            "ok": true,
+            "warnings": [
+              "canonicalized_to_template: Converted LLM draft into canonical aggregate_findings_by_source template.",
+              "deterministic_query_plan: Graph access used a deterministic Cerebro query template; LLM variance is limited to intent extraction and summary text."
+            ]
+          }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            {
+              "finding_count": 78,
+              "source_family": "source_family_83258826"
+            },
+            {
+              "finding_count": 132,
+              "source_family": "source_family_f5278d06"
+            },
+            {
+              "finding_count": 250,
+              "source_family": "source_family_7ce67cd2"
+            },
+            {
+              "finding_count": 91,
+              "source_family": "source_family_58aa91bf"
+            },
+            {
+              "finding_count": 101,
+              "source_family": "source_family_6cbe72c6"
+            },
+            {
+              "finding_count": 181,
+              "source_family": "source_family_13ad6f47"
+            },
+            {
+              "finding_count": 243,
+              "source_family": "source_family_1b059af9"
+            }
+          ],
+          "graph": null,
+          "exec_ms": 654
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "Live-backed finding source aggregation returned 7 live-shaped rows for aggregate_findings_by_source; broaden scope or verify connector freshness if needed.",
+          "citations": []
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "live-derived-live-findings-by-source",
+          "total_ms": 12237,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "live-top-risk-findings",
+    "name": "Live-backed top risk findings",
+    "tenant_id": "example",
+    "model": "claude-sonnet-4-6",
+    "question": "Show the top risk findings.",
+    "expected_entities": [
+      "finding_label_8812c298",
+      "urn:cerebro:example:finding:1",
+      "resource_labels_2d091f6f",
+      "resource_labels_76ae022c"
+    ],
+    "min_citations": 1,
+    "max_rows": 25,
+    "live_observation": {
+      "source": "configured /grc/ask endpoint",
+      "observed_row_count": 25,
+      "observed_event_names": [
+        "progress",
+        "rationale",
+        "query_plan",
+        "progress",
+        "cypher",
+        "progress",
+        "rows",
+        "progress",
+        "summary",
+        "done"
+      ],
+      "observed_trace_hash": "8b606130f49c6141d882fda7"
+    },
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Live-derived top_risk_findings golden path from configured graph shape."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": {
+            "intent": "top_risk_findings",
+            "confidence": 0.95,
+            "limit": 25
+          },
+          "diagnostics": [
+            {
+              "level": "info",
+              "code": "canonicalized_to_template",
+              "message": "Live-derived canonicalized_to_template diagnostic."
+            },
+            {
+              "level": "warn",
+              "code": "apoc_not_allowed",
+              "message": "Live-derived apoc_not_allowed diagnostic."
+            },
+            {
+              "level": "info",
+              "code": "deterministic_query_plan",
+              "message": "Live-derived deterministic_query_plan diagnostic."
+            }
+          ],
+          "source": "deterministic_template",
+          "deterministic": true,
+          "corrected": true
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})\nWHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn\nWITH resource, r, finding,\n     coalesce(\n       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '\"risk_score\":\"' THEN toInteger(split(split(r.attributes_json, '\"risk_score\":\"')[1], '\"')[0]) END,\n       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '\"risk_score\":\"' THEN toInteger(split(split(finding.attributes_json, '\"risk_score\":\"')[1], '\"')[0]) END,\n       0\n     ) AS risk_score,\n     coalesce(\n       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '\"effective_severity\":\"' THEN split(split(r.attributes_json, '\"effective_severity\":\"')[1], '\"')[0] END,\n       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '\"severity\":\"' THEN split(split(r.attributes_json, '\"severity\":\"')[1], '\"')[0] END,\n       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '\"effective_severity\":\"' THEN split(split(finding.attributes_json, '\"effective_severity\":\"')[1], '\"')[0] END,\n       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '\"severity\":\"' THEN split(split(finding.attributes_json, '\"severity\":\"')[1], '\"')[0] END,\n       ''\n     ) AS severity\nWITH resource, finding, risk_score, severity,\n     CASE toUpper(severity)\n       WHEN 'CRITICAL' THEN 4\n       WHEN 'HIGH' THEN 3\n       WHEN 'MEDIUM' THEN 2\n       WHEN 'LOW' THEN 1\n       ELSE 0\n     END AS severity_rank\nWITH finding,\n     collect(DISTINCT resource.urn) AS resource_urns,\n     collect(DISTINCT coalesce(resource.label, resource.urn)) AS resource_labels,\n     max(risk_score) AS risk_score,\n     max(severity_rank) AS severity_rank\nWITH finding, resource_urns, resource_labels, risk_score, severity_rank,\n     CASE severity_rank\n       WHEN 4 THEN 'CRITICAL'\n       WHEN 3 THEN 'HIGH'\n       WHEN 2 THEN 'MEDIUM'\n       WHEN 1 THEN 'LOW'\n       ELSE ''\n     END AS severity\nRETURN finding.urn AS finding_urn,\n       coalesce(finding.label, finding.urn) AS finding_label,\n       resource_urns,\n       resource_labels,\n       risk_score,\n       severity\nORDER BY risk_score DESC, severity_rank DESC, finding_urn\nLIMIT 25",
+          "validator": {
+            "ok": true,
+            "warnings": [
+              "canonicalized_to_template: Converted LLM draft into canonical top_risk_findings template.",
+              "apoc_not_allowed: Draft used APOC; Ask Cerebro does not depend on APOC for read-only graph answers.",
+              "deterministic_query_plan: Graph access used a deterministic Cerebro query template; LLM variance is limited to intent extraction and summary text."
+            ]
+          }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [
+            {
+              "finding_label": "finding_label_8812c298",
+              "finding_urn": "urn:cerebro:example:finding:1",
+              "resource_labels": [
+                "resource_labels_2d091f6f",
+                "resource_labels_76ae022c",
+                "resource_labels_26eac61b",
+                "resource_labels_234b6504",
+                "resource_labels_ca4ebd8d",
+                "resource_labels_55ff6026",
+                "resource_labels_1c3e88b3"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:2",
+                "urn:cerebro:example:entity:3",
+                "urn:cerebro:example:entity:4",
+                "urn:cerebro:example:entity:5",
+                "urn:cerebro:example:entity:6",
+                "urn:cerebro:example:entity:7",
+                "urn:cerebro:example:entity:8"
+              ],
+              "risk_score": 93,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_8812c298",
+              "finding_urn": "urn:cerebro:example:finding:9",
+              "resource_labels": [
+                "resource_labels_2d091f6f",
+                "resource_labels_76ae022c",
+                "resource_labels_98b8aea5",
+                "resource_labels_b2913281",
+                "resource_labels_1e3e4229"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:2",
+                "urn:cerebro:example:entity:3",
+                "urn:cerebro:example:entity:10",
+                "urn:cerebro:example:entity:11",
+                "urn:cerebro:example:entity:12"
+              ],
+              "risk_score": 65,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_8812c298",
+              "finding_urn": "urn:cerebro:example:finding:13",
+              "resource_labels": [
+                "resource_labels_2d091f6f",
+                "resource_labels_76ae022c",
+                "resource_labels_7b34d254",
+                "resource_labels_ede27e57"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:2",
+                "urn:cerebro:example:entity:3",
+                "urn:cerebro:example:entity:14",
+                "urn:cerebro:example:entity:15"
+              ],
+              "risk_score": 92,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_8812c298",
+              "finding_urn": "urn:cerebro:example:finding:16",
+              "resource_labels": [
+                "resource_labels_2d091f6f",
+                "resource_labels_76ae022c",
+                "resource_labels_593c0a66",
+                "resource_labels_6257f7d1"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:2",
+                "urn:cerebro:example:entity:3",
+                "urn:cerebro:example:entity:17",
+                "urn:cerebro:example:entity:18"
+              ],
+              "risk_score": 92,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_e1b2ced4",
+              "finding_urn": "urn:cerebro:example:finding:19",
+              "resource_labels": [
+                "resource_labels_6fcbc985",
+                "resource_labels_60b4e088"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:20",
+                "urn:cerebro:example:entity:21"
+              ],
+              "risk_score": 66,
+              "severity": "HIGH"
+            },
+            {
+              "finding_label": "finding_label_e1b2ced4",
+              "finding_urn": "urn:cerebro:example:finding:22",
+              "resource_labels": [
+                "resource_labels_6fcbc985"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:20"
+              ],
+              "risk_score": 66,
+              "severity": "HIGH"
+            },
+            {
+              "finding_label": "finding_label_e1b2ced4",
+              "finding_urn": "urn:cerebro:example:finding:23",
+              "resource_labels": [
+                "resource_labels_c48153a8"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:24"
+              ],
+              "risk_score": 57,
+              "severity": "HIGH"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:25",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_ef5220ce",
+                "resource_labels_a43f4d77",
+                "resource_labels_796d2c4c"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:27",
+                "urn:cerebro:example:entity:28",
+                "urn:cerebro:example:entity:29"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:30",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_2342ccf8",
+                "resource_labels_a3427540",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:31",
+                "urn:cerebro:example:entity:32",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:33",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_ef5220ce",
+                "resource_labels_2ba30701",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:27",
+                "urn:cerebro:example:entity:34",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:35",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_ef5220ce",
+                "resource_labels_796d2c4c",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:27",
+                "urn:cerebro:example:entity:36",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:37",
+              "resource_labels": [
+                "resource_labels_64119810",
+                "resource_labels_bd90209e",
+                "resource_labels_0f87c384",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:38",
+                "urn:cerebro:example:entity:39",
+                "urn:cerebro:example:entity:40",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:41",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_da903237",
+                "resource_labels_a516e306",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:42",
+                "urn:cerebro:example:entity:43",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:44",
+              "resource_labels": [
+                "resource_labels_c857d218",
+                "resource_labels_edd427c2",
+                "resource_labels_a3427540",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:45",
+                "urn:cerebro:example:entity:46",
+                "urn:cerebro:example:entity:47",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:48",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_da903237",
+                "resource_labels_a43f4d77",
+                "resource_labels_693b565e"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:42",
+                "urn:cerebro:example:entity:28",
+                "urn:cerebro:example:entity:49"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:50",
+              "resource_labels": [
+                "resource_labels_61cb8f7c",
+                "resource_labels_bd90209e",
+                "resource_labels_a3427540",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:51",
+                "urn:cerebro:example:entity:39",
+                "urn:cerebro:example:entity:52",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:53",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_674c9f19",
+                "resource_labels_796d2c4c",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:54",
+                "urn:cerebro:example:entity:55",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:56",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_323a7301",
+                "resource_labels_0f87c384",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:57",
+                "urn:cerebro:example:entity:40",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:58",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_ef5220ce",
+                "resource_labels_237b3fdd",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:27",
+                "urn:cerebro:example:entity:59",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:60",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_323a7301",
+                "resource_labels_89b05a3e",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:57",
+                "urn:cerebro:example:entity:61",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:62",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_da903237",
+                "resource_labels_08bb7bd7",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:42",
+                "urn:cerebro:example:entity:63",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:64",
+              "resource_labels": [
+                "resource_labels_6ab2e84f",
+                "resource_labels_c2bcc126",
+                "resource_labels_796d2c4c",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:65",
+                "urn:cerebro:example:entity:66",
+                "urn:cerebro:example:entity:55",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:67",
+              "resource_labels": [
+                "resource_labels_902766b5",
+                "resource_labels_ed799788",
+                "resource_labels_a43f4d77",
+                "resource_labels_796d2c4c"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:68",
+                "urn:cerebro:example:entity:69",
+                "urn:cerebro:example:entity:28",
+                "urn:cerebro:example:entity:29"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:70",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_2342ccf8",
+                "resource_labels_796d2c4c",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:31",
+                "urn:cerebro:example:entity:71",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            },
+            {
+              "finding_label": "finding_label_65f7b44e",
+              "finding_urn": "urn:cerebro:example:finding:72",
+              "resource_labels": [
+                "resource_labels_80b8a3b5",
+                "resource_labels_ef5220ce",
+                "resource_labels_478945cb",
+                "resource_labels_a43f4d77"
+              ],
+              "resource_urns": [
+                "urn:cerebro:example:entity:26",
+                "urn:cerebro:example:entity:27",
+                "urn:cerebro:example:entity:73",
+                "urn:cerebro:example:entity:28"
+              ],
+              "risk_score": 57,
+              "severity": "MEDIUM"
+            }
+          ],
+          "graph": null,
+          "exec_ms": 802
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "Live-backed top risk findings returned 25 live-shaped rows for top_risk_findings; inspect `urn:cerebro:example:finding:1`.",
+          "citations": [
+            {
+              "urn": "urn:cerebro:example:finding:1",
+              "span": [
+                91,
+                120
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "live-derived-live-top-risk-findings",
+          "total_ms": 28390,
+          "cypher_refused": false
+        }
+      }
+    ]
+  },
+  {
+    "id": "live-connector-health-empty",
+    "name": "Live-backed connector health empty result",
+    "tenant_id": "example",
+    "model": "claude-sonnet-4-6",
+    "question": "Show source health and freshness for security integrations.",
+    "expected_entities": [],
+    "min_citations": 0,
+    "max_rows": 25,
+    "live_observation": {
+      "source": "configured /grc/ask endpoint",
+      "observed_row_count": 0,
+      "observed_event_names": [
+        "progress",
+        "rationale",
+        "query_plan",
+        "progress",
+        "cypher",
+        "progress",
+        "rows",
+        "progress",
+        "summary",
+        "done"
+      ],
+      "observed_trace_hash": "5c6ef2cca471e17324b3ad26"
+    },
+    "stream": [
+      {
+        "event": "rationale",
+        "data": {
+          "text": "Live-derived connector_health golden path from configured graph shape."
+        }
+      },
+      {
+        "event": "query_plan",
+        "data": {
+          "plan": {
+            "intent": "connector_health",
+            "confidence": 0.95,
+            "limit": 50,
+            "filters": {
+              "entity_type": "source"
+            }
+          },
+          "source": "llm",
+          "deterministic": false,
+          "corrected": false,
+          "diagnostics": []
+        }
+      },
+      {
+        "event": "cypher",
+        "data": {
+          "cypher": "MATCH (s:Entity {tenant_id: $tenant_id, entity_type: 'source'}) RETURN s.urn AS source_urn, s.label AS source_label, s.source_id AS source_id, s.runtime_id AS runtime_id, s.attributes_json AS attributes_json ORDER BY s.label ASC LIMIT 50",
+          "validator": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "event": "rows",
+        "data": {
+          "rows": [],
+          "graph": null,
+          "exec_ms": 205
+        }
+      },
+      {
+        "event": "summary",
+        "data": {
+          "markdown": "Live-backed connector health empty result returned 0 live-shaped rows for connector_health; broaden scope or verify connector freshness if needed.",
+          "citations": []
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "trace_id": "live-derived-live-connector-health-empty",
+          "total_ms": 9417,
+          "cypher_refused": false
+        }
+      }
+    ]
+  }
+]
