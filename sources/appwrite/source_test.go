@@ -2,33 +2,43 @@ package appwrite
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
+func TestSourceReplaysCapturedContinents(t *testing.T) {
+	bundle, err := sourcefixture.FindBundle("../..", sourceID, familyContinent, "continents")
+	if err != nil {
+		t.Fatalf("FindBundle() error = %v", err)
+	}
+	const providerPath = "/locale/continents"
+	if !strings.HasSuffix(bundle.Manifest.Request.URL, providerPath) {
+		t.Fatalf("capture URL = %q, want suffix %q", bundle.Manifest.Request.URL, providerPath)
+	}
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want empty for public locale endpoint", got)
 		}
-		if r.URL.Path != "/teams" {
-			t.Fatalf("path = %q", r.URL.Path)
+		if r.URL.Path != providerPath {
+			t.Fatalf("path = %q, want %q", r.URL.Path, providerPath)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		w.Header().Set("Content-Type", bundle.Manifest.Response.ContentType)
+		w.WriteHeader(bundle.Manifest.Response.Status)
+		_, _ = w.Write(bundle.Payload)
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token", "teamid": "test-teamid"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyContinent, "health_path": providerPath}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -37,14 +47,33 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	if len(pull.Events) != 7 {
+		t.Fatalf("events = %d, want 7 captured continents", len(pull.Events))
 	}
 	event := pull.Events[0]
-	if event.Kind != "appwrite.team" {
+	if event.Kind != "appwrite.continent" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
+	if event.Attributes["resource_id"] != "AF" || event.Attributes["resource_name"] != "Africa" {
+		t.Fatalf("continent attributes = %#v", event.Attributes)
+	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:appwrite_continent:AF" {
+		t.Fatalf("resource_urn = %q", got)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
+		t.Fatalf("StabilizeEvents() error = %v", err)
+	}
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", familyContinent, pull.Events, urns, os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES") == "1"); err != nil {
+		t.Fatal(err)
+	}
 	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+		t.Fatalf("stabilized event id is empty: %#v", event)
+	}
+	if _, err := NewFixture(); err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
 	}
 }

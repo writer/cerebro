@@ -393,7 +393,15 @@ func hybridAgentsFamily() jsonapi.Family {
 }
 
 func publicConnectorTypesFamily() jsonapi.Family {
-	return fivetranAssetFamily(FamilyPublicConnectorTypes, "/public/connector-types", "public_connector_type", "public_connector_type")
+	family := fivetranAssetFamily(FamilyPublicConnectorTypes, "/public/connector-types", "public_connector_type", "public_connector_type")
+	family.TimestampKeys = []string{"service_status_updated_at"}
+	family.CursorParam = ""
+	family.NextCursorKeys = nil
+	family.PageSizeParams = nil
+	family.ListKeys = []string{"data"}
+	family.DisablePageSize = true
+	family.Config.AuthModel = "none"
+	return family
 }
 
 func connectorMetadataFamily() jsonapi.Family {

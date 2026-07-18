@@ -85,6 +85,8 @@ For durable evidence and graph context, run `make github-business-demo` with `GI
 | Built-in source integrations | [Source catalog](reference/sources.md) |
 | Source runtime sync | [Source runtime guide](domains/source-runtime-guide.md) |
 | Source runtime target architecture | [Native Rust source runtime ADR](engineering/rust-source-runtime-adr.md) |
+| Source API fixture provenance | [Genuine source API fixtures ADR](engineering/source-api-fixture-provenance-adr.md) |
+| Source API fixture verification | [2026-07-18 no-signup verification](engineering/source-api-fixture-verification-2026-07-18.md) |
 | Graph operations | [Graph operations](domains/graph-operations.md) |
 | Persona-specific graph views | [Persona view lenses](domains/persona-view-lenses.md) |
 | GRC architecture | [GRC architecture](domains/grc-architecture.md) |

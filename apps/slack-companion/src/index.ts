@@ -6,6 +6,8 @@ export * from "./autonomy/reference-store.js";
 export * from "./assistance/contracts.js";
 export * from "./assistance/coordinator.js";
 export * from "./assistance/ports.js";
+export * from "./assistant-turn/contracts.js";
+export * from "./assistant-turn/policy.js";
 export * from "./contracts.js";
 export * from "./commands/registry.js";
 export * from "./canonical-work/contracts.js";
