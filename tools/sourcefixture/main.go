@@ -5,13 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcefixture"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 const maxResponseBytes = 4 << 20
@@ -49,7 +49,7 @@ func capture(arguments []string) {
 	replayTest := flags.String("replay-test", "", "source test reference in source_test.go#TestName format")
 	requestURL := flags.String("url", "", "public HTTPS GET URL")
 	stdin := flags.Bool("stdin", false, "read a response captured by an authenticated provider CLI from stdin")
-	status := flags.Int("status", http.StatusOK, "HTTP status for a stdin capture")
+	status := flags.Int("status", 200, "HTTP status for a stdin capture")
 	contentType := flags.String("content-type", "application/json", "content type for a stdin capture")
 	var changedFields stringList
 	var removedFields stringList
@@ -72,33 +72,11 @@ func capture(arguments []string) {
 			fail(fmt.Errorf("read provider CLI response: %w", err))
 		}
 	} else {
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(request *http.Request, via []*http.Request) error {
-				if len(via) >= 3 {
-					return fmt.Errorf("too many redirects")
-				}
-				if !strings.EqualFold(request.URL.Host, via[0].URL.Host) {
-					return fmt.Errorf("cross-host redirect from %s to %s", via[0].URL.Host, request.URL.Host)
-				}
-				return nil
-			},
+		response, fetchErr := fetchPublicResponse(parsedURL)
+		if fetchErr != nil {
+			fail(fetchErr)
 		}
-		request, requestErr := http.NewRequestWithContext(context.Background(), http.MethodGet, parsedURL.String(), nil)
-		if requestErr != nil {
-			fail(requestErr)
-		}
-		request.Header.Set("Accept", "application/json")
-		request.Header.Set("User-Agent", "cerebro-sourcefixture/1")
-		response, responseErr := client.Do(request)
-		if responseErr != nil {
-			fail(fmt.Errorf("capture provider response: %w", responseErr))
-		}
-		defer response.Body.Close()
-		payload, err = io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-		if err != nil {
-			fail(fmt.Errorf("read provider response: %w", err))
-		}
+		payload = response.Body
 		responseStatus = response.StatusCode
 		responseContentType = response.Header.Get("Content-Type")
 		responseHeaders = captureHeaders(response.Header)
@@ -111,7 +89,7 @@ func capture(arguments []string) {
 		Family:     *family,
 		Case:       *fixtureCase,
 		ReplayTest: *replayTest,
-		Request:    sourcefixture.Request{Method: http.MethodGet, URL: parsedURL.String()},
+		Request:    sourcefixture.Request{Method: "GET", URL: parsedURL.String()},
 		Response: sourcefixture.Response{
 			Status:      responseStatus,
 			ContentType: responseContentType,
@@ -153,7 +131,54 @@ func verify(arguments []string) {
 	fmt.Printf("sourcefixture: bundles=%d sources=%d families=%d\n", report.Bundles, report.Sources, report.Families)
 }
 
-func captureHeaders(headers http.Header) map[string]string {
+func fetchPublicResponse(initialURL *url.URL) (sourcehttp.ResponseBody, error) {
+	const maxRedirects = 3
+	currentURL := initialURL
+	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "sourcefixture", Timeout: 30 * time.Second})
+	for redirect := 0; ; redirect++ {
+		requestPath := currentURL.EscapedPath()
+		if requestPath == "" {
+			requestPath = "/"
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		request, err := sourcehttp.NewRequest(ctx, "sourcefixture", currentURL.Scheme+"://"+currentURL.Host, false, "GET", requestPath, currentURL.Query(), nil)
+		if err != nil {
+			cancel()
+			return sourcehttp.ResponseBody{}, fmt.Errorf("build provider request: %w", err)
+		}
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("User-Agent", "cerebro-sourcefixture/1")
+		response, err := sourcehttp.DoWithRetry(ctx, client, request, sourcehttp.RetryOptions{MaxAttempts: 1, MaxBodyBytes: maxResponseBytes})
+		cancel()
+		if err != nil {
+			return sourcehttp.ResponseBody{}, fmt.Errorf("capture provider response: %w", err)
+		}
+		if response.StatusCode < 300 || response.StatusCode >= 400 {
+			return response, nil
+		}
+		if redirect >= maxRedirects {
+			return sourcehttp.ResponseBody{}, fmt.Errorf("capture provider response: too many redirects")
+		}
+		location := strings.TrimSpace(response.Header.Get("Location"))
+		if location == "" {
+			return sourcehttp.ResponseBody{}, fmt.Errorf("capture provider response: redirect without location")
+		}
+		nextURL, err := currentURL.Parse(location)
+		if err != nil {
+			return sourcehttp.ResponseBody{}, fmt.Errorf("resolve provider redirect: %w", err)
+		}
+		if nextURL.Scheme != "https" || nextURL.User != nil || !strings.EqualFold(nextURL.Host, initialURL.Host) {
+			return sourcehttp.ResponseBody{}, fmt.Errorf("capture provider response: redirect must stay on %s over HTTPS", initialURL.Host)
+		}
+		currentURL = nextURL
+	}
+}
+
+type headerGetter interface {
+	Get(string) string
+}
+
+func captureHeaders(headers headerGetter) map[string]string {
 	result := map[string]string{}
 	for _, name := range []string{"Link", "X-Next-Page", "X-Page", "X-Per-Page", "X-Total", "X-Total-Pages"} {
 		if value := strings.TrimSpace(headers.Get(name)); value != "" {

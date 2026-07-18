@@ -82,7 +82,7 @@ repository. It fails when:
 - a response digest does not match the checked-in payload;
 - provenance uses a source ID or family not declared by the source catalog;
 - the response is empty or is not valid for its declared content type;
-- a proof bundle contains credentials, non-example hostnames, or personal data;
+- a proof bundle contains credential fields or non-example personal email addresses;
 - a request is not a read-only HTTPS GET;
 - canonical response JSON or provenance is invalid.
 

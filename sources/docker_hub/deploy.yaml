@@ -1,5 +1,7 @@
 sourceId: docker_hub
 secretKeys:
+  - DOCKER_HUB_NAMESPACE
+  - DOCKER_HUB_REPOSITORY
   - DOCKER_HUB_TOKEN
 runtimes:
   - localId: repositories
