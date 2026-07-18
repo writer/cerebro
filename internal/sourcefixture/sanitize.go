@@ -94,10 +94,11 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 	}
 }
 
-// SanitizeImportedText replaces provider tenant identifier shapes with stable
-// example values so references remain consistent across response fields.
+// SanitizeImportedText replaces provider identifier shapes that can carry
+// tenant data or resemble credentials with stable example values so references
+// remain consistent across response fields.
 func SanitizeImportedText(value string) string {
-	return tenantIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
+	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
 		digest := sha256.Sum256([]byte(identifier))
 		return "example-" + hex.EncodeToString(digest[:8])
 	})

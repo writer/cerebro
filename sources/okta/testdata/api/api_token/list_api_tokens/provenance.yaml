@@ -10,15 +10,19 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2025-12-31T08:16:44Z"
-    sha256: 2f5c2bdda9661da2279416fcef9be19e2e17bbe91b7d9d52b47cb8e963de1c81
+    sha256: 7bc72889d9e5cb05a9227123e49d08a3d1b13fae9e9914c5400cd089714214e0
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
+        - $[0]._links.self.href
         - $[0]._links.user.href
+        - $[0].id
         - $[0].name
         - $[0].userId
+        - $[1]._links.self.href
         - $[1]._links.user.href
+        - $[1].id
         - $[1].name
         - $[1].userId
 origin:

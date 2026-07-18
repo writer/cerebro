@@ -10,10 +10,34 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2021-09-17T12:51:12Z"
-    sha256: c030d4211355fd40c8da123be2728141f4cd1d1c108e3709590c88156d8c5def
+    sha256: bafd1143a9f61cdaef3095e6c0ac2e39ad04a64fcb2f7cb48f37b91036a86e3e
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0]._links.deactivate.href
+        - $[0]._links.methods.href
+        - $[0]._links.self.href
+        - $[0].id
+        - $[1]._links.deactivate.href
+        - $[1]._links.methods.href
+        - $[1]._links.self.href
+        - $[1].id
+        - $[2]._links.methods.href
+        - $[2]._links.self.href
+        - $[2].id
+        - $[3]._links.activate.href
+        - $[3]._links.methods.href
+        - $[3]._links.self.href
+        - $[3].id
+        - $[4]._links.activate.href
+        - $[4]._links.methods.href
+        - $[4]._links.self.href
+        - $[4].id
+        - $[5]._links.deactivate.href
+        - $[5]._links.methods.href
+        - $[5]._links.self.href
+        - $[5].id
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

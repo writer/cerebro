@@ -7,7 +7,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6/lifecycle/deactivate"
+        "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40/lifecycle/deactivate"
       },
       "methods": {
         "hints": {
@@ -15,7 +15,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40/methods"
       },
       "self": {
         "hints": {
@@ -24,11 +24,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40"
       }
     },
     "created": "2021-04-14T04:34:28.000Z",
-    "id": "autl0by7reTh1KIzB5d6",
+    "id": "example-ace13dec2c9beb40",
     "key": "okta_email",
     "lastUpdated": "2021-04-20T13:05:44.000Z",
     "name": "Email",
@@ -47,7 +47,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6/lifecycle/deactivate"
+        "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88/lifecycle/deactivate"
       },
       "enroll": {
         "hints": {
@@ -63,7 +63,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88/methods"
       },
       "self": {
         "hints": {
@@ -72,11 +72,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88"
       }
     },
     "created": "2021-04-14T04:34:50.000Z",
-    "id": "autl09jklzOEDvrjy5d6",
+    "id": "example-58896adb72019e88",
     "key": "okta_verify",
     "lastUpdated": "2021-09-17T12:34:36.000Z",
     "name": "Okta Verify",
@@ -102,7 +102,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7qz31DYkNg5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-e504dc4b6e714b54/methods"
       },
       "self": {
         "hints": {
@@ -111,11 +111,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7qz31DYkNg5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-e504dc4b6e714b54"
       }
     },
     "created": "2021-04-14T04:34:28.000Z",
-    "id": "autl0by7qz31DYkNg5d6",
+    "id": "example-e504dc4b6e714b54",
     "key": "okta_password",
     "lastUpdated": "2021-04-14T04:34:28.000Z",
     "name": "Password",
@@ -130,7 +130,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6/lifecycle/activate"
+        "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48/lifecycle/activate"
       },
       "methods": {
         "hints": {
@@ -138,7 +138,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48/methods"
       },
       "self": {
         "hints": {
@@ -147,11 +147,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48"
       }
     },
     "created": "2021-04-14T04:34:28.000Z",
-    "id": "autl0by7sNXye9Zmh5d6",
+    "id": "example-19a7fc5e34da2f48",
     "key": "phone_number",
     "lastUpdated": "2021-09-17T12:38:48.000Z",
     "name": "Phone",
@@ -169,7 +169,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6/lifecycle/activate"
+        "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c/lifecycle/activate"
       },
       "methods": {
         "hints": {
@@ -177,7 +177,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c/methods"
       },
       "self": {
         "hints": {
@@ -186,11 +186,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c"
       }
     },
     "created": "2021-04-14T04:34:28.000Z",
-    "id": "autl0by7vOCX0FnVY5d6",
+    "id": "example-6c8b095a855d806c",
     "key": "webauthn",
     "lastUpdated": "2021-04-14T04:34:28.000Z",
     "name": "Security Key or Biometric",
@@ -205,7 +205,7 @@
             "POST"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6/lifecycle/deactivate"
+        "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8/lifecycle/deactivate"
       },
       "methods": {
         "hints": {
@@ -213,7 +213,7 @@
             "GET"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6/methods"
+        "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8/methods"
       },
       "self": {
         "hints": {
@@ -222,11 +222,11 @@
             "PUT"
           ]
         },
-        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6"
+        "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8"
       }
     },
     "created": "2021-04-14T04:34:28.000Z",
-    "id": "autl0by7tbUQEcczi5d6",
+    "id": "example-a9495589fcc46bd8",
     "key": "security_question",
     "lastUpdated": "2021-04-14T04:34:28.000Z",
     "name": "Security Question",

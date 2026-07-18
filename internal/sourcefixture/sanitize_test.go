@@ -19,3 +19,22 @@ func TestSanitizeImportedJSONPreservesShape(t *testing.T) {
 		t.Fatalf("changed fields = %#v", changed)
 	}
 }
+
+func TestSanitizeImportedJSONReplacesTokenShapedProviderIdentifiers(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSON([]byte(`[
+		{"id":"00T3kinb0wOUpDUdV5d7","_links":{"self":{"href":"https://example.okta.com/api/v1/api-tokens/00T3kinb0wOUpDUdV5d7"}}},
+		{"id":"autl0by7reTh1KIzB5d6"}
+	]`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	text := string(payload)
+	for _, identifier := range []string{"00T3kinb0wOUpDUdV5d7", "autl0by7reTh1KIzB5d6"} {
+		if strings.Contains(text, identifier) {
+			t.Fatalf("sanitized payload retained provider identifier %q: %s", identifier, payload)
+		}
+	}
+	if len(changed) != 3 {
+		t.Fatalf("changed fields = %#v, want 3 provider identifier locations", changed)
+	}
+}
