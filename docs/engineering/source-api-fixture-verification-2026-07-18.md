@@ -2,7 +2,8 @@
 
 ## Scope
 
-This pass examined all 820 source catalogs without creating provider accounts.
+This pass examined all 820 source catalogs and then ran a second GitHub corpus
+sweep without creating provider accounts.
 The repository contained 799 runtime sources, and the existing fidelity scan
 identified 3,548 synthetic normalized read fixtures across 743 sources before
 the pass.
@@ -68,12 +69,19 @@ array.
 | Datadog | `audit_events`, `dashboards`, `incidents`, `monitors`, `roles`, `slos`, `teams`, `users` | 8 list cases | Pinned upstream VCR recordings | All 8 runtime families replayed |
 | GitHub | `audit`, `dependabot_alert`, `secret_scanning_alert` | 3 restricted list cases | Pinned Octokit and PyGithub recordings | All remaining GitHub runtime families replayed |
 | Okta | 19 runtime families except `audit` | 21 list, configuration, policy, and MFA cases | Pinned upstream VCR recordings | 19 production families replayed, including the user MFA enrichment path |
+| Auth0 | `client_grants`, `clients`, `guardian_factors`, `organization_members`, `roles`, `user_roles`, `users` | 7 list cases | Pinned upstream VCR recordings | All 7 captured runtime families replayed |
+| Zendesk | `audit_events`, `tickets`, `users` | 3 list cases | Pinned upstream Betamax recordings | All 3 runtime families replayed through corrected v2 collection paths |
+| Tenable.io | `assets`, `vulnerabilities` | 2 list cases | Pinned upstream VCR recordings | 13 assets and 2 vulnerability aggregates replayed; evidence remains historical |
+| GitGuardian | `audit_events`, `incidents`, `members` | 3 list cases | Pinned upstream VCR recordings | All 3 runtime families replayed with provider Link pagination |
+| GitGuardian Secrets | `audit_events`, `sources` | 2 list cases | Pinned upstream VCR recordings | Both captured runtime families replayed; the unsupported `secrets` scaffold remains blocked |
 
-The repository now contains 45 validated proof bundles across 10 sources and
-41 runtime families. Datadog has genuine replay coverage for all 8 runtime
-families, GitHub for all 6, and Okta for 19 of 20. Each accepted response is
-replayed through the production decoder, and its normalized read and discovery
-fixtures are derived from that replay.
+The repository now contains 62 validated proof bundles across 15 sources and
+58 runtime families. This second sweep added 17 bundles and completed genuine
+replay coverage for Zendesk and GitGuardian. Datadog has genuine replay
+coverage for all 8 runtime families, GitHub for all 6, Okta for 19 of 20,
+Zendesk for all 3, and GitGuardian for all 3. Each accepted response is replayed
+through the production decoder, and its normalized read and discovery fixtures
+are derived from that replay.
 
 Every upstream artifact is pinned by full commit, repository-relative path,
 artifact digest, declared license, recording tool, harness path, and interaction
@@ -84,13 +92,26 @@ claim current provider validation.
 ## Public GitHub corpus audit
 
 The GitHub pass examined high-volume record/replay corpora before selecting the
-three imports above:
+imports above:
 
 - the maintained Datadog client contains 2,235 cassettes and supplied an exact
   GET response for every active Datadog family;
 - the maintained Okta client contains 444 cassettes and supplied exact GET
   responses for 19 of 20 active Okta families; no successful non-empty System
   Log capture was present for `audit`;
+- the maintained Auth0 provider contains 240 recordings and supplied exact,
+  non-empty GET responses for 7 active families; connection responses were
+  rejected because their full option payloads contained credential subtrees,
+  and the remaining families had no matching recordings;
+- the maintained Zendesk client contains 269 Betamax recordings and supplied
+  exact responses for users, tickets, and ticket audits;
+- the maintained Tenable client contains 528 VCR recordings and supplied exact
+  historical responses for assets and aggregate vulnerabilities; available
+  findings search captures use POST and were not relabeled as GET fixtures;
+- two maintained GitGuardian clients contain 43 and 180 VCR recordings. They
+  supplied exact member, incident, audit-log, and source responses. The current
+  corpus records response redaction in its VCR harness, and `sourcefixture`
+  applies a second sanitization pass before the response enters the repository;
 - the maintained Cortex Xpanse client contains 41 VCR cassettes, including 31
   API response cases. None matches the current `cortex_xdr`, `cortex_xsoar`, or
   `prisma_cloud` request contracts, so no Xpanse response was relabeled as a
@@ -124,12 +145,23 @@ The captures exposed contract errors that synthetic records had not exercised:
 - Okta ThreatInsight uses both RFC3339 and legacy space-separated timestamps;
 - fixture replay tests must accept the real provider page cardinality instead
   of assuming one generated record.
+- Auth0 organization members and user-role collections use `members` and
+  `roles` response envelopes rather than the scaffold's generic list shape;
+- Zendesk uses `/api/v2/users.json`, `/api/v2/tickets.json`, and
+  `/api/v2/ticket_audits.json` with `page[after]` cursor pagination;
+- Tenable.io uses the `X-ApiKeys` header, `/assets`, and
+  `/workbenches/vulnerabilities`; aggregate vulnerabilities are identified by
+  `plugin_id` rather than a generated `id`;
+- GitGuardian collection responses are top-level arrays paged by the `Link`
+  header, and audit actors use `member_id`, `member_email`, and `member_name`;
+- GitGuardian source records use `full_name` and `type`, while their collection
+  page size parameter is `per_page` rather than the generated `limit`.
 
 ## Remaining boundary
 
-`tools/sourcefidelity` still reports 743 sources with at least one normalized
-fixture matching synthetic markers. The final scan reports 45 genuine bundles,
-41 genuine families, 10 sources with genuine evidence, and 43 high-fidelity
+`tools/sourcefidelity` still reports 742 sources with at least one normalized
+fixture matching synthetic markers. The final scan reports 62 genuine bundles,
+58 genuine families, 15 sources with genuine evidence, and 43 high-fidelity
 sources. The remaining families require provider tenant identifiers,
 credentials, non-public account data, a corrected documented route, or a
 matching public recording. They were not replaced with documentation examples,

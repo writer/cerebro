@@ -1,0 +1,68 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: tenable_io
+family: assets
+case: list_assets
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTenableFamilies
+request:
+    method: GET
+    url: https://cloud.tenable.com/assets
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2021-07-06T09:44:40Z"
+    sha256: 46989d259f912dbb527ff1db4dade31f6e3b38a30e25c645d0d670cf0f0d48ed
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.assets[0].id
+        - $.assets[0].ipv4[0]
+        - $.assets[0].last_scan_target
+        - $.assets[10].id
+        - $.assets[10].ipv4[0]
+        - $.assets[10].last_scan_target
+        - $.assets[11].id
+        - $.assets[11].ipv4[0]
+        - $.assets[11].last_scan_target
+        - $.assets[12].id
+        - $.assets[12].ipv4[0]
+        - $.assets[12].last_scan_target
+        - $.assets[1].id
+        - $.assets[1].ipv4[0]
+        - $.assets[1].last_scan_target
+        - $.assets[2].id
+        - $.assets[2].ipv4[0]
+        - $.assets[2].last_scan_target
+        - $.assets[3].id
+        - $.assets[3].ipv4[0]
+        - $.assets[3].last_scan_target
+        - $.assets[4].id
+        - $.assets[4].ipv4[0]
+        - $.assets[4].last_scan_target
+        - $.assets[5].id
+        - $.assets[5].ipv4[0]
+        - $.assets[5].last_scan_target
+        - $.assets[6].id
+        - $.assets[6].ipv4[0]
+        - $.assets[6].last_scan_target
+        - $.assets[7].id
+        - $.assets[7].ipv4[0]
+        - $.assets[7].last_scan_target
+        - $.assets[8].id
+        - $.assets[8].ipv4[0]
+        - $.assets[8].last_scan_target
+        - $.assets[9].id
+        - $.assets[9].ipv4[0]
+        - $.assets[9].last_scan_target
+origin:
+    type: upstream_recording
+    repository: https://github.com/Tenable/pyTenable
+    commit: bd0a19acc1ec184b25f05da4288ac3aad20ba95f
+    path: tests/io/cassettes/test_tags_assign_success.yaml
+    artifact_sha256: 1893ca6a832db979e79cc47c1e5fd5cad5b1139667c4ba8daaeb13810809d491
+    license: MIT
+    recording_tool: pytest-vcr
+    harness_path: tests/io/conftest.py
+    interaction_index: 2
+    freshness: historical
+    capture_time_basis: response_header

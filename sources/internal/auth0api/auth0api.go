@@ -153,34 +153,42 @@ func ValidateDomain(value string) error {
 
 func usersFamily() jsonapi.Family {
 	return jsonapi.Family{
-		Name:                 FamilyUsers,
-		Path:                 "/users",
-		URNKind:              "runtime_users",
-		IDKeys:               []string{"user_id", "name", "id", "email", "primary_email", "login"},
-		CursorParam:          "page",
-		PageFirstCursor:      "0",
-		PageSizeParams:       []string{"per_page"},
-		TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-		Attributes:           mergeAttributes(identityUserAttributes(), map[string]string{"mfa_enrolled": "multifactor|mfa_enrolled", "status": "status|state|lifecycle_state|blocked"}),
-		StaticAttributes:     map[string]string{"record_class": "identity_user", "resource_type": "identity_user", "schema": "users", "source_system": SourceID},
-		Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_users"},
+		Name:             FamilyUsers,
+		Path:             "/users",
+		URNKind:          "runtime_users",
+		IDKeys:           []string{"user_id", "name", "id", "email", "primary_email", "login"},
+		CursorParam:      "page",
+		PageFirstCursor:  "0",
+		PageSizeParams:   []string{"per_page"},
+		TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
+		Attributes:       mergeAttributes(identityUserAttributes(), map[string]string{"mfa_enrolled": "multifactor|mfa_enrolled", "status": "status|state|lifecycle_state|blocked"}),
+		StaticAttributes: map[string]string{"record_class": "identity_user", "resource_type": "identity_user", "schema": "users", "source_system": SourceID},
+		Config: jsonapi.FamilyConfig{
+			ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+			EncodeURNID:      true,
+			ResourceURNKind:  "runtime_users",
+		},
 		IncrementalWatermark: true,
 	}
 }
 
 func rolesFamily() jsonapi.Family {
 	return jsonapi.Family{
-		Name:                 FamilyRoles,
-		Path:                 "/roles",
-		URNKind:              "runtime_roles",
-		IDKeys:               []string{"id", "name", "group_id", "group_email", "email"},
-		CursorParam:          "page",
-		PageFirstCursor:      "0",
-		PageSizeParams:       []string{"per_page"},
-		TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-		Attributes:           identityGroupAttributes(),
-		StaticAttributes:     map[string]string{"record_class": "identity_group", "resource_type": "role", "schema": "roles", "source_system": SourceID},
-		Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_roles"},
+		Name:             FamilyRoles,
+		Path:             "/roles",
+		URNKind:          "runtime_roles",
+		IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
+		CursorParam:      "page",
+		PageFirstCursor:  "0",
+		PageSizeParams:   []string{"per_page"},
+		TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
+		Attributes:       identityGroupAttributes(),
+		StaticAttributes: map[string]string{"record_class": "identity_group", "resource_type": "role", "schema": "roles", "source_system": SourceID},
+		Config: jsonapi.FamilyConfig{
+			ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+			EncodeURNID:      true,
+			ResourceURNKind:  "runtime_roles",
+		},
 		IncrementalWatermark: true,
 	}
 }
@@ -224,14 +232,15 @@ func organizationMembersFamily() jsonapi.Family {
 		PathParams:       []string{"organization_id"},
 		URNKind:          "runtime_organization_members",
 		IDKeys:           []string{"user_id", "id", "email"},
-		CursorParam:      "page",
-		PageFirstCursor:  "0",
-		PageSizeParams:   []string{"per_page"},
+		CursorParam:      "from",
+		PageSizeParams:   []string{"take"},
+		ListKeys:         []string{"members"},
+		NextCursorKeys:   []string{"next"},
 		TimestampKeys:    []string{"updated_at", "created_at", "last_login"},
 		Attributes:       organizationMemberAttributes(),
 		StaticAttributes: map[string]string{"member_type": "user", "record_class": "identity_group_membership", "resource_type": "organization_member", "schema": "organization_members", "source_system": SourceID},
 		Config: jsonapi.FamilyConfig{
-			ConfigAttributes: map[string]string{"group_id": "organization_id", "organization_id": "organization_id"},
+			ConfigAttributes: map[string]string{"group_id": "organization_id", "organization_id": "organization_id", "tenant_id": "tenant_id"},
 			ConfigQuery:      map[string]string{"fields": "organization_member_fields"},
 			EncodeURNID:      true,
 			ResourceURNKind:  "runtime_organization_members",
@@ -252,9 +261,10 @@ func clientsFamily() jsonapi.Family {
 		Attributes:       applicationAttributes(),
 		StaticAttributes: map[string]string{"record_class": "identity_application", "resource_type": "application", "schema": "clients", "source_system": SourceID},
 		Config: jsonapi.FamilyConfig{
-			StaticQuery:     map[string]string{"fields": clientSecretFields, "include_fields": "false"},
-			EncodeURNID:     true,
-			ResourceURNKind: "runtime_applications",
+			ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+			StaticQuery:      map[string]string{"fields": clientSecretFields, "include_fields": "false"},
+			EncodeURNID:      true,
+			ResourceURNKind:  "runtime_applications",
 		},
 	}
 }
@@ -328,7 +338,11 @@ func clientGrantsFamily() jsonapi.Family {
 			"source_system": SourceID,
 			"subject_type":  "application",
 		},
-		Config: jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_client_grants"},
+		Config: jsonapi.FamilyConfig{
+			ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+			EncodeURNID:      true,
+			ResourceURNKind:  "runtime_client_grants",
+		},
 	}
 }
 
@@ -368,11 +382,12 @@ func userRolesFamily() jsonapi.Family {
 		CursorParam:      "page",
 		PageFirstCursor:  "0",
 		PageSizeParams:   []string{"per_page"},
+		ListKeys:         []string{"roles"},
 		TimestampKeys:    []string{"updated_at", "created_at", "observed_at"},
 		Attributes:       userRoleAttributes(),
 		StaticAttributes: map[string]string{"member_type": "user", "record_class": "identity_group_membership", "resource_type": "role_membership", "schema": "user_roles", "source_system": SourceID},
 		Config: jsonapi.FamilyConfig{
-			ConfigAttributes: map[string]string{"member_user_id": "user_id", "user_id": "user_id"},
+			ConfigAttributes: map[string]string{"member_user_id": "user_id", "tenant_id": "tenant_id", "user_id": "user_id"},
 			EncodeURNID:      true,
 			ResourceURNKind:  "runtime_user_roles",
 		},
@@ -410,7 +425,11 @@ func guardianFactorsFamily() jsonapi.Family {
 		TimestampKeys:    []string{"updated_at", "created_at", "observed_at"},
 		Attributes:       guardianFactorAttributes(),
 		StaticAttributes: map[string]string{"record_class": "identity_credential", "resource_type": "guardian_factor", "schema": "guardian_factors", "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_guardian_factors"},
+		Config: jsonapi.FamilyConfig{
+			ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+			EncodeURNID:      true,
+			ResourceURNKind:  "runtime_guardian_factors",
+		},
 	}
 }
 
