@@ -10,12 +10,21 @@ response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:14:45Z"
-    sha256: b30bd331a17cbc112d0e2b58d3a3944fba639c3b5563c0268eae78805a5ac9e0
+    sha256: 97f868907086d2ee4bba1209b739a6ccc732909c5220fa55343f36e7dcec0b08
     headers:
         link: <https://test.okta.com/api/v1/authorizationServers?after=aussfbgzszrirZqOv4x6&limit=200>; rel="next"
 sanitization:
     tool: sourcefixture
     version: 1
+    changed_fields:
+        - $[0].credentials.signing.kid
+        - $[0].credentials.signing.lastRotated
+        - $[0].credentials.signing.nextRotation
+        - $[0].credentials.signing.rotationMode
+        - $[1].credentials.signing.kid
+        - $[1].credentials.signing.lastRotated
+        - $[1].credentials.signing.nextRotation
+        - $[1].credentials.signing.rotationMode
 origin:
     type: upstream_recording
     repository: https://github.com/okta/okta-sdk-python

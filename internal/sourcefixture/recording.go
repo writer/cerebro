@@ -253,8 +253,6 @@ func flattenHeaders(values map[string]any) map[string]string {
 				parts = append(parts, fmt.Sprint(value))
 			}
 			headers[name] = strings.Join(parts, ", ")
-		case []string:
-			headers[name] = strings.Join(typed, ", ")
 		default:
 			headers[name] = fmt.Sprint(typed)
 		}

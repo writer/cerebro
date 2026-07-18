@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-authorization_server-70f345c6d23c8486",
+    "id": "okta-writer-okta-com-authorization_server-e6626768309e0b7f",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.authorization_server",
@@ -100,10 +100,10 @@
         "created": "2020-05-13T13:29:26.000Z",
         "credentials": {
           "signing": {
-            "kid": "NDn8gdkkpbD3YSc3VBK2FYaY9AfYycEnXjiYxtpGFx4",
-            "lastRotated": "2020-08-12T03:15:01.000Z",
-            "nextRotation": "2020-11-10T03:15:01.000Z",
-            "rotationMode": "AUTO"
+            "kid": "",
+            "lastRotated": "",
+            "nextRotation": "",
+            "rotationMode": ""
           }
         },
         "description": "Default Authorization Server for your Applications",
@@ -127,19 +127,15 @@
       "issuer": "https://test.okta.com/oauth2/default",
       "issuer_host": "test.okta.com",
       "issuer_mode": "ORG_URL",
-      "kid": "NDn8gdkkpbD3YSc3VBK2FYaY9AfYycEnXjiYxtpGFx4",
       "last_updated_at": "2020-05-13T13:29:26.000Z",
       "name": "default",
-      "next_rotation_at": "2020-11-10T03:15:01.000Z",
       "resource_id": "ausc04qbv1PS5ygdb4x6",
       "resource_type": "AuthorizationServer",
-      "rotation_mode": "AUTO",
-      "signing_last_rotated_at": "2020-08-12T03:15:01.000Z",
       "status": "ACTIVE"
     }
   },
   {
-    "id": "okta-writer-okta-com-authorization_server-431a784dfb82152e",
+    "id": "okta-writer-okta-com-authorization_server-10a8b137de0f91c6",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.authorization_server",
@@ -239,10 +235,10 @@
         "created": "2020-08-27T18:14:45.000Z",
         "credentials": {
           "signing": {
-            "kid": "n5RHCx5cQP_xwEpfIo3noOBw7oA3wlIRPRlb3woacys",
-            "lastRotated": "2020-08-27T18:14:45.000Z",
-            "nextRotation": "2020-11-25T18:14:45.000Z",
-            "rotationMode": "AUTO"
+            "kid": "",
+            "lastRotated": "",
+            "nextRotation": "",
+            "rotationMode": ""
           }
         },
         "description": "Test Auth Server",
@@ -266,14 +262,10 @@
       "issuer": "https://test.okta.com/oauth2/aussfbgzszrirZqOv4x6",
       "issuer_host": "test.okta.com",
       "issuer_mode": "ORG_URL",
-      "kid": "n5RHCx5cQP_xwEpfIo3noOBw7oA3wlIRPRlb3woacys",
       "last_updated_at": "2020-08-27T18:14:45.000Z",
       "name": "python_sdk_test_aaPeZ",
-      "next_rotation_at": "2020-11-25T18:14:45.000Z",
       "resource_id": "aussfbgzszrirZqOv4x6",
       "resource_type": "AuthorizationServer",
-      "rotation_mode": "AUTO",
-      "signing_last_rotated_at": "2020-08-27T18:14:45.000Z",
       "status": "ACTIVE"
     }
   }

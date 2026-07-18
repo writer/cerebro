@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-application-4bbe5d34bddda4dc",
+    "id": "okta-writer-okta-com-application-eb108a0f4064aa32",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.application",
@@ -68,8 +68,8 @@
         "credentials": {
           "signing": {},
           "userNameTemplate": {
-            "template": "${source.login}",
-            "type": "BUILT_IN"
+            "template": "",
+            "type": ""
           }
         },
         "features": [],

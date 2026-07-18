@@ -61,6 +61,8 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 		want    error
 	}{
 		{name: "credential", payload: `{"access_token":"secret"}`, want: ErrCredentialField},
+		{name: "credential array", payload: `{"tokens":["ghp_realtoken123"]}`, want: ErrCredentialField},
+		{name: "credential object", payload: `{"secret":{"access_key":"AKIAIOSFODNN7EXAMPLE"}}`, want: ErrCredentialField},
 		{name: "email", payload: `{"email":"person@company.com"}`, want: ErrPersonalEmail},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -78,14 +80,14 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 	}
 }
 
-func TestValidateManifestAllowsCredentialMetadataFields(t *testing.T) {
+func TestValidateManifestAllowsEmptyCredentialShapesAndMetadataFields(t *testing.T) {
 	payload, err := CanonicalJSON([]byte(`{
 		"authorization_url":"https://auth.example.test/oauth/authorize",
 		"credential_type":"oauth2",
 		"credential_id":"credential-1",
 		"credential_name":"primary",
 		"api_key_id":"key-1",
-		"credentials":{"provider":{"type":"oauth2"}}
+		"credentials":{"provider":{"type":""}}
 	}`))
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +95,19 @@ func TestValidateManifestAllowsCredentialMetadataFields(t *testing.T) {
 	manifest := testManifest(payload, "https://api.example.test/v1/connections?per_page=1")
 	if err := ValidateManifest(manifest, payload); err != nil {
 		t.Fatalf("ValidateManifest() error = %v, want credential metadata accepted", err)
+	}
+}
+
+func TestValidateRelativeArtifactPath(t *testing.T) {
+	for _, value := range []string{"", ".", "..", "../fixture.yaml", "/fixture.yaml", `tests\\fixture.yaml`, "tests/../fixture.yaml"} {
+		t.Run(value, func(t *testing.T) {
+			if err := validateRelativeArtifactPath("origin.path", value); err == nil {
+				t.Fatalf("validateRelativeArtifactPath(%q) error = nil", value)
+			}
+		})
+	}
+	if err := validateRelativeArtifactPath("origin.path", "tests/cassettes/fixture.yaml"); err != nil {
+		t.Fatalf("validateRelativeArtifactPath(valid) error = %v", err)
 	}
 }
 
@@ -125,6 +140,16 @@ func TestScanPayloadRestrictsSSHEmailCarveOut(t *testing.T) {
 	}
 	if err := scanPayload(crafted); !errors.Is(err, ErrPersonalEmail) {
 		t.Fatalf("scanPayload(crafted description) error = %v, want errors.Is(_, ErrPersonalEmail)", err)
+	}
+}
+
+func TestScanPayloadAcceptsCommitSHABeginningWithProviderPrefix(t *testing.T) {
+	payload, err := CanonicalJSON([]byte(`{"commit":"00a1234567890abcdef0123456789abcdef01234567"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanPayload(payload); err != nil {
+		t.Fatalf("scanPayload(commit SHA) error = %v", err)
 	}
 }
 

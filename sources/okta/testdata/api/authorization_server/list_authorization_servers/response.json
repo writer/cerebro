@@ -89,10 +89,10 @@
     "created": "2020-05-13T13:29:26.000Z",
     "credentials": {
       "signing": {
-        "kid": "NDn8gdkkpbD3YSc3VBK2FYaY9AfYycEnXjiYxtpGFx4",
-        "lastRotated": "2020-08-12T03:15:01.000Z",
-        "nextRotation": "2020-11-10T03:15:01.000Z",
-        "rotationMode": "AUTO"
+        "kid": "",
+        "lastRotated": "",
+        "nextRotation": "",
+        "rotationMode": ""
       }
     },
     "description": "Default Authorization Server for your Applications",
@@ -193,10 +193,10 @@
     "created": "2020-08-27T18:14:45.000Z",
     "credentials": {
       "signing": {
-        "kid": "n5RHCx5cQP_xwEpfIo3noOBw7oA3wlIRPRlb3woacys",
-        "lastRotated": "2020-08-27T18:14:45.000Z",
-        "nextRotation": "2020-11-25T18:14:45.000Z",
-        "rotationMode": "AUTO"
+        "kid": "",
+        "lastRotated": "",
+        "nextRotation": "",
+        "rotationMode": ""
       }
     },
     "description": "Test Auth Server",

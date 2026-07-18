@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:15:58Z"
-    sha256: 116b25ba33811bde6db917607fd71fa269077d064d3520e607d51413c67d6ee3
+    sha256: 9b91f8a891af33673ed86284f85ddddacc14d61bb32ad4edbaaab19b801c08d9
     headers:
         link: <https://test.okta.com/api/v1/groups/example-cb373fbc662034f4/users?limit=1000>; rel="self"
 sanitization:
@@ -18,6 +18,11 @@ sanitization:
     version: 1
     changed_fields:
         - $[0]._links.self.href
+        - $[0].credentials.emails[0].status
+        - $[0].credentials.emails[0].type
+        - $[0].credentials.emails[0].value
+        - $[0].credentials.provider.name
+        - $[0].credentials.provider.type
         - $[0].id
         - $[0].profile.email
         - $[0].profile.firstName

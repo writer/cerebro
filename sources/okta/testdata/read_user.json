@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-user-3fa56cba230794bd",
+    "id": "okta-writer-okta-com-user-834bf1e349a0d499",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.user",
@@ -38,15 +38,15 @@
         "credentials": {
           "emails": [
             {
-              "status": "VERIFIED",
-              "type": "PRIMARY",
-              "value": "jane.doe-signed-nonce@example.com"
+              "status": "",
+              "type": "",
+              "value": ""
             }
           ],
           "password": {},
           "provider": {
-            "name": "OKTA",
-            "type": "OKTA"
+            "name": "",
+            "type": ""
           }
         },
         "id": "example-88aff4caddba9983",

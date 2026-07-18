@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json
     captured_at: "2026-06-09T06:04:03Z"
-    sha256: fc73bbfa25a47ed7646aa502bf0f897a0450c1a93d189f41996235fce8506218
+    sha256: c3dffc0fe5feea7ce524b3dfc320c3a9c9323f6ab37f80229cb60556b5ef53c1
     headers:
         Link: <https://test.okta.com/api/v1/users?limit=200>; rel="self"
 sanitization:
@@ -18,6 +18,11 @@ sanitization:
     version: 1
     changed_fields:
         - $[0]._links.self.href
+        - $[0].credentials.emails[0].status
+        - $[0].credentials.emails[0].type
+        - $[0].credentials.emails[0].value
+        - $[0].credentials.provider.name
+        - $[0].credentials.provider.type
         - $[0].id
         - $[0].profile.email
         - $[0].profile.firstName

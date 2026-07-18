@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-app_assignment-bdb58ba3c680891d",
+    "id": "okta-writer-okta-com-app_assignment-db34e9e2c75f15c9",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
@@ -9,7 +9,7 @@
     "payload": {
       "app_id": "example-f0a6c6d9df5c0037",
       "credentials": {
-        "userName": "example-da598035"
+        "userName": ""
       },
       "domain": "writer.okta.com",
       "profile": {},
@@ -24,7 +24,7 @@
         },
         "created": "2020-08-27T18:14:07.000Z",
         "credentials": {
-          "userName": "example-da598035"
+          "userName": ""
         },
         "externalId": null,
         "id": "example-2cdfffa4b77eaf2a",
@@ -46,19 +46,17 @@
       "assignee_id": "example-2cdfffa4b77eaf2a",
       "assignee_type": "user",
       "domain": "writer.okta.com",
-      "email": "example-da598035",
       "family": "app_assignment",
       "principal_type": "user",
       "scope": "USER",
       "status": "ACTIVE",
-      "subject_email": "example-da598035",
       "subject_id": "example-2cdfffa4b77eaf2a",
-      "subject_name": "example-da598035",
+      "subject_name": "example-2cdfffa4b77eaf2a",
       "subject_type": "user"
     }
   },
   {
-    "id": "okta-writer-okta-com-app_assignment-7c5744f31119f553",
+    "id": "okta-writer-okta-com-app_assignment-74ade3842b900421",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
@@ -67,7 +65,7 @@
     "payload": {
       "app_id": "example-f0a6c6d9df5c0037",
       "credentials": {
-        "userName": "example-c3b2b853"
+        "userName": ""
       },
       "domain": "writer.okta.com",
       "profile": {},
@@ -82,7 +80,7 @@
         },
         "created": "2020-08-27T18:14:08.000Z",
         "credentials": {
-          "userName": "example-c3b2b853"
+          "userName": ""
         },
         "externalId": null,
         "id": "example-052400848b73ab58",
@@ -104,14 +102,12 @@
       "assignee_id": "example-052400848b73ab58",
       "assignee_type": "user",
       "domain": "writer.okta.com",
-      "email": "example-c3b2b853",
       "family": "app_assignment",
       "principal_type": "user",
       "scope": "USER",
       "status": "ACTIVE",
-      "subject_email": "example-c3b2b853",
       "subject_id": "example-052400848b73ab58",
-      "subject_name": "example-c3b2b853",
+      "subject_name": "example-052400848b73ab58",
       "subject_type": "user"
     }
   }

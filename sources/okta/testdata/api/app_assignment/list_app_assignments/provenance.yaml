@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:14:08Z"
-    sha256: 7bd70548c69ed255eca64a769931c7d2ef3b7930eaa22d40111308e21b160d30
+    sha256: 8df60f46b86402a321e6d8862325d61339d797bae24f3746cfe21d97602e76ce
     headers:
         link: <https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037/users?limit=50>; rel="self"
 sanitization:

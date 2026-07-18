@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json;charset=UTF-8
     captured_at: "2020-08-27T18:16:15Z"
-    sha256: 810794c17ada6dcd209d566983da0b817095b6b86a1a59a28268e045921952bd
+    sha256: 33270bc5bd9e1143ea6dfebb8ac51407361f3a2cfcd8cbb0d000726c9f9da74e
     headers:
         link: <https://test.okta.com/api/v1/idps?after=example-007494a5c7e2905f&limit=20>; rel="next"
 sanitization:
@@ -19,7 +19,12 @@ sanitization:
     changed_fields:
         - $[0]._links.authorize.href
         - $[0].id
+        - $[0].protocol.credentials.client.client_id
         - $[0].protocol.credentials.client.client_secret
+        - $[0].protocol.endpoints.authorization.binding
+        - $[0].protocol.endpoints.authorization.url
+        - $[0].protocol.endpoints.token.binding
+        - $[0].protocol.endpoints.token.url
         - $response.headers.link
 origin:
     type: upstream_recording

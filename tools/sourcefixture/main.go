@@ -8,11 +8,14 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"gopkg.in/yaml.v3"
 )
 
 const maxResponseBytes = 4 << 20
@@ -28,13 +31,15 @@ func (values *stringList) Set(value string) error {
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(fmt.Errorf("usage: sourcefixture <capture|import|verify|packages>"))
+		fail(fmt.Errorf("usage: sourcefixture <capture|import|resanitize|verify|packages>"))
 	}
 	switch os.Args[1] {
 	case "capture":
 		capture(os.Args[2:])
 	case "import":
 		importRecording(os.Args[2:])
+	case "resanitize":
+		resanitize(os.Args[2:])
 	case "verify":
 		verify(os.Args[2:])
 	case "packages":
@@ -42,6 +47,48 @@ func main() {
 	default:
 		fail(fmt.Errorf("unknown command %q", os.Args[1]))
 	}
+}
+
+func resanitize(arguments []string) {
+	flags := flag.NewFlagSet("resanitize", flag.ExitOnError)
+	root := flags.String("root", ".", "repository root")
+	if err := flags.Parse(arguments); err != nil {
+		fail(err)
+	}
+	manifestPaths, err := filepath.Glob(filepath.Join(*root, "sources", "*", "testdata", "api", "*", "*", "provenance.yaml"))
+	if err != nil {
+		fail(err)
+	}
+	sort.Strings(manifestPaths)
+	changedBundles := 0
+	for _, manifestPath := range manifestPaths {
+		manifestPayload, readErr := os.ReadFile(manifestPath) // #nosec G304 -- paths come from a fixed repository fixture glob.
+		if readErr != nil {
+			fail(readErr)
+		}
+		var manifest sourcefixture.Manifest
+		if decodeErr := yaml.Unmarshal(manifestPayload, &manifest); decodeErr != nil {
+			fail(fmt.Errorf("decode provenance %s: %w", manifestPath, decodeErr))
+		}
+		responsePath := filepath.Join(filepath.Dir(manifestPath), "response.json")
+		payload, readErr := os.ReadFile(responsePath) // #nosec G304 -- response is fixed beside the globbed provenance file.
+		if readErr != nil {
+			fail(readErr)
+		}
+		sanitized, changedFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize %s: %w", responsePath, sanitizeErr))
+		}
+		if len(changedFields) == 0 {
+			continue
+		}
+		manifest.Sanitization.ChangedFields = append(manifest.Sanitization.ChangedFields, changedFields...)
+		if _, writeErr := sourcefixture.WriteBundle(*root, manifest, sanitized); writeErr != nil {
+			fail(fmt.Errorf("rewrite %s: %w", manifestPath, writeErr))
+		}
+		changedBundles++
+	}
+	fmt.Printf("sourcefixture: resanitized bundles=%d\n", changedBundles)
 }
 
 func capture(arguments []string) {

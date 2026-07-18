@@ -56,8 +56,8 @@
     "credentials": {
       "signing": {},
       "userNameTemplate": {
-        "template": "${source.login}",
-        "type": "BUILT_IN"
+        "template": "",
+        "type": ""
       }
     },
     "features": [],

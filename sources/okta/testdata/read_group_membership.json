@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-group_membership-0bcb1882acc6ec72",
+    "id": "okta-writer-okta-com-group_membership-f4875f0df00b505d",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.group_membership",
@@ -28,15 +28,15 @@
         "credentials": {
           "emails": [
             {
-              "status": "VERIFIED",
-              "type": "PRIMARY",
-              "value": "John.Doe-Activate@example.com"
+              "status": "",
+              "type": "",
+              "value": ""
             }
           ],
           "password": {},
           "provider": {
-            "name": "OKTA",
-            "type": "OKTA"
+            "name": "",
+            "type": ""
           }
         },
         "id": "example-e0faf9f9f6cee27e",

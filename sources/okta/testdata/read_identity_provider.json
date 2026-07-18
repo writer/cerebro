@@ -1,6 +1,6 @@
 [
   {
-    "id": "okta-writer-okta-com-identity_provider-f301e5b16f62ffc3",
+    "id": "okta-writer-okta-com-identity_provider-193a4811c66d349e",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.identity_provider",
@@ -43,22 +43,22 @@
       "protocol": {
         "credentials": {
           "client": {
-            "client_id": "your-client-id",
+            "client_id": "",
             "client_secret": ""
           }
         },
         "endpoints": {
           "authorization": {
-            "binding": "HTTP-REDIRECT",
-            "url": "https://idp.example.com/authorize"
+            "binding": "",
+            "url": ""
           },
           "jwks": {
             "binding": "HTTP-REDIRECT",
             "url": "https://idp.example.com/keys"
           },
           "token": {
-            "binding": "HTTP-POST",
-            "url": "https://idp.example.com/token"
+            "binding": "",
+            "url": ""
           },
           "userInfo": {
             "binding": "HTTP-REDIRECT",
@@ -133,22 +133,22 @@
         "protocol": {
           "credentials": {
             "client": {
-              "client_id": "your-client-id",
+              "client_id": "",
               "client_secret": ""
             }
           },
           "endpoints": {
             "authorization": {
-              "binding": "HTTP-REDIRECT",
-              "url": "https://idp.example.com/authorize"
+              "binding": "",
+              "url": ""
             },
             "jwks": {
               "binding": "HTTP-REDIRECT",
               "url": "https://idp.example.com/keys"
             },
             "token": {
-              "binding": "HTTP-POST",
-              "url": "https://idp.example.com/token"
+              "binding": "",
+              "url": ""
             },
             "userInfo": {
               "binding": "HTTP-REDIRECT",
@@ -172,7 +172,6 @@
       "type": "OIDC"
     },
     "attributes": {
-      "client_id": "your-client-id",
       "domain": "writer.okta.com",
       "family": "identity_provider",
       "identity_provider_id": "example-007494a5c7e2905f",
