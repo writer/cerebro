@@ -1,0 +1,46 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: gitguardian_secrets
+family: sources
+case: list_sources
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedGitGuardianSecretsFamilies
+request:
+    method: GET
+    url: https://api.gitguardian.com/v1/sources?per_page=5
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-06-23T12:45:15Z"
+    sha256: 4f8a08e947ce25bc1efb30be91660e193360e2eb4b2ec906a68ece0c172b856b
+    headers:
+        link: <https://api.gitguardian.com/v1/sources?cursor=cD0xMjI2Mw%3D%3D&per_page=5>; rel="next"
+        x-per-page: "5"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].external_id
+        - $[0].full_name
+        - $[0].url
+        - $[1].external_id
+        - $[1].full_name
+        - $[1].url
+        - $[2].external_id
+        - $[2].full_name
+        - $[2].url
+        - $[3].external_id
+        - $[3].full_name
+        - $[3].url
+        - $[4].external_id
+        - $[4].full_name
+        - $[4].url
+origin:
+    type: upstream_recording
+    repository: https://github.com/GitGuardian/ggmcp
+    commit: edb604c340d15da42b4927f6a6a04705efcb0421
+    path: tests/cassettes/client/vcr/test_list_sources_basic.yaml
+    artifact_sha256: 78bfe9dbf58104fa5c5412a29bd8bfa51c4819fdb35b01562d375f94799c8d15
+    license: MIT
+    recording_tool: vcrpy-8
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: response_header

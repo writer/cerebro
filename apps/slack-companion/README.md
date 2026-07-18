@@ -47,6 +47,8 @@ Hosts should record the message parts Slack accepted, not an internal draft. Eva
 
 `evaluateAssistantTurn` scores one text-free observation derived from durable delivery, claim, source, feedback, and outcome records. An unwanted response, missed response, incomplete delivery, omitted required action, ungrounded or subject-misbound claim, unused available source, missing coverage boundary, hidden source failure, exposed internal machinery, redundant tool call, unnecessary clarification, user correction, or negative feedback is explicit in the receipt. `decideAssistantTurnPromotion` compares one candidate with its exact baseline on at least eight sealed static cases and eight independently generated shadow cases. Duplicate case content cannot count in both partitions. Promotion requires a strict score gain, no blocker increase, fewer blockers when the baseline has any, no material case regression, and no new per-case blocker.
 
+`ImprovementCoordinator.recordOutcomeEvidence` is the only path that can make evaluation, shadow, and promotion evidence fresh. It binds the baseline rows to the pre-authoring head, binds candidate rows to the authored head, runs the promotion decision, and records those three evidence classes only when the decision passes. Generic CI and canary receipts cannot bypass the outcome gate. A candidate becomes ready only when all five exact-head evidence classes are fresh.
+
 ## Command and delivery projections
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
@@ -62,6 +64,14 @@ Paused and retired definitions do not produce due timestamps.
 The cadence planner does not create work, acquire a lease, choose a deployment
 generation, or persist a schedule. Hosts own those actions outside this pure
 planning boundary.
+
+## History learning admission
+
+`slackLearningCandidateRejection` classifies a host-supplied message projection
+before it can become a learning candidate. Machine-authored messages, Slack
+subtypes, incomplete records, empty text, and direct mentions of the companion
+are rejected with stable reason codes. Slack history fetching, authorization,
+storage, and learning execution remain host-owned.
 
 ## Durable answer watches
 
