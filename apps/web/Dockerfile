@@ -19,6 +19,7 @@ ENV NEXT_PUBLIC_CEREBRO_WEB_VERSION=${NEXT_PUBLIC_CEREBRO_WEB_VERSION}
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=dependencies /workspace/node_modules ./node_modules
+COPY --from=dependencies /workspace/apps/web/node_modules ./apps/web/node_modules
 COPY package.json package-lock.json ./
 COPY apps/web ./apps/web
 
