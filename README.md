@@ -61,6 +61,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 | `.github/workflows/source-runtime-drift.yml` | Scheduled/manual source runtime coverage and drift checks. |
 | `.github/workflows/graph-health-insight.yml` | Runs deep graph health insight after successful infra deploys or manual dispatch. |
 | `.github/workflows/closeout.yml` | Dispatches audited bulk closeout ECS tasks. |
+| `infra/repository_retirement/` | Environment-neutral final archive lock and receipt contracts plus adapter requirements. |
 | `docs/OBSERVABILITY.md` | OTEL deployment config, secret mounting, validation, and post-deploy checks. |
 | `docs/SOURCE_ONBOARDING.md` | Canonical runbook for adding or changing source runtime instances. |
 | `docs/EVIDENCE_CAS_REFERENCES.md` | Integration contract for carrying EvidenceCAS pointers as source evidence without materializing payloads. |

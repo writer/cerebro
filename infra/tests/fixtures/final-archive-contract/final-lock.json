@@ -1,0 +1,46 @@
+{
+  "schema_version": "cerebro-repository-final-archive-lock/v1",
+  "source_repository_id": "slack_companion",
+  "source": {
+    "main_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "path_inventory_sha256": "4854030e812c4c83cf4f5941a31e2a9bca6c07ad5a33c315821e8d638f66a4d9"
+  },
+  "targets": {
+    "public_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "private_commit_sha": "dddddddddddddddddddddddddddddddddddddddd"
+  },
+  "ledger": {
+    "adapter": "slack_legacy_v1",
+    "sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+    "row_count": 2,
+    "disposition_counts": {
+      "private_host_ops": 1,
+      "represented_public": 1
+    },
+    "terminal_dispositions": [
+      "covered_by_new_public_slice",
+      "obsolete_or_generated",
+      "obsolete_or_replaced",
+      "private_host_ops",
+      "represented_public"
+    ],
+    "terminal_row_count": 2,
+    "nonterminal_row_count": 0
+  },
+  "receipts": {
+    "cutover": {
+      "ref": "receipt:sha256:582e365b896b18c2888ca4b2f27d1f6514c19e4f4e0fc66b0fb46d20c53f66bd",
+      "sha256": "582e365b896b18c2888ca4b2f27d1f6514c19e4f4e0fc66b0fb46d20c53f66bd"
+    },
+    "rollback": {
+      "ref": "receipt:sha256:415d9ef5adc2e6d4104e4f129850717d9f9a3b274ff227d2b86dd1f05c9b780e",
+      "sha256": "415d9ef5adc2e6d4104e4f129850717d9f9a3b274ff227d2b86dd1f05c9b780e"
+    }
+  },
+  "authorities": {
+    "freeze_contract_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "archive_capability_contract_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "max_observation_age_seconds": 300
+  }
+}

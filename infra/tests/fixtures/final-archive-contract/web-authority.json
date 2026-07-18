@@ -1,0 +1,38 @@
+{
+  "schema_version": "web-repository-representation-proof/v1",
+  "archive_ready": true,
+  "public_target_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "private_target_commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "sources": [
+    {
+      "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ledger_path": "public-source-disposition.tsv",
+      "ledger_sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+      "row_count": 2,
+      "nonterminal_row_count": 0
+    },
+    {
+      "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ledger_path": "private-source-disposition.tsv",
+      "ledger_sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+      "row_count": 2,
+      "nonterminal_row_count": 0
+    }
+  ],
+  "source_freeze_evidence": [
+    {
+      "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ledger_path": "public-source-disposition.tsv",
+      "open_pull_request_count": 0,
+      "open_issue_count": 0
+    },
+    {
+      "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ledger_path": "private-source-disposition.tsv",
+      "open_pull_request_count": 0,
+      "open_issue_count": 0
+    }
+  ],
+  "semantic_proofs": [],
+  "blockers": []
+}

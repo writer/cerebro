@@ -1,0 +1,19 @@
+{
+  "schema_version": "cerebro-slack-retirement-ledger/v1",
+  "source_repository": "logical:slack_companion",
+  "source_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_path_inventory_sha256": "4854030e812c4c83cf4f5941a31e2a9bca6c07ad5a33c315821e8d638f66a4d9",
+  "public_repository": "logical:public_target",
+  "public_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "private_repository": "logical:private_target",
+  "private_commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "ledger_path": "logical-ledger.tsv",
+  "ledger_sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+  "expected_rows": 2,
+  "expected_disposition_counts": {
+    "private_host_ops": 1,
+    "represented_public": 1
+  },
+  "unclassified_rows": 0
+}

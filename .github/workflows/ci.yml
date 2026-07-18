@@ -96,6 +96,10 @@ jobs:
             echo "ci_workflow=${ci_workflow}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Test final repository archive contract
+        shell: bash
+        run: bash infra/tests/test_validate_final_archive_contract.sh
+
   # Pull from GHCR and push to sec-dev ECR for PR previews and main deploys.
   publish-sec-dev:
     name: Publish to sec-dev ECR

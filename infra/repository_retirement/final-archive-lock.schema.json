@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro final repository archive lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_repository_id",
+    "source",
+    "targets",
+    "ledger",
+    "receipts",
+    "authorities"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro-repository-final-archive-lock/v1"
+    },
+    "source_repository_id": {
+      "enum": ["slack_companion", "web_public", "web_private"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["main_commit_sha", "tree_sha", "path_inventory_sha256"],
+      "properties": {
+        "main_commit_sha": {"$ref": "#/$defs/commit"},
+        "tree_sha": {"$ref": "#/$defs/commit"},
+        "path_inventory_sha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_commit_sha", "private_commit_sha"],
+      "properties": {
+        "public_commit_sha": {"$ref": "#/$defs/commit"},
+        "private_commit_sha": {"$ref": "#/$defs/commit"}
+      }
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter",
+        "sha256",
+        "row_count",
+        "disposition_counts",
+        "terminal_dispositions",
+        "terminal_row_count",
+        "nonterminal_row_count"
+      ],
+      "properties": {
+        "adapter": {
+          "enum": ["slack_legacy_v1", "web_representation_v1"]
+        },
+        "sha256": {"$ref": "#/$defs/digest"},
+        "row_count": {"type": "integer", "minimum": 1},
+        "disposition_counts": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {"type": "integer", "minimum": 1}
+          }
+        },
+        "terminal_dispositions": {
+          "const": [
+            "covered_by_new_public_slice",
+            "obsolete_or_generated",
+            "obsolete_or_replaced",
+            "private_host_ops",
+            "represented_public"
+          ]
+        },
+        "terminal_row_count": {"type": "integer", "minimum": 1},
+        "nonterminal_row_count": {"const": 0}
+      }
+    },
+    "receipts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cutover", "rollback"],
+      "properties": {
+        "cutover": {"$ref": "#/$defs/receiptPointer"},
+        "rollback": {"$ref": "#/$defs/receiptPointer"}
+      }
+    },
+    "authorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "freeze_contract_sha256",
+        "archive_capability_contract_sha256",
+        "max_observation_age_seconds"
+      ],
+      "properties": {
+        "freeze_contract_sha256": {"$ref": "#/$defs/digest"},
+        "archive_capability_contract_sha256": {"$ref": "#/$defs/digest"},
+        "max_observation_age_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 900
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"source_repository_id": {"const": "slack_companion"}}
+      },
+      "then": {
+        "properties": {
+          "ledger": {
+            "properties": {"adapter": {"const": "slack_legacy_v1"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_repository_id": {"enum": ["web_public", "web_private"]}
+        }
+      },
+      "then": {
+        "properties": {
+          "ledger": {
+            "properties": {"adapter": {"const": "web_representation_v1"}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "receiptPointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "sha256"],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^receipt:sha256:[0-9a-f]{64}$"
+        },
+        "sha256": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

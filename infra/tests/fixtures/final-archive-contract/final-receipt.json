@@ -1,0 +1,41 @@
+{
+  "schema_version": "cerebro-repository-final-archive-receipt/v1",
+  "lock_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_repository_id": "slack_companion",
+  "intent": "dry-run",
+  "state": "verified",
+  "observed": {
+    "source_main_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "public_target_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "private_target_commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "work_queue": {
+      "open_pull_request_count": 0,
+      "open_issue_count": 0,
+      "observed_at_epoch": 990
+    },
+    "freeze": {
+      "contract_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "active": true,
+      "default_branch_only": true,
+      "bypass_actor_count": 0,
+      "required_check_present": true,
+      "candidate_status_count": 0,
+      "observed_at_epoch": 990
+    },
+    "archive_capability": {
+      "contract_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "evidence_readable": true,
+      "freeze_readable": true,
+      "administration_write": true,
+      "observed_at_epoch": 990
+    }
+  },
+  "postcondition": {
+    "checked": false,
+    "archived": false,
+    "source_main_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "observed_at_epoch": 0
+  }
+}

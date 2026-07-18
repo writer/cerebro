@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro final repository archive receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "lock_sha256",
+    "source_repository_id",
+    "intent",
+    "state",
+    "observed",
+    "postcondition"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro-repository-final-archive-receipt/v1"
+    },
+    "lock_sha256": {"$ref": "#/$defs/digest"},
+    "source_repository_id": {
+      "enum": ["slack_companion", "web_public", "web_private"]
+    },
+    "intent": {"enum": ["dry-run", "apply"]},
+    "state": {"enum": ["verified", "archived"]},
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_main_commit_sha",
+        "source_tree_sha",
+        "public_target_commit_sha",
+        "private_target_commit_sha",
+        "work_queue",
+        "freeze",
+        "archive_capability"
+      ],
+      "properties": {
+        "source_main_commit_sha": {"$ref": "#/$defs/commit"},
+        "source_tree_sha": {"$ref": "#/$defs/commit"},
+        "public_target_commit_sha": {"$ref": "#/$defs/commit"},
+        "private_target_commit_sha": {"$ref": "#/$defs/commit"},
+        "work_queue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["open_pull_request_count", "open_issue_count", "observed_at_epoch"],
+          "properties": {
+            "open_pull_request_count": {"const": 0},
+            "open_issue_count": {"const": 0},
+            "observed_at_epoch": {"type": "integer", "minimum": 1}
+          }
+        },
+        "freeze": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract_sha256",
+            "active",
+            "default_branch_only",
+            "bypass_actor_count",
+            "required_check_present",
+            "candidate_status_count",
+            "observed_at_epoch"
+          ],
+          "properties": {
+            "contract_sha256": {"$ref": "#/$defs/digest"},
+            "active": {"const": true},
+            "default_branch_only": {"const": true},
+            "bypass_actor_count": {"const": 0},
+            "required_check_present": {"const": true},
+            "candidate_status_count": {"const": 0},
+            "observed_at_epoch": {"type": "integer", "minimum": 1}
+          }
+        },
+        "archive_capability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract_sha256",
+            "evidence_readable",
+            "freeze_readable",
+            "administration_write",
+            "observed_at_epoch"
+          ],
+          "properties": {
+            "contract_sha256": {"$ref": "#/$defs/digest"},
+            "evidence_readable": {"const": true},
+            "freeze_readable": {"const": true},
+            "administration_write": {"const": true},
+            "observed_at_epoch": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checked",
+        "archived",
+        "source_main_commit_sha",
+        "source_tree_sha",
+        "observed_at_epoch"
+      ],
+      "properties": {
+        "checked": {"type": "boolean"},
+        "archived": {"type": "boolean"},
+        "source_main_commit_sha": {"$ref": "#/$defs/commit"},
+        "source_tree_sha": {"$ref": "#/$defs/commit"},
+        "observed_at_epoch": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"intent": {"const": "dry-run"}}},
+      "then": {
+        "properties": {
+          "state": {"const": "verified"},
+          "postcondition": {
+            "properties": {
+              "checked": {"const": false},
+              "archived": {"const": false},
+              "observed_at_epoch": {"const": 0}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"intent": {"const": "apply"}}},
+      "then": {
+        "properties": {
+          "state": {"const": "archived"},
+          "postcondition": {
+            "properties": {
+              "checked": {"const": true},
+              "archived": {"const": true},
+              "observed_at_epoch": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
