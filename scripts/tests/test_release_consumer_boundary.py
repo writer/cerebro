@@ -64,6 +64,13 @@ class ReleaseConsumerBoundaryTest(unittest.TestCase):
         self.assertIn(".client_payload | length' dispatch.json)\" -eq 6", workflow)
         self.assertNotIn("gh run list --repo \"${RELEASE_CONSUMER_REPOSITORY}\"", workflow)
 
+    def test_candidate_scans_every_published_image_platform(self) -> None:
+        workflow = CANDIDATE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"', workflow)
+        self.assertIn("for platform in linux/amd64 linux/arm64", workflow)
+        self.assertEqual(workflow.count('--platform "${platform}"'), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

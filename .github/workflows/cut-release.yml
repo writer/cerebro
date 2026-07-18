@@ -348,10 +348,14 @@ jobs:
         run: |
           set -euo pipefail
           for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
-            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
-              --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "${image}"
-            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
-              --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 "${image}"
+            for platform in linux/amd64 linux/arm64; do
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "${image}"
+              docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
+                --platform "${platform}" --scanners vuln \
+                --severity CRITICAL --ignore-unfixed --exit-code 1 "${image}"
+            done
           done
 
   portable-artifacts:
