@@ -2,6 +2,7 @@ import type {
   DueMissionRecord,
   LifecycleEventV1,
   MissionEventPageRequest,
+  MissionScheduledOccurrenceOutcome,
   MissionPromotionResult,
   MissionSnapshotV1,
   MissionStoredCommit,
@@ -11,6 +12,7 @@ import type {
 } from "./contracts.js";
 
 export interface MissionAtomicCommit {
+  consumed_occurrence?: MissionScheduledOccurrenceOutcome;
   event: LifecycleEventV1;
   expected_revision: number;
   idempotency_key: string;
@@ -55,8 +57,9 @@ export interface LegacyMissionAtomicCommit extends MissionAtomicCommit {
  */
 export interface DurableMissionLedgerPort {
   /**
-   * Atomically verifies an exact active execution lease at authority-owned time
-   * and commits the snapshot, event, and optional scheduled work item.
+   * Atomically verifies the active execution lease and optional scheduled
+   * occurrence claim at authority-owned time, then commits the consumed
+   * occurrence, snapshot, event, and optional next scheduled work item.
    */
   commitTransition(
     commit: MissionAtomicCommit,

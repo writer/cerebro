@@ -5,6 +5,7 @@ import type {
   WorkLeaseV1,
 } from "@writer/cerebro-sdk";
 import type { ExecutionSession } from "../execution/model.js";
+import type { ScheduledLeaseClaim } from "../operations/schedules.js";
 import type { MissionPlanProjectionV1 } from "../mission/model.js";
 import {
   NATIVE_MISSION_CONTRACT_ID,
@@ -80,10 +81,17 @@ export interface TransitionMissionInput {
   event: MissionLedgerEventContext;
   expected_revision: number;
   next_run?: RunReceiptV1;
+  occurrence_outcome?: MissionScheduledOccurrenceOutcome;
   operation_id: string;
   plan?: MissionPlanProjectionV1;
   session: ExecutionSession;
   wake?: MissionWakeInput | null;
+}
+
+export interface MissionScheduledOccurrenceOutcome {
+  claim: ScheduledLeaseClaim;
+  occurrence_id: string;
+  state: "completed" | "failed";
 }
 
 /**
@@ -103,6 +111,7 @@ export interface PromoteLegacyMissionInput {
 }
 
 export interface MissionTransitionResult {
+  consumed_occurrence?: ScheduledOccurrenceV1;
   created: boolean;
   event: LifecycleEventV1;
   occurrence?: ScheduledOccurrenceV1;
@@ -127,6 +136,7 @@ export interface MissionEventPageRequest {
 }
 
 export interface MissionStoredCommit {
+  consumed_occurrence?: ScheduledOccurrenceV1;
   event: LifecycleEventV1;
   intent_digest: string;
   occurrence?: ScheduledOccurrenceV1;
