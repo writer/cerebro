@@ -109,6 +109,11 @@ export function projectSlackMessages(
   delivery: SlackMultipartProjectionV1,
   plan: SlackMessagePlanV1,
 ): SlackMessageProjectionV1 {
+  requireExactRecord(
+    plan,
+    ["message_key", "part_count", "parts", "schema_version", "source_digest"],
+    "message plan",
+  );
   if (delivery.schema_version !== "slack-multipart-projection/v1") {
     throw new SlackMessageProjectionError(
       "Slack multipart projection version is unsupported.",
@@ -120,15 +125,22 @@ export function projectSlackMessages(
     );
   }
   const messageKey = requireSlackKey(plan.message_key, "message key");
+  requireJsonArray(
+    plan.parts,
+    1,
+    MAX_SLACK_MESSAGE_PARTS,
+    "message plan parts",
+  );
+  requireJsonArray(
+    delivery.parts,
+    1,
+    MAX_SLACK_MESSAGE_PARTS,
+    "multipart projection parts",
+  );
   if (
-    !Array.isArray(plan.parts)
-    || !Array.isArray(delivery.parts)
-    || plan.part_count !== plan.parts.length
+    plan.part_count !== plan.parts.length
     || delivery.part_count !== delivery.parts.length
     || plan.part_count !== delivery.part_count
-    || plan.part_count < 1
-    || plan.part_count > MAX_SLACK_MESSAGE_PARTS
-    || delivery.parts.length > MAX_SLACK_MESSAGE_PARTS
   ) {
     throw new SlackMessageProjectionError(
       "Slack message plan and durable delivery part counts must match.",
@@ -139,9 +151,11 @@ export function projectSlackMessages(
     "message source_digest",
   );
   validateStoredPlanParts(plan.parts);
-  const reconstructedSource = plan.parts
-    .map((part) => part.payload.text)
-    .join("");
+  const sourceParts: string[] = [];
+  for (let index = 0; index < plan.parts.length; index += 1) {
+    sourceParts.push(plan.parts[index]!.payload.text);
+  }
+  const reconstructedSource = sourceParts.join("");
   const normalizedSource = normalizeSlackText(
     reconstructedSource,
     "message source text",
@@ -152,7 +166,9 @@ export function projectSlackMessages(
       "Slack message source digest does not match its parts.",
     );
   }
-  const parts = plan.parts.map((planned, index) => {
+  const parts: SlackMessagePartProjectionV1[] = [];
+  for (let index = 0; index < plan.parts.length; index += 1) {
+    const planned = plan.parts[index]!;
     const durable = delivery.parts[index];
     const expectedSequence = index + 1;
     if (
@@ -168,12 +184,12 @@ export function projectSlackMessages(
       planned.payload_digest,
       "message payload_digest",
     );
-    const payload = canonicalPayload(
+    const canonical = canonicalPayload(
       planned.payload,
       messageKey,
       expectedSequence,
     );
-    const actualDigest = `sha256:${sha256(JSON.stringify(payload))}`;
+    const actualDigest = `sha256:${sha256(JSON.stringify(canonical))}`;
     if (payloadDigest !== actualDigest || durable.payload_digest !== payloadDigest) {
       throw new SlackMessageProjectionError(
         "Slack message payload digest does not match durable delivery truth.",
@@ -185,21 +201,21 @@ export function projectSlackMessages(
           accepted_at: durable.acceptance.accepted_at,
           destination_receipt: durable.acceptance.destination_receipt,
         });
-    return Object.freeze({
+    parts.push(Object.freeze({
       ...(acceptance === undefined ? {} : { acceptance }),
       client_message_id: requireSlackKey(
         durable.client_message_id,
         "message client_message_id",
       ),
       part_id: requireSlackKey(durable.part_id, "message part_id"),
-      payload,
+      payload: canonical,
       payload_digest: payloadDigest,
       payload_ref: durable.payload_ref,
       schema_version: "slack-message-part-projection/v1" as const,
       sequence: expectedSequence,
       state: durable.state,
-    });
-  });
+    }));
+  }
   const frozenParts = Object.freeze(parts);
   const truth = {
     delivery_id: delivery.delivery_id,
@@ -274,8 +290,7 @@ function canonicalPayload(
   const expected = buildPayload(messageKey, sequence, normalized);
   if (
     normalized !== payload.text
-    || Array.from(payload.text).length > MAX_SLACK_SECTION_LENGTH
-    || JSON.stringify(payload) !== JSON.stringify(expected)
+    || !matchesCanonicalPayload(payload, expected)
   ) {
     throw new SlackMessageProjectionError(
       "Slack message payload is not the supported safe shape.",
@@ -284,10 +299,31 @@ function canonicalPayload(
   return expected;
 }
 
+function matchesCanonicalPayload(
+  payload: SlackMessagePayloadV1,
+  expected: SlackMessagePayloadV1,
+): boolean {
+  const block = payload.blocks[0];
+  const expectedBlock = expected.blocks[0];
+  return payload.blocks.length === 1
+    && block?.type === "section"
+    && expectedBlock?.type === "section"
+    && block.block_id === expectedBlock.block_id
+    && block.text.emoji === expectedBlock.text.emoji
+    && block.text.text === expectedBlock.text.text
+    && block.text.type === expectedBlock.text.type
+    && payload.link_names === expected.link_names
+    && payload.mrkdwn === expected.mrkdwn
+    && payload.parse === expected.parse
+    && payload.text === expected.text
+    && payload.unfurl_links === expected.unfurl_links
+    && payload.unfurl_media === expected.unfurl_media;
+}
+
 /**
- * Rejects malformed persisted payloads before joining text, copying arrays, or
- * serializing caller-owned records. Canonical reconstruction below remains the
- * authority for the exact payload bytes.
+ * Rejects malformed persisted payloads before joining text or copying arrays.
+ * Canonical reconstruction below remains the authority for the exact payload
+ * bytes; caller-owned records are never serialized.
  */
 function validateStoredPlanParts(
   parts: readonly SlackMessagePartPlanV1[],
@@ -349,11 +385,7 @@ function validateStoredPayload(
       "Slack message payload is not the supported safe shape.",
     );
   }
-  if (!Array.isArray(payload.blocks) || payload.blocks.length !== 1) {
-    throw new SlackMessageProjectionError(
-      "Slack message payload must contain exactly one section block.",
-    );
-  }
+  requireJsonArray(payload.blocks, 1, 1, "message payload blocks");
   const block = payload.blocks[0];
   requireExactRecord(
     block,
@@ -392,6 +424,21 @@ function requireExactRecord(
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new SlackMessageProjectionError(`Slack ${field} is invalid.`);
   }
+  // Durable inputs are JSON-decoded data. Proxy traps are outside this contract;
+  // executable prototypes and accessor-backed fields are rejected before reads.
+  const prototype = Object.getPrototypeOf(value);
+  if (
+    (prototype !== Object.prototype && prototype !== null)
+    || (
+      prototype !== null
+      && Object.prototype.hasOwnProperty.call(prototype, "toJSON")
+    )
+    || Object.prototype.hasOwnProperty.call(value, "toJSON")
+  ) {
+    throw new SlackMessageProjectionError(
+      `Slack ${field} must be a plain JSON record.`,
+    );
+  }
   let ownKeyCount = 0;
   for (const key in value) {
     if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
@@ -405,10 +452,58 @@ function requireExactRecord(
   if (
     ownKeyCount !== requiredKeys.length
     || requiredKeys.some(
-      (key) => !Object.prototype.hasOwnProperty.call(value, key),
+      (key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        return descriptor === undefined
+          || !("value" in descriptor)
+          || descriptor.enumerable !== true;
+      },
     )
   ) {
     throw new SlackMessageProjectionError(`Slack ${field} is incomplete.`);
+  }
+}
+
+function requireJsonArray(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  field: string,
+): asserts value is readonly unknown[] {
+  if (
+    !Array.isArray(value)
+    || value.length < minimum
+    || value.length > maximum
+    || Object.getPrototypeOf(value) !== Array.prototype
+    || Object.prototype.hasOwnProperty.call(Array.prototype, "toJSON")
+    || Object.prototype.hasOwnProperty.call(value, "toJSON")
+  ) {
+    throw new SlackMessageProjectionError(
+      `Slack ${field} must be a bounded plain JSON array.`,
+    );
+  }
+  let indexedKeyCount = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || String(index) !== key) {
+      throw new SlackMessageProjectionError(
+        `Slack ${field} contains unsupported fields.`,
+      );
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      index >= value.length
+      || descriptor === undefined
+      || !("value" in descriptor)
+      || descriptor.enumerable !== true
+    ) {
+      throw new SlackMessageProjectionError(`Slack ${field} is invalid.`);
+    }
+    indexedKeyCount += 1;
+  }
+  if (indexedKeyCount !== value.length) {
+    throw new SlackMessageProjectionError(`Slack ${field} must be dense.`);
   }
 }
 

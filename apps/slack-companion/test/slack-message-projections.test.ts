@@ -155,7 +155,7 @@ test("message projections reject nested block growth before serialization", () =
   };
   assert.throws(
     () => projectSlackMessages(delivery, oversized),
-    /exactly one section block/,
+    /bounded plain JSON array/,
   );
   assert.equal(serialized, false);
 
@@ -181,6 +181,61 @@ test("message projections reject nested block growth before serialization", () =
   assert.throws(
     () => projectSlackMessages(delivery, extraNested),
     /section text contains unsupported fields/,
+  );
+});
+
+test("message projections reject executable record prototypes before invocation", () => {
+  const validPlan = planSlackMessage("run-one:prototype", "A bounded answer");
+  const delivery = projectSlackMultipartDelivery(
+    receiptForPlan(validPlan, ["pending"], "pending"),
+  );
+  let invoked = 0;
+  const executablePrototype = {
+    toJSON() {
+      invoked += 1;
+      throw new Error("caller prototype was invoked");
+    },
+  };
+
+  const inheritedPayload = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  Object.setPrototypeOf(inheritedPayload.parts[0]!.payload, executablePrototype);
+  assert.throws(
+    () => projectSlackMessages(delivery, inheritedPayload),
+    SlackMessageProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  const inheritedNested = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const nestedRecord = (inheritedNested.parts[0]!.payload.blocks[0] as {
+    text: object;
+  }).text;
+  Object.setPrototypeOf(nestedRecord, executablePrototype);
+  assert.throws(
+    () => projectSlackMessages(delivery, inheritedNested),
+    SlackMessageProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  const accessorNested = JSON.parse(JSON.stringify(validPlan)) as SlackMessagePlanV1;
+  const accessorRecord = (accessorNested.parts[0]!.payload.blocks[0] as unknown as {
+    text: Record<string, unknown>;
+  }).text;
+  Object.defineProperty(accessorRecord, "text", {
+    enumerable: true,
+    get() {
+      invoked += 1;
+      throw new Error("caller accessor was invoked");
+    },
+  });
+  assert.throws(
+    () => projectSlackMessages(delivery, accessorNested),
+    SlackMessageProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  assert.deepEqual(
+    projectSlackMessages(delivery, validPlan).parts[0]?.payload,
+    validPlan.parts[0]?.payload,
   );
 });
 
