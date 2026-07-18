@@ -535,7 +535,8 @@ The public handoff is:
 - the runtime and web container images,
 - the portable Slack companion and TypeScript SDK archives,
 - the binary behavior,
-- the environment-specific `cerebro-runtime-contract-<environment>.json` when produced by release tooling,
+- the topology-neutral product-release consumer event,
+- the runtime deploy contract renderer and schema,
 - API and proto contracts,
 - the documented environment variable surface.
 

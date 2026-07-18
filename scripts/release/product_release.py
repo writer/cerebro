@@ -13,6 +13,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cerebro.product-release/v1"
+EVENT_SCHEMA_VERSION = "cerebro.product-release-published/v1"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -21,6 +22,7 @@ IMAGE_RE = re.compile(
     r"^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 )
 PACKAGE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 
 
 class ManifestError(ValueError):
@@ -186,6 +188,70 @@ def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
     validate_file_record(contracts["agent_service_lifecycle"], "contracts.agent_service_lifecycle", bundle_root)
 
 
+def build_release_event(args: argparse.Namespace) -> dict[str, str]:
+    release_url = f"https://github.com/{args.repository}/releases/tag/{args.release_tag}"
+    manifest_url = (
+        f"https://github.com/{args.repository}/releases/download/{args.release_tag}/"
+        "cerebro-product-release.json"
+    )
+    return {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "release_tag": args.release_tag,
+        "release_commit": args.release_commit,
+        "release_url": release_url,
+        "manifest_url": manifest_url,
+        "manifest_sha256": args.manifest_sha256,
+    }
+
+
+def validate_release_event(event: Any) -> None:
+    require(isinstance(event, dict), "release event must be an object")
+    require(
+        set(event)
+        == {
+            "schema_version",
+            "release_tag",
+            "release_commit",
+            "release_url",
+            "manifest_url",
+            "manifest_sha256",
+        },
+        "release event has unexpected or missing fields",
+    )
+    require(event.get("schema_version") == EVENT_SCHEMA_VERSION, "release event schema_version is invalid")
+    release_tag = event.get("release_tag")
+    release_commit = event.get("release_commit")
+    release_url = event.get("release_url")
+    manifest_url = event.get("manifest_url")
+    require(
+        isinstance(release_tag, str) and VERSION_RE.fullmatch(release_tag) is not None and release_tag.startswith("v"),
+        "release event release_tag is invalid",
+    )
+    require(
+        isinstance(release_commit, str) and COMMIT_RE.fullmatch(release_commit) is not None,
+        "release event release_commit is invalid",
+    )
+    require(
+        isinstance(release_url, str) and release_url.startswith("https://github.com/"),
+        "release event release_url is invalid",
+    )
+    repository = release_url.removeprefix("https://github.com/").removesuffix(f"/releases/tag/{release_tag}")
+    require(re.fullmatch(REPOSITORY_PATTERN, repository) is not None, "release event repository is invalid")
+    require(
+        release_url == f"https://github.com/{repository}/releases/tag/{release_tag}",
+        "release event release_url is inconsistent",
+    )
+    require(
+        manifest_url
+        == f"https://github.com/{repository}/releases/download/{release_tag}/cerebro-product-release.json",
+        "release event manifest_url is inconsistent",
+    )
+    require(
+        SHA256_RE.fullmatch(event.get("manifest_sha256", "")) is not None,
+        "release event manifest_sha256 is invalid",
+    )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -210,6 +276,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     validate = subparsers.add_parser("validate", help="validate a product-release manifest")
     validate.add_argument("manifest", type=Path)
     validate.add_argument("--bundle-root", type=Path)
+
+    event = subparsers.add_parser("event", help="write a product-release consumer event")
+    event.add_argument("--repository", required=True)
+    event.add_argument("--release-tag", required=True)
+    event.add_argument("--release-commit", required=True)
+    event.add_argument("--manifest-sha256", required=True)
+    event.add_argument("--out", type=Path, required=True)
+
+    validate_event = subparsers.add_parser("validate-event", help="validate a product-release consumer event")
+    validate_event.add_argument("event", type=Path)
     return parser.parse_args(argv)
 
 
@@ -221,9 +297,17 @@ def main(argv: list[str] | None = None) -> int:
             validate_manifest(manifest, args.bundle_root.resolve())
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        else:
+        elif args.command == "validate":
             manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
             validate_manifest(manifest, args.bundle_root.resolve() if args.bundle_root else None)
+        elif args.command == "event":
+            event = build_release_event(args)
+            validate_release_event(event)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(event, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        else:
+            event = json.loads(args.event.read_text(encoding="utf-8"))
+            validate_release_event(event)
     except (ManifestError, OSError, json.JSONDecodeError) as exc:
         print(f"product release validation failed: {exc}", file=sys.stderr)
         return 1
