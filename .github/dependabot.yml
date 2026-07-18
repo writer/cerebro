@@ -119,7 +119,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "docker"
     groups:
       web-base-images:
         patterns:
