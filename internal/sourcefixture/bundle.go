@@ -28,12 +28,13 @@ const (
 
 var (
 	ErrCredentialField = errors.New("provider response contains credential field")
+	ErrCredentialQuery = errors.New("request URL contains credential query parameter")
 	ErrPersonalEmail   = errors.New("provider response contains non-example email")
 
-	emailPattern     = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
-	credentialKey    = regexp.MustCompile(`(?i)(authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|credential)`)
-	allowedEmailHost = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
-	replayTestName   = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
+	emailPattern       = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
+	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
+	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
+	replayTestName     = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
 )
 
 type Manifest struct {
@@ -204,8 +205,8 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 		return errors.New("request.url must be an HTTPS URL without user information")
 	}
 	for key := range requestURL.Query() {
-		if credentialKey.MatchString(key) {
-			return fmt.Errorf("request.url contains credential query parameter %q", key)
+		if isCredentialQueryKey(key) {
+			return fmt.Errorf("%w %q", ErrCredentialQuery, key)
 		}
 	}
 	if manifest.Response.Status < 200 || manifest.Response.Status > 299 {
@@ -394,7 +395,7 @@ func walkJSON(value any, path string) error {
 	case map[string]any:
 		for key, child := range typed {
 			childPath := path + "." + key
-			if credentialKey.MatchString(key) && !emptyJSONValue(child) {
+			if credentialFieldKey.MatchString(key) && !emptyJSONValue(child) {
 				return fmt.Errorf("%w %s", ErrCredentialField, childPath)
 			}
 			if err := walkJSON(child, childPath); err != nil {
@@ -409,7 +410,7 @@ func walkJSON(value any, path string) error {
 		}
 	case string:
 		for _, email := range emailPattern.FindAllString(typed, -1) {
-			if strings.Contains(typed, email+":") && (strings.HasPrefix(typed, "git@") || strings.HasPrefix(typed, "hg@")) {
+			if strings.HasPrefix(typed, email+":") && (strings.HasPrefix(typed, "git@") || strings.HasPrefix(typed, "hg@")) {
 				continue
 			}
 			if !allowedEmailHost.MatchString(email) {
@@ -418,6 +419,25 @@ func walkJSON(value any, path string) error {
 		}
 	}
 	return nil
+}
+
+func isCredentialQueryKey(key string) bool {
+	normalized := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(strings.TrimSpace(key)))
+	switch normalized {
+	case "auth", "authorization", "token", "secret", "key", "sig", "signature", "pat", "password",
+		"access_token", "accesstoken", "refresh_token", "refreshtoken", "api_key", "apikey",
+		"client_secret", "clientsecret", "private_key", "privatekey", "private_token", "privatetoken":
+		return true
+	}
+	for _, suffix := range []string{
+		"_access_token", "_refresh_token", "_api_key", "_client_secret", "_private_key", "_private_token",
+		"_token", "_secret", "_password", "_signature", "_sig", "_pat",
+	} {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func emptyJSONValue(value any) bool {

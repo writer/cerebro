@@ -76,6 +76,73 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAllowsCredentialMetadataFields(t *testing.T) {
+	payload, err := CanonicalJSON([]byte(`{
+		"authorization_url":"https://auth.example.test/oauth/authorize",
+		"credential_type":"oauth2",
+		"credential_id":"credential-1",
+		"credential_name":"primary",
+		"api_key_id":"key-1"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := testManifest(payload, "https://api.example.test/v1/connections?per_page=1")
+	if err := ValidateManifest(manifest, payload); err != nil {
+		t.Fatalf("ValidateManifest() error = %v, want credential metadata accepted", err)
+	}
+}
+
+func TestValidateManifestRejectsCredentialQueryParameters(t *testing.T) {
+	payload, err := CanonicalJSON([]byte(`{"items":[{"id":"record-1"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"token", "secret", "key", "sig", "pat", "private_token", "auth", "authorization", "X-Amz-Signature"} {
+		t.Run(key, func(t *testing.T) {
+			manifest := testManifest(payload, "https://api.example.test/v1/items?"+key+"=secret")
+			if err := ValidateManifest(manifest, payload); !errors.Is(err, ErrCredentialQuery) {
+				t.Fatalf("ValidateManifest() error = %v, want errors.Is(_, ErrCredentialQuery)", err)
+			}
+		})
+	}
+}
+
+func TestScanPayloadRestrictsSSHEmailCarveOut(t *testing.T) {
+	valid, err := CanonicalJSON([]byte(`{"ssh_url":"git@github.com:writer/cerebro.git"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanPayload(valid); err != nil {
+		t.Fatalf("scanPayload(valid SSH URL) error = %v", err)
+	}
+	crafted, err := CanonicalJSON([]byte(`{"description":"git@github.com:writer/cerebro.git contact:victim@company.com:"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanPayload(crafted); !errors.Is(err, ErrPersonalEmail) {
+		t.Fatalf("scanPayload(crafted description) error = %v, want errors.Is(_, ErrPersonalEmail)", err)
+	}
+}
+
+func testManifest(payload []byte, requestURL string) Manifest {
+	return Manifest{
+		SchemaVersion: SchemaVersion,
+		SourceID:      "demo",
+		Family:        "users",
+		Case:          "list",
+		ReplayTest:    "source_test.go#TestReplayUsers",
+		Request:       Request{Method: "GET", URL: requestURL},
+		Response: Response{
+			Status:      200,
+			ContentType: "application/json",
+			CapturedAt:  "2026-07-18T00:00:00Z",
+			SHA256:      Digest(payload),
+		},
+		Sanitization: Sanitization{Tool: SanitizerName, Version: SanitizerVersion},
+	}
+}
+
 func TestCanonicalJSONRejectsEmptyResponses(t *testing.T) {
 	for _, payload := range []string{"{}", "[]", `""`, "null"} {
 		if _, err := CanonicalJSON([]byte(payload)); err == nil {
