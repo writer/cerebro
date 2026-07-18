@@ -92,7 +92,13 @@ describe("server-bound delivered answer evidence", () => {
       sequence: 2,
     };
     assert.throws(
-      () => makeBinding({ delivery: delivery({ parts: [firstPart, secondPart] }) }),
+      () =>
+        makeBinding({
+          delivery: delivery({
+            parts: [firstPart, secondPart],
+            updated_at: secondPart.delivered_at,
+          }),
+        }),
       /part identities must be distinct/,
     );
     assert.throws(
@@ -103,9 +109,38 @@ describe("server-bound delivered answer evidence", () => {
               firstPart,
               { ...secondPart, idempotency_key: firstPart.idempotency_key, part_id: "part:2" },
             ],
+            updated_at: secondPart.delivered_at,
           }),
         }),
       /part identities must be distinct/,
+    );
+  });
+
+  test("requires monotonic delivery and binding timestamps", () => {
+    assert.throws(
+      () => makeBinding({ bound_at: "2026-07-18T11:58:29.000Z" }),
+      /cannot precede completed delivery/,
+    );
+    assert.throws(
+      () =>
+        makeBinding({
+          delivery: delivery({ updated_at: "2026-07-18T11:57:59.000Z" }),
+        }),
+      /delivery timestamps must be monotonic/,
+    );
+    assert.throws(
+      () =>
+        makeBinding({
+          delivery: delivery({
+            parts: [
+              {
+                ...delivery().parts[0]!,
+                delivered_at: "2026-07-18T11:57:59.000Z",
+              },
+            ],
+          }),
+        }),
+      /part timestamps must be monotonic/,
     );
   });
 
@@ -647,6 +682,14 @@ describe("Slack-visible evidence recheck status", () => {
           binding_digest: "not-a-digest",
         }),
       /binding_digest must be a canonical SHA-256 digest/,
+    );
+    assert.throws(
+      () =>
+        projectRecheck({
+          ...result.receipt.recheck,
+          binding_digest: `sha256:${"c".repeat(64)}`,
+        }),
+      /binding reference does not match its digest/,
     );
     assert.throws(
       () =>

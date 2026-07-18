@@ -52,6 +52,11 @@ export function bindDeliveredAnswerEvidence(
   requireRef(input.thread_ref, "thread_ref");
   const boundAt = normalizeTimestamp(input.bound_at, "bound_at");
   validateCompletedDelivery(input.delivery, input.answer_run_id);
+  if (Date.parse(boundAt) < Date.parse(input.delivery.updated_at)) {
+    throw new EvidenceRecheckInvariantError(
+      "Evidence binding cannot precede completed delivery.",
+    );
+  }
   const deliveryDigest = completedDeliveryDigest(input.delivery);
   const evidenceArtifactIds = canonicalArtifactIds(input.evidence_artifact_ids);
   const operatorRefs = canonicalRefs(
@@ -421,6 +426,11 @@ export function validateEvidenceRecheck(recheck: EvidenceRecheckV1): void {
   }
   requireRequestKey(recheck.request_key);
   requireSha256Digest(recheck.binding_digest, "binding_digest");
+  if (recheck.binding_ref !== evidenceBindingIdentity(recheck.binding_digest)) {
+    throw new EvidenceRecheckInvariantError(
+      "Evidence recheck binding reference does not match its digest.",
+    );
+  }
   requireCanonicalTimestamp(recheck.created_at, "created_at");
   requireCanonicalTimestamp(recheck.updated_at, "updated_at");
   if (Date.parse(recheck.updated_at) < Date.parse(recheck.created_at)) {
@@ -1002,6 +1012,11 @@ function validateCompletedDelivery(
   requireRef(delivery.destination_ref, "delivery destination_ref");
   requireCanonicalTimestamp(delivery.created_at, "delivery created_at");
   requireCanonicalTimestamp(delivery.updated_at, "delivery updated_at");
+  if (Date.parse(delivery.updated_at) < Date.parse(delivery.created_at)) {
+    throw new EvidenceRecheckInvariantError(
+      "Completed delivery timestamps must be monotonic.",
+    );
+  }
   if (
     delivery.parts.length === 0 ||
     delivery.parts.length > EVIDENCE_RECHECK_LIMITS.delivery_parts
@@ -1009,6 +1024,7 @@ function validateCompletedDelivery(
     throw new EvidenceRecheckInvariantError("Delivered answers require bounded delivery parts.");
   }
   let expectedSequence = 1;
+  let previousDeliveredAt = delivery.created_at;
   const partIds = new Set<string>();
   const idempotencyKeys = new Set<string>();
   for (const part of [...delivery.parts].sort((left, right) => left.sequence - right.sequence)) {
@@ -1038,6 +1054,14 @@ function validateCompletedDelivery(
     requireRef(part.payload_ref, "delivery part payload_ref");
     requireRef(part.destination_receipt, "delivery part destination_receipt");
     requireCanonicalTimestamp(part.delivered_at, "delivery part delivered_at");
+    if (
+      Date.parse(part.delivered_at) < Date.parse(previousDeliveredAt) ||
+      Date.parse(part.delivered_at) > Date.parse(delivery.updated_at)
+    ) {
+      throw new EvidenceRecheckInvariantError(
+        "Completed delivery part timestamps must be monotonic.",
+      );
+    }
     if (partIds.has(part.part_id) || idempotencyKeys.has(part.idempotency_key)) {
       throw new EvidenceRecheckInvariantError(
         "Completed delivery part identities must be distinct.",
@@ -1045,6 +1069,7 @@ function validateCompletedDelivery(
     }
     partIds.add(part.part_id);
     idempotencyKeys.add(part.idempotency_key);
+    previousDeliveredAt = part.delivered_at;
     expectedSequence += 1;
   }
 }
