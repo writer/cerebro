@@ -20,7 +20,7 @@ candidate-<40-character-commit>
 ghcr.io/writer/cerebro@sha256:<digest>
 ```
 
-The Candidate Build workflow waits for CI, builds the binary archives and multi-architecture image once, writes checksums and a dependency inventory, attaches provenance, signs the image and runtime contracts, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or deployment requests.
+The Candidate Build workflow waits for CI, builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, attaches provenance, signs the images and contracts, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or deployment requests.
 
 Stable releases are promoted from a successful Candidate Build run through the `stable-release` GitHub environment. The operator supplies the candidate run ID, stable tag, completed release notes, and a successful smoke receipt URL. The workflow verifies the candidate bundle checksums, commit, run ID, image digest, and image signature before it assigns stable tags.
 
@@ -46,7 +46,10 @@ A release can include:
 
 - CLI archives for Linux and macOS on amd64 and arm64,
 - multi-arch runtime image,
+- multi-arch web image,
+- portable Slack companion and TypeScript SDK archives,
 - image provenance and signatures,
+- a signed `cerebro-product-release.json` manifest that binds every component to one commit,
 - target-specific runtime contracts, named `cerebro-runtime-contract-<target>.json`,
 - matching runtime contract signatures,
 - matching runtime contract certificates.
@@ -55,6 +58,12 @@ Runtime image:
 
 ```text
 ghcr.io/writer/cerebro:<tag>
+```
+
+Web image:
+
+```text
+ghcr.io/writer/cerebro-web:<tag>
 ```
 
 Run:
@@ -270,13 +279,14 @@ Use the signature and certificate with your preferred Sigstore verification work
 Suggested flow:
 
 1. Select an immutable release tag.
-2. Pull or pin `ghcr.io/writer/cerebro:<tag>`.
-3. Download the contract whose suffix matches your deployment target, such as `cerebro-runtime-contract-<target>.json`.
-4. Verify the contract signature if your deployment process requires it.
-5. Check `required_secrets` against your secret manager.
-6. Check source runtimes against your intended tenants and schedules.
-7. Deploy the image with matching config.
-8. Run `/livez`, `/health`, source runtime health, and graph health checks.
+2. Download and verify `cerebro-product-release.json`.
+3. Pull the runtime and web image digests named by the manifest.
+4. Download the Slack companion, SDK, and public contracts named by the manifest and verify their SHA-256 values.
+5. Download the runtime contract whose suffix matches your deployment target, such as `cerebro-runtime-contract-<target>.json`.
+6. Verify the runtime contract signature if your deployment process requires it.
+7. Check `required_secrets` against your secret manager.
+8. Deploy each selected component with matching config.
+9. Run `/livez`, `/health`, source runtime health, graph health, and web health checks.
 
 ## Stable release procedure
 
@@ -286,7 +296,7 @@ Suggested flow:
 4. Complete every section in the release notes template. Name migration order, downgrade limits, configuration changes, and the rollback digest.
 5. Start the Stable Release workflow with the candidate run ID, `vMAJOR.MINOR.PATCH` tag, completed notes, and smoke receipt URL.
 6. Approve the `stable-release` environment after checking the candidate receipt, smoke receipt, and release notes.
-7. Confirm the GitHub release, semantic-version image tag, `latest` tag, signed runtime contracts, and deployment requests all use the candidate commit and digest.
+7. Confirm the GitHub release, both semantic-version image tags, both `latest` tags, portable archives, signed product manifest, signed runtime contracts, and deployment requests all use the candidate commit and recorded digests.
 
 Stable release windows are scheduled by the release operator. A schedule controls when the operator starts and approves the workflow; it does not create an unattended tag.
 
@@ -348,7 +358,7 @@ PY
 
 ## Compatibility expectations
 
-Consumers should treat `schema_version` as the compatibility boundary. If the schema version changes, update contract consumers before using the new release contract.
+Consumers should treat `schema_version` as the compatibility boundary. Validate `cerebro.product-release/v1` before selecting any component, and update contract consumers before accepting a new schema version.
 
 Within the current schema:
 
