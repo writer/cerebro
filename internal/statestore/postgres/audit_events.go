@@ -19,7 +19,7 @@ var _ ports.AuditEventProjectionWriter = (*Store)(nil)
 var ensureAuditEventStatements = []string{
 	`CREATE TABLE IF NOT EXISTS platform_audit_events (
   tenant_id TEXT NOT NULL,
-  event_id TEXT NOT NULL,
+  event_id TEXT COLLATE "C" NOT NULL,
   source_sequence BIGINT NOT NULL,
   event_digest TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -43,15 +43,17 @@ var ensureAuditEventStatements = []string{
   CHECK (source_sequence > 0),
   CHECK (duration_ms IS NULL OR duration_ms >= 0)
 )`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_time_idx ON platform_audit_events (tenant_id, occurred_at DESC, event_id DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_action_idx ON platform_audit_events (tenant_id, action, occurred_at DESC, event_id DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_outcome_idx ON platform_audit_events (tenant_id, outcome, occurred_at DESC, event_id DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_service_idx ON platform_audit_events (tenant_id, service, occurred_at DESC, event_id DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_time_idx ON platform_audit_events (tenant_id, occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_action_idx ON platform_audit_events (tenant_id, action, occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_outcome_idx ON platform_audit_events (tenant_id, outcome, occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_service_idx ON platform_audit_events (tenant_id, service, occurred_at DESC, event_id COLLATE "C" DESC)`,
 }
 
 const auditEventColumns = `event_id, tenant_id, action, actor_id, actor_kind, actor_label,
 category, duration_ms, occurred_at, outcome, request_id, resource_id, resource_type,
 resource_label, service, summary, trace_id`
+
+const auditEventIDKeysetExpression = `event_id COLLATE "C"`
 
 func (s *Store) ensureAuditEventTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.platform.auditEvents, "platform audit events", ensureAuditEventStatements)
@@ -146,11 +148,11 @@ func (s *Store) ListAuditEvents(ctx context.Context, query ports.AuditEventQuery
 	addAuditEventTextFilter(&clauses, &args, query.Query)
 	if !query.PageBeforeOccurredAt.IsZero() {
 		args = append(args, query.PageBeforeOccurredAt.UTC(), strings.TrimSpace(query.PageBeforeID))
-		clauses = append(clauses, fmt.Sprintf("(occurred_at < $%d OR (occurred_at = $%d AND event_id < $%d))", len(args)-1, len(args)-1, len(args)))
+		clauses = append(clauses, fmt.Sprintf("(occurred_at < $%d OR (occurred_at = $%d AND %s < $%d))", len(args)-1, len(args)-1, auditEventIDKeysetExpression, len(args)))
 	}
 	args = append(args, query.Limit+1)
 	// #nosec G201 -- the columns and predicates are fixed; all values are parameterized.
-	statement := fmt.Sprintf("SELECT %s FROM platform_audit_events WHERE %s ORDER BY occurred_at DESC, event_id DESC LIMIT $%d", auditEventColumns, strings.Join(clauses, " AND "), len(args))
+	statement := fmt.Sprintf("SELECT %s FROM platform_audit_events WHERE %s ORDER BY occurred_at DESC, %s DESC LIMIT $%d", auditEventColumns, strings.Join(clauses, " AND "), auditEventIDKeysetExpression, len(args))
 	rows, err := s.db.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return ports.AuditEventPageV1{}, fmt.Errorf("list audit events: %w", err)

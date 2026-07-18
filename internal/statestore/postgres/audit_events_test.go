@@ -46,6 +46,21 @@ func TestAuditEventUniqueViolation(t *testing.T) {
 	}
 }
 
+func TestAuditEventKeysetUsesDeterministicEventIDCollation(t *testing.T) {
+	if auditEventIDKeysetExpression != `event_id COLLATE "C"` {
+		t.Fatalf("auditEventIDKeysetExpression = %q", auditEventIDKeysetExpression)
+	}
+	statements := strings.Join(ensureAuditEventStatements, "\n")
+	for _, required := range []string{
+		`event_id TEXT COLLATE "C" NOT NULL`,
+		`occurred_at DESC, event_id COLLATE "C" DESC`,
+	} {
+		if !strings.Contains(statements, required) {
+			t.Fatalf("audit event schema is missing %q", required)
+		}
+	}
+}
+
 func TestAuditEventPersistenceAndKeysetPagination(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
 	if dsn == "" {
@@ -59,8 +74,9 @@ func TestAuditEventPersistenceAndKeysetPagination(t *testing.T) {
 	ctx := context.Background()
 	tenantID := "audit-event-test-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
 	otherTenantID := tenantID + "-other"
+	collationTenantID := tenantID + "-collation"
 	t.Cleanup(func() {
-		_, _ = store.db.ExecContext(ctx, `DELETE FROM platform_audit_events WHERE tenant_id IN ($1, $2)`, tenantID, otherTenantID)
+		_, _ = store.db.ExecContext(ctx, `DELETE FROM platform_audit_events WHERE tenant_id IN ($1, $2, $3)`, tenantID, otherTenantID, collationTenantID)
 	})
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	sequenceBase := uint64(time.Now().UnixNano())
@@ -97,6 +113,30 @@ func TestAuditEventPersistenceAndKeysetPagination(t *testing.T) {
 	}
 	if len(second.Events) != 1 || second.HasMore || second.Events[0].ID != "event-3" {
 		t.Fatalf("second page = %+v", second)
+	}
+
+	for index, id := range []string{"event-Z", "event-a", "event-ä"} {
+		event := auditEventTestRecord(id, collationTenantID, now)
+		if err := store.ProjectAuditEvent(ctx, auditEventProjection(sequenceBase+10+uint64(index), event)); err != nil {
+			t.Fatalf("ProjectAuditEvent(%s) error = %v", id, err)
+		}
+	}
+	collationQuery := ports.AuditEventQueryV1{TenantID: collationTenantID, After: now.Add(-time.Hour), Before: now, Limit: 2}
+	collationFirst, err := store.ListAuditEvents(ctx, collationQuery)
+	if err != nil {
+		t.Fatalf("ListAuditEvents(collation first) error = %v", err)
+	}
+	if len(collationFirst.Events) != 2 || !collationFirst.HasMore || collationFirst.Events[0].ID != "event-ä" || collationFirst.Events[1].ID != "event-a" {
+		t.Fatalf("collation first page = %+v", collationFirst)
+	}
+	collationQuery.PageBeforeOccurredAt = collationFirst.Events[1].OccurredAt
+	collationQuery.PageBeforeID = collationFirst.Events[1].ID
+	collationSecond, err := store.ListAuditEvents(ctx, collationQuery)
+	if err != nil {
+		t.Fatalf("ListAuditEvents(collation second) error = %v", err)
+	}
+	if len(collationSecond.Events) != 1 || collationSecond.HasMore || collationSecond.Events[0].ID != "event-Z" {
+		t.Fatalf("collation second page = %+v", collationSecond)
 	}
 }
 
