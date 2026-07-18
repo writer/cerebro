@@ -37,14 +37,14 @@ That split is part of the design, not an afterthought. Public code defines porta
 ```mermaid
 flowchart LR
   Public["writer/cerebro<br/>portable behavior, contracts, tests, release artifacts"]
-  Handoff["release handoff<br/>images + runtime contract"]
+  Handoff["release handoff<br/>signed manifest + portable event"]
   Private["private operations<br/>environment adapters and promotion policy"]
 
   Public --> Handoff
   Handoff --> Private
 ```
 
-The deployment handoff is the release payload: container images plus a runtime contract, such as `cerebro-runtime-contract.json` in local preflight flows. Treat that contract as the bridge between public runtime releases and environment-specific promotion automation. See [Monorepo Ownership And Boundaries](docs/engineering/monorepo.md) for ownership rules and [Release Contract](docs/operations/release-contract.md) for artifact naming.
+The deployment handoff is the signed product manifest and its topology-neutral consumer event. Deployment automation verifies the manifest, selects its recorded image digests, and renders its own `cerebro-runtime-contract.json` from configuration it owns. See [Monorepo Ownership And Boundaries](docs/engineering/monorepo.md) for ownership rules and [Release Contract](docs/operations/release-contract.md) for the public contracts.
 
 ## Runtime Shapes
 

@@ -110,43 +110,40 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"cosign verify",
 		`docker buildx imagetools create -t "${image_base}:${RELEASE_TAG}"`,
 		`docker buildx imagetools create -t "${image_base}:latest"`,
-		"target_environment: sec-dev",
-		"apply_mode: direct_push",
-		"target_environment: go-prod",
-		"apply_mode: pull_request",
-		"name: Check Infisical bootstrap",
-		`echo "configured=false" >> "$GITHUB_OUTPUT"`,
-		"Dispatch stable deployment request",
 		"cerebro-product-release.json",
-		"product_manifest_url",
-		"product_manifest_sha256",
 		"WEB_CANDIDATE_IMAGE",
 		"cosign verify-blob candidate/cerebro-product-release.json",
-		"for target in sec-dev go-prod; do",
-		`cerebro-runtime-contract-${target}.json`,
-		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
-		`test "$(jq '.client_payload | length' "${payload}")" -le 10`,
-		`gh api --method POST "repos/${infra_repository}/dispatches" --input "${payload}"`,
-		`requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`,
-		"--workflow propose-image-tag.yml",
-		"--event repository_dispatch",
-		"deadline=$((SECONDS + 120))",
-		"no matching propose-image-tag.yml run appeared",
+		"  notify-release-consumer:",
+		"RELEASE_CONSUMER_TOKEN",
+		"RELEASE_CONSUMER_REPOSITORY",
+		`{event_type:"product-release-published",client_payload:$payload[0]}`,
+		`test "$(jq '.client_payload | length' dispatch.json)" -eq 6`,
+		`gh api --method POST "repos/${RELEASE_CONSUMER_REPOSITORY}/dispatches" --input dispatch.json`,
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
 		}
 	}
-	for _, stale := range []string{
-		`--arg runtime_contract `,
-		`--arg runtime_contract_signature `,
-		`--arg runtime_contract_certificate `,
-		`runtime_contract: $runtime_contract`,
-		`runtime_contract_signature: $runtime_contract_signature`,
-		`runtime_contract_certificate: $runtime_contract_certificate`,
+	for _, privateMarker := range []string{
+		"  notify-infra:",
+		"target_environment",
+		"apply_mode",
+		"credential bootstrap",
+		"secrets-action@",
+		"identity-id:",
+		"project-slug:",
+		"env-slug:",
+		"/contents/.github/workflows/",
+		"propose-image-tag",
+		"--event repository_dispatch",
+		"deadline=$((",
+		"request_id",
+		"runtime_contract",
+		"runtime-contract-",
+		"-format contract-json",
 	} {
-		if strings.Contains(release, stale) {
-			t.Fatalf("release dispatch payload contains stale contract marker %q", stale)
+		if strings.Contains(strings.ToLower(release), privateMarker) {
+			t.Fatalf("public release workflow contains deployment-specific marker %q", privateMarker)
 		}
 	}
 	verifyIndex := strings.Index(release, "  verify-candidate:")
@@ -170,26 +167,22 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	if strings.Contains(verifyCandidate, "\n          sha=\"$(jq -r .head_sha") {
 		t.Fatal("verify-candidate must derive the candidate commit from the run artifact, not the branch head")
 	}
-	if strings.Contains(release, "-env sec-dev") {
-		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")
+	notifyIndex := strings.Index(release, "  notify-release-consumer:")
+	if notifyIndex == -1 || notifyIndex <= promoteIndex {
+		t.Fatal("release consumer notification must follow stable promotion")
 	}
-	dispatchIndex := strings.Index(release, "Dispatch stable deployment request")
-	matrixIndex := strings.Index(release, "target_environment: sec-dev")
-	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
-		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
+	notify := release[notifyIndex:]
+	if !strings.Contains(notify, "    permissions:\n      contents: read\n") || strings.Contains(notify, "id-token: write") {
+		t.Fatal("release consumer notification must use read-only repository permissions")
 	}
-	orgSecretsIndex := strings.Index(release, "name: Fetch organization release credentials")
-	repoSecretsIndex := strings.Index(release, "name: Fetch repository release credentials")
-	bootstrapIndex := strings.Index(release, "name: Check Infisical bootstrap")
-	if bootstrapIndex == -1 || orgSecretsIndex == -1 || repoSecretsIndex == -1 || bootstrapIndex > orgSecretsIndex || orgSecretsIndex > repoSecretsIndex || repoSecretsIndex > dispatchIndex {
-		t.Fatal("release workflow must check Infisical bootstrap before fetching deployment credentials and dispatching the release")
-	}
-	for name, section := range map[string]string{
-		"organization": release[orgSecretsIndex:repoSecretsIndex],
-		"repository":   release[repoSecretsIndex:dispatchIndex],
+	for _, marker := range []string{
+		`if [ -z "${RELEASE_CONSUMER_TOKEN}" ] && [ -z "${RELEASE_CONSUMER_REPOSITORY}" ]`,
+		`if [ -z "${RELEASE_CONSUMER_TOKEN}" ] || [ -z "${RELEASE_CONSUMER_REPOSITORY}" ]`,
+		"python3 scripts/release/product_release.py event",
+		"python3 scripts/release/product_release.py validate-event",
 	} {
-		if !strings.Contains(section, "if: steps.infisical.outputs.configured == 'true'") {
-			t.Fatalf("release workflow must guard %s secret fetch behind the bootstrap check", name)
+		if !strings.Contains(notify, marker) {
+			t.Fatalf("release consumer notification missing boundary marker %q", marker)
 		}
 	}
 	candidateBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "cut-release.yml"))
@@ -207,20 +200,34 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"cerebro.release-candidate/v1",
 		"cerebro.product-release/v1",
 		"Build and publish candidate web image",
+		"Verify candidate image platforms",
+		"Scan candidate images",
+		`test "${platforms}" = '["linux/amd64","linux/arm64"]'`,
+		"aquasec/trivy:0.66.0@sha256:",
+		"--severity CRITICAL --ignore-unfixed --exit-code 1",
 		"Build portable Slack companion and SDK archives",
 		"Sign candidate product release",
+		"product-release-published.schema.json",
 		"bundle-checksums.txt",
 		"| head -n 1 || true",
 		"path: .dist/release\n          if-no-files-found: error\n          include-hidden-files: true",
-		"path: .dist\n          if-no-files-found: error\n          include-hidden-files: true",
 	} {
 		if !strings.Contains(candidate, marker) {
 			t.Fatalf("candidate workflow missing required marker %q", marker)
 		}
 	}
-	for _, forbidden := range []string{"git tag", "gh release create", `:${RELEASE_TAG}`, `:latest`} {
+	for _, forbidden := range []string{
+		"git tag",
+		"gh release create",
+		`:${RELEASE_TAG}`,
+		`:latest`,
+		"  contracts:\n",
+		"target_environment",
+		"runtime-contract-",
+		"-format contract-json",
+	} {
 		if strings.Contains(candidate, forbidden) {
-			t.Fatalf("candidate workflow contains stable publication marker %q", forbidden)
+			t.Fatalf("candidate workflow contains forbidden release marker %q", forbidden)
 		}
 	}
 	receiptIndex := strings.Index(candidate, "  receipt:\n")
@@ -228,6 +235,9 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		t.Fatal("candidate workflow must define the receipt job")
 	}
 	receipt := candidate[receiptIndex:]
+	if !strings.Contains(receipt, "needs: [resolve, binaries, manifest, web-manifest, scan-images, product-release]") {
+		t.Fatal("candidate receipt must wait for both image scans")
+	}
 	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
 		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
 	}
