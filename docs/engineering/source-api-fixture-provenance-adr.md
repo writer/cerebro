@@ -30,8 +30,10 @@ The checked-in response is sanitized, but it remains a capture. Sanitization
 may replace credentials, tenant identifiers, account identifiers, personal
 data, free-form content, and provider hostnames. It must preserve object shape,
 field presence, JSON types, pagination structure, and values that select a
-decoder branch. A proof bundle is rejected when sanitization changes the
-response into a smaller schema example.
+decoder branch. Repeated provider identifiers must resolve to the same example
+value in request paths, direct fields, embedded strings, and cross-record
+references. A proof bundle is rejected when sanitization changes the response
+into a smaller schema example.
 
 Existing `testdata/read_*.json` files are normalized Cerebro events. They remain
 useful replay outputs, but they do not prove that the source can decode a

@@ -1,0 +1,37 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: cloudflare
+family: dns_record
+case: list_dns_records
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedCloudflareFamilies
+request:
+    method: GET
+    url: https://api.cloudflare.com/client/v4/zones/example-26a2e403/dns_records
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-05-26T21:44:02Z"
+    sha256: 491d4c6e0056a83c513d291e39f0c6bd301287372c77cfd1eebb2ac2b53c7acc
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.result[0].id
+        - $.result[1].content
+        - $.result[1].id
+        - $.result[1].zone_id
+        - $.result[2].id
+        - $.result[2].zone_id
+        - $.result[3].id
+        - $.result[3].zone_id
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/cloudflare/cf-terraforming
+    commit: 4eca5a200300865607a000226e85581aec5d50bc
+    path: testdata/cloudflare/v5/cloudflare_dns_record.yaml
+    artifact_sha256: c2dc2ae6bdcdc6666da87de8873bfa5525888d415e6749399569b2625f8a467d
+    license: MPL-2.0
+    recording_tool: go-vcr-v1
+    harness_path: internal/app/cf-terraforming/cmd/generate_test.go
+    freshness: current
+    capture_time_basis: artifact_commit
