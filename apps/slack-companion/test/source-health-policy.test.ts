@@ -39,13 +39,13 @@ describe("source health policy", () => {
   test("opens cooldown, permits a later probe, and recovers on success", () => {
     const initial = emptySourceHealthState("source:alpha", policy);
     const first = observe(initial, {
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       kind: "failure",
       latency_ms: 100,
       observed_at: "2026-07-18T10:00:00.000Z",
     });
     const second = observe(first.state, {
-      idempotency_key: "observation-2",
+      idempotency_key: "obs-2",
       kind: "failure",
       latency_ms: 200,
       observed_at: "2026-07-18T10:01:00.000Z",
@@ -53,7 +53,7 @@ describe("source health policy", () => {
 
     assert.deepEqual(second.state.cooldown, {
       cooldown_key:
-        "source-health:12:source:alpha:observation-2",
+        "source-health:12:source:alpha:obs-2",
       cooldown_until: "2026-07-18T10:06:00.000Z",
       observed_at: "2026-07-18T10:01:00.000Z",
       resource_ref: "source:alpha",
@@ -89,7 +89,7 @@ describe("source health policy", () => {
     assert.equal(probe.retry_after_ms, undefined);
 
     const recovered = observe(second.state, {
-      idempotency_key: "observation-3",
+      idempotency_key: "obs-3",
       kind: "success",
       latency_ms: 300,
       observed_at: "2026-07-18T10:06:01.000Z",
@@ -118,13 +118,13 @@ describe("source health policy", () => {
 
   test("replays only an exact observation without double counting", () => {
     const first = observe(emptySourceHealthState("source:alpha", policy), {
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       kind: "failure",
       latency_ms: 100,
       observed_at: "2026-07-18T10:00:00.000Z",
     });
     const replay = observe(first.state, {
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       kind: "failure",
       latency_ms: 100,
       observed_at: "2026-07-18T10:00:00.000Z",
@@ -136,7 +136,7 @@ describe("source health policy", () => {
     assert.throws(
       () =>
         observe(first.state, {
-          idempotency_key: "observation-1",
+          idempotency_key: "obs-1",
           kind: "failure",
           latency_ms: 101,
           observed_at: "2026-07-18T10:00:00.000Z",
@@ -147,7 +147,7 @@ describe("source health policy", () => {
 
   test("keeps a successful slow source available but degraded", () => {
     const slow = observe(emptySourceHealthState("source:slow", policy), {
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       kind: "success",
       latency_ms: 30_000,
       observed_at: "2026-07-18T10:00:00.000Z",
@@ -188,7 +188,7 @@ describe("source health policy", () => {
 
   test("rejects caller-owned state that no longer matches its receipts", () => {
     const first = observe(emptySourceHealthState("source:alpha", policy), {
-      idempotency_key: "observation-1",
+      idempotency_key: "obs-1",
       kind: "failure",
       latency_ms: 100,
       observed_at: "2026-07-18T10:00:00.000Z",
