@@ -22,7 +22,10 @@ npm run dev:fixtures --workspace @writer/cerebro-web
 ```sh
 npm run check --workspace @writer/cerebro-web
 npm run build --workspace @writer/cerebro-web
+npm run e2e:web:fixtures --workspace @writer/cerebro-web
 ```
+
+`e2e:web:fixtures` starts the web application with synthetic, local fixture data and validates its public routes in Chromium. It does not start a Cerebro service or persistent stores; real service integration remains a separate test lane.
 
 The app accepts public Cerebro API and identity configuration. Environment deployment adapters, network configuration, secret addresses, and rollout policy live outside this workspace.
 

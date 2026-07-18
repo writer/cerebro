@@ -45,6 +45,50 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+## Command and delivery projections
+
+`encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
+
+## Durable answer watches
+
+`src/watch` binds a watch to one read-only, server-resolved target recorded with
+the delivered answer. Interactive requests carry the binding reference, while
+the host resolves the target and records the evidence, version, and digest.
+Only the original requester or a recorded operator can start the watch.
+
+Each check uses the canonical scheduled-occurrence lease and fencing contract.
+Portable policy compares structured state, publishes material changes,
+suppresses unchanged checks, shows degraded and recovered states, and
+distinguishes a satisfied condition from a target that closed first. The host
+owns source polling, durable storage, authorization lookup, and Slack transport.
+
+Observation and stop retries require a durable receipt lookup before portable
+policy runs. A first execution returns an immutable receipt that the host must
+commit with the watch update. Later retries return that receipt even after
+other observations or retirement, while the current watch revision remains
+unchanged. A missing or conflicting receipt lookup fails closed.
+
+## Evidence rechecks
+
+`src/recheck` admits a recheck only for evidence already bound server-side to a
+fully delivered answer and its durable conversation thread. The requester does
+not select an evidence location or submit the binding contents. A required
+host-owned lookup resolves the immutable binding before authorization policy
+runs. Only the original requester or a recorded operator can use the binding.
+The binding includes a canonical digest of the
+completed delivery receipt and its ordered part receipts; duplicate part or
+idempotency identities fail closed.
+
+Admission derives stable recheck, run, queue-item, and receipt identities. The
+host must commit the immutable request, canonical reconciliation run, admission
+transitions, queue item, and receipt in one durable transaction before transport
+acknowledgement is permitted. Exact retries return the existing receipt;
+conflicting receipt reuse fails closed. Portable status projections show queued,
+duplicate, in-progress, completed, degraded, and rejected states.
+
+The public module contains only records, validation, deterministic policy, and
+synthetic tests. Evidence resolution, persistence, execution, authorization
+lookup, and Slack transport remain host-owned.
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
