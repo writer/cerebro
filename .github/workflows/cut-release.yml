@@ -375,7 +375,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - name: Build and verify portable Slack companion and SDK archives
+      - name: Build portable Slack companion and SDK archives
         run: |
           set -euo pipefail
           npm ci
