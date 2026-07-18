@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
 const originalCatalog = process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
+const originalReadScopes = process.env.CEREBRO_AUTHZ_READ_SCOPES;
 const originalIdentityProfile = process.env.CEREBRO_IDENTITY_PROFILE;
 const originalTrustedHeaders = process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
 
@@ -16,8 +17,13 @@ const trustedRequest = () => new NextRequest("http://localhost/api/security-prod
   headers: { "x-user-email": "user@example.com" },
 });
 
+const encodedJson = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+const proxyToken = (claims: Record<string, unknown>) =>
+  `${encodedJson({ alg: "none", typ: "JWT" })}.${encodedJson(claims)}.synthetic-signature`;
+
 afterEach(() => {
   restore("CEREBRO_SECURITY_PRODUCERS_JSON", originalCatalog);
+  restore("CEREBRO_AUTHZ_READ_SCOPES", originalReadScopes);
   restore("CEREBRO_IDENTITY_PROFILE", originalIdentityProfile);
   restore("CEREBRO_TRUSTED_IDENTITY_HEADERS", originalTrustedHeaders);
   vi.restoreAllMocks();
@@ -35,7 +41,41 @@ describe("runtime security producer catalog", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(JSON.stringify(await response.json())).not.toContain("Producer One");
+    const body = await response.json();
+    expect(body).toMatchObject({ permission: "cerebro:read" });
+    expect(JSON.stringify(body)).not.toContain("Producer One");
+  });
+
+  it("requires read capability instead of identity access alone", async () => {
+    process.env.CEREBRO_IDENTITY_PROFILE = "auth-proxy";
+    process.env.CEREBRO_AUTHZ_READ_SCOPES = "cerebro:read";
+    process.env.CEREBRO_SECURITY_PRODUCERS_JSON = JSON.stringify([
+      { id: "producer-one", label: "Producer One" },
+    ]);
+
+    const identityOnly = await GET(new NextRequest("http://localhost/api/security-producers", {
+      headers: { "x-auth-request-email": "user@example.com" },
+    }));
+    const identityOnlyBody = await identityOnly.json();
+
+    const reader = await GET(new NextRequest("http://localhost/api/security-producers", {
+      headers: {
+        "x-auth-request-email": "user@example.com",
+        "x-auth-request-id-token": proxyToken({
+          email: "user@example.com",
+          scope: "cerebro:read",
+          sub: "synthetic-reader",
+        }),
+      },
+    }));
+
+    expect(identityOnly.status).toBe(403);
+    expect(identityOnlyBody).toMatchObject({ permission: "cerebro:read" });
+    expect(JSON.stringify(identityOnlyBody)).not.toContain("Producer One");
+    expect(reader.status).toBe(200);
+    await expect(reader.json()).resolves.toEqual({
+      producers: [expect.objectContaining({ id: "producer-one" })],
+    });
   });
 
   it("reads and sanitizes the current runtime value for every request", async () => {

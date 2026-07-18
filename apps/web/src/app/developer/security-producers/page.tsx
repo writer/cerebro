@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 
 import { PageHeader, Panel } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { fetchSecurityProducers } from "@/lib/security-producers-client";
-import type { SecurityProducer } from "@/lib/security-producers";
+import {
+  fetchSecurityProducers,
+  type SecurityProducerCatalogResult,
+} from "@/lib/security-producers-client";
 
 type RuntimeSnapshot = {
   ok: boolean;
@@ -13,10 +15,12 @@ type RuntimeSnapshot = {
   data: unknown;
 };
 
+type ProducerCatalogState = SecurityProducerCatalogResult | { state: "loading" };
+
 export default function SecurityProducersPage() {
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
-  const [producers, setProducers] = useState<SecurityProducer[]>([]);
-  const [producerCatalogLoaded, setProducerCatalogLoaded] = useState(false);
+  const [producerCatalog, setProducerCatalog] = useState<ProducerCatalogState>({ state: "loading" });
+  const [producerCatalogRequest, setProducerCatalogRequest] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,17 +43,16 @@ export default function SecurityProducersPage() {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    fetchSecurityProducers({ signal: controller.signal }).then((configured) => {
+    fetchSecurityProducers({ signal: controller.signal }).then((result) => {
       if (!cancelled) {
-        setProducers(configured);
-        setProducerCatalogLoaded(true);
+        setProducerCatalog(result);
       }
     });
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [producerCatalogRequest]);
 
   return (
     <div className="space-y-6">
@@ -68,17 +71,31 @@ export default function SecurityProducersPage() {
       </Panel>
 
       <Panel title="Producer Coverage">
-        {!producerCatalogLoaded ? (
+        {producerCatalog.state === "loading" ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
             Loading producer catalog...
           </div>
-        ) : producers.length === 0 ? (
+        ) : producerCatalog.state === "unavailable" ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
+            <div>Producer catalog is unavailable. Check your access or service connection, then retry.</div>
+            <button
+              type="button"
+              className="mt-3 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-amber-900 hover:bg-amber-100"
+              onClick={() => {
+                setProducerCatalog({ state: "loading" });
+                setProducerCatalogRequest((request) => request + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : producerCatalog.producers.length === 0 ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
             No security producers are configured for this deployment.
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-3">
-            {producers.map((producer) => (
+            {producerCatalog.producers.map((producer) => (
               <div key={producer.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
                 <div className="text-[13px] font-semibold text-slate-900">{producer.label}</div>
                 {producer.description && <div className="mt-1 text-[12px] leading-5 text-slate-600">{producer.description}</div>}

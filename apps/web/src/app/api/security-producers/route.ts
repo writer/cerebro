@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       {
         code: "identity_missing",
         error: "Current user identity is required.",
-        permission: "identity:read",
+        permission: "cerebro:read",
       },
       {
         status: 401,
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       },
     );
   }
-  const decision = authorizeCurrentUser(currentUser, "identity:read");
+  const decision = authorizeCurrentUser(currentUser, "cerebro:read");
   if (!decision.allowed) return authorizationErrorResponse(decision);
   return NextResponse.json(
     { producers: runtimeSecurityProducers() },

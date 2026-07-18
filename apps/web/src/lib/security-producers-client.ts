@@ -8,18 +8,29 @@ type FetchSecurityProducersOptions = {
   signal?: AbortSignal;
 };
 
+export type SecurityProducerCatalogResult =
+  | { state: "ready"; producers: SecurityProducer[] }
+  | { state: "unavailable" };
+
+const unavailable = (): SecurityProducerCatalogResult => ({ state: "unavailable" });
+
 export const fetchSecurityProducers = async (
   options: FetchSecurityProducersOptions = {},
-): Promise<SecurityProducer[]> => {
+): Promise<SecurityProducerCatalogResult> => {
   try {
     const response = await (options.fetcher ?? fetch)("/api/security-producers", {
       cache: "no-store",
       signal: options.signal,
     });
-    if (!response.ok) return [];
-    const payload = await response.json() as { producers?: unknown };
-    return securityProducersFromValue(payload?.producers);
+    if (!response.ok) return unavailable();
+    const payload = await response.json() as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return unavailable();
+    const configured = (payload as Record<string, unknown>).producers;
+    if (!Array.isArray(configured)) return unavailable();
+    const producers = securityProducersFromValue(configured);
+    if (producers.length !== configured.length) return unavailable();
+    return { state: "ready", producers };
   } catch {
-    return [];
+    return unavailable();
   }
 };

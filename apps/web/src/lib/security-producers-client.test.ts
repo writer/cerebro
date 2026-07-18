@@ -18,12 +18,14 @@ describe("security producer catalog client", () => {
         producers: [{ id: "producer-two", label: "Second value" }],
       }));
 
-    await expect(fetchSecurityProducers({ fetcher })).resolves.toEqual([
-      expect.objectContaining({ id: "producer-one", label: "First value" }),
-    ]);
-    await expect(fetchSecurityProducers({ fetcher })).resolves.toEqual([
-      expect.objectContaining({ id: "producer-two", label: "Second value" }),
-    ]);
+    await expect(fetchSecurityProducers({ fetcher })).resolves.toEqual({
+      state: "ready",
+      producers: [expect.objectContaining({ id: "producer-one", label: "First value" })],
+    });
+    await expect(fetchSecurityProducers({ fetcher })).resolves.toEqual({
+      state: "ready",
+      producers: [expect.objectContaining({ id: "producer-two", label: "Second value" })],
+    });
     expect(fetcher).toHaveBeenNthCalledWith(1, "/api/security-producers", {
       cache: "no-store",
       signal: undefined,
@@ -36,21 +38,34 @@ describe("security producer catalog client", () => {
       extra: "not-portable",
     }));
 
-    const producers = await fetchSecurityProducers({ fetcher });
+    const result = await fetchSecurityProducers({ fetcher });
 
-    expect(producers).toEqual([expect.objectContaining({ id: "producer-one" })]);
-    expect(JSON.stringify(producers)).not.toContain("not-portable");
+    expect(result).toEqual({
+      state: "ready",
+      producers: [expect.objectContaining({ id: "producer-one" })],
+    });
+    expect(JSON.stringify(result)).not.toContain("not-portable");
   });
 
-  it("fails closed for unsuccessful, invalid, or unavailable responses", async () => {
+  it("represents a successful empty catalog as ready", async () => {
     await expect(fetchSecurityProducers({
-      fetcher: vi.fn().mockResolvedValue(jsonResponse({ error: "unavailable" }, 503)),
-    })).resolves.toEqual([]);
-    await expect(fetchSecurityProducers({
-      fetcher: vi.fn().mockResolvedValue(new Response("not-json")),
-    })).resolves.toEqual([]);
-    await expect(fetchSecurityProducers({
-      fetcher: vi.fn().mockRejectedValue(new Error("unavailable")),
-    })).resolves.toEqual([]);
+      fetcher: vi.fn().mockResolvedValue(jsonResponse({ producers: [] })),
+    })).resolves.toEqual({ state: "ready", producers: [] });
+  });
+
+  it("keeps access, service, network, and payload failures distinct from configured-empty", async () => {
+    for (const fetcher of [
+      vi.fn().mockResolvedValue(jsonResponse({ error: "unauthorized-marker" }, 401)),
+      vi.fn().mockResolvedValue(jsonResponse({ error: "forbidden-marker" }, 403)),
+      vi.fn().mockResolvedValue(jsonResponse({ error: "service-marker" }, 503)),
+      vi.fn().mockResolvedValue(new Response("invalid-json-marker")),
+      vi.fn().mockResolvedValue(jsonResponse({ producers: "invalid-envelope-marker" })),
+      vi.fn().mockResolvedValue(jsonResponse({ producers: [{ id: "", label: "invalid-record-marker" }] })),
+      vi.fn().mockRejectedValue(new Error("network-marker")),
+    ]) {
+      const result = await fetchSecurityProducers({ fetcher });
+      expect(result).toEqual({ state: "unavailable" });
+      expect(JSON.stringify(result)).not.toMatch(/marker/);
+    }
   });
 });
