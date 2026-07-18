@@ -209,6 +209,7 @@ routeLabels["/findings"] = "Finding detail";
 routeLabels["/identity"] = "Members";
 routeLabels["/connectors/builder"] = "Connector builder";
 routeLabels["/developer/agent-platform"] = "Agent platform";
+routeLabels["/developer/audit-log"] = "Audit events";
 routeLabels["/developer/evals"] = "Ask evals";
 routeLabels["/developer/security-producers"] = "Security producers";
 routeLabels["/controls/builder"] = "Control builder";
