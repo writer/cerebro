@@ -79,6 +79,7 @@ ALLOWED_FIXTURE_HOST_SUFFIXES = (
 # Public, provider-controlled origins present in provenance-backed genuine API
 # responses. Keep these exact: broad provider suffixes could admit tenant URLs.
 ALLOWED_PUBLIC_PROVIDER_HOSTS = {
+    "api.datadoghq.com",
     "archive.ubuntu.com",
     "avatars.githubusercontent.com",
     "bugs.launchpad.net",
@@ -88,6 +89,7 @@ ALLOWED_PUBLIC_PROVIDER_HOSTS = {
     "developers.hubspot.com",
     "discourse.ubuntu.com",
     "dockr.ly",
+    "docs.datadoghq.com",
     "docs.google.com",
     "docs.servicenow.com",
     "fivetran.com",
@@ -97,6 +99,9 @@ ALLOWED_PUBLIC_PROVIDER_HOSTS = {
     "launchpad.net",
     "learn.microsoft.com",
     "logos.haveibeenpwned.com",
+    "nvd.nist.gov",
+    "ok11static.oktacdn.com",
+    "ok12static.oktacdn.com",
     "raw.githubusercontent.com",
     "secure.gravatar.com",
     "serverfault.com",

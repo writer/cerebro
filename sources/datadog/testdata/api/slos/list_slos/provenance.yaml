@@ -1,0 +1,32 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: slos
+case: list_slos
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v1/slo?limit=2
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2024-01-19T20:23:49Z"
+    sha256: b4383a1c619d7bd9608487c59ea85f52981ec79938e6a55df1ca95bfffd97f9d
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].creator.email
+        - $.data[0].creator.handle
+        - $.data[1].creator.email
+        - $.data[1].creator.handle
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v1/Feature_Service_Level_Objectives/Scenario_Get_all_SLOs_returns_OK_response_with_pagination.yaml
+    artifact_sha256: 383a61da0d343723ceb5dfc8a85de8e4b541ea579035954bcd9d6e672c5339be
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    freshness: historical
+    capture_time_basis: artifact_commit
