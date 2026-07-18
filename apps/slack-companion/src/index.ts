@@ -70,6 +70,8 @@ export * from "./question-work/dispatch-policy.js";
 export * from "./question-work/ports.js";
 export * from "./question-work/reference-store.js";
 export * from "./thread-binding.js";
+export * from "./triage/contracts.js";
+export * from "./triage/policy.js";
 export * from "./transport/contracts.js";
 export * from "./transport/handler.js";
 export * from "./transport/normalization.js";
