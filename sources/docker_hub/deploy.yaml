@@ -4,9 +4,12 @@ secretKeys:
 runtimes:
   - localId: repositories
     config:
+      auth_model: bearer_token
       family: repositories
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v2/user/
+      health_path: /v2/namespaces/${config.namespace}/repositories/${config.repository}
+      namespace: env:DOCKER_HUB_NAMESPACE
+      repository: env:DOCKER_HUB_REPOSITORY
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
