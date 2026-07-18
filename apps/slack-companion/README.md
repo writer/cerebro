@@ -45,6 +45,10 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+## Command and delivery projections
+
+`encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with
@@ -85,7 +89,6 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
-
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
