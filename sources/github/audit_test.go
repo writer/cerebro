@@ -12,12 +12,13 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	findingrules "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/sources/internal/githubaudit"
 )
 
 func TestAuditRawNormalizesProviderTimestampsToUTC(t *testing.T) {
 	providerZone := time.FixedZone("provider", -7*60*60)
 	stamp := time.Date(2022, 8, 29, 22, 16, 50, 662000000, providerZone)
-	raw, err := auditRaw(&gogithub.AuditEntry{
+	raw, err := githubaudit.RawEntry(&gogithub.AuditEntry{
 		Timestamp: &gogithub.Timestamp{Time: stamp},
 		CreatedAt: &gogithub.Timestamp{Time: stamp},
 	})
