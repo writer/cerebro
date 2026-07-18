@@ -1,0 +1,16 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: appwrite
+family: continent
+case: continents
+replay_test: source_test.go#TestSourceReplaysCapturedContinents
+request:
+    method: GET
+    url: https://cloud.appwrite.io/v1/locale/continents
+response:
+    status: 200
+    content_type: application/json; charset=UTF-8
+    captured_at: "2026-07-18T08:06:26Z"
+    sha256: ac9892d3f155e668ff096301936c487a5b8767b53211edb48cbfd948da7569d7
+sanitization:
+    tool: sourcefixture
+    version: 1

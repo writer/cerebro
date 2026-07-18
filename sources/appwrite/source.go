@@ -18,7 +18,7 @@ const (
 	sourceID               = "appwrite"
 	defaultFamily          = familyTeam
 	defaultHealthPath      = "/teams"
-	defaultBaseURLTemplate = "https://appwrite.io/v1"
+	defaultBaseURLTemplate = "https://cloud.appwrite.io/v1"
 	tokenHeader            = ""
 	tokenScheme            = "Token"
 	familyTeam             = "team"
@@ -83,11 +83,17 @@ func New() (*Source, error) {
 				Name:             familyContinent,
 				Path:             "/locale/continents",
 				URNKind:          "appwrite_continent",
-				IDKeys:           []string{"name", "id", "urn", "resource_urn"},
+				IDKeys:           []string{"code", "name"},
 				ListKeys:         []string{"continents"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "name", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "name", "resource_name": "name", "resource_type": "continent", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "continent", "source_system": "appwrite"},
+				Attributes:       map[string]string{"id": "code", "name": "name", "provider_id": "code", "resource_id": "code", "resource_name": "name", "source_event_id": "code|name"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "continent", "schema": "continent", "source_system": "appwrite"},
+				Config: jsonapi.FamilyConfig{
+					AuthModel:        "none",
+					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					EncodeURNID:      true,
+					ResourceURNKind:  "appwrite_continent",
+				},
 			},
 		},
 	})

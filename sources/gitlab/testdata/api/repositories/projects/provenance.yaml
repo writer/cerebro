@@ -1,0 +1,21 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: gitlab
+family: repositories
+case: projects
+replay_test: source_test.go#TestSourceReplaysCapturedPublicFamilies
+request:
+    method: GET
+    url: https://gitlab.com/api/v4/projects?search=gitlab&simple=true&per_page=1&order_by=id
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:06:52Z"
+    sha256: b39d72a5e4d3451e65d9fe64a1f8ecbb97847314223c49fe0f1f9a92efa63327
+    headers:
+        Link: <https://gitlab.com/api/v4/projects?imported=false&include_hidden=false&membership=false&order_by=id&owned=false&page=2&per_page=1&repository_checksum_failed=false&search=gitlab&simple=true&sort=desc&starred=false&statistics=false&wiki_checksum_failed=false&with_custom_attributes=false&with_issues_enabled=false&with_merge_requests_enabled=false>; rel="next", <https://gitlab.com/api/v4/projects?imported=false&include_hidden=false&membership=false&order_by=id&owned=false&page=1&per_page=1&repository_checksum_failed=false&search=gitlab&simple=true&sort=desc&starred=false&statistics=false&wiki_checksum_failed=false&with_custom_attributes=false&with_issues_enabled=false&with_merge_requests_enabled=false>; rel="first"
+        X-Next-Page: "2"
+        X-Page: "1"
+        X-Per-Page: "1"
+sanitization:
+    tool: sourcefixture
+    version: 1

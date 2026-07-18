@@ -6,12 +6,73 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/sources/internal/fivetranapi"
 )
+
+func TestSourceReplaysCapturedPublicConnectorTypes(t *testing.T) {
+	bundle, err := sourcefixture.FindBundle("../..", sourceID, fivetranapi.FamilyPublicConnectorTypes, "connector_types")
+	if err != nil {
+		t.Fatalf("FindBundle() error = %v", err)
+	}
+	const providerPath = "/public/connector-types"
+	if !strings.HasSuffix(bundle.Manifest.Request.URL, providerPath) {
+		t.Fatalf("capture URL = %q, want suffix %q", bundle.Manifest.Request.URL, providerPath)
+	}
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want empty for public connector metadata", got)
+		}
+		if r.URL.Path != providerPath {
+			t.Fatalf("path = %q, want %q", r.URL.Path, providerPath)
+		}
+		if r.URL.RawQuery != "" {
+			t.Fatalf("query = %q, want empty", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", bundle.Manifest.Response.ContentType)
+		w.WriteHeader(bundle.Manifest.Response.Status)
+		_, _ = w.Write(bundle.Payload)
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    fivetranapi.FamilyPublicConnectorTypes,
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 803 {
+		t.Fatalf("events = %d, want 803 captured connector types", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "fivetran.public_connector_types" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.Attributes["resource_id"] != "15five" || event.Attributes["resource_name"] != "15Five" {
+		t.Fatalf("connector attributes = %#v", event.Attributes)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
+		t.Fatalf("StabilizeEvents() error = %v", err)
+	}
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", fivetranapi.FamilyPublicConnectorTypes, pull.Events, urns, os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES") == "1"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSourceCheckAndReadUsers(t *testing.T) {
 	source := newTestSource(t)
@@ -81,6 +142,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 		singleton            bool
 		wantLimit            string
 		wantScopedResourceID bool
+		public               bool
 	}{
 		{
 			name:      "account info",
@@ -373,6 +435,8 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			kind:      "fivetran.public_connector_types",
 			attrKey:   "resource_id",
 			attrValue: "postgres",
+			wantLimit: "none",
+			public:    true,
 		},
 		{
 			name:      "connector metadata",
@@ -458,7 +522,16 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := newTestSource(t)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requireFivetranHeaders(t, r, tt.accept)
+				if tt.public {
+					if got := r.Header.Get("Authorization"); got != "" {
+						t.Fatalf("Authorization = %q, want empty", got)
+					}
+					if got := r.Header.Get("Accept"); got != tt.accept {
+						t.Fatalf("Accept = %q, want %q", got, tt.accept)
+					}
+				} else {
+					requireFivetranHeaders(t, r, tt.accept)
+				}
 				if r.URL.Path != tt.path {
 					t.Fatalf("path = %q, want %s", r.URL.Path, tt.path)
 				}
@@ -479,6 +552,10 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				if tt.singleton {
 					_ = json.NewEncoder(w).Encode(map[string]any{"code": "Success", "data": tt.item})
+					return
+				}
+				if tt.public {
+					_ = json.NewEncoder(w).Encode(map[string]any{"code": "Success", "data": []map[string]any{tt.item}})
 					return
 				}
 				_ = json.NewEncoder(w).Encode(fivetranList(tt.item, ""))
@@ -1056,6 +1133,7 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
 		Source:          source,
 		FamilyConfigs:   familyConfigs,
+		MaxPages:        1000,
 		RequireDiscover: true,
 	})
 }
