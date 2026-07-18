@@ -111,6 +111,19 @@ updates:
           - "golang"
           - "alpine"
 
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      web-base-images:
+        patterns:
+          - "node"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
