@@ -51,6 +51,14 @@ Hosts should record the message parts Slack accepted, not an internal draft. Eva
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
 
+## History learning admission
+
+`slackLearningCandidateRejection` classifies a host-supplied message projection
+before it can become a learning candidate. Machine-authored messages, Slack
+subtypes, incomplete records, empty text, and direct mentions of the companion
+are rejected with stable reason codes. Slack history fetching, authorization,
+storage, and learning execution remain host-owned.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with
