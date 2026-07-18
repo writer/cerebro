@@ -72,6 +72,13 @@ func TestComplianceSourceCheckUsesItsOwnRegisteredFact(t *testing.T) {
 	}
 }
 
+func TestComplianceAssuranceDecisionKindIsRegistered(t *testing.T) {
+	t.Parallel()
+	if !KindRegistered(EventKindComplianceAssuranceDecisionRecorded) {
+		t.Fatalf("assurance decision kind %q is not registered", EventKindComplianceAssuranceDecisionRecorded)
+	}
+}
+
 func TestComplianceAggregateIdentityIncludesAggregateType(t *testing.T) {
 	t.Parallel()
 	base := ComplianceAggregateRecorded{
