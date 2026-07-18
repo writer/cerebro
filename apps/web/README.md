@@ -27,7 +27,7 @@ npm run e2e:web:fixtures --workspace @writer/cerebro-web
 
 `e2e:web:fixtures` starts the web application with synthetic, local fixture data and validates its public routes in Chromium. It does not start a Cerebro service or persistent stores; real service integration remains a separate test lane.
 
-Run the real-service integration when Docker and Go are available:
+Run the real-service integration when Docker, Go, and Rust are available:
 
 ```sh
 npm run e2e:grc:local --workspace @writer/cerebro-web

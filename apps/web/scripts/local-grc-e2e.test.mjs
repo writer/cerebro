@@ -136,6 +136,14 @@ describe("real-service E2E isolation", () => {
     expect(runner).not.toContain("NEXT_PUBLIC_CEREBRO_API_BASE: apiBase");
   });
 
+  it("builds and pins the native admission worker for the local API", async () => {
+    const runnerPath = fileURLToPath(new URL("./local-grc-e2e.mjs", import.meta.url));
+    const runner = await readFile(runnerPath, "utf8");
+    expect(runner).toContain('requireCommand("cargo", ["--version"])');
+    expect(runner).toContain('"cerebro-sourceruntime-eventadmission"');
+    expect(runner).toContain("CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary");
+  });
+
   it("requires visible seeded data and a successful API response in Chromium", () => {
     expect(browserDataContract("/risk-inbox")).toEqual({
       apiPath: "/api/cerebro/grc/findings",

@@ -106,6 +106,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Set up Rust
+        run: rustup toolchain install 1.93.1 --profile minimal
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
