@@ -15,6 +15,8 @@ import type {
   TriageSuggestionV1,
 } from "./contracts.js";
 
+export * from "./output.js";
+
 const TRIAGE_TRANSITIONS: Readonly<Record<AlertTriageStateV1, readonly AlertTriageStateV1[]>> = {
   awaiting_evidence: ["investigating", "ready_for_decision", "suppressed"],
   closed: [],
