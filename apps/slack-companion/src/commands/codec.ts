@@ -1,3 +1,5 @@
+import { TextDecoder } from "node:util";
+
 const MAX_ENCODED_VALUE_LENGTH = 2_000;
 const MAX_ARGUMENTS = 32;
 const MAX_PARAMETERS = 16;
@@ -29,7 +31,9 @@ export function encodeSlackCommandEnvelope(input: SlackCommandEnvelopeV1): strin
 }
 
 export function decodeSlackCommandEnvelope(value: string): SlackCommandEnvelopeV1 {
-  return validateCommandEnvelope(decodeValue(value));
+  const envelope = validateCommandEnvelope(decodeValue(value));
+  requireCanonicalEnvelope(value, envelope);
+  return envelope;
 }
 
 export function encodeSlackActionEnvelope(input: SlackActionEnvelopeV1): string {
@@ -37,7 +41,9 @@ export function encodeSlackActionEnvelope(input: SlackActionEnvelopeV1): string 
 }
 
 export function decodeSlackActionEnvelope(value: string): SlackActionEnvelopeV1 {
-  return validateActionEnvelope(decodeValue(value));
+  const envelope = validateActionEnvelope(decodeValue(value));
+  requireCanonicalEnvelope(value, envelope);
+  return envelope;
 }
 
 function validateCommandEnvelope(value: unknown): SlackCommandEnvelopeV1 {
@@ -94,7 +100,9 @@ function validateActionEnvelope(value: unknown): SlackActionEnvelopeV1 {
 function optionalParameters(value: unknown): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
   const parameters = record(value, "Slack action parameters");
-  const entries = Object.entries(parameters).sort(([left], [right]) => left.localeCompare(right));
+  const entries = Object.entries(parameters).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
   if (entries.length > MAX_PARAMETERS) {
     throw new SlackCommandCodecError("Slack action has too many parameters.");
   }
@@ -141,15 +149,21 @@ function decodeValue(value: string): unknown {
     if (bytes.toString("base64url") !== value) {
       throw new SlackCommandCodecError("Slack encoded value is not canonical.");
     }
-    decoded = bytes.toString("utf8");
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
     if (error instanceof SlackCommandCodecError) throw error;
-    throw new SlackCommandCodecError("Slack encoded value is invalid.");
+    throw new SlackCommandCodecError("Slack encoded value is not valid UTF-8.");
   }
   try {
     return JSON.parse(decoded) as unknown;
   } catch {
     throw new SlackCommandCodecError("Slack encoded value does not contain JSON.");
+  }
+}
+
+function requireCanonicalEnvelope(value: string, envelope: object): void {
+  if (encodeValue(envelope) !== value) {
+    throw new SlackCommandCodecError("Slack encoded value is not canonical.");
   }
 }
 

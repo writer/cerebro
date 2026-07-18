@@ -5,7 +5,11 @@ import {
   projectAssistantTurnProgress,
   projectSlackMultipartDelivery,
   projectSlackVisibleStatus,
+  SLACK_VISIBLE_STATUS_CODES,
   SlackMultipartProjectionError,
+  SlackProjectionError,
+  type AssistantTurnProgressV1,
+  type SlackVisibleStatus,
 } from "../src/index.js";
 
 test("status projections keep stable ids without choosing a Slack transport", () => {
@@ -17,17 +21,21 @@ test("status projections keep stable ids without choosing a Slack transport", ()
     observed_at: "2026-07-18T10:00:00.000Z",
     run_id: "run-1",
   });
-  assert.deepEqual(status, {
+  const { projection_id: statusProjectionId, ...statusTruth } = status;
+  assert.deepEqual(statusTruth, {
     code: "queued",
     expires_at: "2026-07-18T10:05:00.000Z",
     kind: "run_status",
     observed_at: "2026-07-18T10:00:00.000Z",
     operation: "upsert",
-    projection_id: "run-1:queued:1",
     run_id: "run-1",
     schema_version: "slack-status-projection/v1",
     text: "Cerebro saved this request. It is queued for execution.",
   });
+  assert.match(
+    statusProjectionId,
+    /^run-1:queued:1:sha256:[0-9a-f]{64}$/,
+  );
 
   const progress = projectAssistantTurnProgress("run-1", {
     execution_lane: "investigate",
@@ -38,8 +46,87 @@ test("status projections keep stable ids without choosing a Slack transport", ()
     status: "Checking the available evidence",
   });
   assert.equal(progress.code, "assistant_checking");
-  assert.equal(progress.projection_id, "run-1:assistant-progress:2");
+  assert.match(
+    progress.projection_id,
+    /^run-1:assistant-progress:2:sha256:[0-9a-f]{64}$/,
+  );
   assert.equal(progress.operation, "upsert");
+});
+
+test("status projection ids bind truth while exact retries stay stable", () => {
+  const status: SlackVisibleStatus = {
+    code: "queued",
+    expires_at: "2026-07-18T10:05:00.000Z",
+    idempotency_key: "run-1:queued:1",
+    message: "Cerebro saved this request. It is queued for execution.",
+    observed_at: "2026-07-18T10:00:00.000Z",
+    run_id: "run-1",
+  };
+  const first = projectSlackVisibleStatus(status);
+  const retry = projectSlackVisibleStatus({ ...status });
+  const changed = projectSlackVisibleStatus({
+    ...status,
+    message: "Cerebro saved this request. Service capacity is reduced.",
+  });
+
+  assert.equal(retry.projection_id, first.projection_id);
+  assert.notEqual(changed.projection_id, first.projection_id);
+
+  const progress: AssistantTurnProgressV1 = {
+    occurred_at: "2026-07-18T10:00:01.000Z",
+    phase: "checking",
+    schema_version: "assistant-turn-progress/v1",
+    sequence: 2,
+    status: "Checking the available evidence",
+  };
+  const progressFirst = projectAssistantTurnProgress("run-1", progress);
+  const progressRetry = projectAssistantTurnProgress("run-1", { ...progress });
+  const progressChanged = projectAssistantTurnProgress("run-1", {
+    ...progress,
+    phase: "synthesizing",
+    status: "Preparing the response",
+  });
+
+  assert.equal(progressRetry.projection_id, progressFirst.projection_id);
+  assert.notEqual(progressChanged.projection_id, progressFirst.projection_id);
+});
+
+test("status projections enforce contract versions and the runtime code catalog", () => {
+  for (const code of SLACK_VISIBLE_STATUS_CODES) {
+    const projection = projectSlackVisibleStatus({
+      code,
+      expires_at: "2026-07-18T10:05:00.000Z",
+      idempotency_key: `run-1:${code}:1`,
+      message: `Status ${code}`,
+      observed_at: "2026-07-18T10:00:00.000Z",
+      run_id: "run-1",
+    });
+    assert.equal(projection.code, code);
+  }
+
+  assert.throws(
+    () =>
+      projectSlackVisibleStatus({
+        code: "not_in_catalog",
+        expires_at: "2026-07-18T10:05:00.000Z",
+        idempotency_key: "run-1:unknown:1",
+        message: "Unknown status",
+        observed_at: "2026-07-18T10:00:00.000Z",
+        run_id: "run-1",
+      } as unknown as SlackVisibleStatus),
+    /status code is unsupported/,
+  );
+  assert.throws(
+    () =>
+      projectAssistantTurnProgress("run-1", {
+        occurred_at: "2026-07-18T10:00:01.000Z",
+        phase: "checking",
+        schema_version: "assistant-turn-progress/v2",
+        sequence: 2,
+        status: "Checking the available evidence",
+      } as unknown as AssistantTurnProgressV1),
+    SlackProjectionError,
+  );
 });
 
 test("multipart projections preserve exact part acceptance and partial state", () => {
