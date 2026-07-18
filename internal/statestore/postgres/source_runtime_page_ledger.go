@@ -69,10 +69,15 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   runtime_id TEXT NOT NULL,
   source_id TEXT NOT NULL,
   event_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL DEFAULT '',
   event_sha256 TEXT NOT NULL,
   rejection_code TEXT NOT NULL,
   rejection_field TEXT NOT NULL DEFAULT '',
   event_json JSONB NOT NULL,
+  occurred_at TIMESTAMPTZ,
+  admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
+  admission_result_sha256 TEXT NOT NULL DEFAULT '',
   state TEXT NOT NULL DEFAULT 'captured' CHECK (state IN ('captured', 'pending', 'resolved', 'discarded')),
   occurrence_count BIGINT NOT NULL DEFAULT 0,
   first_observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -80,6 +85,12 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (tenant_id, quarantine_id)
 )`,
+	`ALTER TABLE source_runtime_event_quarantine
+  ADD COLUMN IF NOT EXISTS event_kind TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtime_event_quarantine_runtime_state_idx ON source_runtime_event_quarantine (tenant_id, runtime_id, state, last_observed_at DESC, quarantine_id DESC)`,
 	`CREATE TABLE IF NOT EXISTS source_runtime_page_quarantine (
   attempt_id TEXT NOT NULL REFERENCES source_runtime_page_ledger(attempt_id) ON DELETE CASCADE,
@@ -178,22 +189,31 @@ VALUES ($1, $2, $3, $4::jsonb)`, attemptID, index, event.GetId(), string(payload
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO source_runtime_event_quarantine (
-  tenant_id, quarantine_id, runtime_id, source_id, event_id, event_sha256,
-  rejection_code, rejection_field, event_json
+  tenant_id, quarantine_id, runtime_id, source_id, event_id, event_kind,
+  event_sha256, rejection_code, rejection_field, event_json, occurred_at,
+  admission_abi_version, admission_contracts_sha256, admission_result_sha256
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)
 ON CONFLICT (tenant_id, quarantine_id)
 DO UPDATE SET event_json = EXCLUDED.event_json,
+              admission_abi_version = EXCLUDED.admission_abi_version,
+              admission_contracts_sha256 = EXCLUDED.admission_contracts_sha256,
+              admission_result_sha256 = EXCLUDED.admission_result_sha256,
               updated_at = NOW()`,
 			strings.TrimSpace(attempt.TenantID),
 			strings.TrimSpace(quarantine.ID),
 			strings.TrimSpace(attempt.RuntimeID),
 			strings.TrimSpace(attempt.SourceID),
 			strings.TrimSpace(quarantine.EventID),
+			strings.TrimSpace(quarantine.Event.GetKind()),
 			strings.TrimSpace(quarantine.EventSHA256),
 			strings.TrimSpace(quarantine.Code),
 			strings.TrimSpace(quarantine.Field),
 			string(payload),
+			sourceRuntimeEventOccurredAt(quarantine.Event),
+			attempt.Admission.ABIVersion,
+			strings.TrimSpace(attempt.Admission.ContractsSHA256),
+			strings.TrimSpace(attempt.Admission.ResultSHA256),
 		); err != nil {
 			return fmt.Errorf("upsert source runtime quarantine %q: %w", quarantine.ID, err)
 		}
@@ -345,3 +365,10 @@ func (s *Store) ensureSourceRuntimePageLedgerTables(ctx context.Context) error {
 
 var _ ports.SourceRuntimePageLedgerStore = (*Store)(nil)
 var _ sourceRuntimeExecutor = (*sql.Tx)(nil)
+
+func sourceRuntimeEventOccurredAt(event *cerebrov1.EventEnvelope) any {
+	if event == nil || event.GetOccurredAt() == nil || event.GetOccurredAt().CheckValid() != nil {
+		return nil
+	}
+	return event.GetOccurredAt().AsTime().UTC()
+}

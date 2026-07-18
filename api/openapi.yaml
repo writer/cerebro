@@ -1571,9 +1571,24 @@ paths:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: state
+          in: query
+          description: Queue state to return. Defaults to pending.
+          schema:
+            type: string
+            enum: [pending, resolved, discarded]
+            default: pending
+        - name: limit
+          in: query
+          description: Maximum number of quarantine records to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
       responses:
         '200':
-          description: Operator-inspectable invalid event diagnostics.
+          description: Durable quarantined event diagnostics. Stored event payloads are never returned.
           content:
             application/json:
               schema:
@@ -14956,6 +14971,8 @@ components:
     SourceRuntimeInvalidEventRecord:
       type: object
       properties:
+        id:
+          type: string
         runtime_id:
           type: string
         source_id:
@@ -14982,6 +14999,29 @@ components:
         source_event_id:
           type: string
         diagnostic:
+          type: string
+        queue_state:
+          type: string
+          enum: [pending, resolved, discarded]
+        event_kind:
+          type: string
+        event_sha256:
+          type: string
+        occurrence_count:
+          type: integer
+          minimum: 0
+        first_observed_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+        admission_abi_version:
+          type: integer
+          minimum: 0
+        admission_contracts_sha256:
+          type: string
+        admission_result_sha256:
           type: string
     SourceRuntimeHealthGraphRun:
       type: object

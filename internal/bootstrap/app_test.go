@@ -756,6 +756,18 @@ type stubRuntimeStore struct {
 	runtimeIndexWatermarks          []uint64
 }
 
+type quarantineRuntimeStore struct {
+	*stubRuntimeStore
+	records []ports.SourceRuntimeQuarantineRecord
+	filter  ports.SourceRuntimeQuarantineFilter
+	err     error
+}
+
+func (s *quarantineRuntimeStore) ListSourceRuntimeQuarantines(_ context.Context, filter ports.SourceRuntimeQuarantineFilter) ([]ports.SourceRuntimeQuarantineRecord, error) {
+	s.filter = filter
+	return append([]ports.SourceRuntimeQuarantineRecord(nil), s.records...), s.err
+}
+
 // leaseAwareRuntimeStore embeds stubRuntimeStore and additionally
 // implements ports.SourceRuntimeLeaseStore so the bootstrap layer's
 // SyncWithLease path can be exercised end-to-end. holdsAll=true makes
@@ -5134,6 +5146,102 @@ func TestSourceRuntimeInvalidEventsEndpointReturnsSafeDiagnostic(t *testing.T) {
 	}
 	if _, present := record["payload"]; present {
 		t.Fatalf("invalid event leaked payload: %#v", record["payload"])
+	}
+}
+
+func TestSourceRuntimeInvalidEventsEndpointListsDurablePendingQueueWithoutPayload(t *testing.T) {
+	firstObserved := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	lastObserved := firstObserved.Add(5 * time.Minute)
+	store := &quarantineRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-directory": {Id: "writer-directory", SourceId: "directory", TenantId: "writer"},
+		}},
+		records: []ports.SourceRuntimeQuarantineRecord{{
+			ID:                       "quarantine-1",
+			RuntimeID:                "writer-directory",
+			SourceID:                 "directory",
+			TenantID:                 "writer",
+			EventID:                  "event-1",
+			EventKind:                "directory.identity",
+			EventSHA256:              "sha256:event",
+			FailureCategory:          "missing_required_payload_field",
+			FailureField:             "identity.id",
+			State:                    ports.SourceRuntimeQuarantineStatePending,
+			OccurrenceCount:          2,
+			FirstObservedAt:          firstObserved,
+			LastObservedAt:           lastObserved,
+			OccurredAt:               firstObserved.Add(-time.Minute),
+			AdmissionABIVersion:      2,
+			AdmissionContractsSHA256: "sha256:contracts",
+			AdmissionResultSHA256:    "sha256:result",
+		}},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/source-runtimes/writer-directory/invalid-events?limit=2&state=pending")
+	if err != nil {
+		t.Fatalf("GET durable invalid events error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET durable invalid events status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode durable invalid events response: %v", err)
+	}
+	events, ok := payload["events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("durable invalid events = %#v, want one", payload["events"])
+	}
+	record, ok := events[0].(map[string]any)
+	if !ok {
+		t.Fatalf("durable invalid event = %#v, want object", events[0])
+	}
+	if record["id"] != "quarantine-1" || record["queue_state"] != "pending" || record["event_kind"] != "directory.identity" || record["occurrence_count"] != float64(2) {
+		t.Fatalf("durable invalid event identity/state = %#v", record)
+	}
+	if record["diagnostic"] != "Missing required payload field identity.id" {
+		t.Fatalf("durable invalid event diagnostic = %#v", record["diagnostic"])
+	}
+	for _, forbidden := range []string{"payload", "event_json", "attributes"} {
+		if _, present := record[forbidden]; present {
+			t.Fatalf("durable invalid event leaked %s: %#v", forbidden, record[forbidden])
+		}
+	}
+	if store.filter.TenantID != "writer" || store.filter.RuntimeID != "writer-directory" || store.filter.State != ports.SourceRuntimeQuarantineStatePending || store.filter.Limit != 2 {
+		t.Fatalf("durable quarantine filter = %#v, want exact tenant/runtime/state/limit", store.filter)
+	}
+
+	store.records = nil
+	store.runtimes["writer-directory"].Config = map[string]string{
+		runtimeLastFailureCategoryConfigKey: "missing_required_attribute",
+		runtimeLastInvalidFieldConfigKey:    "legacy_field",
+	}
+	empty, err := server.Client().Get(server.URL + "/source-runtimes/writer-directory/invalid-events")
+	if err != nil {
+		t.Fatalf("GET empty durable invalid events error = %v", err)
+	}
+	defer func() { _ = empty.Body.Close() }()
+	var emptyPayload struct {
+		Events []sourceRuntimeInvalidEventRecord `json:"events"`
+	}
+	if err := json.NewDecoder(empty.Body).Decode(&emptyPayload); err != nil {
+		t.Fatalf("decode empty durable invalid events response: %v", err)
+	}
+	if len(emptyPayload.Events) != 0 {
+		t.Fatalf("empty durable invalid events resurrected legacy diagnostic: %#v", emptyPayload.Events)
+	}
+
+	invalid, err := server.Client().Get(server.URL + "/source-runtimes/writer-directory/invalid-events?limit=0")
+	if err != nil {
+		t.Fatalf("GET invalid durable invalid-events limit error = %v", err)
+	}
+	defer func() { _ = invalid.Body.Close() }()
+	if invalid.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET invalid durable invalid-events limit status = %d, want %d", invalid.StatusCode, http.StatusBadRequest)
 	}
 }
 
