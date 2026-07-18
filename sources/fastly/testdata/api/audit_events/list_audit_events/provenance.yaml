@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/vnd.api+json
     captured_at: "2021-11-03T16:38:53Z"
-    sha256: 815b1036a5a4e6747f21e9751edf425fa0585e80073a83f3a95dc7dd1f64f784
+    sha256: 362ba85b9d4eca605b40109453d3486605d7b4c8bfde69317976b1dcb08ee9a4
 sanitization:
     tool: sourcefixture
     version: 1
@@ -25,6 +25,8 @@ sanitization:
         - $.data[0].attributes.service_id
         - $.data[0].attributes.user_id
         - $.data[0].id
+        - $.links.last
+        - $.links.next
 origin:
     type: upstream_recording
     repository: https://github.com/fastly/go-fastly

@@ -26,8 +26,8 @@
     }
   ],
   "links": {
-    "last": "https://api.fastly.com/events?page[number]=197261\u0026page[size]=1",
-    "next": "https://api.fastly.com/events?page[number]=2\u0026page[size]=1"
+    "last": "https://fastly.example.test/events?page[number]=197261\u0026page[size]=1",
+    "next": "https://fastly.example.test/events?page[number]=2\u0026page[size]=1"
   },
   "meta": {
     "current_page": 1,

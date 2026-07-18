@@ -91,7 +91,7 @@ func sanitizeTextValues(value any, valuePath string, changed *[]string) any {
 		}
 		return typed
 	case string:
-		sanitized := SanitizeImportedText(typed)
+		sanitized := sanitizeImportedJSONText(typed)
 		if sanitized != typed {
 			*changed = append(*changed, valuePath)
 		}
@@ -176,7 +176,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 		return typed, nil
 	case string:
 		replaced := emailPattern.ReplaceAllStringFunc(typed, exampleEmail)
-		replaced = SanitizeImportedText(replaced)
+		replaced = sanitizeImportedJSONText(replaced)
 		if replaced != typed {
 			*changed = append(*changed, valuePath)
 		}
@@ -314,6 +314,14 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 func SanitizeImportedText(value string) string {
 	sanitized := sanitizePlainImportedText(value)
 	return sanitizeEncodedImportedText(sanitized)
+}
+
+func sanitizeImportedJSONText(value string) string {
+	sanitized := SanitizeImportedText(value)
+	return strings.NewReplacer(
+		"https://api.fastly.com", "https://fastly.example.test",
+		"http://api.fastly.com", "https://fastly.example.test",
+	).Replace(sanitized)
 }
 
 func sanitizePlainImportedText(value string) string {
