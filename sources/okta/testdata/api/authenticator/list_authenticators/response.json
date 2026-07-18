@@ -1,0 +1,239 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6/lifecycle/deactivate"
+      },
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7reTh1KIzB5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:28.000Z",
+    "id": "autl0by7reTh1KIzB5d6",
+    "key": "okta_email",
+    "lastUpdated": "2021-04-20T13:05:44.000Z",
+    "name": "Email",
+    "settings": {
+      "allowedFor": "any",
+      "tokenLifetimeInMinutes": 5
+    },
+    "status": "ACTIVE",
+    "type": "email"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6/lifecycle/deactivate"
+      },
+      "enroll": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/idp/authenticators"
+      },
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl09jklzOEDvrjy5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:50.000Z",
+    "id": "autl09jklzOEDvrjy5d6",
+    "key": "okta_verify",
+    "lastUpdated": "2021-09-17T12:34:36.000Z",
+    "name": "Okta Verify",
+    "settings": {
+      "appInstanceId": "",
+      "channelBinding": {
+        "required": "HIGH_RISK_ONLY",
+        "style": "NUMBER_CHALLENGE"
+      },
+      "compliance": {
+        "fips": "OPTIONAL"
+      },
+      "userVerification": "PREFERRED"
+    },
+    "status": "ACTIVE",
+    "type": "app"
+  },
+  {
+    "_links": {
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7qz31DYkNg5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7qz31DYkNg5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:28.000Z",
+    "id": "autl0by7qz31DYkNg5d6",
+    "key": "okta_password",
+    "lastUpdated": "2021-04-14T04:34:28.000Z",
+    "name": "Password",
+    "status": "ACTIVE",
+    "type": "password"
+  },
+  {
+    "_links": {
+      "activate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6/lifecycle/activate"
+      },
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7sNXye9Zmh5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:28.000Z",
+    "id": "autl0by7sNXye9Zmh5d6",
+    "key": "phone_number",
+    "lastUpdated": "2021-09-17T12:38:48.000Z",
+    "name": "Phone",
+    "settings": {
+      "allowedFor": "recovery"
+    },
+    "status": "INACTIVE",
+    "type": "phone"
+  },
+  {
+    "_links": {
+      "activate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6/lifecycle/activate"
+      },
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7vOCX0FnVY5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:28.000Z",
+    "id": "autl0by7vOCX0FnVY5d6",
+    "key": "webauthn",
+    "lastUpdated": "2021-04-14T04:34:28.000Z",
+    "name": "Security Key or Biometric",
+    "status": "INACTIVE",
+    "type": "security_key"
+  },
+  {
+    "_links": {
+      "deactivate": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6/lifecycle/deactivate"
+      },
+      "methods": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6/methods"
+      },
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "PUT"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/authenticators/autl0by7tbUQEcczi5d6"
+      }
+    },
+    "created": "2021-04-14T04:34:28.000Z",
+    "id": "autl0by7tbUQEcczi5d6",
+    "key": "security_question",
+    "lastUpdated": "2021-04-14T04:34:28.000Z",
+    "name": "Security Question",
+    "settings": {
+      "allowedFor": "recovery"
+    },
+    "status": "ACTIVE",
+    "type": "security_question"
+  }
+]

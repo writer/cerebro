@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: device_assurance
+case: list_device_assurance
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/device-assurances
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2025-09-18T17:51:40Z"
+    sha256: ae584112e077c460f3ea192914aec0f442313a45e19ff4998c607fc3c3f932b0
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_device_assurance_it/TestDeviceAssuranceResource.test_list_device_assurance_policies.yaml
+    artifact_sha256: dc80098c90eede49cc0ad7ad509cbe5805c0442023a513a11bfe044e9c1faaf4
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: response_header

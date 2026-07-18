@@ -1,0 +1,104 @@
+[
+  {
+    "_links": {
+      "apps": {
+        "href": "https://test.okta.com/api/v1/groups/00gc04qatkiyWnGoq4x6/apps"
+      },
+      "logo": [
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-medium.d7fb831bc4e7e1a5d8bd35dfaf405d9e.png",
+          "name": "medium",
+          "type": "image/png"
+        },
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-large.511fcb0de9da185b52589cb14d581c2c.png",
+          "name": "large",
+          "type": "image/png"
+        }
+      ],
+      "users": {
+        "href": "https://test.okta.com/api/v1/groups/00gc04qatkiyWnGoq4x6/users"
+      }
+    },
+    "created": "2020-05-13T13:29:23.000Z",
+    "id": "00gc04qatkiyWnGoq4x6",
+    "lastMembershipUpdated": "2020-08-27T18:15:41.000Z",
+    "lastUpdated": "2020-05-13T13:29:23.000Z",
+    "objectClass": [
+      "okta:user_group"
+    ],
+    "profile": {
+      "description": "All users in your organization",
+      "name": "Everyone"
+    },
+    "type": "BUILT_IN"
+  },
+  {
+    "_links": {
+      "apps": {
+        "href": "https://test.okta.com/api/v1/groups/00gsfaq86mwHfGtjb4x6/apps"
+      },
+      "logo": [
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-medium.d7fb831bc4e7e1a5d8bd35dfaf405d9e.png",
+          "name": "medium",
+          "type": "image/png"
+        },
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-large.511fcb0de9da185b52589cb14d581c2c.png",
+          "name": "large",
+          "type": "image/png"
+        }
+      ],
+      "users": {
+        "href": "https://test.okta.com/api/v1/groups/00gsfaq86mwHfGtjb4x6/users"
+      }
+    },
+    "created": "2020-08-27T18:15:50.000Z",
+    "id": "00gsfaq86mwHfGtjb4x6",
+    "lastMembershipUpdated": "2020-08-27T18:15:50.000Z",
+    "lastUpdated": "2020-08-27T18:15:50.000Z",
+    "objectClass": [
+      "okta:user_group"
+    ],
+    "profile": {
+      "description": null,
+      "name": "Group-Target-Test"
+    },
+    "type": "OKTA_GROUP"
+  },
+  {
+    "_links": {
+      "apps": {
+        "href": "https://test.okta.com/api/v1/groups/00gc0eqycaP2Eja9f4x6/apps"
+      },
+      "logo": [
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-medium.d7fb831bc4e7e1a5d8bd35dfaf405d9e.png",
+          "name": "medium",
+          "type": "image/png"
+        },
+        {
+          "href": "https://ok11static.oktacdn.com/assets/img/logos/groups/okta-large.511fcb0de9da185b52589cb14d581c2c.png",
+          "name": "large",
+          "type": "image/png"
+        }
+      ],
+      "users": {
+        "href": "https://test.okta.com/api/v1/groups/00gc0eqycaP2Eja9f4x6/users"
+      }
+    },
+    "created": "2020-05-13T15:03:15.000Z",
+    "id": "00gc0eqycaP2Eja9f4x6",
+    "lastMembershipUpdated": "2020-06-17T15:14:37.000Z",
+    "lastUpdated": "2020-05-13T15:03:15.000Z",
+    "objectClass": [
+      "okta:user_group"
+    ],
+    "profile": {
+      "description": "Professional Association of NBA Players",
+      "name": "NBA Players"
+    },
+    "type": "OKTA_GROUP"
+  }
+]

@@ -1,29 +1,49 @@
 [
   {
-    "id": "okta-admin-role-fixture-1",
+    "id": "okta-writer-okta-com-admin_role-efd917aff6f44b02",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.admin_role",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2020-08-27T18:19:43Z",
     "schema_ref": "okta/admin_role/v1",
     "payload": {
+      "assignment": "USER",
       "domain": "writer.okta.com",
-      "id": "super_admin",
-      "label": "Super Administrator",
-      "user_id": "00u1"
+      "id": "KVJUKUS7IFCE2SKO",
+      "label": "User Administrator",
+      "raw": {
+        "_links": {
+          "assignee": {
+            "href": "https://test.okta.com/api/v1/users/00usfex7wP9lvobJ84x6"
+          }
+        },
+        "assignmentType": "USER",
+        "created": "2020-08-27T18:19:43.000Z",
+        "id": "KVJUKUS7IFCE2SKO",
+        "label": "User Administrator",
+        "lastUpdated": "2020-08-27T18:19:43.000Z",
+        "status": "ACTIVE",
+        "type": "USER_ADMIN"
+      },
+      "status": "ACTIVE",
+      "type": "USER_ADMIN",
+      "user_email": "",
+      "user_id": "00usfex7wP9lvobJ84x6"
     },
     "attributes": {
       "action": "admin.role.assignment",
+      "actor_privileged": "true",
+      "assigned_to": "00usfex7wP9lvobJ84x6",
+      "assignment_type": "USER",
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
       "event_type": "admin.role.assignment",
       "family": "admin_role",
       "is_admin": "true",
-      "role_id": "super_admin",
-      "role_name": "Super Administrator",
-      "role_type": "SUPER_ADMIN",
-      "subject_email": "admin@writer.com",
-      "subject_id": "00u1",
+      "role_id": "KVJUKUS7IFCE2SKO",
+      "role_name": "User Administrator",
+      "role_type": "USER_ADMIN",
+      "status": "ACTIVE",
+      "subject_id": "00usfex7wP9lvobJ84x6",
       "subject_type": "user"
     }
   }

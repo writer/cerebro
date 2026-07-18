@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: user
+case: list_user_factors
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-06-09T06:04:04Z"
+    sha256: a19350730a2ee9557213282f91f1a0e0ca80596f5d6b7cdcbf6f4c4f67e82c79
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_factors_it/TestFactorsResource.test_list_factors_signed_nonce.yaml
+    artifact_sha256: 5a1aaa9fba5e6ddc99b51b5cc4939970bd3ef73b48a4f5e63bb8f5c2ca8447ce
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: response_header

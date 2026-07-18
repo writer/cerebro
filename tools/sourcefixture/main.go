@@ -130,8 +130,12 @@ func importRecording(arguments []string) {
 	recordingTool := flags.String("recording-tool", "", "upstream recording tool")
 	harnessPath := flags.String("harness-path", "", "upstream repository-relative recording harness path")
 	freshness := flags.String("freshness", "current", "current or historical provider-contract compatibility")
+	var declaredChangedFields stringList
 	var removedFields stringList
+	var sanitizeKeys stringList
+	flags.Var(&declaredChangedFields, "changed-field", "manually sanitized request or JSON field path (repeatable)")
 	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every string field with this exact key (repeatable)")
 	if err := flags.Parse(arguments); err != nil {
 		fail(err)
 	}
@@ -144,6 +148,9 @@ func importRecording(arguments []string) {
 		fail(err)
 	}
 	if strings.TrimSpace(*requestURL) != "" {
+		if err := validateSanitizedRequestURL(interaction.Request.URL, strings.TrimSpace(*requestURL)); err != nil {
+			fail(err)
+		}
 		interaction.Request.URL = strings.TrimSpace(*requestURL)
 	}
 	if strings.TrimSpace(*capturedAt) != "" {
@@ -158,10 +165,11 @@ func importRecording(arguments []string) {
 	if interaction.ContentType == "" {
 		fail(fmt.Errorf("recording response has no Content-Type header"))
 	}
-	payload, changedFields, err := sourcefixture.SanitizeImportedJSON(interaction.Payload)
+	payload, changedFields, err := sourcefixture.SanitizeImportedJSONWithKeys(interaction.Payload, sanitizeKeys)
 	if err != nil {
 		fail(err)
 	}
+	changedFields = append(changedFields, declaredChangedFields...)
 	manifest := sourcefixture.Manifest{
 		SourceID:   *sourceID,
 		Family:     *family,
@@ -194,6 +202,15 @@ func importRecording(arguments []string) {
 		fail(err)
 	}
 	fmt.Printf("sourcefixture: imported source=%s family=%s case=%s interaction=%d digest=%s path=%s\n", bundle.Manifest.SourceID, bundle.Manifest.Family, bundle.Manifest.Case, *interactionIndex, bundle.Manifest.Response.SHA256, bundle.ResponsePath)
+}
+
+func validateSanitizedRequestURL(recorded, sanitized string) error {
+	recordedURL, recordedErr := url.ParseRequestURI(recorded)
+	sanitizedURL, sanitizedErr := url.ParseRequestURI(sanitized)
+	if recordedErr != nil || sanitizedErr != nil || recordedURL.Scheme != sanitizedURL.Scheme || !strings.EqualFold(recordedURL.Host, sanitizedURL.Host) || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
+		return errors.New("-url may sanitize query values but must preserve the recorded scheme, host, and path")
+	}
+	return nil
 }
 
 func readBoundedFile(fileName string, limit int64) ([]byte, error) {

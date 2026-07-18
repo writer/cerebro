@@ -1,0 +1,25 @@
+[
+  {
+    "_links": {
+      "deactivate": {
+        "href": "https://test.okta.com/api/v1/logStreams/0oaqd63hmzGmzZgxG1d7/lifecycle/deactivate",
+        "method": "POST"
+      },
+      "self": {
+        "href": "https://test.okta.com/api/v1/logStreams/0oaqd63hmzGmzZgxG1d7",
+        "method": "GET"
+      }
+    },
+    "created": "2025-09-25T08:02:45.000Z",
+    "id": "0oaqd63hmzGmzZgxG1d7",
+    "lastUpdated": "2025-09-25T08:02:45.000Z",
+    "name": "Test List AWS Log Stream",
+    "settings": {
+      "accountId": "123456789012",
+      "eventSourceName": "p",
+      "region": "us-east-1"
+    },
+    "status": "ACTIVE",
+    "type": "aws_eventbridge"
+  }
+]

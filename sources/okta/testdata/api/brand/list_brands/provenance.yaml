@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: brand
+case: list_brands
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/brands
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2021-11-08T14:27:34Z"
+    sha256: ad79c99d36f93d646485d55e923c7398c48278824c7690b326ff32749656a94e
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_brands_it/TestBrandsResource.test_list_brands.yaml
+    artifact_sha256: 79b6178a67c595be00ff5592ef886c3ebacdb3d945e94723880ae098c9798e4d
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: historical
+    capture_time_basis: response_header

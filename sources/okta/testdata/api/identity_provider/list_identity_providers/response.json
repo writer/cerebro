@@ -1,0 +1,95 @@
+[
+  {
+    "_links": {
+      "authorize": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/oauth2/v1/authorize?idp=0oasfdcxsbNFQFf4J4x6\u0026client_id={clientId}\u0026response_type={responseType}\u0026response_mode={responseMode}\u0026scope={scopes}\u0026redirect_uri={redirectUri}\u0026state={state}\u0026nonce={nonce}",
+        "templated": true
+      },
+      "clientRedirectUri": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/oauth2/v1/authorize/callback"
+      }
+    },
+    "created": "2020-08-27T18:16:15.000Z",
+    "id": "0oasfdcxsbNFQFf4J4x6",
+    "issuerMode": "ORG_URL",
+    "lastUpdated": "2020-08-27T18:16:15.000Z",
+    "name": "python_sdk generic",
+    "policy": {
+      "accountLink": {
+        "action": "AUTO",
+        "filter": null
+      },
+      "maxClockSkew": 0,
+      "provisioning": {
+        "action": "AUTO",
+        "conditions": {
+          "deprovisioned": {
+            "action": "NONE"
+          },
+          "suspended": {
+            "action": "NONE"
+          }
+        },
+        "groups": {
+          "action": "NONE"
+        },
+        "profileMaster": false
+      },
+      "subject": {
+        "filter": null,
+        "matchAttribute": null,
+        "matchType": "USERNAME",
+        "userNameTemplate": {
+          "template": "idpuser.email"
+        }
+      }
+    },
+    "protocol": {
+      "credentials": {
+        "client": {
+          "client_id": "your-client-id",
+          "client_secret": ""
+        }
+      },
+      "endpoints": {
+        "authorization": {
+          "binding": "HTTP-REDIRECT",
+          "url": "https://idp.example.com/authorize"
+        },
+        "jwks": {
+          "binding": "HTTP-REDIRECT",
+          "url": "https://idp.example.com/keys"
+        },
+        "token": {
+          "binding": "HTTP-POST",
+          "url": "https://idp.example.com/token"
+        },
+        "userInfo": {
+          "binding": "HTTP-REDIRECT",
+          "url": "https://idp.example.com/userinfo"
+        }
+      },
+      "issuer": {
+        "url": "https://idp.example.com"
+      },
+      "scopes": [
+        "openid",
+        "profile",
+        "email"
+      ],
+      "type": "OIDC"
+    },
+    "status": "ACTIVE",
+    "type": "OIDC"
+  }
+]

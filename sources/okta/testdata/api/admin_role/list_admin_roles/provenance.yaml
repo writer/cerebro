@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: admin_role
+case: list_admin_roles
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/users/00usfex7wP9lvobJ84x6/roles
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:19:44Z"
+    sha256: 0fbcc8a2d46d9e3bd1cb5c598ba2cde8e7ad11be5ba479690ad658cb4770978c
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_users_it/TestUsersResource.test_assign_user_to_role.yaml
+    artifact_sha256: d47da0c7cf007d9be4ae27720149b296bf450a280a9f1db48934651837ad3d7a
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 2
+    freshness: historical
+    capture_time_basis: response_header

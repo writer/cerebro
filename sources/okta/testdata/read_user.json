@@ -1,64 +1,85 @@
 [
   {
-    "id": "okta-user-fixture-1",
+    "id": "okta-writer-okta-com-user-d3b5d6ed21e60fe9",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.user",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2025-01-01T00:00:00Z",
     "schema_ref": "okta/user/v1",
     "payload": {
-      "id": "00u1",
+      "id": "00uFAKEFASTPASS000001",
       "domain": "writer.okta.com",
       "status": "ACTIVE",
+      "timestamps": {
+        "created_at": "2025-01-01T00:00:00Z",
+        "last_login_at": "2025-01-01T00:00:00Z",
+        "last_updated_at": "2025-01-01T00:00:00Z",
+        "password_changed_at": "2025-01-01T00:00:00Z",
+        "status_changed_at": "2025-01-01T00:00:00Z"
+      },
+      "type": {
+        "id": "otyFAKEUSERTYPE000001"
+      },
       "profile": {
-        "login": "alice@writer.com",
-        "email": "alice@writer.com",
-        "display_name": "Alice Example"
+        "login": "example-a3afbbcc",
+        "email": "example-a3afbbcc",
+        "display_name": "example-81f8f6dd example-255e4f74",
+        "first_name": "example-81f8f6dd",
+        "last_name": "example-255e4f74"
       },
       "raw": {
-        "id": "00u1",
-        "status": "ACTIVE"
+        "_links": {
+          "self": {
+            "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+          }
+        },
+        "activated": null,
+        "created": "2025-01-01T00:00:00.000Z",
+        "credentials": {
+          "emails": [
+            {
+              "status": "VERIFIED",
+              "type": "PRIMARY",
+              "value": "jane.doe-signed-nonce@example.com"
+            }
+          ],
+          "password": {},
+          "provider": {
+            "name": "OKTA",
+            "type": "OKTA"
+          }
+        },
+        "id": "00uFAKEFASTPASS000001",
+        "lastLogin": "2025-01-01T00:00:00.000Z",
+        "lastUpdated": "2025-01-01T00:00:00.000Z",
+        "passwordChanged": "2025-01-01T00:00:00.000Z",
+        "profile": {
+          "email": "example-a3afbbcc",
+          "firstName": "example-81f8f6dd",
+          "lastName": "example-255e4f74",
+          "login": "example-a3afbbcc",
+          "mobilePhone": null,
+          "secondEmail": null
+        },
+        "status": "ACTIVE",
+        "statusChanged": "2025-01-01T00:00:00.000Z",
+        "type": {
+          "id": "otyFAKEUSERTYPE000001"
+        }
       }
     },
     "attributes": {
       "domain": "writer.okta.com",
+      "email": "example-a3afbbcc",
       "family": "user",
-      "login": "alice@writer.com",
+      "login": "example-a3afbbcc",
       "mfa_enrolled": "true",
-      "mfa_factor_count": "1",
+      "mfa_factor_count": "2",
+      "mfa_factor_types": "signed_nonce,token:software:totp",
+      "mfa_phishing_resistant": "true",
       "status": "ACTIVE",
-      "user_id": "00u1"
-    }
-  },
-  {
-    "id": "okta-user-fixture-2",
-    "tenant_id": "writer.okta.com",
-    "source_id": "okta",
-    "kind": "okta.user",
-    "occurred_at": "2026-04-23T00:30:00Z",
-    "schema_ref": "okta/user/v1",
-    "payload": {
-      "id": "00u2",
-      "domain": "writer.okta.com",
-      "status": "SUSPENDED",
-      "profile": {
-        "login": "admin@writer.com",
-        "email": "admin@writer.com",
-        "display_name": "Admin Example"
-      },
-      "raw": {
-        "id": "00u2",
-        "status": "SUSPENDED"
-      }
-    },
-    "attributes": {
-      "domain": "writer.okta.com",
-      "family": "user",
-      "login": "admin@writer.com",
-      "mfa_enrolled": "false",
-      "mfa_factor_count": "0",
-      "status": "SUSPENDED",
-      "user_id": "00u2"
+      "type_id": "otyFAKEUSERTYPE000001",
+      "user_id": "00uFAKEFASTPASS000001"
     }
   }
 ]

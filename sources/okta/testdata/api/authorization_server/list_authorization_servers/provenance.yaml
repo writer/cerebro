@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: authorization_server
+case: list_authorization_servers
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/authorizationServers
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:14:45Z"
+    sha256: b30bd331a17cbc112d0e2b58d3a3944fba639c3b5563c0268eae78805a5ac9e0
+    headers:
+        link: <https://test.okta.com/api/v1/authorizationServers?after=aussfbgzszrirZqOv4x6&limit=200>; rel="next"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_auth_server_it/TestAuthorizationServerResource.test_list_auth_servers.yaml
+    artifact_sha256: a78089c2d66da57f1fceb49f656b487f99758479cabc991bf0e92b58bf18a432
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: historical
+    capture_time_basis: response_header

@@ -1,24 +1,117 @@
 [
   {
-    "id": "okta-app-assignment-fixture-1",
+    "id": "okta-writer-okta-com-app_assignment-da45108eb3206848",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2020-08-27T18:14:07Z",
     "schema_ref": "okta/app_assignment/v1",
     "payload": {
-      "app_id": "app-prod",
+      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "credentials": {
+        "userName": "example-da598035"
+      },
       "domain": "writer.okta.com",
-      "subject_id": "00u1"
+      "profile": {},
+      "raw": {
+        "_links": {
+          "app": {
+            "href": "https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6"
+          },
+          "user": {
+            "href": "https://test.okta.com/api/v1/users/00usfdsvr3SOpwbqD4x6"
+          }
+        },
+        "created": "2020-08-27T18:14:07.000Z",
+        "credentials": {
+          "userName": "example-da598035"
+        },
+        "externalId": null,
+        "id": "00usfdsvr3SOpwbqD4x6",
+        "lastUpdated": "2020-08-27T18:14:07.000Z",
+        "passwordChanged": null,
+        "profile": {},
+        "scope": "USER",
+        "status": "ACTIVE",
+        "statusChanged": "2020-08-27T18:14:07.000Z",
+        "syncState": "DISABLED"
+      },
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "00usfdsvr3SOpwbqD4x6",
+      "subject_type": "user"
     },
     "attributes": {
-      "app_id": "app-prod",
+      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "assignee_id": "00usfdsvr3SOpwbqD4x6",
+      "assignee_type": "user",
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
+      "email": "example-da598035",
       "family": "app_assignment",
       "principal_type": "user",
-      "subject_email": "admin@writer.com",
-      "subject_id": "00u1",
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_email": "example-da598035",
+      "subject_id": "00usfdsvr3SOpwbqD4x6",
+      "subject_name": "example-da598035",
+      "subject_type": "user"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-app_assignment-aa91c68e86125c7b",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.app_assignment",
+    "occurred_at": "2020-08-27T18:14:08Z",
+    "schema_ref": "okta/app_assignment/v1",
+    "payload": {
+      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "credentials": {
+        "userName": "example-c3b2b853"
+      },
+      "domain": "writer.okta.com",
+      "profile": {},
+      "raw": {
+        "_links": {
+          "app": {
+            "href": "https://test.okta.com/api/v1/apps/0oasf86d7hw9MMcnd4x6"
+          },
+          "user": {
+            "href": "https://test.okta.com/api/v1/users/00usfcrxyLxrCzNan4x6"
+          }
+        },
+        "created": "2020-08-27T18:14:08.000Z",
+        "credentials": {
+          "userName": "example-c3b2b853"
+        },
+        "externalId": null,
+        "id": "00usfcrxyLxrCzNan4x6",
+        "lastUpdated": "2020-08-27T18:14:08.000Z",
+        "passwordChanged": null,
+        "profile": {},
+        "scope": "USER",
+        "status": "ACTIVE",
+        "statusChanged": "2020-08-27T18:14:08.000Z",
+        "syncState": "DISABLED"
+      },
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "00usfcrxyLxrCzNan4x6",
+      "subject_type": "user"
+    },
+    "attributes": {
+      "app_id": "0oasf86d7hw9MMcnd4x6",
+      "assignee_id": "00usfcrxyLxrCzNan4x6",
+      "assignee_type": "user",
+      "domain": "writer.okta.com",
+      "email": "example-c3b2b853",
+      "family": "app_assignment",
+      "principal_type": "user",
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_email": "example-c3b2b853",
+      "subject_id": "00usfcrxyLxrCzNan4x6",
+      "subject_name": "example-c3b2b853",
       "subject_type": "user"
     }
   }

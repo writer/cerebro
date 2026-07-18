@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: trusted_origin
+case: list_trusted_origins
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/trustedOrigins
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:17:18Z"
+    sha256: 6eca401c34b9f7ad28dd18160ad7d2232e5c9cb0631f39e03ca7ed57f3e677ad
+    headers:
+        link: <https://test.okta.com/api/v1/trustedOrigins?limit=20>; rel="self"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_trusted_origins_it/TestTrustedOriginsResource.test_list_origins.yaml
+    artifact_sha256: 9cd8cc8795582cf893e8feed8fef15c30669ccaab702543ad5334f099830b6cf
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: historical
+    capture_time_basis: response_header

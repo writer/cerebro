@@ -1,0 +1,105 @@
+[
+  {
+    "_links": {
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/crpFAKESIGNEDNONCE0001"
+      },
+      "user": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+      }
+    },
+    "created": "2025-01-01T00:00:00.000Z",
+    "factorType": "signed_nonce",
+    "id": "crpFAKESIGNEDNONCE0001",
+    "lastUpdated": "2025-01-01T00:00:00.000Z",
+    "profile": {
+      "credentialId": "jane.doe-signed-nonce@example.com",
+      "deviceType": "SmartPhone_IPhone",
+      "keys": [
+        {
+          "crv": "P-256",
+          "jwkType": "proofOfPossession",
+          "kid": "default",
+          "kty": "EC",
+          "use": "sig",
+          "x": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "y": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        },
+        {
+          "crv": "P-256",
+          "jwkType": "userVerification",
+          "kid": "default",
+          "kty": "EC",
+          "use": "sig",
+          "x": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "y": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+        },
+        {
+          "crv": "P-256",
+          "jwkType": "userVerificationBioOrPin",
+          "kid": "default",
+          "kty": "EC",
+          "use": "sig",
+          "x": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+          "y": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+        }
+      ],
+      "name": "FAKEDEVICE01",
+      "platform": "IOS",
+      "version": "18.0.0"
+    },
+    "provider": "OKTA",
+    "status": "ACTIVE",
+    "vendorName": "OKTA"
+  },
+  {
+    "_links": {
+      "self": {
+        "hints": {
+          "allow": [
+            "GET",
+            "DELETE"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/ostFAKETOTP000000001"
+      },
+      "user": {
+        "hints": {
+          "allow": [
+            "GET"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001"
+      },
+      "verify": {
+        "hints": {
+          "allow": [
+            "POST"
+          ]
+        },
+        "href": "https://test.okta.com/api/v1/users/00uFAKEFASTPASS000001/factors/ostFAKETOTP000000001/verify"
+      }
+    },
+    "created": "2025-01-01T00:00:00.000Z",
+    "factorType": "token:software:totp",
+    "id": "ostFAKETOTP000000001",
+    "lastUpdated": "2025-01-01T00:00:00.000Z",
+    "profile": {
+      "credentialId": "jane.doe-signed-nonce@example.com"
+    },
+    "provider": "OKTA",
+    "status": "ACTIVE",
+    "vendorName": "OKTA"
+  }
+]

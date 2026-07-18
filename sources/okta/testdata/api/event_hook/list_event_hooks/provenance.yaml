@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: event_hook
+case: list_event_hooks
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/eventHooks
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:15:27Z"
+    sha256: e3d3dad2be4a3f640b10f68582e7664399212aa22143cd0e1bafc83fab607269
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_event_hooks_it/TestEventHooksResource.test_list_event_hooks.yaml
+    artifact_sha256: 743db782df6dd473f3689291889099d71acfb9bb978caa814d0d07ae17dde615
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 3
+    freshness: historical
+    capture_time_basis: response_header

@@ -1,35 +1,300 @@
 [
   {
-    "id": "datadog-incidents-inc-1",
+    "id": "datadog-tenant-incidents-20e8cf205fb75bfd",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.incidents",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2021-09-15T12:50:19Z",
     "schema_ref": "datadog/incidents/v1",
     "payload": {
-      "id": "inc-1",
-      "type": "incidents",
       "attributes": {
-        "title": "Checkout outage",
+        "created": "2021-09-15T12:50:19.743510+00:00",
+        "created_by_uuid": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+        "creation_idempotency_key": null,
+        "customer_impact_duration": 0,
+        "customer_impact_end": null,
+        "customer_impact_scope": null,
+        "customer_impact_start": null,
+        "customer_impacted": false,
+        "detected": "2021-09-15T12:50:19.741188+00:00",
+        "field_analytics": null,
+        "fields": {
+          "detection_method": {
+            "type": "dropdown",
+            "value": "unknown"
+          },
+          "root_cause": {
+            "type": "textbox",
+            "value": null
+          },
+          "services": {
+            "type": "autocomplete",
+            "value": null
+          },
+          "severity": {
+            "type": "dropdown",
+            "value": "UNKNOWN"
+          },
+          "state": {
+            "type": "dropdown",
+            "value": "active"
+          },
+          "summary": {
+            "type": "textbox",
+            "value": null
+          },
+          "teams": {
+            "type": "autocomplete",
+            "value": null
+          }
+        },
+        "last_modified_by_uuid": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+        "modified": "2021-09-15T12:50:19.743510+00:00",
+        "non_datadog_creator": null,
+        "notification_handles": null,
+        "public_id": 62105,
+        "resolved": null,
+        "severity": "UNKNOWN",
         "state": "active",
-        "severity": "SEV-2",
-        "service": "checkout",
-        "created": "2026-06-02T00:00:00Z"
-      }
+        "time_to_detect": 0,
+        "time_to_internal_response": 0,
+        "time_to_repair": 0,
+        "time_to_resolve": 0,
+        "title": "Test-Ruby-Get_the_details_of_an_incident_returns_OK_response-1631710219",
+        "visibility": null
+      },
+      "id": "ed3ff75e-6ce6-5b00-8ab4-665fcaeda9f8",
+      "relationships": {
+        "attachments": {
+          "data": []
+        },
+        "commander_user": {
+          "data": {
+            "id": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+            "type": "users"
+          }
+        },
+        "created_by_user": {
+          "data": {
+            "id": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+            "type": "users"
+          }
+        },
+        "impacts": {
+          "data": []
+        },
+        "integrations": {
+          "data": []
+        },
+        "last_modified_by_user": {
+          "data": {
+            "id": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+            "type": "users"
+          }
+        },
+        "responders": {
+          "data": []
+        },
+        "user_defined_fields": {
+          "data": [
+            {
+              "id": "4148ead2-da45-548e-b6be-8e319bafc425",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "66b62f59-48f6-5fee-969a-0886b1db6dcd",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "299616f7-8acd-5403-886b-991656d6b982",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "ad2b9456-eaec-5bbd-9bae-e502d74e23f8",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "d8a54f16-8b2a-5ab4-87b8-5f0fa575c83e",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "623af0a5-f30c-577e-8146-09b8324bdb2d",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "ccfc9e6c-f586-58e5-b502-03c466c72e6f",
+              "type": "user_defined_field"
+            }
+          ]
+        }
+      },
+      "type": "incidents"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "inc-1",
-      "external_id": "inc-1",
+      "commander_user_id": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+      "created_at": "2021-09-15T12:50:19.743510+00:00",
+      "created_by_user_id": "9919ec9b-ebc7-49ee-8dc8-03626e717cca",
+      "customer_impact": "false",
+      "external_id": "ed3ff75e-6ce6-5b00-8ab4-665fcaeda9f8",
       "family": "incidents",
-      "source_provider": "datadog",
+      "incident_id": "ed3ff75e-6ce6-5b00-8ab4-665fcaeda9f8",
+      "modified_at": "2021-09-15T12:50:19.743510+00:00",
+      "provider": "datadog",
+      "severity": "UNKNOWN",
       "source_product": "datadog",
-      "incident_id": "inc-1",
-      "title": "Checkout outage",
+      "source_provider": "datadog",
+      "source_system": "datadog",
       "state": "active",
-      "severity": "SEV-2",
-      "service": "checkout",
-      "created_at": "2026-06-02T00:00:00Z"
+      "title": "Test-Ruby-Get_the_details_of_an_incident_returns_OK_response-1631710219"
+    }
+  },
+  {
+    "id": "datadog-tenant-incidents-2d1a773480145632",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.incidents",
+    "occurred_at": "2021-09-17T13:12:08Z",
+    "schema_ref": "datadog/incidents/v1",
+    "payload": {
+      "attributes": {
+        "created": "2021-09-17T13:12:08.512729+00:00",
+        "created_by_uuid": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+        "creation_idempotency_key": null,
+        "customer_impact_duration": 0,
+        "customer_impact_end": null,
+        "customer_impact_scope": null,
+        "customer_impact_start": null,
+        "customer_impacted": false,
+        "detected": "2021-09-17T13:12:08.510606+00:00",
+        "field_analytics": null,
+        "fields": {
+          "detection_method": {
+            "type": "dropdown",
+            "value": "unknown"
+          },
+          "root_cause": {
+            "type": "textbox",
+            "value": null
+          },
+          "services": {
+            "type": "autocomplete",
+            "value": null
+          },
+          "severity": {
+            "type": "dropdown",
+            "value": "UNKNOWN"
+          },
+          "state": {
+            "type": "dropdown",
+            "value": "active"
+          },
+          "summary": {
+            "type": "textbox",
+            "value": null
+          },
+          "teams": {
+            "type": "autocomplete",
+            "value": null
+          }
+        },
+        "last_modified_by_uuid": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+        "modified": "2021-09-17T13:12:08.512729+00:00",
+        "non_datadog_creator": null,
+        "notification_handles": null,
+        "public_id": 62582,
+        "resolved": null,
+        "severity": "UNKNOWN",
+        "state": "active",
+        "time_to_detect": 0,
+        "time_to_internal_response": 0,
+        "time_to_repair": 0,
+        "time_to_resolve": 0,
+        "title": "Test-Get_a_list_of_incidents_returns_OK_response-1631884327",
+        "visibility": null
+      },
+      "id": "00037f9b-dd47-5b21-bcf3-f8dd30e907da",
+      "relationships": {
+        "attachments": {
+          "data": []
+        },
+        "commander_user": {
+          "data": {
+            "id": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+            "type": "users"
+          }
+        },
+        "created_by_user": {
+          "data": {
+            "id": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+            "type": "users"
+          }
+        },
+        "impacts": {
+          "data": []
+        },
+        "integrations": {
+          "data": []
+        },
+        "last_modified_by_user": {
+          "data": {
+            "id": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+            "type": "users"
+          }
+        },
+        "responders": {
+          "data": []
+        },
+        "user_defined_fields": {
+          "data": [
+            {
+              "id": "4148ead2-da45-548e-b6be-8e319bafc425",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "66b62f59-48f6-5fee-969a-0886b1db6dcd",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "299616f7-8acd-5403-886b-991656d6b982",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "ad2b9456-eaec-5bbd-9bae-e502d74e23f8",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "d8a54f16-8b2a-5ab4-87b8-5f0fa575c83e",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "623af0a5-f30c-577e-8146-09b8324bdb2d",
+              "type": "user_defined_field"
+            },
+            {
+              "id": "ccfc9e6c-f586-58e5-b502-03c466c72e6f",
+              "type": "user_defined_field"
+            }
+          ]
+        }
+      },
+      "type": "incidents"
+    },
+    "attributes": {
+      "commander_user_id": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+      "created_at": "2021-09-17T13:12:08.512729+00:00",
+      "created_by_user_id": "3ad549bf-eba0-11e9-a77a-0705486660d0",
+      "customer_impact": "false",
+      "external_id": "00037f9b-dd47-5b21-bcf3-f8dd30e907da",
+      "family": "incidents",
+      "incident_id": "00037f9b-dd47-5b21-bcf3-f8dd30e907da",
+      "modified_at": "2021-09-17T13:12:08.512729+00:00",
+      "provider": "datadog",
+      "severity": "UNKNOWN",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "state": "active",
+      "title": "Test-Get_a_list_of_incidents_returns_OK_response-1631884327"
     }
   }
 ]

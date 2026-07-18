@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: api_token
+case: list_api_tokens
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/api-tokens
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2025-12-31T08:16:44Z"
+    sha256: 2647d254b652dc6df41ac9e2c793e60a306751d15c11bf073f29d02eb20529fc
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].name
+        - $[1].name
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_api_token_it/TestApiTokenResource.test_list_api_tokens_with_http_info.yaml
+    artifact_sha256: 9bcc2588b6e24326005e969ee04bba508fface928011b80fa2113cf0bd6b863d
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: response_header

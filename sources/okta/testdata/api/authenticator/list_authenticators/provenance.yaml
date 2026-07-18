@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: authenticator
+case: list_authenticators
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/authenticators
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2021-09-17T12:51:12Z"
+    sha256: c030d4211355fd40c8da123be2728141f4cd1d1c108e3709590c88156d8c5def
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_authenticators_it/TestAuthenticatorsResource.test_list_authenticators.yaml
+    artifact_sha256: 0fe395815e166e6fe82a7e73e3fec156c9f107d1be6241cd0caec8a024a8bc84
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: historical
+    capture_time_basis: response_header

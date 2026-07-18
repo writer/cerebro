@@ -423,7 +423,11 @@ func walkJSON(value any, path string) error {
 		for key, child := range typed {
 			childPath := path + "." + key
 			if credentialFieldKey.MatchString(key) && !emptyJSONValue(child) {
-				return fmt.Errorf("%w %s", ErrCredentialField, childPath)
+				switch child.(type) {
+				case map[string]any, []any:
+				default:
+					return fmt.Errorf("%w %s", ErrCredentialField, childPath)
+				}
 			}
 			if err := walkJSON(child, childPath); err != nil {
 				return err

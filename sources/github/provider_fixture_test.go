@@ -178,6 +178,74 @@ func TestSourceReplaysCapturedOrganizationMembers(t *testing.T) {
 	}
 }
 
+func TestSourceReplaysCapturedRestrictedFamilies(t *testing.T) {
+	tests := []struct {
+		family      string
+		fixtureCase string
+		owner       string
+		repo        string
+		state       string
+		apiPath     string
+		wantKind    string
+	}{
+		{family: familyAudit, fixtureCase: "audit_log", owner: "api-playground", apiPath: "/api/v3/orgs/api-playground/audit-log", wantKind: "github.audit"},
+		{family: familyDependabot, fixtureCase: "dependabot_alerts", owner: "coopernetes", repo: "PyGithub", state: "dismissed", apiPath: "/api/v3/repos/coopernetes/PyGithub/dependabot/alerts", wantKind: "github.dependabot_alert"},
+		{family: familySecretScanning, fixtureCase: "secret_scanning_alerts", owner: "github", state: "resolved", apiPath: "/api/v3/orgs/github/secret-scanning/alerts", wantKind: "github.secret_scanning_alert"},
+	}
+	for _, test := range tests {
+		t.Run(test.family, func(t *testing.T) {
+			bundle := capturedGitHubBundle(t, test.family, test.fixtureCase)
+			server := capturedGitHubServer(t, func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.HasPrefix(r.URL.Path, "/api/v3/users/") {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+					return true
+				}
+				if r.URL.Path != test.apiPath {
+					return false
+				}
+				writeCapturedGitHubResponse(w, bundle)
+				return true
+			})
+			defer server.Close()
+
+			source := capturedGitHubSource(t)
+			values := map[string]string{
+				"base_url": server.URL,
+				"family":   test.family,
+				"owner":    test.owner,
+				"per_page": "2",
+				"token":    "test-token",
+			}
+			if test.repo != "" {
+				values["repo"] = test.repo
+			}
+			if test.state != "" {
+				values["state"] = test.state
+			}
+			cfg := sourcecdk.NewConfig(values)
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) == 0 || pull.Events[0].Kind != test.wantKind {
+				t.Fatalf("Read() events = %#v, want kind %q", pull.Events, test.wantKind)
+			}
+			urns, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
+				t.Fatalf("StabilizeEvents() error = %v", err)
+			}
+			if err := sourcefixture.CompareOrUpdateSourceOutputs(".", test.family, pull.Events, urns, updateCapturedSourceFixtures()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func capturedGitHubBundle(t *testing.T, family, fixtureCase string) sourcefixture.Bundle {
 	t.Helper()
 	bundle, err := sourcefixture.FindBundle("../..", "github", family, fixtureCase)

@@ -1,0 +1,17 @@
+{
+  "_links": {
+    "self": {
+      "hints": {
+        "allow": [
+          "GET",
+          "POST"
+        ]
+      },
+      "href": "https://test.okta.com/api/v1/threats/configuration"
+    }
+  },
+  "action": "audit",
+  "created": "2021-06-14 14:45:46",
+  "excludeZones": [],
+  "lastUpdated": "2021-06-14 14:58:03"
+}

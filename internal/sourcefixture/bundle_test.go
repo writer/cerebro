@@ -84,7 +84,8 @@ func TestValidateManifestAllowsCredentialMetadataFields(t *testing.T) {
 		"credential_type":"oauth2",
 		"credential_id":"credential-1",
 		"credential_name":"primary",
-		"api_key_id":"key-1"
+		"api_key_id":"key-1",
+		"credentials":{"provider":{"type":"oauth2"}}
 	}`))
 	if err != nil {
 		t.Fatal(err)

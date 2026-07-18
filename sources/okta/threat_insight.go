@@ -16,10 +16,10 @@ import (
 const familyThreatInsight = "threat_insight"
 
 type threatInsightRecord struct {
-	Action       string     `json:"action"`
-	ExcludeZones []string   `json:"excludeZones"`
-	Created      *time.Time `json:"created"`
-	LastUpdated  *time.Time `json:"lastUpdated"`
+	Action       string   `json:"action"`
+	ExcludeZones []string `json:"excludeZones"`
+	Created      string   `json:"created"`
+	LastUpdated  string   `json:"lastUpdated"`
 }
 
 func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
@@ -44,7 +44,7 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			if err := s.getJSONWithRetry(ctx, settings, "/api/v1/threats/configuration", nil, &record, nil); err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel("okta threat insight", settings), err)
 			}
-			occurredAt := firstRecordTime(record.LastUpdated, record.Created)
+			occurredAt := threatInsightOccurredAt(record)
 			payload, err := json.Marshal(map[string]any{
 				"domain":        settings.domain,
 				"action":        record.Action,
@@ -78,4 +78,16 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			}, nil
 		},
 	}
+}
+
+func threatInsightOccurredAt(record threatInsightRecord) time.Time {
+	for _, value := range []string{record.LastUpdated, record.Created} {
+		for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05"} {
+			parsed, err := time.ParseInLocation(layout, value, time.UTC)
+			if err == nil {
+				return parsed.UTC()
+			}
+		}
+	}
+	return time.Now().UTC()
 }
