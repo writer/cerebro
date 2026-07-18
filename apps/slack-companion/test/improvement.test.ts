@@ -332,8 +332,8 @@ describe("ImprovementCoordinator", () => {
     assert.equal(recovered.decision.promotion_ready, true);
   });
 
-  test("rejects fresh evidence snapshots from another candidate or generation", async () => {
-    for (const corruption of ["candidate", "generation"] as const) {
+  test("rejects fresh evidence snapshots with changed identity or receipt content", async () => {
+    for (const corruption of ["candidate", "generation", "evidence"] as const) {
       const fixture = makeFixture();
       const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
       const session = await fixture.session(1);
@@ -565,7 +565,7 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
 class MemoryEvidencePort implements ImprovementEvidencePort {
   readonly bundleRef = "evidence-bundle://opaque-improvement";
   observedIntentFirst = false;
-  private nextFreshCorruption?: "candidate" | "generation";
+  private nextFreshCorruption?: "candidate" | "generation" | "evidence";
   private nextFreshResponseFailure = false;
   private nextInvalidationCorruption?: "duplicate" | "missing";
   private readonly records = new Map<string, ImprovementEvidenceSnapshot>();
@@ -579,7 +579,7 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     return this.records.size;
   }
 
-  corruptNextFreshSnapshot(corruption: "candidate" | "generation"): void {
+  corruptNextFreshSnapshot(corruption: "candidate" | "generation" | "evidence"): void {
     this.nextFreshCorruption = corruption;
   }
 
@@ -684,12 +684,16 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
         ...state,
         candidate_id: corrupted.candidate_id,
       }));
-    } else {
+    } else if (this.nextFreshCorruption === "generation") {
       corrupted.author_generation += 1;
       corrupted.states = corrupted.states.map((state) => ({
         ...state,
         author_generation: corrupted.author_generation,
       }));
+    } else {
+      corrupted.states = corrupted.states.map((state) => state.kind === input.kind
+        ? { ...state, evidence_digest: sha("corrupt-evidence") }
+        : state);
     }
     this.nextFreshCorruption = undefined;
     return Promise.resolve(corrupted);

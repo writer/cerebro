@@ -297,7 +297,10 @@ export class ImprovementCoordinator {
     input: ImprovementEvidenceRecord,
   ): Promise<ImprovementCandidateV1> {
     const snapshot = await this.evidence.recordFresh(input);
-    if (!isBoundEvidenceSnapshot(snapshot, candidate)) {
+    if (
+      !isBoundEvidenceSnapshot(snapshot, candidate) ||
+      !snapshotContainsEvidence(snapshot, input)
+    ) {
       return candidate;
     }
     if (!snapshot.states.every((state) => state.state === "fresh")) return candidate;
@@ -807,6 +810,8 @@ function isBoundEvidenceSnapshot(
     snapshot === undefined ||
     snapshot.candidate_id !== candidate.candidate_id ||
     snapshot.author_generation !== candidate.author_generation ||
+    !/^sha256:[a-f0-9]{64}$/.test(snapshot.bundle_digest) ||
+    !/^[a-z][a-z0-9+.-]*:\/\/[a-z0-9][a-z0-9._-]{0,127}$/.test(snapshot.bundle_ref) ||
     snapshot.states.length !== IMPROVEMENT_EVIDENCE_KINDS.length
   ) return false;
 
@@ -816,6 +821,7 @@ function isBoundEvidenceSnapshot(
       state.candidate_id !== candidate.candidate_id ||
       state.author_generation !== candidate.author_generation ||
       !IMPROVEMENT_EVIDENCE_KINDS.includes(state.kind) ||
+      (state.state !== "fresh" && state.state !== "invalidated") ||
       kinds.has(state.kind)
     ) return false;
     if (
@@ -833,6 +839,17 @@ function isBoundEvidenceSnapshot(
     kinds.add(state.kind);
   }
   return kinds.size === IMPROVEMENT_EVIDENCE_KINDS.length;
+}
+
+function snapshotContainsEvidence(
+  snapshot: ImprovementEvidenceSnapshot,
+  input: ImprovementEvidenceRecord,
+): boolean {
+  const state = snapshot.states.find((value) => value.kind === input.kind);
+  return state?.state === "fresh"
+    && state.head_digest === input.head_digest
+    && state.evidence_digest === input.evidence_digest
+    && state.evidence_ref === input.evidence_ref;
 }
 
 function isExactEvidenceSnapshot(
