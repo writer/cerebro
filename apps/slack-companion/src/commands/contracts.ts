@@ -491,10 +491,17 @@ function requireCapabilityVersion(value: unknown, label: string): asserts value 
 }
 
 function exactKeys(
-  value: object,
+  value: unknown,
   allowed: readonly string[],
   label: string,
-): void {
+): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new SlackActionContractError(`The ${label} must be a record.`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new SlackActionContractError(`The ${label} must be a record.`);
+  }
   const allowedKeys = new Set(allowed);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     throw new SlackActionContractError(`The ${label} contains unknown fields.`);

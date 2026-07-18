@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import test from "node:test";
 
 import {
@@ -86,5 +87,30 @@ test("normalizes bounded content and rejects ambiguous truncation or controls", 
   assert.throws(
     () => parseSlackRememberCommand("remember hello", { author_name: "x".repeat(61) }),
     /author name is invalid/,
+  );
+});
+
+test("normalizes max-length interior tabs without boundary-regex backtracking", () => {
+  const input = `remember x${"\t".repeat(1_987)}"'y`;
+  assert.equal(Buffer.byteLength(input, "utf8"), 2_000);
+  assert.equal(parseSlackRememberCommand(input)?.content, `x "'y`);
+});
+
+test("truncates topics by Unicode code point and preserves UTF-8 round trips", () => {
+  const expectedSnippet = `${"a".repeat(71)}😀`;
+  const parsed = parseSlackRememberCommand(`remember ${expectedSnippet}tail`);
+  assert.equal(parsed?.topic, `Remembered note: ${expectedSnippet}`);
+  assert.equal(parsed?.explicit_topic, `Explicit memory: ${expectedSnippet}`);
+  assert.equal(
+    Buffer.from(parsed?.explicit_topic ?? "", "utf8").toString("utf8"),
+    parsed?.explicit_topic,
+  );
+
+  const emojiSnippet = "😀".repeat(72);
+  const emojiParsed = parseSlackRememberCommand(`remember ${emojiSnippet}tail`);
+  assert.equal(emojiParsed?.explicit_topic, `Explicit memory: ${emojiSnippet}`);
+  assert.throws(
+    () => parseSlackRememberCommand(`remember ${"a".repeat(71)}\ud83d`),
+    SlackRememberCommandError,
   );
 });

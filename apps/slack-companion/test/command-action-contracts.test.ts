@@ -58,6 +58,22 @@ test("returns a deterministic receipt and replays the exact receipt on retry", (
   assert.match(first.receipt.receipt_digest, /^sha256:[a-f0-9]{64}$/);
   assert.match(first.receipt.receipt_id, /^slack-action-decision:[a-f0-9]{64}$/);
   assert.match(first.receipt.request_digest, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(
+    first.receipt.catalog_digest,
+    "sha256:bfb12a5497fee8a724ca93dda65e55f29c973021957c3616152027c9ce81e9d7",
+  );
+  assert.equal(
+    first.receipt.receipt_digest,
+    "sha256:0d2f6aedac7e1e2628213ad3aaaacfa833bfeb71ba399781d5daaeffc42f54f0",
+  );
+  assert.equal(
+    first.receipt.receipt_id,
+    "slack-action-decision:37461361ee7348bb7313d7a31cb39d838ce137850aa28359df995a8dff37e05a",
+  );
+  assert.equal(
+    first.receipt.request_digest,
+    "sha256:207162b2071b1edd5c730a9436e859c7fe48be2720e8a288ec46273858eadc1c",
+  );
   assert.equal(Object.isFrozen(first), true);
   assert.equal(Object.isFrozen(first.receipt), true);
 
@@ -203,6 +219,101 @@ test("rejects malformed, ambiguous, and non-idempotent action catalogs", () => {
   );
   assert.throws(
     () => createSlackActionRegistry({ ...catalog([]), unexpected: true } as never),
+    SlackActionContractError,
+  );
+});
+
+test("rejects non-record values at every action-contract record boundary", () => {
+  const nonRecords: readonly unknown[] = [null, "invalid", []];
+  for (const value of nonRecords) {
+    assert.throws(
+      () => createSlackActionRegistry(value as never),
+      SlackActionContractError,
+    );
+    assert.throws(
+      () => createSlackActionRegistry(catalog([value as never])),
+      SlackActionContractError,
+    );
+    assert.throws(
+      () => createSlackActionRegistry(catalog([
+        actionContract({ parameters: [value as never] }),
+      ])),
+      SlackActionContractError,
+    );
+    assert.throws(
+      () => createSlackActionRegistry(catalog([
+        actionContract({ capabilities: [value as never] }),
+      ])),
+      SlackActionContractError,
+    );
+
+    const registry = createSlackActionRegistry(catalog([actionContract()]));
+    assert.throws(
+      () => decideSlackAction(registry, {
+        action: envelope(),
+        available_capabilities: [value as never],
+      }),
+      SlackActionContractError,
+    );
+    assert.throws(
+      () => decideSlackAction(registry, {
+        action: envelope(),
+        available_capabilities: [capability("memory.write")],
+        existing_receipt: value as never,
+      }),
+      SlackActionContractError,
+    );
+  }
+
+  assert.throws(
+    () => createSlackActionRegistry(Object.assign([], catalog([])) as never),
+    SlackActionContractError,
+  );
+  assert.throws(
+    () => createSlackActionRegistry(
+      Object.assign(() => undefined, catalog([])) as never,
+    ),
+    SlackActionContractError,
+  );
+  assert.throws(
+    () => createSlackActionRegistry(Object.create(catalog([])) as never),
+    SlackActionContractError,
+  );
+  assert.throws(
+    () => createSlackActionRegistry(catalog([
+      Object.assign([], actionContract()) as never,
+    ])),
+    SlackActionContractError,
+  );
+  assert.throws(
+    () => createSlackActionRegistry(catalog([
+      actionContract({
+        parameters: [Object.assign([], { name: "target", required: true }) as never],
+      }),
+    ])),
+    SlackActionContractError,
+  );
+  assert.throws(
+    () => createSlackActionRegistry(catalog([
+      actionContract({
+        capabilities: [Object.assign([], capability("memory.write")) as never],
+      }),
+    ])),
+    SlackActionContractError,
+  );
+
+  const registry = createSlackActionRegistry(catalog([actionContract()]));
+  const decision = decideSlackAction(registry, {
+    action: envelope(),
+    available_capabilities: [capability("memory.write")],
+  });
+  if (!("receipt" in decision)) assert.fail("expected an action receipt");
+  assert.throws(
+    () => decideSlackAction(registry, {
+      action: envelope(),
+      available_capabilities: [capability("memory.write")],
+      existing_receipt: Object.assign([], decision.receipt) as never,
+    }),
     SlackActionContractError,
   );
 });

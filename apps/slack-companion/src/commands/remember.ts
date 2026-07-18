@@ -89,20 +89,51 @@ function validateInput(text: string): void {
     typeof text !== "string"
     || Buffer.byteLength(text, "utf8") > MAX_REMEMBER_INPUT_LENGTH
     || UNSAFE_CONTROL_CHARACTERS.test(text)
+    || hasLoneSurrogate(text)
   ) {
     throw new SlackRememberCommandError("The Slack remember input is invalid.");
   }
 }
 
+function hasLoneSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function cleanContent(value: string): string {
-  const content = value
-    .replace(/^[\s"'`]+|[\s"'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const content = trimContentBoundary(value).replace(/\s+/g, " ");
   if (Buffer.byteLength(content, "utf8") > MAX_REMEMBER_CONTENT_LENGTH) {
     throw new SlackRememberCommandError("The Slack remember content is too long.");
   }
   return content;
+}
+
+function trimContentBoundary(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && isContentBoundaryCharacter(value.charAt(start))) {
+    start += 1;
+  }
+  while (end > start && isContentBoundaryCharacter(value.charAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
+function isContentBoundaryCharacter(character: string): boolean {
+  return character === "\""
+    || character === "'"
+    || character === "`"
+    || character.trim().length === 0;
 }
 
 function cleanAuthorName(value: string | undefined): string | undefined {
@@ -112,6 +143,7 @@ function cleanAuthorName(value: string | undefined): string | undefined {
     !normalized
     || Buffer.byteLength(normalized, "utf8") > MAX_AUTHOR_NAME_LENGTH
     || UNSAFE_CONTROL_CHARACTERS.test(normalized)
+    || hasLoneSurrogate(normalized)
   ) {
     throw new SlackRememberCommandError("The Slack remember author name is invalid.");
   }
@@ -172,7 +204,30 @@ function keywordTags(content: string): string[] {
 }
 
 function topicSnippet(content: string): string {
-  return content.replace(/[.?!]+$/g, "").slice(0, 72) || "note";
+  let end = content.length;
+  while (end > 0 && ".?!".includes(content.charAt(end - 1))) {
+    end -= 1;
+  }
+  return truncateCodePoints(content, 72, end) || "note";
+}
+
+function truncateCodePoints(
+  value: string,
+  limit: number,
+  boundary = value.length,
+): string {
+  if (boundary <= limit) {
+    return boundary === value.length ? value : value.slice(0, boundary);
+  }
+  let count = 0;
+  let end = 0;
+  for (const codePoint of value) {
+    if (end >= boundary || count === limit) break;
+    count += 1;
+    end += codePoint.length;
+  }
+  const boundedEnd = Math.min(end, boundary);
+  return boundedEnd === value.length ? value : value.slice(0, boundedEnd);
 }
 
 function titleCaseName(value: string): string {
