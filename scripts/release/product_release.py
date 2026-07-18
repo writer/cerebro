@@ -22,7 +22,7 @@ IMAGE_RE = re.compile(
     r"^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 )
 PACKAGE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 
 
 class ManifestError(ValueError):
@@ -236,7 +236,7 @@ def validate_release_event(event: Any) -> None:
         "release event release_url is invalid",
     )
     repository = release_url.removeprefix("https://github.com/").removesuffix(f"/releases/tag/{release_tag}")
-    require(REPOSITORY_RE.fullmatch(repository) is not None, "release event repository is invalid")
+    require(re.fullmatch(REPOSITORY_PATTERN, repository) is not None, "release event repository is invalid")
     require(
         release_url == f"https://github.com/{repository}/releases/tag/{release_tag}",
         "release event release_url is inconsistent",
