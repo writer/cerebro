@@ -10,7 +10,6 @@
   },
   "workspaces": [
     "apps/*",
-    "services/*",
     "sdk/typescript"
   ],
   "scripts": {
