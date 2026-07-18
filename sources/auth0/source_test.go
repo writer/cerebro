@@ -564,10 +564,6 @@ func TestReadPaginatesBareArrayManagementFamilies(t *testing.T) {
 			first:  []map[string]any{{"id": "org-1", "name": "writer"}, {"id": "org-2", "name": "field"}},
 			second: []map[string]any{{"id": "org-3", "name": "support"}},
 		},
-		"/organizations/org-1/members": {
-			first:  []map[string]any{{"user_id": "auth0|user-1", "email": "user-1@example.test"}, {"user_id": "auth0|user-2", "email": "user-2@example.test"}},
-			second: []map[string]any{{"user_id": "auth0|user-3", "email": "user-3@example.test"}},
-		},
 		"/connections": {
 			first:  []map[string]any{{"id": "conn-1", "name": "google-oauth2"}, {"id": "conn-2", "name": "samlp"}},
 			second: []map[string]any{{"id": "conn-3", "name": "waad"}},
@@ -617,7 +613,6 @@ func TestReadPaginatesBareArrayManagementFamilies(t *testing.T) {
 		{family: auth0api.FamilyUsers, path: "/users"},
 		{family: auth0api.FamilyRoles, path: "/roles"},
 		{family: auth0api.FamilyOrganizations, path: "/organizations"},
-		{family: auth0api.FamilyOrganizationMembers, path: "/organizations/org-1/members", config: map[string]string{"organization_ids": "org-1"}},
 		{family: auth0api.FamilyConnections, path: "/connections"},
 		{family: auth0api.FamilyClientGrants, path: "/client-grants"},
 	} {

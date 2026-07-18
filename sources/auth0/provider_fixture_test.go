@@ -79,6 +79,88 @@ func TestSourceReplaysCapturedAuth0Families(t *testing.T) {
 	}
 }
 
+func TestSourceUsesCapturedOrganizationMemberCheckpointAsFrom(t *testing.T) {
+	bundle := capturedAuth0Bundle(t, auth0api.FamilyOrganizationMembers, "list_organization_members")
+	requestPath := capturedAuth0RequestPath(t, bundle)
+	var capturedPage struct {
+		Next string `json:"next"`
+	}
+	if err := json.Unmarshal(bundle.Payload, &capturedPage); err != nil {
+		t.Fatalf("decode captured organization members response: %v", err)
+	}
+	if capturedPage.Next == "" {
+		t.Fatal("captured organization members response has no next checkpoint")
+	}
+
+	requests := make([]url.Values, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "replay-token", "expires_in": 600})
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer replay-token" {
+			t.Fatalf("Authorization = %q, want replay token", got)
+		}
+		if r.Method != http.MethodGet || r.URL.EscapedPath() != requestPath {
+			t.Fatalf("unexpected Auth0 replay request %s %s", r.Method, r.URL.RequestURI())
+		}
+		query := r.URL.Query()
+		requests = append(requests, query)
+		if got := query.Get("page"); got != "" {
+			t.Fatalf("page = %q, want checkpoint pagination without page", got)
+		}
+		if got := query.Get("take"); got != "1" {
+			t.Fatalf("take = %q, want 1", got)
+		}
+		w.Header().Set("Content-Type", bundle.Manifest.Response.ContentType)
+		if from := query.Get("from"); from != "" {
+			if from != capturedPage.Next {
+				t.Fatalf("from = %q, want captured checkpoint %q", from, capturedPage.Next)
+			}
+			_, _ = w.Write([]byte(`{"members":[]}`))
+			return
+		}
+		_, _ = w.Write(bundle.Payload)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":                   server.URL + "/api/v2",
+		"client_id":                  "replay-client",
+		"client_secret":              "replay-secret",
+		"domain":                     "tenant.auth0.com",
+		"family":                     auth0api.FamilyOrganizationMembers,
+		"organization_ids":           capturedAuth0PathSegment(t, requestPath, 3),
+		"organization_member_fields": "user_id",
+		"per_page":                   "1",
+		"tenant_id":                  "tenant",
+		"token_url":                  server.URL + "/oauth/token",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() first error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor is nil, want captured Auth0 checkpoint")
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read() second error = %v", err)
+	}
+	if len(second.Events) != 0 || second.NextCursor != nil {
+		t.Fatalf("second pull = %#v, want terminal empty page", second)
+	}
+	if len(requests) != 2 || requests[0].Get("from") != "" || requests[1].Get("from") != capturedPage.Next {
+		t.Fatalf("requests = %#v, want initial request then from=%q", requests, capturedPage.Next)
+	}
+}
+
 func capturedAuth0Bundle(t *testing.T, family, fixtureCase string) sourcefixture.Bundle {
 	t.Helper()
 	bundle, err := sourcefixture.FindBundle("../..", auth0api.SourceID, family, fixtureCase)
