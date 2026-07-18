@@ -258,7 +258,7 @@ function interruptedRun() {
   const promise = new Promise((_, reject) => {
     for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]]) {
       const handler = () => {
-        const error = new Error(`Local E2E interrupted by ${signal}`);
+        const error = new Error(`Portable fixture E2E interrupted by ${signal}`);
         error.exitCode = exitCode;
         reject(error);
       };
@@ -350,7 +350,7 @@ export async function closeLogStream(stream, deadlineAt) {
   }
 }
 
-export async function runLocalGrcE2E(options = {}) {
+export async function runPortableWebFixtureE2E(options = {}) {
   const timeoutMs = options.timeoutMs ?? options.readyTimeoutMs ?? defaultTimeoutMs;
   const overallDeadline = createDeadline(timeoutMs);
   const cleanupReserveMs = Math.min(10_000, Math.max(25, Math.floor(timeoutMs / 10)), Math.floor(timeoutMs / 2));
@@ -371,7 +371,7 @@ export async function runLocalGrcE2E(options = {}) {
     const createLog = options.createLogStream ?? ((filePath) => createWriteStream(filePath, { flags: "a" }));
     logStream = createLog(logPath);
     const logStreamFailure = new Promise((_, reject) => {
-      logStream.once("error", (error) => reject(new Error(`Local E2E log stream failed: ${error.message}`, { cause: error })));
+      logStream.once("error", (error) => reject(new Error(`Portable fixture E2E log stream failed: ${error.message}`, { cause: error })));
     });
     logStreamFailure.catch(() => {});
     const spawnFixture = options.spawnFixture ?? spawn;
@@ -407,14 +407,14 @@ export async function runLocalGrcE2E(options = {}) {
       };
     };
     result = await Promise.race([
-      validationDeadline.run(validation(), "local E2E validation"),
+      validationDeadline.run(validation(), "portable fixture E2E validation"),
       fixtureAppExit(child),
       logStreamFailure,
       interruption.promise,
     ]);
     passed = true;
   } catch (error) {
-    error.message = `${error.message}\nLocal E2E log: ${logPath}`;
+    error.message = `${error.message}\nPortable fixture E2E log: ${logPath}`;
     primaryError = error;
   } finally {
     interruption?.remove();
@@ -439,7 +439,7 @@ export async function runLocalGrcE2E(options = {}) {
     if (cleanupErrors.length > 0) {
       primaryError = new AggregateError(
         primaryError ? [primaryError, ...cleanupErrors] : cleanupErrors,
-        primaryError?.message ?? "Local E2E cleanup failed",
+        primaryError?.message ?? "Portable fixture E2E cleanup failed",
       );
     }
   }
@@ -448,15 +448,15 @@ export async function runLocalGrcE2E(options = {}) {
 }
 
 async function runCli() {
-  const result = await runLocalGrcE2E(parseArgs(process.argv.slice(2)));
+  const result = await runPortableWebFixtureE2E(parseArgs(process.argv.slice(2)));
   const browser = result.browserChecked ? " with Chromium checks" : " without Chromium checks";
-  console.log(`[e2e:grc:local] passed ${result.routeCount} route contracts${browser}`);
-  console.log(`[e2e:grc:local] checked ${result.scriptChunkCount} application chunks`);
+  console.log(`[e2e:web:fixtures] passed ${result.routeCount} route contracts${browser}`);
+  console.log(`[e2e:web:fixtures] checked ${result.scriptChunkCount} application chunks`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runCli().catch((error) => {
-    console.error(`[e2e:grc:local] failed: ${error.stack || error.message}`);
+    console.error(`[e2e:web:fixtures] failed: ${error.stack || error.message}`);
     process.exitCode = error.exitCode ?? 1;
   });
 }

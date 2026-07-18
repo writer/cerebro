@@ -12,16 +12,16 @@ import {
   createDeadline,
   parseArgs,
   parseFixtureReadyLine,
-  runLocalGrcE2E,
+  runPortableWebFixtureE2E,
   stopProcessTree,
   validateHttpContracts,
   waitForFixtureEndpoint,
   windowsTaskkillArgs,
-} from "./local-grc-e2e.mjs";
+} from "./portable-web-fixture-e2e.mjs";
 
 const headers = (values = {}) => new Headers(values);
 
-describe("local GRC E2E options", () => {
+describe("portable web fixture E2E options", () => {
   it("uses child-owned port allocation, Chromium, and a hard deadline by default", () => {
     expect(parseArgs([])).toEqual({ browser: true, port: 0, timeoutMs: 180_000 });
   });
@@ -42,7 +42,7 @@ describe("local GRC E2E options", () => {
   });
 });
 
-describe("local GRC E2E endpoint ownership", () => {
+describe("portable web fixture E2E endpoint ownership", () => {
   it("accepts only the matching run readiness record", () => {
     const line = 'CEREBRO_FIXTURE_READY {"nonce":"run-a","port":43123}';
     expect(parseFixtureReadyLine(line, "run-a")).toBe(43123);
@@ -57,7 +57,7 @@ describe("local GRC E2E endpoint ownership", () => {
   });
 });
 
-describe("local GRC E2E contracts", () => {
+describe("portable web fixture E2E contracts", () => {
   it("accepts same-origin, private public configuration", () => {
     expect(() => assertPublicConfig({
       body: JSON.stringify({ apiBase: "/api/cerebro", serverAuthConfigured: false }),
@@ -136,7 +136,7 @@ const waitForProcessExit = async (pid, timeoutMs = 2_000) => {
   throw new Error(`Process ${pid} did not exit`);
 };
 
-describe("local GRC E2E cleanup", () => {
+describe("portable web fixture E2E cleanup", () => {
   it.runIf(process.platform !== "win32")("owns fixture cleanup when the log stream fails before readiness", async () => {
     let child;
     const createLogStream = () => {
@@ -155,7 +155,7 @@ describe("local GRC E2E cleanup", () => {
     };
     let caught;
     try {
-      await runLocalGrcE2E({
+      await runPortableWebFixtureE2E({
         browser: false,
         createLogStream,
         spawnFixture,
@@ -164,9 +164,9 @@ describe("local GRC E2E cleanup", () => {
     } catch (error) {
       caught = error;
     }
-    expect(caught?.message).toContain("Local E2E log stream failed: simulated log open failure");
+    expect(caught?.message).toContain("Portable fixture E2E log stream failed: simulated log open failure");
     expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
-    const logPath = caught?.message.match(/Local E2E log: (.+)$/m)?.[1];
+    const logPath = caught?.message.match(/Portable fixture E2E log: (.+)$/m)?.[1];
     if (logPath) await rm(path.dirname(path.dirname(logPath)), { force: true, recursive: true });
   });
 
