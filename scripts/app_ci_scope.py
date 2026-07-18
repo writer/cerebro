@@ -71,9 +71,12 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
     if any(path in CI_CONTROLLER_PATHS for path in normalized):
         return CIScope.all()
     if any(
-        len(parts := path.split("/", 2)) == 3
-        and parts[0] == "apps"
-        and parts[1] not in MAPPED_APP_DIRS
+        path.startswith("apps/")
+        and path != "apps/README.md"
+        and not any(
+            path == f"apps/{app_dir}" or path.startswith(f"apps/{app_dir}/")
+            for app_dir in MAPPED_APP_DIRS
+        )
         for path in normalized
     ):
         return CIScope.all()

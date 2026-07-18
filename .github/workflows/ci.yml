@@ -38,7 +38,7 @@ jobs:
             python3 scripts/app_ci_scope.py --all --github-output "${GITHUB_OUTPUT}" </dev/null
             exit 0
           fi
-          git diff --name-only --no-renames --diff-filter=ACMRD -z "${BASE_SHA}" "${HEAD_SHA}" \
+          git diff --name-only --no-renames -z "${BASE_SHA}" "${HEAD_SHA}" \
             | python3 scripts/app_ci_scope.py --null --github-output "${GITHUB_OUTPUT}"
 
   app-workspace-contract:

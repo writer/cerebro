@@ -24,6 +24,12 @@ class AppCIScopeTests(unittest.TestCase):
             CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
         )
 
+    def test_type_changed_known_app_path_selects_its_owned_checks(self):
+        self.assertEqual(
+            select_scope(["apps/web/src/linked-config.ts"]),
+            CIScope(core=False, sdk=False, slack=False, web=True, web_image=True),
+        )
+
     def test_rename_old_and_new_paths_cannot_hide_owned_checks(self):
         self.assertEqual(
             select_scope(
@@ -37,6 +43,12 @@ class AppCIScopeTests(unittest.TestCase):
 
     def test_unknown_application_path_fails_safe_to_every_scope(self):
         self.assertEqual(select_scope(["apps/new-surface/package.json"]), CIScope.all())
+
+    def test_unknown_two_component_application_path_fails_safe_to_every_scope(self):
+        self.assertEqual(select_scope(["apps/new-surface"]), CIScope.all())
+
+    def test_unknown_application_root_file_fails_safe_to_every_scope(self):
+        self.assertEqual(select_scope(["apps/shared-config.ts"]), CIScope.all())
 
     def test_scope_and_workspace_contract_share_the_same_app_mapping(self):
         self.assertEqual(MAPPED_APP_DIRS, CONTRACT_MAPPED_APP_DIRS)
