@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "admin": false,
+        "created_at": "2021-11-03T16:29:29Z",
+        "customer_id": "example-b4e8d80d",
+        "description": "example-6342c9a4",
+        "event_type": "logging.update",
+        "ip": "203.0.113.117, 203.0.113.117",
+        "metadata": {
+          "new": {
+            "name": "example-b742ce6e",
+            "pipeline": "example-8824e31b"
+          },
+          "old": {
+            "name": "example-3efb4bab",
+            "pipeline": "example-db42372f"
+          }
+        },
+        "service_id": "example-1af45b99",
+        "user_id": "example-6d9e578f"
+      },
+      "id": "example-2d2f8042",
+      "type": "event"
+    }
+  ],
+  "links": {
+    "last": "https://api.fastly.com/events?page[number]=197261\u0026page[size]=1",
+    "next": "https://api.fastly.com/events?page[number]=2\u0026page[size]=1"
+  },
+  "meta": {
+    "current_page": 1,
+    "per_page": 1,
+    "record_count": 197261,
+    "total_pages": 197261
+  }
+}

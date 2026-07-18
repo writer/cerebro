@@ -19,8 +19,8 @@ const (
 	defaultFamily          = familyServices
 	defaultHealthPath      = "/current_customer"
 	defaultBaseURLTemplate = "https://api.fastly.com"
-	tokenHeader            = ""
-	tokenScheme            = "Bearer"
+	tokenHeader            = "Fastly-Key"
+	tokenScheme            = ""
 	familyServices         = "services"
 	familyAclEntries       = "acl_entries"
 	familyAuditEvents      = "audit_events"
@@ -42,7 +42,7 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
+		AuthModel:       "api_key",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
@@ -51,38 +51,50 @@ func New() (*Source, error) {
 				Path:             "/service",
 				URNKind:          "fastly_services",
 				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				CursorParam:      "page",
+				LinkHeader:       "Link",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"per_page"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "services", "source_system": "fastly"},
+				Config: jsonapi.FamilyConfig{StaticQuery: map[string]string{
+					"direction": "descend",
+					"sort":      "created",
+				}},
 			},
 			{
 				Name:             familyAclEntries,
-				Path:             "/acl",
+				Path:             "/service/{service_id}/acl/{acl_id}/entries",
+				PathParams:       []string{"service_id", "acl_id"},
 				URNKind:          "fastly_acl_entries",
 				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				CursorParam:      "page",
+				LinkHeader:       "Link",
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"per_page"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"acl_id": "acl_id", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "comment|ip|name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "service_id": "service_id", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "acl_entries", "source_system": "fastly"},
+				Config: jsonapi.FamilyConfig{
+					ConfigAttributes: map[string]string{"acl_id": "acl_id", "service_id": "service_id"},
+					StaticQuery:      map[string]string{"direction": "descend", "sort": "created"},
+				},
 			},
 			{
 				Name:             familyAuditEvents,
 				Path:             "/events",
 				URNKind:          "fastly_audit_events",
 				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				CursorParam:      "page[number]",
+				NextCursorKeys:   []string{"links.next"},
+				PageFirstCursor:  "1",
+				PageSizeParams:   []string{"page[size]"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				TimestampKeys:    []string{"attributes.created_at", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:       map[string]string{"actor_email": "attributes.actor_email|actor_email|actor.email|email|user.email", "actor_id": "attributes.user_id|actor_id|actor.id|actorId|user_id|user.id", "actor_name": "attributes.actor_name|actor_name|actor.name|user.name", "event_type": "attributes.event_type|event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "attributes.created_at|observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "attributes.service_id|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "attributes.description|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "type|resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "id|event_id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "fastly"},
 			},
 		},
