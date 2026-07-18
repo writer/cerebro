@@ -47,6 +47,10 @@ class AppCIWorkflowTests(unittest.TestCase):
         self.assertIn("npm run check --workspace @writer/cerebro-slack-companion", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-sdk", self.workflow)
 
+    def test_javascript_audit_blocks_production_advisories_at_moderate(self):
+        self.assertIn("npm audit --omit=dev --audit-level=moderate", self.workflow)
+        self.assertNotIn("npm audit --audit-level=high", self.workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

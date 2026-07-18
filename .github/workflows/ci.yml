@@ -135,7 +135,7 @@ jobs:
           cache: npm
 
       - name: Audit JavaScript workspace dependencies
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
 
   verify-shard:
     name: ${{ matrix.name }}
