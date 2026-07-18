@@ -22,12 +22,14 @@ const providerTokens = (finding: FindingLike) =>
 export const securityProducerForFinding = (
   finding: FindingLike,
   producers: SecurityProducer[],
-) =>
-  producers.find((producer) =>
+) => {
+  const matches = producers.filter((producer) =>
     producer.sourceIds.includes(compact(finding.source_id)) ||
     producer.runtimeIds.includes(compact(finding.runtime_id)) ||
     finding.external_refs?.some((reference) => compact(reference.system) === producer.id),
   );
+  return matches.length === 1 ? matches[0] : undefined;
+};
 
 export const securityProducerResponseActionCandidates = (
   finding: FindingLike,
@@ -46,15 +48,33 @@ export const securityProducerResponseActionCandidates = (
 
 export const securityProducerResponseCandidateHint = (
   candidates: string[],
+  producer: SecurityProducer,
+) => {
+  const actions = new Map(
+    producer.responseActions.map((action) => [action.id, action]),
+  );
+  return candidates.flatMap((candidate) => {
+    const action = actions.get(candidate);
+    return action ? [responseActionHint(candidate, action)] : [];
+  }).join(", ");
+};
+
+export const resolveSecurityProducerGuidance = (
+  producerID: string,
+  candidates: string[],
   producers: SecurityProducer[],
 ) => {
-  const actions = new Map<string, SecurityProducerResponseAction>();
-  producers.forEach((producer) => {
-    producer.responseActions.forEach((action) => {
-      if (!actions.has(action.id)) actions.set(action.id, action);
-    });
-  });
-  return candidates.map((candidate) => responseActionHint(candidate, actions.get(candidate))).join(", ");
+  const producerMatches = producers.filter((producer) => producer.id === producerID);
+  if (producerMatches.length !== 1) return null;
+  const producer = producerMatches[0];
+  const normalizedCandidates = candidates.map(compact);
+  if (normalizedCandidates.some((candidate) => !candidate)) return null;
+  const actionIDs = new Set(producer.responseActions.map((action) => action.id));
+  if (normalizedCandidates.some((candidate) => !actionIDs.has(candidate))) return null;
+  return {
+    producer,
+    candidates: [...new Set(normalizedCandidates)],
+  };
 };
 
 export const securityProducerContextForFinding = (

@@ -134,6 +134,32 @@ describe("security producer configuration", () => {
     ]))).toEqual({ state: "invalid" });
   });
 
+  it("rejects duplicate action ids across producers", () => {
+    expect(securityProducerCatalogFromValue([
+      {
+        id: "producer-one",
+        label: "Producer One",
+        responseActions: [{ id: "SHARED_ACTION", label: "First action" }],
+      },
+      {
+        id: "producer-two",
+        label: "Producer Two",
+        responseActions: [{ id: "SHARED_ACTION", label: "Second action" }],
+      },
+    ])).toEqual({ state: "invalid" });
+  });
+
+  it("rejects overlapping source and runtime ownership", () => {
+    expect(securityProducerCatalogFromValue([
+      { id: "producer-one", label: "Producer One", sourceIds: ["shared-source"] },
+      { id: "producer-two", label: "Producer Two", sourceIds: ["shared-source"] },
+    ])).toEqual({ state: "invalid" });
+    expect(securityProducerCatalogFromValue([
+      { id: "producer-one", label: "Producer One", runtimeIds: ["shared-runtime"] },
+      { id: "producer-two", label: "Producer Two", runtimeIds: ["shared-runtime"] },
+    ])).toEqual({ state: "invalid" });
+  });
+
   it("lets configured producers override the same id", () => {
     const base = parseSecurityProducerCatalog('[{"id":"producer-one","label":"Base"}]');
     const configured = parseSecurityProducerCatalog('[{"id":"producer-one","label":"Configured"}]');

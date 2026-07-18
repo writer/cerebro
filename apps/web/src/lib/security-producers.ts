@@ -150,10 +150,29 @@ export const securityProducerCatalogFromValue = (value: unknown): SecurityProduc
   if (!Array.isArray(value)) return { state: "invalid" };
   const producers: SecurityProducer[] = [];
   const ids = new Set<string>();
+  const actionIDs = new Set<string>();
+  const runtimeOwners = new Map<string, string>();
+  const sourceOwners = new Map<string, string>();
   for (const candidate of value) {
     const producer = producerFromRecord(candidate);
     if (!producer || ids.has(producer.id)) return { state: "invalid" };
+    if (producer.responseActions.some((action) => actionIDs.has(action.id))) {
+      return { state: "invalid" };
+    }
+    if (
+      producer.runtimeIds.some((runtimeID) => {
+        const owner = runtimeOwners.get(runtimeID);
+        return Boolean(owner && owner !== producer.id);
+      }) ||
+      producer.sourceIds.some((sourceID) => {
+        const owner = sourceOwners.get(sourceID);
+        return Boolean(owner && owner !== producer.id);
+      })
+    ) return { state: "invalid" };
     ids.add(producer.id);
+    producer.responseActions.forEach((action) => actionIDs.add(action.id));
+    producer.runtimeIds.forEach((runtimeID) => runtimeOwners.set(runtimeID, producer.id));
+    producer.sourceIds.forEach((sourceID) => sourceOwners.set(sourceID, producer.id));
     producers.push(producer);
   }
   return { state: "ready", producers };
