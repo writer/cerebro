@@ -24,10 +24,14 @@ import {
   MissionLedgerInvariantError,
   MissionLedgerOccurrenceConflictError,
   MissionLedgerStaleLeaseError,
+  MissionLedgerStaleOccurrenceError,
   MissionLedgerStaleRevisionError,
   missionSnapshotReference,
 } from "./ledger.js";
-import { acquireScheduledOccurrence } from "../operations/schedules.js";
+import {
+  acquireScheduledOccurrence,
+  updateScheduledOccurrence,
+} from "../operations/schedules.js";
 
 export interface ReferenceMemoryMissionLedgerStoreOptions {
   lease_authority?: MissionLeaseAuthorityPort;
@@ -54,6 +58,7 @@ export class ReferenceMemoryMissionLedgerStore
     const prior = this.requireIdempotentCommit(commit);
     if (prior !== undefined) {
       return {
+        consumed_occurrence: prior.consumed_occurrence,
         created: false,
         event: prior.event,
         occurrence: prior.occurrence,
@@ -79,6 +84,11 @@ export class ReferenceMemoryMissionLedgerStore
   ): Promise<MissionPromotionResult> {
     requireRef(commit.adapter_ref, "adapter_ref");
     requireRef(commit.source_ref, "source_ref");
+    if (commit.consumed_occurrence !== undefined) {
+      throw new MissionLedgerInvariantError(
+        "legacy promotion cannot consume scheduled mission work",
+      );
+    }
     const prior = this.requireIdempotentCommit(commit);
     if (prior !== undefined) {
       return {
@@ -100,8 +110,12 @@ export class ReferenceMemoryMissionLedgerStore
       return { created: false, snapshot: clone(current) };
     }
 
-    this.validateCommit(commit, undefined, undefined);
-    this.applyCommit(commit);
+    const consumedOccurrence = this.validateCommit(
+      commit,
+      undefined,
+      undefined,
+    );
+    this.applyCommit(commit, consumedOccurrence);
     return {
       created: true,
       event: clone(commit.event),
@@ -231,6 +245,7 @@ export class ReferenceMemoryMissionLedgerStore
     const prior = this.requireIdempotentCommit(commit);
     if (prior !== undefined) {
       return {
+        consumed_occurrence: prior.consumed_occurrence,
         created: false,
         event: prior.event,
         occurrence: prior.occurrence,
@@ -238,9 +253,14 @@ export class ReferenceMemoryMissionLedgerStore
       };
     }
     const current = this.snapshots.get(commit.snapshot.subject_ref);
-    this.validateCommit(commit, current, authoritative);
-    this.applyCommit(commit);
+    const consumedOccurrence = this.validateCommit(
+      commit,
+      current,
+      authoritative,
+    );
+    this.applyCommit(commit, consumedOccurrence);
     return {
+      consumed_occurrence: cloneOptional(consumedOccurrence),
       created: true,
       event: clone(commit.event),
       occurrence: cloneOptional(commit.occurrence),
@@ -252,7 +272,7 @@ export class ReferenceMemoryMissionLedgerStore
     commit: MissionAtomicCommit,
     current: MissionSnapshotV1 | undefined,
     authoritative: AuthoritativeMissionLeaseRead | undefined,
-  ): void {
+  ): ScheduledOccurrenceV1 | undefined {
     const { event, snapshot } = commit;
     requireRef(commit.idempotency_key, "idempotency_key");
     requireRef(commit.intent_digest, "intent_digest");
@@ -324,6 +344,39 @@ export class ReferenceMemoryMissionLedgerStore
       );
     }
     this.validateOccurrence(commit);
+    return this.validateConsumedOccurrence(commit, current, authoritative);
+  }
+
+  private validateConsumedOccurrence(
+    commit: MissionAtomicCommit,
+    current: MissionSnapshotV1 | undefined,
+    authoritative: AuthoritativeMissionLeaseRead | undefined,
+  ): ScheduledOccurrenceV1 | undefined {
+    const outcome = commit.consumed_occurrence;
+    if (outcome === undefined) return undefined;
+    if (
+      current === undefined ||
+      authoritative === undefined ||
+      current.wake?.occurrence_ref !== outcome.occurrence_id ||
+      commit.occurrence?.occurrence_id === outcome.occurrence_id
+    ) {
+      throw new MissionLedgerStaleOccurrenceError();
+    }
+
+    const occurrence = this.occurrences.get(outcome.occurrence_id);
+    if (occurrence === undefined) {
+      throw new MissionLedgerStaleOccurrenceError();
+    }
+    const consumed = updateScheduledOccurrence(
+      occurrence,
+      outcome.claim,
+      outcome.state,
+      authoritative.observed_at,
+    );
+    if (consumed === undefined) {
+      throw new MissionLedgerStaleOccurrenceError();
+    }
+    return consumed;
   }
 
   private validateOccurrence(commit: MissionAtomicCommit): void {
@@ -400,10 +453,17 @@ export class ReferenceMemoryMissionLedgerStore
     }
   }
 
-  private applyCommit(commit: MissionAtomicCommit): void {
+  private applyCommit(
+    commit: MissionAtomicCommit,
+    consumedOccurrence: ScheduledOccurrenceV1 | undefined,
+  ): void {
     const snapshot = clone(commit.snapshot);
     const event = clone(commit.event);
     const occurrence = cloneOptional(commit.occurrence);
+    const consumed = cloneOptional(consumedOccurrence);
+    if (consumed !== undefined) {
+      this.occurrences.set(consumed.occurrence_id, consumed);
+    }
     if (occurrence !== undefined) {
       this.occurrences.set(occurrence.occurrence_id, occurrence);
     }
@@ -414,6 +474,7 @@ export class ReferenceMemoryMissionLedgerStore
       event,
     ]);
     this.commits.set(commit.idempotency_key, {
+      consumed_occurrence: consumed,
       event,
       intent_digest: commit.intent_digest,
       occurrence,

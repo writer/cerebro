@@ -11,13 +11,20 @@ import type {
   InboundPayloadReceipt,
   SlackEventNormalizationInput,
   SlackEventsApiRequest,
+  SlackInvocationNormalizationInput,
+  SlackSignedInvocationRequest,
   SlackSocketModeEnvelope,
 } from "../src/transport/contracts.js";
 import {
   handleEventsApiRequest,
+  handleInteractiveRequest,
+  handleSlashCommandRequest,
   handleSocketModeRequest,
 } from "../src/transport/handler.js";
-import { StructuralSlackEventNormalizer } from "../src/transport/normalization.js";
+import {
+  StructuralSlackEventNormalizer,
+  StructuralSlackInvocationNormalizer,
+} from "../src/transport/normalization.js";
 import { evaluateSlackIngressReadiness } from "../src/transport/readiness.js";
 
 const now = new Date("2026-07-16T12:00:00.000Z");
@@ -289,6 +296,175 @@ describe("Slack transport boundary", () => {
       run_id: "run-event-1",
     });
   });
+
+  test("persists a signed slash command and durably admits it before acknowledgement", async () => {
+    const order: string[] = [];
+    const payloads = new MemoryPayloadStore(order);
+    const request = signedInvocationRequest(slashCommandBody());
+
+    const outcome = await handleSlashCommandRequest(request, requestKey(), {
+      admission: acceptingAdmission(order),
+      clock: { now: () => now },
+      normalizer: recordingInvocationNormalizer(order),
+      payloads,
+    });
+
+    assert.deepEqual(order, ["persist", "normalize", "admit"]);
+    assert.deepEqual(payloads.commitKeys, [
+      "slack:app-1:team-1:slash_command:trigger-command-1",
+    ]);
+    assert.deepEqual(outcome, {
+      command: {
+        body: "",
+        invocation: "slash_command",
+        kind: "signed_invocation_ack",
+        status_code: 200,
+      },
+      kind: "acknowledge",
+      run_id: "run-slash_command:trigger-command-1",
+    });
+  });
+
+  test("persists a signed interaction without exposing response transport fields", async () => {
+    const order: string[] = [];
+    const payloads = new MemoryPayloadStore(order);
+    const request = signedInvocationRequest(interactiveBody());
+    let admitted: SlackIngressEnvelope | undefined;
+
+    const outcome = await handleInteractiveRequest(request, requestKey(), {
+      admission: {
+        admit: async (envelope) => {
+          order.push("admit");
+          admitted = envelope;
+          return accepted(`run-${envelope.event_id}`, false);
+        },
+      },
+      clock: { now: () => now },
+      normalizer: recordingInvocationNormalizer(order),
+      payloads,
+    });
+
+    assert.deepEqual(order, ["persist", "normalize", "admit"]);
+    assert.deepEqual(outcome, {
+      command: {
+        body: "",
+        invocation: "interactive",
+        kind: "signed_invocation_ack",
+        status_code: 200,
+      },
+      kind: "acknowledge",
+      run_id: "run-interactive:trigger-action-1",
+    });
+    assert.equal(admitted?.conversation_id, "conversation-1");
+    assert.equal(admitted?.thread_id, "thread-1");
+    assert.equal(admitted?.event_type, "interactive:block_actions:approve");
+    assert.equal(JSON.stringify(admitted).includes("response_url"), false);
+  });
+
+  test("does not persist or acknowledge a malformed signed invocation", async () => {
+    const order: string[] = [];
+    const request = signedInvocationRequest("command=%2Fcerebro");
+
+    const outcome = await handleSlashCommandRequest(request, requestKey(), {
+      admission: acceptingAdmission(order),
+      clock: { now: () => now },
+      normalizer: recordingInvocationNormalizer(order),
+      payloads: new MemoryPayloadStore(order),
+    });
+
+    assert.deepEqual(order, []);
+    assert.deepEqual(outcome, {
+      kind: "no_acknowledgement",
+      reason_code: "invalid_envelope",
+      retryable: false,
+      stage: "parsing",
+    });
+  });
+
+  test("normalizes a modal interaction through a durable thread route", async () => {
+    const order: string[] = [];
+    const rawBody = new URLSearchParams({
+      payload: JSON.stringify({
+        api_app_id: "app-1",
+        callback_id: "schedule_review",
+        team: { id: "team-1" },
+        trigger_id: "trigger-modal-1",
+        type: "view_submission",
+        user: { id: "user-1" },
+      }),
+    }).toString();
+    const request = signedInvocationRequest(rawBody);
+    request.route = {
+      ...request.route,
+      conversation_id: "conversation-1",
+      thread_id: "thread-1",
+    };
+    let admitted: SlackIngressEnvelope | undefined;
+
+    const outcome = await handleInteractiveRequest(request, requestKey(), {
+      admission: {
+        admit: async (envelope) => {
+          order.push("admit");
+          admitted = envelope;
+          return accepted(`run-${envelope.event_id}`, false);
+        },
+      },
+      clock: { now: () => now },
+      normalizer: recordingInvocationNormalizer(order),
+      payloads: new MemoryPayloadStore(order),
+    });
+
+    assert.equal(outcome.kind, "acknowledge");
+    assert.equal(admitted?.conversation_id, "conversation-1");
+    assert.equal(admitted?.thread_id, "thread-1");
+    assert.equal(
+      admitted?.event_type,
+      "interactive:view_submission:schedule_review",
+    );
+  });
+
+  test("admits Socket Mode commands only after durable presence and payload storage", async () => {
+    const order: string[] = [];
+    const payload = Object.fromEntries(
+      new URLSearchParams(slashCommandBody()).entries(),
+    );
+    const envelope: SlackSocketModeEnvelope = {
+      envelope_id: "socket-command-1",
+      payload,
+      type: "slash_commands",
+    };
+
+    const outcome = await handleSocketModeRequest(
+      {
+        connection: { connection_ref: "connection-1", generation: 3 },
+        raw_body: Buffer.from(JSON.stringify(envelope)),
+        received_at: now.toISOString(),
+        route: route(),
+      },
+      {
+        admission: acceptingAdmission(order),
+        invocation_normalizer: recordingInvocationNormalizer(order),
+        normalizer: recordingNormalizer(order),
+        payloads: new MemoryPayloadStore(order),
+        presence: {
+          isActive: async () => {
+            order.push("verify");
+            return true;
+          },
+        },
+      },
+    );
+
+    assert.deepEqual(order, ["verify", "persist", "normalize", "admit"]);
+    assert.deepEqual(outcome, {
+      command: {
+        envelope_id: "socket-command-1",
+        kind: "socket_mode_ack",
+      },
+      kind: "acknowledge",
+      run_id: "run-slash_command:trigger-command-1",
+    });
+  });
 });
 
 describe("Slack ingress readiness", () => {
@@ -380,6 +556,49 @@ function eventBody(): string {
   });
 }
 
+function slashCommandBody(): string {
+  return new URLSearchParams({
+    api_app_id: "app-1",
+    channel_id: "conversation-1",
+    command: "/cerebro",
+    response_url: "https://slack.invalid/opaque-response",
+    team_id: "team-1",
+    text: "inspect this thread",
+    trigger_id: "trigger-command-1",
+    user_id: "user-1",
+  }).toString();
+}
+
+function interactiveBody(): string {
+  return new URLSearchParams({
+    payload: JSON.stringify({
+      actions: [{ action_id: "approve", action_ts: "1" }],
+      api_app_id: "app-1",
+      container: {
+        channel_id: "conversation-1",
+        thread_ts: "thread-1",
+      },
+      response_url: "https://slack.invalid/opaque-response",
+      team: { id: "team-1" },
+      trigger_id: "trigger-action-1",
+      type: "block_actions",
+      user: { id: "user-1" },
+    }),
+  }).toString();
+}
+
+function signedInvocationRequest(rawBody: string): SlackSignedInvocationRequest {
+  const raw = Buffer.from(rawBody);
+  const key = requestKey();
+  return {
+    raw_body: raw,
+    received_at: now.toISOString(),
+    request_signature: sign(raw, timestamp, key),
+    request_timestamp: timestamp,
+    route: route(),
+  };
+}
+
 function route() {
   return {
     binding_id: "binding-1",
@@ -411,6 +630,16 @@ function recordingNormalizer(order: string[]) {
   const structural = new StructuralSlackEventNormalizer();
   return {
     normalize(input: SlackEventNormalizationInput): SlackIngressEnvelope {
+      order.push("normalize");
+      return structural.normalize(input);
+    },
+  };
+}
+
+function recordingInvocationNormalizer(order: string[]) {
+  const structural = new StructuralSlackInvocationNormalizer();
+  return {
+    normalize(input: SlackInvocationNormalizationInput): SlackIngressEnvelope {
       order.push("normalize");
       return structural.normalize(input);
     },
