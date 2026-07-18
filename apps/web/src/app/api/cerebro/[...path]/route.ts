@@ -49,7 +49,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
   ]);
-  const path = (params.path ?? []).join("/");
+  const normalized = normalizeRequestPath(params.path);
+  if (normalized instanceof NextResponse) return normalized;
+  const path = normalized;
   const span = startWebSpan("cerebro.proxy.request", proxySpanAttributes("GET", path, request), request.headers.get("traceparent"));
   const requiredPermission = permissionForCerebroProxyRequest("GET", path);
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
@@ -202,7 +204,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
   ]);
-  const path = (params.path ?? []).join("/");
+  const normalized = normalizeRequestPath(params.path);
+  if (normalized instanceof NextResponse) return normalized;
+  const path = normalized;
   const span = startWebSpan(
     "cerebro.proxy.request",
     proxySpanAttributes("POST", path, request),
@@ -310,7 +314,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
   ]);
-  const path = (params.path ?? []).join("/");
+  const normalized = normalizeRequestPath(params.path);
+  if (normalized instanceof NextResponse) return normalized;
+  const path = normalized;
   const normalizedPath = normalizeProxyPath(path);
   const requiredPermission = permissionForCerebroProxyRequest("PATCH", normalizedPath);
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
@@ -373,7 +379,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
   ]);
-  const path = (params.path ?? []).join("/");
+  const normalized = normalizeRequestPath(params.path);
+  if (normalized instanceof NextResponse) return normalized;
+  const path = normalized;
   const normalizedPath = normalizeProxyPath(path);
   const requiredPermission = permissionForCerebroProxyRequest("PUT", normalizedPath);
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
@@ -435,7 +443,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     context.params,
     resolveCurrentUserFromHeadersWithFallback(request.headers),
   ]);
-  const path = (params.path ?? []).join("/");
+  const normalized = normalizeRequestPath(params.path);
+  if (normalized instanceof NextResponse) return normalized;
+  const path = normalized;
   const normalizedPath = normalizeProxyPath(path);
   const requiredPermission = permissionForCerebroProxyRequest("DELETE", normalizedPath);
   const decision = authorizeCurrentUser(currentUser, requiredPermission);
@@ -594,6 +604,20 @@ function cleanPreferenceHeaderValue(value: string | undefined) {
 function proxyPathFamily(path: string) {
   const segments = path.split("/").filter(Boolean).slice(0, 2);
   return segments.length ? `/${segments.join("/")}` : "/";
+}
+
+function normalizeRequestPath(pathSegments: string[] | undefined) {
+  try {
+    return normalizeProxyPath((pathSegments ?? []).join("/"));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return NextResponse.json(
+        { error: "Cerebro proxy paths cannot contain dot segments." },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
 }
 
 function authorizationSpanAttributes(decision: AuthorizationDecision, user: CurrentUser | null) {

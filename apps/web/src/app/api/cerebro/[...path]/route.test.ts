@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GET, PATCH, PUT } from "./route";
+import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 const originalFixtureMode = process.env.CEREBRO_WEB_FIXTURE_MODE;
 const originalIdentityRequired = process.env.CEREBRO_IDENTITY_REQUIRED;
@@ -19,6 +19,24 @@ afterEach(() => {
 });
 
 describe("Cerebro proxy route", () => {
+  it.each([
+    ["GET", GET],
+    ["POST", POST],
+    ["PATCH", PATCH],
+    ["PUT", PUT],
+    ["DELETE", DELETE],
+  ] as const)("returns 400 for dot segments on %s requests", async (method, handler) => {
+    const response = await handler(
+      new NextRequest("http://localhost/api/cerebro/%2e%2e/sources", { method }),
+      { params: Promise.resolve({ path: ["..", "sources"] }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cerebro proxy paths cannot contain dot segments.",
+    });
+  });
+
   it("translates a shared inflight rejection for every deduplicated request", async () => {
     delete process.env.CEREBRO_WEB_FIXTURE_MODE;
     let rejectFetch: ((reason?: unknown) => void) | undefined;

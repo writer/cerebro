@@ -633,8 +633,8 @@ const jwtConfidence = (
 ): IdentityConfidence => {
   if (warnings.length > 0) return "unverified";
   if (signatureVerified) return "signature-verified";
-  if (process.env.CEREBRO_IDENTITY_ISSUER || process.env.CEREBRO_IDENTITY_AUDIENCE) return "claims-validated";
   if (provider === "bearer-jwt") return "unverified";
+  if (process.env.CEREBRO_IDENTITY_ISSUER || process.env.CEREBRO_IDENTITY_AUDIENCE) return "claims-validated";
   return "trusted-proxy";
 };
 
@@ -1030,8 +1030,6 @@ export const currentUserFromHeadersWithFallback = (headers: Headers): CurrentUse
   currentUserFromHeaders(headers) ?? (localIdentityFallbackEnabled() ? localCurrentUserFallback() : null);
 
 export const resolveCurrentUserFromHeaders = async (headers: Headers): Promise<CurrentUser | null> => {
-  if (!configuredJwksUrl()) return currentUserFromHeaders(headers);
-
   const candidates: CurrentUser[] = [];
   const directUser = directHeaderCandidate(headers);
   if (directUser) candidates.push(directUser);
@@ -1045,7 +1043,10 @@ export const resolveCurrentUserFromHeaders = async (headers: Headers): Promise<C
   for (const header of allowedHeaderNames(JWT_HEADERS)) {
     const token = headers.get(header);
     if (!token) continue;
-    const user = await currentUserFromVerifiedJwt(token, providerForHeader([header]) ?? "auth-proxy");
+    const provider = providerForHeader([header]) ?? "auth-proxy";
+    const user = configuredJwksUrl()
+      ? await currentUserFromVerifiedJwt(token, provider)
+      : currentUserFromJwt(token, provider);
     if (user) candidates.push(user);
   }
 
