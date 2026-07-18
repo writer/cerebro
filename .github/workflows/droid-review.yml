@@ -97,7 +97,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -341,7 +341,7 @@ jobs:
       - name: Run Droid Auto Review
         id: droid-review-first
         continue-on-error: true
-        uses: Factory-AI/droid-action@aaa1cd31dfe2c4fc1756af9ec386390cf4b8a56a # main
+        uses: Factory-AI/droid-action@602ad67056c258c199b75434a53baec4d3b50294 # main
         with:
           factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
@@ -355,7 +355,7 @@ jobs:
       - name: Retry Droid Auto Review on failure
         if: steps.droid-review-first.outcome == 'failure'
         continue-on-error: true
-        uses: Factory-AI/droid-action@aaa1cd31dfe2c4fc1756af9ec386390cf4b8a56a # main
+        uses: Factory-AI/droid-action@602ad67056c258c199b75434a53baec4d3b50294 # main
         with:
           factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
