@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,6 +29,9 @@ type summary struct {
 	NeedsDeployFamilyCoverage       int `json:"needs_deploy_family_coverage"`
 	NeedsCoverageSpecificity        int `json:"needs_coverage_specificity"`
 	NeedsIncrementalCheckpointTests int `json:"needs_incremental_checkpoint_tests"`
+	GenuineAPIBundles               int `json:"genuine_api_bundles"`
+	GenuineAPISources               int `json:"genuine_api_sources"`
+	GenuineAPIFamilies              int `json:"genuine_api_families"`
 }
 
 type sourceReport struct {
@@ -40,6 +44,8 @@ type sourceReport struct {
 	DiscoverFixtures          int      `json:"discover_fixtures"`
 	SyntheticReadFixtures     int      `json:"synthetic_read_fixtures"`
 	ProviderLikeReadFixtures  int      `json:"provider_like_read_fixtures"`
+	GenuineAPIBundles         int      `json:"genuine_api_bundles"`
+	GenuineAPIFamilies        int      `json:"genuine_api_families"`
 	DeployRuntimes            int      `json:"deploy_runtimes"`
 	DeployRuntimeFamilies     int      `json:"deploy_runtime_families"`
 	IncrementalFamilies       int      `json:"incremental_families"`
@@ -137,11 +143,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	fmt.Printf("sourcefidelity: sources=%d runtime_sources=%d high_fidelity=%d needs_real_fixtures=%d needs_every_family_tests=%d needs_deploy_family_coverage=%d\n",
+	fmt.Printf("sourcefidelity: sources=%d runtime_sources=%d high_fidelity=%d needs_real_fixtures=%d genuine_api_bundles=%d genuine_api_families=%d needs_every_family_tests=%d needs_deploy_family_coverage=%d\n",
 		result.Summary.TotalSources,
 		result.Summary.RuntimeSources,
 		result.Summary.HighFidelitySources,
 		result.Summary.NeedsRealFixtures,
+		result.Summary.GenuineAPIBundles,
+		result.Summary.GenuineAPIFamilies,
 		result.Summary.NeedsEveryFamilyTests,
 		result.Summary.NeedsDeployFamilyCoverage,
 	)
@@ -213,6 +221,10 @@ func analyzeSource(sourceRoot string) (sourceReport, error) {
 		}
 	}
 	source.ReadFixtures, source.DiscoverFixtures, source.SyntheticReadFixtures, source.ProviderLikeReadFixtures = fixtureSignals(sourceRoot)
+	source.GenuineAPIBundles, source.GenuineAPIFamilies, err = genuineFixtureSignals(sourceRoot)
+	if err != nil {
+		return sourceReport{}, err
+	}
 	source.DeployRuntimes, source.DeployRuntimeFamilies = deploySignals(filepath.Join(sourceRoot, "deploy.yaml"))
 	source.UsesJSONAPI = fileContains(filepath.Join(sourceRoot, "source.go"), "sources/internal/jsonapi")
 	testPath := filepath.Join(sourceRoot, "source_test.go")
@@ -306,6 +318,23 @@ func fixtureSignals(sourceRoot string) (readFixtures int, discoverFixtures int, 
 		}
 	}
 	return readFixtures, len(discoverMatches), synthetic, providerLike
+}
+
+func genuineFixtureSignals(sourceRoot string) (bundles int, familyCount int, err error) {
+	manifestPaths, err := filepath.Glob(filepath.Join(sourceRoot, "testdata", "api", "*", "*", "provenance.yaml"))
+	if err != nil {
+		return 0, 0, fmt.Errorf("find genuine API fixtures for %s: %w", sourceRoot, err)
+	}
+	families := map[string]struct{}{}
+	for _, manifestPath := range manifestPaths {
+		bundle, loadErr := sourcefixture.LoadBundle(manifestPath)
+		if loadErr != nil {
+			return 0, 0, loadErr
+		}
+		bundles++
+		families[bundle.Manifest.Family] = struct{}{}
+	}
+	return bundles, len(families), nil
 }
 
 func syntheticFixture(payload []byte) bool {
@@ -507,6 +536,11 @@ func accumulateSummary(summary *summary, source sourceReport) {
 	if source.ReadFixtures > 0 && source.SyntheticReadFixtures > 0 {
 		summary.NeedsRealFixtures++
 	}
+	summary.GenuineAPIBundles += source.GenuineAPIBundles
+	summary.GenuineAPIFamilies += source.GenuineAPIFamilies
+	if source.GenuineAPIBundles > 0 {
+		summary.GenuineAPISources++
+	}
 	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		summary.NeedsEveryFamilyTests++
 	}
@@ -528,22 +562,24 @@ func renderMarkdown(result report, maxItems int) string {
 	fmt.Fprintf(&b, "- Runtime sources: %d\n", result.Summary.RuntimeSources)
 	fmt.Fprintf(&b, "- High-fidelity sources: %d\n", result.Summary.HighFidelitySources)
 	fmt.Fprintf(&b, "- Need real fixtures: %d\n", result.Summary.NeedsRealFixtures)
+	fmt.Fprintf(&b, "- Genuine API bundles: %d across %d families and %d sources\n", result.Summary.GenuineAPIBundles, result.Summary.GenuineAPIFamilies, result.Summary.GenuineAPISources)
 	fmt.Fprintf(&b, "- Need every-family tests: %d\n", result.Summary.NeedsEveryFamilyTests)
 	fmt.Fprintf(&b, "- Need deploy family coverage: %d\n", result.Summary.NeedsDeployFamilyCoverage)
 	fmt.Fprintf(&b, "- Need coverage specificity: %d\n\n", result.Summary.NeedsCoverageSpecificity)
 	fmt.Fprintf(&b, "## Lowest Scores\n\n")
-	fmt.Fprintf(&b, "| Source | Score | Runtime families | Real fixtures | Deploy families | Findings |\n")
-	fmt.Fprintf(&b, "| --- | ---: | ---: | ---: | ---: | --- |\n")
+	fmt.Fprintf(&b, "| Source | Score | Runtime families | Genuine API families | Heuristic provider-like outputs | Deploy families | Findings |\n")
+	fmt.Fprintf(&b, "| --- | ---: | ---: | ---: | ---: | ---: | --- |\n")
 	limit := maxItems
 	if limit <= 0 || limit > len(result.Sources) {
 		limit = len(result.Sources)
 	}
 	for _, source := range result.Sources[:limit] {
-		fmt.Fprintf(&b, "| %s | %d/%d | %d | %d/%d | %d/%d | %s |\n",
+		fmt.Fprintf(&b, "| %s | %d/%d | %d | %d | %d/%d | %d/%d | %s |\n",
 			source.SourceID,
 			source.Score,
 			source.PossibleScore,
 			source.RuntimeFamilies,
+			source.GenuineAPIFamilies,
 			source.ProviderLikeReadFixtures,
 			source.ReadFixtures,
 			source.DeployRuntimeFamilies,

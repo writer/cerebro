@@ -1,3 +1,9 @@
 [
-  "urn:cerebro:tenant:appwrite_continent:source-appwrite-continent-1"
+  "urn:cerebro:tenant:appwrite_continent:AF",
+  "urn:cerebro:tenant:appwrite_continent:AN",
+  "urn:cerebro:tenant:appwrite_continent:AS",
+  "urn:cerebro:tenant:appwrite_continent:EU",
+  "urn:cerebro:tenant:appwrite_continent:NA",
+  "urn:cerebro:tenant:appwrite_continent:OC",
+  "urn:cerebro:tenant:appwrite_continent:SA"
 ]

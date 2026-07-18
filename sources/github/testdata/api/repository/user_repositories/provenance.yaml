@@ -1,0 +1,16 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: repository
+case: user_repositories
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRepositoryShapes
+request:
+    method: GET
+    url: https://api.github.com/users/octocat/repos?type=owner&sort=updated&direction=desc&per_page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:32:55Z"
+    sha256: 0fe6c720baa42b0506d41b8fa282c640cf2ced711fb7db92c314da0c4e956e3d
+sanitization:
+    tool: sourcefixture
+    version: 1

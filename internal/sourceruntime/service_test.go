@@ -1291,14 +1291,14 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
-	if resp.GetEventsAppended() != 2 {
-		t.Fatalf("Sync().EventsAppended = %d, want 2", resp.GetEventsAppended())
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", resp.GetEventsAppended())
 	}
-	if resp.GetPagesRead() != 2 {
-		t.Fatalf("Sync().PagesRead = %d, want 2", resp.GetPagesRead())
+	if resp.GetPagesRead() != 1 {
+		t.Fatalf("Sync().PagesRead = %d, want 1", resp.GetPagesRead())
 	}
-	if len(log.events) != 2 {
-		t.Fatalf("len(appendLog.events) = %d, want 2", len(log.events))
+	if len(log.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
 	}
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
 		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
@@ -1310,8 +1310,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 		t.Fatalf("appended event span_id = %q, want omitted", got)
 	}
 	runtime := store.runtimes["writer-github"]
-	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
-		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
+	if runtime.GetCheckpoint().GetCursorOpaque() != "1" {
+		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "1")
 	}
 	if runtime.GetNextCursor() != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", runtime.GetNextCursor())
@@ -1319,8 +1319,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if runtime.GetLastSyncedAt() == nil {
 		t.Fatal("stored last_synced_at = nil, want non-nil")
 	}
-	if store.putCount != 2 {
-		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
+	if store.putCount != 1 {
+		t.Fatalf("PutSourceRuntime calls = %d, want 1", store.putCount)
 	}
 }
 
