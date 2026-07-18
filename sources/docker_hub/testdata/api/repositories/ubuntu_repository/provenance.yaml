@@ -1,0 +1,16 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: docker_hub
+family: repositories
+case: ubuntu_repository
+replay_test: source_test.go#TestSourceReplaysCapturedRepository
+request:
+    method: GET
+    url: https://hub.docker.com/v2/namespaces/library/repositories/ubuntu
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:18:36Z"
+    sha256: a5300b497f4d172c91d24eb7d5946ca253e92377591cbe164ce69db9c3c7d8c5
+sanitization:
+    tool: sourcefixture
+    version: 1

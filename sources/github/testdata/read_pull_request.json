@@ -1,62 +1,34 @@
 [
   {
-    "id": "github-pr-1",
-    "tenant_id": "writer",
+    "id": "github-octocat-pull_request-bbd1ead563f42f7f",
+    "tenant_id": "octocat",
     "source_id": "github",
     "kind": "github.pull_request",
-    "occurred_at": "2026-04-22T18:05:00Z",
+    "occurred_at": "2026-07-18T04:06:34Z",
     "schema_ref": "github/pull_request/v1",
     "payload": {
-      "number": 441,
-      "action": "opened",
-      "repository": "writer/cerebro",
-      "title": "Add source runtime previews",
-      "state": "open",
-      "author": "alice",
-      "draft": false,
-      "head": "alice/source-runtime",
-      "base": "main",
-      "created_at": "2026-04-22T18:00:00Z",
-      "updated_at": "2026-04-22T18:05:00Z"
-    },
-    "attributes": {
-      "author": "alice",
-      "owner": "writer",
-      "pull_number": "441",
-      "repo": "cerebro",
-      "repository": "writer/cerebro",
-      "state": "open"
-    }
-  },
-  {
-    "id": "github-pr-2",
-    "tenant_id": "writer",
-    "source_id": "github",
-    "kind": "github.pull_request",
-    "occurred_at": "2026-04-23T19:05:00Z",
-    "schema_ref": "github/pull_request/v1",
-    "payload": {
-      "number": 442,
-      "action": "closed",
-      "repository": "writer/cerebro",
-      "title": "Project source catalog coverage",
+      "number": 1,
+      "repository": "octocat/Hello-World",
+      "title": "Edited README via GitHub",
       "state": "closed",
-      "author": "bob",
+      "url": "https://github.com/octocat/Hello-World/pull/1",
+      "author": "unoju",
       "draft": false,
-      "head": "bob/catalog-coverage",
-      "base": "main",
-      "created_at": "2026-04-23T18:00:00Z",
-      "updated_at": "2026-04-23T19:05:00Z",
-      "closed_at": "2026-04-23T19:05:00Z",
-      "merged_at": "2026-04-23T19:05:00Z"
+      "head": "unoju:patch-1",
+      "base": "octocat:master",
+      "created_at": "2011-05-09T19:10:00Z",
+      "updated_at": "2026-07-18T04:06:34Z",
+      "closed_at": "2011-05-18T20:00:25Z"
     },
     "attributes": {
-      "author": "bob",
-      "merged": "true",
-      "owner": "writer",
-      "pull_number": "442",
-      "repo": "cerebro",
-      "repository": "writer/cerebro",
+      "author": "unoju",
+      "base": "octocat:master",
+      "head": "unoju:patch-1",
+      "html_url": "https://github.com/octocat/Hello-World/pull/1",
+      "owner": "octocat",
+      "pull_number": "1",
+      "repo": "Hello-World",
+      "repository": "octocat/Hello-World",
       "state": "closed"
     }
   }

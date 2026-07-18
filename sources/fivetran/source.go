@@ -29,11 +29,12 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "basic",
-		Families:        fivetranapi.Families(),
+		SourceID:               sourceID,
+		DefaultFamily:          defaultFamily,
+		RequireTenantID:        true,
+		AuthModel:              "basic",
+		ConfigurableAuthModels: []string{"none", "basic"},
+		Families:               fivetranapi.Families(),
 	})
 	if err != nil {
 		return nil, err
@@ -58,7 +59,11 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 		}
 		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
-	path := fivetranapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
+	defaultPath := defaultHealthPath
+	if fivetranapi.FamilyName(runtimeCfg) == fivetranapi.FamilyPublicConnectorTypes {
+		defaultPath = "/public/connector-types"
+	}
+	path := fivetranapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultPath)
 	if err := s.inner.CheckPath(ctx, runtimeCfg, path, nil); err != nil {
 		return err
 	}

@@ -53,6 +53,54 @@ type fixtureEvent struct {
 	Attributes map[string]string `json:"attributes"`
 }
 
+// MarshalFixtureEvents renders runtime events in the normalized fixture format.
+// Provider-response replay tests use it to keep checked-in read fixtures derived
+// from production decoders.
+func MarshalFixtureEvents(events []*primitives.Event) ([]byte, error) {
+	rawEvents := make([]fixtureEvent, 0, len(events))
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		occurredAt := ""
+		if event.OccurredAt != nil {
+			if err := event.OccurredAt.CheckValid(); err != nil {
+				return nil, fmt.Errorf("event %q occurred_at: %w", event.Id, err)
+			}
+			occurredAt = event.OccurredAt.AsTime().UTC().Format(time.RFC3339)
+		}
+		rawEvents = append(rawEvents, fixtureEvent{
+			ID:         event.Id,
+			TenantID:   event.TenantId,
+			SourceID:   event.SourceId,
+			Kind:       event.Kind,
+			OccurredAt: occurredAt,
+			SchemaRef:  event.SchemaRef,
+			Payload:    append(json.RawMessage(nil), event.Payload...),
+			Attributes: event.Attributes,
+		})
+	}
+	payload, err := json.MarshalIndent(rawEvents, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal fixture events: %w", err)
+	}
+	return append(payload, '\n'), nil
+}
+
+// MarshalFixtureURNs renders discovered URNs in the deterministic fixture
+// format used by generated source packages.
+func MarshalFixtureURNs(urns []URN) ([]byte, error) {
+	values := make([]string, 0, len(urns))
+	for _, urn := range urns {
+		values = append(values, urn.String())
+	}
+	payload, err := json.MarshalIndent(values, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal fixture URNs: %w", err)
+	}
+	return append(payload, '\n'), nil
+}
+
 // NewFixtureSource constructs a deterministic Source implementation for tests.
 func NewFixtureSource(options FixtureSourceOptions) (Source, error) {
 	if options.Spec == nil {
