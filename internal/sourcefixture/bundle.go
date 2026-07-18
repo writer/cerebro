@@ -150,17 +150,17 @@ func WriteBundle(root string, manifest Manifest, payload []byte) (Bundle, error)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("encode provenance: %w", err)
 	}
-	if err := os.WriteFile(responsePath, canonical, 0o644); err != nil {
+	if err := os.WriteFile(responsePath, canonical, 0o644); err != nil { // #nosec G306 -- validated repository fixtures use normal source-file permissions.
 		return Bundle{}, fmt.Errorf("write response: %w", err)
 	}
-	if err := os.WriteFile(manifestPath, manifestPayload, 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, manifestPayload, 0o644); err != nil { // #nosec G306 -- provenance is a checked-in repository document.
 		return Bundle{}, fmt.Errorf("write provenance: %w", err)
 	}
 	return Bundle{Directory: directory, ResponsePath: responsePath, ManifestPath: manifestPath, Manifest: manifest, Payload: canonical}, nil
 }
 
 func LoadBundle(manifestPath string) (Bundle, error) {
-	manifestPayload, err := os.ReadFile(manifestPath)
+	manifestPayload, err := os.ReadFile(manifestPath) // #nosec G304 -- operator-selected local repository fixture path.
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read provenance %s: %w", manifestPath, err)
 	}
@@ -169,7 +169,7 @@ func LoadBundle(manifestPath string) (Bundle, error) {
 		return Bundle{}, fmt.Errorf("decode provenance %s: %w", manifestPath, err)
 	}
 	responsePath := filepath.Join(filepath.Dir(manifestPath), "response.json")
-	payload, err := os.ReadFile(responsePath)
+	payload, err := os.ReadFile(responsePath) // #nosec G304 -- response is fixed beside the selected provenance file.
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read response %s: %w", responsePath, err)
 	}
@@ -249,7 +249,7 @@ func VerifyRepository(root string) (RepositoryReport, error) {
 			return report, err
 		}
 		catalogPath := filepath.Join(root, "sources", bundle.Manifest.SourceID, "catalog.yaml")
-		catalogPayload, err := os.ReadFile(catalogPath)
+		catalogPayload, err := os.ReadFile(catalogPath) // #nosec G304 -- path uses the validated source ID under the operator-selected repository root.
 		if err != nil {
 			return report, fmt.Errorf("read catalog for %s: %w", manifestPath, err)
 		}
@@ -308,12 +308,12 @@ func FindBundle(root, sourceID, family, fixtureCase string) (Bundle, error) {
 // explicit update run is requested.
 func CompareOrUpdateGenerated(path string, payload []byte, update bool) error {
 	if update {
-		if err := os.WriteFile(path, payload, 0o644); err != nil {
+		if err := os.WriteFile(path, payload, 0o644); err != nil { // #nosec G306 -- generated repository fixtures use normal source-file permissions.
 			return fmt.Errorf("write generated fixture %s: %w", path, err)
 		}
 		return nil
 	}
-	existing, err := os.ReadFile(path)
+	existing, err := os.ReadFile(path) // #nosec G304 -- caller supplies a local generated repository fixture path.
 	if err != nil {
 		return fmt.Errorf("read generated fixture %s: %w", path, err)
 	}
@@ -378,7 +378,7 @@ func verifyReplayTest(root string, bundle Bundle) error {
 		return fmt.Errorf("%s: %w", bundle.ManifestPath, err)
 	}
 	testPath := filepath.Join(root, "sources", bundle.Manifest.SourceID, fileName)
-	payload, err := os.ReadFile(testPath)
+	payload, err := os.ReadFile(testPath) // #nosec G304 -- path uses validated fixture source and test-file segments under the repository root.
 	if err != nil {
 		return fmt.Errorf("read replay test for %s: %w", bundle.ManifestPath, err)
 	}
