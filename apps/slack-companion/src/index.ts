@@ -7,6 +7,7 @@ export * from "./assistance/contracts.js";
 export * from "./assistance/coordinator.js";
 export * from "./assistance/ports.js";
 export * from "./assistant-turn/contracts.js";
+export * from "./assistant-turn/evaluation.js";
 export * from "./assistant-turn/policy.js";
 export * from "./contracts.js";
 export * from "./commands/registry.js";
