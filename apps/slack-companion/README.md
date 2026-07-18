@@ -69,6 +69,19 @@ Hosts implement `CanonicalWorkItemPort` with the public Cerebro SDK and provide
 a durable `DurableCanonicalWorkCasePort`. Credentials, endpoints, deployment
 configuration, and provider-specific stores are outside this workspace.
 
+## Alert triage
+
+`src/triage` owns portable alert-triage, evidence, and suggestion lifecycles.
+Machine-specific transitions keep triage, evidence freshness, and suggestion
+delivery states distinct. An actionable decision can plan a suggestion only
+when every referenced receipt is current, accessible, and within its validity
+window. Planning uses stable caller-provided action identity so a retry produces
+the same suggestion identity.
+
+The host owns source queries, channel admission, prompts, persistence, and
+delivery adapters. Those adapters persist the versioned records and transition
+events without changing the portable decision policy.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with
@@ -109,6 +122,7 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
