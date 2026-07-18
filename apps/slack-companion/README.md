@@ -39,6 +39,24 @@ sequenceDiagram
 
 The same shape applies to longer-running work. Slack-visible status can show queued, degraded, recovery, or completed states while leases, checkpoints, and receipts keep retries idempotent.
 
+## Canonical work cases
+
+`src/canonical-work` projects a Cerebro compliance work item into a resumable
+Slack-facing case. Cerebro remains authoritative for queue state, ownership,
+versions, occurrences, remediation, and assurance verification. The companion
+stores the case projection, exact command intent, and digest-bound approval
+receipt.
+
+Every write is fenced by the current work-item version. A retry after an
+unknown command result first reads canonical state and does not repeat an
+effect that Cerebro already applied. Remediation and fresh assurance remain
+separate commands; the case closes only after the canonical response reaches a
+terminal state.
+
+Hosts implement `CanonicalWorkItemPort` with the public Cerebro SDK and provide
+a durable `DurableCanonicalWorkCasePort`. Credentials, endpoints, deployment
+configuration, and provider-specific stores are outside this workspace.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.
