@@ -3,13 +3,17 @@ import type {
   RunReceiptV1,
 } from "@writer/cerebro-sdk";
 
+export const SLACK_VISIBLE_STATUS_CODES = [
+  "checkpoint_recovery",
+  "degraded",
+  "partial_source",
+  "queued",
+  "recovering",
+  "reduced_capacity",
+] as const;
+
 export type SlackVisibleStatusCode =
-  | "checkpoint_recovery"
-  | "degraded"
-  | "partial_source"
-  | "queued"
-  | "recovering"
-  | "reduced_capacity";
+  (typeof SLACK_VISIBLE_STATUS_CODES)[number];
 
 export interface SourceCoverage {
   available_source_count: number;
