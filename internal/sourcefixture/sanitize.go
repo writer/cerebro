@@ -35,7 +35,11 @@ func SanitizeImportedJSONWithKeys(payload []byte, fieldKeys []string) ([]byte, [
 	if err != nil {
 		return nil, nil, err
 	}
-	canonical, err := CanonicalJSON(mustMarshalJSON(sanitized))
+	encoded, err := json.Marshal(sanitized)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode sanitized JSON response: %w", err)
+	}
+	canonical, err := CanonicalJSON(encoded)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,12 +143,4 @@ func exampleEmail(value string) string {
 	}
 	digest := sha256.Sum256([]byte(strings.ToLower(value)))
 	return "user-" + hex.EncodeToString(digest[:4]) + "@example.test"
-}
-
-func mustMarshalJSON(value any) []byte {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return payload
 }
