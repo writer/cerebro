@@ -39,6 +39,12 @@ sequenceDiagram
 
 The same shape applies to longer-running work. Slack-visible status can show queued, degraded, recovery, or completed states while leases, checkpoints, and receipts keep retries idempotent.
 
+Durable schedule definitions keep a stable schedule identity, revision, work
+digest, cadence anchor, and misfire policy. The portable planner derives the
+same due times after a restart or topology change and materializes occurrences
+with the existing `(schedule_id, due_at, schedule_revision)` identity. Runtime
+stores, destination bindings, and scheduler deployment policy remain host-owned.
+
 ## Canonical work cases
 
 `src/canonical-work` projects a Cerebro compliance work item into a resumable
