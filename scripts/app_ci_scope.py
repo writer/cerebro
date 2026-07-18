@@ -25,6 +25,32 @@ CI_CONTROLLER_PATHS = frozenset(
     }
 )
 WEB_CONTRACT_PATHS = frozenset({"api/openapi.yaml"})
+WEB_INTEGRATION_EXACT_PATHS = frozenset(
+    {
+        "api/openapi.yaml",
+        "go.mod",
+        "go.sum",
+        "package.json",
+        "package-lock.json",
+    }
+)
+WEB_INTEGRATION_PREFIXES = (
+    "cmd/cerebro/",
+    "gen/cerebro/v1/",
+    "internal/bootstrap/",
+    "internal/config/",
+    "internal/eventregistry/",
+    "internal/findings/",
+    "internal/graphquery/",
+    "internal/graphstore/neo4j/",
+    "internal/grc",
+    "internal/ports/",
+    "internal/querycache/",
+    "internal/sourcecoverage/",
+    "internal/sourcehttp/",
+    "internal/sourceruntime/",
+    "internal/statestore/postgres/",
+)
 SLACK_CONTRACT_PREFIXES = (
     "internal/agentplatform/lifecyclecontract/",
     "schemas/agent-service-lifecycle",
@@ -42,10 +68,18 @@ class CIScope:
     slack: bool
     web: bool
     web_image: bool
+    web_integration: bool = False
 
     @classmethod
     def all(cls) -> "CIScope":
-        return cls(core=True, sdk=True, slack=True, web=True, web_image=True)
+        return cls(
+            core=True,
+            sdk=True,
+            slack=True,
+            web=True,
+            web_image=True,
+            web_integration=True,
+        )
 
     def as_outputs(self) -> dict[str, str]:
         return {
@@ -62,6 +96,14 @@ def normalize_paths(paths: list[str]) -> list[str]:
             if path.strip()
         }
     )
+
+
+def is_web_integration_path(path: str) -> bool:
+    if path in WEB_INTEGRATION_EXACT_PATHS:
+        return True
+    if path.startswith("apps/web/"):
+        return path not in {"apps/web/LICENSE", "apps/web/README.md"}
+    return path.startswith(WEB_INTEGRATION_PREFIXES)
 
 
 def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
@@ -83,6 +125,7 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
 
     root_npm_changed = any(path in ROOT_NPM_PATHS for path in normalized)
     web = root_npm_changed or any(path.startswith("apps/web/") for path in normalized)
+    web_integration = any(is_web_integration_path(path) for path in normalized)
     slack = root_npm_changed or any(
         path.startswith("apps/slack-companion/")
         or path.startswith("sdk/typescript/")
@@ -115,6 +158,7 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
         slack=slack,
         web=web,
         web_image=web,
+        web_integration=web_integration,
     )
 
 

@@ -27,6 +27,14 @@ npm run e2e:web:fixtures --workspace @writer/cerebro-web
 
 `e2e:web:fixtures` starts the web application with synthetic, local fixture data and validates its public routes in Chromium. It does not start a Cerebro service or persistent stores; real service integration remains a separate test lane.
 
+Run the real-service integration when Docker and Go are available:
+
+```sh
+npm run e2e:grc:local --workspace @writer/cerebro-web
+```
+
+`e2e:grc:local` starts disposable local stores, seeds synthetic data, builds and starts Cerebro, validates backend and web proxy behavior, checks the browser routes in Chromium, and removes every service when the run finishes. Failed runs retain their local logs and screenshots at the path printed by the command.
+
 The app accepts public Cerebro API and identity configuration. Environment deployment adapters, network configuration, secret addresses, and rollout policy live outside this workspace.
 
 This application retains its MIT license in [LICENSE](LICENSE). The rest of the repository remains under the root Apache 2.0 license unless a nested license states otherwise.
