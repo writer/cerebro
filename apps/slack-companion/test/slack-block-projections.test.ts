@@ -54,6 +54,15 @@ test("block projections keep untrusted display text inert and action ids stable"
     (otherLogicalProjection.blocks[2] as typeof actionBlock).elements[0]?.action_id,
     actionBlock.elements[0]?.action_id,
   );
+
+  const changedContent = projectSlackBlocks({
+    ...input,
+    sections: ["A revised result"],
+  });
+  assert.notEqual(
+    changedContent.blocks[1]?.block_id,
+    first.blocks[1]?.block_id,
+  );
 });
 
 test("block projections reject malformed, duplicate, and oversized input", () => {
@@ -77,6 +86,15 @@ test("block projections reject malformed, duplicate, and oversized input", () =>
           label: `Action ${index}`,
           value: String(index),
         })),
+        projection_key: "run-one",
+        sections: ["Choose an action."],
+      }),
+    /actions cannot exceed/,
+  );
+  assert.throws(
+    () =>
+      projectSlackBlocks({
+        actions: new Array(MAX_SLACK_ACTIONS + 1),
         projection_key: "run-one",
         sections: ["Choose an action."],
       }),

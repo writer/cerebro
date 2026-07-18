@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { DeliveryReceiptV1 } from "../src/delivery/contracts.js";
 import {
+  MAX_SLACK_MULTIPART_PARTS,
   projectSlackMultipartDelivery,
   SlackMultipartProjectionError,
 } from "../src/index.js";
@@ -221,6 +222,26 @@ test("multipart projections require canonical timestamps and opaque refs", () =>
         destination_ref: "channel-and-thread",
       }),
     /must be an opaque reference/,
+  );
+});
+
+test("multipart projections reject oversized and sparse part arrays before sorting", () => {
+  const receipt = deliveryReceipt();
+  const oversized = Array.from(
+    { length: MAX_SLACK_MULTIPART_PARTS + 1 },
+    () => receipt.parts[0]!,
+  );
+  assert.throws(
+    () => projectSlackMultipartDelivery({ ...receipt, parts: oversized }),
+    /requires between 1 and 40 parts/,
+  );
+
+  const sparse = new Array<DeliveryReceiptV1["parts"][number]>(
+    MAX_SLACK_MULTIPART_PARTS + 1,
+  );
+  assert.throws(
+    () => projectSlackMultipartDelivery({ ...receipt, parts: sparse }),
+    /requires between 1 and 40 parts/,
   );
 });
 

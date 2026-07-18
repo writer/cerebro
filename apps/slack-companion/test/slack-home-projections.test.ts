@@ -18,6 +18,7 @@ test("Home projections sort durable statuses and preserve exact retries", () => 
     statuses: [degraded, queued],
     summary: "Current work for <@U123>",
     title: "Cerebro work",
+    view_selector: "view:one",
   };
 
   const first = projectSlackHome(input);
@@ -36,6 +37,12 @@ test("Home projections sort durable statuses and preserve exact retries", () => 
   assert.equal(first.view.blocks[1]?.type, "section");
   assert.equal(JSON.stringify(first).includes('"type":"mrkdwn"'), false);
   assert.equal(Object.isFrozen(first.view), true);
+
+  const otherView = projectSlackHome({
+    ...input,
+    view_selector: "view:two",
+  });
+  assert.notEqual(otherView.view.external_id, first.view.external_id);
 });
 
 test("Home projections reject malformed and unbounded status sets", () => {
@@ -47,6 +54,7 @@ test("Home projections reject malformed and unbounded status sets", () => {
         statuses: [queued, queued],
         summary: "Current work",
         title: "Cerebro work",
+        view_selector: "view:one",
       }),
     /projection ids must be unique/,
   );
@@ -57,6 +65,7 @@ test("Home projections reject malformed and unbounded status sets", () => {
         statuses: Array.from({ length: 21 }, () => queued),
         summary: "Current work",
         title: "Cerebro work",
+        view_selector: "view:one",
       }),
     /more than 20 statuses/,
   );
@@ -69,6 +78,7 @@ test("Home projections reject malformed and unbounded status sets", () => {
         ] as unknown as SlackStatusProjectionV1[],
         summary: "Current work",
         title: "Cerebro work",
+        view_selector: "view:one",
       }),
     SlackHomeProjectionError,
   );
@@ -81,6 +91,7 @@ test("Home projections reject malformed and unbounded status sets", () => {
         ],
         summary: "Current work",
         title: "Cerebro work",
+        view_selector: "view:one",
       }),
     /canonical ISO-8601 timestamp/,
   );

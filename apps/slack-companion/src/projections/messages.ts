@@ -1,7 +1,8 @@
-import type {
-  SlackMultipartAcceptanceV1,
-  SlackMultipartPartProjectionV1,
-  SlackMultipartProjectionV1,
+import {
+  MAX_SLACK_MULTIPART_PARTS,
+  type SlackMultipartAcceptanceV1,
+  type SlackMultipartPartProjectionV1,
+  type SlackMultipartProjectionV1,
 } from "./multipart.js";
 import {
   contentBoundSlackIdentifier,
@@ -14,7 +15,7 @@ import {
 } from "./blocks.js";
 
 export const MAX_SLACK_MESSAGE_PART_LENGTH = 2_800;
-export const MAX_SLACK_MESSAGE_PARTS = 40;
+export const MAX_SLACK_MESSAGE_PARTS = MAX_SLACK_MULTIPART_PARTS;
 export const MAX_SLACK_MESSAGE_SOURCE_LENGTH =
   MAX_SLACK_MESSAGE_PART_LENGTH * MAX_SLACK_MESSAGE_PARTS;
 
@@ -22,6 +23,7 @@ export interface SlackMessagePayloadV1 {
   readonly blocks: readonly SlackBlockV1[];
   readonly link_names: false;
   readonly mrkdwn: false;
+  readonly parse: "none";
   readonly text: string;
   /** These false flags disable destination-side link previews; this projector performs no I/O. */
   readonly unfurl_links: false;
@@ -163,23 +165,31 @@ export function projectSlackMessages(
       planned.payload_digest,
       "message payload_digest",
     );
-    const actualDigest = `sha256:${sha256(JSON.stringify(planned.payload))}`;
+    const payload = canonicalPayload(
+      planned.payload,
+      messageKey,
+      expectedSequence,
+    );
+    const actualDigest = `sha256:${sha256(JSON.stringify(payload))}`;
     if (payloadDigest !== actualDigest || durable.payload_digest !== payloadDigest) {
       throw new SlackMessageProjectionError(
         "Slack message payload digest does not match durable delivery truth.",
       );
     }
-    validatePayload(planned.payload, messageKey, expectedSequence);
+    const acceptance = durable.acceptance === undefined
+      ? undefined
+      : Object.freeze({
+          accepted_at: durable.acceptance.accepted_at,
+          destination_receipt: durable.acceptance.destination_receipt,
+        });
     return Object.freeze({
-      ...(durable.acceptance === undefined
-        ? {}
-        : { acceptance: durable.acceptance }),
+      ...(acceptance === undefined ? {} : { acceptance }),
       client_message_id: requireSlackKey(
         durable.client_message_id,
         "message client_message_id",
       ),
       part_id: requireSlackKey(durable.part_id, "message part_id"),
-      payload: planned.payload,
+      payload,
       payload_digest: payloadDigest,
       payload_ref: durable.payload_ref,
       schema_version: "slack-message-part-projection/v1" as const,
@@ -241,17 +251,18 @@ function buildPayload(
     blocks: blockProjection.blocks,
     link_names: false as const,
     mrkdwn: false as const,
+    parse: "none" as const,
     text,
     unfurl_links: false as const,
     unfurl_media: false as const,
   });
 }
 
-function validatePayload(
+function canonicalPayload(
   payload: SlackMessagePayloadV1,
   messageKey: string,
   sequence: number,
-): void {
+): SlackMessagePayloadV1 {
   const normalized = normalizeSlackText(
     payload.text,
     "message payload text",
@@ -267,6 +278,7 @@ function validatePayload(
       "Slack message payload is not the supported safe shape.",
     );
   }
+  return expected;
 }
 
 function requireSha256(value: string, field: string): `sha256:${string}` {

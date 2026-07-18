@@ -27,6 +27,7 @@ test("message plans split deterministically without activating untrusted text", 
     assert.ok(Array.from(part.payload.text).length <= MAX_SLACK_MESSAGE_PART_LENGTH);
     assert.equal(part.payload.mrkdwn, false);
     assert.equal(part.payload.link_names, false);
+    assert.equal(part.payload.parse, "none");
     assert.equal(part.payload.unfurl_links, false);
     assert.equal(part.payload.unfurl_media, false);
     assert.equal(part.payload.blocks[0]?.type, "section");
@@ -40,6 +41,18 @@ test("message plans split deterministically without activating untrusted text", 
     "line one\r\nline two",
   );
   assert.equal(normalizedRetry.parts[0]?.payload.text, "line one\nline two");
+});
+
+test("message plans keep raw URLs inert in canonical payloads", () => {
+  const plan = planSlackMessage(
+    "run-one:url",
+    "Read https://example.com/results?run=one",
+  );
+
+  assert.equal(plan.parts[0]?.payload.parse, "none");
+  assert.equal(plan.parts[0]?.payload.link_names, false);
+  assert.equal(plan.parts[0]?.payload.unfurl_links, false);
+  assert.equal(plan.parts[0]?.payload.unfurl_media, false);
 });
 
 test("message projections preserve multipart retry and resume identities", () => {
@@ -68,6 +81,35 @@ test("message projections preserve multipart retry and resume identities", () =>
   assert.equal(first.parts[1]?.state, "paused");
   assert.equal(first.parts[1]?.client_message_id, "message-part-2");
   assert.match(first.projection_id, /^cerebro\.message\.[0-9a-f]{32}:sha256:[0-9a-f]{64}$/);
+});
+
+test("message projections snapshot mutable stored plans", () => {
+  const storedPlan = JSON.parse(JSON.stringify(
+    planSlackMessage("run-one:answer", "A durable answer"),
+  )) as SlackMessagePlanV1;
+  const delivery = projectSlackMultipartDelivery(
+    receiptForPlan(storedPlan, ["pending"], "pending"),
+  );
+  const projection = projectSlackMessages(delivery, storedPlan);
+  const originalProjectionId = projection.projection_id;
+  const originalPayloadDigest = projection.parts[0]?.payload_digest;
+  const originalText = projection.parts[0]?.payload.text;
+  const mutablePayload = storedPlan.parts[0]?.payload as unknown as {
+    blocks: Array<{ text: { text: string } }>;
+    text: string;
+  };
+
+  mutablePayload.text = "Changed after projection";
+  mutablePayload.blocks[0]!.text.text = "Changed after projection";
+
+  assert.equal(projection.parts[0]?.payload.text, originalText);
+  assert.equal(projection.parts[0]?.payload.blocks[0]?.type, "section");
+  assert.equal(
+    (projection.parts[0]?.payload.blocks[0] as { text: { text: string } }).text.text,
+    originalText,
+  );
+  assert.equal(projection.parts[0]?.payload_digest, originalPayloadDigest);
+  assert.equal(projection.projection_id, originalProjectionId);
 });
 
 test("message projections reject changed payloads and contradictory receipts", () => {
@@ -123,6 +165,14 @@ test("message planning rejects controls and oversize source text", () => {
       planSlackMessage(
         "run-one:answer",
         "x".repeat(MAX_SLACK_MESSAGE_SOURCE_LENGTH + 1),
+      ),
+    /message source text is invalid/,
+  );
+  assert.throws(
+    () =>
+      planSlackMessage(
+        "run-one:answer",
+        "x".repeat(MAX_SLACK_MESSAGE_SOURCE_LENGTH * 2 + 1),
       ),
     /message source text is invalid/,
   );

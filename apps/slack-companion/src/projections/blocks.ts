@@ -84,12 +84,15 @@ export function projectSlackBlocks(
       "Slack block actions must be an array.",
     );
   }
-  const actions = input.actions === undefined ? [] : [...input.actions];
-  if (actions.length > MAX_SLACK_ACTIONS) {
+  if (
+    input.actions !== undefined
+    && input.actions.length > MAX_SLACK_ACTIONS
+  ) {
     throw new SlackBlockProjectionError(
       `Slack block actions cannot exceed ${MAX_SLACK_ACTIONS}.`,
     );
   }
+  const actions = input.actions === undefined ? [] : [...input.actions];
   const blockCount = input.sections.length
     + (input.title === undefined ? 0 : 1)
     + (actions.length === 0 ? 0 : 1);
@@ -101,26 +104,32 @@ export function projectSlackBlocks(
 
   const blocks: SlackBlockV1[] = [];
   if (input.title !== undefined) {
+    const text = slackPlainText(input.title, "block title", 150);
     blocks.push(
       Object.freeze({
-        block_id: stableSlackIdentifier("header", [projectionKey]),
-        text: slackPlainText(input.title, "block title", 150),
+        block_id: stableSlackIdentifier("header", [
+          projectionKey,
+          JSON.stringify(text),
+        ]),
+        text,
         type: "header" as const,
       }),
     );
   }
   for (const [index, section] of input.sections.entries()) {
+    const text = slackPlainText(
+      section,
+      `block section ${index + 1}`,
+      MAX_SLACK_SECTION_LENGTH,
+    );
     blocks.push(
       Object.freeze({
         block_id: stableSlackIdentifier("section", [
           projectionKey,
           String(index + 1),
+          JSON.stringify(text),
         ]),
-        text: slackPlainText(
-          section,
-          `block section ${index + 1}`,
-          MAX_SLACK_SECTION_LENGTH,
-        ),
+        text,
         type: "section" as const,
       }),
     );
@@ -155,7 +164,10 @@ export function projectSlackBlocks(
     });
     blocks.push(
       Object.freeze({
-        block_id: stableSlackIdentifier("actions", [projectionKey]),
+        block_id: stableSlackIdentifier("actions", [
+          projectionKey,
+          JSON.stringify(elements),
+        ]),
         elements: Object.freeze(elements),
         type: "actions" as const,
       }),
@@ -195,6 +207,9 @@ export function normalizeSlackText(
   maximum: number,
 ): string {
   if (typeof value !== "string" || !Number.isInteger(maximum) || maximum < 1) {
+    throw new SlackBlockProjectionError(`${field} is invalid.`);
+  }
+  if (value.length > maximum * 2) {
     throw new SlackBlockProjectionError(`${field} is invalid.`);
   }
   const normalized = value.replace(/\r\n?/g, "\n").normalize("NFC");

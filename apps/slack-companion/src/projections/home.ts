@@ -17,6 +17,11 @@ export interface SlackHomeInputV1 {
   readonly statuses: readonly SlackStatusProjectionV1[];
   readonly summary: string;
   readonly title: string;
+  /**
+   * Bounded opaque identity for one Home view. Hosts may bind installation and
+   * user identity into this selector; it is only a cache key, never authorization.
+   */
+  readonly view_selector: string;
 }
 
 export interface SlackHomeViewV1 {
@@ -38,6 +43,7 @@ export function projectSlackHome(
   input: SlackHomeInputV1,
 ): SlackHomeProjectionV1 {
   const projectionKey = requireSlackKey(input.projection_key, "home projection key");
+  const viewSelector = requireSlackKey(input.view_selector, "home view selector");
   if (!Array.isArray(input.statuses) || input.statuses.length > MAX_HOME_STATUSES) {
     throw new SlackHomeProjectionError(
       `Slack Home cannot contain more than ${MAX_HOME_STATUSES} statuses.`,
@@ -90,7 +96,7 @@ export function projectSlackHome(
   });
   const view = Object.freeze({
     blocks: blockProjection.blocks,
-    external_id: stableSlackIdentifier("home", [projectionKey]),
+    external_id: stableSlackIdentifier("home", [viewSelector]),
     type: "home" as const,
   });
   const statusProjectionIds = Object.freeze(
