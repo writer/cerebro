@@ -28,8 +28,7 @@
     "eval:traffic": "node --import tsx scripts/assistant-traffic-replay-report.ts",
     "backfill:slack": "node dist/src/learning/slack-channel-backfill-main.js",
     "compound:library": "node dist/src/learning/company-library-compound-main.js",
-    "review:local": "node scripts/local-review-check.mjs",
-    "sync:cerebro-sdk": "node scripts/sync-cerebro-sdk.mjs"
+    "review:local": "node scripts/local-review-check.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1075.0",
@@ -47,7 +46,7 @@
     "@smithy/hash-node": "4.4.2",
     "@smithy/protocol-http": "5.5.2",
     "@smithy/signature-v4": "5.5.2",
-    "@writer/cerebro-sdk": "file:vendor/cerebro-sdk",
+    "@writer/cerebro-sdk": "0.1.0",
     "dotenv": "17.4.2",
     "quickjs-emscripten": "0.32.0",
     "valibot": "1.4.1",

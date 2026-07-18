@@ -2,6 +2,7 @@
 
 .PHONY: release-train-test
 .PHONY: web-docker-smoke
+.PHONY: slack-host-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
@@ -36,6 +37,7 @@ PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
 WEB_DOCKER_SMOKE_IMAGE ?= cerebro-web-smoke:local
+SLACK_HOST_DOCKER_SMOKE_IMAGE ?= cerebro-slack-host-smoke:local
 WEB_DOCKER_IMAGE_REVISION ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 DOCKER_SMOKE_GOARCH ?= amd64
 DOCKER_RUNTIME_BASE_IMAGE ?= alpine:3.24
@@ -757,6 +759,11 @@ web-docker-smoke: ## Build and smoke-test the standalone web image.
 	@test "$$(docker run --rm "$(WEB_DOCKER_SMOKE_IMAGE)" id -u)" = "10001"
 	npm run smoke:docker --workspace @writer/cerebro-web -- "$(WEB_DOCKER_SMOKE_IMAGE)"
 
+slack-host-docker-smoke: ## Build the Slack host image from monorepo workspaces and verify its SDK link.
+	@command -v docker >/dev/null || { echo "docker is required for slack-host-docker-smoke" >&2; exit 2; }
+	$(DOCKER_BUILD) $(DOCKER_BUILD_CACHE_ARGS) -f services/slack-companion/Dockerfile -t "$(SLACK_HOST_DOCKER_SMOKE_IMAGE)" .
+	docker run --rm "$(SLACK_HOST_DOCKER_SMOKE_IMAGE)" node --input-type=module -e 'await import("@writer/cerebro-sdk")'
+
 release-train-test: ## Validate release notes and release-train workflow contracts.
 	bash scripts/release/test_validate_release_notes.sh
 	python3 -m unittest scripts.release.test_product_release
@@ -859,4 +866,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke slack-host-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
