@@ -19,6 +19,6 @@
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present"
   },
   "overrides": {
-    "postcss": "8.5.15"
+    "postcss": "8.5.19"
   }
 }
