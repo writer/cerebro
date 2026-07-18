@@ -111,12 +111,13 @@ jobs:
           pack_dir="${RUNNER_TEMP}/slack-companion-package"
           mkdir -p "${pack_dir}"
           npm pack --workspace @writer/cerebro-slack-companion --pack-destination "${pack_dir}"
-          mapfile -t archives < <(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print)
-          if [ "${#archives[@]}" -ne 1 ]; then
-            echo "Expected one Slack companion package, found ${#archives[@]}" >&2
+          archive_count=$(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print | wc -l | tr -d '[:space:]')
+          if [ "${archive_count}" -ne 1 ]; then
+            echo "Expected one Slack companion package, found ${archive_count}" >&2
             exit 1
           fi
-          tar -tzf "${archives[0]}" > "${pack_dir}/contents.txt"
+          archive=$(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print -quit)
+          tar -tzf "${archive}" > "${pack_dir}/contents.txt"
           grep -Fxq 'package/dist/src/index.js' "${pack_dir}/contents.txt"
           grep -Fxq 'package/dist/src/index.d.ts' "${pack_dir}/contents.txt"
 
