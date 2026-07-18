@@ -12,17 +12,15 @@
   },
   "ledger": {
     "adapter": "slack_legacy_v1",
-    "sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+    "sha256": "e56048b2e05d5186b233527cd590ddc28548a6d79949b93275a4e15fd4e7658c",
     "row_count": 2,
     "disposition_counts": {
-      "private_host_ops": 1,
+      "obsolete_or_replaced": 1,
       "represented_public": 1
     },
     "terminal_dispositions": [
-      "covered_by_new_public_slice",
       "obsolete_or_generated",
       "obsolete_or_replaced",
-      "private_host_ops",
       "represented_public"
     ],
     "terminal_row_count": 2,

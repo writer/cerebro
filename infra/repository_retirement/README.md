@@ -34,16 +34,20 @@ commit and tree remain unchanged. The schema does not authorize an archive opera
 
 ## Terminal dispositions
 
-Only these dispositions are terminal:
+Slack source evidence accepts only these terminal dispositions:
 
-- `covered_by_new_public_slice`
 - `obsolete_or_generated`
 - `obsolete_or_replaced`
-- `private_host_ops`
 - `represented_public`
 
-Every other disposition is nonterminal. A final lock requires zero nonterminal rows, and the
-validator derives that result from ledger bytes instead of trusting a claimed count.
+The web representation adapter additionally accepts:
+
+- `covered_by_new_public_slice`
+- `private_host_ops`
+
+Every other disposition is nonterminal. The adapter-specific set is fixed by schema and must match
+the source authority. A final lock requires zero nonterminal rows, and the validator derives that
+result from ledger bytes instead of trusting a claimed count.
 
 ## Current-shape adapters
 

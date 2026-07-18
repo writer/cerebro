@@ -1,3 +1,3 @@
 path	category	disposition	target	note
 README.md	docs	represented_public	public-docs	complete
-src/host.go	runtime	private_host_ops	private-host	retained
+src/host.go	runtime	obsolete_or_replaced	private-host	retained

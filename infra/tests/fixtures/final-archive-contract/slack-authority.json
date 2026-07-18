@@ -9,11 +9,16 @@
   "private_repository": "logical:private_target",
   "private_commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
   "ledger_path": "logical-ledger.tsv",
-  "ledger_sha256": "bc4e9143c57aa0805166f06352e5272d15fd52f580e86d56338968d8d2e505d7",
+  "ledger_sha256": "e56048b2e05d5186b233527cd590ddc28548a6d79949b93275a4e15fd4e7658c",
   "expected_rows": 2,
   "expected_disposition_counts": {
-    "private_host_ops": 1,
+    "obsolete_or_replaced": 1,
     "represented_public": 1
   },
+  "terminal_dispositions": [
+    "obsolete_or_generated",
+    "obsolete_or_replaced",
+    "represented_public"
+  ],
   "unclassified_rows": 0
 }

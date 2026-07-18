@@ -143,14 +143,22 @@ assert_pass "Slack adapter accepts a terminal dry run"
 
 case_directory="$(new_case web-public-dry-run)"
 rewrite_json "${case_directory}/final-lock.json" \
-  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"'
+  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"
+    | .ledger.terminal_dispositions = [
+      "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
+      "private_host_ops", "represented_public"
+    ]'
 refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_pass "public web adapter accepts a terminal dry run"
 
 case_directory="$(new_case web-private-dry-run)"
 rewrite_json "${case_directory}/final-lock.json" \
-  '.source_repository_id = "web_private" | .ledger.adapter = "web_representation_v1"'
+  '.source_repository_id = "web_private" | .ledger.adapter = "web_representation_v1"
+    | .ledger.terminal_dispositions = [
+      "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
+      "private_host_ops", "represented_public"
+    ]'
 refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_pass "private web adapter accepts a terminal dry run"
@@ -202,6 +210,14 @@ mv "${case_directory}/ledger.tsv.tmp" "${case_directory}/ledger.tsv"
 run_validator "${case_directory}"
 assert_failure "nonterminal dispositions are rejected" "nonterminal-dispositions"
 
+case_directory="$(new_case unfinished-slack-private-host)"
+refresh_receipt_lock "${case_directory}"
+sed 's/obsolete_or_replaced/private_host_ops/' \
+  "${case_directory}/ledger.tsv" >"${case_directory}/ledger.tsv.tmp"
+mv "${case_directory}/ledger.tsv.tmp" "${case_directory}/ledger.tsv"
+run_validator "${case_directory}"
+assert_failure "unfinished Slack private-host work remains nonterminal" "nonterminal-dispositions"
+
 case_directory="$(new_case missing-capability)"
 refresh_receipt_lock "${case_directory}"
 rewrite_json "${case_directory}/final-receipt.json" \
@@ -223,7 +239,11 @@ assert_failure "candidate status authority is rejected" "invalid-receipt"
 
 case_directory="$(new_case missing-web-authority)"
 rewrite_json "${case_directory}/final-lock.json" \
-  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"'
+  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"
+    | .ledger.terminal_dispositions = [
+      "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
+      "private_host_ops", "represented_public"
+    ]'
 refresh_receipt_lock "${case_directory}"
 rewrite_json "${case_directory}/web-authority.json" '.archive_ready = false'
 run_validator "${case_directory}" web-authority.json web-inventory.json

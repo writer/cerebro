@@ -4,7 +4,8 @@ set -Eeuo pipefail
 
 readonly lock_schema="cerebro-repository-final-archive-lock/v1"
 readonly receipt_schema="cerebro-repository-final-archive-receipt/v1"
-readonly terminal_dispositions_json='["covered_by_new_public_slice","obsolete_or_generated","obsolete_or_replaced","private_host_ops","represented_public"]'
+readonly slack_terminal_dispositions_json='["obsolete_or_generated","obsolete_or_replaced","represented_public"]'
+readonly web_terminal_dispositions_json='["covered_by_new_public_slice","obsolete_or_generated","obsolete_or_replaced","private_host_ops","represented_public"]'
 readonly full_sha_pattern='^[0-9a-f]{40}$'
 readonly digest_pattern='^[0-9a-f]{64}$'
 
@@ -82,7 +83,8 @@ jq -e \
   --arg schema "${lock_schema}" \
   --arg sha_pattern "${full_sha_pattern}" \
   --arg digest_pattern "${digest_pattern}" \
-  --argjson terminals "${terminal_dispositions_json}" \
+  --argjson slack_terminals "${slack_terminal_dispositions_json}" \
+  --argjson web_terminals "${web_terminal_dispositions_json}" \
   '(. | keys | sort) == ([
       "authorities", "ledger", "receipts", "schema_version", "source",
       "source_repository_id", "targets"
@@ -111,7 +113,10 @@ jq -e \
     and ([.ledger.disposition_counts | to_entries[]
       | select((.key | test("^[a-z][a-z0-9_]*$") | not)
         or (.value | type != "number") or (.value | floor != .) or (.value < 1))] | length) == 0
-    and .ledger.terminal_dispositions == $terminals
+    and ((.source_repository_id == "slack_companion"
+        and .ledger.terminal_dispositions == $slack_terminals)
+      or ((.source_repository_id == "web_public" or .source_repository_id == "web_private")
+        and .ledger.terminal_dispositions == $web_terminals))
     and (.ledger.terminal_row_count | type == "number" and floor == . and . > 0)
     and .ledger.nonterminal_row_count == 0
     and (.receipts | keys | sort) == (["cutover", "rollback"] | sort)
@@ -147,13 +152,15 @@ IFS= read -r actual_header <"${ledger_file}"
 [[ "${actual_header}" == "${expected_header}" ]] || fail "invalid-ledger"
 
 set +e
-awk -F '\t' '
+awk -F '\t' -v repository_id="${source_repository_id}" '
   BEGIN {
-    terminal["covered_by_new_public_slice"] = 1
     terminal["obsolete_or_generated"] = 1
     terminal["obsolete_or_replaced"] = 1
-    terminal["private_host_ops"] = 1
     terminal["represented_public"] = 1
+    if (repository_id != "slack_companion") {
+      terminal["covered_by_new_public_slice"] = 1
+      terminal["private_host_ops"] = 1
+    }
   }
   NR == 1 { next }
   NF != 5 { exit 2 }
@@ -213,6 +220,7 @@ if [[ "${source_repository_id}" == "slack_companion" ]]; then
     --arg private_sha "${locked_private_target}" \
     --arg ledger_digest "${actual_ledger_digest}" \
     --argjson rows "${actual_row_count}" \
+    --argjson terminals "${slack_terminal_dispositions_json}" \
     --slurpfile counts "${disposition_counts_file}" \
     '.schema_version == "cerebro-slack-retirement-ledger/v1"
       and .source_commit_sha == $source_sha
@@ -223,6 +231,7 @@ if [[ "${source_repository_id}" == "slack_companion" ]]; then
       and .ledger_sha256 == $ledger_digest
       and .expected_rows == $rows
       and .unclassified_rows == 0
+      and .terminal_dispositions == $terminals
       and .expected_disposition_counts == $counts[0]' \
     "${source_authority_file}" >/dev/null 2>&1 || fail "slack-adapter-mismatch"
 else

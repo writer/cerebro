@@ -65,13 +65,17 @@
           }
         },
         "terminal_dispositions": {
-          "const": [
-            "covered_by_new_public_slice",
-            "obsolete_or_generated",
-            "obsolete_or_replaced",
-            "private_host_ops",
-            "represented_public"
-          ]
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "covered_by_new_public_slice",
+              "obsolete_or_generated",
+              "obsolete_or_replaced",
+              "private_host_ops",
+              "represented_public"
+            ]
+          }
         },
         "terminal_row_count": {"type": "integer", "minimum": 1},
         "nonterminal_row_count": {"const": 0}
@@ -113,7 +117,16 @@
       "then": {
         "properties": {
           "ledger": {
-            "properties": {"adapter": {"const": "slack_legacy_v1"}}
+            "properties": {
+              "adapter": {"const": "slack_legacy_v1"},
+              "terminal_dispositions": {
+                "const": [
+                  "obsolete_or_generated",
+                  "obsolete_or_replaced",
+                  "represented_public"
+                ]
+              }
+            }
           }
         }
       }
@@ -127,7 +140,18 @@
       "then": {
         "properties": {
           "ledger": {
-            "properties": {"adapter": {"const": "web_representation_v1"}}
+            "properties": {
+              "adapter": {"const": "web_representation_v1"},
+              "terminal_dispositions": {
+                "const": [
+                  "covered_by_new_public_slice",
+                  "obsolete_or_generated",
+                  "obsolete_or_replaced",
+                  "private_host_ops",
+                  "represented_public"
+                ]
+              }
+            }
           }
         }
       }
