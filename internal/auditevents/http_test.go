@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,38 @@ func TestHTTPQueryCursorPreservesWindowAndFilters(t *testing.T) {
 	values.Set("action", "record.write")
 	if _, err := ParseHTTPQuery(values, "tenant-a", now.Add(time.Minute)); !errors.Is(err, ports.ErrAuditEventInvalid) {
 		t.Fatalf("changed-filter cursor error = %v", err)
+	}
+}
+
+func TestHTTPQueryRejectsLimitsOutsideUint32AndContractBounds(t *testing.T) {
+	query, err := ParseHTTPQuery(url.Values{"limit": {"500"}}, "tenant-a", time.Now())
+	if err != nil || query.Limit != MaxLimit {
+		t.Fatalf("ParseHTTPQuery(maximum limit) = %+v, %v", query, err)
+	}
+	for _, value := range []string{
+		"-1",
+		"501",
+		"4294967296",
+		"18446744073709551616",
+	} {
+		t.Run(value, func(t *testing.T) {
+			_, err := ParseHTTPQuery(url.Values{"limit": {value}}, "tenant-a", time.Now())
+			if !errors.Is(err, ports.ErrAuditEventInvalid) {
+				t.Fatalf("ParseHTTPQuery(limit=%q) error = %v", value, err)
+			}
+		})
+	}
+}
+
+func TestStrictUint32ParsesAtTheDestinationWidth(t *testing.T) {
+	maximum := ^uint32(0)
+	rawMaximum := strconv.FormatUint(uint64(maximum), 10)
+	got, err := strictUint32(rawMaximum, 0, 0, maximum, "value")
+	if err != nil || got != maximum {
+		t.Fatalf("strictUint32(%q) = %d, %v", rawMaximum, got, err)
+	}
+	if _, err := strictUint32("4294967296", 0, 0, maximum, "value"); !errors.Is(err, ports.ErrAuditEventInvalid) {
+		t.Fatalf("strictUint32(uint32 overflow) error = %v", err)
 	}
 }
 

@@ -76,7 +76,7 @@ type cursorV1 struct {
 // The cursor checksum detects accidental corruption; it is not a MAC and no
 // authorization or evidence decision relies on it.
 func ParseHTTPQuery(values url.Values, tenantID string, now time.Time) (ports.AuditEventQueryV1, error) {
-	limit, err := strictInteger(values.Get("limit"), DefaultLimit, 1, MaxLimit, "limit")
+	limit, err := strictUint32(values.Get("limit"), DefaultLimit, 1, MaxLimit, "limit")
 	if err != nil {
 		return ports.AuditEventQueryV1{}, err
 	}
@@ -86,7 +86,7 @@ func ParseHTTPQuery(values url.Values, tenantID string, now time.Time) (ports.Au
 	}
 	query := ports.AuditEventQueryV1{
 		TenantID: strings.TrimSpace(tenantID),
-		Limit:    uint32(limit), // #nosec G115 -- strictInteger bounds this value to MaxLimit.
+		Limit:    limit,
 		Before:   now.UTC(),
 		After:    now.UTC().Add(-time.Duration(minutes) * time.Minute),
 	}
@@ -198,6 +198,18 @@ func strictInteger(raw string, fallback int, minimum int, maximum int, field str
 		return 0, fmt.Errorf("%w: %s must be between %d and %d", ports.ErrAuditEventInvalid, field, minimum, maximum)
 	}
 	return value, nil
+}
+
+func strictUint32(raw string, fallback uint32, minimum uint32, maximum uint32, field string) (uint32, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil || value < uint64(minimum) || value > uint64(maximum) {
+		return 0, fmt.Errorf("%w: %s must be between %d and %d", ports.ErrAuditEventInvalid, field, minimum, maximum)
+	}
+	return uint32(value), nil
 }
 
 func filterText(field string, raw string) (string, error) {
