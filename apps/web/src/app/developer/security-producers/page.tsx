@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { PageHeader, Panel } from "@/components/grc/Primitives";
+import { useSecurityProducerCatalog } from "@/components/SecurityProducerCatalogProvider";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { securityProducers } from "@/lib/security-producers";
 
 type RuntimeSnapshot = {
   ok: boolean;
@@ -14,6 +14,10 @@ type RuntimeSnapshot = {
 
 export default function SecurityProducersPage() {
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
+  const { catalog: producerCatalog, retry: retryProducerCatalog } = useSecurityProducerCatalog();
+  const focusAfterRetryRef = useRef(false);
+  const producerCatalogStatusRef = useRef<HTMLDivElement>(null);
+  const retryButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +37,13 @@ export default function SecurityProducersPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!focusAfterRetryRef.current || producerCatalog.state === "loading") return;
+    if (producerCatalog.state === "unavailable") retryButtonRef.current?.focus();
+    else producerCatalogStatusRef.current?.focus();
+    focusAfterRetryRef.current = false;
+  }, [producerCatalog.state]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -50,13 +61,40 @@ export default function SecurityProducersPage() {
       </Panel>
 
       <Panel title="Producer Coverage">
-        {securityProducers.length === 0 ? (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
-            No security producers are configured for this deployment.
-          </div>
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-3">
-            {securityProducers.map((producer) => (
+        <div
+          ref={producerCatalogStatusRef}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-busy={producerCatalog.state === "loading"}
+          tabIndex={-1}
+        >
+          {producerCatalog.state === "loading" ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
+              Loading producer catalog...
+            </div>
+          ) : producerCatalog.state === "unavailable" ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
+              <div>Producer catalog is unavailable. Check your access or service connection, then retry.</div>
+              <button
+                ref={retryButtonRef}
+                type="button"
+                className="mt-3 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-amber-900 hover:bg-amber-100"
+                onClick={() => {
+                  focusAfterRetryRef.current = true;
+                  retryProducerCatalog();
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : producerCatalog.producers.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
+              No security producers are configured for this deployment.
+            </div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-3">
+            {producerCatalog.producers.map((producer) => (
               <div key={producer.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
                 <div className="text-[13px] font-semibold text-slate-900">{producer.label}</div>
                 {producer.description && <div className="mt-1 text-[12px] leading-5 text-slate-600">{producer.description}</div>}
@@ -141,8 +179,9 @@ export default function SecurityProducersPage() {
                 )}
               </div>
             ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </Panel>
     </div>
   );

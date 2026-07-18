@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveSecurityProducerGuidance,
+  securityProducerContextForFinding,
   securityProducerForFinding,
   securityProducerResponseActionCandidates,
   securityProducerResponseCandidateHint,
@@ -56,6 +58,10 @@ describe("security producer response context", () => {
       "QUARANTINE_APP",
       "OPEN_TICKET",
     ]);
+    expect(securityProducerContextForFinding(finding, producers)).toEqual({
+      security_producer_id: "producer-one",
+      response_action_candidates: ["QUARANTINE_APP", "OPEN_TICKET"],
+    });
   });
 
   it("keeps provider-specific actions out when the finding lacks that provider", () => {
@@ -68,8 +74,50 @@ describe("security producer response context", () => {
   });
 
   it("renders approval and dry-run requirements from configured action metadata", () => {
-    expect(securityProducerResponseCandidateHint(["QUARANTINE_APP"], producers)).toBe(
+    expect(securityProducerResponseCandidateHint(["QUARANTINE_APP"], producers[0])).toBe(
       "QUARANTINE_APP via producer.propose for provider=GENERIC_SAAS; approval required; dry run",
     );
+  });
+
+  it("does not first-match ambiguous finding ownership", () => {
+    const overlappingProducer: SecurityProducer = {
+      ...producers[0],
+      id: "producer-two",
+      label: "Producer Two",
+    };
+    const finding = {
+      source_id: "source-one",
+      runtime_id: "",
+      attributes: { provider: "GENERIC_SAAS" },
+      external_refs: [],
+    };
+
+    expect(securityProducerForFinding(finding, [...producers, overlappingProducer])).toBeUndefined();
+    expect(securityProducerResponseActionCandidates(finding, [...producers, overlappingProducer])).toEqual([]);
+  });
+
+  it("resolves action guidance only within one exact producer", () => {
+    const otherProducer: SecurityProducer = {
+      ...producers[0],
+      id: "producer-two",
+      label: "Producer Two",
+      runtimeIds: ["runtime-two"],
+      sourceIds: ["source-two"],
+      responseActions: [{
+        ...producers[0].responseActions[0],
+        id: "CROSS_PRODUCER_ACTION",
+        label: "Cross producer action",
+      }],
+    };
+    const catalog = [...producers, otherProducer];
+
+    expect(resolveSecurityProducerGuidance("producer-one", ["QUARANTINE_APP"], catalog)).toEqual({
+      producer: producers[0],
+      candidates: ["QUARANTINE_APP"],
+    });
+    expect(resolveSecurityProducerGuidance("unknown-producer", ["QUARANTINE_APP"], catalog)).toBeNull();
+    expect(resolveSecurityProducerGuidance("producer-one", ["UNKNOWN_ACTION"], catalog)).toBeNull();
+    expect(resolveSecurityProducerGuidance("producer-one", ["CROSS_PRODUCER_ACTION"], catalog)).toBeNull();
+    expect(securityProducerResponseCandidateHint(["CROSS_PRODUCER_ACTION"], producers[0])).toBe("");
   });
 });
