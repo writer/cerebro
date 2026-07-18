@@ -26,6 +26,7 @@ func TestWriteBundleAndVerifyRepository(t *testing.T) {
 		ReplayTest: "source_test.go#TestReplayUsers",
 		Request:    Request{Method: "GET", URL: "https://api.example.test/v1/users"},
 		Response:   Response{Status: 200, ContentType: "application/json", CapturedAt: "2026-07-18T00:00:00Z"},
+		Origin:     Origin{Type: "operator_request"},
 	}, []byte(`{"items":[{"id":"user-1","email":"user@example.test"}]}`))
 	if err != nil {
 		t.Fatalf("WriteBundle() error = %v", err)
@@ -52,6 +53,7 @@ func TestValidateManifestRejectsCredentialAndPersonalEmail(t *testing.T) {
 		Request:       Request{Method: "GET", URL: "https://api.example.test/v1/users"},
 		Response:      Response{Status: 200, ContentType: "application/json", CapturedAt: "2026-07-18T00:00:00Z"},
 		Sanitization:  Sanitization{Tool: SanitizerName, Version: SanitizerVersion},
+		Origin:        Origin{Type: "operator_request"},
 	}
 	for _, test := range []struct {
 		name    string
@@ -140,6 +142,34 @@ func testManifest(payload []byte, requestURL string) Manifest {
 			SHA256:      Digest(payload),
 		},
 		Sanitization: Sanitization{Tool: SanitizerName, Version: SanitizerVersion},
+		Origin:       Origin{Type: "operator_request"},
+	}
+}
+
+func TestValidateManifestRequiresImmutableUpstreamOrigin(t *testing.T) {
+	payload, err := CanonicalJSON([]byte(`{"items":[{"id":"record-1"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := testManifest(payload, "https://api.example.test/v1/items")
+	manifest.Origin = Origin{
+		Type:             "upstream_recording",
+		Repository:       "https://github.com/example/provider-sdk",
+		Commit:           "0123456789abcdef0123456789abcdef01234567",
+		Path:             "tests/cassettes/items.yaml",
+		ArtifactSHA256:   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		License:          "Apache-2.0",
+		RecordingTool:    "go-vcr",
+		HarnessPath:      "tests/recording_test.go",
+		Freshness:        "current",
+		CaptureTimeBasis: "response_header",
+	}
+	if err := ValidateManifest(manifest, payload); err != nil {
+		t.Fatalf("ValidateManifest() error = %v", err)
+	}
+	manifest.Origin.Commit = "main"
+	if err := ValidateManifest(manifest, payload); err == nil {
+		t.Fatal("ValidateManifest() error = nil, want immutable commit rejection")
 	}
 }
 

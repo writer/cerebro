@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -34,6 +35,8 @@ var (
 	emailPattern       = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
 	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
+	fullCommit         = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	sha256Digest       = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	replayTestName     = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
 )
 
@@ -46,6 +49,7 @@ type Manifest struct {
 	Request       Request      `yaml:"request"`
 	Response      Response     `yaml:"response"`
 	Sanitization  Sanitization `yaml:"sanitization"`
+	Origin        Origin       `yaml:"origin"`
 }
 
 type Request struct {
@@ -66,6 +70,25 @@ type Sanitization struct {
 	Version       int      `yaml:"version"`
 	ChangedFields []string `yaml:"changed_fields,omitempty"`
 	RemovedFields []string `yaml:"removed_fields,omitempty"`
+}
+
+type Origin struct {
+	Type                string   `yaml:"type"`
+	Repository          string   `yaml:"repository,omitempty"`
+	Commit              string   `yaml:"commit,omitempty"`
+	Path                string   `yaml:"path,omitempty"`
+	ArtifactSHA256      string   `yaml:"artifact_sha256,omitempty"`
+	License             string   `yaml:"license,omitempty"`
+	RecordingTool       string   `yaml:"recording_tool,omitempty"`
+	HarnessPath         string   `yaml:"harness_path,omitempty"`
+	InteractionIndex    int      `yaml:"interaction_index,omitempty"`
+	Freshness           string   `yaml:"freshness,omitempty"`
+	CaptureTimeBasis    string   `yaml:"capture_time_basis,omitempty"`
+	Locator             string   `yaml:"locator,omitempty"`
+	RedistributionBasis string   `yaml:"redistribution_basis,omitempty"`
+	Release             string   `yaml:"release,omitempty"`
+	ImageDigest         string   `yaml:"image_digest,omitempty"`
+	SeedCommands        []string `yaml:"seed_commands,omitempty"`
 }
 
 type Bundle struct {
@@ -138,6 +161,7 @@ func WriteBundle(root string, manifest Manifest, payload []byte) (Bundle, error)
 	manifest.Sanitization.Version = SanitizerVersion
 	manifest.Sanitization.ChangedFields = normalizedList(manifest.Sanitization.ChangedFields)
 	manifest.Sanitization.RemovedFields = normalizedList(manifest.Sanitization.RemovedFields)
+	manifest.Origin = normalizedOrigin(manifest.Origin)
 	if err := ValidateManifest(manifest, canonical); err != nil {
 		return Bundle{}, err
 	}
@@ -220,6 +244,9 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 	}
 	if manifest.Sanitization.Tool != SanitizerName || manifest.Sanitization.Version != SanitizerVersion {
 		return fmt.Errorf("sanitization tool/version = %s/%d, want %s/%d", manifest.Sanitization.Tool, manifest.Sanitization.Version, SanitizerName, SanitizerVersion)
+	}
+	if err := validateOrigin(manifest.Origin); err != nil {
+		return err
 	}
 	canonical, err := CanonicalJSON(payload)
 	if err != nil {
@@ -485,4 +512,102 @@ func normalizedList(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func normalizedOrigin(origin Origin) Origin {
+	origin.Type = strings.TrimSpace(origin.Type)
+	origin.Repository = strings.TrimSpace(origin.Repository)
+	origin.Commit = strings.ToLower(strings.TrimSpace(origin.Commit))
+	origin.Path = strings.TrimSpace(origin.Path)
+	origin.ArtifactSHA256 = strings.ToLower(strings.TrimSpace(origin.ArtifactSHA256))
+	origin.License = strings.TrimSpace(origin.License)
+	origin.RecordingTool = strings.TrimSpace(origin.RecordingTool)
+	origin.HarnessPath = strings.TrimSpace(origin.HarnessPath)
+	origin.Freshness = strings.TrimSpace(origin.Freshness)
+	origin.CaptureTimeBasis = strings.TrimSpace(origin.CaptureTimeBasis)
+	origin.Locator = strings.TrimSpace(origin.Locator)
+	origin.RedistributionBasis = strings.TrimSpace(origin.RedistributionBasis)
+	origin.Release = strings.TrimSpace(origin.Release)
+	origin.ImageDigest = strings.TrimSpace(origin.ImageDigest)
+	origin.SeedCommands = normalizedList(origin.SeedCommands)
+	return origin
+}
+
+func validateOrigin(origin Origin) error {
+	origin = normalizedOrigin(origin)
+	switch origin.Type {
+	case "operator_request":
+		return nil
+	case "upstream_recording":
+		if err := validateHTTPSURL("origin.repository", origin.Repository); err != nil {
+			return err
+		}
+		if !fullCommit.MatchString(origin.Commit) {
+			return errors.New("origin.commit must be a full lowercase Git commit")
+		}
+		if err := validateRelativeArtifactPath("origin.path", origin.Path); err != nil {
+			return err
+		}
+		if err := validateRelativeArtifactPath("origin.harness_path", origin.HarnessPath); err != nil {
+			return err
+		}
+		if !sha256Digest.MatchString(origin.ArtifactSHA256) {
+			return errors.New("origin.artifact_sha256 must be a lowercase SHA-256 digest")
+		}
+		if origin.License == "" || strings.EqualFold(origin.License, "NOASSERTION") || strings.EqualFold(origin.License, "UNKNOWN") {
+			return errors.New("origin.license must declare redistribution terms")
+		}
+		if origin.RecordingTool == "" {
+			return errors.New("origin.recording_tool is required for an upstream recording")
+		}
+		return validateFreshnessAndCaptureBasis(origin)
+	case "public_archive":
+		if err := validateHTTPSURL("origin.locator", origin.Locator); err != nil {
+			return err
+		}
+		if !sha256Digest.MatchString(origin.ArtifactSHA256) {
+			return errors.New("origin.artifact_sha256 must be a lowercase SHA-256 digest")
+		}
+		if origin.RedistributionBasis == "" {
+			return errors.New("origin.redistribution_basis is required for a public archive")
+		}
+		return validateFreshnessAndCaptureBasis(origin)
+	case "official_implementation":
+		if origin.Release == "" && origin.ImageDigest == "" {
+			return errors.New("origin.release or origin.image_digest is required for an official implementation")
+		}
+		if len(origin.SeedCommands) == 0 {
+			return errors.New("origin.seed_commands are required for an official implementation")
+		}
+		return validateFreshnessAndCaptureBasis(origin)
+	default:
+		return errors.New("origin.type must be operator_request, upstream_recording, public_archive, or official_implementation")
+	}
+}
+
+func validateFreshnessAndCaptureBasis(origin Origin) error {
+	if origin.Freshness != "current" && origin.Freshness != "historical" {
+		return errors.New("origin.freshness must be current or historical")
+	}
+	switch origin.CaptureTimeBasis {
+	case "response_header", "recorded_at", "artifact_commit":
+		return nil
+	default:
+		return errors.New("origin.capture_time_basis must be response_header, recorded_at, or artifact_commit")
+	}
+}
+
+func validateHTTPSURL(field, value string) error {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("%s must be an HTTPS URL without user information", field)
+	}
+	return nil
+}
+
+func validateRelativeArtifactPath(field, value string) error {
+	if value == "" || strings.Contains(value, "\\") || strings.HasPrefix(value, "/") || path.Clean(value) != value || value == "." || strings.HasPrefix(value, "../") {
+		return fmt.Errorf("%s must be a clean repository-relative path", field)
+	}
+	return nil
 }
