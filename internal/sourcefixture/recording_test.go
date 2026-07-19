@@ -42,6 +42,33 @@ version: 2
 			wantBasis:  "recorded_at",
 			wantRecord: "event-1",
 		},
+		{
+			name: "pytest recording yaml",
+			artifact: `interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/models
+  response:
+    content: '{"results":[{"name":"model-1"}]}'
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 14:00:00 GMT']
+    status_code: 200
+version: 1
+`,
+			wantURL:    "https://api.example.test/v1/models",
+			wantTime:   "2026-07-18T14:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "model-1",
+		},
+		{
+			name:       "exvcr json interaction array",
+			artifact:   `[{"request":{"method":"get","url":"https://api.example.test/v1/lists"},"response":{"body":"{\"lists\":[{\"id\":\"list-1\"}]}","headers":{"Content-Type":"application/json","Date":"Sat, 18 Jul 2026 15:00:00 GMT"},"status_code":200}}]`,
+			wantURL:    "https://api.example.test/v1/lists",
+			wantTime:   "2026-07-18T15:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "list-1",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

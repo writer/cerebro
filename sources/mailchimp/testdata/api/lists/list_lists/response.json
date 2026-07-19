@@ -1,12 +1,33 @@
-[
-  {
-    "id": "mailchimp-tenant-lists-a839a759702b0a03",
-    "tenant_id": "tenant",
-    "source_id": "mailchimp",
-    "kind": "mailchimp.lists",
-    "occurred_at": "2026-07-19T00:03:28Z",
-    "schema_ref": "mailchimp/lists/v1",
-    "payload": {
+{
+  "_links": [
+    {
+      "href": "https://us19.api.mailchimp.com/3.0/lists",
+      "method": "GET",
+      "rel": "self",
+      "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists.json",
+      "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/CollectionResponse.json"
+    },
+    {
+      "href": "https://us19.api.mailchimp.com/3.0/",
+      "method": "GET",
+      "rel": "parent",
+      "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Root/Response.json"
+    },
+    {
+      "href": "https://us19.api.mailchimp.com/3.0/lists",
+      "method": "POST",
+      "rel": "create",
+      "schema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/POST.json",
+      "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Response.json"
+    }
+  ],
+  "constraints": {
+    "current_total_instances": 1,
+    "max_instances": 1,
+    "may_create": false
+  },
+  "lists": [
+    {
       "_links": [
         {
           "href": "https://us19.api.mailchimp.com/3.0/lists/example-list",
@@ -168,20 +189,7 @@
       "use_archive_bar": true,
       "visibility": "pub",
       "web_id": 0
-    },
-    "attributes": {
-      "external_id": "example-2e767a40",
-      "family": "lists",
-      "group_id": "example-2e767a40",
-      "group_name": "example-57a6d1b3",
-      "provider": "mailchimp",
-      "record_class": "identity_group",
-      "resource_id": "example-2e767a40",
-      "resource_name": "example-57a6d1b3",
-      "schema": "lists",
-      "source_event_id": "example-2e767a40",
-      "source_provider": "mailchimp",
-      "source_system": "mailchimp"
     }
-  }
-]
+  ],
+  "total_items": 1
+}

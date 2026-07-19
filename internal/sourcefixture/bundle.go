@@ -43,6 +43,7 @@ var (
 	auth0TenantHost          = regexp.MustCompile(`(?i)(^|[^%a-z0-9.-])(?:[a-z0-9-]+\.)+auth0\.com\b`)
 	escapedAuth0TenantHost   = regexp.MustCompile(`(?i)(%2f%2f)(?:[a-z0-9-]+\.)+auth0\.com\b`)
 	auth0FixtureTenant       = regexp.MustCompile(`(?i)\bterraform-provider-auth0(?:-[a-z0-9-]+)?\b`)
+	mailchimpListPath        = regexp.MustCompile(`(?i)(api\.mailchimp\.com/3\.0/lists/)[0-9a-f]{10}\b`)
 	ipv4Pattern              = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
 	providerIDPattern        = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|auth0(?:\||%7c)[0-9a-z]{8,})\b`)
 	fullCommit               = regexp.MustCompile(`^[0-9a-f]{40}$`)

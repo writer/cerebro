@@ -1,62 +1,458 @@
 [
   {
+    "id": "replicate-tenant-collections-8da97c6f93a5063f",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Multimodal large language models with vision capabilities like object detection and optical character recognition (OCR)",
+      "name": "Vision models",
+      "slug": "vision-models"
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/collections",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-replicate-collections-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-replicate-collections-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/replicate/collections/source-replicate-collections-1",
-      "external_id": "source-replicate-collections-1",
+      "external_id": "vision-models",
       "family": "collections",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "replicate",
       "record_class": "asset",
-      "record_selector": "$.results[*]",
-      "resource_id": "source-replicate-collections-1",
-      "resource_name": "Replicate Collections Fixture",
-      "resource_type": "collections",
-      "resource_urn": "urn:cerebro:tenant:replicate_collections:source-replicate-collections-1",
+      "resource_id": "vision-models",
+      "resource_name": "Vision models",
       "schema": "collections",
-      "source_event_id": "source-replicate-collections-1",
       "source_provider": "replicate",
-      "source_system": "replicate",
-      "tenant_id": "tenant"
-    },
-    "id": "source-replicate-collections-event-1",
-    "kind": "replicate.collections",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/collections",
-      "event_id": "source-replicate-collections-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-replicate-collections-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-replicate-collections-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/replicate/collections/source-replicate-collections-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/replicate/collections/source-replicate-collections-1",
-      "family": "collections",
-      "id": "source-replicate-collections-1",
-      "name": "Replicate Collections Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.results[*]",
-      "resource_id": "source-replicate-collections-1",
-      "resource_type": "collections",
-      "resource_urn": "urn:cerebro:tenant:replicate_collections:source-replicate-collections-1",
-      "schema_ref": "replicate/collections/v1",
-      "slug": "source-replicate-collections-1",
-      "source_id": "replicate",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "replicate/collections/v1",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-83ecd0fec32bba4b",
+    "tenant_id": "tenant",
     "source_id": "replicate",
-    "tenant_id": "tenant"
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "T2I-Adapter models to modify images",
+      "name": "T2I-Adapter",
+      "slug": "t2i-adapter"
+    },
+    "attributes": {
+      "external_id": "t2i-adapter",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "t2i-adapter",
+      "resource_name": "T2I-Adapter",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-179b69f140f448df",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Language models that support grammar-based decoding as well as jsonschema constraints.",
+      "name": "Language models with support for grammars and jsonschema",
+      "slug": "language-models-with-grammar"
+    },
+    "attributes": {
+      "external_id": "language-models-with-grammar",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "language-models-with-grammar",
+      "resource_name": "Language models with support for grammars and jsonschema",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-cf2cd786352c2ddb",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Some of our favorite SDXL fine-tunes.",
+      "name": "SDXL fine-tunes",
+      "slug": "sdxl-fine-tunes"
+    },
+    "attributes": {
+      "external_id": "sdxl-fine-tunes",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "sdxl-fine-tunes",
+      "resource_name": "SDXL fine-tunes",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-8311040bf3cc25f7",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Language models that support streaming responses. See https://replicate.com/docs/streaming",
+      "name": "Streaming language models",
+      "slug": "streaming-language-models"
+    },
+    "attributes": {
+      "external_id": "streaming-language-models",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "streaming-language-models",
+      "resource_name": "Streaming language models",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-54eff2b3e7ba0676",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Tools for manipulating images.",
+      "name": "Image editing",
+      "slug": "image-editing"
+    },
+    "attributes": {
+      "external_id": "image-editing",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "image-editing",
+      "resource_name": "Image editing",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-aff158e5f4de5b6e",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that generate embeddings from inputs",
+      "name": "Embedding models",
+      "slug": "embedding-models"
+    },
+    "attributes": {
+      "external_id": "embedding-models",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "embedding-models",
+      "resource_name": "Embedding models",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-228f81366c04b53b",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Language models that you can fine-tune using Replicate's training API.",
+      "name": "Trainable language models",
+      "slug": "trainable-language-models"
+    },
+    "attributes": {
+      "external_id": "trainable-language-models",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "trainable-language-models",
+      "resource_name": "Trainable language models",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-d7d9c8895adbbb92",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that can understand and generate text",
+      "name": "Language models",
+      "slug": "language-models"
+    },
+    "attributes": {
+      "external_id": "language-models",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "language-models",
+      "resource_name": "Language models",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-05c0a608e43c484a",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Control diffusion models",
+      "name": "ControlNet",
+      "slug": "control-net"
+    },
+    "attributes": {
+      "external_id": "control-net",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "control-net",
+      "resource_name": "ControlNet",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-2aa3e2a2ce80e659",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models to generate and modify audio",
+      "name": "Audio generation",
+      "slug": "audio-generation"
+    },
+    "attributes": {
+      "external_id": "audio-generation",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "audio-generation",
+      "resource_name": "Audio generation",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-61b214a3f9522076",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Image and video generation models trained with diffusion processes",
+      "name": "Diffusion models",
+      "slug": "diffusion-models"
+    },
+    "attributes": {
+      "external_id": "diffusion-models",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "diffusion-models",
+      "resource_name": "Diffusion models",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-87407252c94bef94",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that create and edit videos",
+      "name": "Videos",
+      "slug": "text-to-video"
+    },
+    "attributes": {
+      "external_id": "text-to-video",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "text-to-video",
+      "resource_name": "Videos",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-72144e0ad1f92d17",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that generate text prompts and captions from images",
+      "name": "Image to text",
+      "slug": "image-to-text"
+    },
+    "attributes": {
+      "external_id": "image-to-text",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "image-to-text",
+      "resource_name": "Image to text",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-9f2d5a2073fd1c78",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Upscaling models that create high-quality images from low-quality images",
+      "name": "Super resolution",
+      "slug": "super-resolution"
+    },
+    "attributes": {
+      "external_id": "super-resolution",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "super-resolution",
+      "resource_name": "Super resolution",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-79121cbcfb12d1c1",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that take a content image and a style reference to produce a new image",
+      "name": "Style transfer",
+      "slug": "style-transfer"
+    },
+    "attributes": {
+      "external_id": "style-transfer",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "style-transfer",
+      "resource_name": "Style transfer",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-5730b9114d6069be",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that let you change facial features",
+      "name": "ML makeovers",
+      "slug": "ml-makeovers"
+    },
+    "attributes": {
+      "external_id": "ml-makeovers",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "ml-makeovers",
+      "resource_name": "ML makeovers",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-4644f7399e2bb8ba",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that improve or restore images by deblurring, colorization, and removing noise",
+      "name": "Image restoration",
+      "slug": "image-restoration"
+    },
+    "attributes": {
+      "external_id": "image-restoration",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "image-restoration",
+      "resource_name": "Image restoration",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
+  },
+  {
+    "id": "replicate-tenant-collections-147dcd3b941fb9c7",
+    "tenant_id": "tenant",
+    "source_id": "replicate",
+    "kind": "replicate.collections",
+    "occurred_at": "2026-07-19T00:03:29Z",
+    "schema_ref": "replicate/collections/v1",
+    "payload": {
+      "description": "Models that generate images from text prompts",
+      "name": "Text to image",
+      "slug": "text-to-image"
+    },
+    "attributes": {
+      "external_id": "text-to-image",
+      "family": "collections",
+      "provider": "replicate",
+      "record_class": "asset",
+      "resource_id": "text-to-image",
+      "resource_name": "Text to image",
+      "schema": "collections",
+      "source_provider": "replicate",
+      "source_system": "replicate"
+    }
   }
 ]

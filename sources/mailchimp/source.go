@@ -3,6 +3,7 @@ package mailchimp
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -42,7 +43,7 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "api_key",
+		AuthModel:       "basic",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
@@ -54,7 +55,7 @@ func New() (*Source, error) {
 				CursorParam:      "cursor",
 				NextCursorKeys:   []string{"next_cursor"},
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
+				ListKeys:         []string{"lists"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "lists", "source_system": "mailchimp"},
@@ -63,13 +64,13 @@ func New() (*Source, error) {
 				Name:             familyMembers,
 				Path:             "/lists/${config.list_id}/members",
 				URNKind:          "mailchimp_members",
-				IDKeys:           []string{"id", "user_id", "email", "primary_email", "login"},
+				IDKeys:           []string{"id", "email_address", "user_id", "email", "primary_email", "login"},
 				CursorParam:      "cursor",
 				NextCursorKeys:   []string{"next_cursor"},
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
+				ListKeys:         []string{"members"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "full_name|email_address|display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email_address|email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "email_address|login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "email_address|primary_email|email|profile.email", "resource_id": "email_address|resource_id|id|metadata.resource_id", "resource_name": "full_name|email_address|name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|email_address|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id|email_address"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "members", "source_system": "mailchimp"},
 			},
 			{
@@ -128,7 +129,11 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	values := cfg.Values()
+	if apiKey := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "api_key")); apiKey != "" {
+		values["token"] = base64.StdEncoding.EncodeToString([]byte("cerebro:" + apiKey))
+	}
+	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, sourcecdk.NewConfig(values), templateKeys)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {

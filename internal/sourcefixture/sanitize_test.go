@@ -195,6 +195,10 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 	if got := SanitizeImportedText("terraform-provider-auth0-dev"); got != "auth0-example-tenant" {
 		t.Fatalf("SanitizeImportedText(Auth0 tenant) = %q", got)
 	}
+	mailchimpURL := "https://us19.api.mailchimp.com/3.0/lists/027c349075/members"
+	if got := SanitizeImportedText(mailchimpURL); got != "https://us19.api.mailchimp.com/3.0/lists/example-list/members" {
+		t.Fatalf("SanitizeImportedText(Mailchimp list) = %q", got)
+	}
 	encodedAudienceURL := "https://auth0.example.test/api/v2/client-grants?audience=https%3A%2F%2Fterraform-provider-auth0-dev.eu.auth0.com%2Fclient-grant%2Fexample"
 	sanitizedAudienceURL := SanitizeImportedText(encodedAudienceURL)
 	parsedAudienceURL, err := url.Parse(sanitizedAudienceURL)

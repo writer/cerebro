@@ -332,6 +332,7 @@ func sanitizePlainImportedText(value string) string {
 	value = auth0FixtureHost.ReplaceAllString(value, "${1}auth0.example.test")
 	value = auth0TenantHost.ReplaceAllString(value, "${1}auth0.example.test")
 	value = auth0FixtureTenant.ReplaceAllString(value, "auth0-example-tenant")
+	value = mailchimpListPath.ReplaceAllString(value, "${1}example-list")
 	value = ipv4Pattern.ReplaceAllStringFunc(value, sanitizePublicIPv4)
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
 		digest := sha256.Sum256([]byte(strings.ToLower(identifier)))
@@ -416,7 +417,7 @@ func normalizedJSONKey(key string) string {
 
 func sanitizedPersonalString(key, value string) string {
 	replacedEmail := emailPattern.ReplaceAllStringFunc(value, exampleEmail)
-	if replacedEmail != value {
+	if emailPattern.MatchString(value) {
 		return replacedEmail
 	}
 	digest := sha256.Sum256([]byte(strings.ToLower(value)))

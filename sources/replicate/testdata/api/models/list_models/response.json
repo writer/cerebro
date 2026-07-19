@@ -1,12 +1,8 @@
-[
-  {
-    "id": "replicate-tenant-models-350c57daaf822f45",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+{
+  "next": "https://api.replicate.com/v1/models?cursor=cD0yMDIzLTExLTE1KzA1JTNBMDMlM0E0Ny4yMDM5MDMlMkIwMCUzQTAw",
+  "previous": null,
+  "results": [
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/f80ee214-d458-4530-aabc-e3c762e43bf1/cover_copy.png",
       "default_example": {
         "completed_at": "2023-11-15T11:48:04.008883Z",
@@ -467,26 +463,7 @@
       "url": "https://replicate.com/catio-apps/controlnet-interior-design",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "controlnet-interior-design",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "controlnet-interior-design",
-      "resource_name": "controlnet-interior-design",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-254b4606f6b3c664",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/5aa9d2a1-721e-4878-bca4-3a4000e70394/cover.png",
       "default_example": {
         "completed_at": "2023-11-15T07:01:21.203696Z",
@@ -961,26 +938,7 @@
       "url": "https://replicate.com/catio-apps/ip_adapter-face-controlnet-realistic_vision",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "ip_adapter-face-controlnet-realistic_vision",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "ip_adapter-face-controlnet-realistic_vision",
-      "resource_name": "ip_adapter-face-controlnet-realistic_vision",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-01682cfd90cc4227",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/gixujfS8h0Q5MyBjEQ1ABVeeHJgs2wcQqZUeEhblne9ntkNOC/out-0.png",
       "default_example": {
         "completed_at": "2023-10-25T13:26:05.837271Z",
@@ -1585,26 +1543,7 @@
       "url": "https://replicate.com/fofr/latent-consistency-model",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "latent-consistency-model",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "latent-consistency-model",
-      "resource_name": "latent-consistency-model",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-d74df9188610b8b9",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/bAugKE6zQXIqOxfRWMLlI5yZ3L0CbK5o81uilWI7jsNCkc8IA/out-3.png",
       "default_example": {
         "completed_at": "2023-11-16T09:25:24.444083Z",
@@ -2228,26 +2167,7 @@
       "url": "https://replicate.com/naklecha/sdxl-mri",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "sdxl-mri",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "sdxl-mri",
-      "resource_name": "sdxl-mri",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-73277cd8997004bc",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/ow9SS2TeBw2edkfoVQBeIz0rtH8uoKoEzRfQ0DH4Scl0SDedE/final_design_with_text.png",
       "default_example": {
         "completed_at": "2023-11-12T22:41:27.113772Z",
@@ -3063,26 +2983,7 @@
       "url": "https://replicate.com/qr2ai/ar",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "ar",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "ar",
-      "resource_name": "ar",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-3d8d8743ca68b906",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/41b3c601-cc8b-437f-ab60-297037a364a1/goliath.png",
       "default_example": {
         "completed_at": "2023-11-16T06:30:00.115062Z",
@@ -4510,26 +4411,7 @@
       "url": "https://replicate.com/nateraw/goliath-120b",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "goliath-120b",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "goliath-120b",
-      "resource_name": "goliath-120b",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-190f9d00d33b729d",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/6ebeaf90-c403-4ee0-bebb-2fd6f7f9ac26/mustango.jpg",
       "default_example": {
         "completed_at": "2023-11-16T00:56:05.566598Z",
@@ -4985,26 +4867,7 @@
       "url": "https://replicate.com/declare-lab/mustango",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "mustango",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "mustango",
-      "resource_name": "mustango",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-98f50735cebe7581",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/cfPNnshZC7RxYiD36Arj2yfsYii7XhkLwX5OtrffNPFtnEjHB/out-3.png",
       "default_example": {
         "completed_at": "2023-11-16T00:21:15.837568Z",
@@ -5628,26 +5491,7 @@
       "url": "https://replicate.com/workroomprds/sdxl-james",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "sdxl-james",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "sdxl-james",
-      "resource_name": "sdxl-james",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-0808edcac4baf13c",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/ILTzFdAenk1JLKVb7jZbEDUOUJGz7hSFFSArhCnxin7ICY8IA/out-0.png",
       "default_example": {
         "completed_at": "2023-11-15T23:06:59.108210Z",
@@ -6217,26 +6061,7 @@
       "url": "https://replicate.com/lucataco/realvisxl2-lcm",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "realvisxl2-lcm",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "realvisxl2-lcm",
-      "resource_name": "realvisxl2-lcm",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-c97431c76b0f0dbf",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": null,
       "default_example": {
         "completed_at": "2023-11-14T03:35:26.438988Z",
@@ -6676,26 +6501,7 @@
       "url": "https://replicate.com/tobinsouth/autolaw",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "autolaw",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "autolaw",
-      "resource_name": "autolaw",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-4deabf72c15ee47a",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/M4Pzelv5NLRBG6zM4p9IXk90unzXRXl1fICOeKpceyam99iHB/animated.gif",
       "default_example": {
         "completed_at": "2023-11-15T22:27:38.845636Z",
@@ -7177,26 +6983,7 @@
       "url": "https://replicate.com/chigozienri/image-urls-to-video",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "image-urls-to-video",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "image-urls-to-video",
-      "resource_name": "image-urls-to-video",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-0c5d9cee59d69745",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/KZNkfJ8vmfhcV08JCS0QfWQmOAQRQPSIqChNRwG9nFHxhdxjA/output.png",
       "default_example": {
         "completed_at": "2023-11-15T21:38:02.985137Z",
@@ -7647,26 +7434,7 @@
       "url": "https://replicate.com/lucataco/modelscope-facefusion",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "modelscope-facefusion",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "modelscope-facefusion",
-      "resource_name": "modelscope-facefusion",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-ccab4b3b6fabf72c",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/2B1PHWsIsEZmMlbl8zwjeUGysBaX4EcM8XKZNorfgqnoOt4RA/out-0.png",
       "default_example": {
         "completed_at": "2023-11-15T19:53:13.670472Z",
@@ -8287,26 +8055,7 @@
       "url": "https://replicate.com/hunterkamerman/sdxl-animewave",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "sdxl-animewave",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "sdxl-animewave",
-      "resource_name": "sdxl-animewave",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-8165a9c63b763632",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/2da01609-8142-4cae-bed7-9bd5820715fe/ezgif-3-dfe6186cf3.gif",
       "default_example": {
         "completed_at": "2023-11-15T20:19:15.891798Z",
@@ -8781,26 +8530,7 @@
       "url": "https://replicate.com/adirik/mvdream",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "mvdream",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "mvdream",
-      "resource_name": "mvdream",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-2e5e80e259f86d15",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": null,
       "default_example": {
         "completed_at": "2023-11-12T16:17:58.960988Z",
@@ -9397,26 +9127,7 @@
       "url": "https://replicate.com/piyushk52/ad_infinite",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "ad_infinite",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "ad_infinite",
-      "resource_name": "ad_infinite",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-fbf78a97d5a89951",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/9f3d1ce1-d36d-4a0a-a210-7b7305bab960/out_0.png",
       "default_example": {
         "completed_at": "2023-11-14T16:52:22.833233Z",
@@ -10071,26 +9782,7 @@
       "url": "https://replicate.com/zsxkib/realistic-voice-cloning",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "realistic-voice-cloning",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "realistic-voice-cloning",
-      "resource_name": "realistic-voice-cloning",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-1517cf0709cbcb3b",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/13379f7c-e9b3-4bd4-a710-2fb5420d1e64/ezgif-2-f813d3ae9b.gif",
       "default_example": {
         "completed_at": "2023-11-15T15:32:27.302353Z",
@@ -10559,26 +10251,7 @@
       "url": "https://replicate.com/adirik/wonder3d",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "wonder3d",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "wonder3d",
-      "resource_name": "wonder3d",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-2fc8fc5dae3c2205",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/2M2ZCYfYrNRxCK375Ur5Wz4cFOY1p43ipUJf2K17zxoiuk4RA/out-0.png",
       "default_example": {
         "completed_at": "2023-11-15T10:12:50.782871Z",
@@ -11411,26 +11084,7 @@
       "url": "https://replicate.com/fofr/sdxl-multi-controlnet-lora",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "sdxl-multi-controlnet-lora",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "sdxl-multi-controlnet-lora",
-      "resource_name": "sdxl-multi-controlnet-lora",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-7cdfbece5a13b17b",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/FMG5rpMM3GrCAVcfnqBFgNDb8mkSfA5mPg5mNJjwgaX51B3RA/seed-44665.png",
       "default_example": {
         "completed_at": "2023-11-10T17:42:18.197496Z",
@@ -12055,26 +11709,7 @@
       "url": "https://replicate.com/usamaehsan/multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
-      "resource_name": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-3fdead70f95f1162",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/aUffBrolc6tS0U2MxPsJhJde6TXplw7mwWB1B60843jq7ZtjA/output.png",
       "default_example": {
         "completed_at": "2023-11-09T17:57:10.271153Z",
@@ -12580,26 +12215,7 @@
       "url": "https://replicate.com/alexgenovese/sdxl-custom-model",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "sdxl-custom-model",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "sdxl-custom-model",
-      "resource_name": "sdxl-custom-model",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-28b8207cb2ee3615",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/63769513-4889-4194-9a91-0a9ce8565dda/cover.png",
       "default_example": {
         "completed_at": "2023-11-15T09:43:47.278716Z",
@@ -13401,26 +13017,7 @@
       "url": "https://replicate.com/konieshadow/fooocus-api",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "fooocus-api",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "fooocus-api",
-      "resource_name": "fooocus-api",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-0c5720da860ef558",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/da334b30-54df-4a39-90fb-7e377cd105a0/cover.png",
       "default_example": {
         "completed_at": "2023-11-15T09:40:44.568373Z",
@@ -14222,26 +13819,7 @@
       "url": "https://replicate.com/konieshadow/fooocus-api-anime",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "fooocus-api-anime",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "fooocus-api-anime",
-      "resource_name": "fooocus-api-anime",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-eb8aa29d5c3a9e81",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/ff571051-c0d8-4e51-9d27-99de29ab1047/cover.png",
       "default_example": {
         "completed_at": "2023-11-15T09:34:35.532404Z",
@@ -15043,26 +14621,7 @@
       "url": "https://replicate.com/konieshadow/fooocus-api-realistic",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "fooocus-api-realistic",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "fooocus-api-realistic",
-      "resource_name": "fooocus-api-realistic",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-e7bcd72fb8dccd22",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/ec52df9a-be01-4c74-af9d-a14df03bf03a/output.png",
       "default_example": {
         "completed_at": "2023-11-15T07:02:23.710758Z",
@@ -15773,26 +15332,7 @@
       "url": "https://replicate.com/fewjative/ultimate-sd-upscale",
       "visibility": "public"
     },
-    "attributes": {
-      "external_id": "ultimate-sd-upscale",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "ultimate-sd-upscale",
-      "resource_name": "ultimate-sd-upscale",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
-    }
-  },
-  {
-    "id": "replicate-tenant-models-00396ca0e0b622d1",
-    "tenant_id": "tenant",
-    "source_id": "replicate",
-    "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
-    "schema_ref": "replicate/models/v1",
-    "payload": {
+    {
       "cover_image_url": "https://replicate.delivery/pbxt/UQ9dsOn0gfyJY6FkMN4gQbNz7vf7BpwhKla7KGikvJ4e2AxjA/out-3.png",
       "default_example": {
         "completed_at": "2023-11-15T05:19:27.124220Z",
@@ -16380,17 +15920,6 @@
       "run_count": 36,
       "url": "https://replicate.com/doriandarko/lcm-hiroshinagai",
       "visibility": "public"
-    },
-    "attributes": {
-      "external_id": "lcm-hiroshinagai",
-      "family": "models",
-      "provider": "replicate",
-      "record_class": "asset",
-      "resource_id": "lcm-hiroshinagai",
-      "resource_name": "lcm-hiroshinagai",
-      "schema": "models",
-      "source_provider": "replicate",
-      "source_system": "replicate"
     }
-  }
-]
+  ]
+}

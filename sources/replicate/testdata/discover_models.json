@@ -1,3 +1,27 @@
 [
-  "urn:cerebro:tenant:replicate_models:source-replicate-models-1"
+  "urn:cerebro:tenant:replicate_models:controlnet-interior-design",
+  "urn:cerebro:tenant:replicate_models:ip_adapter-face-controlnet-realistic_vision",
+  "urn:cerebro:tenant:replicate_models:latent-consistency-model",
+  "urn:cerebro:tenant:replicate_models:sdxl-mri",
+  "urn:cerebro:tenant:replicate_models:ar",
+  "urn:cerebro:tenant:replicate_models:goliath-120b",
+  "urn:cerebro:tenant:replicate_models:mustango",
+  "urn:cerebro:tenant:replicate_models:sdxl-james",
+  "urn:cerebro:tenant:replicate_models:realvisxl2-lcm",
+  "urn:cerebro:tenant:replicate_models:autolaw",
+  "urn:cerebro:tenant:replicate_models:image-urls-to-video",
+  "urn:cerebro:tenant:replicate_models:modelscope-facefusion",
+  "urn:cerebro:tenant:replicate_models:sdxl-animewave",
+  "urn:cerebro:tenant:replicate_models:mvdream",
+  "urn:cerebro:tenant:replicate_models:ad_infinite",
+  "urn:cerebro:tenant:replicate_models:realistic-voice-cloning",
+  "urn:cerebro:tenant:replicate_models:wonder3d",
+  "urn:cerebro:tenant:replicate_models:sdxl-multi-controlnet-lora",
+  "urn:cerebro:tenant:replicate_models:multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
+  "urn:cerebro:tenant:replicate_models:sdxl-custom-model",
+  "urn:cerebro:tenant:replicate_models:fooocus-api",
+  "urn:cerebro:tenant:replicate_models:fooocus-api-anime",
+  "urn:cerebro:tenant:replicate_models:fooocus-api-realistic",
+  "urn:cerebro:tenant:replicate_models:ultimate-sd-upscale",
+  "urn:cerebro:tenant:replicate_models:lcm-hiroshinagai"
 ]
