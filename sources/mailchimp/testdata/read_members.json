@@ -4,7 +4,7 @@
     "tenant_id": "tenant",
     "source_id": "mailchimp",
     "kind": "mailchimp.members",
-    "occurred_at": "2026-07-19T00:03:28Z",
+    "occurred_at": "2020-03-04T21:52:35Z",
     "schema_ref": "mailchimp/members/v1",
     "payload": {
       "email_address": "user-f660ab91@example.test"
@@ -24,6 +24,7 @@
       "source_event_id": "user-f660ab91@example.test",
       "source_provider": "mailchimp",
       "source_system": "mailchimp",
+      "tenant_id": "tenant",
       "user_id": "user-f660ab91@example.test"
     }
   }

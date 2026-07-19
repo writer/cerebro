@@ -1,0 +1,58 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: hackerone
+family: findings
+case: report_list
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedHackerOneFindings
+request:
+    method: GET
+    url: https://api.hackerone.com/v1/reports
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2017-02-18T19:16:35Z"
+    sha256: a6784410a0dce67f3e205c16f2102851d6e81651b10f64fe1af4a95b17321ac5
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].attributes.title
+        - $.data[0].attributes.vulnerability_information
+        - $.data[0].id
+        - $.data[0].relationships.program.data.attributes.handle
+        - $.data[0].relationships.program.data.id
+        - $.data[0].relationships.reporter.data.attributes.name
+        - $.data[0].relationships.reporter.data.attributes.profile_picture.110x110
+        - $.data[0].relationships.reporter.data.attributes.profile_picture.260x260
+        - $.data[0].relationships.reporter.data.attributes.profile_picture.62x62
+        - $.data[0].relationships.reporter.data.attributes.profile_picture.82x82
+        - $.data[0].relationships.reporter.data.attributes.username
+        - $.data[0].relationships.reporter.data.id
+        - $.data[0].relationships.severity.data.id
+        - $.data[0].relationships.vulnerability_types.data[0].attributes.name
+        - $.data[0].relationships.vulnerability_types.data[0].id
+        - $.data[1].attributes.title
+        - $.data[1].attributes.vulnerability_information
+        - $.data[1].id
+        - $.data[1].relationships.program.data.attributes.handle
+        - $.data[1].relationships.program.data.id
+        - $.data[1].relationships.reporter.data.attributes.name
+        - $.data[1].relationships.reporter.data.attributes.profile_picture.110x110
+        - $.data[1].relationships.reporter.data.attributes.profile_picture.260x260
+        - $.data[1].relationships.reporter.data.attributes.profile_picture.62x62
+        - $.data[1].relationships.reporter.data.attributes.profile_picture.82x82
+        - $.data[1].relationships.reporter.data.attributes.username
+        - $.data[1].relationships.reporter.data.id
+        - $.data[1].relationships.severity.data.id
+        - $.data[1].relationships.vulnerability_types.data[0].attributes.name
+        - $.data[1].relationships.vulnerability_types.data[0].id
+origin:
+    type: upstream_recording
+    repository: https://github.com/github/hackerone-client
+    commit: 232a746dd4d1d7a718a3b9465038dfe1f4cbed75
+    path: fixtures/vcr_cassettes/report_list.yml
+    artifact_sha256: 8b7d569e5e61766c6ede497f8f35a0a65eda7445a3b2558b04555279e1db7323
+    license: MIT
+    recording_tool: VCR
+    harness_path: spec/spec_helper.rb
+    freshness: historical
+    capture_time_basis: recorded_at

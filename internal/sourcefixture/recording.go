@@ -95,9 +95,28 @@ type vcrBody struct {
 func (body *vcrBody) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
+		if node.Tag == "!!binary" {
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(node.Value))
+			if err != nil {
+				return fmt.Errorf("decode VCR binary response body: %w", err)
+			}
+			body.Payload = decoded
+			return nil
+		}
 		body.Payload = []byte(node.Value)
 		return nil
 	case yaml.MappingNode:
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			if node.Content[index].Value != "string" || node.Content[index+1].Tag != "!binary" {
+				continue
+			}
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(node.Content[index+1].Value))
+			if err != nil {
+				return fmt.Errorf("decode VCR binary response body: %w", err)
+			}
+			body.Payload = decoded
+			return nil
+		}
 		var value struct {
 			String       string `yaml:"string"`
 			Base64String string `yaml:"base64_string"`

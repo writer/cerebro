@@ -4,7 +4,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/f80ee214-d458-4530-aabc-e3c762e43bf1/cover_copy.png",
@@ -474,9 +474,13 @@
       "record_class": "asset",
       "resource_id": "controlnet-interior-design",
       "resource_name": "controlnet-interior-design",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:controlnet-interior-design",
       "schema": "models",
+      "source_event_id": "controlnet-interior-design",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -484,7 +488,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/5aa9d2a1-721e-4878-bca4-3a4000e70394/cover.png",
@@ -968,9 +972,13 @@
       "record_class": "asset",
       "resource_id": "ip_adapter-face-controlnet-realistic_vision",
       "resource_name": "ip_adapter-face-controlnet-realistic_vision",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:ip_adapter-face-controlnet-realistic_vision",
       "schema": "models",
+      "source_event_id": "ip_adapter-face-controlnet-realistic_vision",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -978,7 +986,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/gixujfS8h0Q5MyBjEQ1ABVeeHJgs2wcQqZUeEhblne9ntkNOC/out-0.png",
@@ -1592,9 +1600,13 @@
       "record_class": "asset",
       "resource_id": "latent-consistency-model",
       "resource_name": "latent-consistency-model",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:latent-consistency-model",
       "schema": "models",
+      "source_event_id": "latent-consistency-model",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -1602,7 +1614,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/bAugKE6zQXIqOxfRWMLlI5yZ3L0CbK5o81uilWI7jsNCkc8IA/out-3.png",
@@ -2235,9 +2247,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-mri",
       "resource_name": "sdxl-mri",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:sdxl-mri",
       "schema": "models",
+      "source_event_id": "sdxl-mri",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -2245,7 +2261,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/ow9SS2TeBw2edkfoVQBeIz0rtH8uoKoEzRfQ0DH4Scl0SDedE/final_design_with_text.png",
@@ -3070,9 +3086,13 @@
       "record_class": "asset",
       "resource_id": "ar",
       "resource_name": "ar",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:ar",
       "schema": "models",
+      "source_event_id": "ar",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -3080,7 +3100,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/41b3c601-cc8b-437f-ab60-297037a364a1/goliath.png",
@@ -4517,9 +4537,13 @@
       "record_class": "asset",
       "resource_id": "goliath-120b",
       "resource_name": "goliath-120b",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:goliath-120b",
       "schema": "models",
+      "source_event_id": "goliath-120b",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -4527,7 +4551,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/6ebeaf90-c403-4ee0-bebb-2fd6f7f9ac26/mustango.jpg",
@@ -4992,9 +5016,13 @@
       "record_class": "asset",
       "resource_id": "mustango",
       "resource_name": "mustango",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:mustango",
       "schema": "models",
+      "source_event_id": "mustango",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5002,7 +5030,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/cfPNnshZC7RxYiD36Arj2yfsYii7XhkLwX5OtrffNPFtnEjHB/out-3.png",
@@ -5635,9 +5663,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-james",
       "resource_name": "sdxl-james",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:sdxl-james",
       "schema": "models",
+      "source_event_id": "sdxl-james",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -5645,7 +5677,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/ILTzFdAenk1JLKVb7jZbEDUOUJGz7hSFFSArhCnxin7ICY8IA/out-0.png",
@@ -6224,9 +6256,13 @@
       "record_class": "asset",
       "resource_id": "realvisxl2-lcm",
       "resource_name": "realvisxl2-lcm",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:realvisxl2-lcm",
       "schema": "models",
+      "source_event_id": "realvisxl2-lcm",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -6234,7 +6270,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": null,
@@ -6683,9 +6719,13 @@
       "record_class": "asset",
       "resource_id": "autolaw",
       "resource_name": "autolaw",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:autolaw",
       "schema": "models",
+      "source_event_id": "autolaw",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -6693,7 +6733,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/M4Pzelv5NLRBG6zM4p9IXk90unzXRXl1fICOeKpceyam99iHB/animated.gif",
@@ -7184,9 +7224,13 @@
       "record_class": "asset",
       "resource_id": "image-urls-to-video",
       "resource_name": "image-urls-to-video",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:image-urls-to-video",
       "schema": "models",
+      "source_event_id": "image-urls-to-video",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -7194,7 +7238,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/KZNkfJ8vmfhcV08JCS0QfWQmOAQRQPSIqChNRwG9nFHxhdxjA/output.png",
@@ -7654,9 +7698,13 @@
       "record_class": "asset",
       "resource_id": "modelscope-facefusion",
       "resource_name": "modelscope-facefusion",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:modelscope-facefusion",
       "schema": "models",
+      "source_event_id": "modelscope-facefusion",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -7664,7 +7712,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/2B1PHWsIsEZmMlbl8zwjeUGysBaX4EcM8XKZNorfgqnoOt4RA/out-0.png",
@@ -8294,9 +8342,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-animewave",
       "resource_name": "sdxl-animewave",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:sdxl-animewave",
       "schema": "models",
+      "source_event_id": "sdxl-animewave",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -8304,7 +8356,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/2da01609-8142-4cae-bed7-9bd5820715fe/ezgif-3-dfe6186cf3.gif",
@@ -8788,9 +8840,13 @@
       "record_class": "asset",
       "resource_id": "mvdream",
       "resource_name": "mvdream",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:mvdream",
       "schema": "models",
+      "source_event_id": "mvdream",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -8798,7 +8854,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": null,
@@ -9404,9 +9460,13 @@
       "record_class": "asset",
       "resource_id": "ad_infinite",
       "resource_name": "ad_infinite",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:ad_infinite",
       "schema": "models",
+      "source_event_id": "ad_infinite",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -9414,7 +9474,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/9f3d1ce1-d36d-4a0a-a210-7b7305bab960/out_0.png",
@@ -10078,9 +10138,13 @@
       "record_class": "asset",
       "resource_id": "realistic-voice-cloning",
       "resource_name": "realistic-voice-cloning",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:realistic-voice-cloning",
       "schema": "models",
+      "source_event_id": "realistic-voice-cloning",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -10088,7 +10152,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/13379f7c-e9b3-4bd4-a710-2fb5420d1e64/ezgif-2-f813d3ae9b.gif",
@@ -10566,9 +10630,13 @@
       "record_class": "asset",
       "resource_id": "wonder3d",
       "resource_name": "wonder3d",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:wonder3d",
       "schema": "models",
+      "source_event_id": "wonder3d",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -10576,7 +10644,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/2M2ZCYfYrNRxCK375Ur5Wz4cFOY1p43ipUJf2K17zxoiuk4RA/out-0.png",
@@ -11418,9 +11486,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-multi-controlnet-lora",
       "resource_name": "sdxl-multi-controlnet-lora",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:sdxl-multi-controlnet-lora",
       "schema": "models",
+      "source_event_id": "sdxl-multi-controlnet-lora",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -11428,7 +11500,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/FMG5rpMM3GrCAVcfnqBFgNDb8mkSfA5mPg5mNJjwgaX51B3RA/seed-44665.png",
@@ -12062,9 +12134,13 @@
       "record_class": "asset",
       "resource_id": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
       "resource_name": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
       "schema": "models",
+      "source_event_id": "multi-controlnet-x-consistency-decoder-x-realestic-vision-v5",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -12072,7 +12148,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/aUffBrolc6tS0U2MxPsJhJde6TXplw7mwWB1B60843jq7ZtjA/output.png",
@@ -12587,9 +12663,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-custom-model",
       "resource_name": "sdxl-custom-model",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:sdxl-custom-model",
       "schema": "models",
+      "source_event_id": "sdxl-custom-model",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -12597,7 +12677,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/63769513-4889-4194-9a91-0a9ce8565dda/cover.png",
@@ -13408,9 +13488,13 @@
       "record_class": "asset",
       "resource_id": "fooocus-api",
       "resource_name": "fooocus-api",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:fooocus-api",
       "schema": "models",
+      "source_event_id": "fooocus-api",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -13418,7 +13502,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/da334b30-54df-4a39-90fb-7e377cd105a0/cover.png",
@@ -14229,9 +14313,13 @@
       "record_class": "asset",
       "resource_id": "fooocus-api-anime",
       "resource_name": "fooocus-api-anime",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:fooocus-api-anime",
       "schema": "models",
+      "source_event_id": "fooocus-api-anime",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -14239,7 +14327,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/ff571051-c0d8-4e51-9d27-99de29ab1047/cover.png",
@@ -15050,9 +15138,13 @@
       "record_class": "asset",
       "resource_id": "fooocus-api-realistic",
       "resource_name": "fooocus-api-realistic",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:fooocus-api-realistic",
       "schema": "models",
+      "source_event_id": "fooocus-api-realistic",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -15060,7 +15152,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/ec52df9a-be01-4c74-af9d-a14df03bf03a/output.png",
@@ -15780,9 +15872,13 @@
       "record_class": "asset",
       "resource_id": "ultimate-sd-upscale",
       "resource_name": "ultimate-sd-upscale",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:ultimate-sd-upscale",
       "schema": "models",
+      "source_event_id": "ultimate-sd-upscale",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -15790,7 +15886,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.models",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:57:31Z",
     "schema_ref": "replicate/models/v1",
     "payload": {
       "cover_image_url": "https://replicate.delivery/pbxt/UQ9dsOn0gfyJY6FkMN4gQbNz7vf7BpwhKla7KGikvJ4e2AxjA/out-3.png",
@@ -16388,9 +16484,13 @@
       "record_class": "asset",
       "resource_id": "lcm-hiroshinagai",
       "resource_name": "lcm-hiroshinagai",
+      "resource_type": "replicate_model",
+      "resource_urn": "urn:cerebro:tenant:replicate_model:lcm-hiroshinagai",
       "schema": "models",
+      "source_event_id": "lcm-hiroshinagai",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   }
 ]

@@ -18,8 +18,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if r.Header.Get("X-Postmark-Account-Token") != "test-token" {
+			t.Fatalf("X-Postmark-Account-Token = %q", r.Header.Get("X-Postmark-Account-Token"))
 		}
 		if r.URL.Path != "/servers" {
 			t.Fatalf("path = %q", r.URL.Path)

@@ -69,6 +69,48 @@ version: 1
 			wantBasis:  "response_header",
 			wantRecord: "list-1",
 		},
+		{
+			name: "ruby vcr yaml binary body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/binary-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 16:00:00 GMT']
+    body:
+      string: !!binary eyJpdGVtcyI6W3siaWQiOiJiaW5hcnktMSJ9XX0=
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/binary-items",
+			wantTime:   "2026-07-18T16:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "binary-1",
+		},
+		{
+			name: "ruby vcr yaml custom binary body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/custom-binary-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 17:00:00 GMT']
+    body:
+      string: !binary eyJpdGVtcyI6W3siaWQiOiJjdXN0b20tYmluYXJ5LTEifV19
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/custom-binary-items",
+			wantTime:   "2026-07-18T17:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "custom-binary-1",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

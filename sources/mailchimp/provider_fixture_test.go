@@ -52,7 +52,7 @@ func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover() error = %v", err)
 			}
-			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
+			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
 				t.Fatal(err)
 			}
 			if err := sourcefixture.CompareOrUpdateSourceOutputs(".", test.family, pull.Events, urns, updateCapturedMailchimpFixtures()); err != nil {

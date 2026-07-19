@@ -4,7 +4,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Multimodal large language models with vision capabilities like object detection and optical character recognition (OCR)",
@@ -18,9 +18,13 @@
       "record_class": "asset",
       "resource_id": "vision-models",
       "resource_name": "Vision models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:vision-models",
       "schema": "collections",
+      "source_event_id": "vision-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -28,7 +32,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "T2I-Adapter models to modify images",
@@ -42,9 +46,13 @@
       "record_class": "asset",
       "resource_id": "t2i-adapter",
       "resource_name": "T2I-Adapter",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:t2i-adapter",
       "schema": "collections",
+      "source_event_id": "t2i-adapter",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -52,7 +60,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Language models that support grammar-based decoding as well as jsonschema constraints.",
@@ -66,9 +74,13 @@
       "record_class": "asset",
       "resource_id": "language-models-with-grammar",
       "resource_name": "Language models with support for grammars and jsonschema",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:language-models-with-grammar",
       "schema": "collections",
+      "source_event_id": "language-models-with-grammar",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -76,7 +88,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Some of our favorite SDXL fine-tunes.",
@@ -90,9 +102,13 @@
       "record_class": "asset",
       "resource_id": "sdxl-fine-tunes",
       "resource_name": "SDXL fine-tunes",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:sdxl-fine-tunes",
       "schema": "collections",
+      "source_event_id": "sdxl-fine-tunes",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -100,7 +116,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Language models that support streaming responses. See https://replicate.com/docs/streaming",
@@ -114,9 +130,13 @@
       "record_class": "asset",
       "resource_id": "streaming-language-models",
       "resource_name": "Streaming language models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:streaming-language-models",
       "schema": "collections",
+      "source_event_id": "streaming-language-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -124,7 +144,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Tools for manipulating images.",
@@ -138,9 +158,13 @@
       "record_class": "asset",
       "resource_id": "image-editing",
       "resource_name": "Image editing",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:image-editing",
       "schema": "collections",
+      "source_event_id": "image-editing",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -148,7 +172,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that generate embeddings from inputs",
@@ -162,9 +186,13 @@
       "record_class": "asset",
       "resource_id": "embedding-models",
       "resource_name": "Embedding models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:embedding-models",
       "schema": "collections",
+      "source_event_id": "embedding-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -172,7 +200,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Language models that you can fine-tune using Replicate's training API.",
@@ -186,9 +214,13 @@
       "record_class": "asset",
       "resource_id": "trainable-language-models",
       "resource_name": "Trainable language models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:trainable-language-models",
       "schema": "collections",
+      "source_event_id": "trainable-language-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -196,7 +228,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that can understand and generate text",
@@ -210,9 +242,13 @@
       "record_class": "asset",
       "resource_id": "language-models",
       "resource_name": "Language models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:language-models",
       "schema": "collections",
+      "source_event_id": "language-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -220,7 +256,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Control diffusion models",
@@ -234,9 +270,13 @@
       "record_class": "asset",
       "resource_id": "control-net",
       "resource_name": "ControlNet",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:control-net",
       "schema": "collections",
+      "source_event_id": "control-net",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -244,7 +284,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models to generate and modify audio",
@@ -258,9 +298,13 @@
       "record_class": "asset",
       "resource_id": "audio-generation",
       "resource_name": "Audio generation",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:audio-generation",
       "schema": "collections",
+      "source_event_id": "audio-generation",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -268,7 +312,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Image and video generation models trained with diffusion processes",
@@ -282,9 +326,13 @@
       "record_class": "asset",
       "resource_id": "diffusion-models",
       "resource_name": "Diffusion models",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:diffusion-models",
       "schema": "collections",
+      "source_event_id": "diffusion-models",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -292,7 +340,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that create and edit videos",
@@ -306,9 +354,13 @@
       "record_class": "asset",
       "resource_id": "text-to-video",
       "resource_name": "Videos",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:text-to-video",
       "schema": "collections",
+      "source_event_id": "text-to-video",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -316,7 +368,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that generate text prompts and captions from images",
@@ -330,9 +382,13 @@
       "record_class": "asset",
       "resource_id": "image-to-text",
       "resource_name": "Image to text",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:image-to-text",
       "schema": "collections",
+      "source_event_id": "image-to-text",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -340,7 +396,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Upscaling models that create high-quality images from low-quality images",
@@ -354,9 +410,13 @@
       "record_class": "asset",
       "resource_id": "super-resolution",
       "resource_name": "Super resolution",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:super-resolution",
       "schema": "collections",
+      "source_event_id": "super-resolution",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -364,7 +424,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that take a content image and a style reference to produce a new image",
@@ -378,9 +438,13 @@
       "record_class": "asset",
       "resource_id": "style-transfer",
       "resource_name": "Style transfer",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:style-transfer",
       "schema": "collections",
+      "source_event_id": "style-transfer",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -388,7 +452,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that let you change facial features",
@@ -402,9 +466,13 @@
       "record_class": "asset",
       "resource_id": "ml-makeovers",
       "resource_name": "ML makeovers",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:ml-makeovers",
       "schema": "collections",
+      "source_event_id": "ml-makeovers",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -412,7 +480,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that improve or restore images by deblurring, colorization, and removing noise",
@@ -426,9 +494,13 @@
       "record_class": "asset",
       "resource_id": "image-restoration",
       "resource_name": "Image restoration",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:image-restoration",
       "schema": "collections",
+      "source_event_id": "image-restoration",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   },
   {
@@ -436,7 +508,7 @@
     "tenant_id": "tenant",
     "source_id": "replicate",
     "kind": "replicate.collections",
-    "occurred_at": "2026-07-19T00:03:29Z",
+    "occurred_at": "2023-11-16T13:40:22Z",
     "schema_ref": "replicate/collections/v1",
     "payload": {
       "description": "Models that generate images from text prompts",
@@ -450,9 +522,13 @@
       "record_class": "asset",
       "resource_id": "text-to-image",
       "resource_name": "Text to image",
+      "resource_type": "replicate_collection",
+      "resource_urn": "urn:cerebro:tenant:replicate_collection:text-to-image",
       "schema": "collections",
+      "source_event_id": "text-to-image",
       "source_provider": "replicate",
-      "source_system": "replicate"
+      "source_system": "replicate",
+      "tenant_id": "tenant"
     }
   }
 ]

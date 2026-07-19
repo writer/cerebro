@@ -4,7 +4,7 @@
     "tenant_id": "tenant",
     "source_id": "mailchimp",
     "kind": "mailchimp.lists",
-    "occurred_at": "2026-07-19T00:03:28Z",
+    "occurred_at": "2020-03-04T21:52:41Z",
     "schema_ref": "mailchimp/lists/v1",
     "payload": {
       "_links": [
@@ -181,7 +181,8 @@
       "schema": "lists",
       "source_event_id": "example-2e767a40",
       "source_provider": "mailchimp",
-      "source_system": "mailchimp"
+      "source_system": "mailchimp",
+      "tenant_id": "tenant"
     }
   }
 ]

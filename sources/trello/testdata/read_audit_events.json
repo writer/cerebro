@@ -1,73 +1,3009 @@
 [
   {
+    "id": "trello-tenant-audit_events-661122d212d25afb",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:33:19Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-7f71f6b4",
+          "name": "example-6bf2f26f",
+          "shortLink": "example-18225e3b"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-14T17:33:19.419Z",
+      "id": "example-8e1524cb",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
     "attributes": {
-      "actor_email": "actor@trello.example.test",
-      "actor_id": "trello-users-1",
-      "actor_name": "actor-name-source-trello-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit_events",
-      "event_type": "trello.audit_events.observed",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-trello-audit_events-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-trello-audit_events-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/trello/audit_events/source-trello-audit_events-1",
-      "external_id": "source-trello-audit_events-1",
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-8e1524cb",
       "family": "audit_events",
-      "id": "source-trello-audit_events-1",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "example-8e1524cb",
+      "observed_at": "2020-06-14T17:33:19.419Z",
       "provider": "trello",
       "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@trello.example.test",
-      "resource_id": "source-trello-audit_events-1",
-      "resource_name": "Trello Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:trello_audit_events:source-trello-audit_events-1",
+      "resource_id": "example-7f71f6b4",
+      "resource_name": "example-6bf2f26f",
+      "resource_type": "addToOrganizationBoard",
       "schema": "audit_events",
-      "source_event_id": "source-trello-audit_events-1",
+      "source_event_id": "example-8e1524cb",
       "source_provider": "trello",
       "source_system": "trello",
       "tenant_id": "tenant"
-    },
-    "id": "source-trello-audit_events-event-1",
-    "kind": "trello.audit_events",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "actor_email": "actor@trello.example.test",
-      "actor_id": "trello-users-1",
-      "actor_name": "actor-name-source-trello-audit_events-1",
-      "api_method": "GET",
-      "api_path": "/v1/audit_events",
-      "event_id": "source-trello-audit_events-1",
-      "event_type": "trello.audit_events.observed",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-trello-audit_events-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-trello-audit_events-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/trello/audit_events/source-trello-audit_events-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/trello/audit_events/source-trello-audit_events-1",
-      "family": "audit_events",
-      "id": "source-trello-audit_events-1",
-      "name": "Trello Audit Events Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "audit_event",
-      "record_selector": "$.data[*]",
-      "resource_email": "resource@trello.example.test",
-      "resource_id": "source-trello-audit_events-1",
-      "resource_name": "Trello Audit Events Fixture",
-      "resource_type": "audit_events",
-      "resource_urn": "urn:cerebro:tenant:trello_audit_events:source-trello-audit_events-1",
-      "schema_ref": "trello/audit_events/v1",
-      "source_id": "trello",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "trello/audit_events/v1",
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-abc0ac4db06cb460",
+    "tenant_id": "tenant",
     "source_id": "trello",
-    "tenant_id": "tenant"
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:33:19Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-7f71f6b4",
+          "name": "example-6bf2f26f",
+          "shortLink": "example-18225e3b"
+        },
+        "creationMethod": "automatic"
+      },
+      "date": "2020-06-14T17:33:19.415Z",
+      "id": "example-b5805907",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "createBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "createBoard",
+      "external_id": "example-b5805907",
+      "family": "audit_events",
+      "id": "example-b5805907",
+      "observed_at": "2020-06-14T17:33:19.415Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-7f71f6b4",
+      "resource_name": "example-6bf2f26f",
+      "resource_type": "createBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-b5805907",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-437b22a3a619108b",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:28:17Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-d79d3828",
+          "name": "example-6463d120",
+          "shortLink": "example-399ff4d1"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-14T17:28:17.180Z",
+      "id": "example-6891795a",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-6891795a",
+      "family": "audit_events",
+      "id": "example-6891795a",
+      "observed_at": "2020-06-14T17:28:17.180Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-d79d3828",
+      "resource_name": "example-6463d120",
+      "resource_type": "addToOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-6891795a",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-aa24fd6ad8718dac",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:28:17Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-d79d3828",
+          "name": "example-6463d120",
+          "shortLink": "example-399ff4d1"
+        }
+      },
+      "date": "2020-06-14T17:28:17.176Z",
+      "id": "example-917c50d2",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "createBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "createBoard",
+      "external_id": "example-917c50d2",
+      "family": "audit_events",
+      "id": "example-917c50d2",
+      "observed_at": "2020-06-14T17:28:17.176Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-d79d3828",
+      "resource_name": "example-6463d120",
+      "resource_type": "createBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-917c50d2",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-70c8c25a7f1e97aa",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:28:16Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-11bea1dd",
+          "name": "example-7d3f944f",
+          "shortLink": "example-e0135c00"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-14T17:28:16.173Z",
+      "id": "example-1e93472d",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-1e93472d",
+      "family": "audit_events",
+      "id": "example-1e93472d",
+      "observed_at": "2020-06-14T17:28:16.173Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-11bea1dd",
+      "resource_name": "example-7d3f944f",
+      "resource_type": "addToOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-1e93472d",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-47cc24f0b192a6d2",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:28:16Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-11bea1dd",
+          "name": "example-7d3f944f",
+          "shortLink": "example-e0135c00"
+        },
+        "boardSource": {
+          "id": "example-17af5a26"
+        }
+      },
+      "date": "2020-06-14T17:28:16.169Z",
+      "id": "example-cb513bc3",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "copyBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "copyBoard",
+      "external_id": "example-cb513bc3",
+      "family": "audit_events",
+      "id": "example-cb513bc3",
+      "observed_at": "2020-06-14T17:28:16.169Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-11bea1dd",
+      "resource_name": "example-7d3f944f",
+      "resource_type": "copyBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-cb513bc3",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-ddb96e99f31df5bd",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-14T17:28:16Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-11bea1dd",
+          "name": "example-7d3f944f",
+          "shortLink": "example-e0135c00"
+        },
+        "plugin": {
+          "author": "Andrew Lekar",
+          "capabilities": [
+            "card-badges",
+            "card-buttons",
+            "card-detail-badges"
+          ],
+          "categories": [
+            "board-utilities",
+            "communication-collaboration"
+          ],
+          "claimedDomains": [],
+          "icon": {
+            "url": "example-9f95c3c3"
+          },
+          "id": "example-6350d956",
+          "idOrganizationOwner": "5e31ef2e28f504645d9e9301",
+          "iframeConnectorUrl": "https://trello-stars.github.io/index.html",
+          "isCompliantWithPrivacyStandards": null,
+          "listing": {
+            "description": "example-4d308a95",
+            "locale": "en-US",
+            "name": "example-b2547aa0",
+            "overview": "Rate your cards with stars"
+          },
+          "moderatedState": null,
+          "name": "example-b2547aa0",
+          "privacyUrl": "https://www.privacypolicygenerator.info/live.php?token=4IY7cq9TnbtbU9qK9Q5pQAcFpkjNhBxk",
+          "public": true,
+          "supportEmail": "user-00afd06a@example.test",
+          "tags": [],
+          "usageBrackets": {
+            "boards": 500
+          }
+        }
+      },
+      "date": "2020-06-14T17:28:16.143Z",
+      "id": "example-2f06bf10",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "enablePlugin"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "enablePlugin",
+      "external_id": "example-2f06bf10",
+      "family": "audit_events",
+      "id": "example-2f06bf10",
+      "observed_at": "2020-06-14T17:28:16.143Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-11bea1dd",
+      "resource_name": "example-7d3f944f",
+      "resource_type": "enablePlugin",
+      "schema": "audit_events",
+      "source_event_id": "example-2f06bf10",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-5f7ed6084826ee19",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T04:04:46Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "comments": "members"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "comments": "org"
+          }
+        }
+      },
+      "date": "2020-06-07T04:04:46.403Z",
+      "id": "example-5db0f800",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-5db0f800",
+      "family": "audit_events",
+      "id": "example-5db0f800",
+      "observed_at": "2020-06-07T04:04:46.403Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-5db0f800",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-292b9692c5544674",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T04:04:46Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "name": "example-317fee7d"
+        }
+      },
+      "date": "2020-06-07T04:04:46.384Z",
+      "id": "example-65aeba41",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-65aeba41",
+      "family": "audit_events",
+      "id": "example-65aeba41",
+      "observed_at": "2020-06-07T04:04:46.384Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-65aeba41",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-42e108b77cdc812b",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T04:02:08Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "name": "example-d57ca790"
+        }
+      },
+      "date": "2020-06-07T04:02:08.101Z",
+      "id": "example-0733abe1",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-0733abe1",
+      "family": "audit_events",
+      "id": "example-0733abe1",
+      "observed_at": "2020-06-07T04:02:08.101Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-0733abe1",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-75b602464753764f",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "background": "green"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "background": "blue"
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:32.094Z",
+      "id": "example-73331fb4",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-73331fb4",
+      "family": "audit_events",
+      "id": "example-73331fb4",
+      "observed_at": "2020-06-07T03:58:32.094Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-73331fb4",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-b8df1cf37699e3bf",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "comments": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "comments": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:32.078Z",
+      "id": "example-488e3939",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-488e3939",
+      "family": "audit_events",
+      "id": "example-488e3939",
+      "observed_at": "2020-06-07T03:58:32.078Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-488e3939",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-3b600c642e780a1f",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "voting": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "voting": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:32.067Z",
+      "id": "example-bc5c6860",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-bc5c6860",
+      "family": "audit_events",
+      "id": "example-bc5c6860",
+      "observed_at": "2020-06-07T03:58:32.067Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-bc5c6860",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-6d166f2851c6af89",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "selfJoin": false
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "selfJoin": true
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:32.055Z",
+      "id": "example-bf5028a6",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-bf5028a6",
+      "family": "audit_events",
+      "id": "example-bf5028a6",
+      "observed_at": "2020-06-07T03:58:32.055Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-bf5028a6",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-51a712132fd881f3",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "private"
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:32.045Z",
+      "id": "example-c34c8939",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-c34c8939",
+      "family": "audit_events",
+      "id": "example-c34c8939",
+      "observed_at": "2020-06-07T03:58:32.045Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-c34c8939",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-aa30bdb39c4a8655",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:31Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "desc": "example-7a645f03",
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "desc": ""
+        }
+      },
+      "date": "2020-06-07T03:58:31.999Z",
+      "id": "example-b4ff1bb8",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-b4ff1bb8",
+      "family": "audit_events",
+      "id": "example-b4ff1bb8",
+      "observed_at": "2020-06-07T03:58:31.999Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-b4ff1bb8",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-e11cc1934f8a54d3",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:31Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "name": "example-317fee7d"
+        }
+      },
+      "date": "2020-06-07T03:58:31.965Z",
+      "id": "example-7488a8ee",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-7488a8ee",
+      "family": "audit_events",
+      "id": "example-7488a8ee",
+      "observed_at": "2020-06-07T03:58:31.965Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-7488a8ee",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-d7308b9be3ea876b",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:31Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-45436f12",
+          "name": "example-ec6ebe1a"
+        }
+      },
+      "date": "2020-06-07T03:58:31.931Z",
+      "id": "example-8859df59",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-8859df59",
+      "family": "audit_events",
+      "id": "example-8859df59",
+      "observed_at": "2020-06-07T03:58:31.931Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "addToOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-8859df59",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-e1b262648a48e538",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:31Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-07T03:58:31.914Z",
+      "id": "example-fdfed152",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "removeFromOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "removeFromOrganizationBoard",
+      "external_id": "example-fdfed152",
+      "family": "audit_events",
+      "id": "example-fdfed152",
+      "observed_at": "2020-06-07T03:58:31.914Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "removeFromOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-fdfed152",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-2b658d8747d07df5",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:09Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "prefs": {
+            "selfJoin": true
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "selfJoin": false
+          }
+        }
+      },
+      "date": "2020-06-07T03:58:09.661Z",
+      "id": "example-9a4a680f",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-9a4a680f",
+      "family": "audit_events",
+      "id": "example-9a4a680f",
+      "observed_at": "2020-06-07T03:58:09.661Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-9a4a680f",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-5648ace6e4dfce9d",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:09Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-07T03:58:09.634Z",
+      "id": "example-c4f82039",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-c4f82039",
+      "family": "audit_events",
+      "id": "example-c4f82039",
+      "observed_at": "2020-06-07T03:58:09.634Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "addToOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-c4f82039",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-a7cbfcd4cb884a71",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:58:09Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-45436f12",
+          "name": "example-ec6ebe1a"
+        }
+      },
+      "date": "2020-06-07T03:58:09.621Z",
+      "id": "example-ae700f97",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "removeFromOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "removeFromOrganizationBoard",
+      "external_id": "example-ae700f97",
+      "family": "audit_events",
+      "id": "example-ae700f97",
+      "observed_at": "2020-06-07T03:58:09.621Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "removeFromOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-ae700f97",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-8591afd212e6966a",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:57:46Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "prefs": {
+            "background": "blue"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "background": "green"
+          }
+        }
+      },
+      "date": "2020-06-07T03:57:46.836Z",
+      "id": "example-8e170cb9",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-8e170cb9",
+      "family": "audit_events",
+      "id": "example-8e170cb9",
+      "observed_at": "2020-06-07T03:57:46.836Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-8e170cb9",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-8198b2289127764e",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:57:36Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "desc": "",
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "desc": "example-7a645f03"
+        }
+      },
+      "date": "2020-06-07T03:57:36.282Z",
+      "id": "example-cf02ba4d",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-cf02ba4d",
+      "family": "audit_events",
+      "id": "example-cf02ba4d",
+      "observed_at": "2020-06-07T03:57:36.282Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-cf02ba4d",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-dddadc3335a59b90",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:35Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "name": "example-d57ca790"
+        }
+      },
+      "date": "2020-06-07T03:56:35.878Z",
+      "id": "example-b37ded59",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-b37ded59",
+      "family": "audit_events",
+      "id": "example-b37ded59",
+      "observed_at": "2020-06-07T03:56:35.878Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-b37ded59",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-993c753b51afc946",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:28Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "private"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "org"
+          }
+        }
+      },
+      "date": "2020-06-07T03:56:28.301Z",
+      "id": "example-908e96c3",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-908e96c3",
+      "family": "audit_events",
+      "id": "example-908e96c3",
+      "observed_at": "2020-06-07T03:56:28.301Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-908e96c3",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-c92fb089f4e53cb9",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "comments": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "comments": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:56:11.580Z",
+      "id": "example-6792dff7",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-6792dff7",
+      "family": "audit_events",
+      "id": "example-6792dff7",
+      "observed_at": "2020-06-07T03:56:11.580Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-6792dff7",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-811e0f0d9a1be314",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "voting": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "voting": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:56:11.569Z",
+      "id": "example-4a8409a9",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-4a8409a9",
+      "family": "audit_events",
+      "id": "example-4a8409a9",
+      "observed_at": "2020-06-07T03:56:11.569Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-4a8409a9",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-920b1c08ea7025a5",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "cardCovers": false
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "cardCovers": true
+          }
+        }
+      },
+      "date": "2020-06-07T03:56:11.556Z",
+      "id": "example-58220397",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-58220397",
+      "family": "audit_events",
+      "id": "example-58220397",
+      "observed_at": "2020-06-07T03:56:11.556Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-58220397",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-5f67ea75d7c3301a",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:56:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "private"
+          }
+        }
+      },
+      "date": "2020-06-07T03:56:11.545Z",
+      "id": "example-4e765774",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-4e765774",
+      "family": "audit_events",
+      "id": "example-4e765774",
+      "observed_at": "2020-06-07T03:56:11.545Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-4e765774",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-f4aad38e81fcfc9c",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:55:30Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "cardCovers": true
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "cardCovers": false
+          }
+        }
+      },
+      "date": "2020-06-07T03:55:30.848Z",
+      "id": "example-04e920f2",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-04e920f2",
+      "family": "audit_events",
+      "id": "example-04e920f2",
+      "observed_at": "2020-06-07T03:55:30.848Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-04e920f2",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-9fb71152ef1f2fd3",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:55:29Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "cardCovers": false
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "cardCovers": true
+          }
+        }
+      },
+      "date": "2020-06-07T03:55:29.313Z",
+      "id": "example-aa92f802",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-aa92f802",
+      "family": "audit_events",
+      "id": "example-aa92f802",
+      "observed_at": "2020-06-07T03:55:29.313Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-aa92f802",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-9e2d64d653fce2e0",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:55:27Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "cardCovers": true
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "cardCovers": false
+          }
+        }
+      },
+      "date": "2020-06-07T03:55:27.944Z",
+      "id": "example-a7fd2fe2",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-a7fd2fe2",
+      "family": "audit_events",
+      "id": "example-a7fd2fe2",
+      "observed_at": "2020-06-07T03:55:27.944Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-a7fd2fe2",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-5e842cfc4ddb3bc0",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:55:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "private"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "org"
+          }
+        }
+      },
+      "date": "2020-06-07T03:55:11.711Z",
+      "id": "example-3c4451a8",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-3c4451a8",
+      "family": "audit_events",
+      "id": "example-3c4451a8",
+      "observed_at": "2020-06-07T03:55:11.711Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-3c4451a8",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-44a1e6c28c33c147",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:54:54Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "voting": "members"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "voting": "org"
+          }
+        }
+      },
+      "date": "2020-06-07T03:54:54.471Z",
+      "id": "example-173cb73b",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-173cb73b",
+      "family": "audit_events",
+      "id": "example-173cb73b",
+      "observed_at": "2020-06-07T03:54:54.471Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-173cb73b",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-39a87467442c3139",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:54:42Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "comments": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "comments": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:54:42.372Z",
+      "id": "example-e0570233",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-e0570233",
+      "family": "audit_events",
+      "id": "example-e0570233",
+      "observed_at": "2020-06-07T03:54:42.372Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-e0570233",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-1abe8e2331223eaa",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:54:42Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "voting": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "voting": "disabled"
+          }
+        }
+      },
+      "date": "2020-06-07T03:54:42.362Z",
+      "id": "example-2f83b16b",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-2f83b16b",
+      "family": "audit_events",
+      "id": "example-2f83b16b",
+      "observed_at": "2020-06-07T03:54:42.362Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-2f83b16b",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-9906a0969fe801c1",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:54:42Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "org"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "private"
+          }
+        }
+      },
+      "date": "2020-06-07T03:54:42.351Z",
+      "id": "example-0ff62ec7",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-0ff62ec7",
+      "family": "audit_events",
+      "id": "example-0ff62ec7",
+      "observed_at": "2020-06-07T03:54:42.351Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-0ff62ec7",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-f6d583fc740a98eb",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:53:47Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "voting": "disabled"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "voting": "members"
+          }
+        }
+      },
+      "date": "2020-06-07T03:53:47.563Z",
+      "id": "example-d111de55",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-d111de55",
+      "family": "audit_events",
+      "id": "example-d111de55",
+      "observed_at": "2020-06-07T03:53:47.563Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-d111de55",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-15f2c8702dba685d",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:32Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "closed": false,
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "closed": true
+        }
+      },
+      "date": "2020-06-07T03:52:32.666Z",
+      "id": "example-2483cda7",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-2483cda7",
+      "family": "audit_events",
+      "id": "example-2483cda7",
+      "observed_at": "2020-06-07T03:52:32.666Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-2483cda7",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-d3897d473033f7d2",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "background": "green"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "background": "5e92397e6ab226460dadee8e"
+          }
+        }
+      },
+      "date": "2020-06-07T03:52:04.899Z",
+      "id": "example-caef8c56",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-caef8c56",
+      "family": "audit_events",
+      "id": "example-caef8c56",
+      "observed_at": "2020-06-07T03:52:04.899Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-caef8c56",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-5fb48b5cfed7ca55",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "cardCovers": false
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "cardCovers": true
+          }
+        }
+      },
+      "date": "2020-06-07T03:52:04.873Z",
+      "id": "example-37fe3a17",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-37fe3a17",
+      "family": "audit_events",
+      "id": "example-37fe3a17",
+      "observed_at": "2020-06-07T03:52:04.873Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-37fe3a17",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-48c3d890f83df9eb",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "selfJoin": false
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "selfJoin": true
+          }
+        }
+      },
+      "date": "2020-06-07T03:52:04.858Z",
+      "id": "example-86a85838",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-86a85838",
+      "family": "audit_events",
+      "id": "example-86a85838",
+      "observed_at": "2020-06-07T03:52:04.858Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-86a85838",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-294406e251b5d6ff",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "prefs": {
+            "permissionLevel": "private"
+          },
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "prefs": {
+            "permissionLevel": "org"
+          }
+        }
+      },
+      "date": "2020-06-07T03:52:04.844Z",
+      "id": "example-4a021e4d",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-4a021e4d",
+      "family": "audit_events",
+      "id": "example-4a021e4d",
+      "observed_at": "2020-06-07T03:52:04.844Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-4a021e4d",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-9d40405e31f26048",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-d57ca790",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "name": "example-317fee7d"
+        }
+      },
+      "date": "2020-06-07T03:52:04.817Z",
+      "id": "example-846cf09a",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-846cf09a",
+      "family": "audit_events",
+      "id": "example-846cf09a",
+      "observed_at": "2020-06-07T03:52:04.817Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-d57ca790",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-846cf09a",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-c688dc6a6a582b59",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-45436f12",
+          "name": "example-ec6ebe1a"
+        }
+      },
+      "date": "2020-06-07T03:52:04.785Z",
+      "id": "example-2f3fb4e6",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "addToOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "addToOrganizationBoard",
+      "external_id": "example-2f3fb4e6",
+      "family": "audit_events",
+      "id": "example-2f3fb4e6",
+      "observed_at": "2020-06-07T03:52:04.785Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "addToOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-2f3fb4e6",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-d32197676bf7e409",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:52:04Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "organization": {
+          "id": "example-405a6619",
+          "name": "example-dcec3e98"
+        }
+      },
+      "date": "2020-06-07T03:52:04.769Z",
+      "id": "example-62fb878b",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "removeFromOrganizationBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "removeFromOrganizationBoard",
+      "external_id": "example-62fb878b",
+      "family": "audit_events",
+      "id": "example-62fb878b",
+      "observed_at": "2020-06-07T03:52:04.769Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "removeFromOrganizationBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-62fb878b",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-283ff0057197d6e9",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:47:22Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "closed": true,
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "closed": false
+        }
+      },
+      "date": "2020-06-07T03:47:22.239Z",
+      "id": "example-42c6cdec",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-42c6cdec",
+      "family": "audit_events",
+      "id": "example-42c6cdec",
+      "observed_at": "2020-06-07T03:47:22.239Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-42c6cdec",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-04ccb6c4a492dd09",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:44:11Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "plugin": {
+          "author": "Trello Inc",
+          "capabilities": [],
+          "categories": [
+            "board-utilities",
+            "communication-collaboration"
+          ],
+          "claimedDomains": [],
+          "heroImageUrl": {
+            "@1x": "https://trello-attachments.s3.amazonaws.com/5b56280b7694ac008082fe38/5b5628e7b0592a4d580296da/3c8420995ac20adff315e1db279a401e/voting.jpg",
+            "@2x": "https://trello-attachments.s3.amazonaws.com/5b56280b7694ac008082fe38/5b5628e7b0592a4d580296da/b4bf82f4c2fd262943ce9542b88e6807/voting%402x.jpg",
+            "_id": "example-12ea3f5c"
+          },
+          "icon": {
+            "url": "example-091fb57d"
+          },
+          "id": "example-9ea2ed44",
+          "idOrganizationOwner": "5a999cd36066c584c097f193",
+          "iframeConnectorUrl": "https://voting.trello.services/",
+          "isCompliantWithPrivacyStandards": null,
+          "listing": {
+            "description": "example-67664c60",
+            "locale": "en-US",
+            "name": "example-82e31d50",
+            "overview": "Give power to the people, and allow users to vote on cards."
+          },
+          "moderatedState": null,
+          "name": "example-82e31d50",
+          "privacyUrl": "https://trello.com/privacy",
+          "public": true,
+          "supportEmail": "",
+          "tags": [
+            "staff-pick"
+          ],
+          "url": "example-b4e93b96",
+          "usageBrackets": {
+            "boards": 100000
+          }
+        }
+      },
+      "date": "2020-06-07T03:44:11.961Z",
+      "id": "example-b11f0929",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "enablePlugin"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "enablePlugin",
+      "external_id": "example-b11f0929",
+      "family": "audit_events",
+      "id": "example-b11f0929",
+      "observed_at": "2020-06-07T03:44:11.961Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "enablePlugin",
+      "schema": "audit_events",
+      "source_event_id": "example-b11f0929",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "trello-tenant-audit_events-ec365d9553620fa8",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.audit_events",
+    "occurred_at": "2020-06-07T03:41:38Z",
+    "schema_ref": "trello/audit_events/v1",
+    "payload": {
+      "data": {
+        "board": {
+          "closed": false,
+          "id": "example-a2c9c42f",
+          "name": "example-317fee7d",
+          "shortLink": "example-492bc02d"
+        },
+        "old": {
+          "closed": true
+        }
+      },
+      "date": "2020-06-07T03:41:38.513Z",
+      "id": "example-2eb668b2",
+      "idMemberCreator": "example-a16a11e8",
+      "limits": {},
+      "memberCreator": {
+        "activityBlocked": false,
+        "avatarHash": null,
+        "avatarUrl": null,
+        "fullName": "example-d5765328",
+        "id": "example-a16a11e8",
+        "idMemberReferrer": null,
+        "initials": "example-712dd58e",
+        "nonPublic": {},
+        "nonPublicAvailable": true,
+        "username": "example-9d3016e4"
+      },
+      "type": "updateBoard"
+    },
+    "attributes": {
+      "actor_id": "example-a16a11e8",
+      "actor_name": "example-d5765328",
+      "event_type": "updateBoard",
+      "external_id": "example-2eb668b2",
+      "family": "audit_events",
+      "id": "example-2eb668b2",
+      "observed_at": "2020-06-07T03:41:38.513Z",
+      "provider": "trello",
+      "record_class": "audit_event",
+      "resource_id": "example-a2c9c42f",
+      "resource_name": "example-317fee7d",
+      "resource_type": "updateBoard",
+      "schema": "audit_events",
+      "source_event_id": "example-2eb668b2",
+      "source_provider": "trello",
+      "source_system": "trello",
+      "tenant_id": "tenant"
+    }
   }
 ]

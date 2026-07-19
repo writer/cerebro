@@ -52,7 +52,7 @@ func TestSourceReplaysCapturedReplicateFamilies(t *testing.T) {
 			if len(urns) != len(pull.Events) {
 				t.Fatalf("Discover() URNs = %d, want %d", len(urns), len(pull.Events))
 			}
-			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
+			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
 				t.Fatal(err)
 			}
 			if err := sourcefixture.CompareOrUpdateSourceOutputs(".", test.family, pull.Events, urns, updateCapturedReplicateFixtures()); err != nil {

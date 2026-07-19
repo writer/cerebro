@@ -76,7 +76,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - ID
   - kind: postmark.audit_events
     schema_ref: postmark/audit_events/v1
     required_attributes:

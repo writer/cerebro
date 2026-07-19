@@ -1,0 +1,49 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: trello
+family: users
+case: authenticated_member
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTrelloFamilies
+request:
+    method: GET
+    url: https://api.trello.com/1/members/me?
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2016-08-15T17:48:58Z"
+    sha256: 99e4255dbc96fd2145bc4f5508024f107cd4a9452eb891275356d649f1c98e95
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.email
+        - $.fullName
+        - $.gravatarHash
+        - $.id
+        - $.idBoards[0]
+        - $.idBoards[10]
+        - $.idBoards[11]
+        - $.idBoards[12]
+        - $.idBoards[13]
+        - $.idBoards[1]
+        - $.idBoards[2]
+        - $.idBoards[3]
+        - $.idBoards[4]
+        - $.idBoards[5]
+        - $.idBoards[6]
+        - $.idBoards[7]
+        - $.idBoards[8]
+        - $.idBoards[9]
+        - $.initials
+        - $.url
+        - $.username
+origin:
+    type: upstream_recording
+    repository: https://github.com/yammine/ex_trello
+    commit: a252cb34a2c08500ba62ad2f86f9d55ca609170f
+    path: fixtures/vcr_cassettes/authenticated_member.json
+    artifact_sha256: d2028501a91f6ce871ee5167dc381c505c8153317c58ef773d8f1db311871e73
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/test_helper.exs
+    freshness: historical
+    capture_time_basis: response_header
