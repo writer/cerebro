@@ -10,12 +10,14 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2016-12-04T20:21:58Z"
-    sha256: b4c0a25322614d95e070d4edb87ba13acd3f6ee0f678937874fe2b84e2912d24
+    sha256: eebb0ea1f36d15448b9951943fc1d80c04b84be5d0f21bed00cb305ed5563af9
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
+        - $.Domains[0].ID
         - $.Domains[0].Name
+        - $.Domains[1].ID
         - $.Domains[1].Name
 origin:
     type: upstream_recording

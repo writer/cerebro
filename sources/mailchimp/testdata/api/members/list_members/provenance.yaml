@@ -5,7 +5,7 @@ case: list_members
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMailchimpFamilies
 request:
     method: GET
-    url: https://us19.api.mailchimp.com/3.0/lists/example-list/members
+    url: https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/members
 response:
     status: 200
     content_type: application/json; charset=utf-8

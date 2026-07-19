@@ -69,6 +69,24 @@ func TestSanitizeImportedJSONPreservesObjectIDCrossReferences(t *testing.T) {
 	}
 }
 
+func TestSanitizeImportedJSONPreservesRetoolUserIDCrossReferences(t *testing.T) {
+	const identifier = "user_6cbcaf0fbd9a43699ea6d6b914c5244e"
+	payload, changed, err := SanitizeImportedJSON([]byte(`{
+		"id":"` + identifier + `",
+		"owner_id":"` + identifier + `",
+		"url":"https://provider.example.test/users/` + identifier + `"
+	}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	if strings.Contains(string(payload), identifier) || strings.Count(string(payload), "example-") != 3 {
+		t.Fatalf("sanitized payload = %s", payload)
+	}
+	if len(changed) != 3 {
+		t.Fatalf("changed fields = %#v, want 3 provider identifier locations", changed)
+	}
+}
+
 func TestSanitizeImportedJSONClearsNestedCredentialValues(t *testing.T) {
 	accessKey := "AKIA" + "IOSFODNN7EXAMPLE"
 	payload, changed, err := SanitizeImportedJSON([]byte(fmt.Sprintf(`{
@@ -190,7 +208,7 @@ func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
 		t.Fatalf("SanitizeImportedJSONWithKeys() error = %v", err)
 	}
 	text := string(payload)
-	if !strings.Contains(text, `"issue_token": 0`) || !strings.Contains(text, `"target_ids": [`) || !strings.Contains(text, `"example-`) || !strings.Contains(text, `"sensitive": false`) {
+	if strings.Contains(text, `"issue_token": 73062`) || strings.Contains(text, `"issue_token": "`) || !strings.Contains(text, `"target_ids": [`) || !strings.Contains(text, `"example-`) || !strings.Contains(text, `"sensitive": false`) {
 		t.Fatalf("sanitized payload = %s", payload)
 	}
 	want := []string{"$.issue_token", "$.sensitive", "$.target_ids[0]"}
@@ -201,6 +219,35 @@ func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
 		if changed[index] != want[index] {
 			t.Fatalf("changed fields = %#v, want %#v", changed, want)
 		}
+	}
+}
+
+func TestSanitizeImportedJSONExplicitNumericIDsPreserveCrossReferences(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSONWithKeys([]byte(`{
+		"domains":[{"ID":64052},{"ID":64054}],
+		"primary":{"ID":64052}
+	}`), []string{"ID"})
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSONWithKeys() error = %v", err)
+	}
+	var decoded struct {
+		Domains []struct {
+			ID json.Number `json:"ID"`
+		} `json:"domains"`
+		Primary struct {
+			ID json.Number `json:"ID"`
+		} `json:"primary"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(payload)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		t.Fatalf("decode sanitized payload: %v", err)
+	}
+	if decoded.Domains[0].ID == "64052" || decoded.Domains[1].ID == "64054" || decoded.Domains[0].ID == decoded.Domains[1].ID || decoded.Domains[0].ID != decoded.Primary.ID {
+		t.Fatalf("sanitized numeric identifiers = %#v, primary = %s", decoded.Domains, decoded.Primary.ID)
+	}
+	if len(changed) != 3 {
+		t.Fatalf("changed fields = %#v, want 3 numeric identifier locations", changed)
 	}
 }
 
@@ -248,7 +295,7 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 		t.Fatalf("SanitizeImportedText(Auth0 tenant) = %q", got)
 	}
 	mailchimpURL := "https://us19.api.mailchimp.com/3.0/lists/027c349075/members"
-	if got := SanitizeImportedText(mailchimpURL); got != "https://us19.api.mailchimp.com/3.0/lists/example-list/members" {
+	if got := SanitizeImportedText(mailchimpURL); got != "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/members" {
 		t.Fatalf("SanitizeImportedText(Mailchimp list) = %q", got)
 	}
 	hostileMailchimpURL := "https://attacker.example/api.mailchimp.com/3.0/lists/027c349075/members"
@@ -275,6 +322,18 @@ func TestSanitizeImportedTextPreservesCommitSHAs(t *testing.T) {
 		if got := SanitizeImportedText(safeIP); got != safeIP {
 			t.Fatalf("SanitizeImportedText(%q) = %q", safeIP, got)
 		}
+	}
+}
+
+func TestSanitizeImportedTextPreservesContentfulAssetCrossReferences(t *testing.T) {
+	assetURL := "//images.ctfassets.net/cfexampleapi/1x0xpXu4pSGS4OukSyWGUK/cc1239c6385428ef26f4180190532818/doge.jpg"
+	want := "//images.ctfassets.net/example-1b1d338f/example-a09b4847/example-522e3c31/doge.jpg"
+	if got := SanitizeImportedText(assetURL); got != want {
+		t.Fatalf("SanitizeImportedText(Contentful asset) = %q, want %q", got, want)
+	}
+	spaceURL := "https://cdn.contentful.com/spaces/cfexampleapi/entries"
+	if got := SanitizeImportedText(spaceURL); got != "https://cdn.contentful.com/spaces/example-1b1d338f/entries" {
+		t.Fatalf("SanitizeImportedText(Contentful space) = %q", got)
 	}
 }
 

@@ -36,7 +36,7 @@ func TestSourceReplaysCapturedContentfulDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.allowLoopbackForTest()
-	cfg := sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": familyDocuments, "space_id": "cfexampleapi", "tenant_id": "tenant", "token": "replay-token"})
+	cfg := sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": familyDocuments, "space_id": "example-1b1d338f", "tenant_id": "tenant", "token": "replay-token"})
 	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)

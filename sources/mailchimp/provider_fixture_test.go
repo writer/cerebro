@@ -20,7 +20,7 @@ func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
 		listID      string
 	}{
 		{family: familyLists, fixtureCase: "list_lists"},
-		{family: familyMembers, fixtureCase: "list_members", listID: "example-list"},
+		{family: familyMembers, fixtureCase: "list_members", listID: "example-2e767a40"},
 	}
 	for _, test := range tests {
 		t.Run(test.family, func(t *testing.T) {

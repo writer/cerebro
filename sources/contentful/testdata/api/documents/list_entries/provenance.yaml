@@ -5,29 +5,33 @@ case: list_entries
 replay_test: provider_fixture_test.go#TestSourceReplaysCapturedContentfulDocuments
 request:
     method: GET
-    url: https://cdn.contentful.com/spaces/cfexampleapi/entries
+    url: https://cdn.contentful.com/spaces/example-1b1d338f/entries
 response:
     status: 200
     content_type: application/vnd.contentful.delivery.v1+json
     captured_at: "2020-01-02T18:10:57Z"
-    sha256: 9432aaa3a5a9d23d72183ffe768f05de32108bba2607d7b05b0756803be6b352
+    sha256: dc6e62d436bf6baf47b7c07932fc00818d28d49655e9c91eab5df93ef946d783
 sanitization:
     tool: sourcefixture
     version: 1
     changed_fields:
         - $.includes.Asset[0].fields.description
+        - $.includes.Asset[0].fields.file.url
         - $.includes.Asset[0].fields.title
         - $.includes.Asset[0].sys.environment.sys.id
         - $.includes.Asset[0].sys.id
         - $.includes.Asset[0].sys.space.sys.id
+        - $.includes.Asset[1].fields.file.url
         - $.includes.Asset[1].fields.title
         - $.includes.Asset[1].sys.environment.sys.id
         - $.includes.Asset[1].sys.id
         - $.includes.Asset[1].sys.space.sys.id
+        - $.includes.Asset[2].fields.file.url
         - $.includes.Asset[2].fields.title
         - $.includes.Asset[2].sys.environment.sys.id
         - $.includes.Asset[2].sys.id
         - $.includes.Asset[2].sys.space.sys.id
+        - $.includes.Asset[3].fields.file.url
         - $.includes.Asset[3].fields.title
         - $.includes.Asset[3].sys.environment.sys.id
         - $.includes.Asset[3].sys.id
@@ -91,6 +95,7 @@ sanitization:
         - $.items[9].sys.environment.sys.id
         - $.items[9].sys.id
         - $.items[9].sys.space.sys.id
+        - $request.url
 origin:
     type: upstream_recording
     repository: https://github.com/JuulLabs-OSS/contentful_lite

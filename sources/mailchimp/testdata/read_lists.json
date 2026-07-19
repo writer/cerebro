@@ -1,6 +1,6 @@
 [
   {
-    "id": "mailchimp-tenant-lists-a839a759702b0a03",
+    "id": "mailchimp-tenant-lists-6bebcff68f065383",
     "tenant_id": "tenant",
     "source_id": "mailchimp",
     "kind": "mailchimp.lists",
@@ -9,7 +9,7 @@
     "payload": {
       "_links": [
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40",
           "method": "GET",
           "rel": "self",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Response.json"
@@ -22,94 +22,94 @@
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40",
           "method": "PATCH",
           "rel": "update",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/PATCH.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Response.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40",
           "method": "POST",
           "rel": "batch-sub-unsub-members",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/BatchPOST.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/BatchPOST-Response.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40",
           "method": "DELETE",
           "rel": "delete"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/abuse-reports",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/abuse-reports",
           "method": "GET",
           "rel": "abuse-reports",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Abuse.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Abuse/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/activity",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/activity",
           "method": "GET",
           "rel": "activity",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Activity/Response.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/clients",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/clients",
           "method": "GET",
           "rel": "clients",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Clients/Response.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/growth-history",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/growth-history",
           "method": "GET",
           "rel": "growth-history",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Growth.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Growth/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/interest-categories",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/interest-categories",
           "method": "GET",
           "rel": "interest-categories",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/InterestCategories.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/InterestCategories/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/members",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/members",
           "method": "GET",
           "rel": "members",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Members.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Members/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/merge-fields",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/merge-fields",
           "method": "GET",
           "rel": "merge-fields",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/MergeFields.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/MergeFields/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/segments",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/segments",
           "method": "GET",
           "rel": "segments",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Segments.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Segments/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/webhooks",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/webhooks",
           "method": "GET",
           "rel": "webhooks",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Webhooks.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/Webhooks/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/signup-forms",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/signup-forms",
           "method": "GET",
           "rel": "signup-forms",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/SignupForms.json",
           "targetSchema": "https://us19.api.mailchimp.com/schema/3.0/Definitions/Lists/SignupForms/CollectionResponse.json"
         },
         {
-          "href": "https://us19.api.mailchimp.com/3.0/lists/example-list/locations",
+          "href": "https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/locations",
           "method": "GET",
           "rel": "locations",
           "schema": "https://us19.api.mailchimp.com/schema/3.0/CollectionLinks/Lists/Locations.json",
@@ -167,7 +167,7 @@
       "subscribe_url_short": "example-da71cfe2",
       "use_archive_bar": true,
       "visibility": "pub",
-      "web_id": 0
+      "web_id": 969602615
     },
     "attributes": {
       "external_id": "example-2e767a40",
