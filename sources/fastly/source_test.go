@@ -18,8 +18,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if r.Header.Get("Fastly-Key") != "test-token" {
+			t.Fatalf("Fastly-Key = %q", r.Header.Get("Fastly-Key"))
 		}
 		if r.URL.RequestURI() == "/current_customer" {
 			w.WriteHeader(http.StatusNoContent)

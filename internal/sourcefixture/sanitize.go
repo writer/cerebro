@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -91,7 +94,7 @@ func sanitizeTextValues(value any, valuePath string, changed *[]string) any {
 		}
 		return typed
 	case string:
-		sanitized := SanitizeImportedText(typed)
+		sanitized := sanitizeImportedJSONText(typed)
 		if sanitized != typed {
 			*changed = append(*changed, valuePath)
 		}
@@ -145,7 +148,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 				typed[key] = sanitized
 				continue
 			}
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				sanitized, err := sanitizeCredentialJSONValue(child, childPath, changed)
 				if err != nil {
 					return nil, err
@@ -176,7 +179,7 @@ func sanitizeJSONValue(value any, valuePath string, explicitKeys map[string]stru
 		return typed, nil
 	case string:
 		replaced := emailPattern.ReplaceAllStringFunc(typed, exampleEmail)
-		replaced = SanitizeImportedText(replaced)
+		replaced = sanitizeImportedJSONText(replaced)
 		if replaced != typed {
 			*changed = append(*changed, valuePath)
 		}
@@ -219,7 +222,7 @@ func sanitizeExplicitJSONValue(value any, valuePath string, changed *[]string) (
 			return typed, nil
 		}
 		*changed = append(*changed, valuePath)
-		return json.Number("0"), nil
+		return sanitizedNumericIdentifier(typed), nil
 	case bool:
 		if !typed {
 			return typed, nil
@@ -283,7 +286,7 @@ func sanitizeCredentialFields(value any, valuePath string, changed *[]string) (a
 				sanitized any
 				err       error
 			)
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				sanitized, err = sanitizeCredentialJSONValue(child, childPath, changed)
 			} else {
 				sanitized, err = sanitizeCredentialFields(child, childPath, changed)
@@ -316,6 +319,36 @@ func SanitizeImportedText(value string) string {
 	return sanitizeEncodedImportedText(sanitized)
 }
 
+func sanitizeImportedJSONText(value string) string {
+	sanitized := SanitizeImportedText(value)
+	sanitized = strings.NewReplacer(
+		"https://api.fastly.com", "https://fastly.example.test",
+		"http://api.fastly.com", "https://fastly.example.test",
+	).Replace(sanitized)
+	return sanitizeEmbeddedURLCredentialQuery(sanitized)
+}
+
+func sanitizeEmbeddedURLCredentialQuery(value string) string {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return value
+	}
+	query := parsed.Query()
+	changed := false
+	for key := range query {
+		if !isCredentialQueryKey(key) {
+			continue
+		}
+		query.Del(key)
+		changed = true
+	}
+	if !changed {
+		return value
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
 func sanitizePlainImportedText(value string) string {
 	value = escapedZendeskTenantHost.ReplaceAllString(value, "${1}zendesk.example.test")
 	value = escapedAuth0FixtureHost.ReplaceAllString(value, "${1}auth0.example.test")
@@ -324,16 +357,54 @@ func sanitizePlainImportedText(value string) string {
 	value = auth0FixtureHost.ReplaceAllString(value, "${1}auth0.example.test")
 	value = auth0TenantHost.ReplaceAllString(value, "${1}auth0.example.test")
 	value = auth0FixtureTenant.ReplaceAllString(value, "auth0-example-tenant")
+	value = sanitizeMailchimpListPath(value)
+	value = sanitizeContentfulAssetURL(value)
+	value = sanitizeContentfulSpaceURL(value)
 	value = ipv4Pattern.ReplaceAllStringFunc(value, sanitizePublicIPv4)
 	return providerIDPattern.ReplaceAllStringFunc(value, func(identifier string) string {
 		digest := sha256.Sum256([]byte(strings.ToLower(identifier)))
 		length := 8
 		normalized := strings.ToLower(identifier)
-		if strings.HasPrefix(normalized, "auth0|") || strings.HasPrefix(normalized, "auth0%7c") {
+		if strings.HasPrefix(normalized, "auth0|") || strings.HasPrefix(normalized, "auth0%7c") || objectID.MatchString(normalized) {
 			length = 4
 		}
 		return "example-" + hex.EncodeToString(digest[:length])
 	})
+}
+
+func sanitizeMailchimpListPath(value string) string {
+	match := mailchimpListPath.FindStringSubmatch(value)
+	if len(match) == 0 {
+		return value
+	}
+	return match[1] + sanitizedPersonalString("id", match[2]) + strings.TrimPrefix(value, match[0])
+}
+
+func sanitizeContentfulAssetURL(value string) string {
+	match := contentfulAssetURL.FindStringSubmatch(value)
+	if len(match) == 0 {
+		return value
+	}
+	return match[1] +
+		sanitizeIdentifierSegment(match[2]) + "/" +
+		sanitizeIdentifierSegment(match[3]) + "/" +
+		sanitizeIdentifierSegment(match[4]) +
+		match[5] + match[6] + match[7]
+}
+
+func sanitizeContentfulSpaceURL(value string) string {
+	match := contentfulSpaceURL.FindStringSubmatch(value)
+	if len(match) == 0 {
+		return value
+	}
+	return match[1] + sanitizeIdentifierSegment(match[2]) + match[3] + match[4] + match[5]
+}
+
+func sanitizeIdentifierSegment(value string) string {
+	if strings.HasPrefix(strings.ToLower(value), "example-") {
+		return value
+	}
+	return sanitizedPersonalString("id", value)
 }
 
 func sanitizeEncodedImportedText(value string) string {
@@ -408,7 +479,7 @@ func normalizedJSONKey(key string) string {
 
 func sanitizedPersonalString(key, value string) string {
 	replacedEmail := emailPattern.ReplaceAllStringFunc(value, exampleEmail)
-	if replacedEmail != value {
+	if emailPattern.MatchString(value) {
 		return replacedEmail
 	}
 	digest := sha256.Sum256([]byte(strings.ToLower(value)))
@@ -416,6 +487,16 @@ func sanitizedPersonalString(key, value string) string {
 		return "+1-555-" + hex.EncodeToString(digest[:2])
 	}
 	return "example-" + hex.EncodeToString(digest[:4])
+}
+
+func sanitizedNumericIdentifier(value json.Number) json.Number {
+	digest := sha256.Sum256([]byte(value.String()))
+	const (
+		minimum   = uint64(100_000_000)
+		rangeSize = uint64(900_000_000)
+	)
+	replacement := minimum + binary.BigEndian.Uint64(digest[:8])%rangeSize
+	return json.Number(strconv.FormatUint(replacement, 10))
 }
 
 func exampleEmail(value string) string {

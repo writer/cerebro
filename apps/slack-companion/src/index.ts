@@ -44,6 +44,7 @@ export {
 export * from "./execution/effect-reconciliation.js";
 export * from "./execution/effect-intent.js";
 export * from "./execution/repeated-failure-policy.js";
+export * from "./execution/source-health-policy.js";
 export type {
   EffectIntentValue,
   ExecutionSession,
@@ -55,6 +56,8 @@ export type {
   DurableExecutionPort,
   ExecutionClockPort,
 } from "./execution/ports.js";
+export * from "./followup/contracts.js";
+export * from "./followup/policy.js";
 export * from "./installation.js";
 export * from "./improvement/contracts.js";
 export * from "./improvement/coordinator.js";
@@ -90,9 +93,13 @@ export * from "./research/contracts.js";
 export * from "./research/policy.js";
 export * from "./risk-attestation/contracts.js";
 export * from "./risk-attestation/policy.js";
+export * from "./safety/policy.js";
 export * from "./thread-binding.js";
 export * from "./tools/catalog.js";
 export * from "./tools/contracts.js";
+export * from "./triage/alert-triage-fallback.js";
+export * from "./triage/alert-triage-signals.js";
+export * from "./triage/channel-policy.js";
 export * from "./triage/contracts.js";
 export * from "./triage/policy.js";
 export * from "./transport/contracts.js";

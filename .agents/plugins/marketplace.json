@@ -1,0 +1,20 @@
+{
+  "name": "cerebro-local",
+  "interface": {
+    "displayName": "Cerebro Local"
+  },
+  "plugins": [
+    {
+      "name": "cerebro-agent-receipts",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cerebro-agent-receipts"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security"
+    }
+  ]
+}

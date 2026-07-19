@@ -60,7 +60,11 @@ func newAppForDeviceTest(t *testing.T) *App {
 		},
 	}
 	store := newDeviceAuthMemStore()
-	app := New(cfg, Dependencies{StateStore: store}, nil)
+	app := New(cfg, Dependencies{
+		StateStore: store,
+		AppendLog:  &recordingAppendLog{},
+		GraphStore: &stubGraphStore{},
+	}, nil)
 	if app.deviceService == nil {
 		t.Fatal("device service was not wired")
 	}
@@ -155,7 +159,27 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 
 	// Use the access token to ingest telemetry (idempotent).
-	telemetry := []byte(`{"events":[{"type":"login","ts":"2026-05-22T12:00:00Z"}]}`)
+	telemetry := []byte(`{"events":[{
+		"type":"agent_execution_receipt",
+		"receipt_id":"receipt-1",
+		"receipt_digest":"sha256:receipt",
+		"sequence":1,
+		"captured_at":"2026-07-16T12:00:00Z",
+		"phase":"completed",
+		"agent_product":"Codex",
+		"model":"gpt-test",
+		"session_id":"session-1",
+		"turn_id":"turn-1",
+		"tool_call_id":"call-1",
+		"tool_name":"Bash",
+		"action_summary":"aws ecs register-task-definition",
+		"permission_mode":"never",
+		"local_user_claim":"jonathan",
+		"local_user_claim_source":"process_user",
+		"evidence_integrity":"signature_valid",
+		"provider_binding":"provider_bound",
+		"provider_event_id":"cloudtrail-1"
+	}]}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", bytes.NewReader(telemetry))
 	req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -183,6 +207,26 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 	if resp.Body.String() != firstBody {
 		t.Errorf("idempotent body mismatch")
+	}
+	appendLog := app.deps.AppendLog.(*recordingAppendLog)
+	if len(appendLog.events) != 1 {
+		t.Fatalf("appended events = %d, want exactly 1 after replay", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != "trusted_endpoint.agent_execution_receipt" {
+		t.Fatalf("appended kind = %q, want agent_execution_receipt", got)
+	}
+	graph := app.deps.GraphStore.(*stubGraphStore)
+	if len(graph.entities) != 4 || len(graph.links) != 5 {
+		t.Fatalf("graph state = %d entities/%d links, want 4/5", len(graph.entities), len(graph.links))
+	}
+	foundReceipt := false
+	for _, entity := range graph.entities {
+		if entity.EntityType == "trusted_endpoint.agent_execution_receipt_observation" {
+			foundReceipt = entity.Attributes["session_id"] == "session-1" && entity.Attributes["local_user_claim"] == "jonathan" && entity.Attributes["evidence_integrity"] == "authenticated_device_claim"
+		}
+	}
+	if !foundReceipt {
+		t.Fatalf("graph receipt missing session and local user claim: %#v", graph.entities)
 	}
 
 	// Conflicting body with the same idempotency key returns 409.

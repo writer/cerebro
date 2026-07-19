@@ -1,0 +1,1978 @@
+{
+  "facets": [
+    {
+      "facets": [
+        {
+          "count": 406,
+          "name": "analyze",
+          "state": "displayed",
+          "value": "analyze"
+        },
+        {
+          "count": 332,
+          "name": "geo",
+          "state": "displayed",
+          "value": "geo"
+        },
+        {
+          "count": 300,
+          "name": "timeserie",
+          "state": "displayed",
+          "value": "timeserie"
+        },
+        {
+          "count": 55,
+          "name": "custom_view",
+          "state": "displayed",
+          "value": "custom_view"
+        },
+        {
+          "count": 2,
+          "name": "image",
+          "state": "displayed",
+          "value": "image"
+        },
+        {
+          "count": 1,
+          "name": "calendar",
+          "state": "displayed",
+          "value": "calendar"
+        }
+      ],
+      "name": "features"
+    },
+    {
+      "facets": [
+        {
+          "count": 16,
+          "name": "2015",
+          "state": "displayed",
+          "value": "2015"
+        },
+        {
+          "count": 7,
+          "name": "2016",
+          "state": "displayed",
+          "value": "2016"
+        },
+        {
+          "count": 19,
+          "name": "2017",
+          "state": "displayed",
+          "value": "2017"
+        },
+        {
+          "count": 17,
+          "name": "2018",
+          "state": "displayed",
+          "value": "2018"
+        },
+        {
+          "count": 36,
+          "name": "2019",
+          "state": "displayed",
+          "value": "2019"
+        },
+        {
+          "count": 28,
+          "name": "2020",
+          "state": "displayed",
+          "value": "2020"
+        },
+        {
+          "count": 54,
+          "name": "2021",
+          "state": "displayed",
+          "value": "2021"
+        },
+        {
+          "count": 36,
+          "name": "2022",
+          "state": "displayed",
+          "value": "2022"
+        },
+        {
+          "count": 13,
+          "name": "2023",
+          "state": "displayed",
+          "value": "2023"
+        },
+        {
+          "count": 17,
+          "name": "2024",
+          "state": "displayed",
+          "value": "2024"
+        },
+        {
+          "count": 78,
+          "name": "2025",
+          "state": "displayed",
+          "value": "2025"
+        },
+        {
+          "count": 87,
+          "name": "2026",
+          "state": "displayed",
+          "value": "2026"
+        }
+      ],
+      "name": "modified"
+    },
+    {
+      "facets": [
+        {
+          "count": 95,
+          "name": "Opendatasoft",
+          "state": "displayed",
+          "value": "Opendatasoft"
+        },
+        {
+          "count": 77,
+          "name": "Huwise",
+          "state": "displayed",
+          "value": "Huwise"
+        },
+        {
+          "count": 56,
+          "name": "INSEE",
+          "state": "displayed",
+          "value": "INSEE"
+        },
+        {
+          "count": 20,
+          "name": "Ministère de l'Intérieur",
+          "state": "displayed",
+          "value": "Ministère de l'Intérieur"
+        },
+        {
+          "count": 13,
+          "name": "Office for National Statistics",
+          "state": "displayed",
+          "value": "Office for National Statistics"
+        },
+        {
+          "count": 10,
+          "name": "U.S. Department of Commerce, U.S. Census Bureau, Geography Division, Spatial Data Collection and Products Branch",
+          "state": "displayed",
+          "value": "U.S. Department of Commerce, U.S. Census Bureau, Geography Division, Spatial Data Collection and Products Branch"
+        },
+        {
+          "count": 8,
+          "name": "Etalab",
+          "state": "displayed",
+          "value": "Etalab"
+        },
+        {
+          "count": 6,
+          "name": "ARCEP",
+          "state": "displayed",
+          "value": "ARCEP"
+        },
+        {
+          "count": 6,
+          "name": "IGN",
+          "state": "displayed",
+          "value": "IGN"
+        },
+        {
+          "count": 6,
+          "name": "Ministère de l’Écologie, de l’Énergie, du Développement durable et de la Mer (MEEDDM), Commissariat général au développement durable (CGDD), Service de l’observation et des statistiques (SOeS), Sous-direction des statistiques du logement et de la construction",
+          "state": "displayed",
+          "value": "Ministère de l’Écologie, de l’Énergie, du Développement durable et de la Mer (MEEDDM), Commissariat général au développement durable (CGDD), Service de l’observation et des statistiques (SOeS), Sous-direction des statistiques du logement et de la construction"
+        },
+        {
+          "count": 5,
+          "name": "ADEME",
+          "state": "displayed",
+          "value": "ADEME"
+        },
+        {
+          "count": 4,
+          "name": " Service public de Wallonie (SPW) ",
+          "state": "displayed",
+          "value": " Service public de Wallonie (SPW) "
+        },
+        {
+          "count": 4,
+          "name": "Direction Générale des Collectivités Locales (DGCL)",
+          "state": "displayed",
+          "value": "Direction Générale des Collectivités Locales (DGCL)"
+        },
+        {
+          "count": 4,
+          "name": "Santé Publique France",
+          "state": "displayed",
+          "value": "Santé Publique France"
+        },
+        {
+          "count": 3,
+          "name": "Commissariat général à l’égalité des territoires (CGET)",
+          "state": "displayed",
+          "value": "Commissariat général à l’égalité des territoires (CGET)"
+        },
+        {
+          "count": 3,
+          "name": "OpenDataSoft",
+          "state": "displayed",
+          "value": "OpenDataSoft"
+        },
+        {
+          "count": 3,
+          "name": "Service public de Wallonie (SPW) ",
+          "state": "displayed",
+          "value": "Service public de Wallonie (SPW) "
+        },
+        {
+          "count": 2,
+          "name": "Caisse nationale de l'assurance maladie",
+          "state": "displayed",
+          "value": "Caisse nationale de l'assurance maladie"
+        },
+        {
+          "count": 2,
+          "name": "Direction Générale des Collectivités Locales (DGCL) – Banatic",
+          "state": "displayed",
+          "value": "Direction Générale des Collectivités Locales (DGCL) – Banatic"
+        },
+        {
+          "count": 2,
+          "name": "Direction Générale des Collectivités Locales (DGCL), DGFIP",
+          "state": "displayed",
+          "value": "Direction Générale des Collectivités Locales (DGCL), DGFIP"
+        },
+        {
+          "count": 2,
+          "name": "Direction générale des Finances publiques",
+          "state": "displayed",
+          "value": "Direction générale des Finances publiques"
+        },
+        {
+          "count": 2,
+          "name": "GeoNames",
+          "state": "displayed",
+          "value": "GeoNames"
+        },
+        {
+          "count": 2,
+          "name": "Homeland Infrastructure Foundation-Level Data (HIFLD)",
+          "state": "displayed",
+          "value": "Homeland Infrastructure Foundation-Level Data (HIFLD)"
+        },
+        {
+          "count": 2,
+          "name": "Institut National de l'Origine et de la qualité",
+          "state": "displayed",
+          "value": "Institut National de l'Origine et de la qualité"
+        },
+        {
+          "count": 2,
+          "name": "Ministère de l'Economie, de l'Industrie et du Numérique",
+          "state": "displayed",
+          "value": "Ministère de l'Economie, de l'Industrie et du Numérique"
+        },
+        {
+          "count": 2,
+          "name": "Ministère de l’économie, des finances et de la relance",
+          "state": "displayed",
+          "value": "Ministère de l’économie, des finances et de la relance"
+        },
+        {
+          "count": 2,
+          "name": "Ministère des Solidarités et de la Santé",
+          "state": "displayed",
+          "value": "Ministère des Solidarités et de la Santé"
+        },
+        {
+          "count": 2,
+          "name": "Ministère des Solidarités et de la Santé, Etalab",
+          "state": "displayed",
+          "value": "Ministère des Solidarités et de la Santé, Etalab"
+        },
+        {
+          "count": 2,
+          "name": "Météo-France",
+          "state": "displayed",
+          "value": "Météo-France"
+        },
+        {
+          "count": 2,
+          "name": "OpenAQ",
+          "state": "displayed",
+          "value": "OpenAQ"
+        },
+        {
+          "count": 2,
+          "name": "Point d'Accès National transport.data.gouv.fr",
+          "state": "displayed",
+          "value": "Point d'Accès National transport.data.gouv.fr"
+        },
+        {
+          "count": 2,
+          "name": "Service public de Wallonie (SPW)",
+          "state": "displayed",
+          "value": "Service public de Wallonie (SPW)"
+        },
+        {
+          "count": 2,
+          "name": "U.S. Census Bureau",
+          "state": "displayed",
+          "value": "U.S. Census Bureau"
+        },
+        {
+          "count": 2,
+          "name": "Vigicrues",
+          "state": "displayed",
+          "value": "Vigicrues"
+        },
+        {
+          "count": 1,
+          "name": "ANDRA",
+          "state": "displayed",
+          "value": "ANDRA"
+        },
+        {
+          "count": 1,
+          "name": "Administration du Premier ministre",
+          "state": "displayed",
+          "value": "Administration du Premier ministre"
+        },
+        {
+          "count": 1,
+          "name": "Antoine Augusti",
+          "state": "displayed",
+          "value": "Antoine Augusti"
+        },
+        {
+          "count": 1,
+          "name": "Assurance Maladie",
+          "state": "displayed",
+          "value": "Assurance Maladie"
+        },
+        {
+          "count": 1,
+          "name": "Atout France",
+          "state": "displayed",
+          "value": "Atout France"
+        },
+        {
+          "count": 1,
+          "name": "Based on dataset published by : World Food Programme (UN agency)",
+          "state": "displayed",
+          "value": "Based on dataset published by : World Food Programme (UN agency)"
+        },
+        {
+          "count": 1,
+          "name": "Blablacar",
+          "state": "displayed",
+          "value": "Blablacar"
+        },
+        {
+          "count": 1,
+          "name": "Central Bureau voor de Statistiek (cbs.nl)",
+          "state": "displayed",
+          "value": "Central Bureau voor de Statistiek (cbs.nl)"
+        },
+        {
+          "count": 1,
+          "name": "Cerema",
+          "state": "displayed",
+          "value": "Cerema"
+        },
+        {
+          "count": 1,
+          "name": "Christian Quest / La Poste - Service National de l'Adresse",
+          "state": "displayed",
+          "value": "Christian Quest / La Poste - Service National de l'Adresse"
+        },
+        {
+          "count": 1,
+          "name": "DGFiP",
+          "state": "displayed",
+          "value": "DGFiP"
+        },
+        {
+          "count": 1,
+          "name": "DataSpot",
+          "state": "displayed",
+          "value": "DataSpot"
+        },
+        {
+          "count": 1,
+          "name": "Direction de l'Animation de la recherche des Études et des Statistiques (DARES), Pole emploi",
+          "state": "displayed",
+          "value": "Direction de l'Animation de la recherche des Études et des Statistiques (DARES), Pole emploi"
+        },
+        {
+          "count": 1,
+          "name": "Direction générale - Justice et consommateurs",
+          "state": "displayed",
+          "value": "Direction générale - Justice et consommateurs"
+        },
+        {
+          "count": 1,
+          "name": "Directorate-General for Justice and Consumers",
+          "state": "displayed",
+          "value": "Directorate-General for Justice and Consumers"
+        },
+        {
+          "count": 1,
+          "name": "Environmental Protection Agency",
+          "state": "displayed",
+          "value": "Environmental Protection Agency"
+        },
+        {
+          "count": 1,
+          "name": "European Communities",
+          "state": "displayed",
+          "value": "European Communities"
+        },
+        {
+          "count": 1,
+          "name": "ILO",
+          "state": "displayed",
+          "value": "ILO"
+        },
+        {
+          "count": 1,
+          "name": "INPN",
+          "state": "displayed",
+          "value": "INPN"
+        },
+        {
+          "count": 1,
+          "name": "INSERM",
+          "state": "displayed",
+          "value": "INSERM"
+        },
+        {
+          "count": 1,
+          "name": "JCDecaux",
+          "state": "displayed",
+          "value": "JCDecaux"
+        },
+        {
+          "count": 1,
+          "name": "La Poste - Branche Réseau",
+          "state": "displayed",
+          "value": "La Poste - Branche Réseau"
+        },
+        {
+          "count": 1,
+          "name": "La Poste - Branche Services Courrier Colis - Pôle Services",
+          "state": "displayed",
+          "value": "La Poste - Branche Services Courrier Colis - Pôle Services"
+        },
+        {
+          "count": 1,
+          "name": "La Poste - Service National de l'Adresse",
+          "state": "displayed",
+          "value": "La Poste - Service National de l'Adresse"
+        },
+        {
+          "count": 1,
+          "name": "Meteo France",
+          "state": "displayed",
+          "value": "Meteo France"
+        },
+        {
+          "count": 1,
+          "name": "Ministry for the Ecological and Inclusive Transition",
+          "state": "displayed",
+          "value": "Ministry for the Ecological and Inclusive Transition"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de l'Environnement, de l'Energie et de la Mer",
+          "state": "displayed",
+          "value": "Ministère de l'Environnement, de l'Energie et de la Mer"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de l'Intérieur, Antoine Augusti",
+          "state": "displayed",
+          "value": "Ministère de l'Intérieur, Antoine Augusti"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de l'Écologie, du Développement durable et de l'Énergie",
+          "state": "displayed",
+          "value": "Ministère de l'Écologie, du Développement durable et de l'Énergie"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de l'économie et des finances",
+          "state": "displayed",
+          "value": "Ministère de l'économie et des finances"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de la Justice",
+          "state": "displayed",
+          "value": "Ministère de la Justice"
+        },
+        {
+          "count": 1,
+          "name": "Ministère de la Transition écologique et solidaire",
+          "state": "displayed",
+          "value": "Ministère de la Transition écologique et solidaire"
+        },
+        {
+          "count": 1,
+          "name": "MémorialGenWeb",
+          "state": "displayed",
+          "value": "MémorialGenWeb"
+        },
+        {
+          "count": 1,
+          "name": "Naturvårdsverket (https://www.naturvardsverket.se)",
+          "state": "displayed",
+          "value": "Naturvårdsverket (https://www.naturvardsverket.se)"
+        },
+        {
+          "count": 1,
+          "name": "OKFN",
+          "state": "displayed",
+          "value": "OKFN"
+        },
+        {
+          "count": 1,
+          "name": "Office National des forêts",
+          "state": "displayed",
+          "value": "Office National des forêts"
+        },
+        {
+          "count": 1,
+          "name": "OpenAgenda",
+          "state": "displayed",
+          "value": "OpenAgenda"
+        },
+        {
+          "count": 1,
+          "name": "OpenCCAM",
+          "state": "displayed",
+          "value": "OpenCCAM"
+        },
+        {
+          "count": 1,
+          "name": "Ordnance Survey GB",
+          "state": "displayed",
+          "value": "Ordnance Survey GB"
+        },
+        {
+          "count": 1,
+          "name": "Pôle Emploi",
+          "state": "displayed",
+          "value": "Pôle Emploi"
+        },
+        {
+          "count": 1,
+          "name": "ShanghaiRanking Consultancy  (ARWU source), Myles O'Neill (kaggle source)",
+          "state": "displayed",
+          "value": "ShanghaiRanking Consultancy  (ARWU source), Myles O'Neill (kaggle source)"
+        },
+        {
+          "count": 1,
+          "name": "SimpleMaps",
+          "state": "displayed",
+          "value": "SimpleMaps"
+        },
+        {
+          "count": 1,
+          "name": "The World Bank",
+          "state": "displayed",
+          "value": "The World Bank"
+        },
+        {
+          "count": 1,
+          "name": "World Food Programme (UN agency)",
+          "state": "displayed",
+          "value": "World Food Programme (UN agency)"
+        },
+        {
+          "count": 1,
+          "name": "bpost",
+          "state": "displayed",
+          "value": "bpost"
+        },
+        {
+          "count": 1,
+          "name": "danfra, Mozilla Thunderbird",
+          "state": "displayed",
+          "value": "danfra, Mozilla Thunderbird"
+        },
+        {
+          "count": 1,
+          "name": "https://www.data.gouv.fr/fr/datasets/elections-municipales-2014-resultats-par-bureaux-de-vote/",
+          "state": "displayed",
+          "value": "https://www.data.gouv.fr/fr/datasets/elections-municipales-2014-resultats-par-bureaux-de-vote/"
+        },
+        {
+          "count": 1,
+          "name": "www.ideeslibres.org",
+          "state": "displayed",
+          "value": "www.ideeslibres.org"
+        }
+      ],
+      "name": "publisher"
+    },
+    {
+      "facets": [
+        {
+          "count": 59,
+          "name": "boundary",
+          "state": "displayed",
+          "value": "boundary"
+        },
+        {
+          "count": 59,
+          "name": "geography",
+          "state": "displayed",
+          "value": "geography"
+        },
+        {
+          "count": 59,
+          "name": "territory",
+          "state": "displayed",
+          "value": "territory"
+        },
+        {
+          "count": 51,
+          "name": "openstreetmap",
+          "state": "displayed",
+          "value": "openstreetmap"
+        },
+        {
+          "count": 51,
+          "name": "osm",
+          "state": "displayed",
+          "value": "osm"
+        },
+        {
+          "count": 36,
+          "name": "territoire",
+          "state": "displayed",
+          "value": "territoire"
+        },
+        {
+          "count": 33,
+          "name": "amenagement",
+          "state": "displayed",
+          "value": "amenagement"
+        },
+        {
+          "count": 31,
+          "name": "geographie",
+          "state": "displayed",
+          "value": "geographie"
+        },
+        {
+          "count": 27,
+          "name": "contour",
+          "state": "displayed",
+          "value": "contour"
+        },
+        {
+          "count": 27,
+          "name": "limite territoriale",
+          "state": "displayed",
+          "value": "limite territoriale"
+        },
+        {
+          "count": 27,
+          "name": "unite administrative",
+          "state": "displayed",
+          "value": "unite administrative"
+        },
+        {
+          "count": 24,
+          "name": "france",
+          "state": "displayed",
+          "value": "france"
+        },
+        {
+          "count": 17,
+          "name": "australia",
+          "state": "displayed",
+          "value": "australia"
+        },
+        {
+          "count": 17,
+          "name": "new zealand",
+          "state": "displayed",
+          "value": "new zealand"
+        },
+        {
+          "count": 14,
+          "name": "Great Britain",
+          "state": "displayed",
+          "value": "Great Britain"
+        },
+        {
+          "count": 14,
+          "name": "commune",
+          "state": "displayed",
+          "value": "commune"
+        },
+        {
+          "count": 14,
+          "name": "population",
+          "state": "displayed",
+          "value": "population"
+        },
+        {
+          "count": 14,
+          "name": "élections",
+          "state": "displayed",
+          "value": "élections"
+        },
+        {
+          "count": 13,
+          "name": "Population",
+          "state": "displayed",
+          "value": "Population"
+        },
+        {
+          "count": 12,
+          "name": "bureaux de vote",
+          "state": "displayed",
+          "value": "bureaux de vote"
+        },
+        {
+          "count": 12,
+          "name": "covid19",
+          "state": "displayed",
+          "value": "covid19"
+        },
+        {
+          "count": 11,
+          "name": "coronavirus",
+          "state": "displayed",
+          "value": "coronavirus"
+        },
+        {
+          "count": 11,
+          "name": "usa",
+          "state": "displayed",
+          "value": "usa"
+        },
+        {
+          "count": 10,
+          "name": "Schweiz",
+          "state": "displayed",
+          "value": "Schweiz"
+        },
+        {
+          "count": 10,
+          "name": "Suisse",
+          "state": "displayed",
+          "value": "Suisse"
+        },
+        {
+          "count": 9,
+          "name": "BKG",
+          "state": "displayed",
+          "value": "BKG"
+        },
+        {
+          "count": 9,
+          "name": "France",
+          "state": "displayed",
+          "value": "France"
+        },
+        {
+          "count": 9,
+          "name": "Germany",
+          "state": "displayed",
+          "value": "Germany"
+        },
+        {
+          "count": 9,
+          "name": "logement",
+          "state": "displayed",
+          "value": "logement"
+        },
+        {
+          "count": 9,
+          "name": "élection",
+          "state": "displayed",
+          "value": "élection"
+        },
+        {
+          "count": 8,
+          "name": "INSEE",
+          "state": "displayed",
+          "value": "INSEE"
+        },
+        {
+          "count": 8,
+          "name": "Verwaltungsgebiete",
+          "state": "displayed",
+          "value": "Verwaltungsgebiete"
+        },
+        {
+          "count": 8,
+          "name": "recensement",
+          "state": "displayed",
+          "value": "recensement"
+        },
+        {
+          "count": 7,
+          "name": "France ",
+          "state": "displayed",
+          "value": "France "
+        },
+        {
+          "count": 7,
+          "name": "démographie",
+          "state": "displayed",
+          "value": "démographie"
+        },
+        {
+          "count": 7,
+          "name": "parking",
+          "state": "displayed",
+          "value": "parking"
+        },
+        {
+          "count": 7,
+          "name": "transport",
+          "state": "displayed",
+          "value": "transport"
+        },
+        {
+          "count": 6,
+          "name": "Belgique",
+          "state": "displayed",
+          "value": "Belgique"
+        },
+        {
+          "count": 6,
+          "name": "Election",
+          "state": "displayed",
+          "value": "Election"
+        },
+        {
+          "count": 6,
+          "name": "Gemeinde",
+          "state": "displayed",
+          "value": "Gemeinde"
+        },
+        {
+          "count": 6,
+          "name": "INEGI",
+          "state": "displayed",
+          "value": "INEGI"
+        },
+        {
+          "count": 6,
+          "name": "Mexico",
+          "state": "displayed",
+          "value": "Mexico"
+        },
+        {
+          "count": 6,
+          "name": "Mobilité",
+          "state": "displayed",
+          "value": "Mobilité"
+        },
+        {
+          "count": 6,
+          "name": "Switzerland",
+          "state": "displayed",
+          "value": "Switzerland"
+        },
+        {
+          "count": 6,
+          "name": "construction ",
+          "state": "displayed",
+          "value": "construction "
+        },
+        {
+          "count": 6,
+          "name": "españa",
+          "state": "displayed",
+          "value": "españa"
+        },
+        {
+          "count": 6,
+          "name": "sit@del2 ",
+          "state": "displayed",
+          "value": "sit@del2 "
+        },
+        {
+          "count": 6,
+          "name": "sitadel ",
+          "state": "displayed",
+          "value": "sitadel "
+        },
+        {
+          "count": 6,
+          "name": "swisstopo",
+          "state": "displayed",
+          "value": "swisstopo"
+        },
+        {
+          "count": 5,
+          "name": "Totem",
+          "state": "displayed",
+          "value": "Totem"
+        },
+        {
+          "count": 5,
+          "name": "Wallonie",
+          "state": "displayed",
+          "value": "Wallonie"
+        },
+        {
+          "count": 5,
+          "name": "actifs",
+          "state": "displayed",
+          "value": "actifs"
+        },
+        {
+          "count": 5,
+          "name": "bureau de vote",
+          "state": "displayed",
+          "value": "bureau de vote"
+        },
+        {
+          "count": 5,
+          "name": "collectivités locales",
+          "state": "displayed",
+          "value": "collectivités locales"
+        },
+        {
+          "count": 5,
+          "name": "comptabilité",
+          "state": "displayed",
+          "value": "comptabilité"
+        },
+        {
+          "count": 5,
+          "name": "county",
+          "state": "displayed",
+          "value": "county"
+        },
+        {
+          "count": 5,
+          "name": "nomenclature des actes budgétaires",
+          "state": "displayed",
+          "value": "nomenclature des actes budgétaires"
+        },
+        {
+          "count": 5,
+          "name": "plan de comptes",
+          "state": "displayed",
+          "value": "plan de comptes"
+        },
+        {
+          "count": 4,
+          "name": "2019",
+          "state": "displayed",
+          "value": "2019"
+        },
+        {
+          "count": 4,
+          "name": "2022",
+          "state": "displayed",
+          "value": "2022"
+        },
+        {
+          "count": 4,
+          "name": "Bezirk",
+          "state": "displayed",
+          "value": "Bezirk"
+        },
+        {
+          "count": 4,
+          "name": "Commune",
+          "state": "displayed",
+          "value": "Commune"
+        },
+        {
+          "count": 4,
+          "name": "Lantmateriet",
+          "state": "displayed",
+          "value": "Lantmateriet"
+        },
+        {
+          "count": 4,
+          "name": "Postleitzahlen",
+          "state": "displayed",
+          "value": "Postleitzahlen"
+        },
+        {
+          "count": 4,
+          "name": "Recensement",
+          "state": "displayed",
+          "value": "Recensement"
+        },
+        {
+          "count": 4,
+          "name": "Tourisme",
+          "state": "displayed",
+          "value": "Tourisme"
+        },
+        {
+          "count": 4,
+          "name": "Travail",
+          "state": "displayed",
+          "value": "Travail"
+        },
+        {
+          "count": 4,
+          "name": "administration",
+          "state": "displayed",
+          "value": "administration"
+        },
+        {
+          "count": 4,
+          "name": "bpe",
+          "state": "displayed",
+          "value": "bpe"
+        },
+        {
+          "count": 4,
+          "name": "canton",
+          "state": "displayed",
+          "value": "canton"
+        },
+        {
+          "count": 4,
+          "name": "chômage",
+          "state": "displayed",
+          "value": "chômage"
+        },
+        {
+          "count": 4,
+          "name": "codes postaux",
+          "state": "displayed",
+          "value": "codes postaux"
+        },
+        {
+          "count": 4,
+          "name": "données carroyées",
+          "state": "displayed",
+          "value": "données carroyées"
+        },
+        {
+          "count": 4,
+          "name": "election",
+          "state": "displayed",
+          "value": "election"
+        },
+        {
+          "count": 4,
+          "name": "entreprise ",
+          "state": "displayed",
+          "value": "entreprise "
+        },
+        {
+          "count": 4,
+          "name": "equipement",
+          "state": "displayed",
+          "value": "equipement"
+        },
+        {
+          "count": 4,
+          "name": "immobilier",
+          "state": "displayed",
+          "value": "immobilier"
+        },
+        {
+          "count": 4,
+          "name": "kadaster",
+          "state": "displayed",
+          "value": "kadaster"
+        },
+        {
+          "count": 4,
+          "name": "logements",
+          "state": "displayed",
+          "value": "logements"
+        },
+        {
+          "count": 4,
+          "name": "municipio",
+          "state": "displayed",
+          "value": "municipio"
+        },
+        {
+          "count": 4,
+          "name": "ménages",
+          "state": "displayed",
+          "value": "ménages"
+        },
+        {
+          "count": 4,
+          "name": "numéro postal d’adressage",
+          "state": "displayed",
+          "value": "numéro postal d’adressage"
+        },
+        {
+          "count": 4,
+          "name": "population active",
+          "state": "displayed",
+          "value": "population active"
+        },
+        {
+          "count": 4,
+          "name": "postal code",
+          "state": "displayed",
+          "value": "postal code"
+        },
+        {
+          "count": 4,
+          "name": "province",
+          "state": "displayed",
+          "value": "province"
+        },
+        {
+          "count": 4,
+          "name": "provincie",
+          "state": "displayed",
+          "value": "provincie"
+        },
+        {
+          "count": 4,
+          "name": "region",
+          "state": "displayed",
+          "value": "region"
+        },
+        {
+          "count": 4,
+          "name": "région",
+          "state": "displayed",
+          "value": "région"
+        },
+        {
+          "count": 4,
+          "name": "sport",
+          "state": "displayed",
+          "value": "sport"
+        },
+        {
+          "count": 4,
+          "name": "state",
+          "state": "displayed",
+          "value": "state"
+        },
+        {
+          "count": 4,
+          "name": "tourism",
+          "state": "displayed",
+          "value": "tourism"
+        },
+        {
+          "count": 4,
+          "name": "épidémie",
+          "state": "displayed",
+          "value": "épidémie"
+        },
+        {
+          "count": 3,
+          "name": "BD Topo",
+          "state": "displayed",
+          "value": "BD Topo"
+        },
+        {
+          "count": 3,
+          "name": "Boundaries",
+          "state": "displayed",
+          "value": "Boundaries"
+        },
+        {
+          "count": 3,
+          "name": "Countries",
+          "state": "displayed",
+          "value": "Countries"
+        },
+        {
+          "count": 3,
+          "name": "La Poste",
+          "state": "displayed",
+          "value": "La Poste"
+        },
+        {
+          "count": 3,
+          "name": "Region",
+          "state": "displayed",
+          "value": "Region"
+        },
+        {
+          "count": 3,
+          "name": "Service public",
+          "state": "displayed",
+          "value": "Service public"
+        },
+        {
+          "count": 3,
+          "name": "Shape",
+          "state": "displayed",
+          "value": "Shape"
+        },
+        {
+          "count": 3,
+          "name": "accessibilité",
+          "state": "displayed",
+          "value": "accessibilité"
+        },
+        {
+          "count": 3,
+          "name": "adsl",
+          "state": "displayed",
+          "value": "adsl"
+        },
+        {
+          "count": 3,
+          "name": "alerte",
+          "state": "displayed",
+          "value": "alerte"
+        },
+        {
+          "count": 3,
+          "name": "borne",
+          "state": "displayed",
+          "value": "borne"
+        },
+        {
+          "count": 3,
+          "name": "cable",
+          "state": "displayed",
+          "value": "cable"
+        },
+        {
+          "count": 3,
+          "name": "country",
+          "state": "displayed",
+          "value": "country"
+        },
+        {
+          "count": 3,
+          "name": "culture",
+          "state": "displayed",
+          "value": "culture"
+        },
+        {
+          "count": 3,
+          "name": "debit",
+          "state": "displayed",
+          "value": "debit"
+        },
+        {
+          "count": 3,
+          "name": "demographie",
+          "state": "displayed",
+          "value": "demographie"
+        },
+        {
+          "count": 3,
+          "name": "deploiement",
+          "state": "displayed",
+          "value": "deploiement"
+        },
+        {
+          "count": 3,
+          "name": "district",
+          "state": "displayed",
+          "value": "district"
+        },
+        {
+          "count": 3,
+          "name": "département",
+          "state": "displayed",
+          "value": "département"
+        },
+        {
+          "count": 3,
+          "name": "déplacements",
+          "state": "displayed",
+          "value": "déplacements"
+        },
+        {
+          "count": 3,
+          "name": "emploi",
+          "state": "displayed",
+          "value": "emploi"
+        },
+        {
+          "count": 3,
+          "name": "fibre",
+          "state": "displayed",
+          "value": "fibre"
+        },
+        {
+          "count": 3,
+          "name": "fibre-optique",
+          "state": "displayed",
+          "value": "fibre-optique"
+        },
+        {
+          "count": 3,
+          "name": "fonds",
+          "state": "displayed",
+          "value": "fonds"
+        },
+        {
+          "count": 3,
+          "name": "ftth",
+          "state": "displayed",
+          "value": "ftth"
+        },
+        {
+          "count": 3,
+          "name": "haut-debit",
+          "state": "displayed",
+          "value": "haut-debit"
+        },
+        {
+          "count": 3,
+          "name": "meteo",
+          "state": "displayed",
+          "value": "meteo"
+        },
+        {
+          "count": 3,
+          "name": "monument",
+          "state": "displayed",
+          "value": "monument"
+        },
+        {
+          "count": 3,
+          "name": "municipale ",
+          "state": "displayed",
+          "value": "municipale "
+        },
+        {
+          "count": 3,
+          "name": "pandémie",
+          "state": "displayed",
+          "value": "pandémie"
+        },
+        {
+          "count": 3,
+          "name": "parcelle",
+          "state": "displayed",
+          "value": "parcelle"
+        },
+        {
+          "count": 3,
+          "name": "personne morale",
+          "state": "displayed",
+          "value": "personne morale"
+        },
+        {
+          "count": 3,
+          "name": "pme",
+          "state": "displayed",
+          "value": "pme"
+        },
+        {
+          "count": 3,
+          "name": "présidentielle",
+          "state": "displayed",
+          "value": "présidentielle"
+        },
+        {
+          "count": 3,
+          "name": "public",
+          "state": "displayed",
+          "value": "public"
+        },
+        {
+          "count": 3,
+          "name": "restaurant",
+          "state": "displayed",
+          "value": "restaurant"
+        },
+        {
+          "count": 3,
+          "name": "régionales",
+          "state": "displayed",
+          "value": "régionales"
+        },
+        {
+          "count": 3,
+          "name": "santé",
+          "state": "displayed",
+          "value": "santé"
+        },
+        {
+          "count": 3,
+          "name": "service",
+          "state": "displayed",
+          "value": "service"
+        },
+        {
+          "count": 3,
+          "name": "solidarité",
+          "state": "displayed",
+          "value": "solidarité"
+        },
+        {
+          "count": 3,
+          "name": "subvention",
+          "state": "displayed",
+          "value": "subvention"
+        },
+        {
+          "count": 3,
+          "name": "tpe",
+          "state": "displayed",
+          "value": "tpe"
+        },
+        {
+          "count": 3,
+          "name": "world",
+          "state": "displayed",
+          "value": "world"
+        },
+        {
+          "count": 2,
+          "name": "2010",
+          "state": "displayed",
+          "value": "2010"
+        },
+        {
+          "count": 2,
+          "name": "2015",
+          "state": "displayed",
+          "value": "2015"
+        },
+        {
+          "count": 2,
+          "name": "2016",
+          "state": "displayed",
+          "value": "2016"
+        },
+        {
+          "count": 2,
+          "name": "2017",
+          "state": "displayed",
+          "value": "2017"
+        },
+        {
+          "count": 2,
+          "name": "2G",
+          "state": "displayed",
+          "value": "2G"
+        },
+        {
+          "count": 2,
+          "name": "3G",
+          "state": "displayed",
+          "value": "3G"
+        },
+        {
+          "count": 2,
+          "name": "4G",
+          "state": "displayed",
+          "value": "4G"
+        },
+        {
+          "count": 2,
+          "name": "Accidents",
+          "state": "displayed",
+          "value": "Accidents"
+        },
+        {
+          "count": 2,
+          "name": "Activité",
+          "state": "displayed",
+          "value": "Activité"
+        },
+        {
+          "count": 2,
+          "name": "Air Pollution",
+          "state": "displayed",
+          "value": "Air Pollution"
+        },
+        {
+          "count": 2,
+          "name": "Air Quality",
+          "state": "displayed",
+          "value": "Air Quality"
+        },
+        {
+          "count": 2,
+          "name": "Annuaire",
+          "state": "displayed",
+          "value": "Annuaire"
+        },
+        {
+          "count": 2,
+          "name": "Athlétisme",
+          "state": "displayed",
+          "value": "Athlétisme"
+        },
+        {
+          "count": 2,
+          "name": "Baignade",
+          "state": "displayed",
+          "value": "Baignade"
+        },
+        {
+          "count": 2,
+          "name": "Batiments",
+          "state": "displayed",
+          "value": "Batiments"
+        },
+        {
+          "count": 2,
+          "name": "Boulodrome",
+          "state": "displayed",
+          "value": "Boulodrome"
+        },
+        {
+          "count": 2,
+          "name": "Bowling",
+          "state": "displayed",
+          "value": "Bowling"
+        },
+        {
+          "count": 2,
+          "name": "Bundesland",
+          "state": "displayed",
+          "value": "Bundesland"
+        },
+        {
+          "count": 2,
+          "name": "Bundesländer",
+          "state": "displayed",
+          "value": "Bundesländer"
+        },
+        {
+          "count": 2,
+          "name": "CCAM",
+          "state": "displayed",
+          "value": "CCAM"
+        },
+        {
+          "count": 2,
+          "name": "CO2",
+          "state": "displayed",
+          "value": "CO2"
+        },
+        {
+          "count": 2,
+          "name": "Carburant",
+          "state": "displayed",
+          "value": "Carburant"
+        },
+        {
+          "count": 2,
+          "name": "Centre de santé",
+          "state": "displayed",
+          "value": "Centre de santé"
+        },
+        {
+          "count": 2,
+          "name": "Cinéma",
+          "state": "displayed",
+          "value": "Cinéma"
+        },
+        {
+          "count": 2,
+          "name": "Code INSEE",
+          "state": "displayed",
+          "value": "Code INSEE"
+        },
+        {
+          "count": 2,
+          "name": "Code postal",
+          "state": "displayed",
+          "value": "Code postal"
+        },
+        {
+          "count": 2,
+          "name": "Combat",
+          "state": "displayed",
+          "value": "Combat"
+        },
+        {
+          "count": 2,
+          "name": "Communes",
+          "state": "displayed",
+          "value": "Communes"
+        },
+        {
+          "count": 2,
+          "name": "Construction",
+          "state": "displayed",
+          "value": "Construction"
+        },
+        {
+          "count": 2,
+          "name": "Cyclisme",
+          "state": "displayed",
+          "value": "Cyclisme"
+        },
+        {
+          "count": 2,
+          "name": "DPE",
+          "state": "displayed",
+          "value": "DPE"
+        },
+        {
+          "count": 2,
+          "name": "Deelgemeente",
+          "state": "displayed",
+          "value": "Deelgemeente"
+        },
+        {
+          "count": 2,
+          "name": "Déchets",
+          "state": "displayed",
+          "value": "Déchets"
+        },
+        {
+          "count": 2,
+          "name": "Décès",
+          "state": "displayed",
+          "value": "Décès"
+        },
+        {
+          "count": 2,
+          "name": "EHPAD",
+          "state": "displayed",
+          "value": "EHPAD"
+        },
+        {
+          "count": 2,
+          "name": "Eau",
+          "state": "displayed",
+          "value": "Eau"
+        },
+        {
+          "count": 2,
+          "name": "Elections",
+          "state": "displayed",
+          "value": "Elections"
+        },
+        {
+          "count": 2,
+          "name": "Environment",
+          "state": "displayed",
+          "value": "Environment"
+        },
+        {
+          "count": 2,
+          "name": "Environmental",
+          "state": "displayed",
+          "value": "Environmental"
+        },
+        {
+          "count": 2,
+          "name": "Equipements",
+          "state": "displayed",
+          "value": "Equipements"
+        },
+        {
+          "count": 2,
+          "name": "Equitation",
+          "state": "displayed",
+          "value": "Equitation"
+        },
+        {
+          "count": 2,
+          "name": "Gemeente",
+          "state": "displayed",
+          "value": "Gemeente"
+        },
+        {
+          "count": 2,
+          "name": "Golf",
+          "state": "displayed",
+          "value": "Golf"
+        },
+        {
+          "count": 2,
+          "name": "Hoheitsgebiet",
+          "state": "displayed",
+          "value": "Hoheitsgebiet"
+        },
+        {
+          "count": 2,
+          "name": "Hydrographie",
+          "state": "displayed",
+          "value": "Hydrographie"
+        },
+        {
+          "count": 2,
+          "name": "Hôpitaux",
+          "state": "displayed",
+          "value": "Hôpitaux"
+        },
+        {
+          "count": 2,
+          "name": "IGP",
+          "state": "displayed",
+          "value": "IGP"
+        },
+        {
+          "count": 2,
+          "name": "IPC",
+          "state": "displayed",
+          "value": "IPC"
+        },
+        {
+          "count": 2,
+          "name": "ISO-3 code",
+          "state": "displayed",
+          "value": "ISO-3 code"
+        },
+        {
+          "count": 2,
+          "name": "Indice des prix à la consommation",
+          "state": "displayed",
+          "value": "Indice des prix à la consommation"
+        },
+        {
+          "count": 2,
+          "name": "Insee",
+          "state": "displayed",
+          "value": "Insee"
+        },
+        {
+          "count": 2,
+          "name": "Kanton",
+          "state": "displayed",
+          "value": "Kanton"
+        },
+        {
+          "count": 2,
+          "name": "Kommunanz",
+          "state": "displayed",
+          "value": "Kommunanz"
+        },
+        {
+          "count": 2,
+          "name": "Kreis",
+          "state": "displayed",
+          "value": "Kreis"
+        },
+        {
+          "count": 2,
+          "name": "Kreise",
+          "state": "displayed",
+          "value": "Kreise"
+        },
+        {
+          "count": 2,
+          "name": "Laboratoire d’analyses",
+          "state": "displayed",
+          "value": "Laboratoire d’analyses"
+        },
+        {
+          "count": 2,
+          "name": "Laboratoire médical",
+          "state": "displayed",
+          "value": "Laboratoire médical"
+        },
+        {
+          "count": 2,
+          "name": "Land",
+          "state": "displayed",
+          "value": "Land"
+        },
+        {
+          "count": 2,
+          "name": "Localisation",
+          "state": "displayed",
+          "value": "Localisation"
+        },
+        {
+          "count": 2,
+          "name": "Logement",
+          "state": "displayed",
+          "value": "Logement"
+        },
+        {
+          "count": 2,
+          "name": "Länder",
+          "state": "displayed",
+          "value": "Länder"
+        },
+        {
+          "count": 2,
+          "name": "Législatives",
+          "state": "displayed",
+          "value": "Législatives"
+        },
+        {
+          "count": 2,
+          "name": "Multisports",
+          "state": "displayed",
+          "value": "Multisports"
+        },
+        {
+          "count": 2,
+          "name": "NAF",
+          "state": "displayed",
+          "value": "NAF"
+        },
+        {
+          "count": 2,
+          "name": "Naissances",
+          "state": "displayed",
+          "value": "Naissances"
+        }
+      ],
+      "name": "keyword"
+    },
+    {
+      "facets": [
+        {
+          "count": 139,
+          "name": "Geography",
+          "state": "displayed",
+          "value": "Geography"
+        },
+        {
+          "count": 99,
+          "name": "Territory",
+          "state": "displayed",
+          "value": "Territory"
+        },
+        {
+          "count": 59,
+          "name": "Administration",
+          "state": "displayed",
+          "value": "Administration"
+        },
+        {
+          "count": 43,
+          "name": "Economy",
+          "state": "displayed",
+          "value": "Economy"
+        },
+        {
+          "count": 23,
+          "name": "Health",
+          "state": "displayed",
+          "value": "Health"
+        },
+        {
+          "count": 22,
+          "name": "Environment",
+          "state": "displayed",
+          "value": "Environment"
+        },
+        {
+          "count": 20,
+          "name": "Demography",
+          "state": "displayed",
+          "value": "Demography"
+        },
+        {
+          "count": 17,
+          "name": "Mobility",
+          "state": "displayed",
+          "value": "Mobility"
+        },
+        {
+          "count": 3,
+          "name": "Education",
+          "state": "displayed",
+          "value": "Education"
+        },
+        {
+          "count": 1,
+          "name": "Weather",
+          "state": "displayed",
+          "value": "Weather"
+        }
+      ],
+      "name": "theme"
+    },
+    {
+      "facets": [
+        {
+          "count": 235,
+          "name": "fr",
+          "state": "displayed",
+          "value": "fr"
+        },
+        {
+          "count": 144,
+          "name": "en",
+          "state": "displayed",
+          "value": "en"
+        },
+        {
+          "count": 9,
+          "name": "de",
+          "state": "displayed",
+          "value": "de"
+        },
+        {
+          "count": 6,
+          "name": "es",
+          "state": "displayed",
+          "value": "es"
+        },
+        {
+          "count": 5,
+          "name": "nl",
+          "state": "displayed",
+          "value": "nl"
+        },
+        {
+          "count": 5,
+          "name": "sv",
+          "state": "displayed",
+          "value": "sv"
+        },
+        {
+          "count": 4,
+          "name": "he",
+          "state": "displayed",
+          "value": "he"
+        }
+      ],
+      "name": "language"
+    },
+    {
+      "facets": [
+        {
+          "count": 218,
+          "name": "true",
+          "state": "displayed",
+          "value": "true"
+        },
+        {
+          "count": 153,
+          "name": "false",
+          "state": "displayed",
+          "value": "false"
+        }
+      ],
+      "name": "custom.referential"
+    },
+    {
+      "facets": [
+        {
+          "count": 8,
+          "name": "false",
+          "state": "displayed",
+          "value": "false"
+        }
+      ],
+      "name": "custom.depreciated"
+    },
+    {
+      "facets": [],
+      "name": "dublin-core.available_end"
+    }
+  ],
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/facets",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog",
+      "rel": "source"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: fastly
+family: audit_events
+case: list_audit_events
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFastlyFamilies
+request:
+    method: GET
+    url: https://api.fastly.com/events?page%5Bnumber%5D=1&page%5Bsize%5D=1
+response:
+    status: 200
+    content_type: application/vnd.api+json
+    captured_at: "2021-11-03T16:38:53Z"
+    sha256: 362ba85b9d4eca605b40109453d3486605d7b4c8bfde69317976b1dcb08ee9a4
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].attributes.customer_id
+        - $.data[0].attributes.description
+        - $.data[0].attributes.ip
+        - $.data[0].attributes.metadata.new.name
+        - $.data[0].attributes.metadata.new.pipeline
+        - $.data[0].attributes.metadata.old.name
+        - $.data[0].attributes.metadata.old.pipeline
+        - $.data[0].attributes.service_id
+        - $.data[0].attributes.user_id
+        - $.data[0].id
+        - $.links.last
+        - $.links.next
+origin:
+    type: upstream_recording
+    repository: https://github.com/fastly/go-fastly
+    commit: 78fb7b82729c728e8cbaa43e40cf41fbac782d4c
+    path: fastly/fixtures/events/get_events.yaml
+    artifact_sha256: 8d419a2acf4b529263abd1b54d507b590a3cf5d6be259c2f7cde903fdd87d5c2
+    license: Apache-2.0
+    recording_tool: go-vcr-v1
+    harness_path: fastly/fastly_test_utils.go
+    freshness: current
+    capture_time_basis: response_header

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/writer/cerebro/internal/deviceauth/attestation"
@@ -231,11 +232,12 @@ const (
 // devices, bootstrap tokens, and refresh tokens, and is the only entry point
 // the HTTP layer should call.
 type Service struct {
-	cfg      ServiceConfig
-	store    Store
-	issuer   *JWTIssuer
-	verifier *JWTVerifier
-	keyset   *KeySet
+	cfg         ServiceConfig
+	store       Store
+	issuer      *JWTIssuer
+	verifier    *JWTVerifier
+	keyset      *KeySet
+	ingestLocks [64]sync.Mutex
 }
 
 // NewService constructs a service.
@@ -769,12 +771,14 @@ func filterAllowedBootstrapDeviceScopes(scopes []string) []string {
 }
 
 // IngestPayload represents a single telemetry submission. Body is the raw
-// JSON received from the agent; the service does not parse the contents -- a
-// downstream pipeline normalizes telemetry into Source CDK events.
+// JSON received from the agent. Persist, when configured, commits the
+// normalized events before the accepted response is cached. A failed commit
+// therefore remains retryable with the same idempotency key.
 type IngestPayload struct {
 	DeviceID       string
 	IdempotencyKey string
 	Body           []byte
+	Persist        func(context.Context) error
 }
 
 // IngestResult is the outcome of [Service.IngestTelemetry].
@@ -814,6 +818,14 @@ func (s *Service) IngestTelemetry(ctx context.Context, payload IngestPayload) (I
 	now := s.cfg.Now().UTC()
 	cacheKey := "device:" + deviceID + ":" + idempotencyKey
 	requestHash := sha256.Sum256(payload.Body)
+	// Device auth is intentionally limited to one serving replica while DPoP
+	// replay state is process-local. Stripe the same process boundary by cache
+	// key so concurrent retries cannot both cross the persistence side effect
+	// before the accepted response is cached.
+	lockHash := sha256.Sum256([]byte(cacheKey))
+	lock := &s.ingestLocks[int(lockHash[0])%len(s.ingestLocks)]
+	lock.Lock()
+	defer lock.Unlock()
 	cached, status, err := s.store.CheckIdempotency(ctx, cacheKey, requestHash)
 	if err != nil {
 		return IngestResult{}, err
@@ -823,6 +835,11 @@ func (s *Service) IngestTelemetry(ctx context.Context, payload IngestPayload) (I
 	}
 	if err := s.store.MarkSeen(ctx, deviceID, now); err != nil {
 		return IngestResult{}, fmt.Errorf("deviceauth: mark seen: %w", err)
+	}
+	if payload.Persist != nil {
+		if err := payload.Persist(ctx); err != nil {
+			return IngestResult{}, fmt.Errorf("deviceauth: persist telemetry: %w", err)
+		}
 	}
 	receipt := fmt.Sprintf(`{"status":"accepted","device_id":%q,"received_at":%q,"bytes":%d}`, deviceID, now.Format(time.RFC3339Nano), len(payload.Body))
 	body := []byte(receipt)

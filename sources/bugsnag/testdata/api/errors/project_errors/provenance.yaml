@@ -1,0 +1,36 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: bugsnag
+family: errors
+case: project_errors
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedBugsnagFamilies
+request:
+    method: GET
+    url: https://api.bugsnag.com/projects/example-project/errors
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2017-12-12T11:55:03Z"
+    sha256: f409e4fefb8a562f4bb2d86aba2eb4d44921dfccc927844cb09637a74548cc06
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].context
+        - $[0].grouping_fields.errorClass
+        - $[0].grouping_fields.file
+        - $[0].grouping_fields.lineNumber
+        - $[0].id
+        - $[0].project_id
+        - $[0].project_url
+        - $[0].url
+origin:
+    type: upstream_recording
+    repository: https://github.com/bugsnag/bugsnag-api-ruby
+    commit: a743f527b7ca123954924a94eeb544acea13ca38
+    path: spec/cassettes/Bugsnag_Api_Client_Errors/_errors/returns_errors_on_the_project.yml
+    artifact_sha256: 5db936d2e18c9b875daf5291904ba2b5e24ddf6f51f43688df3315d551a806bb
+    license: MIT
+    recording_tool: VCR
+    harness_path: spec/spec_helper.rb
+    freshness: historical
+    capture_time_basis: recorded_at

@@ -1,0 +1,13 @@
+[
+  {
+    "acl_id": "ZrUVueq9LBIL0WuBHzU2Q4",
+    "comment": "example-9fb6a467",
+    "created_at": "2023-11-28T16:36:30Z",
+    "id": "example-4e4bfa60",
+    "ip": "10.0.0.3",
+    "negated": "0",
+    "service_id": "oW70YCrn5btjFLVUQ1ewJ3",
+    "subnet": 8,
+    "updated_at": "2023-11-28T16:36:30Z"
+  }
+]

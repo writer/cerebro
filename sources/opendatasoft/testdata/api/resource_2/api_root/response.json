@@ -1,0 +1,20 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog",
+      "rel": "catalog"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/monitoring",
+      "rel": "monitoring"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/opendatasoft",
+      "rel": "opendatasoft"
+    }
+  ]
+}

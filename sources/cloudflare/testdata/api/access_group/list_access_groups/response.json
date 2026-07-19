@@ -1,0 +1,30 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "created_at": "2025-03-18T21:12:24Z",
+      "exclude": [],
+      "id": "example-7d51c5b3",
+      "include": [
+        {
+          "email_list": {
+            "id": "example-6080367b"
+          }
+        }
+      ],
+      "name": "kskryelbix",
+      "require": [],
+      "uid": "example-7d51c5b3",
+      "updated_at": "2025-03-18T21:12:24Z"
+    }
+  ],
+  "result_info": {
+    "count": 1,
+    "page": 1,
+    "per_page": 1000,
+    "total_count": 1,
+    "total_pages": 1
+  },
+  "success": true
+}

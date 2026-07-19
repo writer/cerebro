@@ -1,0 +1,18 @@
+{
+  "name": "cerebro-agent-receipts",
+  "version": "0.1.0+codex.20260716115516",
+  "description": "Monitor local coding-agent activity, adapter drift, executable identity, and unmatched provider events.",
+  "author": {
+    "name": "Writer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cerebro Shield",
+    "shortDescription": "Monitor agent activity and adapter drift on this Mac.",
+    "longDescription": "Cerebro Shield keeps supported coding-agent adapters current, records chained local execution evidence, inventories executable identity, and reports provider activity without a one-to-one action match.",
+    "developerName": "Writer",
+    "category": "Security",
+    "capabilities": [],
+    "defaultPrompt": "Show agent coverage, integrity incidents, and provider changes without an action match."
+  }
+}

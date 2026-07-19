@@ -42,6 +42,95 @@ version: 2
 			wantBasis:  "recorded_at",
 			wantRecord: "event-1",
 		},
+		{
+			name: "pytest recording yaml",
+			artifact: `interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/models
+  response:
+    content: '{"results":[{"name":"model-1"}]}'
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 14:00:00 GMT']
+    status_code: 200
+version: 1
+`,
+			wantURL:    "https://api.example.test/v1/models",
+			wantTime:   "2026-07-18T14:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "model-1",
+		},
+		{
+			name:       "exvcr json interaction array",
+			artifact:   `[{"request":{"method":"get","url":"https://api.example.test/v1/lists"},"response":{"body":"{\"lists\":[{\"id\":\"list-1\"}]}","headers":{"Content-Type":"application/json","Date":"Sat, 18 Jul 2026 15:00:00 GMT"},"status_code":200}}]`,
+			wantURL:    "https://api.example.test/v1/lists",
+			wantTime:   "2026-07-18T15:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "list-1",
+		},
+		{
+			name: "ruby vcr yaml binary body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/binary-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 16:00:00 GMT']
+    body:
+      string: !!binary eyJpdGVtcyI6W3siaWQiOiJiaW5hcnktMSJ9XX0=
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/binary-items",
+			wantTime:   "2026-07-18T16:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "binary-1",
+		},
+		{
+			name: "ruby vcr yaml custom binary body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/custom-binary-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 17:00:00 GMT']
+    body:
+      string: !binary eyJpdGVtcyI6W3siaWQiOiJjdXN0b20tYmluYXJ5LTEifV19
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/custom-binary-items",
+			wantTime:   "2026-07-18T17:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "custom-binary-1",
+		},
+		{
+			name: "ruby vcr yaml custom binary scalar body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/custom-binary-scalar-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 18:00:00 GMT']
+    body: !binary eyJpdGVtcyI6W3siaWQiOiJjdXN0b20tYmluYXJ5LXNjYWxhci0xIn1dfQ==
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/custom-binary-scalar-items",
+			wantTime:   "2026-07-18T18:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "custom-binary-scalar-1",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

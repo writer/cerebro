@@ -1,0 +1,66 @@
+name: Portable Consumer Chain
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/portable-consumer-chain.yml
+      - api/openapi.yaml
+      - schemas/agent-service-lifecycle*.json
+      - schemas/product-release*.json
+      - internal/agentplatform/**
+      - tools/agentlifecyclegen/**
+      - tools/openapitsgen/**
+      - sdk/typescript/**
+      - apps/web/**
+      - apps/slack-companion/**
+      - package.json
+      - package-lock.json
+      - scripts/release/product_release.py
+      - scripts/release/verify_portable_consumer_chain.sh
+      - tools/archtests/portable_consumer_chain_test.go
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/portable-consumer-chain.yml
+      - api/openapi.yaml
+      - schemas/agent-service-lifecycle*.json
+      - schemas/product-release*.json
+      - internal/agentplatform/**
+      - tools/agentlifecyclegen/**
+      - tools/openapitsgen/**
+      - sdk/typescript/**
+      - apps/web/**
+      - apps/slack-companion/**
+      - package.json
+      - package-lock.json
+      - scripts/release/product_release.py
+      - scripts/release/verify_portable_consumer_chain.sh
+      - tools/archtests/portable_consumer_chain_test.go
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-consumer-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify portable contract consumers and release inputs
+        run: scripts/release/verify_portable_consumer_chain.sh

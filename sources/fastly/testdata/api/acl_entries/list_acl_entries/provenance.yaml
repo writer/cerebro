@@ -1,0 +1,30 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: fastly
+family: acl_entries
+case: list_acl_entries
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFastlyFamilies
+request:
+    method: GET
+    url: https://api.fastly.com/service/oW70YCrn5btjFLVUQ1ewJ3/acl/ZrUVueq9LBIL0WuBHzU2Q4/entries?direction=descend&page=1&per_page=100&sort=created
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2023-11-28T16:36:30Z"
+    sha256: a70dd03bbdb2e3d16d6f603b7d0e9e7c5579d2ae09f1e32f5fbac6e4a44538fc
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].comment
+        - $[0].id
+origin:
+    type: upstream_recording
+    repository: https://github.com/fastly/go-fastly
+    commit: 78fb7b82729c728e8cbaa43e40cf41fbac782d4c
+    path: fastly/fixtures/acl_entries/list.yaml
+    artifact_sha256: 93aab6669a1b25fba5cc98ede8fae348865a15d92e4840a39a9efa1f3bc94074
+    license: Apache-2.0
+    recording_tool: go-vcr-v1
+    harness_path: fastly/fastly_test_utils.go
+    freshness: current
+    capture_time_basis: response_header

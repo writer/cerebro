@@ -1,0 +1,36 @@
+[
+  {
+    "assigned_collaborator_id": null,
+    "comment_count": 14,
+    "context": "example-f48fc8ef",
+    "created_issue": {},
+    "error_class": "RuntimeError",
+    "events": 475,
+    "first_seen": "2017-12-12T10:58:50.000Z",
+    "first_seen_unfiltered": "2017-12-12T10:58:50.000Z",
+    "grouping_fields": {
+      "errorClass": "example-b9c1f4c6",
+      "file": "example-ba38cd4c",
+      "lineNumber": 0
+    },
+    "grouping_reason": "frame-inner",
+    "id": "example-b351c6b8",
+    "last_seen": "2017-12-12T10:58:55.000Z",
+    "last_seen_unfiltered": "2017-12-12T10:58:55.648Z",
+    "message": "Error",
+    "missing_dsyms": [],
+    "original_severity": "warning",
+    "overridden_severity": null,
+    "project_id": "example-7064a19b",
+    "project_url": "example-50ee5eb3",
+    "release_stages": [
+      "production"
+    ],
+    "reopen_rules": null,
+    "severity": "warning",
+    "status": "fixed",
+    "unthrottled_occurrence_count": 475,
+    "url": "example-ae977d07",
+    "users": 0
+  }
+]

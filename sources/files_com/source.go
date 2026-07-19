@@ -19,8 +19,8 @@ const (
 	defaultFamily                        = familyExternalEvent
 	defaultHealthPath                    = "/external_events"
 	defaultBaseURLTemplate               = "https://app.files.com/api/rest/v1"
-	tokenHeader                          = ""
-	tokenScheme                          = "Token"
+	tokenHeader                          = "X-FilesAPI-Key"
+	tokenScheme                          = ""
 	familyExternalEvent                  = "external_event"
 	familyApiKey                         = "api_key"
 	familyGroup                          = "group"
@@ -129,8 +129,12 @@ func New() (*Source, error) {
 				CursorParam:      "cursor",
 				PageSizeParams:   []string{"per_page"},
 				TimestampKeys:    []string{"when", "observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "username|actor_name|actor.name|user.name", "event_type": "action|event_type|event_name|type|interface", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "username|display", "observed_at": "when|observed_at|updated_at|last_seen_at", "outcome_result": "failure_type", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id|path|destination", "resource_name": "resource_name|target_name|target.name|resource.name|object_name|path|display|destination", "resource_type": "interface|resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "source_ip": "source_ip|ip", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "login", "source_system": "files_com"},
+				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "username|actor_name|actor.name|user.name", "event_type": "action|event_type|event_name|type|interface", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "username|display|user_id", "observed_at": "when|observed_at|updated_at|last_seen_at", "outcome_result": "failure_type", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id|path|destination|user_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name|path|display|destination|username|user_id", "resource_type": "interface|resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "source_ip": "source_ip|ip", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"event_type": "login", "record_class": "audit_event", "resource_type": "identity_login", "schema": "login", "source_system": "files_com"},
+				Config: jsonapi.FamilyConfig{ConfigQuery: map[string]string{
+					"end_at":   "end_at",
+					"start_at": "start_at",
+				}, ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
 			},
 			{
 				Name:             familySiteApiKey,
@@ -186,6 +190,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "suspended": "disabled|suspended", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "resource_type": "user", "schema": "user", "source_system": "files_com"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
 			},
 		},
 	})

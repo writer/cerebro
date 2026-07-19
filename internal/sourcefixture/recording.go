@@ -47,11 +47,14 @@ type vcrInteraction struct {
 	} `yaml:"request"`
 	Response struct {
 		Code       int            `yaml:"code"`
+		StatusCode int            `yaml:"status_code"`
 		Status     vcrStatus      `yaml:"status"`
 		Headers    map[string]any `yaml:"headers"`
 		Body       vcrBody        `yaml:"body"`
+		Content    vcrBody        `yaml:"content"`
 		RecordedAt string         `yaml:"recorded_at"`
 	} `yaml:"response"`
+	RecordedAt string `yaml:"recorded_at"`
 }
 
 type vcrStatus struct {
@@ -92,9 +95,28 @@ type vcrBody struct {
 func (body *vcrBody) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
+		if node.Tag == "!!binary" || node.Tag == "!binary" {
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(node.Value))
+			if err != nil {
+				return fmt.Errorf("decode VCR binary response body: %w", err)
+			}
+			body.Payload = decoded
+			return nil
+		}
 		body.Payload = []byte(node.Value)
 		return nil
 	case yaml.MappingNode:
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			if node.Content[index].Value != "string" || node.Content[index+1].Tag != "!binary" {
+				continue
+			}
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(node.Content[index+1].Value))
+			if err != nil {
+				return fmt.Errorf("decode VCR binary response body: %w", err)
+			}
+			body.Payload = decoded
+			return nil
+		}
 		var value struct {
 			String       string `yaml:"string"`
 			Base64String string `yaml:"base64_string"`
@@ -134,7 +156,11 @@ func ExtractRecording(artifact []byte, format string, interactionIndex int) (Rec
 func extractVCRRecording(artifact []byte, interactionIndex int) (RecordedInteraction, error) {
 	var document vcrDocument
 	if err := yaml.Unmarshal(artifact, &document); err != nil {
-		return RecordedInteraction{}, fmt.Errorf("decode VCR artifact: %w", err)
+		var interactions []vcrInteraction
+		if sequenceErr := yaml.Unmarshal(artifact, &interactions); sequenceErr != nil {
+			return RecordedInteraction{}, fmt.Errorf("decode VCR artifact: %w", err)
+		}
+		document.Interactions = interactions
 	}
 	interactions := document.Interactions
 	if len(interactions) == 0 {
@@ -152,12 +178,23 @@ func extractVCRRecording(artifact []byte, interactionIndex int) (RecordedInterac
 	if status == 0 {
 		status = selected.Response.Status.Code
 	}
+	if status == 0 {
+		status = selected.Response.StatusCode
+	}
 	headers := flattenHeaders(selected.Response.Headers)
-	payload, err := decodeRecordedBody(selected.Response.Body.Payload, headerValue(headers, "Content-Encoding"))
+	recordedPayload := selected.Response.Body.Payload
+	if len(recordedPayload) == 0 {
+		recordedPayload = selected.Response.Content.Payload
+	}
+	payload, err := decodeRecordedBody(recordedPayload, headerValue(headers, "Content-Encoding"))
 	if err != nil {
 		return RecordedInteraction{}, err
 	}
-	capturedAt, basis := recordedAt(selected.Response.RecordedAt, headers)
+	recordedTimestamp := strings.TrimSpace(selected.RecordedAt)
+	if recordedTimestamp == "" {
+		recordedTimestamp = strings.TrimSpace(selected.Response.RecordedAt)
+	}
+	capturedAt, basis := recordedAt(recordedTimestamp, headers)
 	return RecordedInteraction{
 		Request:          Request{Method: strings.ToUpper(strings.TrimSpace(selected.Request.Method)), URL: requestURL},
 		Status:           status,

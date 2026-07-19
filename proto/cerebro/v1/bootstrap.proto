@@ -670,6 +670,9 @@ message WriteDecisionRequest {
   google.protobuf.Timestamp valid_to = 13;
   double confidence = 14;
   google.protobuf.Struct metadata = 15;
+  string packet_id = 16;
+  string decision_disposition = 17;
+  string disposition_reason = 18;
 }
 
 // WriteDecisionResponse returns the recorded decision identifier and target count.
@@ -727,6 +730,7 @@ message WriteOutcomeRequest {
   google.protobuf.Timestamp valid_to = 11;
   double confidence = 12;
   google.protobuf.Struct metadata = 13;
+  string audit_packet_export_receipt_id = 14;
 }
 
 // WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.

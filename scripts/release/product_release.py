@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+import tarfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -23,6 +24,24 @@ IMAGE_RE = re.compile(
 )
 PACKAGE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+MAX_NPM_ARCHIVE_MEMBERS = 10_000
+MAX_NPM_PACKAGE_JSON_BYTES = 256 * 1024
+NPM_PACKAGE_JSON = "package/package.json"
+SDK_REQUIRED_MEMBERS = frozenset(
+    {
+        "package/src/index.js",
+        "package/src/index.ts",
+        "package/src/generated/openapi-types.ts",
+        "package/src/generated/agent-service-lifecycle.ts",
+        "package/src/generated/agent-service-lifecycle-contract.ts",
+    }
+)
+SLACK_REQUIRED_MEMBERS = frozenset(
+    {
+        "package/dist/src/index.js",
+        "package/dist/src/index.d.ts",
+    }
+)
 
 
 class ManifestError(ValueError):
@@ -145,6 +164,81 @@ def validate_file_record(
         require(sha256_file(artifact) == record["sha256"], f"{label} artifact digest does not match")
 
 
+def read_npm_archive_manifest(path: Path, label: str) -> tuple[dict[str, Any], frozenset[str]]:
+    members: set[str] = set()
+    package_manifest: dict[str, Any] | None = None
+    member_count = 0
+
+    try:
+        with tarfile.open(path, mode="r|gz") as archive:
+            for member in archive:
+                member_count += 1
+                require(
+                    member_count <= MAX_NPM_ARCHIVE_MEMBERS,
+                    f"{label} archive has too many members",
+                )
+                member_path = PurePosixPath(member.name)
+                require(
+                    member.name == member_path.as_posix()
+                    and not member_path.is_absolute()
+                    and ".." not in member_path.parts
+                    and len(member_path.parts) > 1
+                    and member_path.parts[0] == "package",
+                    f"{label} archive member is unsafe: {member.name}",
+                )
+                require(member.name not in members, f"{label} archive has duplicate member: {member.name}")
+                members.add(member.name)
+                require(
+                    member.isfile() or member.isdir(),
+                    f"{label} archive member must be a regular file or directory: {member.name}",
+                )
+                if member.name != NPM_PACKAGE_JSON:
+                    continue
+                require(member.isfile(), f"{label} {NPM_PACKAGE_JSON} must be a regular file")
+                require(
+                    0 < member.size <= MAX_NPM_PACKAGE_JSON_BYTES,
+                    f"{label} package metadata size is invalid",
+                )
+                package_file = archive.extractfile(member)
+                require(package_file is not None, f"{label} package metadata cannot be read")
+                package_bytes = package_file.read(MAX_NPM_PACKAGE_JSON_BYTES + 1)
+                require(
+                    len(package_bytes) <= MAX_NPM_PACKAGE_JSON_BYTES,
+                    f"{label} package metadata is too large",
+                )
+                parsed = json.loads(package_bytes.decode("utf-8"))
+                require(isinstance(parsed, dict), f"{label} package metadata must be an object")
+                package_manifest = parsed
+    except ManifestError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, tarfile.TarError) as exc:
+        raise ManifestError(f"{label} archive is invalid: {exc}") from exc
+
+    require(package_manifest is not None, f"{label} archive is missing {NPM_PACKAGE_JSON}")
+    return package_manifest, frozenset(members)
+
+
+def validate_npm_archive(
+    record: dict[str, Any],
+    label: str,
+    bundle_root: Path,
+    *,
+    expected_package: str,
+    required_members: frozenset[str],
+) -> dict[str, Any]:
+    archive_path = bundle_root / PurePosixPath(record["file"])
+    package_manifest, members = read_npm_archive_manifest(archive_path, label)
+    require(record["package"] == expected_package, f"{label}.package is invalid")
+    require(package_manifest.get("name") == expected_package, f"{label} archive package name does not match")
+    require(
+        package_manifest.get("version") == record["package_version"],
+        f"{label} archive package version does not match",
+    )
+    missing = sorted(required_members - members)
+    require(not missing, f"{label} archive is missing required members: {', '.join(missing)}")
+    return package_manifest
+
+
 def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
     require(isinstance(manifest, dict), "manifest must be an object")
     require(
@@ -180,6 +274,35 @@ def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
 
     validate_file_record(components["slack_companion"], "components.slack_companion", bundle_root, archive=True)
     validate_file_record(components["typescript_sdk"], "components.typescript_sdk", bundle_root, archive=True)
+    require(
+        components["slack_companion"]["package"] == "@writer/cerebro-slack-companion",
+        "components.slack_companion.package is invalid",
+    )
+    require(
+        components["typescript_sdk"]["package"] == "@writer/cerebro-sdk",
+        "components.typescript_sdk.package is invalid",
+    )
+    if bundle_root is not None:
+        sdk_manifest = validate_npm_archive(
+            components["typescript_sdk"],
+            "components.typescript_sdk",
+            bundle_root,
+            expected_package="@writer/cerebro-sdk",
+            required_members=SDK_REQUIRED_MEMBERS,
+        )
+        slack_manifest = validate_npm_archive(
+            components["slack_companion"],
+            "components.slack_companion",
+            bundle_root,
+            expected_package="@writer/cerebro-slack-companion",
+            required_members=SLACK_REQUIRED_MEMBERS,
+        )
+        slack_dependencies = slack_manifest.get("dependencies")
+        require(
+            isinstance(slack_dependencies, dict)
+            and slack_dependencies.get("@writer/cerebro-sdk") == sdk_manifest.get("version"),
+            "components.slack_companion archive must depend on the archived TypeScript SDK version",
+        )
 
     contracts = manifest.get("contracts")
     require(isinstance(contracts, dict), "contracts must be an object")

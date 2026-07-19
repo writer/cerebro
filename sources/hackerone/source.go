@@ -18,7 +18,7 @@ const (
 	sourceID               = "hackerone"
 	defaultFamily          = familyAssets
 	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
+	defaultBaseURLTemplate = "https://api.hackerone.com"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
 	familyAssets           = "assets"
@@ -44,7 +44,7 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "bearer_token",
+		AuthModel:       "basic",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
@@ -63,15 +63,14 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyFindings,
-				Path:             "/v1/findings",
+				Path:             "/v1/reports",
 				URNKind:          "hackerone_findings",
-				IDKeys:           []string{"id", "name", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
+				IDKeys:           []string{"id"},
+				DisablePageSize:  true,
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title"},
+				TimestampKeys:    []string{"attributes.last_activity_at", "attributes.created_at"},
+				Attributes:       map[string]string{"description": "attributes.vulnerability_information", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "attributes.last_activity_at|attributes.created_at", "resource_id": "relationships.program.data.id", "resource_name": "relationships.program.data.attributes.handle", "resource_type": "relationships.program.data.type", "resource_urn": "resource_urn|urn", "severity": "relationships.severity.data.attributes.rating", "source_event_id": "id", "status": "attributes.state", "tenant_id": "tenant_id", "title": "attributes.title"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "hackerone_programs"},
 				StaticAttributes: map[string]string{"record_class": "finding", "schema": "findings", "source_system": "hackerone"},
 			},
 			{

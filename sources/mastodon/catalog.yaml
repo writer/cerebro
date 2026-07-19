@@ -1,6 +1,6 @@
 id: mastodon
 name: "Mastodon"
-description: "Collects account, activity, verify credential, and notification from Mastodon and projects them into the Cerebro graph as users, audit events, secrets, and alerts for workspace, document, message, and collaboration context."
+description: "Collects list accounts, instance activity, the authenticated account, and notifications from Mastodon and projects them into the Cerebro graph as users, audit events, and alerts."
 emitted_kinds:
   - mastodon.account
   - mastodon.activity
@@ -93,16 +93,15 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - secret_id
-      - secret_name
+      - user_id
     required_payload_fields:
-      - category
+      - id
   - kind: mastodon.notification
     schema_ref: mastodon/notification/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_type
     required_payload_fields:
       - id
