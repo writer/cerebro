@@ -44,9 +44,12 @@ var ensureAuditEventStatements = []string{
   CHECK (duration_ms IS NULL OR duration_ms >= 0)
 )`,
 	`CREATE INDEX IF NOT EXISTS platform_audit_events_time_idx ON platform_audit_events (tenant_id, occurred_at DESC, event_id COLLATE "C" DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_action_idx ON platform_audit_events (tenant_id, action, occurred_at DESC, event_id COLLATE "C" DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_outcome_idx ON platform_audit_events (tenant_id, outcome, occurred_at DESC, event_id COLLATE "C" DESC)`,
-	`CREATE INDEX IF NOT EXISTS platform_audit_events_service_idx ON platform_audit_events (tenant_id, service, occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`DROP INDEX IF EXISTS platform_audit_events_action_idx`,
+	`DROP INDEX IF EXISTS platform_audit_events_outcome_idx`,
+	`DROP INDEX IF EXISTS platform_audit_events_service_idx`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_action_lower_idx ON platform_audit_events (tenant_id, LOWER(action), occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_outcome_lower_idx ON platform_audit_events (tenant_id, LOWER(outcome), occurred_at DESC, event_id COLLATE "C" DESC)`,
+	`CREATE INDEX IF NOT EXISTS platform_audit_events_service_lower_idx ON platform_audit_events (tenant_id, LOWER(service), occurred_at DESC, event_id COLLATE "C" DESC)`,
 }
 
 const auditEventColumns = `event_id, tenant_id, action, actor_id, actor_kind, actor_label,

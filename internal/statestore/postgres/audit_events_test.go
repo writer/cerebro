@@ -54,6 +54,10 @@ func TestAuditEventKeysetUsesDeterministicEventIDCollation(t *testing.T) {
 	for _, required := range []string{
 		`event_id TEXT COLLATE "C" NOT NULL`,
 		`occurred_at DESC, event_id COLLATE "C" DESC`,
+		`DROP INDEX IF EXISTS platform_audit_events_action_idx`,
+		`platform_audit_events_action_lower_idx ON platform_audit_events (tenant_id, LOWER(action), occurred_at DESC, event_id COLLATE "C" DESC)`,
+		`platform_audit_events_outcome_lower_idx ON platform_audit_events (tenant_id, LOWER(outcome), occurred_at DESC, event_id COLLATE "C" DESC)`,
+		`platform_audit_events_service_lower_idx ON platform_audit_events (tenant_id, LOWER(service), occurred_at DESC, event_id COLLATE "C" DESC)`,
 	} {
 		if !strings.Contains(statements, required) {
 			t.Fatalf("audit event schema is missing %q", required)
