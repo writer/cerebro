@@ -48,7 +48,11 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 	periodEnd := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
 	validUntil := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	register := registerEvidenceVersionRequest{
-		Artifact: ports.EvidenceArtifact{TenantID: "tenant-1", Title: "Access review export", Type: "access_review"},
+		Artifact: ports.EvidenceArtifact{
+			TenantID: "tenant-1", Title: "Access review export", Type: "access_review",
+			CreatedAt: time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC),
+			CreatedBy: "spoofed-operator",
+		},
 		Version: ports.EvidenceVersion{
 			Content:    ports.EvidenceContentRef{MediaType: "application/json", URI: "evidencecas://access-reviews/july", ContentDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 512},
 			Provenance: ports.EvidenceProvenance{Producer: "identity-source", CollectedAt: periodEnd, PeriodStart: periodStart, PeriodEnd: periodEnd, SourceProofRevisionID: "proof-revision-1"},
@@ -64,6 +68,9 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 	}
 	if versionResponse.Artifact.ID != artifactID || versionResponse.Artifact.CreatedBy != "operator-1" {
 		t.Fatalf("registered artifact = %#v", versionResponse.Artifact)
+	}
+	if versionResponse.Artifact.CreatedAt.Equal(register.Artifact.CreatedAt) {
+		t.Fatalf("registered artifact preserved spoofed created_at: %#v", versionResponse.Artifact)
 	}
 
 	claimInput := ports.EvidenceClaim{

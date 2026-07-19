@@ -128,6 +128,8 @@ func (h *Handler) RegisterVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	request.Artifact.TenantID = tenantID
 	request.Artifact.ID = strings.TrimSpace(r.PathValue("artifactID"))
+	request.Artifact.CreatedAt = time.Time{}
+	request.Artifact.CreatedBy = ""
 	request.Version.TenantID = tenantID
 	request.Version.ArtifactID = request.Artifact.ID
 	version, err := h.service.RegisterVersion(r.Context(), evidenceledger.RegisterVersionRequest{
