@@ -334,7 +334,7 @@
     }
   },
   {
-    "id": "trello-tenant-audit_events-ddb96e99f31df5bd",
+    "id": "trello-tenant-audit_events-b95ec8a577c6e13a",
     "tenant_id": "tenant",
     "source_id": "trello",
     "kind": "trello.audit_events",
@@ -374,7 +374,7 @@
           },
           "moderatedState": null,
           "name": "example-b2547aa0",
-          "privacyUrl": "https://www.privacypolicygenerator.info/live.php?token=4IY7cq9TnbtbU9qK9Q5pQAcFpkjNhBxk",
+          "privacyUrl": "https://www.privacypolicygenerator.info/live.php",
           "public": true,
           "supportEmail": "user-00afd06a@example.test",
           "tags": [],

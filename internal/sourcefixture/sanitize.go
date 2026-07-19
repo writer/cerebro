@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 )
@@ -318,10 +319,32 @@ func SanitizeImportedText(value string) string {
 
 func sanitizeImportedJSONText(value string) string {
 	sanitized := SanitizeImportedText(value)
-	return strings.NewReplacer(
+	sanitized = strings.NewReplacer(
 		"https://api.fastly.com", "https://fastly.example.test",
 		"http://api.fastly.com", "https://fastly.example.test",
 	).Replace(sanitized)
+	return sanitizeEmbeddedURLCredentialQuery(sanitized)
+}
+
+func sanitizeEmbeddedURLCredentialQuery(value string) string {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return value
+	}
+	query := parsed.Query()
+	changed := false
+	for key := range query {
+		if !isCredentialQueryKey(key) {
+			continue
+		}
+		query.Del(key)
+		changed = true
+	}
+	if !changed {
+		return value
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func sanitizePlainImportedText(value string) string {

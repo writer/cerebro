@@ -128,6 +128,34 @@ func TestSanitizeImportedJSONRewritesEmbeddedURLHosts(t *testing.T) {
 	}
 }
 
+func TestSanitizeImportedJSONClearsEmbeddedURLCredentialQuery(t *testing.T) {
+	payload, changed, err := SanitizeImportedJSON([]byte(`{"privacyUrl":"https://privacy.example.com/live.php?locale=en-US&token=credential-shaped-value"}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode sanitized payload: %v", err)
+	}
+	parsed, err := url.Parse(decoded["privacyUrl"])
+	if err != nil {
+		t.Fatalf("parse sanitized URL: %v", err)
+	}
+	if parsed.Query().Has("token") || parsed.Query().Get("locale") != "en-US" {
+		t.Fatalf("sanitized URL query = %q", parsed.RawQuery)
+	}
+	if len(changed) != 1 || changed[0] != "$.privacyUrl" {
+		t.Fatalf("changed fields = %#v", changed)
+	}
+	second, secondChanged, err := SanitizeImportedJSON(payload)
+	if err != nil {
+		t.Fatalf("second SanitizeImportedJSON() error = %v", err)
+	}
+	if string(second) != string(payload) || len(secondChanged) != 0 {
+		t.Fatalf("second sanitization = %s, changed = %#v", second, secondChanged)
+	}
+}
+
 func TestSanitizeImportedJSONExplicitKeysPreserveJSONTypes(t *testing.T) {
 	payload, changed, err := SanitizeImportedJSONWithKeys([]byte(`{
 		"issue_token":73062,

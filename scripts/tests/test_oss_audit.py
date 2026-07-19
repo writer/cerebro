@@ -14,6 +14,9 @@ class OSSAuditTests(unittest.TestCase):
             "nvd.nist.gov",
             "ok11static.oktacdn.com",
             "ok12static.oktacdn.com",
+            "replicate.delivery",
+            "trello.com",
+            "us19.api.mailchimp.com",
         ):
             with self.subTest(host=host):
                 self.assertTrue(oss_audit.fixture_host_allowed(host))

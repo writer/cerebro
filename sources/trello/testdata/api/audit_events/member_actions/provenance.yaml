@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2020-08-20T13:33:47Z"
-    sha256: f3c76744961990d0838981368596e875a5201e2fc661f09f02613a82d1a19a76
+    sha256: 3ae7e1355714c033f65dc03b2eb0ad46a3c49c0c4834794926d3effa8ee700bf
 sanitization:
     tool: sourcefixture
     version: 1
@@ -468,6 +468,7 @@ sanitization:
         - $[6].data.plugin.listing.description
         - $[6].data.plugin.listing.name
         - $[6].data.plugin.name
+        - $[6].data.plugin.privacyUrl
         - $[6].data.plugin.supportEmail
         - $[6].id
         - $[6].idMemberCreator
