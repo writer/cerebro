@@ -1,7 +1,7 @@
 [
-  "urn:cerebro:tenant:opendatasoft_resource:self",
-  "urn:cerebro:tenant:opendatasoft_resource:datasets",
-  "urn:cerebro:tenant:opendatasoft_resource:exports",
-  "urn:cerebro:tenant:opendatasoft_resource:facets",
-  "urn:cerebro:tenant:opendatasoft_resource:metadata_templates"
+  "urn:cerebro:tenant:opendatasoft_resource:https://public.opendatasoft.com/api/v2/catalog",
+  "urn:cerebro:tenant:opendatasoft_resource:https://public.opendatasoft.com/api/v2/catalog/datasets",
+  "urn:cerebro:tenant:opendatasoft_resource:https://public.opendatasoft.com/api/v2/catalog/exports",
+  "urn:cerebro:tenant:opendatasoft_resource:https://public.opendatasoft.com/api/v2/catalog/facets",
+  "urn:cerebro:tenant:opendatasoft_resource:https://public.opendatasoft.com/api/v2/catalog/metadata_templates"
 ]

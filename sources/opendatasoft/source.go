@@ -8,6 +8,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
@@ -65,11 +66,8 @@ func New() (*Source, error) {
 				ListKeys:         []string{"aggregations"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "count(*)|id", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "count(*)|id", "resource_email": "resource_email|target_email|target.email", "resource_id": "count(*)|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "count(*)|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|count(*)|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"actor_id": "public.opendatasoft.com", "event_type": "aggregate", "record_class": "audit_event", "resource_type": "aggregate", "schema": "aggregate", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-					ConfigQuery:      map[string]string{"select": "select"},
-				},
+				StaticAttributes: map[string]string{"event_type": "aggregate", "record_class": "audit_event", "resource_type": "aggregate", "schema": "aggregate", "source_system": "opendatasoft"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id", "actor_id": "actor_id"}, ConfigQuery: map[string]string{"select": "select"}},
 			},
 			{
 				Name:             familyPage,
@@ -80,11 +78,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "page.slug", "name": "page.title.en|page.title.fr|page.slug", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "page.slug", "resource_name": "page.title.en|page.title.fr|page.slug", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|page.slug|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "page", "schema": "page", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-					EncodeURNID:      true,
-					ResourceURNKind:  "opendatasoft_page",
-				},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, EncodeURNID: true, ResourceURNKind: "opendatasoft_page"},
 			},
 			{
 				Name:             familyDataset,
@@ -95,10 +89,8 @@ func New() (*Source, error) {
 				ListKeys:         []string{"datasets"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "dataset.dataset_id|dataset.dataset_uid", "name": "dataset.metas.default.title|dataset.dataset_id", "observed_at": "dataset.metas.default.modified|dataset.metas.default.metadata_processed|dataset.metas.default.data_processed|observed_at|updated_at|last_seen_at", "provider_id": "dataset.dataset_id|dataset.dataset_uid", "resource_email": "resource_email|target_email|target.email", "resource_id": "dataset.dataset_id|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "dataset.metas.default.title|dataset.dataset_id|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|dataset.dataset_id|dataset.dataset_uid|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"actor_id": "public.opendatasoft.com", "event_type": "dataset", "record_class": "audit_event", "resource_type": "dataset", "schema": "dataset", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-				},
+				StaticAttributes: map[string]string{"event_type": "dataset", "record_class": "audit_event", "resource_type": "dataset", "schema": "dataset", "source_system": "opendatasoft"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id", "actor_id": "actor_id"}},
 			},
 			{
 				Name:             familyFacet,
@@ -108,70 +100,54 @@ func New() (*Source, error) {
 				ListKeys:         []string{"facets"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "name", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "name", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|name|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"actor_id": "public.opendatasoft.com", "event_type": "facet", "record_class": "audit_event", "resource_type": "facet", "schema": "facet", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-				},
+				StaticAttributes: map[string]string{"event_type": "facet", "record_class": "audit_event", "resource_type": "facet", "schema": "facet", "source_system": "opendatasoft"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id", "actor_id": "actor_id"}},
 			},
 			{
 				Name:             familyResource,
 				Path:             "/${config.source}",
 				URNKind:          "opendatasoft_resource",
-				IDKeys:           []string{"rel", "href", "event_id", "id", "uuid", "request_id"},
+				IDKeys:           []string{"href", "rel", "event_id", "id", "uuid", "request_id"},
 				ListKeys:         []string{"links"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "rel|href", "name": "rel|href", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "rel|href", "resource_email": "resource_email|target_email|target.email", "resource_id": "rel|href|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "rel|href|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|rel|href|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"actor_id": "public.opendatasoft.com", "event_type": "resource", "record_class": "audit_event", "resource_type": "resource", "schema": "resource", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-				},
+				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "href|rel", "name": "href|rel", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "href|rel", "resource_email": "resource_email|target_email|target.email", "resource_id": "href|rel|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "href|rel|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|href|rel|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"event_type": "resource", "record_class": "audit_event", "resource_type": "resource", "schema": "resource", "source_system": "opendatasoft"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id", "actor_id": "actor_id"}},
 			},
 			{
 				Name:             familyResource2,
 				Path:             "/",
 				URNKind:          "opendatasoft_resource_2",
-				IDKeys:           []string{"rel", "href", "id", "urn", "resource_urn", "name"},
+				IDKeys:           []string{"href", "rel", "id", "urn", "resource_urn", "name"},
 				ListKeys:         []string{"links"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "rel|href", "name": "rel|href", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "rel|href", "resource_name": "rel|href", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|rel|href|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "href|rel", "name": "href|rel", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "href|rel", "resource_name": "href|rel", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|href|rel|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "resource", "schema": "resource_2", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-					EncodeURNID:      true,
-					ResourceURNKind:  "opendatasoft_resource_2",
-				},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, EncodeURNID: true, ResourceURNKind: "opendatasoft_resource_2"},
 			},
 			{
 				Name:             familyMetadataTemplate,
 				Path:             "/${config.source}/metadata_templates",
 				URNKind:          "opendatasoft_metadata_template",
-				IDKeys:           []string{"rel", "href", "id", "urn", "resource_urn", "name"},
+				IDKeys:           []string{"href", "rel", "id", "urn", "resource_urn", "name"},
 				ListKeys:         []string{"links"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "rel|href", "name": "rel|href", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "rel|href", "resource_name": "rel|href", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|rel|href|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "href|rel", "name": "href|rel", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "href|rel", "resource_name": "href|rel", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|href|rel|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "metadata_template", "schema": "metadata_template", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-					EncodeURNID:      true,
-					ResourceURNKind:  "opendatasoft_metadata_template",
-				},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, EncodeURNID: true, ResourceURNKind: "opendatasoft_metadata_template"},
 			},
 			{
 				Name:             familyDatasetsAggregate,
 				Path:             "/${config.source}/datasets/${config.dataset_id}/aggregates",
 				URNKind:          "opendatasoft_datasets_aggregate",
-				IDKeys:           []string{"count(*)", "id", "urn", "resource_urn", "name"},
+				IDKeys:           []string{"dataset_id", "id", "urn", "resource_urn", "name"},
 				PageSizeParams:   []string{"limit"},
+				PathParams:       []string{"dataset_id"},
 				ListKeys:         []string{"aggregations"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "count(*)|id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "count(*)|id", "resource_name": "count(*)|id", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|count(*)|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "dataset_id|id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "dataset_id|id", "resource_name": "dataset_id|name|id", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|dataset_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "aggregate", "schema": "datasets_aggregate", "source_system": "opendatasoft"},
-				Config: jsonapi.FamilyConfig{
-					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
-					ConfigQuery:      map[string]string{"select": "select"},
-					EncodeURNID:      true,
-					ResourceURNKind:  "opendatasoft_datasets_aggregate",
-				},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ConfigQuery: map[string]string{"select": "select"}, EncodeURNID: true, ResourceURNKind: "opendatasoft_datasets_aggregate"},
 			},
 			{
 				Name:             familyAttachment,
@@ -278,7 +254,20 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	runtimeCfg, err := sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	values := runtimeCfg.Values()
+	baseURL, host, err := sourcehttp.NormalizeBaseURLWithOptions(sourceID, values["base_url"], sourcehttp.URLValidationOptions{AllowLoopback: s.allowLoopback})
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	values["base_url"] = baseURL
+	if strings.TrimSpace(values["actor_id"]) == "" {
+		values["actor_id"] = host
+	}
+	return sourcecdk.NewConfig(values), nil
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {

@@ -1,6 +1,6 @@
 [
-  "urn:cerebro:tenant:opendatasoft_resource_2:self",
-  "urn:cerebro:tenant:opendatasoft_resource_2:catalog",
-  "urn:cerebro:tenant:opendatasoft_resource_2:monitoring",
-  "urn:cerebro:tenant:opendatasoft_resource_2:opendatasoft"
+  "urn:cerebro:tenant:opendatasoft_resource_2:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2",
+  "urn:cerebro:tenant:opendatasoft_resource_2:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog",
+  "urn:cerebro:tenant:opendatasoft_resource_2:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fmonitoring",
+  "urn:cerebro:tenant:opendatasoft_resource_2:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fopendatasoft"
 ]

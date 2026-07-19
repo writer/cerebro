@@ -1,26 +1,28 @@
 [
   {
-    "id": "opendatasoft-tenant-datasets_aggregate-f74b9c28adab8d29",
+    "id": "opendatasoft-tenant-datasets_aggregate-708834b989f4d2ed",
     "tenant_id": "tenant",
     "source_id": "opendatasoft",
     "kind": "opendatasoft.datasets_aggregate",
     "occurred_at": "2026-07-19T17:19:26Z",
     "schema_ref": "opendatasoft/datasets_aggregate/v1",
     "payload": {
-      "count(*)": 33722
+      "count(*)": 33722,
+      "dataset_id": "pole-emploi-rome-arborescence-principale"
     },
     "attributes": {
-      "external_id": "33722",
+      "dataset_id": "pole-emploi-rome-arborescence-principale",
+      "external_id": "pole-emploi-rome-arborescence-principale",
       "family": "datasets_aggregate",
-      "id": "33722",
+      "id": "pole-emploi-rome-arborescence-principale",
       "provider": "opendatasoft",
       "record_class": "asset",
-      "resource_id": "33722",
-      "resource_name": "33722",
+      "resource_id": "pole-emploi-rome-arborescence-principale",
+      "resource_name": "pole-emploi-rome-arborescence-principale",
       "resource_type": "aggregate",
-      "resource_urn": "urn:cerebro:tenant:opendatasoft_datasets_aggregate:33722",
+      "resource_urn": "urn:cerebro:tenant:opendatasoft_datasets_aggregate:pole-emploi-rome-arborescence-principale",
       "schema": "datasets_aggregate",
-      "source_event_id": "33722",
+      "source_event_id": "pole-emploi-rome-arborescence-principale",
       "source_provider": "opendatasoft",
       "source_system": "opendatasoft",
       "tenant_id": "tenant"

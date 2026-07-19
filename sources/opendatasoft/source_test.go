@@ -50,6 +50,13 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
 	}
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := event.Attributes["actor_id"], baseURL.Hostname(); got != want {
+		t.Fatalf("actor_id = %q, want %q", got, want)
+	}
 }
 
 func TestSourceReplaysCapturedOpenDataSoftFamilies(t *testing.T) {
@@ -105,6 +112,7 @@ func TestSourceReplaysCapturedOpenDataSoftFamilies(t *testing.T) {
 			source.allowLoopbackForTest()
 			values := map[string]string{
 				"auth_model": "none",
+				"actor_id":   captured.Hostname(),
 				"base_url":   server.URL + "/api/v2",
 				"dataset_id": publicDatasetID,
 				"family":     test.family,
@@ -126,6 +134,15 @@ func TestSourceReplaysCapturedOpenDataSoftFamilies(t *testing.T) {
 			urns, err := source.Discover(context.Background(), cfg)
 			if err != nil {
 				t.Fatalf("Discover() error = %v", err)
+			}
+			if test.family == familyDatasetsAggregate {
+				event := pull.Events[0]
+				if got := event.Attributes["resource_id"]; got != publicDatasetID {
+					t.Fatalf("datasets_aggregate resource_id = %q, want %q", got, publicDatasetID)
+				}
+				if got := event.Attributes["resource_urn"]; !strings.HasSuffix(got, ":"+publicDatasetID) {
+					t.Fatalf("datasets_aggregate resource_urn = %q, want dataset-scoped suffix", got)
+				}
 			}
 			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
 				t.Fatalf("StabilizeEvents() error = %v", err)
