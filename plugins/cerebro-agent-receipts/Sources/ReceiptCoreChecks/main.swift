@@ -315,6 +315,11 @@ struct CheckRunner {
     )
     expect(abs((match.deltaSeconds ?? 0) - 20.145) < 0.01, "canary time delta is incorrect")
     expect(match.evidence.contains("user-imported JSON"), "manual import provenance was hidden")
+    let lookupWithoutNested = #"""
+      {"Events":[{"EventId":"lookup-only","EventName":"PutParameter","EventTime":"2026-07-15T08:41:25Z","Username":"operator"}]}
+      """#
+    let lookupEvents = try CloudTrailImporter.parse(Data(lookupWithoutNested.utf8))
+    expect(lookupEvents.first?.id == "lookup-only", "lookup event without nested JSON did not parse")
   }
 
   private mutating func checkProviderBinding() throws {
@@ -363,6 +368,10 @@ struct CheckRunner {
     expect(
       assessment.unmatchedProviderEvents.map(\.id) == ["unmatched-event"],
       "provider event without a receipt disappeared from the denominator")
+    let duplicateAssessment = ReceiptCorrelator.assess(actions: [], providerEvents: [event, event])
+    expect(
+      duplicateAssessment.unmatchedProviderEvents.count == 2,
+      "duplicate provider event IDs were not preserved")
   }
 
   private mutating func checkOneToOneAllocation() throws {
@@ -460,6 +469,43 @@ struct CheckRunner {
     )
     expect(actions.count == 1, "failed tool phases did not reduce to one action")
     expect(actions.first?.state == .failed, "failed tool result was not terminal")
+
+    let (fallbackStore, fallbackSigner, fallbackCleanup) = try temporaryStore()
+    defer { fallbackCleanup() }
+    _ = try fallbackStore.append(
+      draft: draft(id: "fallback-pre", phase: .attempted, toolCallID: nil, inputDigest: nil),
+      signer: fallbackSigner)
+    _ = try fallbackStore.append(
+      draft: draft(id: "fallback-post", phase: .completed, toolCallID: nil, inputDigest: nil),
+      signer: fallbackSigner)
+    let fallbackReceipts = try fallbackStore.readReceipts()
+    let fallbackVerification = ReceiptVerifier.verify(
+      fallbackReceipts, trustedPublicKeyBase64: fallbackSigner.publicKeyBase64)
+    let fallbackActions = ExecutionActionReducer.reduce(
+      receipts: fallbackReceipts,
+      verifications: Dictionary(
+        uniqueKeysWithValues: fallbackVerification.map { ($0.receiptID, $0) }))
+    expect(fallbackActions.count == 1, "receipts without call ID or input digest did not group")
+    expect(fallbackActions.first?.state == .completed, "fallback grouped action did not complete")
+
+    let (approvalStore, approvalSigner, approvalCleanup) = try temporaryStore()
+    defer { approvalCleanup() }
+    _ = try approvalStore.append(
+      draft: draft(id: "approval", phase: .approvalRequested, toolCallID: "call-1"),
+      signer: approvalSigner)
+    _ = try approvalStore.append(
+      draft: draft(id: "attempted", phase: .attempted, toolCallID: "call-2"),
+      signer: approvalSigner)
+    let approvalReceipts = try approvalStore.readReceipts()
+    let approvalVerification = ReceiptVerifier.verify(
+      approvalReceipts, trustedPublicKeyBase64: approvalSigner.publicKeyBase64)
+    let approvalActions = ExecutionActionReducer.reduce(
+      receipts: approvalReceipts,
+      verifications: Dictionary(
+        uniqueKeysWithValues: approvalVerification.map { ($0.receiptID, $0) }))
+    expect(
+      approvalActions.first?.authorizationEvidence == .notObserved,
+      "approval from another tool call authorized the attempted action")
   }
 
   private mutating func checkMultiAgentLifecycle() throws {
@@ -936,7 +982,14 @@ struct CheckRunner {
     return action
   }
 
-  private func draft(id: String, phase: ReceiptPhase) -> ReceiptDraft {
+  private func draft(
+    id: String,
+    phase: ReceiptPhase,
+    toolCallID: String? = "call",
+    inputDigest: String? = "sha256:input",
+    toolName: String? = "Bash",
+    actionSummary: String = "aws sts"
+  ) -> ReceiptDraft {
     ReceiptDraft(
       id: id,
       capturedAt: ReceiptDate.string(from: Date()),
@@ -945,11 +998,11 @@ struct CheckRunner {
       localUserClaimSource: "macos_account",
       agent: AgentIdentity(
         product: "Codex", model: "gpt-test", sessionID: "session", turnID: "turn",
-        toolCallID: "call"),
+        toolCallID: toolCallID),
       permissionMode: "default",
-      toolName: "Bash",
-      actionSummary: "aws sts",
-      inputDigest: "sha256:input",
+      toolName: toolName,
+      actionSummary: actionSummary,
+      inputDigest: inputDigest,
       resultDigest: phase == .completed ? "sha256:result" : nil,
       cwd: "/tmp",
       git: GitContext(repositoryRoot: nil, commit: nil, branch: nil)

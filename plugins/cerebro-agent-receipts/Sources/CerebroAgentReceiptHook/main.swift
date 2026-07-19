@@ -194,15 +194,32 @@ private func fetchCloudTrail(profile: String, eventName: String, startTime: Stri
     "--end-time", endTime,
     "--output", "json",
   ]
-  let output = Pipe()
-  let errors = Pipe()
+  let temporaryDirectory = FileManager.default.temporaryDirectory
+    .appendingPathComponent("cerebro-cloudtrail-\(UUID().uuidString)", isDirectory: true)
+  try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+  let outputURL = temporaryDirectory.appendingPathComponent("stdout.json")
+  let errorURL = temporaryDirectory.appendingPathComponent("stderr.txt")
+  guard FileManager.default.createFile(atPath: outputURL.path, contents: nil),
+    FileManager.default.createFile(atPath: errorURL.path, contents: nil)
+  else {
+    throw CLIError.provider("failed to create CloudTrail capture files")
+  }
+  let output = try FileHandle(forWritingTo: outputURL)
+  let errors = try FileHandle(forWritingTo: errorURL)
+  defer {
+    try? output.close()
+    try? errors.close()
+  }
   process.standardOutput = output
   process.standardError = errors
   try process.run()
   process.waitUntilExit()
+  try output.close()
+  try errors.close()
   guard process.terminationStatus == 0 else {
-    let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    let message = String(decoding: try Data(contentsOf: errorURL), as: UTF8.self)
     throw CLIError.provider(message.trimmingCharacters(in: .whitespacesAndNewlines))
   }
-  return output.fileHandleForReading.readDataToEndOfFile()
+  return try Data(contentsOf: outputURL)
 }

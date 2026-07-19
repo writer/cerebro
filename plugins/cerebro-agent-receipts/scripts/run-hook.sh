@@ -30,4 +30,5 @@ if [[ ! -x "$APP_BINARY" ]] || [[ "${CEREBRO_AGENT_RECEIPTS_BUILD_FROM_SOURCE:-0
   chmod +x "$APP_BINARY"
 fi
 
+codesign --verify --strict "$APP_BINARY"
 exec "$APP_BINARY" "$@"

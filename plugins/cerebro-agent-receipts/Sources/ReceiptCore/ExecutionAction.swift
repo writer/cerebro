@@ -114,11 +114,13 @@ public enum ExecutionActionReducer {
       let terminal = group.first {
         $0.payload.phase == .completed || $0.payload.phase == .failed
       }
+      let attemptedDiscriminator = actionDiscriminator(attempted)
       let approvalObserved = approvals.contains { approval in
         approval.payload.agent.sessionID == attempted.payload.agent.sessionID
           && approval.payload.agent.product == attempted.payload.agent.product
           && approval.payload.agent.turnID == attempted.payload.agent.turnID
           && approval.payload.toolName == attempted.payload.toolName
+          && actionDiscriminator(approval) == attemptedDiscriminator
       }
       let mode = attempted.payload.permissionMode
       let authorization: AuthorizationEvidence
@@ -160,15 +162,19 @@ public enum ExecutionActionReducer {
 
   private static func actionKey(_ receipt: ExecutionReceipt) -> String {
     let agent = receipt.payload.agent
-    if let call = agent.toolCallID {
-      return [
-        agent.product, agent.sessionID, agent.turnID ?? "", call, receipt.payload.inputDigest ?? "",
-      ].joined(
-        separator: "|")
-    }
     return [
-      agent.product, agent.sessionID, agent.turnID ?? "", receipt.payload.toolName ?? "",
-      receipt.payload.inputDigest ?? receipt.id,
+      agent.product, agent.sessionID, agent.turnID ?? "", actionDiscriminator(receipt),
     ].joined(separator: "|")
+  }
+
+  private static func actionDiscriminator(_ receipt: ExecutionReceipt) -> String {
+    let agent = receipt.payload.agent
+    if let call = agent.toolCallID, !call.isEmpty {
+      return "call:\(call)"
+    }
+    if let inputDigest = receipt.payload.inputDigest, !inputDigest.isEmpty {
+      return "input:\(inputDigest)"
+    }
+    return "summary:\(receipt.payload.toolName ?? ""):\(receipt.payload.actionSummary)"
   }
 }

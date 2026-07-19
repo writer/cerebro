@@ -83,7 +83,7 @@ public enum CloudTrailImporter {
     {
       return parseRawEvent(nested, fallback: value, provenance: provenance)
     }
-    return try parseRawOrLookupEvent(value, provenance: provenance)
+    return parseRawEvent(value, fallback: value, provenance: provenance)
   }
 
   private static func parseRawOrLookupEvent(
@@ -213,45 +213,46 @@ public enum ReceiptCorrelator {
     providerEvents: [ProviderEvent],
     policy: ProviderBindingPolicy? = nil
   ) -> AttributionAssessment {
-    var unused = Dictionary(uniqueKeysWithValues: providerEvents.map { ($0.id, $0) })
+    var unused = providerEvents.enumerated().map { (index: $0.offset, event: $0.element) }
     var matches: [String: AttributionMatch] = [:]
 
     for action in actions where action.state == .completed {
       if let policy,
-        let bound = unused.values.first(where: { bindingMatches(action, $0, policy: policy) })
+        let bound = unused.first(where: { bindingMatches(action, $0.event, policy: policy) })
       {
         matches[action.id] = AttributionMatch(
           actionID: action.id,
-          providerEvent: bound,
+          providerEvent: bound.event,
           level: .providerBound,
           evidence: [
             "authenticated AWS API", "dedicated agent role", "action ID", "account", "time",
           ],
-          deltaSeconds: delta(action, bound)
+          deltaSeconds: delta(action, bound.event)
         )
-        unused.removeValue(forKey: bound.id)
+        unused.removeAll { $0.index == bound.index }
         continue
       }
 
-      let candidates = unused.values.compactMap { event -> (ProviderEvent, TimeInterval)? in
-        guard let seconds = delta(action, event), seconds >= -5,
+      let candidates = unused.compactMap { candidate -> ((index: Int, event: ProviderEvent), TimeInterval)? in
+        guard let seconds = delta(action, candidate.event), seconds >= -5,
           seconds <= (policy?.correlationWindow ?? 90)
         else { return nil }
-        return (event, seconds)
+        return (candidate, seconds)
       }.sorted { lhs, rhs in
-        candidateScore(action, lhs.0, delta: lhs.1) > candidateScore(action, rhs.0, delta: rhs.1)
+        candidateScore(action, lhs.0.event, delta: lhs.1)
+          > candidateScore(action, rhs.0.event, delta: rhs.1)
       }
       if let candidate = candidates.first,
-        candidateScore(action, candidate.0, delta: candidate.1) >= 2
+        candidateScore(action, candidate.0.event, delta: candidate.1) >= 2
       {
         matches[action.id] = AttributionMatch(
           actionID: action.id,
-          providerEvent: candidate.0,
+          providerEvent: candidate.0.event,
           level: .candidateCorrelation,
-          evidence: candidateEvidence(action, candidate.0, delta: candidate.1),
+          evidence: candidateEvidence(action, candidate.0.event, delta: candidate.1),
           deltaSeconds: candidate.1
         )
-        unused.removeValue(forKey: candidate.0.id)
+        unused.removeAll { $0.index == candidate.0.index }
       }
     }
 
@@ -267,7 +268,7 @@ public enum ReceiptCorrelator {
 
     return AttributionAssessment(
       actionMatches: matches,
-      unmatchedProviderEvents: unused.values.sorted {
+      unmatchedProviderEvents: unused.map(\.event).sorted {
         ($0.eventDate ?? .distantPast) > ($1.eventDate ?? .distantPast)
       }
     )
