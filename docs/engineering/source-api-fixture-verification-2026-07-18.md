@@ -79,11 +79,20 @@ array.
 | Files.com | `login`, `user` | 3 list and time-range cases | Pinned upstream VCR recordings | Login history, filtered login history, and users replayed through the provider header and query contract |
 | Mastodon | `account`, `activity`, `notification`, `verify_credential` | 4 collection and singleton cases | Pinned upstream VCR recordings | All 4 runtime families replayed from a maintained SDK test instance |
 | Twitter | `list_membership`, `member`, `job` | 3 list cases | Pinned upstream VCR recordings | 93 list memberships, 100 list members, and one compliance job replayed; evidence remains historical |
+| BambooHR | `users` | `employee_directory` | Pinned upstream ExVCR recording | Employee directory replayed through the provider gateway and Basic API-key contract |
+| Bugsnag | `projects`, `errors` | `organization_projects`, `project_errors` | Pinned upstream VCR recordings | Organization projects and project errors replayed through the v2 header contract |
+| Contentful | `documents` | `list_entries` | Pinned upstream VCR recording | Space entries replayed through the Content Delivery API envelope |
+| HackerOne | `findings` | `report_list` | Pinned upstream VCR recording | JSON:API reports replayed with nested severity, program, and state fields |
+| Mailchimp | `lists`, `members` | `list_lists`, `list_members` | Pinned upstream ExVCR recordings | Account lists and list members replayed through the v3 paths |
+| Postmark | `domains` | `list_domains` | Pinned upstream Betamax recording | Account domains replayed with count and offset pagination |
+| Replicate | `models`, `collections` | `list_models`, `list_collections` | Pinned upstream pytest-recording cassettes | Public models and collections replayed through the production decoder |
+| Retool | `users` | `list_users` | Pinned upstream go-vcr recording | Users replayed through the provider pagination envelope |
+| Trello | `users`, `groups`, `workspaces`, `documents`, `audit_events` | 5 member, board, card, and action cases | Pinned upstream ExVCR and VCR recordings | All 5 runtime families replayed through Trello's query authentication and v1 routes |
 
-The repository now contains 93 validated proof bundles across 20 sources and
-82 runtime families. The continued corpus sweep added 31 bundles and completed
+The repository now contains 109 validated proof bundles across 29 sources and
+98 runtime families. The continued corpus sweep added 47 bundles and completed
 genuine replay coverage for Fastly and Mastodon while extending Cloudflare,
-Files.com, and Twitter. Datadog has genuine replay coverage for all 8 runtime
+Files.com, Twitter, and the sources above. Datadog has genuine replay coverage for all 8 runtime
 families, GitHub for all 6, Okta for 19 of 20, Zendesk for all 3, GitGuardian
 for all 3, Fastly for all 3, and Mastodon for all 4. Each accepted response is
 replayed through the production decoder, and its normalized read and discovery
@@ -96,6 +105,10 @@ was established; other compatible evidence is marked `historical` and does not
 claim current provider validation.
 
 ## Public GitHub corpus audit
+
+The final no-signup corpus search, including its framework result caps, pinned
+accepts, and exact rejection reasons, is recorded in
+[`source-api-fixture-public-corpus-audit-2026-07-18.md`](source-api-fixture-public-corpus-audit-2026-07-18.md).
 
 The GitHub pass examined high-volume record/replay corpora before selecting the
 imports above:
@@ -193,9 +206,9 @@ The captures exposed contract errors that synthetic records had not exercised:
 
 ## Remaining boundary
 
-`tools/sourcefidelity` still reports 740 sources with at least one normalized
-fixture matching synthetic markers. The final scan reports 93 genuine bundles,
-82 genuine families, 20 sources with genuine evidence, and 43 high-fidelity
+`tools/sourcefidelity` still reports 739 sources with at least one normalized
+fixture matching synthetic markers. The final scan reports 109 genuine bundles,
+98 genuine families, 29 sources with genuine evidence, and 43 high-fidelity
 sources. The remaining families require provider tenant identifiers,
 credentials, non-public account data, a corrected documented route, or a
 matching public recording. They were not replaced with documentation examples,
