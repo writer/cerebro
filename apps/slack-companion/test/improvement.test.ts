@@ -37,7 +37,6 @@ import type {
   ImprovementFreshEvidenceInput,
   ImprovementOutcomeEvidenceInput,
 } from "../src/improvement/contracts.js";
-import { IMPROVEMENT_EVIDENCE_KINDS } from "../src/improvement/contracts.js";
 import {
   sealImprovementOutcomeEvaluationSet,
 } from "../src/improvement/evaluation-set-receipt.js";
