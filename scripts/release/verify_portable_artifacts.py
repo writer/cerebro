@@ -54,14 +54,11 @@ def read_file_tree(root: Path, label: str) -> dict[str, bytes]:
 
 def read_archive_tree(
     archive_path: Path,
-    tree_prefix: str,
     label: str,
-) -> tuple[dict[str, Any], dict[str, bytes]]:
-    package_data: bytes | None = None
+) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     names: set[str] = set()
     member_count = 0
-    prefix = f"package/{tree_prefix}/"
 
     try:
         with tarfile.open(archive_path, mode="r:gz") as archive:
@@ -86,24 +83,38 @@ def read_archive_tree(
                 if member.isdir():
                     continue
                 require(member.size <= MAX_MEMBER_BYTES, f"{label} member is too large: {member.name}")
-                if member.name != "package/package.json" and not member.name.startswith(prefix):
-                    continue
                 member_file = archive.extractfile(member)
                 require(member_file is not None, f"{label} member cannot be read: {member.name}")
                 data = member_file.read(MAX_MEMBER_BYTES + 1)
                 require(len(data) <= MAX_MEMBER_BYTES, f"{label} member is too large: {member.name}")
-                if member.name == "package/package.json":
-                    package_data = data
-                else:
-                    files[member.name.removeprefix(prefix)] = data
+                relative = PurePosixPath(*member_path.parts[1:]).as_posix()
+                files[relative] = data
     except VerificationError:
         raise
     except (OSError, tarfile.TarError) as exc:
         raise VerificationError(f"{label} is invalid: {exc}") from exc
 
-    require(package_data is not None, f"{label} is missing package/package.json")
-    require(files, f"{label} is missing package/{tree_prefix}")
-    return load_json_object(package_data, f"{label} package metadata"), files
+    require("package.json" in files, f"{label} is missing package/package.json")
+    require(len(files) > 1, f"{label} has no published package content")
+    return files
+
+
+def read_expected_package_tree(
+    package_root: Path,
+    subtrees: tuple[str, ...],
+    label: str,
+) -> dict[str, bytes]:
+    expected: dict[str, bytes] = {}
+    for filename in ("package.json", "README.md"):
+        path = package_root / filename
+        require(path.is_file() and not path.is_symlink(), f"{label} is missing {filename}")
+        data = path.read_bytes()
+        require(len(data) <= MAX_MEMBER_BYTES, f"{label} file is too large: {filename}")
+        expected[filename] = data
+    for subtree in subtrees:
+        for name, data in read_file_tree(package_root / subtree, f"{label} {subtree}").items():
+            expected[f"{subtree}/{name}"] = data
+    return expected
 
 
 def require_same_tree(
@@ -151,26 +162,50 @@ def verify_portable_artifacts(
             bundle_root / "agent-service-lifecycle.schema.json",
             "agent service lifecycle contract",
         ),
+        (
+            repo / "schemas/product-release.schema.json",
+            bundle_root / "product-release.schema.json",
+            "product release contract",
+        ),
+        (
+            repo / "schemas/product-release-published.schema.json",
+            bundle_root / "product-release-published.schema.json",
+            "published product release contract",
+        ),
     )
     for source, bundled, label in contract_pairs:
         require(source.is_file(), f"canonical {label} is missing: {source}")
         require(bundled.is_file(), f"bundled {label} is missing: {bundled}")
         require(source.read_bytes() == bundled.read_bytes(), f"bundled {label} does not match the checkout")
 
-    sdk_manifest, sdk_files = read_archive_tree(sdk_archive, "src", "SDK archive")
-    slack_manifest, slack_files = read_archive_tree(slack_archive, "dist/src", "Slack companion archive")
-    require_same_tree(read_file_tree(repo / "sdk/typescript/src", "SDK source"), sdk_files, "SDK archive")
+    sdk_files = read_archive_tree(sdk_archive, "SDK archive")
+    slack_files = read_archive_tree(slack_archive, "Slack companion archive")
     require_same_tree(
-        read_file_tree(repo / "apps/slack-companion/dist/src", "Slack companion build"),
+        read_expected_package_tree(
+            repo / "sdk/typescript",
+            ("src", "examples"),
+            "SDK package",
+        ),
+        sdk_files,
+        "SDK archive",
+    )
+    require_same_tree(
+        read_expected_package_tree(
+            repo / "apps/slack-companion",
+            ("dist/src",),
+            "Slack companion package",
+        ),
         slack_files,
         "Slack companion archive",
     )
 
-    sdk_checkout = load_json_object((repo / "sdk/typescript/package.json").read_bytes(), "SDK package.json")
-    slack_checkout = load_json_object(
-        (repo / "apps/slack-companion/package.json").read_bytes(),
-        "Slack companion package.json",
+    sdk_manifest = load_json_object(sdk_files["package.json"], "SDK archive package metadata")
+    slack_manifest = load_json_object(
+        slack_files["package.json"],
+        "Slack companion archive package metadata",
     )
+    sdk_checkout = load_json_object(sdk_files["package.json"], "SDK package.json")
+    slack_checkout = load_json_object(slack_files["package.json"], "Slack companion package.json")
     sdk_version = sdk_checkout.get("version")
     slack_version = slack_checkout.get("version")
     require(sdk_manifest.get("name") == SDK_PACKAGE, "SDK archive has the wrong package name")
