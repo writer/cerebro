@@ -119,6 +119,11 @@ class CerebroRuntimeConfig:
         extra_env = cfg.get_object("extraEnv") or {}
         if not isinstance(extra_env, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in extra_env.items()):
             raise ValueError("cerebro:extraEnv must be an object with string keys and string values")
+        if _env_enabled(extra_env.get("CEREBRO_DEVICE_AUTH_ENABLED")) and max_replicas > 1:
+            raise ValueError(
+                "cerebro:maxReplicas must be 1 when CEREBRO_DEVICE_AUTH_ENABLED=true; "
+                "device authentication requires shared replay state before horizontal scaling"
+            )
 
         extra_secret_values = cfg.get_secret_object("extraSecrets")
         extra_secrets: dict[str, pulumi.Output[str]] = {}
@@ -225,6 +230,9 @@ class CerebroRuntimeConfig:
         if self.has_secret("CEREBRO_NEO4J_URI"):
             env["CEREBRO_GRAPH_STORE_DRIVER"] = "neo4j"
         env.update(self.extra_env)
+        # The application uses this deployment-owned value to fail closed when a
+        # process-local security boundary is enabled without shared replay state.
+        env["CEREBRO_REPLICA_COUNT"] = str(self.max_replicas)
         return env
 
     def created_secret_env(self) -> list[SecretEnv]:
@@ -341,6 +349,10 @@ def _slug(value: str) -> str:
 
 def _bool_env(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _env_enabled(value: str | None) -> bool:
+    return value is not None and value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _string_list(value: Any, default: list[str], key: str) -> list[str]:

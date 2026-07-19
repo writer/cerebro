@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/deviceauth/attestation"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/endpointtelemetry"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 // buildDeviceAuthService wires the deviceauth.Service against the configured
@@ -134,15 +135,19 @@ func orderCurrentFirst(keys []deviceauth.SigningKey, currentKID string) []device
 
 type deviceAuthHTTPHandler struct {
 	service      *deviceauth.Service
+	appendLog    ports.AppendLog
+	projector    ports.SourceProjector
 	enrollLimit  *deviceauth.TokenBucket
 	tokenLimit   *deviceauth.TokenBucket
 	originConfig config.RequestOriginConfig
 	now          func() time.Time
 }
 
-func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig, originConfig config.RequestOriginConfig) *deviceAuthHTTPHandler {
+func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig, originConfig config.RequestOriginConfig, appendLog ports.AppendLog, projector ports.SourceProjector) *deviceAuthHTTPHandler {
 	return &deviceAuthHTTPHandler{
 		service:      service,
+		appendLog:    appendLog,
+		projector:    projector,
 		enrollLimit:  deviceauth.NewTokenBucket(cfg.EnrollPerIPRatePerSecond, cfg.EnrollPerIPBurst),
 		tokenLimit:   deviceauth.NewTokenBucket(cfg.TokenPerDeviceRatePerSecond, cfg.TokenPerDeviceBurst),
 		originConfig: originConfig,
@@ -397,6 +402,10 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		writeDeviceAuthError(w, http.StatusForbidden, "device_required", "telemetry ingest requires a device JWT")
 		return
 	}
+	if h.appendLog == nil || h.projector == nil {
+		writeDeviceAuthError(w, http.StatusServiceUnavailable, "telemetry_runtime_unavailable", "telemetry ingest requires durable event and graph stores")
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, deviceauth.MaxIngestBodyBytes+1))
 	if err != nil {
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -410,11 +419,12 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if _, err := endpointtelemetry.Normalize(body, endpointtelemetry.Principal{
+	events, err := endpointtelemetry.Normalize(body, endpointtelemetry.Principal{
 		TenantID:     auth.principal.TenantID,
 		DeviceID:     auth.principal.DeviceID,
 		HardwareUUID: auth.principal.HardwareUUID,
-	}, time.Now()); err != nil {
+	}, time.Now())
+	if err != nil {
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_telemetry", err.Error())
 		return
 	}
@@ -423,6 +433,7 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		DeviceID:       auth.principal.DeviceID,
 		IdempotencyKey: idempotencyKey,
 		Body:           body,
+		Persist:        endpointtelemetry.Persistence(events, h.appendLog, h.projector),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)

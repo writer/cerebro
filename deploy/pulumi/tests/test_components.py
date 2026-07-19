@@ -223,3 +223,13 @@ def _config(cloud: str, **overrides: Any) -> CerebroRuntimeConfig:
     }
     values.update(overrides)
     return CerebroRuntimeConfig(**values)
+
+
+def test_plain_env_uses_deployment_max_replica_count() -> None:
+    config = _config(
+        "gcp",
+        max_replicas=3,
+        extra_env={"CEREBRO_REPLICA_COUNT": "1"},
+    )
+
+    assert config.plain_env()["CEREBRO_REPLICA_COUNT"] == "3"

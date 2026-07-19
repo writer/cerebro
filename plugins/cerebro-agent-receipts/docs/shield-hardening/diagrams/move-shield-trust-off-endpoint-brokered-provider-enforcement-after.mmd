@@ -1,0 +1,10 @@
+flowchart LR
+  Agent["Coding agent"] --> Hook["Native hook adapter"]
+  Hook --> Collector["Managed collector"]
+  Collector --> ControlPlane["Organization policy and attestation"]
+  ControlPlane --> Capability["Short-lived action capability"]
+  Capability --> Broker["Credential broker"]
+  Broker --> Provider["Protected provider API"]
+  Policy["Provider deny policy"] --> Provider
+  User["Direct user credentials"] -- "denied" --> Policy
+  BreakGlass["Governed break-glass identity"] --> Provider
