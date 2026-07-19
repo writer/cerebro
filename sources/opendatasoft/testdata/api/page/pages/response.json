@@ -1,0 +1,26 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/pages",
+      "rel": "self"
+    }
+  ],
+  "pages": [
+    {
+      "links": [
+        {
+          "href": "https://public.opendatasoft.com/api/v2/pages",
+          "rel": "pages"
+        }
+      ],
+      "page": {
+        "description": "",
+        "slug": "home",
+        "title": {
+          "en": "Homepage",
+          "fr": "Home"
+        }
+      }
+    }
+  ]
+}

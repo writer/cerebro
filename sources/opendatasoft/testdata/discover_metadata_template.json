@@ -1,3 +1,7 @@
 [
-  "urn:cerebro:tenant:opendatasoft_metadata_template:source-opendatasoft-metadata_template-1"
+  "urn:cerebro:tenant:opendatasoft_metadata_template:self",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:Interoperatibility",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:Basic",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:Extra",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:Admin"
 ]

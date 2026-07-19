@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: opendatasoft
+family: page
+case: pages
+replay_test: source_test.go#TestSourceReplaysCapturedOpenDataSoftFamilies
+request:
+    method: GET
+    url: https://public.opendatasoft.com/api/v2/pages?limit=1&per_page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-19T17:19:21Z"
+    sha256: 2e037a99247a6f6f71604e0fccf5000a885f5aa54ed1ae8736f7ea5ab911c1fb
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

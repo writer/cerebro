@@ -1,0 +1,20 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: opendatasoft
+family: reuses
+case: dataset_reuses
+replay_test: source_test.go#TestSourceReplaysCapturedOpenDataSoftFamilies
+request:
+    method: GET
+    url: https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/reuses?limit=1
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-19T17:19:29Z"
+    sha256: 35607eb88d6e07945aca6147b13f6821db3feed2968c8798862e30eee05b8a0f
+    headers:
+        Link: <https://help.huwise.com/apis/ods-explore-v2/explore_v2.1.html#section/Introduction/v2.1-Changelog>;rel="deprecation"; type="text/html"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

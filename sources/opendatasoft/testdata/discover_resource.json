@@ -1,3 +1,7 @@
 [
-  "urn:cerebro:tenant:opendatasoft_resource:source-opendatasoft-resource-1"
+  "urn:cerebro:tenant:opendatasoft_resource:self",
+  "urn:cerebro:tenant:opendatasoft_resource:datasets",
+  "urn:cerebro:tenant:opendatasoft_resource:exports",
+  "urn:cerebro:tenant:opendatasoft_resource:facets",
+  "urn:cerebro:tenant:opendatasoft_resource:metadata_templates"
 ]

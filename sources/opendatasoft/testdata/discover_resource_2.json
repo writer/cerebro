@@ -1,3 +1,6 @@
 [
-  "urn:cerebro:tenant:opendatasoft_resource_2:source-opendatasoft-resource_2-1"
+  "urn:cerebro:tenant:opendatasoft_resource_2:self",
+  "urn:cerebro:tenant:opendatasoft_resource_2:catalog",
+  "urn:cerebro:tenant:opendatasoft_resource_2:monitoring",
+  "urn:cerebro:tenant:opendatasoft_resource_2:opendatasoft"
 ]
