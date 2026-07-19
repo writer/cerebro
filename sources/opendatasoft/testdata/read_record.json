@@ -1,65 +1,64 @@
 [
   {
+    "id": "opendatasoft-tenant-record-4fe6887e0a654cd7",
+    "tenant_id": "tenant",
+    "source_id": "opendatasoft",
+    "kind": "opendatasoft.record",
+    "occurred_at": "2026-07-19T17:19:28Z",
+    "schema_ref": "opendatasoft/record/v1",
+    "payload": {
+      "links": [
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records/afdc2e84853b71c841cb25f1bdfe2744518b7115",
+          "rel": "self"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets",
+          "rel": "datasets"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale",
+          "rel": "dataset"
+        }
+      ],
+      "record": {
+        "fields": {
+          "code_naf": "01",
+          "code_ogr": "19705",
+          "code_rome": "A1301",
+          "code_rome_2": "A1301",
+          "domaine_pro": "A13",
+          "domaine_pro_2": "Etudes et assistance technique",
+          "domaine_professionnel": "13",
+          "fiche_rome": "01",
+          "grand_domaine": "A",
+          "label_naf": "Culture et production animale, chasse et services annexes",
+          "libelle": "Technicien / Technicienne cunicole",
+          "libelle_domaine_professionnel": "Etudes et assistance technique",
+          "libelle_grand_domaine": "Agriculture et Pêche, Espaces naturels et Espaces verts, Soins aux animaux"
+        },
+        "id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
+        "size": 296,
+        "timestamp": "2025-03-31T08:16:08.774Z"
+      }
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/${config.source}/datasets/${config.dataset_id}/records",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-opendatasoft-record-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-opendatasoft-record-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/opendatasoft/record/source-opendatasoft-record-1",
-      "external_id": "source-opendatasoft-record-1",
+      "external_id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
       "family": "record",
-      "id": "source-opendatasoft-record-1",
-      "name": "Opendatasoft Record Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
+      "name": "Technicien / Technicienne cunicole",
+      "observed_at": "2025-03-31T08:16:08.774Z",
       "provider": "opendatasoft",
       "record_class": "asset",
-      "record_selector": "$.records[*]",
-      "resource_id": "source-opendatasoft-record-1",
-      "resource_name": "Opendatasoft Record Fixture",
+      "resource_id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
+      "resource_name": "Technicien / Technicienne cunicole",
       "resource_type": "record",
-      "resource_urn": "urn:cerebro:tenant:opendatasoft_record:source-opendatasoft-record-1",
+      "resource_urn": "urn:cerebro:tenant:opendatasoft_record:afdc2e84853b71c841cb25f1bdfe2744518b7115",
       "schema": "record",
-      "source_event_id": "source-opendatasoft-record-1",
+      "source_event_id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
       "source_provider": "opendatasoft",
       "source_system": "opendatasoft",
       "tenant_id": "tenant"
-    },
-    "id": "source-opendatasoft-record-event-1",
-    "kind": "opendatasoft.record",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/${config.source}/datasets/${config.dataset_id}/records",
-      "event_id": "source-opendatasoft-record-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-opendatasoft-record-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-opendatasoft-record-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/opendatasoft/record/source-opendatasoft-record-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/opendatasoft/record/source-opendatasoft-record-1",
-      "family": "record",
-      "id": "source-opendatasoft-record-1",
-      "links": "source-opendatasoft-record-1",
-      "name": "Opendatasoft Record Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record": "record",
-      "record_class": "asset",
-      "record_selector": "$.records[*]",
-      "resource_id": "source-opendatasoft-record-1",
-      "resource_type": "record",
-      "resource_urn": "urn:cerebro:tenant:opendatasoft_record:source-opendatasoft-record-1",
-      "schema_ref": "opendatasoft/record/v1",
-      "source_id": "opendatasoft",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "opendatasoft/record/v1",
-    "source_id": "opendatasoft",
-    "tenant_id": "tenant"
+    }
   }
 ]
