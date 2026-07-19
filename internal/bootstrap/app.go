@@ -170,9 +170,10 @@ func NewWithContext(ctx context.Context, cfg config.Config, deps Dependencies, s
 
 type appConstructionOptions struct {
 	eventAdmissionContext context.Context
+	eventAdmissionFactory func(context.Context, string, int) (eventadmission.Admitter, error)
 }
 
-func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (*App, error) {
+func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (_ *App, err error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {
@@ -264,7 +265,13 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 		if options.eventAdmissionContext == nil {
 			return nil, errors.New("source event admission requires a bootstrap context")
 		}
-		admitter, admissionErr := eventadmission.NewNativeAdmitter(
+		factory := options.eventAdmissionFactory
+		if factory == nil {
+			factory = func(ctx context.Context, workerPath string, workerCount int) (eventadmission.Admitter, error) {
+				return eventadmission.NewNativeAdmitter(ctx, workerPath, workerCount)
+			}
+		}
+		admitter, admissionErr := factory(
 			options.eventAdmissionContext,
 			cfg.SourceRuntime.EventAdmissionWorkerPath,
 			cfg.SourceRuntime.EventAdmissionWorkers,
@@ -273,6 +280,14 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 			return nil, fmt.Errorf("source event admission bootstrap failed: %w", admissionErr)
 		}
 		app.services.runtimeOps.WithEventAdmitter(admitter)
+		defer func() {
+			if err == nil {
+				return
+			}
+			if closer, ok := admitter.(interface{ Close() error }); ok {
+				err = errors.Join(err, closer.Close())
+			}
+		}()
 	}
 	app.services.claims = app.newClaimService()
 	app.services.findings = app.newFindingService()
