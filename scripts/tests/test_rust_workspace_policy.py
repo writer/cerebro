@@ -147,6 +147,7 @@ class RustWorkspacePolicyTests(unittest.TestCase):
         '''
         for abi_path in (
             "internal/mitre/evaluator/src/wasm_abi.rs",
+            "internal/sourceruntime/eventadmission/src/wasm_abi.rs",
             "internal/sourceruntime/recordkernel/src/wasm_abi.rs",
         ):
             with self.subTest(abi_path=abi_path):

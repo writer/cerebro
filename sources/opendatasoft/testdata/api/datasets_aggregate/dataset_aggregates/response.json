@@ -1,0 +1,21 @@
+{
+  "aggregations": [
+    {
+      "count(*)": 33722
+    }
+  ],
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/aggregates",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale",
+      "rel": "dataset"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets",
+      "rel": "datasets"
+    }
+  ]
+}

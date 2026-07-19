@@ -1,0 +1,39 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "allowed_idps": [],
+      "app_launcher_visible": true,
+      "aud": "example-4ada32bc",
+      "auto_redirect_to_identity": false,
+      "created_at": "2025-03-19T20:20:42Z",
+      "destinations": [
+        {
+          "type": "public",
+          "uri": "gpfqbfyfcx.terraform.cfapi.net"
+        }
+      ],
+      "domain": "gpfqbfyfcx.terraform.cfapi.net",
+      "enable_binding_cookie": false,
+      "http_only_cookie_attribute": true,
+      "id": "example-ee19609e",
+      "name": "gpfqbfyfcx",
+      "options_preflight_bypass": false,
+      "policies": [],
+      "session_duration": "24h",
+      "tags": [],
+      "type": "self_hosted",
+      "uid": "example-ee19609e",
+      "updated_at": "2025-03-19T20:20:42Z"
+    }
+  ],
+  "result_info": {
+    "count": 1,
+    "page": 1,
+    "per_page": 1000,
+    "total_count": 1,
+    "total_pages": 1
+  },
+  "success": true
+}

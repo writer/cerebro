@@ -1,0 +1,7 @@
+flowchart LR
+  Agent["Coding agent"] --> Hook["Native hook adapter"]
+  Hook --> UserBoundary["Per-user LaunchAgent\nuser-controlled boundary"]
+  UserBoundary --> Ledger["Signed local ledger"]
+  User["Local user"] -. "can disable or feed" .-> Hook
+  User -. "can disable" .-> UserBoundary
+  User --> Provider["Provider credentials"]

@@ -18,7 +18,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
+		if r.Header.Get("Authorization") != "Basic Y2VyZWJybzp0ZXN0LXRva2Vu" {
 			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
 		}
 		if r.URL.RequestURI() == "/ping" {
@@ -29,7 +29,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"lists": []map[string]string{{"id": "record-1", "name": "Record One", "date_created": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token", "dc": "test-dc", "list_id": "test-list_id"}

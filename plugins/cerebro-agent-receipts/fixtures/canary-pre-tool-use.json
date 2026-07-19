@@ -1,0 +1,14 @@
+{
+  "session_id": "019f6406-2bc6-7b72-93ec-ee87221d075d",
+  "transcript_path": null,
+  "cwd": "/redacted/cerebro",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-test",
+  "turn_id": "019f648d-ded2-7121-8326-c57fa25561ef",
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_use_id": "call_JuSsa99BJVt1AvH0Fq4wr2Fe",
+  "tool_input": {
+    "command": "./work/run-cerebro-candidate-canary.sh candidate-redacted sha256:redacted"
+  }
+}

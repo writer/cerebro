@@ -1,0 +1,17 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/reuses?limit=1\u0026offset=0",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/reuses?limit=1\u0026offset=0",
+      "rel": "first"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/reuses?limit=1\u0026offset=0",
+      "rel": "last"
+    }
+  ],
+  "reuses": []
+}

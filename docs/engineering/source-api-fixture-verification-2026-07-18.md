@@ -2,8 +2,8 @@
 
 ## Scope
 
-This pass examined all 820 source catalogs and then ran a second GitHub corpus
-sweep without creating provider accounts.
+This pass examined all 820 source catalogs and then continued through public
+GitHub record/replay corpora without creating provider accounts.
 The repository contained 799 runtime sources, and the existing fidelity scan
 identified 3,548 synthetic normalized read fixtures across 743 sources before
 the pass.
@@ -74,14 +74,29 @@ array.
 | Tenable.io | `assets`, `vulnerabilities` | 2 list cases | Pinned upstream VCR recordings | 13 assets and 2 vulnerability aggregates replayed; evidence remains historical |
 | GitGuardian | `audit_events`, `incidents`, `members` | 3 list cases | Pinned upstream VCR recordings | All 3 runtime families replayed with provider Link pagination |
 | GitGuardian Secrets | `audit_events`, `sources` | 2 list cases | Pinned upstream VCR recordings | Both captured runtime families replayed; the unsupported `secrets` scaffold remains blocked |
+| Cloudflare | 12 account, zone, ruleset, DNS, load-balancer, Access, and Gateway families | 16 list, detail, and pagination cases | Pinned upstream VCR recordings | 12 runtime families replayed, including three account-member pages and list/detail ruleset shapes |
+| Fastly | `services`, `audit_events`, `acl_entries` | 5 list and pagination cases | Pinned upstream VCR recordings | All 3 runtime families replayed, including 258 service-version records across three pages |
+| Files.com | `login`, `user` | 3 list and time-range cases | Pinned upstream VCR recordings | Login history, filtered login history, and users replayed through the provider header and query contract |
+| Mastodon | `account`, `activity`, `notification`, `verify_credential` | 4 collection and singleton cases | Pinned upstream VCR recordings | All 4 runtime families replayed from a maintained SDK test instance |
+| Twitter | `list_membership`, `member`, `job` | 3 list cases | Pinned upstream VCR recordings | 93 list memberships, 100 list members, and one compliance job replayed; evidence remains historical |
+| BambooHR | `users` | `employee_directory` | Pinned upstream ExVCR recording | Employee directory replayed through the provider gateway and Basic API-key contract |
+| Bugsnag | `projects`, `errors` | `organization_projects`, `project_errors` | Pinned upstream VCR recordings | Organization projects and project errors replayed through the v2 header contract |
+| Contentful | `documents` | `list_entries` | Pinned upstream VCR recording | Space entries replayed through the Content Delivery API envelope |
+| HackerOne | `findings` | `report_list` | Pinned upstream VCR recording | JSON:API reports replayed with nested severity, program, and state fields |
+| Mailchimp | `lists`, `members` | `list_lists`, `list_members` | Pinned upstream ExVCR recordings | Account lists and list members replayed through the v3 paths |
+| Postmark | `domains` | `list_domains` | Pinned upstream Betamax recording | Account domains replayed with count and offset pagination |
+| Replicate | `models`, `collections` | `list_models`, `list_collections` | Pinned upstream pytest-recording cassettes | Public models and collections replayed through the production decoder |
+| Retool | `users` | `list_users` | Pinned upstream go-vcr recording | Users replayed through the provider pagination envelope |
+| Trello | `users`, `groups`, `workspaces`, `documents`, `audit_events` | 5 member, board, card, and action cases | Pinned upstream ExVCR and VCR recordings | All 5 runtime families replayed through Trello's query authentication and v1 routes |
 
-The repository now contains 62 validated proof bundles across 15 sources and
-58 runtime families. This second sweep added 17 bundles and completed genuine
-replay coverage for Zendesk and GitGuardian. Datadog has genuine replay
-coverage for all 8 runtime families, GitHub for all 6, Okta for 19 of 20,
-Zendesk for all 3, and GitGuardian for all 3. Each accepted response is replayed
-through the production decoder, and its normalized read and discovery fixtures
-are derived from that replay.
+The repository now contains 109 validated proof bundles across 29 sources and
+98 runtime families. The continued corpus sweep added 47 bundles and completed
+genuine replay coverage for Fastly and Mastodon while extending Cloudflare,
+Files.com, Twitter, and the sources above. Datadog has genuine replay coverage for all 8 runtime
+families, GitHub for all 6, Okta for 19 of 20, Zendesk for all 3, GitGuardian
+for all 3, Fastly for all 3, and Mastodon for all 4. Each accepted response is
+replayed through the production decoder, and its normalized read and discovery
+fixtures are derived from that replay.
 
 Every upstream artifact is pinned by full commit, repository-relative path,
 artifact digest, declared license, recording tool, harness path, and interaction
@@ -90,6 +105,10 @@ was established; other compatible evidence is marked `historical` and does not
 claim current provider validation.
 
 ## Public GitHub corpus audit
+
+The final no-signup corpus search, including its framework result caps, pinned
+accepts, and exact rejection reasons, is recorded in
+[`source-api-fixture-public-corpus-audit-2026-07-18.md`](source-api-fixture-public-corpus-audit-2026-07-18.md).
 
 The GitHub pass examined high-volume record/replay corpora before selecting the
 imports above:
@@ -112,6 +131,20 @@ imports above:
   supplied exact member, incident, audit-log, and source responses. The current
   corpus records response redaction in its VCR harness, and `sourcefixture`
   applies a second sanitization pass before the response enters the repository;
+- the maintained Cloudflare client contains hundreds of VCR interactions and
+  supplied 16 exact list, detail, and pagination responses across 12 runtime
+  families;
+- the maintained Fastly client contains more than one thousand VCR cassettes
+  and supplied exact responses for every active Fastly family, including a
+  three-page service inventory;
+- the maintained Files.com CLI corpus supplied exact login-history and user
+  responses. A second Files.com SDK corpus was also checked, but its remaining
+  recordings exercise file transfer paths not exposed by the current source;
+- the maintained Mastodon client contains 169 VCR cassettes and supplied exact,
+  non-empty responses for all four active Mastodon families;
+- the maintained Twitter client contains 140 VCR cassettes and supplied exact
+  list-membership, list-member, and compliance-job responses. Its only global
+  direct-message collection response was empty, so `dm_event` remains blocked;
 - the maintained Cortex Xpanse client contains 41 VCR cassettes, including 31
   API response cases. None matches the current `cortex_xdr`, `cortex_xsoar`, or
   `prisma_cloud` request contracts, so no Xpanse response was relabeled as a
@@ -156,12 +189,26 @@ The captures exposed contract errors that synthetic records had not exercised:
   header, and audit actors use `member_id`, `member_email`, and `member_name`;
 - GitGuardian source records use `full_name` and `type`, while their collection
   page size parameter is `per_page` rather than the generated `limit`.
+- Fastly authenticates with `Fastly-Key`; services use page-number and Link
+  pagination, ACL entries live under a service and ACL path, and audit-event
+  attributes are nested under `attributes`;
+- Files.com authenticates with `X-FilesAPI-Key`, login history accepts
+  `start_at` and `end_at`, and provider records rely on configured tenant
+  identity rather than a generated response field;
+- Mastodon authenticated-account verification is a singleton identity response,
+  instance activity is keyed by its Unix week, and notifications and list
+  accounts use `max_id` Link pagination;
+- Twitter list pagination uses `pagination_token` and `meta.next_token`, while
+  compliance-job listing requires `type=tweets`;
+- pagination tokens are provider cursors, not authentication credentials; the
+  fixture sanitizer now preserves them while continuing to clear access and
+  refresh tokens.
 
 ## Remaining boundary
 
-`tools/sourcefidelity` still reports 742 sources with at least one normalized
-fixture matching synthetic markers. The final scan reports 62 genuine bundles,
-58 genuine families, 15 sources with genuine evidence, and 43 high-fidelity
+`tools/sourcefidelity` still reports 739 sources with at least one normalized
+fixture matching synthetic markers. The final scan reports 109 genuine bundles,
+98 genuine families, 29 sources with genuine evidence, and 43 high-fidelity
 sources. The remaining families require provider tenant identifiers,
 credentials, non-public account data, a corrected documented route, or a
 matching public recording. They were not replaced with documentation examples,

@@ -1,0 +1,484 @@
+import Foundation
+import ReceiptCore
+
+@MainActor
+final class ReceiptViewStore: ObservableObject {
+  @Published private(set) var actions: [ExecutionAction] = []
+  @Published private(set) var verifications: [String: ReceiptVerification] = [:]
+  @Published private(set) var assessment = AttributionAssessment(
+    actionMatches: [:], unmatchedProviderEvents: [])
+  @Published private(set) var providerEvents: [ProviderEvent] = []
+  @Published private(set) var adapterStatuses: [AgentAdapterStatus] = []
+  @Published private(set) var latestValidEventByProduct: [String: Date] = [:]
+  @Published private(set) var binaryIdentities: [AgentBinaryIdentity] = []
+  @Published private(set) var reconciliations: [AgentAdapterReconciliation] = []
+  @Published private(set) var shieldSnapshot = ShieldSnapshot(
+    capturedAt: ReceiptDate.string(from: Date()),
+    level: .inactive,
+    trustBoundary: .development,
+    detectedIntegrations: 0,
+    currentIntegrations: 0,
+    recentAgentEvents: 0,
+    incidents: [],
+    binaryIdentities: []
+  )
+  @Published private(set) var adminAccess: ShieldAdminAccess = .unavailable
+  @Published private(set) var backgroundState: ShieldBackgroundState = .notRegistered
+  @Published private(set) var deliveryHealth: ShieldDeliveryHealth?
+  @Published var selection: String?
+  @Published var sidebarSelection: SidebarSelection = .overview {
+    didSet { selectFirstVisibleItem() }
+  }
+  @Published var showImporter = false
+  @Published var errorMessage: String?
+  @Published private(set) var isStale = false
+  @Published private(set) var lastRefreshError: String?
+
+  private let receiptStores: [ReceiptStore]
+  private let providerStore: ReceiptStore
+  private let adapterInstaller: AgentAdapterInstaller
+  private var timer: Timer?
+  private var reloadInProgress = false
+  private var lastAdapterRefresh: Date?
+  private let automaticReconciliation: Bool
+
+  init(
+    receiptStore: ReceiptStore? = nil,
+    adapterInstaller: AgentAdapterInstaller? = nil,
+    automaticReconciliation: Bool = true
+  ) {
+    let localStore = receiptStore ?? ReceiptStore()
+    self.providerStore = localStore
+    self.receiptStores =
+      receiptStore == nil
+      ? [localStore, ReceiptStore(directory: ReceiptStore.shieldAgentDirectory())]
+      : [localStore]
+    let bundledHelper = Bundle.main.bundleURL
+      .appendingPathComponent("Contents/Helpers", isDirectory: true)
+      .appendingPathComponent("CerebroAgentReceiptHook")
+    self.adapterInstaller =
+      adapterInstaller
+      ?? AgentAdapterInstaller(bundledHelperURL: bundledHelper)
+    let unregistering = CommandLine.arguments.contains("--unregister-agent-and-quit")
+    let backgroundState =
+      unregistering
+      ? ShieldBackgroundState.notRegistered
+      : ShieldBackgroundManager.ensureRegistered(
+        forceUpdate: CommandLine.arguments.contains("--reregister-agent"))
+    self.backgroundState = backgroundState
+    self.automaticReconciliation =
+      !unregistering && automaticReconciliation && backgroundState != .enabled
+    reload()
+    timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+      Task { @MainActor in self?.reload(silently: true) }
+    }
+  }
+
+  var selectedAction: ExecutionAction? {
+    guard let selection, selection.hasPrefix("action:") else { return nil }
+    let id = String(selection.dropFirst("action:".count))
+    return actions.first { $0.id == id }
+  }
+
+  var selectedProviderGap: ProviderEvent? {
+    guard let selection, selection.hasPrefix("provider:") else { return nil }
+    let id = String(selection.dropFirst("provider:".count))
+    return assessment.unmatchedProviderEvents.first { $0.id == id }
+  }
+
+  var filteredActions: [ExecutionAction] {
+    if let product = selectedProduct {
+      return actions.filter { $0.product == product.displayName }
+    }
+    return actions.filter { action in
+      let match = assessment.actionMatches[action.id]
+      switch filter {
+      case .all: return true
+      case .bound: return match?.level == .providerBound
+      case .candidate: return match?.level == .candidateCorrelation
+      case .unmatched: return match?.level == .agentCaptured
+      case .providerGaps: return false
+      case .invalid: return !action.integrityValid
+      }
+    }
+  }
+
+  var filter: ReceiptFilter {
+    guard case .activity(let filter) = sidebarSelection else { return .all }
+    return filter
+  }
+
+  var selectedProduct: AgentProduct? {
+    guard case .agent(let product) = sidebarSelection else { return nil }
+    return product
+  }
+
+  var selectedAdapterStatus: AgentAdapterStatus? {
+    guard let selectedProduct else { return nil }
+    return adapterStatuses.first { $0.product == selectedProduct }
+  }
+
+  var showsProviderGaps: Bool { filter == .providerGaps }
+  var showsOverview: Bool {
+    if case .overview = sidebarSelection { return true }
+    return false
+  }
+  var boundCount: Int { assessment.providerBoundCount }
+  var candidateCount: Int { assessment.candidateCount }
+  var capturedOnlyCount: Int { assessment.capturedOnlyCount }
+  var providerGapCount: Int { assessment.unmatchedProviderEvents.count }
+  var invalidCount: Int { actions.filter { !$0.integrityValid }.count }
+  var canRepairAdapters: Bool {
+    if shieldSnapshot.trustBoundary == .development { return true }
+    guard case .authorized(let capability) = adminAccess else { return false }
+    return capability.roles.contains(.repair)
+  }
+
+  var canImportProviderEvidence: Bool {
+    shieldSnapshot.trustBoundary == .development
+  }
+
+  func actionCount(for product: AgentProduct) -> Int {
+    actions.filter { $0.product == product.displayName }.count
+  }
+
+  func lastSeen(for product: AgentProduct) -> Date? {
+    actions.first { $0.product == product.displayName }?.startedAt
+  }
+
+  func recentValidEvent(for product: AgentProduct, now: Date = Date()) -> Date? {
+    guard
+      let status = adapterStatuses.first(where: { $0.product == product }),
+      status.state == .configured || status.state == .managedByPlugin,
+      let eventDate = latestValidEventByProduct[product.displayName],
+      now.timeIntervalSince(eventDate) >= -30,
+      now.timeIntervalSince(eventDate) <= 5 * 60
+    else { return nil }
+    if let configuredAt = status.configurationModifiedAt, eventDate < configuredAt {
+      return nil
+    }
+    return eventDate
+  }
+
+  func installAdapter(_ product: AgentProduct) {
+    guard authorizeAdapterRepair() else { return }
+    do {
+      try adapterInstaller.install(product)
+      adapterStatuses = adapterInstaller.statuses()
+      lastAdapterRefresh = Date()
+      errorMessage = nil
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  func removeAdapter(_ product: AgentProduct) {
+    guard authorizeAdapterRepair() else { return }
+    do {
+      try adapterInstaller.remove(product)
+      adapterStatuses = adapterInstaller.statuses()
+      lastAdapterRefresh = Date()
+      errorMessage = nil
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  private func authorizeAdapterRepair() -> Bool {
+    guard shieldSnapshot.trustBoundary == .organizationManaged else { return true }
+    do {
+      guard
+        let configuration = try ManagedShieldConfiguration.load(),
+        let shieldStore = receiptStores.last,
+        let publicKey = try? shieldStore.readTrustedPublicKey(),
+        let deviceID = DeviceKeySigner.deviceID(publicKeyBase64: publicKey)
+      else {
+        errorMessage = "The managed device identity is unavailable."
+        return false
+      }
+      let access = ShieldAdminCapabilityLoader.authorize(
+        configuration: configuration,
+        deviceID: deviceID,
+        request: .device(operation: .repairAdapters, deviceID: deviceID),
+        requiredRole: .repair,
+        replayStore: ShieldCapabilityReplayStore(
+          ledgerURL: ReceiptStore.shieldAgentDirectory()
+            .appendingPathComponent("capability-use.json"))
+      )
+      guard access.isAuthorized else {
+        adminAccess = access
+        if case .denied(let reason) = access { errorMessage = reason }
+        return false
+      }
+      adminAccess = .denied("This organization capability has been used.")
+      return true
+    } catch {
+      errorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  func reload(silently: Bool = false) {
+    guard !reloadInProgress else { return }
+    reloadInProgress = true
+    let receiptStores = self.receiptStores
+    let providerStore = self.providerStore
+    let adapterInstaller = self.adapterInstaller
+    let refreshAdapters =
+      adapterStatuses.isEmpty || lastAdapterRefresh == nil
+      || Date().timeIntervalSince(lastAdapterRefresh ?? .distantPast) >= 30
+    let currentAdapterStatuses = adapterStatuses
+    let currentBinaryIdentities = binaryIdentities
+    let automaticReconciliation = self.automaticReconciliation
+    let backgroundState = ShieldBackgroundManager.state()
+    Task {
+      defer { reloadInProgress = false }
+      do {
+        let snapshot = try await Task.detached(priority: .utility) {
+          try Self.loadSnapshot(
+            receiptStores: receiptStores,
+            providerStore: providerStore,
+            adapterInstaller: adapterInstaller,
+            currentAdapterStatuses: currentAdapterStatuses,
+            currentBinaryIdentities: currentBinaryIdentities,
+            automaticReconciliation: automaticReconciliation,
+            backgroundState: backgroundState,
+            refreshAdapters: refreshAdapters
+          )
+        }.value
+        providerEvents = snapshot.providerEvents
+        verifications = snapshot.verifications
+        actions = snapshot.actions
+        assessment = snapshot.assessment
+        adapterStatuses = snapshot.adapterStatuses
+        latestValidEventByProduct = snapshot.latestValidEventByProduct
+        binaryIdentities = snapshot.binaryIdentities
+        reconciliations = snapshot.reconciliations
+        shieldSnapshot = snapshot.shieldSnapshot
+        adminAccess = snapshot.adminAccess
+        deliveryHealth = snapshot.deliveryHealth
+        self.backgroundState = ShieldBackgroundManager.state()
+        if refreshAdapters { lastAdapterRefresh = Date() }
+        isStale = false
+        lastRefreshError = nil
+        if selection == nil { selectFirstVisibleItem() }
+        if !silently { errorMessage = nil }
+      } catch {
+        isStale = true
+        lastRefreshError = error.localizedDescription
+        if !silently { errorMessage = error.localizedDescription }
+      }
+    }
+  }
+
+  func importCloudTrail(from url: URL) {
+    do {
+      let access = url.startAccessingSecurityScopedResource()
+      defer { if access { url.stopAccessingSecurityScopedResource() } }
+      let imported = try CloudTrailImporter.parse(Data(contentsOf: url), provenance: .userImported)
+      var merged: [String: ProviderEvent] = [:]
+      for event in providerEvents + imported { merged[event.id] = event }
+      try providerStore.saveProviderEvents(
+        Array(merged.values).sorted { $0.eventTime < $1.eventTime })
+      reload()
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  private func selectFirstVisibleItem() {
+    if showsOverview {
+      selection = nil
+      return
+    }
+    if selectedProduct != nil {
+      selection = nil
+      return
+    }
+    if filter == .providerGaps {
+      selection = assessment.unmatchedProviderEvents.first.map { "provider:\($0.id)" }
+    } else {
+      selection = filteredActions.first.map { "action:\($0.id)" }
+    }
+  }
+
+  nonisolated private static func loadSnapshot(
+    receiptStores: [ReceiptStore],
+    providerStore: ReceiptStore,
+    adapterInstaller: AgentAdapterInstaller,
+    currentAdapterStatuses: [AgentAdapterStatus],
+    currentBinaryIdentities: [AgentBinaryIdentity],
+    automaticReconciliation: Bool,
+    backgroundState: ShieldBackgroundState,
+    refreshAdapters: Bool
+  ) throws -> ReceiptSnapshot {
+    var receipts: [ExecutionReceipt] = []
+    var results: [ReceiptVerification] = []
+    for store in receiptStores {
+      let chain = try store.readReceipts()
+      guard !chain.isEmpty else { continue }
+      receipts.append(contentsOf: chain)
+      results.append(
+        contentsOf: ReceiptVerifier.verify(
+          chain, trustedPublicKeyBase64: try store.readTrustedPublicKey()))
+    }
+    receipts.sort {
+      ($0.payload.capturedDate ?? .distantPast) < ($1.payload.capturedDate ?? .distantPast)
+    }
+    let providerEvents = try providerStore.readProviderEvents()
+    let verifications = Dictionary(uniqueKeysWithValues: results.map { ($0.receiptID, $0) })
+    let actions = ExecutionActionReducer.reduce(receipts: receipts, verifications: verifications)
+    let validReceiptIDs = Set(results.filter(\.valid).map(\.receiptID))
+    var latestValidEventByProduct: [String: Date] = [:]
+    for receipt in receipts
+    where validReceiptIDs.contains(receipt.id) && receipt.payload.collector != nil {
+      guard let capturedAt = receipt.payload.capturedDate else { continue }
+      let product = receipt.payload.agent.product
+      if capturedAt > (latestValidEventByProduct[product] ?? .distantPast) {
+        latestValidEventByProduct[product] = capturedAt
+      }
+    }
+    let assessment = ReceiptCorrelator.assess(
+      actions: actions,
+      providerEvents: providerEvents,
+      policy: bindingPolicyFromEnvironment()
+    )
+    let managedConfiguration = try ManagedShieldConfiguration.load()
+    let reconciliations =
+      refreshAdapters && automaticReconciliation
+        && (managedConfiguration?.autoRepair ?? true)
+      ? adapterInstaller.reconcileDetectedAgents()
+      : []
+    let adapterStatuses = refreshAdapters ? adapterInstaller.statuses() : currentAdapterStatuses
+    let binaryIdentities =
+      refreshAdapters
+      ? AgentProduct.allCases.map {
+        AgentBinaryAttestor.inspect(
+          product: $0,
+          executableURL: adapterInstaller.executableURL(for: $0)
+        )
+      }
+      : currentBinaryIdentities
+    let priorBaseline =
+      currentBinaryIdentities.isEmpty
+      ? nil
+      : AgentBinaryBaseline(
+        capturedAt: ReceiptDate.string(from: Date()), identities: currentBinaryIdentities)
+    let binaryDrift = AgentBinaryBaselineComparator.compare(
+      current: binaryIdentities, previous: priorBaseline)
+    let appIdentity = AgentBinaryAttestor.inspect(
+      product: .codex,
+      executableURL: Bundle.main.executableURL
+    )
+    let trustBoundary: ShieldTrustBoundary =
+      managedConfiguration?.accepts(applicationIdentity: appIdentity) == true
+      ? .organizationManaged
+      : .development
+    let shieldSnapshot = ShieldSnapshotBuilder.build(
+      statuses: adapterStatuses,
+      binaryIdentities: binaryIdentities,
+      binaryDrift: binaryDrift,
+      recentValidEventByProduct: latestValidEventByProduct,
+      invalidReceiptCount: results.filter { !$0.valid }.count,
+      collectorReachable: backgroundState == .enabled && ShieldServiceClient.isReachable(),
+      trustBoundary: trustBoundary
+    )
+    let deliveryHealth = ShieldServiceClient.deliveryHealth()
+    let adminAccess: ShieldAdminAccess
+    if managedConfiguration != nil && trustBoundary != .organizationManaged {
+      adminAccess = .denied("This build does not have an identified publisher signature.")
+    } else if let managedConfiguration,
+      let shieldStore = receiptStores.last,
+      let publicKey = try? shieldStore.readTrustedPublicKey(),
+      let deviceID = DeviceKeySigner.deviceID(publicKeyBase64: publicKey)
+    {
+      adminAccess = ShieldAdminCapabilityLoader.load(
+        configuration: managedConfiguration,
+        deviceID: deviceID,
+        request: .device(operation: .repairAdapters, deviceID: deviceID),
+        requiredRole: .repair
+      )
+    } else if managedConfiguration != nil {
+      adminAccess = .denied("The device identity is unavailable.")
+    } else {
+      adminAccess = .unavailable
+    }
+    return ReceiptSnapshot(
+      actions: actions,
+      verifications: verifications,
+      assessment: assessment,
+      providerEvents: providerEvents,
+      adapterStatuses: adapterStatuses,
+      latestValidEventByProduct: latestValidEventByProduct,
+      binaryIdentities: binaryIdentities,
+      reconciliations: reconciliations,
+      shieldSnapshot: shieldSnapshot,
+      adminAccess: adminAccess,
+      deliveryHealth: deliveryHealth
+    )
+  }
+
+  nonisolated private static func bindingPolicyFromEnvironment() -> ProviderBindingPolicy? {
+    let environment = ProcessInfo.processInfo.environment
+    guard
+      let account = environment["CEREBRO_EXPECTED_AWS_ACCOUNT_ID"],
+      let role = environment["CEREBRO_EXPECTED_AWS_AGENT_ROLE"],
+      !account.isEmpty,
+      !role.isEmpty
+    else { return nil }
+    return ProviderBindingPolicy(expectedAccountID: account, expectedAgentRole: role)
+  }
+}
+
+private struct ReceiptSnapshot: Sendable {
+  let actions: [ExecutionAction]
+  let verifications: [String: ReceiptVerification]
+  let assessment: AttributionAssessment
+  let providerEvents: [ProviderEvent]
+  let adapterStatuses: [AgentAdapterStatus]
+  let latestValidEventByProduct: [String: Date]
+  let binaryIdentities: [AgentBinaryIdentity]
+  let reconciliations: [AgentAdapterReconciliation]
+  let shieldSnapshot: ShieldSnapshot
+  let adminAccess: ShieldAdminAccess
+  let deliveryHealth: ShieldDeliveryHealth?
+}
+
+enum SidebarSelection: Hashable {
+  case overview
+  case activity(ReceiptFilter)
+  case agent(AgentProduct)
+}
+
+enum ReceiptFilter: String, CaseIterable, Identifiable {
+  case all
+  case bound
+  case candidate
+  case unmatched
+  case providerGaps
+  case invalid
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .all: return "All actions"
+    case .bound: return "Bound"
+    case .candidate: return "Candidate"
+    case .unmatched: return "Local only"
+    case .providerGaps: return "Provider gaps"
+    case .invalid: return "Invalid"
+    }
+  }
+
+  var image: String {
+    switch self {
+    case .all: return "tray.full"
+    case .bound: return "link.circle.fill"
+    case .candidate: return "questionmark.circle"
+    case .unmatched: return "desktopcomputer"
+    case .providerGaps: return "exclamationmark.triangle.fill"
+    case .invalid: return "xmark.shield"
+    }
+  }
+}

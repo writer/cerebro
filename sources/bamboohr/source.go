@@ -3,6 +3,7 @@ package bamboohr
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -20,7 +21,7 @@ const (
 	defaultHealthPath      = "/v1/employees/directory"
 	defaultBaseURLTemplate = "https://api.bamboohr.com/api/gateway.php/${config.company}"
 	tokenHeader            = ""
-	tokenScheme            = "Token"
+	tokenScheme            = "Basic"
 	familyUsers            = "users"
 	familyGroups           = "groups"
 	familyAuditEvents      = "audit_events"
@@ -42,21 +43,20 @@ func New() (*Source, error) {
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		AuthModel:       "api_key",
+		AuthModel:       "basic",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/workers",
+				Path:             "/v1/employees/directory",
 				URNKind:          "bamboohr_users",
 				IDKeys:           []string{"id", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
+				DisablePageSize:  true,
+				ListKeys:         []string{"employees"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "displayName|display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "workEmail|email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "jobTitle|job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "workEmail|login|username|email|profile.login", "manager": "supervisor|manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "workEmail|primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "displayName|name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "bamboohr"},
 			},
 			{
@@ -128,7 +128,17 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	runtimeCfg, err := sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	apiKey := firstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "api_key"), sourcecdk.ConfigValue(runtimeCfg, "api_token"))
+	if apiKey == "" {
+		return sourcecdk.Config{}, fmt.Errorf("%s api_key is required", sourceID)
+	}
+	values := runtimeCfg.Values()
+	values["token"] = base64.StdEncoding.EncodeToString([]byte(apiKey + ":x"))
+	return sourcecdk.NewConfig(values), nil
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {

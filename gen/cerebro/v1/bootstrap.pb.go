@@ -5180,24 +5180,27 @@ func (x *EvaluateSourceRuntimeFindingsResponse) GetEvidence() []*FindingEvidence
 
 // WriteDecisionRequest records one platform decision and its linked targets.
 type WriteDecisionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	DecisionType  string                 `protobuf:"bytes,2,opt,name=decision_type,json=decisionType,proto3" json:"decision_type,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	MadeBy        string                 `protobuf:"bytes,4,opt,name=made_by,json=madeBy,proto3" json:"made_by,omitempty"`
-	Rationale     string                 `protobuf:"bytes,5,opt,name=rationale,proto3" json:"rationale,omitempty"`
-	TargetIds     []string               `protobuf:"bytes,6,rep,name=target_ids,json=targetIds,proto3" json:"target_ids,omitempty"`
-	EvidenceIds   []string               `protobuf:"bytes,7,rep,name=evidence_ids,json=evidenceIds,proto3" json:"evidence_ids,omitempty"`
-	ActionIds     []string               `protobuf:"bytes,8,rep,name=action_ids,json=actionIds,proto3" json:"action_ids,omitempty"`
-	SourceSystem  string                 `protobuf:"bytes,9,opt,name=source_system,json=sourceSystem,proto3" json:"source_system,omitempty"`
-	SourceEventId string                 `protobuf:"bytes,10,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
-	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
-	ValidFrom     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
-	ValidTo       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=valid_to,json=validTo,proto3" json:"valid_to,omitempty"`
-	Confidence    float64                `protobuf:"fixed64,14,opt,name=confidence,proto3" json:"confidence,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,15,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Id                  string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DecisionType        string                 `protobuf:"bytes,2,opt,name=decision_type,json=decisionType,proto3" json:"decision_type,omitempty"`
+	Status              string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	MadeBy              string                 `protobuf:"bytes,4,opt,name=made_by,json=madeBy,proto3" json:"made_by,omitempty"`
+	Rationale           string                 `protobuf:"bytes,5,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	TargetIds           []string               `protobuf:"bytes,6,rep,name=target_ids,json=targetIds,proto3" json:"target_ids,omitempty"`
+	EvidenceIds         []string               `protobuf:"bytes,7,rep,name=evidence_ids,json=evidenceIds,proto3" json:"evidence_ids,omitempty"`
+	ActionIds           []string               `protobuf:"bytes,8,rep,name=action_ids,json=actionIds,proto3" json:"action_ids,omitempty"`
+	SourceSystem        string                 `protobuf:"bytes,9,opt,name=source_system,json=sourceSystem,proto3" json:"source_system,omitempty"`
+	SourceEventId       string                 `protobuf:"bytes,10,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
+	ObservedAt          *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ValidFrom           *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	ValidTo             *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=valid_to,json=validTo,proto3" json:"valid_to,omitempty"`
+	Confidence          float64                `protobuf:"fixed64,14,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Metadata            *structpb.Struct       `protobuf:"bytes,15,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	PacketId            string                 `protobuf:"bytes,16,opt,name=packet_id,json=packetId,proto3" json:"packet_id,omitempty"`
+	DecisionDisposition string                 `protobuf:"bytes,17,opt,name=decision_disposition,json=decisionDisposition,proto3" json:"decision_disposition,omitempty"`
+	DispositionReason   string                 `protobuf:"bytes,18,opt,name=disposition_reason,json=dispositionReason,proto3" json:"disposition_reason,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *WriteDecisionRequest) Reset() {
@@ -5333,6 +5336,27 @@ func (x *WriteDecisionRequest) GetMetadata() *structpb.Struct {
 		return x.Metadata
 	}
 	return nil
+}
+
+func (x *WriteDecisionRequest) GetPacketId() string {
+	if x != nil {
+		return x.PacketId
+	}
+	return ""
+}
+
+func (x *WriteDecisionRequest) GetDecisionDisposition() string {
+	if x != nil {
+		return x.DecisionDisposition
+	}
+	return ""
+}
+
+func (x *WriteDecisionRequest) GetDispositionReason() string {
+	if x != nil {
+		return x.DispositionReason
+	}
+	return ""
 }
 
 // WriteDecisionResponse returns the recorded decision identifier and target count.
@@ -5672,22 +5696,23 @@ func (x *WriteActionResponse) GetProjectionErrorCategory() string {
 
 // WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
 type WriteOutcomeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	DecisionId    string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	OutcomeType   string                 `protobuf:"bytes,3,opt,name=outcome_type,json=outcomeType,proto3" json:"outcome_type,omitempty"`
-	Verdict       string                 `protobuf:"bytes,4,opt,name=verdict,proto3" json:"verdict,omitempty"`
-	ImpactScore   float64                `protobuf:"fixed64,5,opt,name=impact_score,json=impactScore,proto3" json:"impact_score,omitempty"`
-	TargetIds     []string               `protobuf:"bytes,6,rep,name=target_ids,json=targetIds,proto3" json:"target_ids,omitempty"`
-	SourceSystem  string                 `protobuf:"bytes,7,opt,name=source_system,json=sourceSystem,proto3" json:"source_system,omitempty"`
-	SourceEventId string                 `protobuf:"bytes,8,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
-	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
-	ValidFrom     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
-	ValidTo       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=valid_to,json=validTo,proto3" json:"valid_to,omitempty"`
-	Confidence    float64                `protobuf:"fixed64,12,opt,name=confidence,proto3" json:"confidence,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,13,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	Id                         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DecisionId                 string                 `protobuf:"bytes,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	OutcomeType                string                 `protobuf:"bytes,3,opt,name=outcome_type,json=outcomeType,proto3" json:"outcome_type,omitempty"`
+	Verdict                    string                 `protobuf:"bytes,4,opt,name=verdict,proto3" json:"verdict,omitempty"`
+	ImpactScore                float64                `protobuf:"fixed64,5,opt,name=impact_score,json=impactScore,proto3" json:"impact_score,omitempty"`
+	TargetIds                  []string               `protobuf:"bytes,6,rep,name=target_ids,json=targetIds,proto3" json:"target_ids,omitempty"`
+	SourceSystem               string                 `protobuf:"bytes,7,opt,name=source_system,json=sourceSystem,proto3" json:"source_system,omitempty"`
+	SourceEventId              string                 `protobuf:"bytes,8,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
+	ObservedAt                 *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ValidFrom                  *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	ValidTo                    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=valid_to,json=validTo,proto3" json:"valid_to,omitempty"`
+	Confidence                 float64                `protobuf:"fixed64,12,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Metadata                   *structpb.Struct       `protobuf:"bytes,13,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	AuditPacketExportReceiptId string                 `protobuf:"bytes,14,opt,name=audit_packet_export_receipt_id,json=auditPacketExportReceiptId,proto3" json:"audit_packet_export_receipt_id,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *WriteOutcomeRequest) Reset() {
@@ -5809,6 +5834,13 @@ func (x *WriteOutcomeRequest) GetMetadata() *structpb.Struct {
 		return x.Metadata
 	}
 	return nil
+}
+
+func (x *WriteOutcomeRequest) GetAuditPacketExportReceiptId() string {
+	if x != nil {
+		return x.AuditPacketExportReceiptId
+	}
+	return ""
 }
 
 // WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.
@@ -7652,7 +7684,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x11findings_upserted\x18\x04 \x01(\rR\x10findingsUpserted\x12/\n" +
 	"\bfindings\x18\x05 \x03(\v2\x13.cerebro.v1.FindingR\bfindings\x122\n" +
 	"\x03run\x18\x06 \x01(\v2 .cerebro.v1.FindingEvaluationRunR\x03run\x127\n" +
-	"\bevidence\x18\a \x03(\v2\x1b.cerebro.v1.FindingEvidenceR\bevidence\"\xcc\x04\n" +
+	"\bevidence\x18\a \x03(\v2\x1b.cerebro.v1.FindingEvidenceR\bevidence\"\xcb\x05\n" +
 	"\x14WriteDecisionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rdecision_type\x18\x02 \x01(\tR\fdecisionType\x12\x16\n" +
@@ -7675,7 +7707,10 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x0e \x01(\x01R\n" +
 	"confidence\x123\n" +
-	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\x8c\x02\n" +
+	"\bmetadata\x18\x0f \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12\x1b\n" +
+	"\tpacket_id\x18\x10 \x01(\tR\bpacketId\x121\n" +
+	"\x14decision_disposition\x18\x11 \x01(\tR\x13decisionDisposition\x12-\n" +
+	"\x12disposition_reason\x18\x12 \x01(\tR\x11dispositionReason\"\x8c\x02\n" +
 	"\x15WriteDecisionResponse\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\tR\n" +
 	"decisionId\x12!\n" +
@@ -7715,7 +7750,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\bevent_id\x18\x04 \x01(\tR\aeventId\x12+\n" +
 	"\x11durability_status\x18\x05 \x01(\tR\x10durabilityStatus\x12+\n" +
 	"\x11projection_status\x18\x06 \x01(\tR\x10projectionStatus\x12:\n" +
-	"\x19projection_error_category\x18\a \x01(\tR\x17projectionErrorCategory\"\x96\x04\n" +
+	"\x19projection_error_category\x18\a \x01(\tR\x17projectionErrorCategory\"\xda\x04\n" +
 	"\x13WriteOutcomeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vdecision_id\x18\x02 \x01(\tR\n" +
@@ -7736,7 +7771,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\f \x01(\x01R\n" +
 	"confidence\x123\n" +
-	"\bmetadata\x18\r \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xaa\x02\n" +
+	"\bmetadata\x18\r \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12B\n" +
+	"\x1eaudit_packet_export_receipt_id\x18\x0e \x01(\tR\x1aauditPacketExportReceiptId\"\xaa\x02\n" +
 	"\x14WriteOutcomeResponse\x12\x1d\n" +
 	"\n" +
 	"outcome_id\x18\x01 \x01(\tR\toutcomeId\x12\x1f\n" +

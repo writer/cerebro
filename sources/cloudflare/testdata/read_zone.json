@@ -1,41 +1,351 @@
 [
   {
+    "id": "cloudflare-tenant-zone-98a5366c56c1bc1a",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.zone",
+    "occurred_at": "2023-06-20T09:37:09Z",
+    "schema_ref": "cloudflare/zone/v1",
+    "payload": {
+      "account": {
+        "id": "example-b260c742",
+        "name": "Foo Team Production"
+      },
+      "activated_on": "2023-06-20T09:43:50.808668Z",
+      "created_on": "2023-06-20T09:37:09.971592Z",
+      "development_mode": 0,
+      "id": "example-c4bd3b04",
+      "meta": {
+        "custom_certificate_quota": 1,
+        "page_rule_quota": 100,
+        "phishing_detected": false,
+        "step": 2
+      },
+      "modified_on": "2023-06-20T09:43:50.808668Z",
+      "name": "api.cloudflarecn.net",
+      "name_servers": [
+        "linda.ns.cloudflare.com",
+        "merlin.ns.cloudflare.com"
+      ],
+      "original_dnshost": null,
+      "original_name_servers": [
+        "ns79.dns.cf-ns.com",
+        "ns90.dns.cf-ns.com"
+      ],
+      "original_registrar": "22net, inc. (id: 1555)",
+      "owner": {
+        "id": "example-b260c742",
+        "name": "API Team Production",
+        "type": "organization"
+      },
+      "paused": false,
+      "permissions": [
+        "#page_shield:edit",
+        "#zone:edit",
+        "#zone:read",
+        "#teams:report",
+        "#subscription:edit",
+        "#app:edit",
+        "#subscription:read",
+        "#cache_purge:edit",
+        "#auditlogs:read",
+        "#member:read",
+        "#legal:read"
+      ],
+      "plan": {
+        "can_subscribe": true,
+        "currency": "USD",
+        "externally_managed": true,
+        "frequency": "",
+        "id": "example-015ebd50",
+        "is_subscribed": true,
+        "legacy_discount": false,
+        "legacy_id": "enterprise",
+        "name": "Enterprise Website",
+        "price": 0
+      },
+      "status": "active",
+      "tenant": {
+        "id": "example-e7333f99",
+        "name": "Cloudflare, Inc."
+      },
+      "tenant_unit": {
+        "id": "example-9fa76d9e"
+      },
+      "type": "full",
+      "vanity_name_servers": [],
+      "vanity_name_servers_ips": null
+    },
     "attributes": {
-      "account_id": "account-1",
-      "external_id": "zone-1",
+      "account_id": "example-b260c742",
+      "external_id": "example-c4bd3b04",
       "family": "zone",
-      "name": "example.com",
+      "name": "api.cloudflarecn.net",
+      "observed_at": "2023-06-20T09:43:50.808668Z",
       "paused": "false",
-      "resource_id": "zone-1",
-      "resource_name": "example.com",
-      "resource_type": "zone",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:zone-1",
-      "source_event_id": "zone-1",
-      "source_product": "cloudflare",
       "provider": "cloudflare",
+      "resource_id": "example-c4bd3b04",
+      "resource_name": "api.cloudflarecn.net",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:example-c4bd3b04",
+      "source_event_id": "example-c4bd3b04",
+      "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "status": "active",
       "tenant_id": "tenant",
       "type": "full",
-      "zone_id": "zone-1"
-    },
-    "id": "cloudflare-zone-event-1",
-    "kind": "cloudflare.zone",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "id": "zone-1",
-      "name": "example.com",
-      "status": "active",
-      "type": "full",
-      "paused": false,
-      "account": {
-        "id": "account-1",
-        "name": "Example Account"
-      }
-    },
-    "schema_ref": "cloudflare/zone/v1",
+      "zone_id": "example-c4bd3b04"
+    }
+  },
+  {
+    "id": "cloudflare-tenant-zone-ee314deff0206be5",
+    "tenant_id": "tenant",
     "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    "kind": "cloudflare.zone",
+    "occurred_at": "2019-08-16T20:28:05Z",
+    "schema_ref": "cloudflare/zone/v1",
+    "payload": {
+      "account": {
+        "id": "example-b260c742",
+        "name": "API Team Production"
+      },
+      "activated_on": "2019-09-24T20:04:12.794834Z",
+      "created_on": "2019-08-16T20:28:05.207385Z",
+      "development_mode": 0,
+      "id": "example-3c6d6a37",
+      "meta": {
+        "custom_certificate_quota": 1,
+        "page_rule_quota": 100,
+        "phishing_detected": false,
+        "step": 3
+      },
+      "modified_on": "2024-02-14T18:39:26.897528Z",
+      "name": "api.cloudflare.com",
+      "name_servers": [
+        "linda.ns.cloudflare.com",
+        "merlin.ns.cloudflare.com"
+      ],
+      "original_dnshost": null,
+      "original_name_servers": [
+        "ns3.cloudflare.com",
+        "ns4.cloudflare.com",
+        "ns5.cloudflare.com",
+        "ns6.cloudflare.com",
+        "ns7.cloudflare.com"
+      ],
+      "original_registrar": "cloudflare, inc. (id: 1910)",
+      "owner": {
+        "id": "example-b260c742",
+        "name": "API Team Production",
+        "type": "organization"
+      },
+      "paused": false,
+      "permissions": [
+        "#worker:edit",
+        "#worker:read",
+        "#teams:read",
+        "#dns_records:read",
+        "#ces_integration:edit",
+        "#ces_integration:read",
+        "#ces_search:action",
+        "#ces_search:read",
+        "#ces_search:preview",
+        "#ces_search:raw",
+        "#ces_search:trace",
+        "#ces_phishguard:read",
+        "#ces_settings:edit",
+        "#ces_settings:read",
+        "#ces_analytics:read",
+        "#lb:edit",
+        "#lb:read",
+        "#vectorize:read",
+        "#vectorize:edit",
+        "#query_cache:read",
+        "#query_cache:edit",
+        "#integration:edit",
+        "#access:read",
+        "#access:edit",
+        "#r2_bucket_item:read",
+        "#r2_bucket_item:edit",
+        "#integration:read",
+        "#integration:install",
+        "#dex:read",
+        "#analytics:read",
+        "#dex:edit",
+        "#zone_versioning:read",
+        "#zone_versioning:edit",
+        "#cache_purge:edit",
+        "#auditlogs:read",
+        "#member:read",
+        "#legal:read"
+      ],
+      "plan": {
+        "can_subscribe": true,
+        "currency": "USD",
+        "externally_managed": true,
+        "frequency": "",
+        "id": "example-015ebd50",
+        "is_subscribed": true,
+        "legacy_discount": false,
+        "legacy_id": "enterprise",
+        "name": "Enterprise Website",
+        "price": 0
+      },
+      "status": "active",
+      "tenant": {
+        "id": "example-e7333f99",
+        "name": "Cloudflare, Inc."
+      },
+      "tenant_unit": {
+        "id": "example-9fa76d9e"
+      },
+      "type": "full",
+      "vanity_name_servers": [],
+      "vanity_name_servers_ips": null
+    },
+    "attributes": {
+      "account_id": "example-b260c742",
+      "external_id": "example-3c6d6a37",
+      "family": "zone",
+      "name": "api.cloudflare.com",
+      "observed_at": "2024-02-14T18:39:26.897528Z",
+      "paused": "false",
+      "provider": "cloudflare",
+      "resource_id": "example-3c6d6a37",
+      "resource_name": "api.cloudflare.com",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:example-3c6d6a37",
+      "source_event_id": "example-3c6d6a37",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "status": "active",
+      "tenant_id": "tenant",
+      "type": "full",
+      "zone_id": "example-3c6d6a37"
+    }
+  },
+  {
+    "id": "cloudflare-tenant-zone-f4c8203d3c4498cb",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.zone",
+    "occurred_at": "2023-06-20T10:22:50Z",
+    "schema_ref": "cloudflare/zone/v1",
+    "payload": {
+      "account": {
+        "id": "example-557b06d6",
+        "name": "Foo Team Staging"
+      },
+      "activated_on": "2023-06-20T10:28:59.347922Z",
+      "created_on": "2023-06-20T10:22:50.775531Z",
+      "development_mode": 0,
+      "id": "example-d229da48",
+      "meta": {
+        "custom_certificate_quota": 1,
+        "page_rule_quota": 100,
+        "phishing_detected": false,
+        "step": 2
+      },
+      "modified_on": "2023-06-20T22:06:15.039072Z",
+      "name": "api.staging.cloudflarecn.net",
+      "name_servers": [
+        "dane.ns.cloudflare.com",
+        "leah.ns.cloudflare.com"
+      ],
+      "original_dnshost": null,
+      "original_name_servers": [
+        "ns79.dns.cf-ns.com",
+        "ns90.dns.cf-ns.com"
+      ],
+      "original_registrar": "22net, inc. (id: 1555)",
+      "owner": {
+        "id": "example-557b06d6",
+        "name": "API Team Staging",
+        "type": "organization"
+      },
+      "paused": false,
+      "permissions": [
+        "#worker:edit",
+        "#worker:read",
+        "#teams:read",
+        "#teams:edit",
+        "#waitingroom:read",
+        "#waitingroom:edit",
+        "#fbm:edit",
+        "#organization:read",
+        "#organization:edit",
+        "#magic:read",
+        "#magic:edit",
+        "#logs:edit",
+        "#blocks:read",
+        "#blocks:edit",
+        "#cfone_read",
+        "#cfone_edit",
+        "#billing:read",
+        "#zone_settings:read",
+        "#zone_settings:edit",
+        "#cds_compute_account:edit",
+        "#cds_compute_account:read",
+        "#page_shield:edit",
+        "#zone:edit",
+        "#zone:read",
+        "#teams:report",
+        "#subscription:edit",
+        "#app:edit",
+        "#subscription:read",
+        "#cache_purge:edit",
+        "#auditlogs:read",
+        "#member:edit",
+        "#member:read",
+        "#legal:read",
+        "#legal:edit"
+      ],
+      "plan": {
+        "can_subscribe": true,
+        "currency": "USD",
+        "externally_managed": true,
+        "frequency": "",
+        "id": "example-015ebd50",
+        "is_subscribed": true,
+        "legacy_discount": false,
+        "legacy_id": "enterprise",
+        "name": "Enterprise Website",
+        "price": 0
+      },
+      "status": "active",
+      "tenant": {
+        "id": "example-e7333f99",
+        "name": "Cloudflare, Inc."
+      },
+      "tenant_unit": {
+        "id": "example-9fa76d9e"
+      },
+      "type": "full",
+      "vanity_name_servers": [],
+      "vanity_name_servers_ips": null
+    },
+    "attributes": {
+      "account_id": "example-557b06d6",
+      "external_id": "example-d229da48",
+      "family": "zone",
+      "name": "api.staging.cloudflarecn.net",
+      "observed_at": "2023-06-20T22:06:15.039072Z",
+      "paused": "false",
+      "provider": "cloudflare",
+      "resource_id": "example-d229da48",
+      "resource_name": "api.staging.cloudflarecn.net",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:example-d229da48",
+      "source_event_id": "example-d229da48",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "status": "active",
+      "tenant_id": "tenant",
+      "type": "full",
+      "zone_id": "example-d229da48"
+    }
   }
 ]

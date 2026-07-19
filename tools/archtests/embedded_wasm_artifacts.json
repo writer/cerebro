@@ -42,6 +42,14 @@
       "abi_version": 1
     },
     {
+      "name": "sourceruntime-event-admission",
+      "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
+      "sha256": "01922751e3e40afb8aa773ebb64be59ab7bde66fdca4082400db82996447bd41",
+      "size_bytes": 253210,
+      "max_size_bytes": 260000,
+      "abi_version": 1
+    },
+    {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
       "sha256": "7e56da56e716d81c11d1ef131ef2a7f3ed4faed448f4bc809d1e1841e5b2a51c",

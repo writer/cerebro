@@ -1,0 +1,3178 @@
+{
+  "facets": [
+    {
+      "facets": [
+        {
+          "count": 11523,
+          "name": "Industrie",
+          "state": "displayed",
+          "value": "Industrie"
+        },
+        {
+          "count": 3925,
+          "name": "Services à la personne et à la collectivité",
+          "state": "displayed",
+          "value": "Services à la personne et à la collectivité"
+        },
+        {
+          "count": 2576,
+          "name": "Installation et Maintenance",
+          "state": "displayed",
+          "value": "Installation et Maintenance"
+        },
+        {
+          "count": 2505,
+          "name": "Support à l'entreprise",
+          "state": "displayed",
+          "value": "Support à l'entreprise"
+        },
+        {
+          "count": 2336,
+          "name": "Construction, Bâtiment et Travaux publics",
+          "state": "displayed",
+          "value": "Construction, Bâtiment et Travaux publics"
+        },
+        {
+          "count": 1652,
+          "name": "Communication, Média et Multimédia",
+          "state": "displayed",
+          "value": "Communication, Média et Multimédia"
+        },
+        {
+          "count": 1623,
+          "name": "Spectacle",
+          "state": "displayed",
+          "value": "Spectacle"
+        },
+        {
+          "count": 1613,
+          "name": "Hôtellerie-Restauration, Tourisme, Loisirs et Animation",
+          "state": "displayed",
+          "value": "Hôtellerie-Restauration, Tourisme, Loisirs et Animation"
+        },
+        {
+          "count": 1529,
+          "name": "Transport et Logistique",
+          "state": "displayed",
+          "value": "Transport et Logistique"
+        },
+        {
+          "count": 1198,
+          "name": "Commerce, Vente et Grande distribution",
+          "state": "displayed",
+          "value": "Commerce, Vente et Grande distribution"
+        },
+        {
+          "count": 1061,
+          "name": "Arts et Façonnage d'ouvrages d'art",
+          "state": "displayed",
+          "value": "Arts et Façonnage d'ouvrages d'art"
+        },
+        {
+          "count": 985,
+          "name": "Agriculture et Pêche, Espaces naturels et Espaces verts, Soins aux animaux",
+          "state": "displayed",
+          "value": "Agriculture et Pêche, Espaces naturels et Espaces verts, Soins aux animaux"
+        },
+        {
+          "count": 703,
+          "name": "Banque, Assurance, Immobilier",
+          "state": "displayed",
+          "value": "Banque, Assurance, Immobilier"
+        },
+        {
+          "count": 493,
+          "name": "Santé",
+          "state": "displayed",
+          "value": "Santé"
+        }
+      ],
+      "name": "libelle_grand_domaine"
+    },
+    {
+      "facets": [
+        {
+          "count": 4913,
+          "name": "Mécanique, travail des métaux et outillage",
+          "state": "displayed",
+          "value": "Mécanique, travail des métaux et outillage"
+        },
+        {
+          "count": 1117,
+          "name": "Systèmes d'information et de télécommunication",
+          "state": "displayed",
+          "value": "Systèmes d'information et de télécommunication"
+        },
+        {
+          "count": 1088,
+          "name": "Equipements de production, équipements collectifs",
+          "state": "displayed",
+          "value": "Equipements de production, équipements collectifs"
+        },
+        {
+          "count": 941,
+          "name": "Conception, recherche, études et développement",
+          "state": "displayed",
+          "value": "Conception, recherche, études et développement"
+        },
+        {
+          "count": 863,
+          "name": "Direction, encadrement et pilotage de fabrication et production industrielles",
+          "state": "displayed",
+          "value": "Direction, encadrement et pilotage de fabrication et production industrielles"
+        },
+        {
+          "count": 780,
+          "name": "Véhicules, engins, aéronefs",
+          "state": "displayed",
+          "value": "Véhicules, engins, aéronefs"
+        },
+        {
+          "count": 711,
+          "name": "Préparation et conditionnement",
+          "state": "displayed",
+          "value": "Préparation et conditionnement"
+        },
+        {
+          "count": 702,
+          "name": "Sécurité privée",
+          "state": "displayed",
+          "value": "Sécurité privée"
+        },
+        {
+          "count": 677,
+          "name": "Edition et communication",
+          "state": "displayed",
+          "value": "Edition et communication"
+        },
+        {
+          "count": 663,
+          "name": "Animation d'activités de loisirs",
+          "state": "displayed",
+          "value": "Animation d'activités de loisirs"
+        },
+        {
+          "count": 624,
+          "name": "Cuir et textile",
+          "state": "displayed",
+          "value": "Cuir et textile"
+        },
+        {
+          "count": 621,
+          "name": "Qualité et analyses industrielles",
+          "state": "displayed",
+          "value": "Qualité et analyses industrielles"
+        },
+        {
+          "count": 603,
+          "name": "Techniciens du spectacle",
+          "state": "displayed",
+          "value": "Techniciens du spectacle"
+        },
+        {
+          "count": 536,
+          "name": "Artistes - interprètes du spectacle",
+          "state": "displayed",
+          "value": "Artistes - interprètes du spectacle"
+        },
+        {
+          "count": 515,
+          "name": "Second oeuvre",
+          "state": "displayed",
+          "value": "Second oeuvre"
+        },
+        {
+          "count": 498,
+          "name": "Industries graphiques",
+          "state": "displayed",
+          "value": "Industries graphiques"
+        },
+        {
+          "count": 489,
+          "name": "Traitements thermiques et traitements de surfaces",
+          "state": "displayed",
+          "value": "Traitements thermiques et traitements de surfaces"
+        },
+        {
+          "count": 482,
+          "name": "Plastique, caoutchouc",
+          "state": "displayed",
+          "value": "Plastique, caoutchouc"
+        },
+        {
+          "count": 475,
+          "name": "Recherche",
+          "state": "displayed",
+          "value": "Recherche"
+        },
+        {
+          "count": 472,
+          "name": "Conception et études",
+          "state": "displayed",
+          "value": "Conception et études"
+        },
+        {
+          "count": 443,
+          "name": "Commerce non alimentaire et de prestations de confort",
+          "state": "displayed",
+          "value": "Commerce non alimentaire et de prestations de confort"
+        },
+        {
+          "count": 434,
+          "name": "Bois",
+          "state": "displayed",
+          "value": "Bois"
+        },
+        {
+          "count": 434,
+          "name": "Tissu et cuirs",
+          "state": "displayed",
+          "value": "Tissu et cuirs"
+        },
+        {
+          "count": 425,
+          "name": "Production",
+          "state": "displayed",
+          "value": "Production"
+        },
+        {
+          "count": 406,
+          "name": "Engins de chantier",
+          "state": "displayed",
+          "value": "Engins de chantier"
+        },
+        {
+          "count": 393,
+          "name": "Formation initiale et continue",
+          "state": "displayed",
+          "value": "Formation initiale et continue"
+        },
+        {
+          "count": 389,
+          "name": "Images et sons",
+          "state": "displayed",
+          "value": "Images et sons"
+        },
+        {
+          "count": 387,
+          "name": "Propreté et environnement urbain",
+          "state": "displayed",
+          "value": "Propreté et environnement urbain"
+        },
+        {
+          "count": 376,
+          "name": "Action sociale, socio-éducative et socio-culturelle",
+          "state": "displayed",
+          "value": "Action sociale, socio-éducative et socio-culturelle"
+        },
+        {
+          "count": 360,
+          "name": "Conception et production de spectacles",
+          "state": "displayed",
+          "value": "Conception et production de spectacles"
+        },
+        {
+          "count": 357,
+          "name": "Hygiène Sécurité Environnement -HSE- industriels",
+          "state": "displayed",
+          "value": "Hygiène Sécurité Environnement -HSE- industriels"
+        },
+        {
+          "count": 344,
+          "name": "Comptabilité et gestion",
+          "state": "displayed",
+          "value": "Comptabilité et gestion"
+        },
+        {
+          "count": 344,
+          "name": "Conduite et encadrement de chantier - travaux",
+          "state": "displayed",
+          "value": "Conduite et encadrement de chantier - travaux"
+        },
+        {
+          "count": 322,
+          "name": "Electronique et électricité",
+          "state": "displayed",
+          "value": "Electronique et électricité"
+        },
+        {
+          "count": 316,
+          "name": "Equipements domestiques et informatique",
+          "state": "displayed",
+          "value": "Equipements domestiques et informatique"
+        },
+        {
+          "count": 308,
+          "name": "Secrétariat et assistance",
+          "state": "displayed",
+          "value": "Secrétariat et assistance"
+        },
+        {
+          "count": 305,
+          "name": "Travaux et gros oeuvre",
+          "state": "displayed",
+          "value": "Travaux et gros oeuvre"
+        },
+        {
+          "count": 294,
+          "name": "Grande distribution",
+          "state": "displayed",
+          "value": "Grande distribution"
+        },
+        {
+          "count": 268,
+          "name": "Personnel d'encadrement de la logistique",
+          "state": "displayed",
+          "value": "Personnel d'encadrement de la logistique"
+        },
+        {
+          "count": 266,
+          "name": "Force de vente",
+          "state": "displayed",
+          "value": "Force de vente"
+        },
+        {
+          "count": 264,
+          "name": "Gestion et direction",
+          "state": "displayed",
+          "value": "Gestion et direction"
+        },
+        {
+          "count": 260,
+          "name": "Immobilier",
+          "state": "displayed",
+          "value": "Immobilier"
+        },
+        {
+          "count": 240,
+          "name": "Personnel de conduite du transport routier",
+          "state": "displayed",
+          "value": "Personnel de conduite du transport routier"
+        },
+        {
+          "count": 237,
+          "name": "Ressources humaines",
+          "state": "displayed",
+          "value": "Ressources humaines"
+        },
+        {
+          "count": 236,
+          "name": "Etudes et assistance technique",
+          "state": "displayed",
+          "value": "Etudes et assistance technique"
+        },
+        {
+          "count": 236,
+          "name": "Stratégie commerciale, marketing et supervision des ventes",
+          "state": "displayed",
+          "value": "Stratégie commerciale, marketing et supervision des ventes"
+        },
+        {
+          "count": 236,
+          "name": "Travaux d'accès difficile",
+          "state": "displayed",
+          "value": "Travaux d'accès difficile"
+        },
+        {
+          "count": 222,
+          "name": "Assurance",
+          "state": "displayed",
+          "value": "Assurance"
+        },
+        {
+          "count": 221,
+          "name": "Aide à la vie quotidienne",
+          "state": "displayed",
+          "value": "Aide à la vie quotidienne"
+        },
+        {
+          "count": 219,
+          "name": "Décoration",
+          "state": "displayed",
+          "value": "Décoration"
+        },
+        {
+          "count": 217,
+          "name": "Droit",
+          "state": "displayed",
+          "value": "Droit"
+        },
+        {
+          "count": 214,
+          "name": "Magasinage, manutention des charges et déménagement",
+          "state": "displayed",
+          "value": "Magasinage, manutention des charges et déménagement"
+        },
+        {
+          "count": 211,
+          "name": "Métal, verre, bijouterie et horlogerie",
+          "state": "displayed",
+          "value": "Métal, verre, bijouterie et horlogerie"
+        },
+        {
+          "count": 204,
+          "name": "Energie",
+          "state": "displayed",
+          "value": "Energie"
+        },
+        {
+          "count": 201,
+          "name": "Méthodes et gestion industrielles",
+          "state": "displayed",
+          "value": "Méthodes et gestion industrielles"
+        },
+        {
+          "count": 195,
+          "name": "Conception et mise en oeuvre des politiques publiques",
+          "state": "displayed",
+          "value": "Conception et mise en oeuvre des politiques publiques"
+        },
+        {
+          "count": 188,
+          "name": "Culture et gestion documentaire",
+          "state": "displayed",
+          "value": "Culture et gestion documentaire"
+        },
+        {
+          "count": 186,
+          "name": "Développement territorial et emploi",
+          "state": "displayed",
+          "value": "Développement territorial et emploi"
+        },
+        {
+          "count": 178,
+          "name": "Extraction",
+          "state": "displayed",
+          "value": "Extraction"
+        },
+        {
+          "count": 170,
+          "name": "Commerce alimentaire et métiers de bouche",
+          "state": "displayed",
+          "value": "Commerce alimentaire et métiers de bouche"
+        },
+        {
+          "count": 170,
+          "name": "Conception, commercialisation et vente de produits touristiques",
+          "state": "displayed",
+          "value": "Conception, commercialisation et vente de produits touristiques"
+        },
+        {
+          "count": 168,
+          "name": "Espaces naturels et espaces verts",
+          "state": "displayed",
+          "value": "Espaces naturels et espaces verts"
+        },
+        {
+          "count": 164,
+          "name": "Défense, sécurité publique et secours",
+          "state": "displayed",
+          "value": "Défense, sécurité publique et secours"
+        },
+        {
+          "count": 164,
+          "name": "Organisation de la circulation des marchandises",
+          "state": "displayed",
+          "value": "Organisation de la circulation des marchandises"
+        },
+        {
+          "count": 162,
+          "name": "Organisation et études",
+          "state": "displayed",
+          "value": "Organisation et études"
+        },
+        {
+          "count": 159,
+          "name": "Accompagnement de la personne",
+          "state": "displayed",
+          "value": "Accompagnement de la personne"
+        },
+        {
+          "count": 157,
+          "name": "Nettoyage et propreté industriels",
+          "state": "displayed",
+          "value": "Nettoyage et propreté industriels"
+        },
+        {
+          "count": 156,
+          "name": "Personnel sédentaire du transport aérien",
+          "state": "displayed",
+          "value": "Personnel sédentaire du transport aérien"
+        },
+        {
+          "count": 156,
+          "name": "Rééducation et appareillage",
+          "state": "displayed",
+          "value": "Rééducation et appareillage"
+        },
+        {
+          "count": 141,
+          "name": "Production culinaire",
+          "state": "displayed",
+          "value": "Production culinaire"
+        },
+        {
+          "count": 138,
+          "name": "Personnel d'encadrement du transport routier",
+          "state": "displayed",
+          "value": "Personnel d'encadrement du transport routier"
+        },
+        {
+          "count": 127,
+          "name": "Alimentaire",
+          "state": "displayed",
+          "value": "Alimentaire"
+        },
+        {
+          "count": 127,
+          "name": "Service",
+          "state": "displayed",
+          "value": "Service"
+        },
+        {
+          "count": 125,
+          "name": "Praticiens médicaux",
+          "state": "displayed",
+          "value": "Praticiens médicaux"
+        },
+        {
+          "count": 117,
+          "name": "Personnel navigant du transport maritime et fluvial",
+          "state": "displayed",
+          "value": "Personnel navigant du transport maritime et fluvial"
+        },
+        {
+          "count": 117,
+          "name": "Soins paramédicaux",
+          "state": "displayed",
+          "value": "Soins paramédicaux"
+        },
+        {
+          "count": 116,
+          "name": "Montage de structures",
+          "state": "displayed",
+          "value": "Montage de structures"
+        },
+        {
+          "count": 115,
+          "name": "Soins aux animaux",
+          "state": "displayed",
+          "value": "Soins aux animaux"
+        },
+        {
+          "count": 106,
+          "name": "Accueil en hôtellerie",
+          "state": "displayed",
+          "value": "Accueil en hôtellerie"
+        },
+        {
+          "count": 106,
+          "name": "Accueil et promotion touristique",
+          "state": "displayed",
+          "value": "Accueil et promotion touristique"
+        },
+        {
+          "count": 106,
+          "name": "Banque",
+          "state": "displayed",
+          "value": "Banque"
+        },
+        {
+          "count": 92,
+          "name": "Animation de spectacles",
+          "state": "displayed",
+          "value": "Animation de spectacles"
+        },
+        {
+          "count": 90,
+          "name": "Personnel sédentaire du transport maritime et fluvial",
+          "state": "displayed",
+          "value": "Personnel sédentaire du transport maritime et fluvial"
+        },
+        {
+          "count": 88,
+          "name": "Publicité",
+          "state": "displayed",
+          "value": "Publicité"
+        },
+        {
+          "count": 84,
+          "name": "Encadrement",
+          "state": "displayed",
+          "value": "Encadrement"
+        },
+        {
+          "count": 81,
+          "name": "Matériaux de construction, céramique et verre",
+          "state": "displayed",
+          "value": "Matériaux de construction, céramique et verre"
+        },
+        {
+          "count": 72,
+          "name": "Entretien technique",
+          "state": "displayed",
+          "value": "Entretien technique"
+        },
+        {
+          "count": 71,
+          "name": "Professionnels médico-techniques",
+          "state": "displayed",
+          "value": "Professionnels médico-techniques"
+        },
+        {
+          "count": 70,
+          "name": "Finance",
+          "state": "displayed",
+          "value": "Finance"
+        },
+        {
+          "count": 68,
+          "name": "Arts plastiques",
+          "state": "displayed",
+          "value": "Arts plastiques"
+        },
+        {
+          "count": 66,
+          "name": "Chimie et pharmacie",
+          "state": "displayed",
+          "value": "Chimie et pharmacie"
+        },
+        {
+          "count": 60,
+          "name": "Instruments de musique",
+          "state": "displayed",
+          "value": "Instruments de musique"
+        },
+        {
+          "count": 59,
+          "name": "Personnel sédentaire du transport ferroviaire et réseau filo guidé",
+          "state": "displayed",
+          "value": "Personnel sédentaire du transport ferroviaire et réseau filo guidé"
+        },
+        {
+          "count": 57,
+          "name": "Personnel navigant du transport aérien",
+          "state": "displayed",
+          "value": "Personnel navigant du transport aérien"
+        },
+        {
+          "count": 54,
+          "name": "Achats",
+          "state": "displayed",
+          "value": "Achats"
+        },
+        {
+          "count": 54,
+          "name": "Contrôle public",
+          "state": "displayed",
+          "value": "Contrôle public"
+        },
+        {
+          "count": 51,
+          "name": "Services funéraires",
+          "state": "displayed",
+          "value": "Services funéraires"
+        },
+        {
+          "count": 47,
+          "name": "Direction d'entreprise",
+          "state": "displayed",
+          "value": "Direction d'entreprise"
+        },
+        {
+          "count": 45,
+          "name": "Gestion administrative banque et assurances",
+          "state": "displayed",
+          "value": "Gestion administrative banque et assurances"
+        },
+        {
+          "count": 45,
+          "name": "Papier et carton",
+          "state": "displayed",
+          "value": "Papier et carton"
+        },
+        {
+          "count": 42,
+          "name": "Affaires et support technique client",
+          "state": "displayed",
+          "value": "Affaires et support technique client"
+        },
+        {
+          "count": 41,
+          "name": "Engins agricoles et forestiers",
+          "state": "displayed",
+          "value": "Engins agricoles et forestiers"
+        },
+        {
+          "count": 36,
+          "name": "Personnel d'étage en hôtellerie",
+          "state": "displayed",
+          "value": "Personnel d'étage en hôtellerie"
+        },
+        {
+          "count": 34,
+          "name": "Fibres et papier",
+          "state": "displayed",
+          "value": "Fibres et papier"
+        },
+        {
+          "count": 32,
+          "name": "Sport professionnel",
+          "state": "displayed",
+          "value": "Sport professionnel"
+        },
+        {
+          "count": 26,
+          "name": "Personnel navigant du transport terrestre",
+          "state": "displayed",
+          "value": "Personnel navigant du transport terrestre"
+        },
+        {
+          "count": 25,
+          "name": "Direction de magasin de détail",
+          "state": "displayed",
+          "value": "Direction de magasin de détail"
+        },
+        {
+          "count": 24,
+          "name": "Praticiens médico-techniques",
+          "state": "displayed",
+          "value": "Praticiens médico-techniques"
+        },
+        {
+          "count": 22,
+          "name": "Taxidermie",
+          "state": "displayed",
+          "value": "Taxidermie"
+        },
+        {
+          "count": 13,
+          "name": "Céramique",
+          "state": "displayed",
+          "value": "Céramique"
+        }
+      ],
+      "name": "libelle_domaine_professionnel"
+    },
+    {
+      "facets": [
+        {
+          "count": 868,
+          "name": "H2903",
+          "state": "displayed",
+          "value": "H2903"
+        },
+        {
+          "count": 620,
+          "name": "H2907",
+          "state": "displayed",
+          "value": "H2907"
+        },
+        {
+          "count": 594,
+          "name": "H2905",
+          "state": "displayed",
+          "value": "H2905"
+        },
+        {
+          "count": 550,
+          "name": "H2904",
+          "state": "displayed",
+          "value": "H2904"
+        },
+        {
+          "count": 429,
+          "name": "H2906",
+          "state": "displayed",
+          "value": "H2906"
+        },
+        {
+          "count": 396,
+          "name": "H2909",
+          "state": "displayed",
+          "value": "H2909"
+        },
+        {
+          "count": 392,
+          "name": "I1305",
+          "state": "displayed",
+          "value": "I1305"
+        },
+        {
+          "count": 387,
+          "name": "H1206",
+          "state": "displayed",
+          "value": "H1206"
+        },
+        {
+          "count": 385,
+          "name": "H2901",
+          "state": "displayed",
+          "value": "H2901"
+        },
+        {
+          "count": 385,
+          "name": "K2503",
+          "state": "displayed",
+          "value": "K2503"
+        },
+        {
+          "count": 378,
+          "name": "H2504",
+          "state": "displayed",
+          "value": "H2504"
+        },
+        {
+          "count": 364,
+          "name": "F1302",
+          "state": "displayed",
+          "value": "F1302"
+        },
+        {
+          "count": 333,
+          "name": "H3303",
+          "state": "displayed",
+          "value": "H3303"
+        },
+        {
+          "count": 312,
+          "name": "H2902",
+          "state": "displayed",
+          "value": "H2902"
+        },
+        {
+          "count": 268,
+          "name": "K2402",
+          "state": "displayed",
+          "value": "K2402"
+        },
+        {
+          "count": 268,
+          "name": "L1202",
+          "state": "displayed",
+          "value": "L1202"
+        },
+        {
+          "count": 258,
+          "name": "I1401",
+          "state": "displayed",
+          "value": "I1401"
+        },
+        {
+          "count": 258,
+          "name": "M1805",
+          "state": "displayed",
+          "value": "M1805"
+        },
+        {
+          "count": 255,
+          "name": "E1106",
+          "state": "displayed",
+          "value": "E1106"
+        },
+        {
+          "count": 253,
+          "name": "H2911",
+          "state": "displayed",
+          "value": "H2911"
+        },
+        {
+          "count": 225,
+          "name": "H1302",
+          "state": "displayed",
+          "value": "H1302"
+        },
+        {
+          "count": 220,
+          "name": "H1504",
+          "state": "displayed",
+          "value": "H1504"
+        },
+        {
+          "count": 220,
+          "name": "I1604",
+          "state": "displayed",
+          "value": "I1604"
+        },
+        {
+          "count": 216,
+          "name": "H3202",
+          "state": "displayed",
+          "value": "H3202"
+        },
+        {
+          "count": 216,
+          "name": "H3401",
+          "state": "displayed",
+          "value": "H3401"
+        },
+        {
+          "count": 204,
+          "name": "H2701",
+          "state": "displayed",
+          "value": "H2701"
+        },
+        {
+          "count": 200,
+          "name": "K2401",
+          "state": "displayed",
+          "value": "K2401"
+        },
+        {
+          "count": 200,
+          "name": "L1302",
+          "state": "displayed",
+          "value": "L1302"
+        },
+        {
+          "count": 198,
+          "name": "H3302",
+          "state": "displayed",
+          "value": "H3302"
+        },
+        {
+          "count": 192,
+          "name": "B1805",
+          "state": "displayed",
+          "value": "B1805"
+        },
+        {
+          "count": 192,
+          "name": "E1205",
+          "state": "displayed",
+          "value": "E1205"
+        },
+        {
+          "count": 186,
+          "name": "H3201",
+          "state": "displayed",
+          "value": "H3201"
+        },
+        {
+          "count": 186,
+          "name": "K2501",
+          "state": "displayed",
+          "value": "K2501"
+        },
+        {
+          "count": 180,
+          "name": "H3301",
+          "state": "displayed",
+          "value": "H3301"
+        },
+        {
+          "count": 177,
+          "name": "G1403",
+          "state": "displayed",
+          "value": "G1403"
+        },
+        {
+          "count": 174,
+          "name": "L1501",
+          "state": "displayed",
+          "value": "L1501"
+        },
+        {
+          "count": 168,
+          "name": "H2908",
+          "state": "displayed",
+          "value": "H2908"
+        },
+        {
+          "count": 168,
+          "name": "I1307",
+          "state": "displayed",
+          "value": "I1307"
+        },
+        {
+          "count": 160,
+          "name": "M1803",
+          "state": "displayed",
+          "value": "M1803"
+        },
+        {
+          "count": 156,
+          "name": "H2501",
+          "state": "displayed",
+          "value": "H2501"
+        },
+        {
+          "count": 148,
+          "name": "G1202",
+          "state": "displayed",
+          "value": "G1202"
+        },
+        {
+          "count": 147,
+          "name": "E1306",
+          "state": "displayed",
+          "value": "E1306"
+        },
+        {
+          "count": 147,
+          "name": "K1403",
+          "state": "displayed",
+          "value": "K1403"
+        },
+        {
+          "count": 144,
+          "name": "F1402",
+          "state": "displayed",
+          "value": "F1402"
+        },
+        {
+          "count": 144,
+          "name": "K1601",
+          "state": "displayed",
+          "value": "K1601"
+        },
+        {
+          "count": 144,
+          "name": "M1802",
+          "state": "displayed",
+          "value": "M1802"
+        },
+        {
+          "count": 144,
+          "name": "N1303",
+          "state": "displayed",
+          "value": "N1303"
+        },
+        {
+          "count": 140,
+          "name": "G1203",
+          "state": "displayed",
+          "value": "G1203"
+        },
+        {
+          "count": 140,
+          "name": "H1201",
+          "state": "displayed",
+          "value": "H1201"
+        },
+        {
+          "count": 140,
+          "name": "H2914",
+          "state": "displayed",
+          "value": "H2914"
+        },
+        {
+          "count": 136,
+          "name": "H2503",
+          "state": "displayed",
+          "value": "H2503"
+        },
+        {
+          "count": 136,
+          "name": "H2910",
+          "state": "displayed",
+          "value": "H2910"
+        },
+        {
+          "count": 136,
+          "name": "L1204",
+          "state": "displayed",
+          "value": "L1204"
+        },
+        {
+          "count": 135,
+          "name": "M1203",
+          "state": "displayed",
+          "value": "M1203"
+        },
+        {
+          "count": 128,
+          "name": "M1810",
+          "state": "displayed",
+          "value": "M1810"
+        },
+        {
+          "count": 126,
+          "name": "I1603",
+          "state": "displayed",
+          "value": "I1603"
+        },
+        {
+          "count": 126,
+          "name": "K2502",
+          "state": "displayed",
+          "value": "K2502"
+        },
+        {
+          "count": 124,
+          "name": "F1605",
+          "state": "displayed",
+          "value": "F1605"
+        },
+        {
+          "count": 124,
+          "name": "I1602",
+          "state": "displayed",
+          "value": "I1602"
+        },
+        {
+          "count": 123,
+          "name": "C1503",
+          "state": "displayed",
+          "value": "C1503"
+        },
+        {
+          "count": 123,
+          "name": "I1304",
+          "state": "displayed",
+          "value": "I1304"
+        },
+        {
+          "count": 123,
+          "name": "M1502",
+          "state": "displayed",
+          "value": "M1502"
+        },
+        {
+          "count": 123,
+          "name": "N1103",
+          "state": "displayed",
+          "value": "N1103"
+        },
+        {
+          "count": 120,
+          "name": "I1306",
+          "state": "displayed",
+          "value": "I1306"
+        },
+        {
+          "count": 120,
+          "name": "K1802",
+          "state": "displayed",
+          "value": "K1802"
+        },
+        {
+          "count": 117,
+          "name": "H2402",
+          "state": "displayed",
+          "value": "H2402"
+        },
+        {
+          "count": 116,
+          "name": "H2505",
+          "state": "displayed",
+          "value": "H2505"
+        },
+        {
+          "count": 114,
+          "name": "A1303",
+          "state": "displayed",
+          "value": "A1303"
+        },
+        {
+          "count": 114,
+          "name": "H2602",
+          "state": "displayed",
+          "value": "H2602"
+        },
+        {
+          "count": 112,
+          "name": "G1204",
+          "state": "displayed",
+          "value": "G1204"
+        },
+        {
+          "count": 112,
+          "name": "H1503",
+          "state": "displayed",
+          "value": "H1503"
+        },
+        {
+          "count": 112,
+          "name": "N1202",
+          "state": "displayed",
+          "value": "N1202"
+        },
+        {
+          "count": 111,
+          "name": "F1105",
+          "state": "displayed",
+          "value": "F1105"
+        },
+        {
+          "count": 111,
+          "name": "H3402",
+          "state": "displayed",
+          "value": "H3402"
+        },
+        {
+          "count": 110,
+          "name": "F1203",
+          "state": "displayed",
+          "value": "F1203"
+        },
+        {
+          "count": 110,
+          "name": "H2202",
+          "state": "displayed",
+          "value": "H2202"
+        },
+        {
+          "count": 108,
+          "name": "B1804",
+          "state": "displayed",
+          "value": "B1804"
+        },
+        {
+          "count": 108,
+          "name": "F1201",
+          "state": "displayed",
+          "value": "F1201"
+        },
+        {
+          "count": 108,
+          "name": "I1502",
+          "state": "displayed",
+          "value": "I1502"
+        },
+        {
+          "count": 108,
+          "name": "I1606",
+          "state": "displayed",
+          "value": "I1606"
+        },
+        {
+          "count": 105,
+          "name": "H2415",
+          "state": "displayed",
+          "value": "H2415"
+        },
+        {
+          "count": 104,
+          "name": "E1104",
+          "state": "displayed",
+          "value": "E1104"
+        },
+        {
+          "count": 104,
+          "name": "M1603",
+          "state": "displayed",
+          "value": "M1603"
+        },
+        {
+          "count": 102,
+          "name": "E1301",
+          "state": "displayed",
+          "value": "E1301"
+        },
+        {
+          "count": 102,
+          "name": "H2102",
+          "state": "displayed",
+          "value": "H2102"
+        },
+        {
+          "count": 100,
+          "name": "G1303",
+          "state": "displayed",
+          "value": "G1303"
+        },
+        {
+          "count": 100,
+          "name": "I1605",
+          "state": "displayed",
+          "value": "I1605"
+        },
+        {
+          "count": 99,
+          "name": "B1302",
+          "state": "displayed",
+          "value": "B1302"
+        },
+        {
+          "count": 99,
+          "name": "E1201",
+          "state": "displayed",
+          "value": "E1201"
+        },
+        {
+          "count": 96,
+          "name": "F1202",
+          "state": "displayed",
+          "value": "F1202"
+        },
+        {
+          "count": 96,
+          "name": "G1201",
+          "state": "displayed",
+          "value": "G1201"
+        },
+        {
+          "count": 96,
+          "name": "K1204",
+          "state": "displayed",
+          "value": "K1204"
+        },
+        {
+          "count": 96,
+          "name": "K1903",
+          "state": "displayed",
+          "value": "K1903"
+        },
+        {
+          "count": 96,
+          "name": "M1705",
+          "state": "displayed",
+          "value": "M1705"
+        },
+        {
+          "count": 93,
+          "name": "M1403",
+          "state": "displayed",
+          "value": "M1403"
+        },
+        {
+          "count": 93,
+          "name": "M1806",
+          "state": "displayed",
+          "value": "M1806"
+        },
+        {
+          "count": 92,
+          "name": "M1804",
+          "state": "displayed",
+          "value": "M1804"
+        },
+        {
+          "count": 90,
+          "name": "D1208",
+          "state": "displayed",
+          "value": "D1208"
+        },
+        {
+          "count": 90,
+          "name": "H1202",
+          "state": "displayed",
+          "value": "H1202"
+        },
+        {
+          "count": 90,
+          "name": "H1502",
+          "state": "displayed",
+          "value": "H1502"
+        },
+        {
+          "count": 90,
+          "name": "H3404",
+          "state": "displayed",
+          "value": "H3404"
+        },
+        {
+          "count": 90,
+          "name": "K2107",
+          "state": "displayed",
+          "value": "K2107"
+        },
+        {
+          "count": 90,
+          "name": "K2303",
+          "state": "displayed",
+          "value": "K2303"
+        },
+        {
+          "count": 88,
+          "name": "F1702",
+          "state": "displayed",
+          "value": "F1702"
+        },
+        {
+          "count": 88,
+          "name": "J1102",
+          "state": "displayed",
+          "value": "J1102"
+        },
+        {
+          "count": 87,
+          "name": "F1604",
+          "state": "displayed",
+          "value": "F1604"
+        },
+        {
+          "count": 87,
+          "name": "H1301",
+          "state": "displayed",
+          "value": "H1301"
+        },
+        {
+          "count": 87,
+          "name": "K2306",
+          "state": "displayed",
+          "value": "K2306"
+        },
+        {
+          "count": 86,
+          "name": "F1106",
+          "state": "displayed",
+          "value": "F1106"
+        },
+        {
+          "count": 85,
+          "name": "L1303",
+          "state": "displayed",
+          "value": "L1303"
+        },
+        {
+          "count": 84,
+          "name": "H1506",
+          "state": "displayed",
+          "value": "H1506"
+        },
+        {
+          "count": 84,
+          "name": "I1503",
+          "state": "displayed",
+          "value": "I1503"
+        },
+        {
+          "count": 84,
+          "name": "K2302",
+          "state": "displayed",
+          "value": "K2302"
+        },
+        {
+          "count": 80,
+          "name": "D1212",
+          "state": "displayed",
+          "value": "D1212"
+        },
+        {
+          "count": 80,
+          "name": "G1702",
+          "state": "displayed",
+          "value": "G1702"
+        },
+        {
+          "count": 80,
+          "name": "H3203",
+          "state": "displayed",
+          "value": "H3203"
+        },
+        {
+          "count": 77,
+          "name": "H2502",
+          "state": "displayed",
+          "value": "H2502"
+        },
+        {
+          "count": 76,
+          "name": "C1109",
+          "state": "displayed",
+          "value": "C1109"
+        },
+        {
+          "count": 75,
+          "name": "B1303",
+          "state": "displayed",
+          "value": "B1303"
+        },
+        {
+          "count": 75,
+          "name": "G1205",
+          "state": "displayed",
+          "value": "G1205"
+        },
+        {
+          "count": 72,
+          "name": "A1204",
+          "state": "displayed",
+          "value": "A1204"
+        },
+        {
+          "count": 72,
+          "name": "A1501",
+          "state": "displayed",
+          "value": "A1501"
+        },
+        {
+          "count": 72,
+          "name": "F1104",
+          "state": "displayed",
+          "value": "F1104"
+        },
+        {
+          "count": 72,
+          "name": "F1703",
+          "state": "displayed",
+          "value": "F1703"
+        },
+        {
+          "count": 72,
+          "name": "G1602",
+          "state": "displayed",
+          "value": "G1602"
+        },
+        {
+          "count": 72,
+          "name": "H2605",
+          "state": "displayed",
+          "value": "H2605"
+        },
+        {
+          "count": 72,
+          "name": "I1302",
+          "state": "displayed",
+          "value": "I1302"
+        },
+        {
+          "count": 72,
+          "name": "K1206",
+          "state": "displayed",
+          "value": "K1206"
+        },
+        {
+          "count": 72,
+          "name": "L1201",
+          "state": "displayed",
+          "value": "L1201"
+        },
+        {
+          "count": 72,
+          "name": "M1503",
+          "state": "displayed",
+          "value": "M1503"
+        },
+        {
+          "count": 72,
+          "name": "N4105",
+          "state": "displayed",
+          "value": "N4105"
+        },
+        {
+          "count": 70,
+          "name": "D1507",
+          "state": "displayed",
+          "value": "D1507"
+        },
+        {
+          "count": 70,
+          "name": "H1402",
+          "state": "displayed",
+          "value": "H1402"
+        },
+        {
+          "count": 70,
+          "name": "K1902",
+          "state": "displayed",
+          "value": "K1902"
+        },
+        {
+          "count": 69,
+          "name": "E1102",
+          "state": "displayed",
+          "value": "E1102"
+        },
+        {
+          "count": 68,
+          "name": "B1101",
+          "state": "displayed",
+          "value": "B1101"
+        },
+        {
+          "count": 68,
+          "name": "B1802",
+          "state": "displayed",
+          "value": "B1802"
+        },
+        {
+          "count": 68,
+          "name": "H1209",
+          "state": "displayed",
+          "value": "H1209"
+        },
+        {
+          "count": 68,
+          "name": "H2209",
+          "state": "displayed",
+          "value": "H2209"
+        },
+        {
+          "count": 68,
+          "name": "N1301",
+          "state": "displayed",
+          "value": "N1301"
+        },
+        {
+          "count": 66,
+          "name": "C1504",
+          "state": "displayed",
+          "value": "C1504"
+        },
+        {
+          "count": 66,
+          "name": "E1103",
+          "state": "displayed",
+          "value": "E1103"
+        },
+        {
+          "count": 66,
+          "name": "H1401",
+          "state": "displayed",
+          "value": "H1401"
+        },
+        {
+          "count": 66,
+          "name": "H2301",
+          "state": "displayed",
+          "value": "H2301"
+        },
+        {
+          "count": 66,
+          "name": "H3403",
+          "state": "displayed",
+          "value": "H3403"
+        },
+        {
+          "count": 66,
+          "name": "I1607",
+          "state": "displayed",
+          "value": "I1607"
+        },
+        {
+          "count": 66,
+          "name": "K1801",
+          "state": "displayed",
+          "value": "K1801"
+        },
+        {
+          "count": 66,
+          "name": "L1503",
+          "state": "displayed",
+          "value": "L1503"
+        },
+        {
+          "count": 66,
+          "name": "L1505",
+          "state": "displayed",
+          "value": "L1505"
+        },
+        {
+          "count": 66,
+          "name": "M1808",
+          "state": "displayed",
+          "value": "M1808"
+        },
+        {
+          "count": 65,
+          "name": "D1505",
+          "state": "displayed",
+          "value": "D1505"
+        },
+        {
+          "count": 64,
+          "name": "A1301",
+          "state": "displayed",
+          "value": "A1301"
+        },
+        {
+          "count": 64,
+          "name": "F1501",
+          "state": "displayed",
+          "value": "F1501"
+        },
+        {
+          "count": 62,
+          "name": "F1701",
+          "state": "displayed",
+          "value": "F1701"
+        },
+        {
+          "count": 62,
+          "name": "H2204",
+          "state": "displayed",
+          "value": "H2204"
+        },
+        {
+          "count": 62,
+          "name": "H2603",
+          "state": "displayed",
+          "value": "H2603"
+        },
+        {
+          "count": 62,
+          "name": "K2204",
+          "state": "displayed",
+          "value": "K2204"
+        },
+        {
+          "count": 60,
+          "name": "B1501",
+          "state": "displayed",
+          "value": "B1501"
+        },
+        {
+          "count": 60,
+          "name": "E1305",
+          "state": "displayed",
+          "value": "E1305"
+        },
+        {
+          "count": 60,
+          "name": "H1203",
+          "state": "displayed",
+          "value": "H1203"
+        },
+        {
+          "count": 60,
+          "name": "I1308",
+          "state": "displayed",
+          "value": "I1308"
+        },
+        {
+          "count": 60,
+          "name": "I1309",
+          "state": "displayed",
+          "value": "I1309"
+        },
+        {
+          "count": 60,
+          "name": "K1103",
+          "state": "displayed",
+          "value": "K1103"
+        },
+        {
+          "count": 60,
+          "name": "K2201",
+          "state": "displayed",
+          "value": "K2201"
+        },
+        {
+          "count": 60,
+          "name": "L1203",
+          "state": "displayed",
+          "value": "L1203"
+        },
+        {
+          "count": 60,
+          "name": "L1504",
+          "state": "displayed",
+          "value": "L1504"
+        },
+        {
+          "count": 58,
+          "name": "E1402",
+          "state": "displayed",
+          "value": "E1402"
+        },
+        {
+          "count": 58,
+          "name": "I1402",
+          "state": "displayed",
+          "value": "I1402"
+        },
+        {
+          "count": 57,
+          "name": "H1205",
+          "state": "displayed",
+          "value": "H1205"
+        },
+        {
+          "count": 57,
+          "name": "K1201",
+          "state": "displayed",
+          "value": "K1201"
+        },
+        {
+          "count": 56,
+          "name": "D1408",
+          "state": "displayed",
+          "value": "D1408"
+        },
+        {
+          "count": 56,
+          "name": "K1303",
+          "state": "displayed",
+          "value": "K1303"
+        },
+        {
+          "count": 56,
+          "name": "N1302",
+          "state": "displayed",
+          "value": "N1302"
+        },
+        {
+          "count": 55,
+          "name": "K2111",
+          "state": "displayed",
+          "value": "K2111"
+        },
+        {
+          "count": 54,
+          "name": "B1601",
+          "state": "displayed",
+          "value": "B1601"
+        },
+        {
+          "count": 54,
+          "name": "G1102",
+          "state": "displayed",
+          "value": "G1102"
+        },
+        {
+          "count": 54,
+          "name": "I1310",
+          "state": "displayed",
+          "value": "I1310"
+        },
+        {
+          "count": 54,
+          "name": "M1204",
+          "state": "displayed",
+          "value": "M1204"
+        },
+        {
+          "count": 53,
+          "name": "A1414",
+          "state": "displayed",
+          "value": "A1414"
+        },
+        {
+          "count": 52,
+          "name": "G1101",
+          "state": "displayed",
+          "value": "G1101"
+        },
+        {
+          "count": 52,
+          "name": "H2201",
+          "state": "displayed",
+          "value": "H2201"
+        },
+        {
+          "count": 52,
+          "name": "K1203",
+          "state": "displayed",
+          "value": "K1203"
+        },
+        {
+          "count": 52,
+          "name": "N1201",
+          "state": "displayed",
+          "value": "N1201"
+        },
+        {
+          "count": 52,
+          "name": "N4103",
+          "state": "displayed",
+          "value": "N4103"
+        },
+        {
+          "count": 51,
+          "name": "A1403",
+          "state": "displayed",
+          "value": "A1403"
+        },
+        {
+          "count": 51,
+          "name": "E1105",
+          "state": "displayed",
+          "value": "E1105"
+        },
+        {
+          "count": 51,
+          "name": "E1107",
+          "state": "displayed",
+          "value": "E1107"
+        },
+        {
+          "count": 50,
+          "name": "H1501",
+          "state": "displayed",
+          "value": "H1501"
+        },
+        {
+          "count": 50,
+          "name": "H2409",
+          "state": "displayed",
+          "value": "H2409"
+        },
+        {
+          "count": 50,
+          "name": "K2301",
+          "state": "displayed",
+          "value": "K2301"
+        },
+        {
+          "count": 50,
+          "name": "N2204",
+          "state": "displayed",
+          "value": "N2204"
+        },
+        {
+          "count": 50,
+          "name": "N3101",
+          "state": "displayed",
+          "value": "N3101"
+        },
+        {
+          "count": 49,
+          "name": "E1302",
+          "state": "displayed",
+          "value": "E1302"
+        },
+        {
+          "count": 48,
+          "name": "B1602",
+          "state": "displayed",
+          "value": "B1602"
+        },
+        {
+          "count": 48,
+          "name": "B1603",
+          "state": "displayed",
+          "value": "B1603"
+        },
+        {
+          "count": 48,
+          "name": "E1101",
+          "state": "displayed",
+          "value": "E1101"
+        },
+        {
+          "count": 48,
+          "name": "E1203",
+          "state": "displayed",
+          "value": "E1203"
+        },
+        {
+          "count": 48,
+          "name": "G1302",
+          "state": "displayed",
+          "value": "G1302"
+        },
+        {
+          "count": 48,
+          "name": "G1803",
+          "state": "displayed",
+          "value": "G1803"
+        },
+        {
+          "count": 48,
+          "name": "H1505",
+          "state": "displayed",
+          "value": "H1505"
+        }
+      ],
+      "name": "code_rome"
+    },
+    {
+      "facets": [
+        {
+          "count": 26,
+          "name": "Opérateur / Opératrice en fabrication mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice en fabrication mécanique"
+        },
+        {
+          "count": 24,
+          "name": "Assembleur monteur / Assembleuse monteuse",
+          "state": "displayed",
+          "value": "Assembleur monteur / Assembleuse monteuse"
+        },
+        {
+          "count": 24,
+          "name": "Chaudronnier / Chaudronnière",
+          "state": "displayed",
+          "value": "Chaudronnier / Chaudronnière"
+        },
+        {
+          "count": 22,
+          "name": "Ajusteur-monteur / Ajusteuse-monteuse",
+          "state": "displayed",
+          "value": "Ajusteur-monteur / Ajusteuse-monteuse"
+        },
+        {
+          "count": 22,
+          "name": "Cisailleur / Cisailleuse en métallurgie",
+          "state": "displayed",
+          "value": "Cisailleur / Cisailleuse en métallurgie"
+        },
+        {
+          "count": 22,
+          "name": "Forgeron industriel / Forgeronne industrielle",
+          "state": "displayed",
+          "value": "Forgeron industriel / Forgeronne industrielle"
+        },
+        {
+          "count": 22,
+          "name": "Métallier / Métallière",
+          "state": "displayed",
+          "value": "Métallier / Métallière"
+        },
+        {
+          "count": 20,
+          "name": "Fondeur / Fondeuse en métallurgie",
+          "state": "displayed",
+          "value": "Fondeur / Fondeuse en métallurgie"
+        },
+        {
+          "count": 19,
+          "name": "Tourneur-fraiseur / Tourneuse-fraiseuse",
+          "state": "displayed",
+          "value": "Tourneur-fraiseur / Tourneuse-fraiseuse"
+        },
+        {
+          "count": 18,
+          "name": "Agent / Agente de conditionnement",
+          "state": "displayed",
+          "value": "Agent / Agente de conditionnement"
+        },
+        {
+          "count": 18,
+          "name": "Chef / Cheffe d'équipe en industrie",
+          "state": "displayed",
+          "value": "Chef / Cheffe d'équipe en industrie"
+        },
+        {
+          "count": 18,
+          "name": "Conducteur / Conductrice de ligne de conditionnement",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de ligne de conditionnement"
+        },
+        {
+          "count": 18,
+          "name": "Cuisinier / Cuisinière en industrie chimique",
+          "state": "displayed",
+          "value": "Cuisinier / Cuisinière en industrie chimique"
+        },
+        {
+          "count": 18,
+          "name": "Opérateur / Opératrice de traitement d'abrasion de surface",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de traitement d'abrasion de surface"
+        },
+        {
+          "count": 16,
+          "name": "Mouleur noyauteur / Mouleuse noyauteuse",
+          "state": "displayed",
+          "value": "Mouleur noyauteur / Mouleuse noyauteuse"
+        },
+        {
+          "count": 16,
+          "name": "Responsable d'îlot de production",
+          "state": "displayed",
+          "value": "Responsable d'îlot de production"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur / Affûteuse d'outillage industriel",
+          "state": "displayed",
+          "value": "Affûteur / Affûteuse d'outillage industriel"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur / Affûteuse d'outils de coupe",
+          "state": "displayed",
+          "value": "Affûteur / Affûteuse d'outils de coupe"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur / Affûteuse de fraises",
+          "state": "displayed",
+          "value": "Affûteur / Affûteuse de fraises"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur / Affûteuse de menuiserie",
+          "state": "displayed",
+          "value": "Affûteur / Affûteuse de menuiserie"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur / Affûteuse de scierie",
+          "state": "displayed",
+          "value": "Affûteur / Affûteuse de scierie"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur-ajusteur / Affûteuse-ajusteuse",
+          "state": "displayed",
+          "value": "Affûteur-ajusteur / Affûteuse-ajusteuse"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur-outilleur / Affûteuse-outilleuse",
+          "state": "displayed",
+          "value": "Affûteur-outilleur / Affûteuse-outilleuse"
+        },
+        {
+          "count": 14,
+          "name": "Affûteur-régleur / Affûteuse-régleuse",
+          "state": "displayed",
+          "value": "Affûteur-régleur / Affûteuse-régleuse"
+        },
+        {
+          "count": 14,
+          "name": "Agent / Agente de sécurité",
+          "state": "displayed",
+          "value": "Agent / Agente de sécurité"
+        },
+        {
+          "count": 14,
+          "name": "Aléseur / Aléseuse",
+          "state": "displayed",
+          "value": "Aléseur / Aléseuse"
+        },
+        {
+          "count": 14,
+          "name": "Aléseur pointeur / Aléseuse pointeuse",
+          "state": "displayed",
+          "value": "Aléseur pointeur / Aléseuse pointeuse"
+        },
+        {
+          "count": 14,
+          "name": "Coloriste en industrie",
+          "state": "displayed",
+          "value": "Coloriste en industrie"
+        },
+        {
+          "count": 14,
+          "name": "Conducteur / Conductrice d'engins de chantier",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'engins de chantier"
+        },
+        {
+          "count": 14,
+          "name": "Conducteur / Conductrice de machines automatiques du travail des métaux",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines automatiques du travail des métaux"
+        },
+        {
+          "count": 14,
+          "name": "Conducteur / Conductrice de machines d'usinage en menuiserie PVC",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines d'usinage en menuiserie PVC"
+        },
+        {
+          "count": 14,
+          "name": "Conducteur / Conductrice de machines d'usinage en menuiserie alu",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines d'usinage en menuiserie alu"
+        },
+        {
+          "count": 14,
+          "name": "Conducteur / Conductrice de machines outils d'usinage des métaux",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines outils d'usinage des métaux"
+        },
+        {
+          "count": 14,
+          "name": "Décolleteur / Décolleteuse",
+          "state": "displayed",
+          "value": "Décolleteur / Décolleteuse"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur / Fraiseuse",
+          "state": "displayed",
+          "value": "Fraiseur / Fraiseuse"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur / Fraiseuse d'engrenage",
+          "state": "displayed",
+          "value": "Fraiseur / Fraiseuse d'engrenage"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur / Fraiseuse d'outillages",
+          "state": "displayed",
+          "value": "Fraiseur / Fraiseuse d'outillages"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur / Fraiseuse mouliste",
+          "state": "displayed",
+          "value": "Fraiseur / Fraiseuse mouliste"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur / Fraiseuse sur Commande Numérique -CN-",
+          "state": "displayed",
+          "value": "Fraiseur / Fraiseuse sur Commande Numérique -CN-"
+        },
+        {
+          "count": 14,
+          "name": "Fraiseur outilleur / Fraiseuse outilleuse",
+          "state": "displayed",
+          "value": "Fraiseur outilleur / Fraiseuse outilleuse"
+        },
+        {
+          "count": 14,
+          "name": "Menuisier / Menuisière aluminium d'atelier en industrie",
+          "state": "displayed",
+          "value": "Menuisier / Menuisière aluminium d'atelier en industrie"
+        },
+        {
+          "count": 14,
+          "name": "Modeleur / Modeleuse",
+          "state": "displayed",
+          "value": "Modeleur / Modeleuse"
+        },
+        {
+          "count": 14,
+          "name": "Modeleur / Modeleuse sur machine-outil",
+          "state": "displayed",
+          "value": "Modeleur / Modeleuse sur machine-outil"
+        },
+        {
+          "count": 14,
+          "name": "Mortaiseur / Mortaiseuse",
+          "state": "displayed",
+          "value": "Mortaiseur / Mortaiseuse"
+        },
+        {
+          "count": 14,
+          "name": "Mouliste sur machine-outil",
+          "state": "displayed",
+          "value": "Mouliste sur machine-outil"
+        },
+        {
+          "count": 14,
+          "name": "Mécanicien régleur / Mécanicienne régleuse de machine automatique du travail des métaux",
+          "state": "displayed",
+          "value": "Mécanicien régleur / Mécanicienne régleuse de machine automatique du travail des métaux"
+        },
+        {
+          "count": 14,
+          "name": "Mécanicien-fraiseur / Mécanicienne-fraiseuse",
+          "state": "displayed",
+          "value": "Mécanicien-fraiseur / Mécanicienne-fraiseuse"
+        },
+        {
+          "count": 14,
+          "name": "Mécanicien-tourneur / Mécanicienne-tourneuse",
+          "state": "displayed",
+          "value": "Mécanicien-tourneur / Mécanicienne-tourneuse"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur / Opératrice de centre d'usinage",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de centre d'usinage"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur / Opératrice sur Commande Numérique -CN-",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur Commande Numérique -CN-"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur programmeur / Opératrice programmeuse de centre d'usinage",
+          "state": "displayed",
+          "value": "Opérateur programmeur / Opératrice programmeuse de centre d'usinage"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur régleur / Opératrice régleuse sur centre d'usinage",
+          "state": "displayed",
+          "value": "Opérateur régleur / Opératrice régleuse sur centre d'usinage"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur régleur / Opératrice régleuse sur machines-outils à commande numérique de production par enlèvement de métal",
+          "state": "displayed",
+          "value": "Opérateur régleur / Opératrice régleuse sur machines-outils à commande numérique de production par enlèvement de métal"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur régleur / Opératrice régleuse usinage",
+          "state": "displayed",
+          "value": "Opérateur régleur / Opératrice régleuse usinage"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur régleur-programmeur / Opératrice régleuse-programmeuse sur machines à commande numérique -CN-",
+          "state": "displayed",
+          "value": "Opérateur régleur-programmeur / Opératrice régleuse-programmeuse sur machines à commande numérique -CN-"
+        },
+        {
+          "count": 14,
+          "name": "Opérateur-régleur / Opératrice-régleuse sur machine-outil d'usinage des métaux",
+          "state": "displayed",
+          "value": "Opérateur-régleur / Opératrice-régleuse sur machine-outil d'usinage des métaux"
+        },
+        {
+          "count": 14,
+          "name": "Perceur / Perceuse sur machine radiale",
+          "state": "displayed",
+          "value": "Perceur / Perceuse sur machine radiale"
+        },
+        {
+          "count": 14,
+          "name": "Pilote de cellule d'usinage",
+          "state": "displayed",
+          "value": "Pilote de cellule d'usinage"
+        },
+        {
+          "count": 14,
+          "name": "Pointeur / Pointeuse en usinage",
+          "state": "displayed",
+          "value": "Pointeur / Pointeuse en usinage"
+        },
+        {
+          "count": 14,
+          "name": "Pointeur aléseur / Pointeuse aléseuse",
+          "state": "displayed",
+          "value": "Pointeur aléseur / Pointeuse aléseuse"
+        },
+        {
+          "count": 14,
+          "name": "Radialeur / Radialeuse",
+          "state": "displayed",
+          "value": "Radialeur / Radialeuse"
+        },
+        {
+          "count": 14,
+          "name": "Rectifieur / Rectifieuse d'engrenage",
+          "state": "displayed",
+          "value": "Rectifieur / Rectifieuse d'engrenage"
+        },
+        {
+          "count": 14,
+          "name": "Rectifieur / Rectifieuse en usinage",
+          "state": "displayed",
+          "value": "Rectifieur / Rectifieuse en usinage"
+        },
+        {
+          "count": 14,
+          "name": "Régleur décolleteur / Régleuse décolleteuse",
+          "state": "displayed",
+          "value": "Régleur décolleteur / Régleuse décolleteuse"
+        },
+        {
+          "count": 13,
+          "name": "Agent / Agente d'équipement automatisé de fabrication mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente d'équipement automatisé de fabrication mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Agent / Agente d'équipement automatisé de production du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Agent / Agente d'équipement automatisé de production du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Agent / Agente d'équipement automatisé de production mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente d'équipement automatisé de production mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Agent d'exécution polyvalent / Agente d'exécution polyvalente d'équipement automatisé du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Agent d'exécution polyvalent / Agente d'exécution polyvalente d'équipement automatisé du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice d'installation automatisée en fabrication mécanique",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'installation automatisée en fabrication mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice d'installation robotisée",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'installation robotisée"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice d'équipements de ferrage",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'équipements de ferrage"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice de machines automatiques de soudage à l'arc",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines automatiques de soudage à l'arc"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice de machines automatiques en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines automatiques en montage-assemblage mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice de machines de soudage",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de machines de soudage"
+        },
+        {
+          "count": 13,
+          "name": "Conducteur / Conductrice de système de production automatisée en fabrication mécanique",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de système de production automatisée en fabrication mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice d'équipement automatisé de production du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice d'équipement automatisé de production du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice d'équipement de ferrage",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice d'équipement de ferrage"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice de production d'équipement automatisé en construction mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de production d'équipement automatisé en construction mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine automatique de production du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine automatique de production du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine automatique de production mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine automatique de production mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine automatisée de montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine automatisée de montage-assemblage mécanique"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine de soudage",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine de soudage"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine de soudage sous flux gazeux",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine de soudage sous flux gazeux"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine de soudage sous flux solide",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine de soudage sous flux solide"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machine du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machine du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur / Opératrice sur machines automatiques de soudage",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur machines automatiques de soudage"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur polyvalent / Opératrice polyvalente d'équipement automatisé du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Opérateur polyvalent / Opératrice polyvalente d'équipement automatisé du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Opérateur régleur / Opératrice régleuse sur robot de soudage",
+          "state": "displayed",
+          "value": "Opérateur régleur / Opératrice régleuse sur robot de soudage"
+        },
+        {
+          "count": 13,
+          "name": "Ouvrier / Ouvrière sur machine du travail des métaux et composites",
+          "state": "displayed",
+          "value": "Ouvrier / Ouvrière sur machine du travail des métaux et composites"
+        },
+        {
+          "count": 13,
+          "name": "Servant / Servante de machine en construction mécanique",
+          "state": "displayed",
+          "value": "Servant / Servante de machine en construction mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Agent / Agente d'assemblage mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente d'assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Agent / Agente de fabrication en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente de fabrication en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Agent / Agente de montage mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente de montage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Agent / Agente de montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente de montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Agent / Agente de production de montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Agent / Agente de production de montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Aide chaudronnier / chaudronnière",
+          "state": "displayed",
+          "value": "Aide chaudronnier / chaudronnière"
+        },
+        {
+          "count": 12,
+          "name": "Aide-monteur / Aide-monteuse en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Aide-monteur / Aide-monteuse en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Aide-mécanicien / Aide-mécanicienne en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Aide-mécanicien / Aide-mécanicienne en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Aide-soudeur / Aide-soudeuse en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Aide-soudeur / Aide-soudeuse en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Assembleur / Assembleuse au plan en chaudronnerie",
+          "state": "displayed",
+          "value": "Assembleur / Assembleuse au plan en chaudronnerie"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier / Chaudronnière aéronautique",
+          "state": "displayed",
+          "value": "Chaudronnier / Chaudronnière aéronautique"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier / Chaudronnière sur métaux",
+          "state": "displayed",
+          "value": "Chaudronnier / Chaudronnière sur métaux"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier / Chaudronnière tôle fine",
+          "state": "displayed",
+          "value": "Chaudronnier / Chaudronnière tôle fine"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier soudeur / Chaudronnière soudeuse",
+          "state": "displayed",
+          "value": "Chaudronnier soudeur / Chaudronnière soudeuse"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier traceur / Chaudronnière traceuse",
+          "state": "displayed",
+          "value": "Chaudronnier traceur / Chaudronnière traceuse"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier-tuyauteur / Chaudronnière-tuyauteuse",
+          "state": "displayed",
+          "value": "Chaudronnier-tuyauteur / Chaudronnière-tuyauteuse"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier-tuyauteur / Chaudronnière-tuyauteuse en thermoplastiques",
+          "state": "displayed",
+          "value": "Chaudronnier-tuyauteur / Chaudronnière-tuyauteuse en thermoplastiques"
+        },
+        {
+          "count": 12,
+          "name": "Chaudronnier-tôlier / Chaudronnière-tôlière",
+          "state": "displayed",
+          "value": "Chaudronnier-tôlier / Chaudronnière-tôlière"
+        },
+        {
+          "count": 12,
+          "name": "Chef / Cheffe d'atelier production électricité-électronique",
+          "state": "displayed",
+          "value": "Chef / Cheffe d'atelier production électricité-électronique"
+        },
+        {
+          "count": 12,
+          "name": "Chef d'équipe traceur / traceuse en chaudronnerie",
+          "state": "displayed",
+          "value": "Chef d'équipe traceur / traceuse en chaudronnerie"
+        },
+        {
+          "count": 12,
+          "name": "Câbleur / Câbleuse d'armoires",
+          "state": "displayed",
+          "value": "Câbleur / Câbleuse d'armoires"
+        },
+        {
+          "count": 12,
+          "name": "Ferreur / Ferreuse en chaudronnerie-tôlerie",
+          "state": "displayed",
+          "value": "Ferreur / Ferreuse en chaudronnerie-tôlerie"
+        },
+        {
+          "count": 12,
+          "name": "Gardien / Gardienne",
+          "state": "displayed",
+          "value": "Gardien / Gardienne"
+        },
+        {
+          "count": 12,
+          "name": "Maquilleur / Maquilleuse spectacle",
+          "state": "displayed",
+          "value": "Maquilleur / Maquilleuse spectacle"
+        },
+        {
+          "count": 12,
+          "name": "Maréchal-ferrant / Maréchale-ferrante",
+          "state": "displayed",
+          "value": "Maréchal-ferrant / Maréchale-ferrante"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse d'assemblage mécanique de précision",
+          "state": "displayed",
+          "value": "Monteur / Monteuse d'assemblage mécanique de précision"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse de pièces",
+          "state": "displayed",
+          "value": "Monteur / Monteuse de pièces"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse en grappe en cire perdue",
+          "state": "displayed",
+          "value": "Monteur / Monteuse en grappe en cire perdue"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse en ligne de fabrication automobile",
+          "state": "displayed",
+          "value": "Monteur / Monteuse en ligne de fabrication automobile"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse en lunetterie",
+          "state": "displayed",
+          "value": "Monteur / Monteuse en lunetterie"
+        },
+        {
+          "count": 12,
+          "name": "Monteur / Monteuse sur chaîne d'assemblage",
+          "state": "displayed",
+          "value": "Monteur / Monteuse sur chaîne d'assemblage"
+        },
+        {
+          "count": 12,
+          "name": "Monteur régleur / Monteuse régleuse en plasturgie",
+          "state": "displayed",
+          "value": "Monteur régleur / Monteuse régleuse en plasturgie"
+        },
+        {
+          "count": 12,
+          "name": "Monteur-câbleur / Monteuse-câbleuse en électronique",
+          "state": "displayed",
+          "value": "Monteur-câbleur / Monteuse-câbleuse en électronique"
+        },
+        {
+          "count": 12,
+          "name": "Mécanicien / Mécanicienne agricole",
+          "state": "displayed",
+          "value": "Mécanicien / Mécanicienne agricole"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice d'assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice d'assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice de montage en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de montage en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice de montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice de production en montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice de production en montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice en chaudronnerie",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice en chaudronnerie"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice en tôlerie industrielle",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice en tôlerie industrielle"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur / Opératrice sur ligne de montage mécanique",
+          "state": "displayed",
+          "value": "Opérateur / Opératrice sur ligne de montage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur polyvalent / Opératrice polyvalente montage-assemblage mécanique",
+          "state": "displayed",
+          "value": "Opérateur polyvalent / Opératrice polyvalente montage-assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Opérateur qualifié / Opératrice qualifiée de montage de véhicules",
+          "state": "displayed",
+          "value": "Opérateur qualifié / Opératrice qualifiée de montage de véhicules"
+        },
+        {
+          "count": 12,
+          "name": "Ouvrier / Ouvrière de montage en assemblage mécanique",
+          "state": "displayed",
+          "value": "Ouvrier / Ouvrière de montage en assemblage mécanique"
+        },
+        {
+          "count": 12,
+          "name": "Ouvrier / Ouvrière de montage en construction automobile",
+          "state": "displayed",
+          "value": "Ouvrier / Ouvrière de montage en construction automobile"
+        },
+        {
+          "count": 12,
+          "name": "Ouvrier / Ouvrière de montage mécanique en aéronautique",
+          "state": "displayed",
+          "value": "Ouvrier / Ouvrière de montage mécanique en aéronautique"
+        },
+        {
+          "count": 12,
+          "name": "Plasturgiste",
+          "state": "displayed",
+          "value": "Plasturgiste"
+        },
+        {
+          "count": 12,
+          "name": "Responsable sécurité",
+          "state": "displayed",
+          "value": "Responsable sécurité"
+        },
+        {
+          "count": 12,
+          "name": "Retoucheur / Retoucheuse sur tôles nues en construction automobile",
+          "state": "displayed",
+          "value": "Retoucheur / Retoucheuse sur tôles nues en construction automobile"
+        },
+        {
+          "count": 12,
+          "name": "Retoucheur / Retoucheuse électricité en construction automobile",
+          "state": "displayed",
+          "value": "Retoucheur / Retoucheuse électricité en construction automobile"
+        },
+        {
+          "count": 12,
+          "name": "Retoucheur sellier / Retoucheuse sellière en construction automobile",
+          "state": "displayed",
+          "value": "Retoucheur sellier / Retoucheuse sellière en construction automobile"
+        },
+        {
+          "count": 12,
+          "name": "Rhabilleur / Rhabilleuse en horlogerie",
+          "state": "displayed",
+          "value": "Rhabilleur / Rhabilleuse en horlogerie"
+        },
+        {
+          "count": 12,
+          "name": "Rhabilleur / Rhabilleuse en lunetterie",
+          "state": "displayed",
+          "value": "Rhabilleur / Rhabilleuse en lunetterie"
+        },
+        {
+          "count": 12,
+          "name": "Soudeur / Soudeuse sur machines automatiques de soudage à l'arc",
+          "state": "displayed",
+          "value": "Soudeur / Soudeuse sur machines automatiques de soudage à l'arc"
+        },
+        {
+          "count": 12,
+          "name": "Soudeur / Soudeuse sur machines automatiques par bombardement d'électrons",
+          "state": "displayed",
+          "value": "Soudeur / Soudeuse sur machines automatiques par bombardement d'électrons"
+        },
+        {
+          "count": 12,
+          "name": "Soudeur / Soudeuse sur machines automatiques par point",
+          "state": "displayed",
+          "value": "Soudeur / Soudeuse sur machines automatiques par point"
+        },
+        {
+          "count": 11,
+          "name": "Agent / Agente de débit de matériaux",
+          "state": "displayed",
+          "value": "Agent / Agente de débit de matériaux"
+        },
+        {
+          "count": 11,
+          "name": "Agent / Agente de découpage de matériaux",
+          "state": "displayed",
+          "value": "Agent / Agente de découpage de matériaux"
+        },
+        {
+          "count": 11,
+          "name": "Aide compagnon forgeron industriel / Aide compagnonne forgeronne industrielle",
+          "state": "displayed",
+          "value": "Aide compagnon forgeron industriel / Aide compagnonne forgeronne industrielle"
+        },
+        {
+          "count": 11,
+          "name": "Aide forgeron pilonnier / forgeronne pilonnière",
+          "state": "displayed",
+          "value": "Aide forgeron pilonnier / forgeronne pilonnière"
+        },
+        {
+          "count": 11,
+          "name": "Aide lamineur / lamineuse",
+          "state": "displayed",
+          "value": "Aide lamineur / lamineuse"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur / Ajusteuse au banc",
+          "state": "displayed",
+          "value": "Ajusteur / Ajusteuse au banc"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur / Ajusteuse composites",
+          "state": "displayed",
+          "value": "Ajusteur / Ajusteuse composites"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur / Ajusteuse de fabrication",
+          "state": "displayed",
+          "value": "Ajusteur / Ajusteuse de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur balancier / Ajusteuse balancière",
+          "state": "displayed",
+          "value": "Ajusteur balancier / Ajusteuse balancière"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-emboutisseur / Ajusteuse-emboutisseuse",
+          "state": "displayed",
+          "value": "Ajusteur-emboutisseur / Ajusteuse-emboutisseuse"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-matriceur / Ajusteuse-matriceuse",
+          "state": "displayed",
+          "value": "Ajusteur-matriceur / Ajusteuse-matriceuse"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-metteur / Ajusteuse-metteuse au point de prototypes",
+          "state": "displayed",
+          "value": "Ajusteur-metteur / Ajusteuse-metteuse au point de prototypes"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-monteur / Ajusteuse-monteuse aéronautique",
+          "state": "displayed",
+          "value": "Ajusteur-monteur / Ajusteuse-monteuse aéronautique"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-monteur / Ajusteuse-monteuse de cellules aéronefs",
+          "state": "displayed",
+          "value": "Ajusteur-monteur / Ajusteuse-monteuse de cellules aéronefs"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-monteur / Ajusteuse-monteuse de fabrication",
+          "state": "displayed",
+          "value": "Ajusteur-monteur / Ajusteuse-monteuse de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-mouliste / Ajusteuse-mouliste",
+          "state": "displayed",
+          "value": "Ajusteur-mouliste / Ajusteuse-mouliste"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-mécanicien / Ajusteuse-mécanicienne de fabrication",
+          "state": "displayed",
+          "value": "Ajusteur-mécanicien / Ajusteuse-mécanicienne de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-outilleur / Ajusteuse-outilleuse de fabrication",
+          "state": "displayed",
+          "value": "Ajusteur-outilleur / Ajusteuse-outilleuse de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-outilleur / Ajusteuse-outilleuse sur moule métallique",
+          "state": "displayed",
+          "value": "Ajusteur-outilleur / Ajusteuse-outilleuse sur moule métallique"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-rectifieur / Ajusteuse-rectifieuse de fabrication",
+          "state": "displayed",
+          "value": "Ajusteur-rectifieur / Ajusteuse-rectifieuse de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Ajusteur-régleur / Ajusteuse-régleuse de fabrication en instruments d'optique",
+          "state": "displayed",
+          "value": "Ajusteur-régleur / Ajusteuse-régleuse de fabrication en instruments d'optique"
+        },
+        {
+          "count": 11,
+          "name": "Aménageur intégrateur / Aménageuse intégratrice de cabines d'aéronefs",
+          "state": "displayed",
+          "value": "Aménageur intégrateur / Aménageuse intégratrice de cabines d'aéronefs"
+        },
+        {
+          "count": 11,
+          "name": "Armurier / Armurière de fabrication",
+          "state": "displayed",
+          "value": "Armurier / Armurière de fabrication"
+        },
+        {
+          "count": 11,
+          "name": "Assembleur / Assembleuse en armatures métalliques",
+          "state": "displayed",
+          "value": "Assembleur / Assembleuse en armatures métalliques"
+        },
+        {
+          "count": 11,
+          "name": "Assembleur / Assembleuse en construction et réparation navale",
+          "state": "displayed",
+          "value": "Assembleur / Assembleuse en construction et réparation navale"
+        },
+        {
+          "count": 11,
+          "name": "Bobineur / Bobineuse de tréfilerie",
+          "state": "displayed",
+          "value": "Bobineur / Bobineuse de tréfilerie"
+        },
+        {
+          "count": 11,
+          "name": "Bobineur / Bobineuse en métallurgie",
+          "state": "displayed",
+          "value": "Bobineur / Bobineuse en métallurgie"
+        },
+        {
+          "count": 11,
+          "name": "Chalumiste de découpage des métaux",
+          "state": "displayed",
+          "value": "Chalumiste de découpage des métaux"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier / Charpentière fer",
+          "state": "displayed",
+          "value": "Charpentier / Charpentière fer"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier / Charpentière métallique en construction navale",
+          "state": "displayed",
+          "value": "Charpentier / Charpentière métallique en construction navale"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier industriel / Charpentière industrielle",
+          "state": "displayed",
+          "value": "Charpentier industriel / Charpentière industrielle"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier industriel / Charpentière industrielle en charpentes métalliques",
+          "state": "displayed",
+          "value": "Charpentier industriel / Charpentière industrielle en charpentes métalliques"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier industriel / Charpentière industrielle en structures métalliques",
+          "state": "displayed",
+          "value": "Charpentier industriel / Charpentière industrielle en structures métalliques"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier métallier industriel / Charpentière métallière industrielle",
+          "state": "displayed",
+          "value": "Charpentier métallier industriel / Charpentière métallière industrielle"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier traceur / Charpentière traceuse en charpentes métalliques",
+          "state": "displayed",
+          "value": "Charpentier traceur / Charpentière traceuse en charpentes métalliques"
+        },
+        {
+          "count": 11,
+          "name": "Charpentier-monteur industriel / Charpentière-monteuse industrielle",
+          "state": "displayed",
+          "value": "Charpentier-monteur industriel / Charpentière-monteuse industrielle"
+        },
+        {
+          "count": 11,
+          "name": "Chef d'équipe d'estampage",
+          "state": "displayed",
+          "value": "Chef d'équipe d'estampage"
+        },
+        {
+          "count": 11,
+          "name": "Chef d'équipe de découpe",
+          "state": "displayed",
+          "value": "Chef d'équipe de découpe"
+        },
+        {
+          "count": 11,
+          "name": "Chef d'équipe en métallurgie",
+          "state": "displayed",
+          "value": "Chef d'équipe en métallurgie"
+        },
+        {
+          "count": 11,
+          "name": "Chef d'équipe en tréfilerie",
+          "state": "displayed",
+          "value": "Chef d'équipe en tréfilerie"
+        },
+        {
+          "count": 11,
+          "name": "Chef lamineur / lamineuse en métallurgie",
+          "state": "displayed",
+          "value": "Chef lamineur / lamineuse en métallurgie"
+        },
+        {
+          "count": 11,
+          "name": "Cintreur / Cintreuse aluminium",
+          "state": "displayed",
+          "value": "Cintreur / Cintreuse aluminium"
+        },
+        {
+          "count": 11,
+          "name": "Cisailleur / Cisailleuse de forge",
+          "state": "displayed",
+          "value": "Cisailleur / Cisailleuse de forge"
+        },
+        {
+          "count": 11,
+          "name": "Cisailleur / Cisailleuse de laminoir",
+          "state": "displayed",
+          "value": "Cisailleur / Cisailleuse de laminoir"
+        },
+        {
+          "count": 11,
+          "name": "Cisailleur / Cisailleuse de matériaux",
+          "state": "displayed",
+          "value": "Cisailleur / Cisailleuse de matériaux"
+        },
+        {
+          "count": 11,
+          "name": "Compagnon / Compagnonne forge industrielle",
+          "state": "displayed",
+          "value": "Compagnon / Compagnonne forge industrielle"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice d'équipements de découpe",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'équipements de découpe"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice d'équipements de formage",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'équipements de formage"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice d'équipements de four en métallurgie",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice d'équipements de four en métallurgie"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice de cisaille",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de cisaille"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice de laminoirs en métallurgie",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de laminoirs en métallurgie"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice de ligne de presse à emboutir et à découper des métaux",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de ligne de presse à emboutir et à découper des métaux"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice de ligne de tréfilage",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de ligne de tréfilage"
+        },
+        {
+          "count": 11,
+          "name": "Conducteur / Conductrice de presses en tréfilerie",
+          "state": "displayed",
+          "value": "Conducteur / Conductrice de presses en tréfilerie"
+        }
+      ],
+      "name": "libelle"
+    }
+  ],
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/facets",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale",
+      "rel": "dataset"
+    }
+  ]
+}

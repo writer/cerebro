@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mastodon
+family: activity
+case: instance_activity
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMastodonFamilies
+request:
+    method: GET
+    url: https://mastodon.example.test/api/v1/instance/activity
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-04-11T23:15:25Z"
+    sha256: 4fc851b4bdefd21feb0e8964fae2bbf8657f4b2663451865046a0920883acbd4
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/halcy/Mastodon.py
+    commit: e125dc87f3933e5c5b4c8be41883595f60bb5080
+    path: tests/cassettes/test_instance_activity.yaml
+    artifact_sha256: 9837ecf0321ca1a7c633cc87a07946a35a85fcbcecc8cf46767446abc3b51ff8
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: response_header

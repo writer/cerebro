@@ -96,6 +96,8 @@ func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor Auth
 	if request.ScopeURN != "" && !tenantScopedURN(tenant.ID, request.ScopeURN) {
 		return nil, ErrProtectedReference
 	}
+	started := time.Now()
+	workflow := recordDecisionRequested(ctx, request.Workflow)
 
 	facts, err := s.resolver.Resolve(ctx, tenant, request)
 	if err != nil {
@@ -179,6 +181,7 @@ func (s *Service) Build(ctx context.Context, tenant AuthorizedTenant, actor Auth
 			return nil, fmt.Errorf("persist decision packet receipt: %w", err)
 		}
 	}
+	recordDecisionPacketBuilt(ctx, workflow, &packet, time.Since(started))
 	return &packet, nil
 }
 

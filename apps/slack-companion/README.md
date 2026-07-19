@@ -86,9 +86,28 @@ when every referenced receipt is current, accessible, and within its validity
 window. Planning uses stable caller-provided action identity so a retry produces
 the same suggestion identity.
 
-The host owns source queries, channel admission, prompts, persistence, and
-delivery adapters. Those adapters persist the versioned records and transition
-events without changing the portable decision policy.
+The portable channel policy classifies host-supplied message text and applies
+host-supplied channel membership and confidence thresholds. The host owns
+channel membership lookup, source queries, prompts, persistence, and delivery
+adapters. Those adapters persist the versioned records and transition events
+without changing the portable decision policy.
+
+The deterministic fallback accepts host-supplied alert text and research
+records. It never authorizes a reply: explicit test markers are non-actionable,
+and every other degraded result needs more context. Model and research calls,
+credentials, transport, persistence, and deployment remain host-owned.
+
+## Proactive follow-ups
+
+`src/followup` decides whether, and what, to proactively offer after a delivered
+assistant turn so the companion stays engaged without nagging. `planProactiveFollowup`
+only offers on an answered or partial turn, drops candidates whose kind is not
+allowed or that carry no grounding reference, and dedupes any action already
+offered or accepted in the thread. A cooldown and a per-window engagement budget
+bound how often the companion re-engages. The result is bounded, deterministically
+ordered by priority, and carries stable idempotent identities so a retry never
+double-offers. The host owns candidate derivation, durable engagement history,
+and Slack transport.
 
 ## History learning admission
 
@@ -106,6 +125,12 @@ runtime values fail closed; the helper never returns a partially checked value.
 Hosts still own structured-field allowlists, log and telemetry policy, storage,
 and incident handling. The redactor is a final text boundary, not a credential
 scanner or authorization decision.
+
+## Source health
+
+`src/execution/source-health-policy.ts` applies failure cooldown, successful recovery, slow-source degradation, and stable ranking to caller-owned state. It reuses the portable consecutive-failure and capacity-cooldown records so the host can commit one coherent aggregate.
+
+The host owns source calls, persistence, probe scheduling, and policy values. This module does not poll sources, create a store, or choose deployment behavior.
 
 ## Durable answer watches
 
@@ -147,6 +172,14 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
+
+## Dangerous-intent safety policy
+
+`src/safety` owns deterministic normalization, dangerous-intent classification,
+category precedence, safety decisions, and refusal text. Hosts decide where to
+apply the policy and own authorization, tool selection, configuration, logging,
+telemetry, persistence, and Slack transport.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.

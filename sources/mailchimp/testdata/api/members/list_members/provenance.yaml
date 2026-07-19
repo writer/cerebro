@@ -1,0 +1,32 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mailchimp
+family: members
+case: list_members
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMailchimpFamilies
+request:
+    method: GET
+    url: https://us19.api.mailchimp.com/3.0/lists/example-2e767a40/members
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2020-03-04T21:52:35Z"
+    sha256: 75f4965ebdfa0b59375354bec0adc3686e1e2033c1394053af1f5dbcf7cbabeb
+    headers:
+        Link: <https://us19.api.mailchimp.com/schema/3.0/Root.json>; rel="describedBy"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.members[0].email_address
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/duartejc/mailchimp
+    commit: a11991323c81cafeccd529cbf5e44fe914bfa57b
+    path: fixture/vcr_cassettes/list.members.json
+    artifact_sha256: b73795319c75962305df7b08f1f09c18c246a9aaa3d77a52c81a0081dadff756
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/mailchimp/member_test.exs
+    freshness: historical
+    capture_time_basis: response_header

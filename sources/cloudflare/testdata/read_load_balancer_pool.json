@@ -1,47 +1,111 @@
 [
   {
+    "id": "cloudflare-tenant-load_balancer_pool-6f267ae4f654ceb3",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.load_balancer_pool",
+    "occurred_at": "2025-02-26T20:44:27Z",
+    "schema_ref": "cloudflare/load_balancer_pool/v1",
+    "payload": {
+      "account_id": "example-7b47ad6c",
+      "check_regions": null,
+      "created_on": "2025-02-26T20:44:27.999349Z",
+      "description": "",
+      "enabled": true,
+      "id": "example-5a8db91f",
+      "minimum_origins": 1,
+      "modified_on": "2025-02-26T20:44:27.999349Z",
+      "name": "pool1",
+      "networks": [
+        "cloudflare"
+      ],
+      "notification_email": "",
+      "origins": [
+        {
+          "address": "example.com",
+          "enabled": true,
+          "header": {
+            "host": [
+              "origin_address"
+            ]
+          },
+          "name": "example-1",
+          "weight": 1
+        }
+      ]
+    },
     "attributes": {
-      "account_id": "account-1",
-      "check_regions": "WNAM",
+      "account_id": "example-7b47ad6c",
       "enabled": "true",
-      "external_id": "pool-1",
+      "external_id": "example-5a8db91f",
       "family": "load_balancer_pool",
       "minimum_origins": "1",
-      "name": "primary-pool",
-      "origins": "{\"address\":\"203.0.113.20\",\"enabled\":true,\"name\":\"origin-1\"}",
-      "pool_id": "pool-1",
-      "resource_id": "pool-1",
-      "resource_name": "primary-pool",
-      "resource_type": "load_balancer_pool",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer_pool:pool-1",
-      "source_event_id": "pool-1",
-      "source_product": "cloudflare",
+      "name": "pool1",
+      "observed_at": "2025-02-26T20:44:27.999349Z",
+      "origins": "{\"address\":\"example.com\",\"enabled\":true,\"header\":{\"host\":[\"origin_address\"]},\"name\":\"example-1\",\"weight\":1}",
+      "pool_id": "example-5a8db91f",
       "provider": "cloudflare",
+      "resource_id": "example-5a8db91f",
+      "resource_name": "pool1",
+      "resource_type": "load_balancer_pool",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer_pool:example-5a8db91f",
+      "source_event_id": "example-5a8db91f",
+      "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tenant_id": "tenant"
-    },
-    "id": "cloudflare-load_balancer_pool-event-1",
+    }
+  },
+  {
+    "id": "cloudflare-tenant-load_balancer_pool-5a0858955cfa68a9",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
     "kind": "cloudflare.load_balancer_pool",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2025-02-26T20:44:27Z",
+    "schema_ref": "cloudflare/load_balancer_pool/v1",
     "payload": {
-      "id": "pool-1",
-      "name": "primary-pool",
+      "account_id": "example-7b47ad6c",
+      "check_regions": null,
+      "created_on": "2025-02-26T20:44:27.967706Z",
+      "description": "",
       "enabled": true,
+      "id": "example-47ff3f9d",
+      "minimum_origins": 1,
+      "modified_on": "2025-02-26T20:44:27.967706Z",
+      "name": "pool2",
+      "networks": [
+        "cloudflare"
+      ],
+      "notification_email": "",
       "origins": [
         {
-          "name": "origin-1",
-          "address": "203.0.113.20",
-          "enabled": true
+          "address": "example.com",
+          "enabled": true,
+          "name": "example-2",
+          "weight": 1
         }
-      ],
-      "check_regions": [
-        "WNAM"
-      ],
-      "minimum_origins": 1
+      ]
     },
-    "schema_ref": "cloudflare/load_balancer_pool/v1",
-    "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    "attributes": {
+      "account_id": "example-7b47ad6c",
+      "enabled": "true",
+      "external_id": "example-47ff3f9d",
+      "family": "load_balancer_pool",
+      "minimum_origins": "1",
+      "name": "pool2",
+      "observed_at": "2025-02-26T20:44:27.967706Z",
+      "origins": "{\"address\":\"example.com\",\"enabled\":true,\"name\":\"example-2\",\"weight\":1}",
+      "pool_id": "example-47ff3f9d",
+      "provider": "cloudflare",
+      "resource_id": "example-47ff3f9d",
+      "resource_name": "pool2",
+      "resource_type": "load_balancer_pool",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer_pool:example-47ff3f9d",
+      "source_event_id": "example-47ff3f9d",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant"
+    }
   }
 ]

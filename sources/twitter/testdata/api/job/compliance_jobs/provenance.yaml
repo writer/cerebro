@@ -1,0 +1,31 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: twitter
+family: job
+case: compliance_jobs
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTwitterFamilies
+request:
+    method: GET
+    url: https://api.twitter.com/2/compliance/jobs?type=tweets
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2022-05-07T13:20:54Z"
+    sha256: 72676fbb3a8185e8794184c8e751dc45bf685544f8ceb613f55b643d1843c318
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].download_url
+        - $.data[0].upload_url
+origin:
+    type: upstream_recording
+    repository: https://github.com/tweepy/tweepy
+    commit: c1978d643ecce491929084e4290b35f57e4921ad
+    path: cassettes/test_asyncclient_create_and_get_compliance_job_and_jobs.yaml
+    artifact_sha256: 0bf99d8aac731034dbc78abfe52189aa981742c805210c65b2b29b9260822b86
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/config.py
+    interaction_index: 2
+    freshness: historical
+    capture_time_basis: response_header

@@ -1,47 +1,94 @@
 [
   {
+    "id": "cloudflare-tenant-member-53fd4f39ebc393e3",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.member",
+    "occurred_at": "2026-05-26T21:44:02Z",
+    "schema_ref": "cloudflare/member/v1",
+    "payload": {
+      "account_id": "example-7b47ad6c",
+      "api_access_enabled": null,
+      "id": "example-cb14549c",
+      "policies": [
+        {
+          "access": "allow",
+          "id": "example-7f0cb26e",
+          "permission_groups": [
+            {
+              "id": "example-cc089cf2",
+              "meta": {
+                "description": "Can edit any Cloudflare setting, make purchases, update billing, and manage memberships. Super Administrators can revoke the access of other Super Administrators.",
+                "editable": "false",
+                "label": "all_privileges",
+                "scopes": "com.cloudflare.api.account"
+              },
+              "name": "Super Administrator - All Privileges"
+            }
+          ],
+          "resource_groups": [
+            {
+              "id": "example-fa171dd1",
+              "meta": {
+                "editable": "false"
+              },
+              "name": "com.cloudflare.api.account.example-7b47ad6c",
+              "scope": {
+                "key": "com.cloudflare.api.account.example-7b47ad6c",
+                "objects": [
+                  {
+                    "key": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "roles": [
+        {
+          "description": "Can edit any Cloudflare setting, make purchases, update billing, and manage memberships. Super Administrators can revoke the access of other Super Administrators.",
+          "id": "example-33f6cf80",
+          "name": "Super Administrator - All Privileges",
+          "permissions": {
+            "access": {
+              "edit": true,
+              "read": true
+            },
+            "analytics": {
+              "edit": false,
+              "read": true
+            }
+          }
+        }
+      ],
+      "status": "accepted",
+      "user": {
+        "email": "user-33fa0dca@example.test",
+        "first_name": "example-96d9632f",
+        "id": "example-8285dee6",
+        "last_name": "example-799ef92a",
+        "two_factor_authentication_enabled": true
+      }
+    },
     "attributes": {
-      "account_id": "account-1",
-      "email": "alice@example.com",
-      "external_id": "member-1",
+      "account_id": "example-7b47ad6c",
+      "email": "user-33fa0dca@example.test",
+      "external_id": "example-cb14549c",
       "family": "member",
-      "member_id": "member-1",
-      "resource_id": "member-1",
-      "resource_name": "Alice Example",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_member:member-1",
-      "roles": "{\"id\":\"role-admin\",\"name\":\"Administrator\"}",
-      "source_event_id": "member-1",
-      "source_product": "cloudflare",
+      "member_id": "example-cb14549c",
       "provider": "cloudflare",
+      "resource_id": "example-cb14549c",
+      "resource_name": "example-cb14549c",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_member:example-cb14549c",
+      "roles": "{\"description\":\"Can edit any Cloudflare setting, make purchases, update billing, and manage memberships. Super Administrators can revoke the access of other Super Administrators.\",\"id\":\"example-33f6cf80\",\"name\":\"Super Administrator - All Privileges\",\"permissions\":{\"access\":{\"edit\":true,\"read\":true},\"analytics\":{\"edit\":false,\"read\":true}}}",
+      "source_event_id": "example-cb14549c",
+      "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "status": "accepted",
       "tenant_id": "tenant"
-    },
-    "id": "cloudflare-member-event-1",
-    "kind": "cloudflare.member",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "id": "member-1",
-      "status": "accepted",
-      "roles": [
-        {
-          "id": "role-admin",
-          "name": "Administrator"
-        }
-      ],
-      "user": {
-        "id": "user-1",
-        "email": "alice@example.com",
-        "name": "Alice Example"
-      },
-      "account": {
-        "id": "account-1"
-      }
-    },
-    "schema_ref": "cloudflare/member/v1",
-    "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    }
   }
 ]
