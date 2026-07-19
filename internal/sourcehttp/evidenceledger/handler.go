@@ -139,7 +139,7 @@ func (h *Handler) RegisterVersion(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	artifact, err := h.service.ReadArtifact(r.Context(), tenantID, request.Artifact.ID)
+	artifact, err := h.service.ReadArtifact(r.Context(), tenantID, version.ArtifactID)
 	if err != nil {
 		h.writeError(w, err)
 		return

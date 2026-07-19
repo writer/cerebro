@@ -84,7 +84,7 @@ type EvidenceGovernance struct {
 	Sensitivity    string    `json:"sensitivity"`
 	AccessPolicy   string    `json:"access_policy"`
 	RetentionUntil time.Time `json:"retention_until,omitempty"`
-	LegalHold      bool      `json:"legal_hold,omitempty"`
+	LegalHold      bool      `json:"legal_hold"`
 	RedactionState string    `json:"redaction_state,omitempty"`
 	ParserQuality  string    `json:"parser_quality,omitempty"`
 }

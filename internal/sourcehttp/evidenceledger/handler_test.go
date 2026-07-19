@@ -171,6 +171,48 @@ func TestGetVersionUsesAuthenticatedSensitivity(t *testing.T) {
 	}
 }
 
+func TestRegisterVersionWithGeneratedArtifactIDReadsStoredArtifact(t *testing.T) {
+	t.Parallel()
+	store := newHTTPStore()
+	service := evidenceledger.New(store, &httpLog{})
+	handler := NewHandler(service, func(_ context.Context, tenantID string) (string, error) {
+		return tenantID, nil
+	}, func(context.Context) string { return "operator-1" }, nil, 0)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /grc/evidence-artifacts/{artifactID}/versions", handler.RegisterVersion)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	periodStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	periodEnd := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
+	register := registerEvidenceVersionRequest{
+		Artifact: ports.EvidenceArtifact{TenantID: "tenant-1", Title: "Access review export", Type: "access_review"},
+		Version: ports.EvidenceVersion{
+			Content:    ports.EvidenceContentRef{MediaType: "application/json", URI: "evidencecas://access-reviews/july", ContentDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 512},
+			Provenance: ports.EvidenceProvenance{Producer: "identity-source", CollectedAt: periodEnd, PeriodStart: periodStart, PeriodEnd: periodEnd, SourceProofRevisionID: "proof-revision-1"},
+			Governance: ports.EvidenceGovernance{Sensitivity: ports.EvidenceSensitivityInternal, AccessPolicy: "security-assurance"},
+			Subjects:   []ports.EvidenceSubjectRef{{Type: "account", ID: "account-1"}},
+		},
+	}
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(register); err != nil {
+		t.Fatal(err)
+	}
+	response, err := server.Client().Post(server.URL+"/grc/evidence-artifacts/%20/versions", "application/json", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	var responseBody bytes.Buffer
+	_, _ = responseBody.ReadFrom(response.Body)
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", response.StatusCode, http.StatusCreated, responseBody.String())
+	}
+	if !strings.Contains(responseBody.String(), `"legal_hold":false`) {
+		t.Fatalf("response omitted false legal_hold: %s", responseBody.String())
+	}
+}
+
 func TestUnavailableReturnsServiceUnavailable(t *testing.T) {
 	t.Parallel()
 	handler := NewHandler(nil, func(_ context.Context, tenantID string) (string, error) {
