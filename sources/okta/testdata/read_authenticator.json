@@ -1,26 +1,401 @@
 [
   {
-    "id": "okta-authenticator-fixture-1",
+    "id": "okta-writer-okta-com-authenticator-117a55d4394a4576",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.authenticator",
-    "occurred_at": "2026-04-23T00:00:00Z",
+    "occurred_at": "2021-04-20T13:05:44Z",
     "schema_ref": "okta/authenticator/v1",
     "payload": {
-      "id": "auth-password",
       "domain": "writer.okta.com",
-      "name": "Password"
+      "id": "example-ace13dec2c9beb40",
+      "key": "okta_email",
+      "name": "Email",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40/lifecycle/deactivate"
+          },
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-ace13dec2c9beb40"
+          }
+        },
+        "created": "2021-04-14T04:34:28.000Z",
+        "id": "example-ace13dec2c9beb40",
+        "key": "okta_email",
+        "lastUpdated": "2021-04-20T13:05:44.000Z",
+        "name": "Email",
+        "settings": {
+          "allowedFor": "any",
+          "tokenLifetimeInMinutes": 5
+        },
+        "status": "ACTIVE",
+        "type": "email"
+      },
+      "status": "ACTIVE",
+      "type": "email"
     },
     "attributes": {
-      "authenticator_id": "auth-password",
+      "authenticator_id": "example-ace13dec2c9beb40",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "okta_email",
+      "name": "Email",
+      "resource_id": "example-ace13dec2c9beb40",
+      "resource_type": "Authenticator",
+      "status": "ACTIVE",
+      "type": "email"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authenticator-41799f441829fec7",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2021-09-17T12:34:36Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "example-58896adb72019e88",
+      "key": "okta_verify",
+      "name": "Okta Verify",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88/lifecycle/deactivate"
+          },
+          "enroll": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/idp/authenticators"
+          },
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-58896adb72019e88"
+          }
+        },
+        "created": "2021-04-14T04:34:50.000Z",
+        "id": "example-58896adb72019e88",
+        "key": "okta_verify",
+        "lastUpdated": "2021-09-17T12:34:36.000Z",
+        "name": "Okta Verify",
+        "settings": {
+          "appInstanceId": "",
+          "channelBinding": {
+            "required": "HIGH_RISK_ONLY",
+            "style": "NUMBER_CHALLENGE"
+          },
+          "compliance": {
+            "fips": "OPTIONAL"
+          },
+          "userVerification": "PREFERRED"
+        },
+        "status": "ACTIVE",
+        "type": "app"
+      },
+      "status": "ACTIVE",
+      "type": "app"
+    },
+    "attributes": {
+      "authenticator_id": "example-58896adb72019e88",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "okta_verify",
+      "name": "Okta Verify",
+      "resource_id": "example-58896adb72019e88",
+      "resource_type": "Authenticator",
+      "status": "ACTIVE",
+      "type": "app"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authenticator-9999c450de0bb84d",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2021-04-14T04:34:28Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "example-e504dc4b6e714b54",
+      "key": "okta_password",
+      "name": "Password",
+      "raw": {
+        "_links": {
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-e504dc4b6e714b54/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-e504dc4b6e714b54"
+          }
+        },
+        "created": "2021-04-14T04:34:28.000Z",
+        "id": "example-e504dc4b6e714b54",
+        "key": "okta_password",
+        "lastUpdated": "2021-04-14T04:34:28.000Z",
+        "name": "Password",
+        "status": "ACTIVE",
+        "type": "password"
+      },
+      "status": "ACTIVE",
+      "type": "password"
+    },
+    "attributes": {
+      "authenticator_id": "example-e504dc4b6e714b54",
       "domain": "writer.okta.com",
       "family": "authenticator",
       "key": "okta_password",
       "name": "Password",
-      "resource_id": "auth-password",
+      "resource_id": "example-e504dc4b6e714b54",
       "resource_type": "Authenticator",
       "status": "ACTIVE",
       "type": "password"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authenticator-7092e83eafe09d31",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2021-09-17T12:38:48Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "example-19a7fc5e34da2f48",
+      "key": "phone_number",
+      "name": "Phone",
+      "raw": {
+        "_links": {
+          "activate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48/lifecycle/activate"
+          },
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-19a7fc5e34da2f48"
+          }
+        },
+        "created": "2021-04-14T04:34:28.000Z",
+        "id": "example-19a7fc5e34da2f48",
+        "key": "phone_number",
+        "lastUpdated": "2021-09-17T12:38:48.000Z",
+        "name": "Phone",
+        "settings": {
+          "allowedFor": "recovery"
+        },
+        "status": "INACTIVE",
+        "type": "phone"
+      },
+      "status": "INACTIVE",
+      "type": "phone"
+    },
+    "attributes": {
+      "authenticator_id": "example-19a7fc5e34da2f48",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "phone_number",
+      "name": "Phone",
+      "resource_id": "example-19a7fc5e34da2f48",
+      "resource_type": "Authenticator",
+      "status": "INACTIVE",
+      "type": "phone"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authenticator-ca35e59bacb972b0",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2021-04-14T04:34:28Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "example-6c8b095a855d806c",
+      "key": "webauthn",
+      "name": "Security Key or Biometric",
+      "raw": {
+        "_links": {
+          "activate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c/lifecycle/activate"
+          },
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-6c8b095a855d806c"
+          }
+        },
+        "created": "2021-04-14T04:34:28.000Z",
+        "id": "example-6c8b095a855d806c",
+        "key": "webauthn",
+        "lastUpdated": "2021-04-14T04:34:28.000Z",
+        "name": "Security Key or Biometric",
+        "status": "INACTIVE",
+        "type": "security_key"
+      },
+      "status": "INACTIVE",
+      "type": "security_key"
+    },
+    "attributes": {
+      "authenticator_id": "example-6c8b095a855d806c",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "webauthn",
+      "name": "Security Key or Biometric",
+      "resource_id": "example-6c8b095a855d806c",
+      "resource_type": "Authenticator",
+      "status": "INACTIVE",
+      "type": "security_key"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authenticator-5b3bc18ef8f566c3",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2021-04-14T04:34:28Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "example-a9495589fcc46bd8",
+      "key": "security_question",
+      "name": "Security Question",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8/lifecycle/deactivate"
+          },
+          "methods": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8/methods"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authenticators/example-a9495589fcc46bd8"
+          }
+        },
+        "created": "2021-04-14T04:34:28.000Z",
+        "id": "example-a9495589fcc46bd8",
+        "key": "security_question",
+        "lastUpdated": "2021-04-14T04:34:28.000Z",
+        "name": "Security Question",
+        "settings": {
+          "allowedFor": "recovery"
+        },
+        "status": "ACTIVE",
+        "type": "security_question"
+      },
+      "status": "ACTIVE",
+      "type": "security_question"
+    },
+    "attributes": {
+      "authenticator_id": "example-a9495589fcc46bd8",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "security_question",
+      "name": "Security Question",
+      "resource_id": "example-a9495589fcc46bd8",
+      "resource_type": "Authenticator",
+      "status": "ACTIVE",
+      "type": "security_question"
     }
   }
 ]

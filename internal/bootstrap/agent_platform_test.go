@@ -50,6 +50,27 @@ func TestHandleAgentPlatformContract(t *testing.T) {
 	}
 }
 
+func TestHandleAgentServiceLifecycleContract(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, agentplatform.AgentServiceLifecycleContractPath, nil)
+
+	(&App{}).handleAgentServiceLifecycleContract(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var contract agentplatform.AgentServiceLifecycleContract
+	if err := json.Unmarshal(recorder.Body.Bytes(), &contract); err != nil {
+		t.Fatalf("decode lifecycle contract: %v", err)
+	}
+	if contract.SchemaVersion != agentplatform.AgentServiceLifecycleSchemaVersion || contract.ContractVersion != agentplatform.AgentServiceLifecycleContractVersion {
+		t.Fatalf("lifecycle contract versions = %q %q", contract.SchemaVersion, contract.ContractVersion)
+	}
+	if len(contract.Ports) == 0 || len(contract.Records) == 0 || len(contract.Invariants) == 0 {
+		t.Fatalf("lifecycle contract is incomplete: %+v", contract)
+	}
+}
+
 func TestHandleAgentContext(t *testing.T) {
 	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())

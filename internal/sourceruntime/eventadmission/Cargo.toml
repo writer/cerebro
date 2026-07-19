@@ -9,6 +9,10 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "cerebro-event-admission-worker"
+path = "src/worker_main.rs"
+
 [[bench]]
 name = "admission"
 harness = false
@@ -17,7 +21,13 @@ harness = false
 cerebro-wasm-guest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 sha2.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ciborium.workspace = true
+sha2 = { workspace = true, features = ["asm"] }
 
 [lints]
 workspace = true

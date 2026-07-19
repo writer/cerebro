@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: teams
+case: list_teams
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v2/team?page%5Bsize%5D=2&page%5Bnumber%5D=0
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2024-01-19T20:23:49Z"
+    sha256: 2de3f34b3ffaa05d10a9d45b79ecfc2d7ad698a2ce95e1eb692e59433520321a
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v2/Feature_Teams/Scenario_Get_all_teams_returns_OK_response_with_pagination.yaml
+    artifact_sha256: cf50edb4680e91ab6f95de534aff988ae3ccf29d2c9f080e07e1e515b7a5b07f
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    freshness: historical
+    capture_time_basis: artifact_commit

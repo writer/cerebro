@@ -1,0 +1,37 @@
+{
+  "length": 1,
+  "limit": 50,
+  "start": 0,
+  "total": 1,
+  "users": [
+    {
+      "app_metadata": {
+        "baz": "qux",
+        "foo": "bar"
+      },
+      "created_at": "2025-01-31T00:41:28.398Z",
+      "email": "user-d7f843fb@example.test",
+      "email_verified": false,
+      "family_name": "Lastname",
+      "given_name": "Firstname",
+      "identities": [
+        {
+          "connection": "Username-Password-Authentication",
+          "isSocial": false,
+          "provider": "auth0",
+          "user_id": "example-c19bea14"
+        }
+      ],
+      "name": "example-81d63650",
+      "nickname": "example-c19bea14",
+      "picture": "https://www.example.com/picture.jpg",
+      "updated_at": "2025-01-31T00:41:28.398Z",
+      "user_id": "example-bbbdecc3",
+      "user_metadata": {
+        "baz": "qux",
+        "foo": "bar"
+      },
+      "username": "example-c19bea14"
+    }
+  ]
+}

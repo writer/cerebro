@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        shielded_instance_config:
+            enable_secure_boot: false
+            enable_vtpm: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        shielded_instance_config:
+            enable_secure_boot: true
+            enable_vtpm: false
+      wantFinding: false

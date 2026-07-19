@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        renewal_days: 119
+        touchpoint_count: 1
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        renewal_days: 119
+        touchpoint_count: 2
+      wantFinding: false

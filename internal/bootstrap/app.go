@@ -23,6 +23,7 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/complianceassessment"
@@ -47,6 +48,7 @@ import (
 	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/policycandidate"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
@@ -58,17 +60,21 @@ import (
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
 type Dependencies struct {
-	AppendLog     ports.AppendLog
-	StateStore    ports.StateStore
-	GraphStore    ports.GraphStore
-	GraphAgentLLM graphagent.LLMClient
-	QueryCache    querycache.Cache
-	FindingRules  *findings.Registry
+	AppendLog                   ports.AppendLog
+	StateStore                  ports.StateStore
+	GraphStore                  ports.GraphStore
+	GraphAgentLLM               graphagent.LLMClient
+	QueryCache                  querycache.Cache
+	FindingRules                *findings.Registry
+	PolicyAuthoring             *agentauthoring.Service
+	PolicyExperiments           PolicyExperimentJobHandler
+	PolicyExperimentCheckpoints policycandidate.ExperimentCheckpointStatusReader
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -117,6 +123,7 @@ type bootstrapService struct {
 	sources         *sourcecdk.Registry
 	graphActions    *graphactions.Service
 	decisionPackets *decisionpacket.Service
+	runtimeOps      *sourceruntime.Service
 }
 
 const (
@@ -150,6 +157,22 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // errors instead of panicking. Production startup should use this form so
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{})
+}
+
+// NewWithContext constructs the bootstrap app with a caller-owned process lifetime.
+func NewWithContext(ctx context.Context, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	if ctx == nil {
+		return nil, errors.New("bootstrap context is required")
+	}
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{eventAdmissionContext: ctx})
+}
+
+type appConstructionOptions struct {
+	eventAdmissionContext context.Context
+}
+
+func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (_ *App, err error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {
@@ -237,6 +260,17 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.sourceOps = newSourceService(app.sources)
 	app.services.reports = app.newReportService()
 	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
+	if cfg.SourceRuntime.EventAdmissionWorkerPath != "" {
+		if options.eventAdmissionContext == nil {
+			return nil, errors.New("source event admission requires a bootstrap context")
+		}
+		admitter, admissionErr := eventadmission.NewNativeAdmitter(options.eventAdmissionContext, cfg.SourceRuntime.EventAdmissionWorkerPath, cfg.SourceRuntime.EventAdmissionWorkers)
+		if admissionErr != nil {
+			return nil, fmt.Errorf("source event admission bootstrap failed: %w", admissionErr)
+		}
+		app.services.runtimeOps.WithEventAdmitter(admitter)
+		defer eventadmission.CloseOnError(admitter, &err)
+	}
 	app.services.claims = app.newClaimService()
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
@@ -301,13 +335,21 @@ func (a *App) ListenAndServe() error {
 
 // Shutdown gracefully stops the bootstrap HTTP server.
 func (a *App) Shutdown(ctx context.Context) error {
+	var shutdownErrors []error
 	if err := a.server.Shutdown(ctx); err != nil {
-		return err
+		shutdownErrors = append(shutdownErrors, err)
 	}
 	if a.services.jobs != nil {
-		return a.services.jobs.Wait(ctx)
+		if err := a.services.jobs.Wait(ctx); err != nil {
+			shutdownErrors = append(shutdownErrors, err)
+		}
 	}
-	return nil
+	if a.services.runtimeOps != nil {
+		if err := a.services.runtimeOps.Close(); err != nil {
+			shutdownErrors = append(shutdownErrors, err)
+		}
+	}
+	return errors.Join(shutdownErrors...)
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -679,7 +721,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Put(ctx, req.Msg)
+	response, err := s.runtimeService().Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -691,7 +733,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Get(ctx, req.Msg)
+	response, err := s.runtimeService().Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -702,13 +744,20 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
+	response, err := s.runtimeService().SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
 		LeaseStore: sourceRuntimeLeaseStore(s.deps.StateStore),
 	})
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) runtimeService() *sourceruntime.Service {
+	if s.runtimeOps != nil {
+		return s.runtimeOps
+	}
+	return newRuntimeService(s.cfg, s.deps, s.sources)
 }
 
 func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request[cerebrov1.WriteClaimsRequest]) (*connect.Response[cerebrov1.WriteClaimsResponse], error) {

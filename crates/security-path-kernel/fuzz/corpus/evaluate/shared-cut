@@ -1,0 +1,1 @@
+{"operation":"rank_candidate_cuts","paths":[{"id":"path-a","route_id":"route-a","proof_edges":[{"id":"edge-shared","relation":"can_reach"}]},{"id":"path-b","route_id":"route-b","proof_edges":[{"id":"edge-shared","relation":"can_reach"}]}]}

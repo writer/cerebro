@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: haveibeenpwned
+family: breaches
+case: adobe
+replay_test: source_test.go#TestSourceReplaysCapturedBreaches
+request:
+    method: GET
+    url: https://haveibeenpwned.com/api/v3/breaches?domain=adobe.com
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:06:28Z"
+    sha256: de4f766e576ee6b10fdf654e4d9ea82d6376beaff415e00215967bb269d3c147
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

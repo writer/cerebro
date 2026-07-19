@@ -90,6 +90,28 @@ type assessmentResultPageResponse struct {
 	HasMore             bool                               `json:"has_more"`
 }
 
+type recordAssuranceDecisionRequest struct {
+	TenantID        string                                   `json:"tenant_id"`
+	RunID           string                                   `json:"run_id"`
+	ResultID        string                                   `json:"result_id"`
+	AsOf            time.Time                                `json:"as_of"`
+	SourceProofs    []complianceassessment.SourceProof       `json:"source_proofs"`
+	EvidenceProofs  []complianceassessment.EvidenceProof     `json:"evidence_proofs"`
+	Limitations     []complianceassessment.Limitation        `json:"limitations"`
+	RequiredReviews []complianceassessment.ReviewRequirement `json:"required_reviews"`
+	Exceptions      []complianceassessment.ExceptionProof    `json:"exceptions,omitempty"`
+	Verification    *complianceassessment.VerificationProof  `json:"verification"`
+}
+
+type assuranceDecisionResponse struct {
+	Decision complianceassessment.AssuranceDecision `json:"decision"`
+}
+
+type recordAssuranceDecisionResponse struct {
+	Decision complianceassessment.AssuranceDecision `json:"decision"`
+	Created  bool                                   `json:"created"`
+}
+
 func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	service := h.service
 	if service == nil {
@@ -289,6 +311,70 @@ func (h *Handler) ListResults(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) RecordAssuranceDecision(w http.ResponseWriter, r *http.Request) {
+	service := h.service
+	if service == nil {
+		h.writeError(w, complianceassessment.ErrAssuranceDecisionUnavailable)
+		return
+	}
+	var request recordAssuranceDecisionRequest
+	if err := h.decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if request.SourceProofs == nil || request.EvidenceProofs == nil || request.Limitations == nil || request.RequiredReviews == nil || request.Verification == nil {
+		h.writeError(w, fmt.Errorf("%w: proof arrays and verification are required", complianceassessment.ErrInvalidResult))
+		return
+	}
+	tenantID, err := h.resolveTenant(r.Context(), request.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		h.writeError(w, fmt.Errorf("%w: Idempotency-Key header is required", complianceassessment.ErrInvalidResult))
+		return
+	}
+	decision, created, err := service.RecordAssuranceDecision(r.Context(), complianceassessment.AssuranceDecisionRequest{
+		TenantID: tenantID, RunID: request.RunID, ResultID: request.ResultID,
+		IdempotencyKey: idempotencyKey, RecordedBy: h.actorID(r.Context()),
+		Input: complianceassessment.QualificationInput{
+			AsOf: request.AsOf, SourceProofs: request.SourceProofs, EvidenceProofs: request.EvidenceProofs,
+			Limitations: request.Limitations, RequiredReviews: request.RequiredReviews,
+			Exceptions: request.Exceptions, Verification: *request.Verification,
+		},
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, recordAssuranceDecisionResponse{Decision: decision, Created: created})
+}
+
+func (h *Handler) GetAssuranceDecision(w http.ResponseWriter, r *http.Request) {
+	service := h.service
+	if service == nil {
+		h.writeError(w, complianceassessment.ErrAssuranceDecisionUnavailable)
+		return
+	}
+	tenantID, err := h.resolveTenant(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	decision, err := service.GetAssuranceDecision(r.Context(), tenantID, r.PathValue("decisionID"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assuranceDecisionResponse{Decision: decision})
+}
+
 func validateExecutablePlan(plan complianceassessment.AssessmentPlanRevision) error {
 	for _, task := range plan.Execution.Tasks {
 		if task.Kind != complianceassessment.PlanTaskKindFindingEvaluation {
@@ -345,11 +431,11 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case h.isForbidden != nil && h.isForbidden(err):
 		status = http.StatusForbidden
-	case errors.Is(err, complianceassessment.ErrPlanNotFound), errors.Is(err, complianceassessment.ErrRunNotFound):
+	case errors.Is(err, complianceassessment.ErrPlanNotFound), errors.Is(err, complianceassessment.ErrRunNotFound), errors.Is(err, complianceassessment.ErrAssuranceDecisionNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, complianceassessment.ErrAssessmentConflict), errors.Is(err, ports.ErrJobIdempotencyConflict):
 		status = http.StatusConflict
-	case errors.Is(err, complianceassessment.ErrResultPagingUnavailable):
+	case errors.Is(err, complianceassessment.ErrResultPagingUnavailable), errors.Is(err, complianceassessment.ErrAssuranceDecisionUnavailable):
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, complianceassessment.ErrInvalidResult), errors.Is(err, complianceassessment.ErrInvalidManifest), errors.Is(err, complianceassessment.ErrIncompleteInput):
 		status = http.StatusBadRequest

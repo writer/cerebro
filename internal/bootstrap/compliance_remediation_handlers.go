@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,6 +79,38 @@ func (a *App) handleGetComplianceWorkItem(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *App) handleListComplianceWorkItems(w http.ResponseWriter, r *http.Request) {
+	service := a.remediationService()
+	if service == nil {
+		writeComplianceRemediationError(w, complianceremediation.ErrUnavailable)
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		writeComplianceRemediationError(w, err)
+		return
+	}
+	limit := uint64(50)
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		limit, err = strconv.ParseUint(raw, 10, 32)
+		if err != nil || limit == 0 {
+			writeComplianceRemediationError(w, fmt.Errorf("%w: limit must be a positive integer", complianceremediation.ErrInvalidRequest))
+			return
+		}
+	}
+	page, err := service.ListWorkItems(r.Context(), tenantID, complianceremediation.WorkItemListFilter{
+		State:   complianceassessment.WorkItemState(strings.TrimSpace(r.URL.Query().Get("state"))),
+		OwnerID: r.URL.Query().Get("owner_id"),
+		Cursor:  r.URL.Query().Get("cursor"),
+		Limit:   uint32(limit),
+	})
+	if err != nil {
+		writeComplianceRemediationError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (a *App) handleComplianceWorkCommand(w http.ResponseWriter, r *http.Request) {

@@ -23,7 +23,12 @@ const (
 	scopeAskQueriesWrite           = "cerebro.ask_queries.write"
 	scopeDashboardsWrite           = "cerebro.dashboards.write"
 	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
+	scopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+
+	scopePolicyEvaluationDatasetsRead    = "cerebro.policy_evaluation_datasets.read"
+	scopePolicyEvaluationDatasetsPropose = "cerebro.policy_evaluation_datasets.propose"
+	scopePolicyEvaluationDatasetsApprove = "cerebro.policy_evaluation_datasets.approve"
 )
 
 type connectProcedureAuthPolicy struct {

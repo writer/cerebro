@@ -1,0 +1,75 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "created_at": "2023-03-22T17:12:07.018313+00:00",
+        "description": null,
+        "handle": "api-spec-test-team",
+        "link_count": 0,
+        "modified_at": "2023-03-22T17:12:07.018317+00:00",
+        "name": "Example Team",
+        "summary": null,
+        "user_count": 0
+      },
+      "id": "ac73040e-c8d4-11ed-b2ea-da7ad0900002",
+      "relationships": {
+        "team_links": {
+          "links": {
+            "related": "/api/v2/team/ac73040e-c8d4-11ed-b2ea-da7ad0900002/links"
+          }
+        },
+        "user_team_permissions": {
+          "links": {
+            "related": "/api/v2/team/ac73040e-c8d4-11ed-b2ea-da7ad0900002/permission-settings"
+          }
+        }
+      },
+      "type": "team"
+    },
+    {
+      "attributes": {
+        "created_at": "2023-08-21T19:49:10.718738+00:00",
+        "description": "",
+        "handle": "test-handle-12938712938",
+        "link_count": 0,
+        "modified_at": "2023-08-21T19:49:10.718744+00:00",
+        "name": "test-name-12938712938",
+        "summary": null,
+        "user_count": 1
+      },
+      "id": "cc338b02-405b-11ee-835e-da7ad0900002",
+      "relationships": {
+        "team_links": {
+          "links": {
+            "related": "/api/v2/team/cc338b02-405b-11ee-835e-da7ad0900002/links"
+          }
+        },
+        "user_team_permissions": {
+          "links": {
+            "related": "/api/v2/team/cc338b02-405b-11ee-835e-da7ad0900002/permission-settings"
+          }
+        }
+      },
+      "type": "team"
+    }
+  ],
+  "links": {
+    "first": "https://api.datadoghq.com/api/v2/team?page[number]=0\u0026page[size]=2",
+    "last": "https://api.datadoghq.com/api/v2/team?page[number]=1\u0026page[size]=2",
+    "next": "https://api.datadoghq.com/api/v2/team?page[number]=1\u0026page[size]=2",
+    "prev": null,
+    "self": "https://api.datadoghq.com/api/v2/team?page%5Bsize%5D=2\u0026page%5Bnumber%5D=0"
+  },
+  "meta": {
+    "pagination": {
+      "first_number": 0,
+      "last_number": 1,
+      "next_number": 1,
+      "number": 0,
+      "prev_number": 0,
+      "size": 2,
+      "total": 3,
+      "type": "number_size"
+    }
+  }
+}

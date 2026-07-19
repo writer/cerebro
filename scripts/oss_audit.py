@@ -76,6 +76,45 @@ ALLOWED_FIXTURE_HOST_SUFFIXES = (
     ".writer.com",
 )
 
+# Public, provider-controlled origins present in provenance-backed genuine API
+# responses. Keep these exact: broad provider suffixes could admit tenant URLs.
+ALLOWED_PUBLIC_PROVIDER_HOSTS = {
+    "api.datadoghq.com",
+    "archive.ubuntu.com",
+    "avatars.githubusercontent.com",
+    "bugs.launchpad.net",
+    "cloud.google.com",
+    "code.launchpad.net",
+    "developer.salesforce.com",
+    "developers.hubspot.com",
+    "discourse.ubuntu.com",
+    "dockr.ly",
+    "docs.datadoghq.com",
+    "docs.google.com",
+    "docs.servicenow.com",
+    "fivetran.com",
+    "git.launchpad.net",
+    "gitlab.com",
+    "hub.docker.com",
+    "launchpad.net",
+    "learn.microsoft.com",
+    "logos.haveibeenpwned.com",
+    "nvd.nist.gov",
+    "ok11static.oktacdn.com",
+    "ok12static.oktacdn.com",
+    "raw.githubusercontent.com",
+    "secure.gravatar.com",
+    "serverfault.com",
+    "stackoverflow.com",
+    "unix.stackexchange.com",
+    "ubuntu.com",
+    "www.sap.com",
+    "www.snowflake.com",
+    "www.troyhunt.com",
+    "www.ubuntu.com",
+    "www.zoho.com",
+}
+
 SENSITIVE_QUERY_KEYS = {
     "access_token",
     "api_key",
@@ -275,10 +314,14 @@ def check_fixture_value(rel: str, value_path: str, value: str) -> list[str]:
     findings: list[str] = []
     for match in EMAIL_RE.finditer(value):
         domain = match.group(1).lower()
+        if value.startswith(match.group(0) + ":") and fixture_host_allowed(domain):
+            continue
         if not fixture_email_domain_allowed(domain):
             findings.append(f"{rel}:{value_path}: non-synthetic fixture email domain {redact(match.group(0))}")
     for match in URL_RE.finditer(value):
-        parsed = urlparse(match.group(0))
+        # Provider descriptions commonly embed Markdown links. Closing
+        # punctuation is not part of the hostname or query being audited.
+        parsed = urlparse(match.group(0).rstrip(".,);]"))
         host = (parsed.hostname or "").lower()
         if host and not fixture_host_allowed(host):
             findings.append(f"{rel}:{value_path}: non-allowlisted fixture URL host {redact(host)}")
@@ -316,6 +359,8 @@ def fixture_email_domain_allowed(domain: str) -> bool:
 
 def fixture_host_allowed(host: str) -> bool:
     if host in {"localhost", "127.0.0.1"}:
+        return True
+    if host in ALLOWED_PUBLIC_PROVIDER_HOSTS:
         return True
     return any(host == suffix.lstrip(".") or host.endswith(suffix) for suffix in ALLOWED_FIXTURE_HOST_SUFFIXES)
 

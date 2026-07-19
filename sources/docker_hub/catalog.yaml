@@ -1,6 +1,23 @@
 id: docker_hub
 name: "Docker Hub"
 description: "Collects repositories, users, and audit events from Docker Hub and projects them into the Cerebro graph as repositories, users, and audit events for repository, build, deployment, and release context."
+provider_api:
+  status: verified
+  basis: captured
+  verified_at: 2026-07-18T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_token_for_private_resources_public_repository_reads_supported
+  base_url: https://hub.docker.com
+  spec_url: https://docs.docker.com/reference/api/hub/latest.yaml
+  spec_kind: openapi
+  references:
+    - https://docs.docker.com/reference/api/hub/latest/
+    - https://docs.docker.com/reference/api/hub/latest.yaml
+  families:
+    - id: repositories
+      method: GET
+      path: /v2/namespaces/{namespace}/repositories/{repository}
 emitted_kinds:
   - docker_hub.repositories
   - docker_hub.users
@@ -29,7 +46,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Replayed from a public Docker Hub repository response captured from the documented namespace endpoint.
     - id: users
       type: entity_family
       title: "Users"
@@ -66,7 +83,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - name
   - kind: docker_hub.users
     schema_ref: docker_hub/users/v1
     required_attributes:

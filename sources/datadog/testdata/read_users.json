@@ -1,39 +1,56 @@
 [
   {
-    "id": "datadog-users-user-1",
+    "id": "datadog-tenant-users-2088c3f3a3ccac13",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.users",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2022-05-12T09:53:43Z",
     "schema_ref": "datadog/users/v1",
     "payload": {
-      "id": "user-1",
-      "type": "users",
       "attributes": {
-        "email": "alice@example.test",
-        "name": "Alice Example",
-        "handle": "alice@example.test",
-        "status": "Active",
+        "allowed_login_methods": [],
+        "created_at": "2022-05-12T09:53:43.305109+00:00",
         "disabled": false,
-        "verified": true,
-        "created_at": "2026-06-01T00:00:00Z",
-        "modified_at": "2026-06-02T00:00:00Z"
-      }
+        "email": "user-3a5ab2b2@example.test",
+        "handle": "user-3a5ab2b2@example.test",
+        "icon": "https://secure.gravatar.com/avatar/b120ea663af2577e015c19831dd91cd6?s=48\u0026d=retro",
+        "modified_at": "2022-05-12T09:53:43.351606+00:00",
+        "name": null,
+        "service_account": false,
+        "status": "Pending",
+        "title": "user title",
+        "verified": false
+      },
+      "id": "688172d2-d1d9-11ec-ad3d-da7ad0900002",
+      "relationships": {
+        "org": {
+          "data": {
+            "id": "4dee724d-00cc-11ea-a77b-570c9d03c6c5",
+            "type": "orgs"
+          }
+        },
+        "roles": {
+          "data": []
+        }
+      },
+      "type": "users"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "user-1",
-      "external_id": "user-1",
-      "family": "users",
-      "source_provider": "datadog",
-      "source_product": "datadog",
-      "user_id": "user-1",
-      "email": "alice@example.test",
-      "name": "Alice Example",
-      "handle": "alice@example.test",
-      "status": "Active",
+      "created_at": "2022-05-12T09:53:43.305109+00:00",
       "disabled": "false",
-      "verified": "true"
+      "email": "user-3a5ab2b2@example.test",
+      "external_id": "688172d2-d1d9-11ec-ad3d-da7ad0900002",
+      "family": "users",
+      "handle": "user-3a5ab2b2@example.test",
+      "modified_at": "2022-05-12T09:53:43.351606+00:00",
+      "name": "user-3a5ab2b2@example.test",
+      "provider": "datadog",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "status": "Pending",
+      "user_id": "688172d2-d1d9-11ec-ad3d-da7ad0900002",
+      "verified": "false"
     }
   }
 ]

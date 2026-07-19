@@ -154,7 +154,31 @@ func syntheticAttackPathRow(tc syntheticAttackPathEvalCase) ports.CypherRow {
 		"reach_relation":         "can_reach",
 		"access_relation":        "can_admin",
 		"relation_chain":         relationChain,
-		"traversal_edges":        traversalEdges,
+		"exposure_edge": map[string]any{
+			"from_urn": "urn:cerebro:synthetic:public:internet", "from_entity_type": "synthetic.public_principal", "from_label": "public internet",
+			"relation": "can_reach",
+			"to_urn":   fmt.Sprintf("urn:cerebro:synthetic:resource:%s", tc.id), "to_entity_type": "synthetic.resource", "to_label": "exposed resource",
+			"direction": "forward",
+		},
+		"resource_account_edge": map[string]any{
+			"from_urn": fmt.Sprintf("urn:cerebro:synthetic:resource:%s", tc.id), "from_entity_type": "synthetic.resource", "from_label": "exposed resource",
+			"relation": "belongs_to",
+			"to_urn":   "urn:cerebro:synthetic:cloud_account:account-1", "to_entity_type": "cloud.account", "to_label": "account-1",
+			"direction": "forward",
+		},
+		"traversal_edges": traversalEdges,
+		"privilege_edge": map[string]any{
+			"from_urn": fmt.Sprintf("urn:cerebro:synthetic:principal:%s", tc.id), "from_entity_type": "synthetic.principal", "from_label": "privileged principal",
+			"relation": "can_admin",
+			"to_urn":   "urn:cerebro:synthetic:permission:admin", "to_entity_type": "synthetic.permission", "to_label": "admin",
+			"direction": "forward",
+		},
+		"permission_account_edge": map[string]any{
+			"from_urn": "urn:cerebro:synthetic:permission:admin", "from_entity_type": "synthetic.permission", "from_label": "admin",
+			"relation": "belongs_to",
+			"to_urn":   "urn:cerebro:synthetic:cloud_account:account-1", "to_entity_type": "cloud.account", "to_label": "account-1",
+			"direction": "forward",
+		},
 	}}
 }
 

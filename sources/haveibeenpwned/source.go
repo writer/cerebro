@@ -19,8 +19,8 @@ const (
 	defaultFamily          = familyBreaches
 	defaultHealthPath      = "/breaches"
 	defaultBaseURLTemplate = "https://haveibeenpwned.com/api/v3"
-	tokenHeader            = ""
-	tokenScheme            = "Token"
+	tokenHeader            = "hibp-api-key"
+	tokenScheme            = ""
 	familyBreaches         = "breaches"
 	familyAffectedAccounts = "affected_accounts"
 	familyAuditEvents      = "audit_events"
@@ -50,14 +50,18 @@ func New() (*Source, error) {
 				Name:             familyBreaches,
 				Path:             "/breaches",
 				URNKind:          "haveibeenpwned_breaches",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "breaches", "source_system": "haveibeenpwned"},
+				IDKeys:           []string{"Name"},
+				DisablePageSize:  true,
+				TimestampKeys:    []string{"ModifiedDate", "AddedDate", "BreachDate"},
+				Attributes:       map[string]string{"description": "Description", "finding_id": "Name", "resource_id": "Domain|Name", "resource_name": "Title|Name", "source_event_id": "Name", "title": "Title|Name"},
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "breach", "schema": "breaches", "severity": "unknown", "source_system": "haveibeenpwned", "status": "observed"},
+				Config: jsonapi.FamilyConfig{
+					AuthModel:        "none",
+					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					ConfigQuery:      map[string]string{"domain": "domain"},
+					EncodeURNID:      true,
+					ResourceURNKind:  "haveibeenpwned_breaches",
+				},
 			},
 			{
 				Name:             familyAffectedAccounts,

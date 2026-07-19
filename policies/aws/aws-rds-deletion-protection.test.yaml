@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        deletion_protection: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        deletion_protection: true
+      wantFinding: false

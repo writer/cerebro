@@ -118,8 +118,8 @@ measures. They are not substitutes for a completed decision.
 
 ## User Jobs The Contracts Must Support
 
-The repository does not ship the end-user interface, but its APIs must support
-these jobs without forcing a client to reconstruct domain logic.
+The Go service does not embed or serve the end-user interface, but its APIs
+must support these jobs without forcing a client to reconstruct domain logic.
 
 | Actor and question | Required result |
 | --- | --- |
@@ -1645,7 +1645,7 @@ The overhaul is complete when:
 
 ## Non-Goals
 
-- No end-user web UI in this repository.
+- The Go service does not embed or serve an end-user client.
 - No replacement control catalog. Catalog revisions are inputs to the compliance
   model, not a second source of definitions.
 - No duplicate raw evidence blob store. The ledger references the existing

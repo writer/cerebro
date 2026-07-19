@@ -68,6 +68,29 @@ components:
 	}
 }
 
+func TestGenerateParenthesizesEnumUnionArrayItems(t *testing.T) {
+	spec := `
+components:
+  schemas:
+    Decision:
+      type: object
+      required: [reasons]
+      properties:
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [missing, stale, conflicting]
+`
+	result, err := Generate([]byte(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.TypeScript, `reasons: ("missing" | "stale" | "conflicting")[];`) {
+		t.Fatalf("generated enum array does not preserve union precedence:\n%s", result.TypeScript)
+	}
+}
+
 func TestGenerateAdditionalProperties(t *testing.T) {
 	spec := `
 components:
@@ -94,5 +117,36 @@ components:
 	_, err := Generate([]byte(spec))
 	if err == nil {
 		t.Error("expected error for empty schemas")
+	}
+}
+
+func TestGenerateSkipsSchemasWithDedicatedBinding(t *testing.T) {
+	spec := `
+components:
+  schemas:
+    DedicatedContract:
+      x-cerebro-skip-typescript: true
+      type: object
+      properties:
+        version:
+          type: string
+    IncludedContract:
+      type: object
+      properties:
+        version:
+          type: string
+`
+	result, err := Generate([]byte(spec))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if result.TypeCount != 1 {
+		t.Fatalf("TypeCount = %d, want 1", result.TypeCount)
+	}
+	if strings.Contains(result.TypeScript, "DedicatedContract") {
+		t.Fatalf("generated dedicated contract despite skip marker:\n%s", result.TypeScript)
+	}
+	if !strings.Contains(result.TypeScript, "IncludedContract") {
+		t.Fatalf("generated output missing included contract:\n%s", result.TypeScript)
 	}
 }

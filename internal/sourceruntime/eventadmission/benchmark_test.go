@@ -8,11 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"unicode"
 
+	"github.com/fxamacker/cbor/v2"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +27,110 @@ import (
 // instance. HostRequestEncoding and HostResponseDecoding measure the JSON bridge.
 // EquivalentGoJSON is a benchmark-only implementation that produces byte-for-byte
 // equivalent outcomes for the corpus below; it is not a production fallback.
+// NativeEvaluation measures the persistent Rust process with the JSON parity
+// protocol. NativeCBOREvaluation measures the production protocol.
+
+func TestAdmissionNativeWorkerMatchesWasmCorpus(t *testing.T) {
+	path := os.Getenv(NativeWorkerPathEnv)
+	if path == "" {
+		t.Skipf("%s is not configured", NativeWorkerPathEnv)
+	}
+	client, err := NewNativeClient(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+	ctx := context.Background()
+	for _, workload := range admissionBenchmarkWorkloads() {
+		t.Run(workload.name, func(t *testing.T) {
+			request, encodeErr := encodeAdmissionRequest(workload.events, workload.contracts)
+			if encodeErr != nil {
+				t.Fatalf("encodeAdmissionRequest() error = %v", encodeErr)
+			}
+			wasmResult, evaluateErr := eventAdmissionEvaluator.Evaluate(ctx, request)
+			if evaluateErr != nil {
+				t.Fatalf("Wasm Evaluate() error = %v", evaluateErr)
+			}
+			nativeResult, evaluateErr := client.Evaluate(ctx, request)
+			if evaluateErr != nil {
+				t.Fatalf("native Evaluate() error = %v", evaluateErr)
+			}
+			if !bytes.Equal(nativeResult, wasmResult) {
+				t.Fatalf("native and Wasm implementations diverged\nnative: %s\nWasm:   %s", nativeResult, wasmResult)
+			}
+
+			requestValue, encodeErr := newAdmissionRequest(workload.events, workload.contracts)
+			if encodeErr != nil {
+				t.Fatalf("newAdmissionRequest() error = %v", encodeErr)
+			}
+			cborRequest, encodeErr := cbor.Marshal(requestValue)
+			if encodeErr != nil {
+				t.Fatalf("CBOR request error = %v", encodeErr)
+			}
+			cborResult, evaluateErr := client.evaluateCBOR(ctx, cborRequest)
+			if evaluateErr != nil {
+				t.Fatalf("native CBOR Evaluate() error = %v", evaluateErr)
+			}
+			var wasmOutcome, nativeOutcome admissionOutcome
+			if decodeErr := json.Unmarshal(wasmResult, &wasmOutcome); decodeErr != nil {
+				t.Fatalf("decode Wasm outcome: %v", decodeErr)
+			}
+			if decodeErr := cbor.Unmarshal(cborResult, &nativeOutcome); decodeErr != nil {
+				t.Fatalf("decode native outcome: %v", decodeErr)
+			}
+			if !reflect.DeepEqual(nativeOutcome, wasmOutcome) {
+				t.Fatalf("native CBOR and Wasm outcomes diverged\nnative: %#v\nWasm:   %#v", nativeOutcome, wasmOutcome)
+			}
+		})
+	}
+}
+
+func TestAdmissionNativePoolHandlesConcurrentPages(t *testing.T) {
+	path := os.Getenv(NativeWorkerPathEnv)
+	if path == "" {
+		t.Skipf("%s is not configured", NativeWorkerPathEnv)
+	}
+	admitter, err := NewNativeAdmitter(context.Background(), path, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := admitter.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+	workload := acceptedBenchmarkWorkload(100, 0)
+	want, err := Admit(context.Background(), workload.events, workload.contracts)
+	if err != nil {
+		t.Fatalf("Wasm Admit() error = %v", err)
+	}
+
+	var wait sync.WaitGroup
+	errors := make(chan error, 8)
+	for range 8 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			got, admitErr := admitter.Admit(context.Background(), workload.events, workload.contracts)
+			if admitErr != nil {
+				errors <- admitErr
+				return
+			}
+			if !reflect.DeepEqual(got, want) {
+				errors <- fmt.Errorf("native admission response diverged from Wasm")
+			}
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		t.Error(err)
+	}
+}
 
 type admissionBenchmarkWorkload struct {
 	name         string
@@ -145,6 +253,83 @@ func BenchmarkAdmissionWasmEvaluation(b *testing.B) {
 	}
 }
 
+func BenchmarkAdmissionNativeEvaluation(b *testing.B) {
+	for _, workload := range admissionBenchmarkWorkloads() {
+		b.Run(workload.name, func(b *testing.B) {
+			client := nativeBenchmarkClient(b)
+			ctx := context.Background()
+			request, err := encodeAdmissionRequest(workload.events, workload.contracts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if _, err := client.Evaluate(ctx, request); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(len(request)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				result, evaluateErr := client.Evaluate(ctx, request)
+				if evaluateErr != nil {
+					b.Fatal(evaluateErr)
+				}
+				admissionBenchmarkBytes = result
+			}
+		})
+	}
+}
+
+func BenchmarkAdmissionNativeCBOREvaluation(b *testing.B) {
+	for _, workload := range admissionBenchmarkWorkloads() {
+		b.Run(workload.name, func(b *testing.B) {
+			client := nativeBenchmarkClient(b)
+			ctx := context.Background()
+			request, err := newAdmissionRequest(workload.events, workload.contracts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			payload, err := cbor.Marshal(request)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if _, err := client.evaluateCBOR(ctx, payload); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(len(payload)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				result, evaluateErr := client.evaluateCBOR(ctx, payload)
+				if evaluateErr != nil {
+					b.Fatal(evaluateErr)
+				}
+				admissionBenchmarkBytes = result
+			}
+		})
+	}
+}
+
+func BenchmarkAdmissionNativeEndToEnd(b *testing.B) {
+	for _, workload := range admissionBenchmarkWorkloads() {
+		b.Run(workload.name, func(b *testing.B) {
+			client := nativeBenchmarkClient(b)
+			ctx := context.Background()
+			if _, err := admitNativeBenchmarkWorkload(ctx, client, workload); err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				response, err := admitNativeBenchmarkWorkload(ctx, client, workload)
+				if err != nil {
+					b.Fatal(err)
+				}
+				admissionBenchmarkResponse = response
+			}
+		})
+	}
+}
+
 func BenchmarkAdmissionHostResponseDecoding(b *testing.B) {
 	for _, workload := range admissionBenchmarkWorkloads() {
 		b.Run(workload.name, func(b *testing.B) {
@@ -252,6 +437,38 @@ func admitBenchmarkWorkload(ctx context.Context, workload admissionBenchmarkWork
 		return response, nil
 	}
 	return response, err
+}
+
+func admitNativeBenchmarkWorkload(ctx context.Context, client *NativeClient, workload admissionBenchmarkWorkload) (Response, error) {
+	response, err := admitNative(ctx, client, workload.events, workload.contracts)
+	if workload.wantRejected {
+		if !errors.Is(err, ErrBatchRejected) {
+			if err == nil {
+				return Response{}, errors.New("native admission accepted a workload that requires batch rejection")
+			}
+			return Response{}, fmt.Errorf("native admission must return a batch rejection: %w", err)
+		}
+		return response, nil
+	}
+	return response, err
+}
+
+func nativeBenchmarkClient(b *testing.B) *NativeClient {
+	b.Helper()
+	path := os.Getenv(NativeWorkerPathEnv)
+	if path == "" {
+		b.Skipf("%s is not configured", NativeWorkerPathEnv)
+	}
+	client, err := NewNativeClient(context.Background(), path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			b.Errorf("Close() error = %v", err)
+		}
+	})
+	return client
 }
 
 func admissionBenchmarkWorkloads() []admissionBenchmarkWorkload {

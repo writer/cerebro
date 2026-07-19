@@ -1,0 +1,23 @@
+{
+  "name": "Cloudflare Access with IdP claims",
+  "env": {
+    "CEREBRO_IDENTITY_PROFILE": "cloudflare-access"
+  },
+  "headers": {
+    "cf-access-authenticated-user-email": "access.person@example.com"
+  },
+  "jwtHeader": "cf-access-jwt-assertion",
+  "jwtPayload": {
+    "email": "access.person@example.com",
+    "groups": ["security", "grc"],
+    "name": "Access Person",
+    "scope": "controls:read evidence:write",
+    "sub": "cloudflare-idp-subject"
+  },
+  "expected": {
+    "actorId": "cloudflare-idp-subject",
+    "confidence": "trusted-proxy",
+    "provider": "cloudflare-access",
+    "source": "headers"
+  }
+}

@@ -12,6 +12,9 @@ use std::{
     fmt,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::io;
+
 use cerebro_wasm_guest::BoundedOutput;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -175,6 +178,18 @@ pub fn evaluate_json(input: &[u8]) -> Result<Vec<u8>, serde_json::Error> {
     };
     let mut output = BoundedOutput::new(MAX_OUTPUT_BYTES);
     serde_json::to_writer(&mut output, &outcome)?;
+    Ok(output.into_inner())
+}
+
+/// Evaluates a bounded CBOR request for the native worker transport.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn evaluate_cbor(input: &[u8]) -> io::Result<Vec<u8>> {
+    let request = ciborium::from_reader::<AdmissionRequest, _>(input)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let outcome = admit(request);
+    let mut output = BoundedOutput::new(MAX_OUTPUT_BYTES);
+    ciborium::into_writer(&outcome, &mut output)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     Ok(output.into_inner())
 }
 

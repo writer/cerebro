@@ -1,0 +1,48 @@
+[
+  {
+    "_links": {
+      "app": {
+        "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
+      },
+      "user": {
+        "href": "https://test.okta.com/api/v1/users/example-2cdfffa4b77eaf2a"
+      }
+    },
+    "created": "2020-08-27T18:14:07.000Z",
+    "credentials": {
+      "userName": ""
+    },
+    "externalId": null,
+    "id": "example-2cdfffa4b77eaf2a",
+    "lastUpdated": "2020-08-27T18:14:07.000Z",
+    "passwordChanged": null,
+    "profile": {},
+    "scope": "USER",
+    "status": "ACTIVE",
+    "statusChanged": "2020-08-27T18:14:07.000Z",
+    "syncState": "DISABLED"
+  },
+  {
+    "_links": {
+      "app": {
+        "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
+      },
+      "user": {
+        "href": "https://test.okta.com/api/v1/users/example-052400848b73ab58"
+      }
+    },
+    "created": "2020-08-27T18:14:08.000Z",
+    "credentials": {
+      "userName": ""
+    },
+    "externalId": null,
+    "id": "example-052400848b73ab58",
+    "lastUpdated": "2020-08-27T18:14:08.000Z",
+    "passwordChanged": null,
+    "profile": {},
+    "scope": "USER",
+    "status": "ACTIVE",
+    "statusChanged": "2020-08-27T18:14:08.000Z",
+    "syncState": "DISABLED"
+  }
+]

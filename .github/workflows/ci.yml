@@ -12,9 +12,199 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci-scope:
+    name: scope
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.select.outputs.core }}
+      sdk: ${{ steps.select.outputs.sdk }}
+      slack: ${{ steps.select.outputs.slack }}
+      web: ${{ steps.select.outputs.web }}
+      web_image: ${{ steps.select.outputs.web_image }}
+      web_integration: ${{ steps.select.outputs.web_integration }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Select CI scopes
+        id: select
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            python3 scripts/app_ci_scope.py --all --github-output "${GITHUB_OUTPUT}" </dev/null
+            exit 0
+          fi
+          git diff --name-only --no-renames -z "${BASE_SHA}" "${HEAD_SHA}" \
+            | python3 scripts/app_ci_scope.py --null --github-output "${GITHUB_OUTPUT}"
+
+  app-workspace-contract:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check application workspace ownership
+        run: make app-workspace-check
+
+  web:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.web == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript workspaces
+        run: npm ci
+
+      - name: Check web workspace
+        run: npm run check --workspace @writer/cerebro-web
+
+      - name: Install Chromium for portable web validation
+        run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
+
+      - name: Validate portable web fixtures
+        run: npm run e2e:web:fixtures --workspace @writer/cerebro-web
+
+      - name: Build and smoke web workspace
+        run: |
+          npm run build --workspace @writer/cerebro-web
+          npm run smoke:standalone --workspace @writer/cerebro-web -- --skip-build
+
+  web-image:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.web_image == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build and smoke web image
+        run: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=cerebro-web-ci --cache-to type=gha,mode=max,ignore-error=true,scope=cerebro-web-ci' make web-docker-smoke
+
+  web-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: ci-scope
+    if: needs.ci-scope.outputs.web_integration == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Rust
+        run: rustup toolchain install 1.93.1 --profile minimal
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript workspaces
+        run: npm ci
+
+      - name: Install Chromium for real-service validation
+        run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
+
+      - name: Validate real-service web integration
+        run: npm run e2e:grc:local --workspace @writer/cerebro-web -- --browser --timeout-ms 900000 --artifact-dir "${RUNNER_TEMP}/cerebro-grc-e2e"
+
+      - name: Upload failed integration artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cerebro-grc-e2e-artifacts
+          path: ${{ runner.temp }}/cerebro-grc-e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  slack-companion:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.slack == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript workspaces
+        run: npm ci
+
+      - name: Check Slack companion workspace
+        run: npm run check --workspace @writer/cerebro-slack-companion
+
+      - name: Inspect Slack companion package
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack_dir="${RUNNER_TEMP}/slack-companion-package"
+          mkdir -p "${pack_dir}"
+          npm pack --workspace @writer/cerebro-slack-companion --pack-destination "${pack_dir}"
+          archive_count=$(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print | wc -l | tr -d '[:space:]')
+          if [ "${archive_count}" -ne 1 ]; then
+            echo "Expected one Slack companion package, found ${archive_count}" >&2
+            exit 1
+          fi
+          archive=$(find "${pack_dir}" -maxdepth 1 -type f -name '*.tgz' -print -quit)
+          tar -tzf "${archive}" > "${pack_dir}/contents.txt"
+          grep -Fxq 'package/dist/src/index.js' "${pack_dir}/contents.txt"
+          grep -Fxq 'package/dist/src/index.d.ts' "${pack_dir}/contents.txt"
+
+  typescript-sdk:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.sdk == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript workspaces
+        run: npm ci
+
+      - name: Check TypeScript SDK workspace
+        run: npm run check --workspace @writer/cerebro-sdk
+
+  javascript-dependency-audit:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.web == 'true' || needs.ci-scope.outputs.slack == 'true' || needs.ci-scope.outputs.sdk == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Audit JavaScript workspace dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
   verify-shard:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +257,7 @@ jobs:
         run: git fetch origin main:refs/remotes/origin/main
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -133,6 +323,8 @@ jobs:
   go-lint-shard:
     name: lint-${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -191,7 +383,7 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -227,6 +419,8 @@ jobs:
   catalog-shard:
     name: catalog-${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -241,7 +435,7 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -265,6 +459,8 @@ jobs:
   go-test-shard:
     name: test-${{ matrix.shard_index }}
     runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -275,7 +471,7 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -302,6 +498,8 @@ jobs:
   go-race-shard:
     name: race-${{ matrix.shard_index }}
     runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -312,7 +510,7 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -338,8 +536,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [go-test-shard]
-    if: always()
+    needs: [ci-scope, go-test-shard]
+    if: always() && needs.ci-scope.outputs.core == 'true'
     steps:
       - name: Check Go test shards
         run: |
@@ -351,8 +549,8 @@ jobs:
 
   race:
     runs-on: ubuntu-latest
-    needs: [go-race-shard]
-    if: always()
+    needs: [ci-scope, go-race-shard]
+    if: always() && needs.ci-scope.outputs.core == 'true'
     steps:
       - name: Check Go race shards
         run: |
@@ -364,8 +562,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    needs: [go-lint-shard]
-    if: always()
+    needs: [ci-scope, go-lint-shard]
+    if: always() && needs.ci-scope.outputs.core == 'true'
     steps:
       - name: Check Go lint shards
         run: |
@@ -377,8 +575,8 @@ jobs:
 
   catalog:
     runs-on: ubuntu-latest
-    needs: [catalog-shard]
-    if: always()
+    needs: [ci-scope, catalog-shard]
+    if: always() && needs.ci-scope.outputs.core == 'true'
     steps:
       - name: Check catalog shards
         run: |
@@ -390,29 +588,73 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    needs: [verify-shard, catalog, test, race, lint]
+    needs: [ci-scope, app-workspace-contract, web, web-image, web-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
     if: always()
     steps:
-      - name: Check verify shards
+      - name: Check selected CI scopes
+        env:
+          CI_SCOPE_CORE: ${{ needs.ci-scope.outputs.core }}
+          CI_SCOPE_SDK: ${{ needs.ci-scope.outputs.sdk }}
+          CI_SCOPE_SLACK: ${{ needs.ci-scope.outputs.slack }}
+          CI_SCOPE_WEB: ${{ needs.ci-scope.outputs.web }}
+          CI_SCOPE_WEB_IMAGE: ${{ needs.ci-scope.outputs.web_image }}
+          CI_SCOPE_WEB_INTEGRATION: ${{ needs.ci-scope.outputs.web_integration }}
         run: |
-          if [ "${{ needs.verify-shard.result }}" != "success" ]; then
-            echo "One or more verify shards failed"
+          if [ "${{ needs.ci-scope.result }}" != "success" ]; then
+            echo "CI scope selection failed"
             exit 1
           fi
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "One or more Go test shards failed"
+          if [ "${{ needs.app-workspace-contract.result }}" != "success" ]; then
+            echo "Application workspace ownership check failed"
             exit 1
           fi
-          if [ "${{ needs.race.result }}" != "success" ]; then
-            echo "One or more Go race shards failed"
+
+          if [ "${CI_SCOPE_WEB}" = "true" ] && [ "${{ needs.web.result }}" != "success" ]; then
+            echo "Web workspace checks failed"
             exit 1
           fi
-          if [ "${{ needs.lint.result }}" != "success" ]; then
-            echo "One or more Go lint shards failed"
+          if [ "${CI_SCOPE_WEB_IMAGE}" = "true" ] && [ "${{ needs.web-image.result }}" != "success" ]; then
+            echo "Web image checks failed"
             exit 1
           fi
-          if [ "${{ needs.catalog.result }}" != "success" ]; then
-            echo "One or more catalog shards failed"
+          if [ "${CI_SCOPE_WEB_INTEGRATION}" = "true" ] && [ "${{ needs.web-integration.result }}" != "success" ]; then
+            echo "Real-service web integration failed"
             exit 1
           fi
-          echo "All verify shards passed"
+          if [ "${CI_SCOPE_SLACK}" = "true" ] && [ "${{ needs.slack-companion.result }}" != "success" ]; then
+            echo "Slack companion checks failed"
+            exit 1
+          fi
+          if [ "${CI_SCOPE_SDK}" = "true" ] && [ "${{ needs.typescript-sdk.result }}" != "success" ]; then
+            echo "TypeScript SDK checks failed"
+            exit 1
+          fi
+          if { [ "${CI_SCOPE_WEB}" = "true" ] || [ "${CI_SCOPE_SLACK}" = "true" ] || [ "${CI_SCOPE_SDK}" = "true" ]; } \
+            && [ "${{ needs.javascript-dependency-audit.result }}" != "success" ]; then
+            echo "JavaScript dependency audit failed"
+            exit 1
+          fi
+
+          if [ "${CI_SCOPE_CORE}" = "true" ]; then
+            if [ "${{ needs.verify-shard.result }}" != "success" ]; then
+              echo "One or more core verify shards failed"
+              exit 1
+            fi
+            if [ "${{ needs.test.result }}" != "success" ]; then
+              echo "One or more Go test shards failed"
+              exit 1
+            fi
+            if [ "${{ needs.race.result }}" != "success" ]; then
+              echo "One or more Go race shards failed"
+              exit 1
+            fi
+            if [ "${{ needs.lint.result }}" != "success" ]; then
+              echo "One or more Go lint shards failed"
+              exit 1
+            fi
+            if [ "${{ needs.catalog.result }}" != "success" ]; then
+              echo "One or more catalog checks failed"
+              exit 1
+            fi
+          fi
+          echo "All selected CI scopes passed"

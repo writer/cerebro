@@ -1,29 +1,131 @@
 [
   {
-    "id": "okta-network-zone-fixture-1",
+    "id": "okta-writer-okta-com-network_zone-8bba764fb25213f6",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.network_zone",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2021-04-13T05:55:32Z",
     "schema_ref": "okta/network_zone/v1",
     "payload": {
-      "id": "zone-corp",
       "domain": "writer.okta.com",
-      "name": "Corporate VPN",
+      "id": "nzokqewqlRZEmDTI35d6",
+      "name": "BlockedIpZone",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/zones/nzokqewqlRZEmDTI35d6/lifecycle/deactivate"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT",
+                "DELETE"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/zones/nzokqewqlRZEmDTI35d6"
+          }
+        },
+        "created": "2021-04-13T05:55:32.000Z",
+        "gateways": null,
+        "id": "nzokqewqlRZEmDTI35d6",
+        "lastUpdated": "2021-04-13T05:55:32.000Z",
+        "name": "BlockedIpZone",
+        "proxies": null,
+        "status": "ACTIVE",
+        "system": true,
+        "type": "IP",
+        "usage": "BLOCKLIST"
+      },
+      "status": "ACTIVE",
       "type": "IP"
     },
     "attributes": {
+      "asn_count": "0",
       "domain": "writer.okta.com",
       "family": "network_zone",
-      "gateway_count": "1",
-      "gateway_values": "203.0.113.0/24",
-      "name": "Corporate VPN",
-      "network_zone_id": "zone-corp",
+      "gateway_count": "0",
+      "location_count": "0",
+      "name": "BlockedIpZone",
+      "network_zone_id": "nzokqewqlRZEmDTI35d6",
       "proxy_count": "0",
+      "resource_id": "nzokqewqlRZEmDTI35d6",
+      "resource_type": "NetworkZone",
       "status": "ACTIVE",
+      "system": "true",
+      "type": "IP",
+      "usage": "BLOCKLIST",
+      "zone_id": "nzokqewqlRZEmDTI35d6",
+      "zone_type": "IP"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-network_zone-c6a634d3960552cb",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.network_zone",
+    "occurred_at": "2021-04-13T05:55:32Z",
+    "schema_ref": "okta/network_zone/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "nzokqewqkySLYtl9W5d6",
+      "name": "LegacyIpZone",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/zones/nzokqewqkySLYtl9W5d6/lifecycle/deactivate"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT",
+                "DELETE"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/zones/nzokqewqkySLYtl9W5d6"
+          }
+        },
+        "created": "2021-04-13T05:55:32.000Z",
+        "gateways": null,
+        "id": "nzokqewqkySLYtl9W5d6",
+        "lastUpdated": "2021-04-13T05:55:32.000Z",
+        "name": "LegacyIpZone",
+        "proxies": null,
+        "status": "ACTIVE",
+        "system": true,
+        "type": "IP",
+        "usage": "POLICY"
+      },
+      "status": "ACTIVE",
+      "type": "IP"
+    },
+    "attributes": {
+      "asn_count": "0",
+      "domain": "writer.okta.com",
+      "family": "network_zone",
+      "gateway_count": "0",
+      "location_count": "0",
+      "name": "LegacyIpZone",
+      "network_zone_id": "nzokqewqkySLYtl9W5d6",
+      "proxy_count": "0",
+      "resource_id": "nzokqewqkySLYtl9W5d6",
+      "resource_type": "NetworkZone",
+      "status": "ACTIVE",
+      "system": "true",
       "type": "IP",
       "usage": "POLICY",
-      "zone_id": "zone-corp",
+      "zone_id": "nzokqewqkySLYtl9W5d6",
       "zone_type": "IP"
     }
   }

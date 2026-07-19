@@ -10,23 +10,22 @@ import (
 )
 
 const (
-	defaultPageSize     = 10
-	maxPageSize         = 200
-	defaultFamily       = familyAudit
-	defaultAuditOrder   = "ASCENDING"
-	defaultUserOrder    = "asc"
-	familyAudit         = "audit"
-	familyApplication   = "application"
-	familyAppAssign     = "app_assignment"
-	familyAdminRole     = "admin_role"
-	familyAuthenticator = "authenticator"
-	familyGroup         = "group"
-	familyGroupMember   = "group_membership"
-	familyIDP           = "identity_provider"
-	familyNetworkZone   = "network_zone"
-	familyPolicyRule    = "policy_rule"
-	familyTrustedOrigin = "trusted_origin"
-	familyUser          = "user"
+	defaultPageSize, maxPageSize = 10, 200
+	defaultFamily                = familyAudit
+	defaultAuditOrder            = "ASCENDING"
+	defaultUserOrder             = "asc"
+	familyAudit                  = "audit"
+	familyApplication            = "application"
+	familyAppAssign              = "app_assignment"
+	familyAdminRole              = "admin_role"
+	familyAuthenticator          = "authenticator"
+	familyGroup                  = "group"
+	familyGroupMember            = "group_membership"
+	familyIDP                    = "identity_provider"
+	familyNetworkZone            = "network_zone"
+	familyPolicyRule             = "policy_rule"
+	familyTrustedOrigin          = "trusted_origin"
+	familyUser                   = "user"
 )
 
 type settings struct {

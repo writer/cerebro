@@ -783,6 +783,12 @@ func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.Pr
 		if strings.TrimSpace(link.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
 			link.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
 		}
+		if strings.TrimSpace(link.Attributes["source_event_id"]) == "" {
+			link.Attributes["source_event_id"] = strings.TrimSpace(event.GetId())
+		}
+		if strings.TrimSpace(link.Attributes["at"]) == "" {
+			link.Attributes["at"] = eventObservedAt(event)
+		}
 	}
 }
 

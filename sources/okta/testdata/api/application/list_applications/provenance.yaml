@@ -1,0 +1,41 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: application
+case: list_applications
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/apps?q=QueryParamsTestApp&useOptimization=true&limit=10
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2025-12-25T14:53:29Z"
+    sha256: 398d2ea5902aa3f5d2ee83be3642ab0b2d71d6bcf36ae6ce6f9a156a24ede956
+    headers:
+        Link: <https://dev-20982288.okta.com/api/v1/apps?limit=10&q=QueryParamsTestApp>; rel="self"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0]._links.appLinks[0].href
+        - $[0]._links.deactivate.href
+        - $[0]._links.groups.href
+        - $[0]._links.policies.href
+        - $[0]._links.uploadLogo.href
+        - $[0]._links.users.href
+        - $[0].credentials.userNameTemplate.template
+        - $[0].credentials.userNameTemplate.type
+        - $[0].id
+        - $[0].orn
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_applications_it/TestApplicationsResource.test_list_applications_with_query_parameters.yaml
+    artifact_sha256: 1f9bcf676aa5f9b49b300f7a5571a55703901d723b95a8e5e05a25ead8b50f71
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: response_header

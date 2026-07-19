@@ -1,0 +1,86 @@
+[
+  {
+    "action_type": "UPDATE",
+    "api_token_id": null,
+    "data": null,
+    "date": "2026-06-23T12:23:58.297394Z",
+    "event_name": "custom_remediation_workflow.updated",
+    "id": 23983381,
+    "ip_address": "example-d199ed47",
+    "member_email": "user-8e645c6e@example.test",
+    "member_id": 480870,
+    "member_name": "example-f789f697",
+    "target_ids": [
+      "example-e7f6c011"
+    ]
+  },
+  {
+    "action_type": "OTHER",
+    "api_token_id": null,
+    "data": {
+      "type": "saml_sso"
+    },
+    "date": "2026-06-23T12:20:54.649674Z",
+    "event_name": "user.logged_in",
+    "id": 23983251,
+    "ip_address": "example-d199ed47",
+    "member_email": "user-8e645c6e@example.test",
+    "member_id": 480870,
+    "member_name": "example-f789f697",
+    "target_ids": [
+      "example-8d701566"
+    ]
+  },
+  {
+    "action_type": "OTHER",
+    "api_token_id": null,
+    "data": {
+      "type": "saml_sso"
+    },
+    "date": "2026-06-23T11:59:32.903530Z",
+    "event_name": "user.logged_in",
+    "id": 23982412,
+    "ip_address": "example-88be1d99",
+    "member_email": "user-6d755f01@example.test",
+    "member_id": 1301278,
+    "member_name": "example-fbfc27b9",
+    "target_ids": [
+      "example-f969817e"
+    ]
+  },
+  {
+    "action_type": "READ",
+    "api_token_id": null,
+    "data": {
+      "issue_token": 0
+    },
+    "date": "2026-06-23T11:47:23.624224Z",
+    "event_name": "secret_incident.shared_incident_viewed",
+    "id": 23982141,
+    "ip_address": "example-b6e36ecf",
+    "member_email": "user-1aafc941@example.test",
+    "member_id": 363444,
+    "member_name": "example-a09e4866",
+    "target_ids": [
+      "example-2b8f644c"
+    ]
+  },
+  {
+    "action_type": "CREATE",
+    "api_token_id": null,
+    "data": {
+      "expire_at": "2026-07-23T11:47:02.322847+00:00",
+      "issue_id": 34205503
+    },
+    "date": "2026-06-23T11:47:02.338330Z",
+    "event_name": "incident_token.created",
+    "id": 23982136,
+    "ip_address": "example-b6e36ecf",
+    "member_email": "user-1aafc941@example.test",
+    "member_id": 363444,
+    "member_name": "example-a09e4866",
+    "target_ids": [
+      "example-2c326e3a"
+    ]
+  }
+]

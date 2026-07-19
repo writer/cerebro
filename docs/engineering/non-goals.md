@@ -208,12 +208,12 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ## Operational And Distribution
 
-### Cerebro does not ship an end-user web UI from this repository.
+### The Go service does not embed or serve end-user clients.
 
-- The repo exposes JSON HTTP, Connect RPC, and CLI surfaces. It will not host an end-user web console, a dashboarding UI, an investigation workbench, or a chat surface.
-- Why: a console is a separate product with separate distribution, accessibility, and security constraints. Pulling it into the bootstrap repo would couple every release of either to the other.
-- Enforced in: cmd/cerebro entrypoints and the documented CLI, JSON HTTP, Connect RPC, SDK, and MCP surfaces in [`README.md`](../../README.md).
-- What would change this: nothing. Console-shaped products consume Cerebro through its typed APIs from a separate repository.
+- The repository may contain independently built clients under `apps/`, including a browser application and chat companion. The Go service will not import those clients, embed their assets, proxy their provider traffic, or require them to start.
+- Why: colocation lets contracts and consumers change atomically without coupling their build artifacts, release cadence, accessibility obligations, or security boundaries.
+- Enforced in: [`docs/engineering/monorepo.md`](monorepo.md), root npm workspace checks, `cmd/cerebro` entrypoints, and `tools/archtests/monorepo_layout_test.go`.
+- What would change this: nothing for embedding clients in the Go service. A new client belongs in a portable, independently built workspace that consumes typed public contracts.
 
 ### Cerebro does not host or proxy LLM providers.
 
@@ -228,6 +228,13 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Why: cloud-agnosticism is a deliberate runtime boundary. The moment the control plane requires a specific cloud, "boring, proven, operable" stops being true for half the deployment surface.
 - Enforced in: absence of cloud-specific runtime dependencies in `internal/bootstrap`.
 - What would change this: a deployment shape that demonstrably cannot be served by Postgres, NATS, and Neo4j running in the operator's environment of choice.
+
+### The agent service lifecycle contract is not a deployment controller.
+
+- The public lifecycle contract names service states, generations, durable runs, leases, checkpoints, effects, deliveries, capabilities, and adapter ports. It does not provision infrastructure, select an orchestrator, store environment configuration, resolve private routes, or define concrete rollout and disaster-recovery thresholds.
+- Why: portable continuity semantics must survive a deployment-topology change. Combining those semantics with one operator's placement and rollout policy would make service identity and durable work depend on private infrastructure.
+- Enforced in: [`agent-service-lifecycle-contract.md`](../domains/agent-service-lifecycle-contract.md), generated bindings under `internal/agentplatform/lifecyclecontract`, and `tools/archtests/agent_service_lifecycle_test.go`.
+- What would change this: nothing inside the portable contract. Concrete deployment adapters and operational policy belong to the operator's deployment repository.
 
 ### Cerebro will not maintain undocumented compatibility aliases indefinitely.
 

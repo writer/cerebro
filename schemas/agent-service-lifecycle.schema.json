@@ -1,0 +1,493 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cerebro:schema:agent-service-lifecycle:v1",
+  "title": "LifecycleEventV1",
+  "description": "Cloud- and interaction-surface-neutral lifecycle events for deployments, service availability, durable work, capability compatibility, delivery, installation, and migration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_kind",
+    "sequence",
+    "occurred_at",
+    "observed_at",
+    "scope",
+    "producer",
+    "transition",
+    "reason",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro.agent-service-lifecycle/v1"
+    },
+    "event_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "event_kind": {
+      "enum": [
+        "deployment.transition",
+        "service.transition",
+        "work.transition",
+        "capability.decision",
+        "delivery.transition",
+        "installation.transition",
+        "migration.transition"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occurred_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "observed_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "transition": {
+      "oneOf": [
+        { "$ref": "#/$defs/deployment_transition" },
+        { "$ref": "#/$defs/service_transition" },
+        { "$ref": "#/$defs/work_transition" },
+        { "$ref": "#/$defs/capability_decision" },
+        { "$ref": "#/$defs/delivery_transition" },
+        { "$ref": "#/$defs/installation_transition" },
+        { "$ref": "#/$defs/migration_transition" }
+      ]
+    },
+    "reason": {
+      "$ref": "#/$defs/reason"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 240
+    },
+    "correlation_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "causation_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{16,64}$"
+    },
+    "interaction": {
+      "$ref": "#/$defs/interaction"
+    },
+    "deployment": {
+      "$ref": "#/$defs/deployment_identity"
+    },
+    "lease": {
+      "$ref": "#/$defs/lease"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
+    },
+    "checkpoint_ref": {
+      "$ref": "#/$defs/reference"
+    },
+    "effect_receipt_ref": {
+      "$ref": "#/$defs/reference"
+    },
+    "delivery_receipt_ref": {
+      "$ref": "#/$defs/reference"
+    },
+    "snapshot_ref": {
+      "$ref": "#/$defs/reference"
+    },
+    "drain_deadline": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "diagnostics": {
+      "type": "object",
+      "maxProperties": 20,
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 500
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "deployment.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": {
+          "transition": { "$ref": "#/$defs/deployment_transition" },
+          "deployment": { "$ref": "#/$defs/deployment_identity" }
+        },
+        "required": ["deployment"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "service.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": {
+          "transition": { "$ref": "#/$defs/service_transition" },
+          "deployment": { "$ref": "#/$defs/deployment_identity" }
+        },
+        "required": ["deployment"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "work.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": { "transition": { "$ref": "#/$defs/work_transition" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "capability.decision" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": {
+          "transition": { "$ref": "#/$defs/capability_decision" },
+          "capabilities": { "$ref": "#/$defs/capabilities" }
+        },
+        "required": ["capabilities"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "delivery.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": { "transition": { "$ref": "#/$defs/delivery_transition" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "installation.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": { "transition": { "$ref": "#/$defs/installation_transition" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_kind": { "const": "migration.transition" } },
+        "required": ["event_kind"]
+      },
+      "then": {
+        "properties": {
+          "transition": { "$ref": "#/$defs/migration_transition" },
+          "deployment": { "$ref": "#/$defs/deployment_identity" }
+        },
+        "required": ["deployment"]
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "reference": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]{1,500}$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "service_id", "subject_id"],
+      "properties": {
+        "tenant_id": { "$ref": "#/$defs/identifier" },
+        "service_id": { "$ref": "#/$defs/identifier" },
+        "installation_id": { "$ref": "#/$defs/identifier" },
+        "subject_type": {
+          "enum": ["deployment", "service", "work", "delivery", "installation", "migration"]
+        },
+        "subject_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "version"],
+      "properties": {
+        "component": { "$ref": "#/$defs/identifier" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instance_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "conversation_id"],
+      "properties": {
+        "surface": { "$ref": "#/$defs/identifier" },
+        "workspace_id": { "$ref": "#/$defs/identifier" },
+        "conversation_id": { "$ref": "#/$defs/identifier" },
+        "thread_id": { "$ref": "#/$defs/identifier" },
+        "message_id": { "$ref": "#/$defs/identifier" },
+        "actor_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "deployment_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deployment_id", "generation", "version", "artifact_digest"],
+      "properties": {
+        "deployment_id": { "$ref": "#/$defs/identifier" },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "instance_id": { "$ref": "#/$defs/identifier" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^sha256:[A-Fa-f0-9]{64}$"
+        },
+        "route_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,79}$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "retryable": { "type": "boolean" },
+        "operator_action": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lease_id",
+        "owner_id",
+        "generation",
+        "fencing_token",
+        "acquired_at",
+        "expires_at"
+      ],
+      "properties": {
+        "lease_id": { "$ref": "#/$defs/identifier" },
+        "owner_id": { "$ref": "#/$defs/identifier" },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fencing_token": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "acquired_at": { "$ref": "#/$defs/timestamp" },
+        "expires_at": { "$ref": "#/$defs/timestamp" },
+        "heartbeat_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_digest", "required", "supported", "missing"],
+      "properties": {
+        "manifest_digest": {
+          "type": "string",
+          "pattern": "^sha256:[A-Fa-f0-9]{64}$"
+        },
+        "required": {
+          "$ref": "#/$defs/capability_ids"
+        },
+        "supported": {
+          "$ref": "#/$defs/capability_ids"
+        },
+        "missing": {
+          "$ref": "#/$defs/capability_ids"
+        },
+        "contract_versions": {
+          "type": "object",
+          "maxProperties": 50,
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "capability_ids": {
+      "type": "array",
+      "maxItems": 200,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/identifier" }
+    },
+    "deployment_state": {
+      "enum": ["proposed", "provisioning", "validating", "active", "failed", "rolled_back", "superseded", "retired"]
+    },
+    "service_state": {
+      "enum": ["booting", "warming", "ready", "degraded", "draining", "offline", "recovering", "stopped"]
+    },
+    "work_state": {
+      "enum": ["received", "admitted", "queued", "leased", "running", "waiting", "paused", "delivering", "completed", "blocked", "cancelled", "expired", "rejected"]
+    },
+    "delivery_state": {
+      "enum": ["planned", "pending", "delivering", "delivered", "paused", "failed", "abandoned"]
+    },
+    "installation_state": {
+      "enum": ["authorizing", "binding", "verifying", "active", "suspended", "revoked", "retired"]
+    },
+    "migration_state": {
+      "enum": ["planned", "validating", "shadowing", "draining_source", "cutover", "reconciling", "verified", "rolling_back", "rolled_back", "failed"]
+    },
+    "deployment_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to"],
+      "properties": {
+        "axis": { "const": "deployment" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/deployment_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/deployment_state" }
+      }
+    },
+    "service_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to"],
+      "properties": {
+        "axis": { "const": "service" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/service_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/service_state" }
+      }
+    },
+    "work_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to", "attempt"],
+      "properties": {
+        "axis": { "const": "work" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/work_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/work_state" },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "capability_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "decision"],
+      "properties": {
+        "axis": { "const": "capability" },
+        "decision": {
+          "enum": ["supported", "degraded", "blocked", "incompatible"]
+        }
+      }
+    },
+    "delivery_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to", "part_id", "attempt"],
+      "properties": {
+        "axis": { "const": "delivery" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/delivery_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/delivery_state" },
+        "part_id": { "$ref": "#/$defs/identifier" },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "installation_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to"],
+      "properties": {
+        "axis": { "const": "installation" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/installation_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/installation_state" }
+      }
+    },
+    "migration_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "from", "to"],
+      "properties": {
+        "axis": { "const": "migration" },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/migration_state" },
+            { "type": "null" }
+          ]
+        },
+        "to": { "$ref": "#/$defs/migration_state" }
+      }
+    }
+  }
+}

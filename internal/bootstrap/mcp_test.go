@@ -853,6 +853,9 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
 	}
+	if got, ok := payload["mcp.response_bytes"].(float64); !ok || got <= 0 {
+		t.Fatalf("telemetry mcp.response_bytes = %#v, want positive number; payload=%#v", payload["mcp.response_bytes"], payload)
+	}
 	if _, exists := payload["arguments"]; exists {
 		t.Fatalf("telemetry recorded raw arguments: %#v", payload)
 	}
@@ -1671,8 +1674,24 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"exposure_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_public_principal:internet", "from_entity_type": "aws.public_principal", "from_label": "internet",
+						"relation": "can_reach", "to_urn": "urn:cerebro:writer:asset:prod-db", "to_entity_type": "aws.rds.instance", "to_label": "prod-db", "direction": "forward",
+					},
+					"resource_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
+					},
 					"traversal_edges": []any{
 						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
+					"privilege_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_role:admin", "from_entity_type": "aws.role", "from_label": "admin",
+						"relation": "can_admin", "to_urn": "urn:cerebro:writer:aws_policy:admin", "to_entity_type": "aws.policy", "to_label": "admin", "direction": "forward",
+					},
+					"permission_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_policy:admin", "from_entity_type": "aws.policy", "from_label": "admin",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
 					},
 				},
 			}},
@@ -2854,8 +2873,24 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"exposure_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_public_principal:internet", "from_entity_type": "aws.public_principal", "from_label": "internet",
+						"relation": "can_reach", "to_urn": "urn:cerebro:writer:asset:prod-db", "to_entity_type": "aws.rds.instance", "to_label": "prod-db", "direction": "forward",
+					},
+					"resource_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
+					},
 					"traversal_edges": []any{
 						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
+					"privilege_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_role:admin", "from_entity_type": "aws.role", "from_label": "admin",
+						"relation": "can_admin", "to_urn": "urn:cerebro:writer:aws_policy:admin", "to_entity_type": "aws.policy", "to_label": "admin", "direction": "forward",
+					},
+					"permission_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_policy:admin", "from_entity_type": "aws.policy", "from_label": "admin",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
 					},
 				},
 			}},
@@ -3114,6 +3149,7 @@ func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID stri
 		req.Header.Set("Authorization", authHeader)
 	}
 	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	req.Header.Set("X-Cerebro-MCP-Toolsets", "full")
 	if sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}

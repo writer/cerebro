@@ -47,6 +47,7 @@ const (
 	KindProactiveFindingTriage    = "proactive_finding_triage"
 	KindGRCUpload                 = "grc_upload"
 	KindComplianceAssessment      = "compliance_assessment"
+	KindPolicyCandidateExperiment = "policy_candidate_experiment"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
@@ -485,6 +486,8 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 			Error:              runErr.Error(),
 			Message:            "job failed",
 			FailureClass:       failureClass,
+			Result:             result,
+			ResultRefs:         refs,
 			FinishedAt:         &finished,
 			AllowedStatuses:    []string{ports.JobStatusRunning},
 			ExpectedLeaseOwner: leaseOwner,

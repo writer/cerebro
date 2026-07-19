@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: tenable_io
+family: vulnerabilities
+case: list_workbench_vulnerabilities
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTenableFamilies
+request:
+    method: GET
+    url: https://cloud.tenable.com/workbenches/vulnerabilities?authenticated=True&exploitable=True&resolvable=True&severity=medium
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2021-06-15T17:20:58Z"
+    sha256: 6d6ba7311b96ee626d6ee1c9ffd09627b599e3d63abe3081bc91f1a80c844a90
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/Tenable/pyTenable
+    commit: bd0a19acc1ec184b25f05da4288ac3aad20ba95f
+    path: tests/io/cassettes/test_workbench_vulns_fields.yaml
+    artifact_sha256: 27b28a5af358a2f56a34b6f56e620ce17f8c74543da8156f64db4159cf3da34c
+    license: MIT
+    recording_tool: pytest-vcr
+    harness_path: tests/io/conftest.py
+    interaction_index: 1
+    freshness: historical
+    capture_time_basis: response_header

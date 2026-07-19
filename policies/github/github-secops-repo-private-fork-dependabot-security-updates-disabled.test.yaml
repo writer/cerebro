@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        dependabot_security_updates: enabled-passing
+        fork: "true"
+        private: "true"
+        resource_type: code_repository
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        dependabot_security_updates: enabled-passing
+        fork: "true"
+        private: "true"
+        resource_type: code_repository-passing
+      wantFinding: false

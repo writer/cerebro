@@ -1,33 +1,146 @@
 [
   {
-    "id": "datadog-monitors-123",
+    "id": "datadog-tenant-monitors-e09bd5e4cf104a5e",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.monitors",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2021-05-03T13:03:44Z",
     "schema_ref": "datadog/monitors/v1",
     "payload": {
-      "id": 123,
-      "name": "Payments latency",
-      "type": "query alert",
-      "query": "avg(last_5m):p95:service.payments.latency{env:prod} > 500",
-      "overall_state": "OK",
-      "tags": ["service:payments", "team:platform"]
+      "created": "2021-05-03T13:03:44.905085+00:00",
+      "created_at": 1620047024000,
+      "creator": {
+        "email": "user-e0c1fd41@example.test",
+        "handle": "user-e0c1fd41@example.test",
+        "id": 1445416,
+        "name": null
+      },
+      "deleted": null,
+      "id": 34822915,
+      "matching_downtimes": [],
+      "message": "Latency SLO violation for splunk load balancer(s)",
+      "modified": "2021-05-03T13:03:44.905085+00:00",
+      "multi": true,
+      "name": "SLO Monitor: aws_alb_latency_p95 for splunk",
+      "options": {
+        "include_tags": true,
+        "locked": false,
+        "new_host_delay": 300,
+        "notify_audit": false,
+        "notify_no_data": false,
+        "require_full_window": true,
+        "silenced": {},
+        "thresholds": {
+          "critical": 0.2
+        }
+      },
+      "org_id": 321813,
+      "overall_state": "No Data",
+      "overall_state_modified": "2021-05-03T13:06:23+00:00",
+      "priority": null,
+      "query": "avg(last_1m):avg:aws.applicationelb.target_response_time.p95{systemid:splunk,aws_account_type:production} by {region} \u003e 0.2",
+      "restricted_roles": null,
+      "tags": [
+        "environment:test",
+        "generator:slops",
+        "release:e6a2686",
+        "sli:latency",
+        "slotype:alb",
+        "systemid:splunk",
+        "team:developer_insights"
+      ],
+      "type": "query alert"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "123",
-      "external_id": "123",
+      "created_at": "2021-05-03T13:03:44.905085+00:00",
+      "creator_email": "user-e0c1fd41@example.test",
+      "creator_id": "1445416",
+      "external_id": "34822915",
       "family": "monitors",
-      "source_provider": "datadog",
+      "modified_at": "2021-05-03T13:03:44.905085+00:00",
+      "monitor_id": "34822915",
+      "name": "SLO Monitor: aws_alb_latency_p95 for splunk",
+      "overall_state": "No Data",
+      "provider": "datadog",
+      "query": "avg(last_1m):avg:aws.applicationelb.target_response_time.p95{systemid:splunk,aws_account_type:production} by {region} \u003e 0.2",
       "source_product": "datadog",
-      "monitor_id": "123",
-      "name": "Payments latency",
-      "type": "query alert",
-      "query": "avg(last_5m):p95:service.payments.latency{env:prod} > 500",
-      "state": "OK",
-      "overall_state": "OK",
-      "tags": "service:payments,team:platform"
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "state": "No Data",
+      "tags": "environment:test,generator:slops,release:e6a2686,sli:latency,slotype:alb,systemid:splunk,team:developer_insights",
+      "type": "query alert"
+    }
+  },
+  {
+    "id": "datadog-tenant-monitors-caaf7a8f91984c86",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.monitors",
+    "occurred_at": "2021-05-03T13:03:44Z",
+    "schema_ref": "datadog/monitors/v1",
+    "payload": {
+      "created": "2021-05-03T13:03:44.909928+00:00",
+      "created_at": 1620047024000,
+      "creator": {
+        "email": "user-e0c1fd41@example.test",
+        "handle": "user-e0c1fd41@example.test",
+        "id": 1445416,
+        "name": null
+      },
+      "deleted": null,
+      "id": 34822916,
+      "matching_downtimes": [],
+      "message": "Latency SLO violation for splunk load balancer(s)",
+      "modified": "2021-05-03T13:03:44.909928+00:00",
+      "multi": true,
+      "name": "SLO Monitor: aws_classic_elb_latency_p99 for splunk",
+      "options": {
+        "include_tags": true,
+        "locked": false,
+        "new_host_delay": 300,
+        "notify_audit": false,
+        "notify_no_data": false,
+        "require_full_window": true,
+        "silenced": {},
+        "thresholds": {
+          "critical": 0.2
+        }
+      },
+      "org_id": 321813,
+      "overall_state": "No Data",
+      "overall_state_modified": "2021-05-03T13:06:18+00:00",
+      "priority": null,
+      "query": "avg(last_1m):avg:aws.elb.latency.p99{systemid:splunk,aws_account_type:production} by {region} \u003e 0.2",
+      "restricted_roles": null,
+      "tags": [
+        "environment:test",
+        "generator:slops",
+        "release:e6a2686",
+        "sli:latency",
+        "slotype:elb",
+        "systemid:splunk",
+        "team:developer_insights"
+      ],
+      "type": "query alert"
+    },
+    "attributes": {
+      "created_at": "2021-05-03T13:03:44.909928+00:00",
+      "creator_email": "user-e0c1fd41@example.test",
+      "creator_id": "1445416",
+      "external_id": "34822916",
+      "family": "monitors",
+      "modified_at": "2021-05-03T13:03:44.909928+00:00",
+      "monitor_id": "34822916",
+      "name": "SLO Monitor: aws_classic_elb_latency_p99 for splunk",
+      "overall_state": "No Data",
+      "provider": "datadog",
+      "query": "avg(last_1m):avg:aws.elb.latency.p99{systemid:splunk,aws_account_type:production} by {region} \u003e 0.2",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "state": "No Data",
+      "tags": "environment:test,generator:slops,release:e6a2686,sli:latency,slotype:elb,systemid:splunk,team:developer_insights",
+      "type": "query alert"
     }
   }
 ]
