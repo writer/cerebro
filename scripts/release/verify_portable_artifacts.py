@@ -204,8 +204,14 @@ def verify_portable_artifacts(
         slack_files["package.json"],
         "Slack companion archive package metadata",
     )
-    sdk_checkout = load_json_object(sdk_files["package.json"], "SDK package.json")
-    slack_checkout = load_json_object(slack_files["package.json"], "Slack companion package.json")
+    sdk_checkout = load_json_object(
+        (repo / "sdk/typescript/package.json").read_bytes(),
+        "SDK package.json",
+    )
+    slack_checkout = load_json_object(
+        (repo / "apps/slack-companion/package.json").read_bytes(),
+        "Slack companion package.json",
+    )
     sdk_version = sdk_checkout.get("version")
     slack_version = slack_checkout.get("version")
     require(sdk_manifest.get("name") == SDK_PACKAGE, "SDK archive has the wrong package name")
