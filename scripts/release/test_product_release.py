@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.release.product_release import (
     EVENT_SCHEMA_VERSION,
+    MAX_NPM_PACKAGE_JSON_BYTES,
     ManifestError,
     build_manifest,
     build_release_event,
@@ -18,16 +21,50 @@ from scripts.release.product_release import (
 
 COMMIT = "a" * 40
 DIGEST = "sha256:" + "b" * 64
+SDK_MEMBERS = {
+    "package/src/index.js": "export {};\n",
+    "package/src/index.ts": "export {};\n",
+    "package/src/generated/openapi-types.ts": "export {};\n",
+    "package/src/generated/agent-service-lifecycle.ts": "export {};\n",
+    "package/src/generated/agent-service-lifecycle-contract.ts": "export {};\n",
+}
+SLACK_MEMBERS = {
+    "package/dist/src/index.js": "export {};\n",
+    "package/dist/src/index.d.ts": "export {};\n",
+}
+
+
+def write_npm_archive(
+    path: Path,
+    package_manifest: dict[str, object],
+    members: dict[str, str],
+) -> None:
+    write_archive(
+        path,
+        [("package/package.json", json.dumps(package_manifest)), *members.items()],
+    )
+
+
+def write_archive(path: Path, members: list[tuple[str, str]]) -> None:
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, content in members:
+            payload = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(payload)
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(payload))
 
 
 class ProductReleaseTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
-        for name in ("slack.tgz", "sdk.tgz", "contracts/openapi.yaml", "contracts/lifecycle.json"):
+        for name in ("contracts/openapi.yaml", "contracts/lifecycle.json"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name, encoding="utf-8")
+        self.write_sdk_archive()
+        self.write_slack_archive()
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -58,6 +95,34 @@ class ProductReleaseTest(unittest.TestCase):
             manifest_sha256="c" * 64,
         )
 
+    def write_sdk_archive(
+        self,
+        *,
+        name: str = "@writer/cerebro-sdk",
+        version: str = "0.1.0",
+        members: dict[str, str] | None = None,
+    ) -> None:
+        write_npm_archive(
+            self.root / "sdk.tgz",
+            {"name": name, "version": version},
+            SDK_MEMBERS if members is None else members,
+        )
+
+    def write_slack_archive(
+        self,
+        *,
+        sdk_version: str = "0.1.0",
+    ) -> None:
+        write_npm_archive(
+            self.root / "slack.tgz",
+            {
+                "name": "@writer/cerebro-slack-companion",
+                "version": "0.1.0",
+                "dependencies": {"@writer/cerebro-sdk": sdk_version},
+            },
+            SLACK_MEMBERS,
+        )
+
     def test_build_is_deterministic_and_validates_bundle_digests(self) -> None:
         manifest = build_manifest(self.args())
         validate_manifest(manifest, self.root)
@@ -69,6 +134,67 @@ class ProductReleaseTest(unittest.TestCase):
         manifest = build_manifest(self.args())
         (self.root / "slack.tgz").write_text("changed", encoding="utf-8")
         with self.assertRaisesRegex(ManifestError, "artifact digest does not match"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_archive_with_wrong_embedded_package_identity(self) -> None:
+        self.write_sdk_archive(name="@writer/not-cerebro-sdk")
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "archive package name does not match"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_sdk_archive_without_generated_contract_binding(self) -> None:
+        members = dict(SDK_MEMBERS)
+        del members["package/src/generated/agent-service-lifecycle-contract.ts"]
+        self.write_sdk_archive(members=members)
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "archive is missing required members"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_slack_archive_with_another_sdk_version(self) -> None:
+        self.write_slack_archive(sdk_version="0.2.0")
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "must depend on the archived TypeScript SDK version"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_archive_with_duplicate_package_json_member(self) -> None:
+        package_json = json.dumps({"name": "@writer/cerebro-sdk", "version": "0.1.0"})
+        write_archive(
+            self.root / "sdk.tgz",
+            [
+                ("package/package.json", package_json),
+                ("package/package.json", package_json),
+                *SDK_MEMBERS.items(),
+            ],
+        )
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "archive has duplicate member"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_archive_with_malformed_package_metadata(self) -> None:
+        write_archive(
+            self.root / "sdk.tgz",
+            [("package/package.json", "{"), *SDK_MEMBERS.items()],
+        )
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "archive is invalid"):
+            validate_manifest(manifest, self.root)
+
+    def test_rejects_oversized_package_metadata(self) -> None:
+        write_archive(
+            self.root / "sdk.tgz",
+            [
+                ("package/package.json", "x" * (MAX_NPM_PACKAGE_JSON_BYTES + 1)),
+                *SDK_MEMBERS.items(),
+            ],
+        )
+        manifest = build_manifest(self.args())
+
+        with self.assertRaisesRegex(ManifestError, "package metadata size is invalid"):
             validate_manifest(manifest, self.root)
 
     def test_rejects_candidate_version_for_another_commit(self) -> None:
