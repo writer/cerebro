@@ -236,6 +236,7 @@ async function main(options) {
   await access(backendRoot);
   await requireCommand("docker", ["--version"]);
   await requireCommand("go", ["version"]);
+  await requireCommand("cargo", ["--version"]);
   await requireCommand("npm", ["--version"]);
 
   step("starting disposable stores");
@@ -246,11 +247,20 @@ async function main(options) {
   await seedStores();
 
   step("starting local Cerebro API");
-  const apiBinary = path.join(workDir, process.platform === "win32" ? "cerebro.exe" : "cerebro");
-  const apiBuild = run("go", ["-C", backendRoot, "build", "-o", apiBinary, "./cmd/cerebro"], {
-    env: portableChildEnvironment(),
-    quiet: true,
-  });
+  const binarySuffix = process.platform === "win32" ? ".exe" : "";
+  const apiBinary = path.join(workDir, `cerebro${binarySuffix}`);
+  const eventAdmissionBinary = path.join(backendRoot, "target", "release", `cerebro-event-admission-worker${binarySuffix}`);
+  const apiBuild = Promise.all([
+    run("go", ["-C", backendRoot, "build", "-o", apiBinary, "./cmd/cerebro"], {
+      env: portableChildEnvironment(),
+      quiet: true,
+    }),
+    run("cargo", ["build", "--locked", "--release", "-p", "cerebro-sourceruntime-eventadmission", "--bin", "cerebro-event-admission-worker"], {
+      cwd: backendRoot,
+      env: portableChildEnvironment(),
+      quiet: true,
+    }),
+  ]);
   backendProcess = await startAfterPrerequisite(apiBuild, async () => {
     const reservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
     apiPort = reservation.port;
@@ -265,6 +275,7 @@ async function main(options) {
         CEREBRO_NEO4J_URI: neo4jURI,
         CEREBRO_NEO4J_USERNAME: neo4jUser,
         CEREBRO_NEO4J_PASSWORD: neo4jCredential,
+        CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary,
         CEREBRO_API_AUTH_ENABLED: "false",
         CEREBRO_DEV_MODE: "1",
         CEREBRO_DEV_MODE_ACK: "1",

@@ -91,6 +91,17 @@ func (r *Runtime) Run(ctx context.Context, call func(context.Context, api.Module
 	return DiagnoseContext(callCtx, call(callCtx, module))
 }
 
+// Close releases the compiled module and runtime. It must not run concurrently with Run.
+func (r *Runtime) Close(ctx context.Context) error {
+	if r == nil || r.runtime == nil {
+		return nil
+	}
+	if ctx == nil {
+		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "context is required"))
+	}
+	return r.runtime.Close(ctx)
+}
+
 // Pointer returns the single Wasm32 pointer produced by an allocation call.
 func Pointer(results []uint64, operation string) (uint32, error) {
 	operation = strings.TrimSpace(operation)

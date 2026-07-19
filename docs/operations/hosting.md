@@ -273,6 +273,11 @@ Monitor graph ingest health, query latency, index health, and storage growth. Ke
 
 ### Source runtime secrets
 
+| Variable | Guidance |
+| --- | --- |
+| `CEREBRO_EVENT_ADMISSION_WORKER` | Optional path override for the release-pinned Rust admission worker. The default is `cerebro-event-admission-worker` beside the running `cerebro` binary. |
+| `CEREBRO_EVENT_ADMISSION_WORKERS` | Native admission process pool size. The default is `4`; allowed values are `1` through `64`. Size this against concurrent source-page syncs and the pod CPU limit. |
+
 Source integrations can require provider credentials. Keep provider tokens, API keys, cloud role bindings, and source-specific secrets outside checked-in config.
 
 Use:

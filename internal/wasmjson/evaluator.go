@@ -140,6 +140,14 @@ func (e *Evaluator) Evaluate(ctx context.Context, payload []byte) ([]byte, error
 	return output, nil
 }
 
+// Close releases the evaluator's compiled module and runtime. It must not run concurrently with Evaluate.
+func (e *Evaluator) Close(ctx context.Context) error {
+	if e == nil || e.runtime == nil {
+		return nil
+	}
+	return e.runtime.Close(ctx)
+}
+
 func (e *Evaluator) validateConfig() error {
 	var err error
 	switch {
