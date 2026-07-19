@@ -48,16 +48,13 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "api_key",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
-		ConfigurableAuthModels: []string{
-			"none",
-			"api_key",
-		},
+		SourceID:               sourceID,
+		DefaultFamily:          defaultFamily,
+		RequireTenantID:        true,
+		AuthModel:              "api_key",
+		TokenHeader:            tokenHeader,
+		TokenScheme:            tokenScheme,
+		ConfigurableAuthModels: []string{"none", "api_key"},
 		Families: []jsonapi.Family{
 			{
 				Name:             familyAggregate,
