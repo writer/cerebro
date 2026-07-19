@@ -51,11 +51,7 @@ func (s *Source) discoverDependabotAlerts(ctx context.Context, client *gogithub.
 	if err := s.checkDependabotAlerts(ctx, client, settings); err != nil {
 		return nil, err
 	}
-	repo, err := getRepo(ctx, client, settings.owner, settings.repo)
-	if err != nil {
-		return nil, err
-	}
-	urn, err := repoURN(settings.owner, repo)
+	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:repo:%s/%s", settings.owner, settings.owner, settings.repo))
 	if err != nil {
 		return nil, err
 	}

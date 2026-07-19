@@ -1,0 +1,24 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets",
+      "rel": "datasets"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/exports",
+      "rel": "exports"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/facets",
+      "rel": "facets"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates",
+      "rel": "metadata_templates"
+    }
+  ]
+}

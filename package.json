@@ -17,5 +17,8 @@
     "check:workspaces": "npm run check --workspaces --if-present",
     "test:workspaces": "npm test --workspaces --if-present",
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present"
+  },
+  "overrides": {
+    "postcss": "8.5.19"
   }
 }

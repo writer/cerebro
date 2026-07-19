@@ -1,0 +1,78 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "api_access_enabled": null,
+      "id": "example-cb14549c",
+      "policies": [
+        {
+          "access": "allow",
+          "id": "example-7f0cb26e",
+          "permission_groups": [
+            {
+              "id": "example-cc089cf2",
+              "meta": {
+                "description": "Can edit any Cloudflare setting, make purchases, update billing, and manage memberships. Super Administrators can revoke the access of other Super Administrators.",
+                "editable": "false",
+                "label": "all_privileges",
+                "scopes": "com.cloudflare.api.account"
+              },
+              "name": "Super Administrator - All Privileges"
+            }
+          ],
+          "resource_groups": [
+            {
+              "id": "example-fa171dd1",
+              "meta": {
+                "editable": "false"
+              },
+              "name": "com.cloudflare.api.account.example-7b47ad6c",
+              "scope": {
+                "key": "com.cloudflare.api.account.example-7b47ad6c",
+                "objects": [
+                  {
+                    "key": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "roles": [
+        {
+          "description": "Can edit any Cloudflare setting, make purchases, update billing, and manage memberships. Super Administrators can revoke the access of other Super Administrators.",
+          "id": "example-33f6cf80",
+          "name": "Super Administrator - All Privileges",
+          "permissions": {
+            "access": {
+              "edit": true,
+              "read": true
+            },
+            "analytics": {
+              "edit": false,
+              "read": true
+            }
+          }
+        }
+      ],
+      "status": "accepted",
+      "user": {
+        "email": "user-33fa0dca@example.test",
+        "first_name": "example-96d9632f",
+        "id": "example-8285dee6",
+        "last_name": "example-799ef92a",
+        "two_factor_authentication_enabled": true
+      }
+    }
+  ],
+  "result_info": {
+    "count": 15,
+    "page": 3,
+    "per_page": 15,
+    "total_count": 18,
+    "total_pages": 3
+  },
+  "success": true
+}

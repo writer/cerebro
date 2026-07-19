@@ -55,6 +55,41 @@ export class Client {
         }
         return this.requestJson("GET", `/platform/graph/neighborhood?${query.toString()}`);
     }
+    async listComplianceWorkItems(options = {}) {
+        const query = new URLSearchParams();
+        if (options.tenantId)
+            query.set("tenant_id", options.tenantId);
+        if (options.state)
+            query.set("state", options.state);
+        if (options.ownerId)
+            query.set("owner_id", options.ownerId);
+        if (options.cursor)
+            query.set("cursor", options.cursor);
+        if (options.limit !== undefined)
+            query.set("limit", String(options.limit));
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        return this.requestJson("GET", `/grc/work-items${suffix}`);
+    }
+    async getComplianceWorkItem(workItemId, tenantId = "") {
+        const normalizedID = workItemId.trim();
+        if (!normalizedID)
+            throw new Error("workItemId is required");
+        const query = new URLSearchParams();
+        if (tenantId)
+            query.set("tenant_id", tenantId);
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        return this.requestJson("GET", `/grc/work-items/${encodeURIComponent(normalizedID)}${suffix}`);
+    }
+    async commandComplianceWorkItem(workItemId, command, tenantId = "") {
+        const normalizedID = workItemId.trim();
+        if (!normalizedID)
+            throw new Error("workItemId is required");
+        const query = new URLSearchParams();
+        if (tenantId)
+            query.set("tenant_id", tenantId);
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        return this.requestJson("POST", `/grc/work-items/${encodeURIComponent(normalizedID)}/commands${suffix}`, command);
+    }
     async createJob(request, idempotencyKey = "") {
         const headers = {};
         if (idempotencyKey) {

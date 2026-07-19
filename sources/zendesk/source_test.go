@@ -21,15 +21,15 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Basic test-token" {
 			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.RequestURI() == "/v2/users/me" {
+		if r.URL.RequestURI() == "/v2/users/me.json" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/v2/users.json" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"users": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}, "meta": map[string]any{"has_more": false}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token", "subdomain": "test-subdomain"}

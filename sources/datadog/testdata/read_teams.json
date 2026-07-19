@@ -1,31 +1,96 @@
 [
   {
-    "id": "datadog-teams-team-1",
+    "id": "datadog-tenant-teams-905a73f5d5376fe7",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.teams",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2023-03-22T17:12:07Z",
     "schema_ref": "datadog/teams/v1",
     "payload": {
-      "id": "team-1",
-      "type": "team",
       "attributes": {
-        "name": "Platform",
-        "handle": "platform",
-        "description": "Platform owners"
-      }
+        "created_at": "2023-03-22T17:12:07.018313+00:00",
+        "description": null,
+        "handle": "api-spec-test-team",
+        "link_count": 0,
+        "modified_at": "2023-03-22T17:12:07.018317+00:00",
+        "name": "Example Team",
+        "summary": null,
+        "user_count": 0
+      },
+      "id": "ac73040e-c8d4-11ed-b2ea-da7ad0900002",
+      "relationships": {
+        "team_links": {
+          "links": {
+            "related": "/api/v2/team/ac73040e-c8d4-11ed-b2ea-da7ad0900002/links"
+          }
+        },
+        "user_team_permissions": {
+          "links": {
+            "related": "/api/v2/team/ac73040e-c8d4-11ed-b2ea-da7ad0900002/permission-settings"
+          }
+        }
+      },
+      "type": "team"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "team-1",
-      "external_id": "team-1",
+      "created_at": "2023-03-22T17:12:07.018313+00:00",
+      "external_id": "ac73040e-c8d4-11ed-b2ea-da7ad0900002",
       "family": "teams",
-      "source_provider": "datadog",
+      "handle": "api-spec-test-team",
+      "modified_at": "2023-03-22T17:12:07.018317+00:00",
+      "name": "Example Team",
+      "provider": "datadog",
       "source_product": "datadog",
-      "team_id": "team-1",
-      "name": "Platform",
-      "handle": "platform",
-      "description": "Platform owners"
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "team_id": "ac73040e-c8d4-11ed-b2ea-da7ad0900002"
+    }
+  },
+  {
+    "id": "datadog-tenant-teams-fc74bb498bf88dbf",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.teams",
+    "occurred_at": "2023-08-21T19:49:10Z",
+    "schema_ref": "datadog/teams/v1",
+    "payload": {
+      "attributes": {
+        "created_at": "2023-08-21T19:49:10.718738+00:00",
+        "description": "",
+        "handle": "test-handle-12938712938",
+        "link_count": 0,
+        "modified_at": "2023-08-21T19:49:10.718744+00:00",
+        "name": "test-name-12938712938",
+        "summary": null,
+        "user_count": 1
+      },
+      "id": "cc338b02-405b-11ee-835e-da7ad0900002",
+      "relationships": {
+        "team_links": {
+          "links": {
+            "related": "/api/v2/team/cc338b02-405b-11ee-835e-da7ad0900002/links"
+          }
+        },
+        "user_team_permissions": {
+          "links": {
+            "related": "/api/v2/team/cc338b02-405b-11ee-835e-da7ad0900002/permission-settings"
+          }
+        }
+      },
+      "type": "team"
+    },
+    "attributes": {
+      "created_at": "2023-08-21T19:49:10.718738+00:00",
+      "external_id": "cc338b02-405b-11ee-835e-da7ad0900002",
+      "family": "teams",
+      "handle": "test-handle-12938712938",
+      "modified_at": "2023-08-21T19:49:10.718744+00:00",
+      "name": "test-name-12938712938",
+      "provider": "datadog",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "team_id": "cc338b02-405b-11ee-835e-da7ad0900002"
     }
   }
 ]

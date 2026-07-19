@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: fivetran
+family: public_connector_types
+case: connector_types
+replay_test: source_test.go#TestSourceReplaysCapturedPublicConnectorTypes
+request:
+    method: GET
+    url: https://api.fivetran.com/public/connector-types
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:41:17Z"
+    sha256: 443b10127fc5b1dcb9ff7dca5717e0551a1d45ce0d9d5ab20c9f137f32ca51e0
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

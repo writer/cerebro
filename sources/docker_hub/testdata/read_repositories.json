@@ -1,61 +1,77 @@
 [
   {
+    "id": "docker_hub-tenant-repositories-37642678684e8b22",
+    "tenant_id": "tenant",
+    "source_id": "docker_hub",
+    "kind": "docker_hub.repositories",
+    "occurred_at": "2026-07-16T22:04:47Z",
+    "schema_ref": "docker_hub/repositories/v1",
+    "payload": {
+      "affiliation": null,
+      "categories": [
+        {
+          "name": "Operating systems",
+          "slug": "operating-systems"
+        }
+      ],
+      "collaborator_count": 0,
+      "content_types": [
+        "unrecognized",
+        "image"
+      ],
+      "date_registered": "2013-04-30T20:54:50Z",
+      "description": "Ubuntu is a Debian-based Linux operating system based on free software.",
+      "full_description": "# Quick reference\n\n-\t**Maintained by**:  \n\t[Canonical](https://launchpad.net/cloud-images)\n\n-\t**Where to get help**:  \n\t[the Docker Community Slack](https://dockr.ly/comm-slack), [Server Fault](https://serverfault.com/help/on-topic), [Unix \u0026 Linux](https://unix.stackexchange.com/help/on-topic), or [Stack Overflow](https://stackoverflow.com/help/on-topic)\n\n# Supported tags and respective `Dockerfile` links\n\n-\t[`22.04`, `jammy-20260627`, `jammy`](https://git.launchpad.net/cloud-images/+oci/ubuntu-base/tree/oci/index.json?h=refs/tags/dist-jammy-amd64-20260627-01085b33\u0026id=01085b3371ecd07b72cb903983ce84e6a9ba89f0)\n\n-\t[`24.04`, `noble-20260610`, `noble`](https://git.launchpad.net/cloud-images/+oci/ubuntu-base/tree/oci/index.json?h=refs/tags/dist-noble-amd64-20260610-016d915d\u0026id=016d915dacc912df85f759ff39bc7186cea33904)\n\n-\t[`26.04`, `resolute-20260707`, `resolute`, `latest`, `rolling`](https://git.launchpad.net/cloud-images/+oci/ubuntu-base/tree/oci/index.json?h=refs/tags/dist-resolute-amd64-20260707-015357ff\u0026id=015357ffd9d3421779a700b0860571b41d9cb4bc)\n\n-\t[`26.10`, `stonking-20260705`, `stonking`, `devel`](https://git.launchpad.net/cloud-images/+oci/ubuntu-base/tree/oci/index.json?h=refs/tags/dist-stonking-amd64-20260705-883cd8fd\u0026id=883cd8fda06c4d4bb2afca19d23a9018fc62db7e)\n\n# Quick reference (cont.)\n\n-\t**Where to file issues**:  \n\t[the cloud-images bug tracker](https://bugs.launchpad.net/cloud-images) (include the `docker` tag)\n\n-\t**Supported architectures**: ([more info](https://github.com/docker-library/official-images#architectures-other-than-amd64))  \n\t[`amd64`](https://hub.docker.com/r/amd64/ubuntu/), [`arm32v7`](https://hub.docker.com/r/arm32v7/ubuntu/), [`arm64v8`](https://hub.docker.com/r/arm64v8/ubuntu/), [`ppc64le`](https://hub.docker.com/r/ppc64le/ubuntu/), [`riscv64`](https://hub.docker.com/r/riscv64/ubuntu/), [`s390x`](https://hub.docker.com/r/s390x/ubuntu/)\n\n-\t**Published image artifact details**:  \n\t[repo-info repo's `repos/ubuntu/` directory](https://github.com/docker-library/repo-info/blob/master/repos/ubuntu) ([history](https://github.com/docker-library/repo-info/commits/master/repos/ubuntu))  \n\t(image metadata, transfer size, etc)\n\n-\t**Image updates**:  \n\t[official-images repo's `library/ubuntu` label](https://github.com/docker-library/official-images/issues?q=label%3Alibrary%2Fubuntu)  \n\t[official-images repo's `library/ubuntu` file](https://github.com/docker-library/official-images/blob/master/library/ubuntu) ([history](https://github.com/docker-library/official-images/commits/master/library/ubuntu))\n\n-\t**Source of this description**:  \n\t[docs repo's `ubuntu/` directory](https://github.com/docker-library/docs/tree/master/ubuntu) ([history](https://github.com/docker-library/docs/commits/master/ubuntu))\n\n# What is Ubuntu?\n\nUbuntu is a Debian-based Linux operating system that runs from the desktop to the cloud, to all your internet connected things. It is the world's most popular operating system across public clouds and OpenStack clouds. It is the number one platform for containers; from Docker to Kubernetes to LXD, Ubuntu can run your containers at scale. Fast, secure and simple, Ubuntu powers millions of PCs worldwide.\n\nDevelopment of Ubuntu is led by Canonical Ltd. Canonical generates revenue through the sale of technical support and other services related to Ubuntu. The Ubuntu project is publicly committed to the principles of open-source software development; people are encouraged to use free software, study how it works, improve upon it, and distribute it.\n\n\u003e [ubuntu.com](https://ubuntu.com)\n\n![logo](https://raw.githubusercontent.com/docker-library/docs/2ac3caaf21dfba9734f20518971983edc617c77c/ubuntu/logo.png)\n\n# What's in this image?\n\nThis image is built from official rootfs tarballs provided by Canonical (see `dist-*` tags at https://git.launchpad.net/cloud-images/+oci/ubuntu-base).\n\nThe `ubuntu:latest` tag points to the \"latest LTS\", since that's the version recommended for general use. The `ubuntu:rolling` tag points to the latest release (regardless of LTS status).\n\nAlong a similar vein, the `ubuntu:devel` tag is an alias for whichever release the \"devel\" suite on the mirrors currently points to, as determined by the following one-liner: `wget -qO- http://archive.ubuntu.com/ubuntu/dists/devel/Release | awk -F ': ' '$1 == \"Codename\" { print $2; exit }'`\n\n## Locales\n\nGiven that it is a minimal install of Ubuntu, this image only includes the `C`, `C.UTF-8`, and `POSIX` locales by default. For most uses requiring a UTF-8 locale, `C.UTF-8` is likely sufficient (`-e LANG=C.UTF-8` or `ENV LANG C.UTF-8`).\n\nFor uses where that is not sufficient, other locales can be installed/generated via the `locales` package. [PostgreSQL has a good example of doing so](https://github.com/docker-library/postgres/blob/69bc540ecfffecce72d49fa7e4a46680350037f9/9.6/Dockerfile#L21-L24), copied below:\n\n```dockerfile\nRUN apt-get update \u0026\u0026 apt-get install -y locales \u0026\u0026 rm -rf /var/lib/apt/lists/* \\\n\t\u0026\u0026 localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8\nENV LANG en_US.utf8\n```\n\n## Unminimize\n\nStarting from [Ubuntu 24.10 \"Oracular Oriole\"](https://discourse.ubuntu.com/t/oracular-oriole-release-notes/44878#unminimize), the `unminimize` command will no longer be shipped by default on minimal images. It has now been moved to a dedicated package which can be installed via `apt-get install -y unminimize`.\n\n# How is the rootfs built?\n\nThe tarballs published by Canonical, referenced by `dist-*` tags in https://git.launchpad.net/cloud-images/+oci/ubuntu-base Git repository, are built from scripts that live in [the livecd-rootfs project](https://code.launchpad.net/~ubuntu-core-dev/livecd-rootfs/+git/livecd-rootfs/+ref/ubuntu/master), especially `live-build/auto/build`. The builds are run on Launchpad. For build history see `livefs` build pages of individual releases on Launchpad:\n\n-\t[Jammy](https://launchpad.net/~cloud-images-release-managers/+livefs/ubuntu/jammy/ubuntu-oci)\n-\t[Noble](https://launchpad.net/~cloud-images-release-managers/+livefs/ubuntu/noble/ubuntu-oci)\n-\t[Questing](https://launchpad.net/~cloud-images-release-managers/+livefs/ubuntu/questing/ubuntu-oci)\n-\t[Resolute](https://launchpad.net/~cloud-images-release-managers/+livefs/ubuntu/resolute/ubuntu-oci)\n\n# License\n\nView [license information](https://www.ubuntu.com/about/about-ubuntu/licensing) for the software contained in this image.\n\nAs with all Docker images, these likely also contain other software which may be under other licenses (such as Bash, etc from the base distribution, along with any direct or indirect dependencies of the primary software being contained).\n\nSome additional license information which was able to be auto-detected might be found in [the `repo-info` repository's `ubuntu/` directory](https://github.com/docker-library/repo-info/tree/master/repos/ubuntu).\n\nAs for any pre-built image usage, it is the image user's responsibility to ensure that any use of this image complies with any relevant licenses for all software contained within.",
+      "has_starred": false,
+      "hub_user": "stackbrew",
+      "id": "repositories",
+      "immutable_tags_settings": {
+        "enabled": false,
+        "rules": [
+          ".*"
+        ]
+      },
+      "is_automated": false,
+      "is_private": false,
+      "last_modified": "2026-07-16T00:15:03.412976Z",
+      "last_updated": "2026-07-16T22:04:47.794608Z",
+      "media_types": [
+        "application/octet-stream",
+        "application/vnd.docker.container.image.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.docker.distribution.manifest.v1+prettyjws",
+        "application/vnd.oci.image.index.v1+json"
+      ],
+      "name": "ubuntu",
+      "namespace": "library",
+      "permissions": {
+        "admin": false,
+        "read": true,
+        "write": false
+      },
+      "pull_count": 9962368974,
+      "repository_type": "image",
+      "source": null,
+      "star_count": 17859,
+      "status": 1,
+      "status_description": "active",
+      "storage_size": 101538964302,
+      "user": "library"
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/repositories",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-docker_hub-repositories-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-docker_hub-repositories-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/docker_hub/repositories/source-docker_hub-repositories-1",
-      "external_id": "source-docker_hub-repositories-1",
+      "external_id": "library/ubuntu",
       "family": "repositories",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "docker_hub",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-docker_hub-repositories-1",
-      "resource_name": "Docker Hub Repositories Fixture",
-      "resource_type": "repositories",
-      "resource_urn": "urn:cerebro:tenant:docker_hub_repositories:source-docker_hub-repositories-1",
+      "resource_id": "library/ubuntu",
+      "resource_name": "ubuntu",
+      "resource_type": "container_repository",
+      "resource_urn": "urn:cerebro:tenant:docker_hub_repositories:library%2Fubuntu",
       "schema": "repositories",
-      "source_event_id": "source-docker_hub-repositories-1",
+      "source_event_id": "library/ubuntu",
       "source_provider": "docker_hub",
       "source_system": "docker_hub",
       "tenant_id": "tenant"
-    },
-    "id": "source-docker_hub-repositories-event-1",
-    "kind": "docker_hub.repositories",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/repositories",
-      "event_id": "source-docker_hub-repositories-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-docker_hub-repositories-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-docker_hub-repositories-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/docker_hub/repositories/source-docker_hub-repositories-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/docker_hub/repositories/source-docker_hub-repositories-1",
-      "family": "repositories",
-      "id": "source-docker_hub-repositories-1",
-      "name": "Docker Hub Repositories Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-docker_hub-repositories-1",
-      "resource_type": "repositories",
-      "resource_urn": "urn:cerebro:tenant:docker_hub_repositories:source-docker_hub-repositories-1",
-      "schema_ref": "docker_hub/repositories/v1",
-      "source_id": "docker_hub",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "docker_hub/repositories/v1",
-    "source_id": "docker_hub",
-    "tenant_id": "tenant"
+    }
   }
 ]

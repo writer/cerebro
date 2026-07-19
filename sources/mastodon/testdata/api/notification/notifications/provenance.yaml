@@ -1,0 +1,34 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mastodon
+family: notification
+case: notifications
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMastodonFamilies
+request:
+    method: GET
+    url: https://mastodon.example.test/api/v1/notifications
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-05-28T10:01:39Z"
+    sha256: 2aab0af0e8362f262032e8e4449c0c0165e32b549a09ad62533a0302456d700c
+    headers:
+        link: <http://localhost:3000/api/v1/notifications?max_id=24>; rel="next", <http://localhost:3000/api/v1/notifications?min_id=24>; rel="prev"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].account.username
+        - $[0].status.account.username
+        - $[0].status.mentions[0].username
+origin:
+    type: upstream_recording
+    repository: https://github.com/halcy/Mastodon.py
+    commit: e125dc87f3933e5c5b4c8be41883595f60bb5080
+    path: tests/cassettes/test_notifications.yaml
+    artifact_sha256: b234a2351307cf6087a758593418eceb276a7d88fef3e5699a4b4c941ad04874
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: artifact_commit

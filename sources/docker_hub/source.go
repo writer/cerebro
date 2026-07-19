@@ -17,7 +17,7 @@ var catalogFS embed.FS
 const (
 	sourceID               = "docker_hub"
 	defaultFamily          = familyRepositories
-	defaultHealthPath      = "/v2/user/"
+	defaultHealthPath      = "/v2/namespaces/${config.namespace}/repositories/${config.repository}"
 	defaultBaseURLTemplate = "https://hub.docker.com"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
@@ -26,7 +26,7 @@ const (
 	familyAuditEvents      = "audit_events"
 )
 
-var templateKeys = []string{"token"}
+var templateKeys = []string{"namespace", "repository", "token"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -39,25 +39,31 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "bearer_token",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
+		SourceID:               sourceID,
+		DefaultFamily:          defaultFamily,
+		RequireTenantID:        true,
+		AuthModel:              "bearer_token",
+		ConfigurableAuthModels: []string{"none", "bearer_token"},
+		TokenHeader:            tokenHeader,
+		TokenScheme:            tokenScheme,
 		Families: []jsonapi.Family{
 			{
 				Name:             familyRepositories,
-				Path:             "/v1/repositories",
+				Path:             "/v2/namespaces/${config.namespace}/repositories/${config.repository}",
 				URNKind:          "docker_hub_repositories",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "repositories", "source_system": "docker_hub"},
+				IDKeys:           []string{"name"},
+				TimestampKeys:    []string{"last_updated", "last_modified", "date_registered"},
+				Attributes:       map[string]string{"resource_id": "_record_id", "resource_name": "name", "source_event_id": "_record_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "container_repository", "schema": "repositories", "source_system": "docker_hub"},
+				Singleton:        true,
+				DisablePageSize:  true,
+				Config: jsonapi.FamilyConfig{
+					AuthModel:        "none",
+					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					EncodeURNID:      true,
+					IDTemplate:       "${namespace}/${name}",
+					ResourceURNKind:  "docker_hub_repositories",
+				},
 			},
 			{
 				Name:             familyUsers,

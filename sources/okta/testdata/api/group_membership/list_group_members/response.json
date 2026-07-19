@@ -1,0 +1,42 @@
+[
+  {
+    "_links": {
+      "self": {
+        "href": "https://test.okta.com/api/v1/users/example-e0faf9f9f6cee27e"
+      }
+    },
+    "activated": null,
+    "created": "2020-08-27T18:15:57.000Z",
+    "credentials": {
+      "emails": [
+        {
+          "status": "",
+          "type": "",
+          "value": ""
+        }
+      ],
+      "password": {},
+      "provider": {
+        "name": "",
+        "type": ""
+      }
+    },
+    "id": "example-e0faf9f9f6cee27e",
+    "lastLogin": null,
+    "lastUpdated": "2020-08-27T18:15:57.000Z",
+    "passwordChanged": "2020-08-27T18:15:57.000Z",
+    "profile": {
+      "email": "example-62db0e0b",
+      "firstName": "example-96d9632f",
+      "lastName": "example-c205d7af",
+      "login": "example-62db0e0b",
+      "mobilePhone": null,
+      "secondEmail": null
+    },
+    "status": "STAGED",
+    "statusChanged": null,
+    "type": {
+      "id": "otyc04qb2rUDcq2YA4x6"
+    }
+  }
+]

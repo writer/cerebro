@@ -1,0 +1,21 @@
+{
+  "Domains": [
+    {
+      "DKIMVerified": true,
+      "ID": 314000125,
+      "Name": "example-a379a6f6",
+      "ReturnPathDomainVerified": false,
+      "SPFVerified": true,
+      "WeakDKIM": true
+    },
+    {
+      "DKIMVerified": true,
+      "ID": 274931120,
+      "Name": "example-bfabc374",
+      "ReturnPathDomainVerified": false,
+      "SPFVerified": true,
+      "WeakDKIM": true
+    }
+  ],
+  "TotalCount": 13
+}

@@ -1,0 +1,52 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": {
+    "description": "",
+    "id": "example-2a6b721c",
+    "kind": "zone",
+    "last_updated": "2025-03-25T22:38:12.845519Z",
+    "name": "default",
+    "phase": "http_request_dynamic_redirect",
+    "rules": [
+      {
+        "action": "redirect",
+        "action_parameters": {
+          "from_value": {
+            "preserve_query_string": true,
+            "status_code": 301,
+            "target_url": {
+              "value": "https://example.com/foo"
+            }
+          }
+        },
+        "enabled": true,
+        "expression": "true",
+        "id": "example-5ce58dcc",
+        "last_updated": "2025-03-25T22:38:12.845519Z",
+        "ref": "jacob1",
+        "version": "2"
+      },
+      {
+        "action": "redirect",
+        "action_parameters": {
+          "from_value": {
+            "preserve_query_string": true,
+            "status_code": 301,
+            "target_url": {
+              "value": "https://example.com/example1"
+            }
+          }
+        },
+        "enabled": true,
+        "expression": "true",
+        "id": "example-d855cbd0",
+        "last_updated": "2025-03-25T22:38:12.845519Z",
+        "ref": "jacob2",
+        "version": "3"
+      }
+    ],
+    "version": "3"
+  },
+  "success": true
+}

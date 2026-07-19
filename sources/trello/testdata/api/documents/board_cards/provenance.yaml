@@ -1,0 +1,63 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: trello
+family: documents
+case: board_cards
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTrelloFamilies
+request:
+    method: GET
+    url: https://api.trello.com/1/boards/example-board/cards
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2016-08-14T19:47:18Z"
+    sha256: 0d7f561892f9c99871e19c48908772ee72d11f0e6af9bd901f592888e8789128
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].id
+        - $[0].idBoard
+        - $[0].idList
+        - $[0].idMembers[0]
+        - $[0].idMembers[1]
+        - $[0].idShort
+        - $[0].name
+        - $[0].shortLink
+        - $[0].shortUrl
+        - $[0].url
+        - $[1].id
+        - $[1].idBoard
+        - $[1].idList
+        - $[1].idShort
+        - $[1].name
+        - $[1].shortLink
+        - $[1].shortUrl
+        - $[1].url
+        - $[2].id
+        - $[2].idBoard
+        - $[2].idList
+        - $[2].idShort
+        - $[2].name
+        - $[2].shortLink
+        - $[2].shortUrl
+        - $[2].url
+        - $[3].id
+        - $[3].idBoard
+        - $[3].idList
+        - $[3].idMembers[0]
+        - $[3].idShort
+        - $[3].name
+        - $[3].shortLink
+        - $[3].shortUrl
+        - $[3].url
+origin:
+    type: upstream_recording
+    repository: https://github.com/yammine/ex_trello
+    commit: a252cb34a2c08500ba62ad2f86f9d55ca609170f
+    path: fixtures/vcr_cassettes/board_cards.json
+    artifact_sha256: 0d4d02f5ff0d1f260127e6b1eb68b31cd16f92e731c77d2b45ea42b645eca20d
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/test_helper.exs
+    freshness: historical
+    capture_time_basis: response_header

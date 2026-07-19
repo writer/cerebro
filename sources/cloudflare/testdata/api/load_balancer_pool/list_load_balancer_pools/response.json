@@ -1,0 +1,63 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "check_regions": null,
+      "created_on": "2025-02-26T20:44:27.999349Z",
+      "description": "",
+      "enabled": true,
+      "id": "example-5a8db91f",
+      "minimum_origins": 1,
+      "modified_on": "2025-02-26T20:44:27.999349Z",
+      "name": "pool1",
+      "networks": [
+        "cloudflare"
+      ],
+      "notification_email": "",
+      "origins": [
+        {
+          "address": "example.com",
+          "enabled": true,
+          "header": {
+            "host": [
+              "origin_address"
+            ]
+          },
+          "name": "example-1",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "check_regions": null,
+      "created_on": "2025-02-26T20:44:27.967706Z",
+      "description": "",
+      "enabled": true,
+      "id": "example-47ff3f9d",
+      "minimum_origins": 1,
+      "modified_on": "2025-02-26T20:44:27.967706Z",
+      "name": "pool2",
+      "networks": [
+        "cloudflare"
+      ],
+      "notification_email": "",
+      "origins": [
+        {
+          "address": "example.com",
+          "enabled": true,
+          "name": "example-2",
+          "weight": 1
+        }
+      ]
+    }
+  ],
+  "result_info": {
+    "count": 2,
+    "page": 1,
+    "per_page": 9223372036854775807,
+    "total_count": 2,
+    "total_pages": 1
+  },
+  "success": true
+}

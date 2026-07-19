@@ -6,6 +6,7 @@ import (
 
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/decisionops"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -165,6 +166,15 @@ func newKnowledgeFeatureService(deps knowledgeFeatureDeps) *knowledge.Service {
 	return knowledge.New(deps.GraphQueries, deps.ProjectionGraph).
 		WithAppendLog(deps.AppendLog).
 		WithDurabilityMode(knowledge.DurabilityRequired)
+}
+
+func newDecisionOutcomeService(deps Dependencies) *decisionops.Service {
+	return decisionops.New(
+		decisionPacketReceiptStore(deps.StateStore),
+		eventReplayer(deps.AppendLog),
+		newKnowledgeFeatureService(newKnowledgeFeatureDeps(deps)),
+		nil,
+	)
 }
 
 type graphQueryFeatureDeps struct {

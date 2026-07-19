@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 const defaultHTTPAddr = ":8080"
 const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
+const defaultSourceEventAdmissionWorkers = 4
 
 const (
 	defaultPostgresMaxOpenConns        = 25
@@ -68,8 +70,15 @@ type Config struct {
 	ContentPacks          ContentPackConfig
 	GraphActions          GraphActionsConfig
 	DocumentParsing       DocumentParsingConfig
+	SourceRuntime         SourceRuntimeConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
+}
+
+// SourceRuntimeConfig controls source event admission execution.
+type SourceRuntimeConfig struct {
+	EventAdmissionWorkerPath string
+	EventAdmissionWorkers    int
 }
 
 // ContentPackConfig selects signed declarative content without changing the kernel binary.
@@ -524,6 +533,9 @@ func Load() (Config, error) {
 				BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_REDUCTO_BASE_URL")), "/"),
 			},
 		},
+		SourceRuntime: SourceRuntimeConfig{
+			EventAdmissionWorkerPath: strings.TrimSpace(os.Getenv("CEREBRO_EVENT_ADMISSION_WORKER")),
+		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
 			Protocol:        strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL")),
@@ -542,6 +554,15 @@ func Load() (Config, error) {
 				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
 			},
 		},
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkerPath == "" {
+		cfg.SourceRuntime.EventAdmissionWorkerPath = defaultSourceEventAdmissionWorkerPath()
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkers, err = parseIntEnv("CEREBRO_EVENT_ADMISSION_WORKERS", defaultSourceEventAdmissionWorkers); err != nil {
+		return Config{}, err
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkers < 1 || cfg.SourceRuntime.EventAdmissionWorkers > 64 {
+		return Config{}, errors.New("CEREBRO_EVENT_ADMISSION_WORKERS must be between 1 and 64")
 	}
 	if cfg.ContentPacks.KernelVersion == "" {
 		cfg.ContentPacks.KernelVersion = "1.0.0"
@@ -879,6 +900,14 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func defaultSourceEventAdmissionWorkerPath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return "cerebro-event-admission-worker"
+	}
+	return filepath.Join(filepath.Dir(executable), "cerebro-event-admission-worker")
 }
 
 func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {

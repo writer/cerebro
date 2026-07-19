@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: policy_rule
+case: list_policy_rules
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/policies/00psfar1lATHw2WXj4x6/rules
+response:
+    status: 200
+    content_type: application/json;charset=UTF-8
+    captured_at: "2020-08-27T18:17:06Z"
+    sha256: c69df812cee8cf4dfca9ff5cbb029d05ff3fa2ded29873361c7bfe28e2992c10
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_policies_it/TestPoliciesResource.test_list_policy_rules.yaml
+    artifact_sha256: a72047054ca97c70742b87c0e485606891ab0a18da9f11ea8d6a2f72ec232351
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 2
+    freshness: historical
+    capture_time_basis: response_header

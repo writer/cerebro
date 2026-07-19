@@ -1,3 +1,11 @@
 [
-  "urn:cerebro:tenant:opendatasoft_facet:source-opendatasoft-facet-1"
+  "urn:cerebro:tenant:opendatasoft_facet:features",
+  "urn:cerebro:tenant:opendatasoft_facet:modified",
+  "urn:cerebro:tenant:opendatasoft_facet:publisher",
+  "urn:cerebro:tenant:opendatasoft_facet:keyword",
+  "urn:cerebro:tenant:opendatasoft_facet:theme",
+  "urn:cerebro:tenant:opendatasoft_facet:language",
+  "urn:cerebro:tenant:opendatasoft_facet:custom.referential",
+  "urn:cerebro:tenant:opendatasoft_facet:custom.depreciated",
+  "urn:cerebro:tenant:opendatasoft_facet:dublin-core.available_end"
 ]

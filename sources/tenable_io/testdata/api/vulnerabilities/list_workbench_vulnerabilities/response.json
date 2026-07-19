@@ -1,0 +1,44 @@
+{
+  "total_asset_count": 0,
+  "total_vulnerability_count": 2,
+  "vulnerabilities": [
+    {
+      "accepted_count": 0,
+      "count": 1,
+      "counts_by_severity": [
+        {
+          "count": 1,
+          "value": 2
+        }
+      ],
+      "cvss3_base_score": 8.1,
+      "cvss_base_score": 6.8,
+      "plugin_family": "CentOS Local Security Checks",
+      "plugin_id": 141584,
+      "plugin_name": "CentOS 7 : httpd (CESA-2020:3958)",
+      "recasted_count": 0,
+      "severity": 2,
+      "vpr_score": 6.7,
+      "vulnerability_state": "New"
+    },
+    {
+      "accepted_count": 0,
+      "count": 1,
+      "counts_by_severity": [
+        {
+          "count": 1,
+          "value": 2
+        }
+      ],
+      "cvss3_base_score": 6.5,
+      "cvss_base_score": 4.3,
+      "plugin_family": "CentOS Local Security Checks",
+      "plugin_id": 142598,
+      "plugin_name": "CentOS 7 : freetype (CESA-2020:4907)",
+      "recasted_count": 0,
+      "severity": 2,
+      "vpr_score": 7.3,
+      "vulnerability_state": "New"
+    }
+  ]
+}

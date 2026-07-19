@@ -328,7 +328,7 @@ describe("current user identity", () => {
     expect(currentUserActor(user)).toBe("okta-jwt-subject");
   });
 
-  it("validates configured JWT issuer and audience claims without overstating signature verification", () => {
+  it("does not treat direct bearer claims as verified without a signature", () => {
     const previousIssuer = process.env.CEREBRO_IDENTITY_ISSUER;
     const previousAudience = process.env.CEREBRO_IDENTITY_AUDIENCE;
     process.env.CEREBRO_IDENTITY_ISSUER = "https://login.example.com/oauth2/default";
@@ -347,7 +347,7 @@ describe("current user identity", () => {
 
       expect(user).toMatchObject({
         actorId: "claims-subject",
-        confidence: "claims-validated",
+        confidence: "unverified",
         provider: "bearer-jwt",
       });
       expect(user?.warnings).toBeUndefined();
@@ -487,6 +487,32 @@ describe("current user identity", () => {
       keyId: "test-key",
       signature: "verified",
     });
+  });
+
+  it("fails closed when bearer verification material is unavailable", async () => {
+    process.env.CEREBRO_IDENTITY_PROFILE = "oidc-bearer";
+    process.env.CEREBRO_IDENTITY_ISSUER = "https://login.example.com/oauth2/default";
+    process.env.CEREBRO_IDENTITY_AUDIENCE = "cerebro-web";
+    delete process.env.CEREBRO_IDENTITY_JWKS_URL;
+
+    const user = await resolveCurrentUserFromHeaders(new Headers({
+      authorization: `Bearer ${jwtWithPayload({
+        aud: "cerebro-web",
+        email: "claims.user@example.com",
+        exp: Math.floor(Date.now() / 1000) + 60,
+        iss: "https://login.example.com/oauth2/default",
+        roles: ["cerebro.admin"],
+        sub: "claims-subject",
+      })}`,
+    }));
+
+    expect(user).toMatchObject({
+      actorId: "claims-subject",
+      confidence: "unverified",
+      provider: "bearer-jwt",
+    });
+    expect(user?.warnings).toContain("jwks-not-configured");
+    expect(user?.evidence?.jwt?.signature).toBe("failed");
   });
 
   it("downgrades JWT identity when JWKS signature verification fails", async () => {

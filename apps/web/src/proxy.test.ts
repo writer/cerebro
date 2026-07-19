@@ -1,13 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 
 import { GRC_UPLOAD_MAX_BYTES } from "./lib/grc-upload-limits";
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 const request = (method: string, path: string, headers?: Record<string, string>) =>
   new NextRequest(new URL(path, "http://localhost:3000"), { method, headers });
 
 describe("proxy", () => {
+  it("matches API requests in the Next.js runtime", () => {
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "/api/cerebro/grc/findings",
+    })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "/findings",
+    })).toBe(false);
+  });
+
   it("passes normal API requests through", () => {
     const response = proxy(request("GET", "/api/cerebro/grc/findings"));
     expect(response.status).toBe(200);

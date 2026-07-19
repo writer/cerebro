@@ -1,0 +1,37 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: cloudflare
+family: zone_ruleset
+case: list_zone_rulesets
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedCloudflareFamilies
+request:
+    method: GET
+    url: https://api.cloudflare.com/client/v4/zones/example-26a2e403/rulesets
+response:
+    status: 200
+    content_type: application/json; charset=UTF-8
+    captured_at: "2026-05-26T21:44:02Z"
+    sha256: a220be98d509a89a5f07896bd8e961e1976d582a258e0c2addca05288add22dc
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.result[0].id
+        - $.result[1].id
+        - $.result[2].id
+        - $.result[3].id
+        - $.result[4].id
+        - $.result[5].id
+        - $.result[6].id
+        - $.result[7].id
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/cloudflare/cf-terraforming
+    commit: 4eca5a200300865607a000226e85581aec5d50bc
+    path: testdata/cloudflare/v5/cloudflare_ruleset.yaml
+    artifact_sha256: 24da41047376979c6c4ec53e6f3bb0d7aad527cc6aace94595235a59d4ba75f7
+    license: MPL-2.0
+    recording_tool: go-vcr-v1
+    harness_path: internal/app/cf-terraforming/cmd/generate_test.go
+    freshness: current
+    capture_time_basis: artifact_commit

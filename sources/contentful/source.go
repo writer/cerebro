@@ -18,7 +18,7 @@ const (
 	sourceID               = "contentful"
 	defaultFamily          = familyUsers
 	defaultHealthPath      = "/v1/me"
-	defaultBaseURLTemplate = "${config.base_url}"
+	defaultBaseURLTemplate = "https://cdn.contentful.com"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
 	familyUsers            = "users"
@@ -89,16 +89,16 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyDocuments,
-				Path:             "/v1/documents",
+				Path:             "/spaces/${config.space_id}/entries",
 				URNKind:          "contentful_documents",
-				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				IDKeys:           []string{"sys.id", "id", "name", "urn", "resource_urn"},
+				CursorParam:      "skip",
 				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "document", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "documents", "source_system": "contentful"},
+				ListKeys:         []string{"items"},
+				TimestampKeys:    []string{"sys.updatedAt", "sys.createdAt"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "sys.id|id", "name": "fields.name|fields.title|sys.id", "observed_at": "sys.updatedAt|sys.createdAt", "resource_id": "sys.id|id", "resource_name": "fields.name|fields.title|sys.id", "resource_urn": "resource_urn|urn", "source_event_id": "sys.id|id", "tenant_id": "tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "contentful_entry", "schema": "documents", "source_system": "contentful"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, LimitKeys: []string{"limit"}, OffsetCursor: true, OffsetKeys: []string{"skip"}, ResourceURNKind: "contentful_documents", TotalKeys: []string{"total"}},
 			},
 			{
 				Name:             familyAuditEvents,

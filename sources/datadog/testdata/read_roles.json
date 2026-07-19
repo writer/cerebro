@@ -1,29 +1,66 @@
 [
   {
-    "id": "datadog-roles-role-1",
+    "id": "datadog-tenant-roles-4bfba707164dac2e",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.roles",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2022-05-12T09:52:55Z",
     "schema_ref": "datadog/roles/v1",
     "payload": {
-      "id": "role-1",
-      "type": "roles",
       "attributes": {
-        "name": "Datadog Admin",
-        "description": "Full Datadog administration"
-      }
+        "created_at": "2022-05-12T09:52:55.356883+00:00",
+        "modified_at": "2022-05-12T09:52:55.420991+00:00",
+        "name": "Test-List_roles_returns_OK_response-1652349174",
+        "user_count": 0
+      },
+      "id": "4bed0a96-d1d9-11ec-ad3d-da7ad0900002",
+      "relationships": {
+        "permissions": {
+          "data": [
+            {
+              "id": "d90f6830-d3d8-11e9-a77a-b3404e5e9ee2",
+              "type": "permissions"
+            },
+            {
+              "id": "4441648c-d8b1-11e9-a77a-1b899a04b304",
+              "type": "permissions"
+            },
+            {
+              "id": "417ba636-2dce-11eb-84c0-6bce5b0d9de0",
+              "type": "permissions"
+            },
+            {
+              "id": "12efc20e-d36c-11eb-a9b8-da7ad0900002",
+              "type": "permissions"
+            },
+            {
+              "id": "97971c1c-e895-11eb-b13c-da7ad0900002",
+              "type": "permissions"
+            },
+            {
+              "id": "7605ef24-f376-11eb-b90b-da7ad0900002",
+              "type": "permissions"
+            },
+            {
+              "id": "b6bf9ac6-9a59-11ec-8480-da7ad0900002",
+              "type": "permissions"
+            }
+          ]
+        }
+      },
+      "type": "roles"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "role-1",
-      "external_id": "role-1",
+      "created_at": "2022-05-12T09:52:55.356883+00:00",
+      "external_id": "4bed0a96-d1d9-11ec-ad3d-da7ad0900002",
       "family": "roles",
-      "source_provider": "datadog",
+      "modified_at": "2022-05-12T09:52:55.420991+00:00",
+      "name": "Test-List_roles_returns_OK_response-1652349174",
+      "provider": "datadog",
+      "role_id": "4bed0a96-d1d9-11ec-ad3d-da7ad0900002",
       "source_product": "datadog",
-      "role_id": "role-1",
-      "name": "Datadog Admin",
-      "description": "Full Datadog administration"
+      "source_provider": "datadog",
+      "source_system": "datadog"
     }
   }
 ]

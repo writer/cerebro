@@ -4,6 +4,12 @@
 
 This document defines the public repository layout used to consolidate Cerebro runtime and client development. It does not define a deployment topology or authorize a production migration.
 
+## Rationale
+
+Cerebro is one product with multiple operator surfaces. The Go runtime owns the system of record for evidence, graph, policy, source, MCP, HTTP, RPC, and CLI behavior. The web app and Slack companion are public clients of those contracts, not separate products with independent semantics.
+
+Keeping the clients in this repository lets contract changes land with their generated SDKs, UI behavior, Slack lifecycle behavior, and conformance tests. Keeping deployment topology out of this repository prevents public source from accumulating environment values, secret locations, account wiring, hostnames, rollout thresholds, and recovery policy.
+
 ## Layout
 
 | Path | Owns | Must not own |
@@ -17,11 +23,22 @@ This document defines the public repository layout used to consolidate Cerebro r
 
 ## Dependency Direction
 
-```text
-apps/web ---------------------> public HTTP/OpenAPI contracts
-apps/slack-companion --------> lifecycle schemas + TypeScript SDK + public HTTP contracts
-sdk/typescript --------------> generated public schemas
-Go runtime ------------------> internal domain packages + public schemas
+```mermaid
+flowchart TB
+  Schemas["public schemas"]
+  Runtime["Go runtime<br/>cmd/, internal/, sources/"]
+  HTTP["public HTTP/OpenAPI contracts"]
+  SDK["sdk/typescript"]
+  Web["apps/web"]
+  Slack["apps/slack-companion"]
+
+  Schemas --> Runtime
+  Runtime --> HTTP
+  Schemas --> SDK
+  HTTP --> Web
+  HTTP --> Slack
+  SDK --> Slack
+  Schemas --> Slack
 ```
 
 Dependencies do not point from the Go runtime into `apps/`. Applications are built and released independently even when a contract and its consumers change in one pull-request stack.

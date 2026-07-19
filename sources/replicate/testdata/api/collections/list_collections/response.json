@@ -1,0 +1,101 @@
+{
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "description": "Multimodal large language models with vision capabilities like object detection and optical character recognition (OCR)",
+      "name": "Vision models",
+      "slug": "vision-models"
+    },
+    {
+      "description": "T2I-Adapter models to modify images",
+      "name": "T2I-Adapter",
+      "slug": "t2i-adapter"
+    },
+    {
+      "description": "Language models that support grammar-based decoding as well as jsonschema constraints.",
+      "name": "Language models with support for grammars and jsonschema",
+      "slug": "language-models-with-grammar"
+    },
+    {
+      "description": "Some of our favorite SDXL fine-tunes.",
+      "name": "SDXL fine-tunes",
+      "slug": "sdxl-fine-tunes"
+    },
+    {
+      "description": "Language models that support streaming responses. See https://replicate.com/docs/streaming",
+      "name": "Streaming language models",
+      "slug": "streaming-language-models"
+    },
+    {
+      "description": "Tools for manipulating images.",
+      "name": "Image editing",
+      "slug": "image-editing"
+    },
+    {
+      "description": "Models that generate embeddings from inputs",
+      "name": "Embedding models",
+      "slug": "embedding-models"
+    },
+    {
+      "description": "Language models that you can fine-tune using Replicate's training API.",
+      "name": "Trainable language models",
+      "slug": "trainable-language-models"
+    },
+    {
+      "description": "Models that can understand and generate text",
+      "name": "Language models",
+      "slug": "language-models"
+    },
+    {
+      "description": "Control diffusion models",
+      "name": "ControlNet",
+      "slug": "control-net"
+    },
+    {
+      "description": "Models to generate and modify audio",
+      "name": "Audio generation",
+      "slug": "audio-generation"
+    },
+    {
+      "description": "Image and video generation models trained with diffusion processes",
+      "name": "Diffusion models",
+      "slug": "diffusion-models"
+    },
+    {
+      "description": "Models that create and edit videos",
+      "name": "Videos",
+      "slug": "text-to-video"
+    },
+    {
+      "description": "Models that generate text prompts and captions from images",
+      "name": "Image to text",
+      "slug": "image-to-text"
+    },
+    {
+      "description": "Upscaling models that create high-quality images from low-quality images",
+      "name": "Super resolution",
+      "slug": "super-resolution"
+    },
+    {
+      "description": "Models that take a content image and a style reference to produce a new image",
+      "name": "Style transfer",
+      "slug": "style-transfer"
+    },
+    {
+      "description": "Models that let you change facial features",
+      "name": "ML makeovers",
+      "slug": "ml-makeovers"
+    },
+    {
+      "description": "Models that improve or restore images by deblurring, colorization, and removing noise",
+      "name": "Image restoration",
+      "slug": "image-restoration"
+    },
+    {
+      "description": "Models that generate images from text prompts",
+      "name": "Text to image",
+      "slug": "text-to-image"
+    }
+  ]
+}

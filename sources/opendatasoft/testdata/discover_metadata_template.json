@@ -1,3 +1,7 @@
 [
-  "urn:cerebro:tenant:opendatasoft_metadata_template:source-opendatasoft-metadata_template-1"
+  "urn:cerebro:tenant:opendatasoft_metadata_template:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog%2Fmetadata_templates",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog%2Fmetadata_templates%2Finterop",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog%2Fmetadata_templates%2Fbasic",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog%2Fmetadata_templates%2Fextra",
+  "urn:cerebro:tenant:opendatasoft_metadata_template:https%3A%2F%2Fpublic.opendatasoft.com%2Fapi%2Fv2%2Fcatalog%2Fmetadata_templates%2Fadmin"
 ]

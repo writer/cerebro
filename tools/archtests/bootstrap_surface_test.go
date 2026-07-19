@@ -122,6 +122,14 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
+// Native source event admission adds caller-lifetime worker-pool composition,
+// Connect service reuse, and shutdown wiring only. Admission policy, framing,
+// restart behavior, and receipt validation remain in
+// internal/sourceruntime/eventadmission; the boundary is recorded in
+// docs/engineering/rust-source-runtime-adr.md.
+// Agent service lifecycle discovery adds only authenticated route registration
+// and response mapping; the state machines, records, validation, and generated
+// bindings remain behind internal/agentplatform.
 // Policy discovery candidates add only HTTP request/response mapping,
 // tenant/scope enforcement, safe transport views, and configured model/store
 // composition, including the narrow findings-registry coverage adapter.
@@ -141,7 +149,13 @@ import (
 // Dedicated evaluation-dataset read, proposal, and approval scope constants
 // keep future agent credentials separate from candidate execution. Bootstrap
 // owns only their route-policy and OAuth discovery catalog entries.
-const bootstrapProductionGoLineBudget = 28954
+// Assurance decision routes add only service composition and route/auth
+// registration; decision validation and persistence remain in
+// internal/complianceassessment.
+// Canonical compliance work adds query composition and response mapping;
+// bounded queries and assurance verification remain in the domain and
+// state-store packages.
+const bootstrapProductionGoLineBudget = 29044
 
 type bootstrapFileLineCount struct {
 	path  string

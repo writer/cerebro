@@ -1,0 +1,13 @@
+{
+  "aggregations": [
+    {
+      "count(*)": 408
+    }
+  ],
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/aggregates",
+      "rel": "self"
+    }
+  ]
+}

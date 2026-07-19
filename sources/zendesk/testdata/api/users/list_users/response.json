@@ -1,0 +1,79 @@
+{
+  "links": {
+    "next": "https://zendesk.example.test/api/v2/users.json?page%5Bafter%5D=eyJvIjoiaWQiLCJ2IjoiYVJwclIzU1RCUUFBIn0%3D\u0026page%5Bsize%5D=1",
+    "prev": "https://zendesk.example.test/api/v2/users.json?page%5Bbefore%5D=eyJvIjoiaWQiLCJ2IjoiYVJwclIzU1RCUUFBIn0%3D\u0026page%5Bsize%5D=1"
+  },
+  "meta": {
+    "after_cursor": "eyJvIjoiaWQiLCJ2IjoiYVJwclIzU1RCUUFBIn0=",
+    "before_cursor": "eyJvIjoiaWQiLCJ2IjoiYVJwclIzU1RCUUFBIn0=",
+    "has_more": true
+  },
+  "users": [
+    {
+      "active": true,
+      "alias": null,
+      "created_at": "2023-09-09T23:52:05Z",
+      "custom_role_id": null,
+      "default_group_id": null,
+      "details": null,
+      "email": "example-e233d4a2",
+      "external_id": null,
+      "iana_time_zone": "America/New_York",
+      "id": 6130869168922,
+      "last_login_at": null,
+      "locale": "en-US",
+      "locale_id": 1,
+      "moderator": false,
+      "name": "example-33c83fea",
+      "notes": null,
+      "only_private_comments": false,
+      "organization_id": null,
+      "phone": null,
+      "photo": {
+        "content_type": "image/png",
+        "content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
+        "deleted": false,
+        "file_name": "profile_image_6130869168922_18525119.png",
+        "height": 80,
+        "id": 6130876541082,
+        "inline": false,
+        "mapped_content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119.png",
+        "size": 10157,
+        "thumbnails": [
+          {
+            "content_type": "image/png",
+            "content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
+            "deleted": false,
+            "file_name": "profile_image_6130869168922_18525119_thumb.png",
+            "height": 32,
+            "id": 6130869169818,
+            "inline": false,
+            "mapped_content_url": "https://zendesk.example.test/system/photos/6130876541082/profile_image_6130869168922_18525119_thumb.png",
+            "size": 2330,
+            "url": "https://zendesk.example.test/api/v2/attachments/6130869169818.json",
+            "width": 32
+          }
+        ],
+        "url": "https://zendesk.example.test/api/v2/attachments/6130876541082.json",
+        "width": 80
+      },
+      "report_csv": false,
+      "restricted_agent": true,
+      "role": "end-user",
+      "role_type": null,
+      "shared": false,
+      "shared_agent": false,
+      "shared_phone_number": null,
+      "signature": null,
+      "suspended": false,
+      "tags": [],
+      "ticket_restriction": "requested",
+      "time_zone": "America/New_York",
+      "two_factor_auth_enabled": null,
+      "updated_at": "2023-09-09T23:52:06Z",
+      "url": "https://zendesk.example.test/api/v2/users/6130869168922.json",
+      "user_fields": {},
+      "verified": false
+    }
+  ]
+}

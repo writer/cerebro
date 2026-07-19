@@ -3,6 +3,7 @@ package sourceruntime
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
@@ -113,11 +115,13 @@ func stringInSlice(values []string, needle string) bool {
 
 type ledgerRuntimeStore struct {
 	runtimeStore
-	calls []string
+	calls    []string
+	attempts []ports.SourceRuntimePageAttempt
 }
 
 func (s *ledgerRuntimeStore) BeginSourceRuntimePage(_ context.Context, attempt ports.SourceRuntimePageAttempt) error {
 	s.calls = append(s.calls, "begin")
+	s.attempts = append(s.attempts, attempt)
 	if len(attempt.Events) == 0 {
 		return errors.New("ledger attempt events are required")
 	}
@@ -145,6 +149,35 @@ func (s *ledgerRuntimeStore) CommitSourceRuntimePage(ctx context.Context, _ stri
 type appendLog struct {
 	err    error
 	events []*cerebrov1.EventEnvelope
+}
+
+type batchAppendLog struct {
+	err         error
+	appendCalls int
+	batchCalls  int
+	events      []*cerebrov1.EventEnvelope
+}
+
+func (l *batchAppendLog) Ping(context.Context) error { return l.err }
+
+func (l *batchAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	l.appendCalls++
+	if l.err != nil {
+		return l.err
+	}
+	l.events = append(l.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	return nil
+}
+
+func (l *batchAppendLog) AppendBatch(_ context.Context, events []*cerebrov1.EventEnvelope) error {
+	l.batchCalls++
+	if l.err != nil {
+		return l.err
+	}
+	for _, event := range events {
+		l.events = append(l.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	}
+	return nil
 }
 
 func (l *appendLog) Ping(context.Context) error {
@@ -293,6 +326,32 @@ type duplicateEventSource struct{}
 
 func (duplicateEventSource) Spec() *cerebrov1.SourceSpec {
 	return &cerebrov1.SourceSpec{Id: "duplicate_event"}
+}
+
+type admissionTestSource struct {
+	id         string
+	events     []*cerebrov1.EventEnvelope
+	contracts  []sourcecdk.EventContract
+	checkpoint *cerebrov1.SourceCheckpoint
+	nextCursor *cerebrov1.SourceCursor
+}
+
+func (s admissionTestSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id}
+}
+
+func (admissionTestSource) Check(context.Context, sourcecdk.Config) error { return nil }
+
+func (admissionTestSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s admissionTestSource) EventContracts() []sourcecdk.EventContract {
+	return s.contracts
+}
+
+func (s admissionTestSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: s.events, Checkpoint: s.checkpoint, NextCursor: s.nextCursor}, nil
 }
 
 func (duplicateEventSource) Check(context.Context, sourcecdk.Config) error {
@@ -1291,14 +1350,14 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
-	if resp.GetEventsAppended() != 2 {
-		t.Fatalf("Sync().EventsAppended = %d, want 2", resp.GetEventsAppended())
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", resp.GetEventsAppended())
 	}
-	if resp.GetPagesRead() != 2 {
-		t.Fatalf("Sync().PagesRead = %d, want 2", resp.GetPagesRead())
+	if resp.GetPagesRead() != 1 {
+		t.Fatalf("Sync().PagesRead = %d, want 1", resp.GetPagesRead())
 	}
-	if len(log.events) != 2 {
-		t.Fatalf("len(appendLog.events) = %d, want 2", len(log.events))
+	if len(log.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
 	}
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
 		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
@@ -1310,8 +1369,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 		t.Fatalf("appended event span_id = %q, want omitted", got)
 	}
 	runtime := store.runtimes["writer-github"]
-	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
-		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
+	if runtime.GetCheckpoint().GetCursorOpaque() != "1" {
+		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "1")
 	}
 	if runtime.GetNextCursor() != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", runtime.GetNextCursor())
@@ -1319,8 +1378,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if runtime.GetLastSyncedAt() == nil {
 		t.Fatal("stored last_synced_at = nil, want non-nil")
 	}
-	if store.putCount != 2 {
-		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
+	if store.putCount != 1 {
+		t.Fatalf("PutSourceRuntime calls = %d, want 1", store.putCount)
 	}
 }
 
@@ -1485,6 +1544,16 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	if len(log.events) != 1 || len(projector.events) != 1 {
 		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
 	}
+	if len(store.attempts) != 1 {
+		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))
+	}
+	admission := store.attempts[0].Admission
+	if admission.Kernel != "sourceruntime-event-admission" || admission.ABIVersion != 1 || admission.Scanned != 1 || admission.Accepted != 1 {
+		t.Fatalf("ledger admission = %#v; want kernel/ABI 1 and 1 accepted event", admission)
+	}
+	if !strings.HasPrefix(admission.ScannedSHA256, "sha256:") || !strings.HasPrefix(admission.ResultSHA256, "sha256:") {
+		t.Fatalf("ledger admission digests = %#v; want SHA-256 receipts", admission)
+	}
 }
 
 func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
@@ -1628,6 +1697,7 @@ func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 		{name: "rate limited", err: errors.New("provider returned 429 too many requests"), want: "rate_limited"},
 		{name: "unavailable", err: errors.New("connection refused"), want: "provider_unavailable"},
 		{name: "invalid config", err: sourcecdk.ErrInvalidConfig, want: "invalid_source_config"},
+		{name: "admission kernel unavailable", err: eventadmission.ErrKernelUnavailable, want: "dependency_error"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			registry, err := sourcecdk.NewRegistry(failingSource{err: tt.err})
@@ -1653,7 +1723,7 @@ func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 	}
 }
 
-func FuzzInvalidEventFailureClassification(f *testing.F) {
+func FuzzSourceRuntimeFailureClassification(f *testing.F) {
 	f.Add("missing required attribute source_system")
 	f.Add("missing required payload field uri")
 	f.Add("provider returned 401 unauthorized")
@@ -1666,16 +1736,6 @@ func FuzzInvalidEventFailureClassification(f *testing.F) {
 		case "auth_error", "rate_limited", "provider_unavailable", "sync_failed":
 		default:
 			t.Fatalf("unexpected source runtime failure category %q", category)
-		}
-		invalidCategory := invalidEventFailureCategory(err)
-		switch invalidCategory {
-		case "missing_required_attribute", "missing_required_payload_field", "invalid_event":
-		default:
-			t.Fatalf("unexpected invalid event failure category %q", invalidCategory)
-		}
-		field := invalidEventFieldName(err)
-		if strings.Contains(field, " ") || strings.Contains(field, ":") {
-			t.Fatalf("invalid event field was not bounded to field token: %q", field)
 		}
 	})
 }
@@ -2130,6 +2190,192 @@ func TestSyncRuntimeDedupesAcceptedEventsByID(t *testing.T) {
 	}
 	if got := log.events[0].GetId(); got != "duplicate-event" {
 		t.Fatalf("appended event id = %q, want duplicate-event", got)
+	}
+}
+
+func TestSyncRuntimeAdmissionRejectsWholePageBeforeBatchAppend(t *testing.T) {
+	valid := runtimeTestEvent("valid-event", "admission_fatal", "admission_fatal.event")
+	invalid := runtimeTestEvent("invalid-event", "admission_fatal", "admission_fatal.event")
+	invalid.Payload = []byte("{")
+	source := admissionTestSource{
+		id:         "admission_fatal",
+		events:     []*cerebrov1.EventEnvelope{valid, invalid},
+		checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "rejected-checkpoint"},
+		nextCursor: &cerebrov1.SourceCursor{Opaque: "rejected-next-cursor"},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-admission-fatal": {
+			Id:         "writer-admission-fatal",
+			SourceId:   source.id,
+			TenantId:   "writer",
+			Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "committed-checkpoint"},
+			NextCursor: &cerebrov1.SourceCursor{Opaque: "committed-next-cursor"},
+		},
+	}}
+	log := &batchAppendLog{}
+	projector := &projector{}
+	service := New(registry, store, log, projector)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-fatal"})
+	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+	if log.batchCalls != 0 || log.appendCalls != 0 || len(log.events) != 0 {
+		t.Fatalf("append calls batch/single/events = %d/%d/%d, want 0/0/0", log.batchCalls, log.appendCalls, len(log.events))
+	}
+	if len(projector.events) != 0 {
+		t.Fatalf("projected events = %d, want 0", len(projector.events))
+	}
+	stored := store.runtimes["writer-admission-fatal"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "committed-checkpoint" {
+		t.Fatalf("checkpoint = %q, want committed-checkpoint", got)
+	}
+	if got := stored.GetNextCursor().GetOpaque(); got != "committed-next-cursor" {
+		t.Fatalf("next cursor = %q, want committed-next-cursor", got)
+	}
+}
+
+func TestSyncRuntimeAdmissionQuarantineNeverReachesBatchAppend(t *testing.T) {
+	first := runtimeTestEvent("event-1", "admission_quarantine", "admission_quarantine.event")
+	quarantined := runtimeTestEvent("event-2", "admission_quarantine", "admission_quarantine.event")
+	quarantined.Payload = []byte(`{}`)
+	third := runtimeTestEvent("event-3", "admission_quarantine", "admission_quarantine.event")
+	source := admissionTestSource{
+		id:     "admission_quarantine",
+		events: []*cerebrov1.EventEnvelope{first, quarantined, third},
+		contracts: []sourcecdk.EventContract{{
+			Kind:                  "admission_quarantine.event",
+			SchemaRef:             "admission_quarantine/event/v1",
+			RequiredAttributes:    []string{"event_type"},
+			RequiredPayloadFields: []string{"fixture"},
+		}},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-admission-quarantine": {Id: "writer-admission-quarantine", SourceId: source.id, TenantId: "writer"},
+	}}
+	log := &batchAppendLog{}
+	projector := &projector{}
+	service := New(registry, store, log, projector)
+
+	response, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-quarantine"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if log.batchCalls != 1 || log.appendCalls != 0 || len(log.events) != 2 {
+		t.Fatalf("append calls batch/single/events = %d/%d/%d, want 1/0/2", log.batchCalls, log.appendCalls, len(log.events))
+	}
+	if got := []string{log.events[0].GetId(), log.events[1].GetId()}; got[0] != "event-1" || got[1] != "event-3" {
+		t.Fatalf("appended IDs = %v, want [event-1 event-3]", got)
+	}
+	if response.GetEventsAppended() != 2 || len(projector.events) != 2 {
+		t.Fatalf("response/projected events = %d/%d, want 2/2", response.GetEventsAppended(), len(projector.events))
+	}
+	if got := store.runtimes["writer-admission-quarantine"].GetConfig()[runtimeRecordsRejectedConfigKey]; got != "1" {
+		t.Fatalf("records rejected = %q, want 1", got)
+	}
+}
+
+func TestSyncRuntimeNativeAdmissionCommitsOnlyAcceptedEvents(t *testing.T) {
+	workerPath := os.Getenv(eventadmission.NativeWorkerPathEnv)
+	if workerPath == "" {
+		t.Skipf("%s is not configured", eventadmission.NativeWorkerPathEnv)
+	}
+	admitter, err := eventadmission.NewNativeAdmitter(context.Background(), workerPath, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := admitter.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+
+	accepted := runtimeTestEvent("event-1", "native_admission", "native_admission.event")
+	quarantined := runtimeTestEvent("event-2", "native_admission", "native_admission.event")
+	quarantined.Payload = []byte(`{}`)
+	source := admissionTestSource{
+		id:     "native_admission",
+		events: []*cerebrov1.EventEnvelope{accepted, quarantined},
+		contracts: []sourcecdk.EventContract{{
+			Kind:                  "native_admission.event",
+			SchemaRef:             "native_admission/event/v1",
+			RequiredAttributes:    []string{"event_type"},
+			RequiredPayloadFields: []string{"fixture"},
+		}},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-native-admission": {Id: "writer-native-admission", SourceId: source.id, TenantId: "writer"},
+	}}
+	log := &batchAppendLog{}
+	service := New(registry, store, log, nil).WithEventAdmitter(admitter)
+
+	response, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-native-admission"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	appendedID := ""
+	if len(log.events) == 1 {
+		appendedID = log.events[0].GetId()
+	}
+	if response.GetEventsAppended() != 1 || log.batchCalls != 1 || len(log.events) != 1 || appendedID != "event-1" {
+		t.Fatalf("native sync appended/batches/event_count/event_id = %d/%d/%d/%q, want 1/1/1/event-1", response.GetEventsAppended(), log.batchCalls, len(log.events), appendedID)
+	}
+}
+
+func TestSyncRuntimeAdmissionDistinguishesIdenticalAndConflictingDuplicates(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		secondPayload string
+		wantError     bool
+		wantBatches   int
+		wantEvents    int
+	}{
+		{name: "identical", secondPayload: `{"fixture":true}`, wantBatches: 1, wantEvents: 1},
+		{name: "conflicting", secondPayload: `{"fixture":false}`, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			first := runtimeTestEvent("duplicate-event", "admission_duplicate", "admission_duplicate.event")
+			second := runtimeTestEvent("duplicate-event", "admission_duplicate", "admission_duplicate.event")
+			second.Payload = []byte(test.secondPayload)
+			source := admissionTestSource{id: "admission_duplicate", events: []*cerebrov1.EventEnvelope{first, second}}
+			registry, err := sourcecdk.NewRegistry(source)
+			if err != nil {
+				t.Fatalf("NewRegistry() error = %v", err)
+			}
+			store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-admission-duplicate": {Id: "writer-admission-duplicate", SourceId: source.id, TenantId: "writer"},
+			}}
+			log := &batchAppendLog{}
+			projector := &projector{}
+			service := New(registry, store, log, projector)
+
+			response, syncErr := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-admission-duplicate"})
+			if test.wantError {
+				if !errors.Is(syncErr, sourcecdk.ErrInvalidEventEnvelope) {
+					t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", syncErr)
+				}
+			} else if syncErr != nil {
+				t.Fatalf("Sync() error = %v", syncErr)
+			}
+			if log.batchCalls != test.wantBatches || len(log.events) != test.wantEvents || len(projector.events) != test.wantEvents {
+				t.Fatalf("batch/append/project counts = %d/%d/%d, want %d/%d/%d", log.batchCalls, len(log.events), len(projector.events), test.wantBatches, test.wantEvents, test.wantEvents)
+			}
+			if !test.wantError && response.GetEventsAppended() != boundedUint32(test.wantEvents) {
+				t.Fatalf("EventsAppended = %d, want %d", response.GetEventsAppended(), test.wantEvents)
+			}
+		})
 	}
 }
 

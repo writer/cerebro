@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: audit
+case: audit_log
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRestrictedFamilies
+request:
+    method: GET
+    url: https://api.github.com/orgs/api-playground/audit-log?include=all&phrase=action:org.add_member%20created:%3E2022-08-29
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2022-09-08T09:46:38Z"
+    sha256: bab78a2ca0b498059f7678df3a2cf8eb6b325a58373a9d48d257553cfe2647d7
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/octokit/octokit.rb
+    commit: 6d02a4b506aaf6a6b6b1a04e065dd23c697275ce
+    path: spec/cassettes/Octokit_Client_Organizations/_organization_audit_log/returns_audit_log_for_an_organization.json
+    artifact_sha256: a0175ebcd2786da49a274916ce8790ea686c9292aa15caf750fb7a5e8064786a
+    license: MIT
+    recording_tool: VCR
+    harness_path: spec/spec_helper.rb
+    freshness: historical
+    capture_time_basis: response_header

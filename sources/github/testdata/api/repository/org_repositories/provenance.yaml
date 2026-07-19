@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: repository
+case: org_repositories
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRepositoryShapes
+request:
+    method: GET
+    url: https://api.github.com/orgs/github/repos?type=all&sort=updated&direction=desc&per_page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:32:54Z"
+    sha256: 90d66421780154ce77244fd27fb3dc41508a0e60fe1525e796349d1a960b03f7
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

@@ -1,0 +1,102 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "comment": null,
+      "content": "1 . alpn=\"h2\"",
+      "created_on": "2025-05-21T21:28:00.865156Z",
+      "data": {
+        "priority": 1,
+        "target": ".",
+        "value": "alpn=\"h2\""
+      },
+      "id": "example-304c138a",
+      "meta": {},
+      "modified_on": "2025-05-21T21:28:00.865156Z",
+      "name": "bryzmhjmhl.terraform.cfapi.net",
+      "proxiable": false,
+      "proxied": false,
+      "settings": {},
+      "tags": [],
+      "ttl": 300,
+      "type": "HTTPS"
+    },
+    {
+      "comment": null,
+      "content": "203.0.113.242",
+      "created_on": "2025-02-05T03:15:14.780671Z",
+      "id": "example-c3d74863",
+      "meta": {
+        "auto_added": false,
+        "managed_by_apps": false,
+        "managed_by_argo_tunnel": false
+      },
+      "modified_on": "2025-02-05T03:15:14.780671Z",
+      "name": "foo.example.com",
+      "proxiable": false,
+      "proxied": false,
+      "settings": {},
+      "tags": [],
+      "ttl": 1,
+      "type": "A",
+      "zone_id": "example-26a2e403",
+      "zone_name": "example.com"
+    },
+    {
+      "comment": null,
+      "content": "example.com",
+      "created_on": "2025-02-06T23:37:26.594097Z",
+      "id": "example-d389e734",
+      "meta": {
+        "auto_added": false,
+        "managed_by_apps": false,
+        "managed_by_argo_tunnel": false
+      },
+      "modified_on": "2025-02-06T23:37:26.594097Z",
+      "name": "atmdfzvyns.origin.example.com",
+      "proxiable": true,
+      "proxied": false,
+      "settings": {
+        "flatten_cname": false
+      },
+      "tags": [],
+      "ttl": 3600,
+      "type": "CNAME",
+      "zone_id": "example-26a2e403",
+      "zone_name": "example.com"
+    },
+    {
+      "comment": null,
+      "content": "mx.record.example.com",
+      "created_on": "2024-11-12T22:00:34.677492Z",
+      "id": "example-95a48683",
+      "meta": {
+        "auto_added": false,
+        "email_routing": true,
+        "managed_by_apps": false,
+        "managed_by_argo_tunnel": false,
+        "read_only": true
+      },
+      "modified_on": "2024-11-12T22:00:34.677492Z",
+      "name": "hwflxxxmoc.example.com",
+      "priority": 71,
+      "proxiable": false,
+      "proxied": false,
+      "settings": {},
+      "tags": [],
+      "ttl": 1,
+      "type": "MX",
+      "zone_id": "example-26a2e403",
+      "zone_name": "example.com"
+    }
+  ],
+  "result_info": {
+    "count": 100,
+    "page": 1,
+    "per_page": 100,
+    "total_count": 193,
+    "total_pages": 1
+  },
+  "success": true
+}

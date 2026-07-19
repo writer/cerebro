@@ -1,37 +1,124 @@
 [
   {
-    "id": "datadog-audit-audit-1",
+    "id": "datadog-tenant-audit_events-806b52cf70f55ddf",
     "tenant_id": "tenant",
     "source_id": "datadog",
     "kind": "datadog.audit_events",
-    "occurred_at": "2026-06-02T00:00:00Z",
+    "occurred_at": "2022-04-13T09:29:59Z",
     "schema_ref": "datadog/audit_events/v1",
     "payload": {
-      "id": "audit-1",
-      "type": "audit_events",
       "attributes": {
-        "timestamp": "2026-06-02T00:00:00Z",
-        "evt": {"name": "role.updated"},
-        "usr": {"id": "user-1", "email": "alice@example.test"},
-        "resource": {"id": "role-1", "name": "Datadog Admin", "type": "role"}
-      }
+        "attributes": {
+          "action": "update_config",
+          "auth_method": "API + App Key",
+          "evt": {
+            "actor": {
+              "type": "Other"
+            }
+          },
+          "org": {
+            "uuid": "8dee7c38-00cb-11ea-a77b-8b5a08d3b091"
+          },
+          "status": "info",
+          "tags": [
+            "agent_hostname:i-086c6dfaa6bd27468",
+            "agent_version:7.35.0",
+            "root_config_version:4",
+            "old_snapshot_version:1419839",
+            "last_snapshot_version:1419845"
+          ],
+          "timestamp": "2022-04-13T09:29:59Z",
+          "usr": {
+            "email": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+            "id": "1ad9c690-ee90-4dca-80ad-034e916623ab"
+          }
+        },
+        "message": "Agent configuration successfuly updated",
+        "tags": [
+          "source:audit"
+        ],
+        "timestamp": "2022-04-13T09:29:59.000Z"
+      },
+      "id": "AQAAAYAiQhnY3SfuUQAAAABBWUFpUWhxSEFBQ0s2aHc2Mkh4cnZRQUE",
+      "type": "audit"
     },
     "attributes": {
-      "tenant_id": "tenant",
-      "source_event_id": "audit-1",
-      "external_id": "audit-1",
+      "action": "update_config",
+      "actor_email": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+      "actor_id": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+      "audit_id": "AQAAAYAiQhnY3SfuUQAAAABBWUFpUWhxSEFBQ0s2aHc2Mkh4cnZRQUE",
+      "date_happened": "2022-04-13T09:29:59.000Z",
+      "event_type": "update_config",
+      "external_id": "AQAAAYAiQhnY3SfuUQAAAABBWUFpUWhxSEFBQ0s2aHc2Mkh4cnZRQUE",
       "family": "audit_events",
-      "source_provider": "datadog",
+      "provider": "datadog",
+      "source_message": "Agent configuration successfuly updated",
       "source_product": "datadog",
-      "audit_id": "audit-1",
-      "event_type": "role.updated",
-      "action": "role.updated",
-      "actor_id": "user-1",
-      "actor_email": "alice@example.test",
-      "resource_id": "role-1",
-      "resource_name": "Datadog Admin",
-      "resource_type": "role",
-      "timestamp": "2026-06-02T00:00:00Z"
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "tags": "source:audit",
+      "timestamp": "2022-04-13T09:29:59.000Z"
+    }
+  },
+  {
+    "id": "datadog-tenant-audit_events-83e849a3a9538218",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.audit_events",
+    "occurred_at": "2022-04-13T09:29:59Z",
+    "schema_ref": "datadog/audit_events/v1",
+    "payload": {
+      "attributes": {
+        "attributes": {
+          "action": "update_config",
+          "auth_method": "API + App Key",
+          "evt": {
+            "actor": {
+              "type": "Other"
+            }
+          },
+          "org": {
+            "uuid": "8dee7c38-00cb-11ea-a77b-8b5a08d3b091"
+          },
+          "status": "info",
+          "tags": [
+            "agent_hostname:i-0a31006532ef57785",
+            "agent_version:7.35.0",
+            "root_config_version:4",
+            "old_snapshot_version:1419839",
+            "last_snapshot_version:1419845"
+          ],
+          "timestamp": "2022-04-13T09:29:59Z",
+          "usr": {
+            "email": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+            "id": "1ad9c690-ee90-4dca-80ad-034e916623ab"
+          }
+        },
+        "message": "Agent configuration successfuly updated",
+        "tags": [
+          "source:audit"
+        ],
+        "timestamp": "2022-04-13T09:29:59.000Z"
+      },
+      "id": "AQAAAYAiQhnY3SHuUQAAAABBWUFpUWhxRkFBQ0s2aHc2Mkh4cnR3QUE",
+      "type": "audit"
+    },
+    "attributes": {
+      "action": "update_config",
+      "actor_email": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+      "actor_id": "1ad9c690-ee90-4dca-80ad-034e916623ab",
+      "audit_id": "AQAAAYAiQhnY3SHuUQAAAABBWUFpUWhxRkFBQ0s2aHc2Mkh4cnR3QUE",
+      "date_happened": "2022-04-13T09:29:59.000Z",
+      "event_type": "update_config",
+      "external_id": "AQAAAYAiQhnY3SHuUQAAAABBWUFpUWhxRkFBQ0s2aHc2Mkh4cnR3QUE",
+      "family": "audit_events",
+      "provider": "datadog",
+      "source_message": "Agent configuration successfuly updated",
+      "source_product": "datadog",
+      "source_provider": "datadog",
+      "source_system": "datadog",
+      "tags": "source:audit",
+      "timestamp": "2022-04-13T09:29:59.000Z"
     }
   }
 ]

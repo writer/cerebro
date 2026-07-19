@@ -1,29 +1,155 @@
 [
   {
-    "id": "okta-trusted-origin-fixture-1",
+    "id": "okta-writer-okta-com-trusted_origin-50e6d2f4bcc94df2",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.trusted_origin",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2020-08-24T20:34:22Z",
     "schema_ref": "okta/trusted_origin/v1",
     "payload": {
-      "id": "origin-prod",
       "domain": "writer.okta.com",
-      "name": "Production Console",
-      "origin": "https://app.example.com"
+      "id": "tosc16b737nVjGaEb4x6",
+      "name": "My SPA 196",
+      "origin": "http://localhost:8080/",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/trustedOrigins/tosc16b737nVjGaEb4x6/lifecycle/deactivate"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT",
+                "DELETE"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/trustedOrigins/tosc16b737nVjGaEb4x6"
+          }
+        },
+        "created": "2020-05-13T18:49:36.000Z",
+        "createdBy": "example-74050b6de2891b2b",
+        "id": "tosc16b737nVjGaEb4x6",
+        "lastUpdated": "2020-08-24T20:34:22.000Z",
+        "lastUpdatedBy": "example-74050b6de2891b2b",
+        "name": "My SPA 196",
+        "origin": "http://localhost:8080/",
+        "scopes": [
+          {
+            "type": "CORS"
+          },
+          {
+            "type": "REDIRECT"
+          }
+        ],
+        "status": "ACTIVE"
+      },
+      "scopes": [
+        {
+          "type": "CORS"
+        },
+        {
+          "type": "REDIRECT"
+        }
+      ],
+      "status": "ACTIVE"
     },
     "attributes": {
       "cors": "true",
       "domain": "writer.okta.com",
       "family": "trusted_origin",
-      "name": "Production Console",
-      "origin": "https://app.example.com",
-      "origin_host": "app.example.com",
+      "name": "My SPA 196",
+      "origin": "http://localhost:8080/",
+      "origin_host": "localhost",
       "redirect": "true",
+      "resource_id": "tosc16b737nVjGaEb4x6",
+      "resource_type": "TrustedOrigin",
       "scope_count": "2",
       "scope_types": "CORS,REDIRECT",
       "status": "ACTIVE",
-      "trusted_origin_id": "origin-prod",
+      "trusted_origin_id": "tosc16b737nVjGaEb4x6",
+      "wildcard_origin": "false"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-trusted_origin-7a718f33305eac61",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.trusted_origin",
+    "occurred_at": "2020-08-27T18:17:18Z",
+    "schema_ref": "okta/trusted_origin/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "tossfbr7iMZZbmW044x6",
+      "name": "python_sdk_test_TO",
+      "origin": "http://example.com",
+      "raw": {
+        "_links": {
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/trustedOrigins/tossfbr7iMZZbmW044x6/lifecycle/deactivate"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "PUT",
+                "DELETE"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/trustedOrigins/tossfbr7iMZZbmW044x6"
+          }
+        },
+        "created": "2020-08-27T18:17:18.000Z",
+        "createdBy": "example-74050b6de2891b2b",
+        "id": "tossfbr7iMZZbmW044x6",
+        "lastUpdated": "2020-08-27T18:17:18.000Z",
+        "lastUpdatedBy": "example-74050b6de2891b2b",
+        "name": "python_sdk_test_TO",
+        "origin": "http://example.com",
+        "scopes": [
+          {
+            "type": "CORS"
+          },
+          {
+            "type": "REDIRECT"
+          }
+        ],
+        "status": "ACTIVE"
+      },
+      "scopes": [
+        {
+          "type": "CORS"
+        },
+        {
+          "type": "REDIRECT"
+        }
+      ],
+      "status": "ACTIVE"
+    },
+    "attributes": {
+      "cors": "true",
+      "domain": "writer.okta.com",
+      "family": "trusted_origin",
+      "name": "python_sdk_test_TO",
+      "origin": "http://example.com",
+      "origin_host": "example.com",
+      "redirect": "true",
+      "resource_id": "tossfbr7iMZZbmW044x6",
+      "resource_type": "TrustedOrigin",
+      "scope_count": "2",
+      "scope_types": "CORS,REDIRECT",
+      "status": "ACTIVE",
+      "trusted_origin_id": "tossfbr7iMZZbmW044x6",
       "wildcard_origin": "false"
     }
   }

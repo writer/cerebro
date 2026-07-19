@@ -11,6 +11,7 @@ emitted_kinds:
   - trusted_endpoint.grc_evidence
   - trusted_endpoint.trust_gate_decision
   - trusted_endpoint.action_outcome
+  - trusted_endpoint.agent_execution_receipt
 coverage_contract:
   owner_domain: endpoint
   authority_domain: trusted_endpoint
@@ -83,6 +84,14 @@ coverage_contract:
       type: audit_event
       title: Trusted endpoint action outcomes
       families: [action_outcome]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+    - id: agent_execution_receipts
+      type: audit_event
+      title: Agent execution receipts
+      families: [agent_execution_receipt]
       support: supported
       high_value: true
       evidence_types: [logging_configuration]
@@ -166,3 +175,23 @@ event_contracts:
     required_payload_fields:
       - action
       - outcome
+  - kind: trusted_endpoint.agent_execution_receipt
+    schema_ref: trusted_endpoint/agent_execution_receipt/v1
+    required_attributes:
+      - agent_id
+      - device_id
+      - receipt_id
+      - captured_at
+      - agent_product
+      - session_id
+      - phase
+      - action
+      - evidence_integrity
+    required_payload_fields:
+      - receipt_id
+      - captured_at
+      - agent_product
+      - session_id
+      - phase
+      - action
+      - evidence_integrity

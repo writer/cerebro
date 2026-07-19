@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: files_com
+family: login
+case: list_logins_range
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFilesFamilies
+request:
+    method: GET
+    url: https://app.files.com/api/rest/v1/history/login?end_at=2023-01-30T07%3A43%3A37-05%3A00&start_at=2023-01-28T19%3A41%3A43-05%3A00
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2023-02-01T00:57:40Z"
+    sha256: e777a09411f5970bd25418096a46593dc743d549d3e55786ca27f86cc5398213
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/Files-com/files-cli
+    commit: 3ddea668261d482463fe2af3d5f4478a2ae3c790
+    path: cmd/fixtures/TestHistories.yaml
+    artifact_sha256: 3efef9a6a5ed9f06f16fbc3816392f2516df9d6e73f708c3b9cc6234a98a8ae5
+    license: MIT
+    recording_tool: go-vcr-v1
+    harness_path: cmd/files_test.go
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: response_header

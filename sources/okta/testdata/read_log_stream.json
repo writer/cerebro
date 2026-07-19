@@ -1,30 +1,32 @@
 [
   {
-    "id": "okta-log-stream-fixture-1",
+    "id": "okta-writer-okta-com-log_stream-a3bf4fd5cc76e431",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.log_stream",
-    "occurred_at": "2026-04-23T00:00:00Z",
+    "occurred_at": "2025-09-25T08:02:45Z",
     "schema_ref": "okta/log_stream/v1",
     "payload": {
-      "id": "logstream-splunk",
       "domain": "writer.okta.com",
-      "name": "Splunk Cloud"
+      "id": "example-032efd3817db72a9",
+      "name": "Test List AWS Log Stream",
+      "status": "ACTIVE",
+      "type": "aws_eventbridge"
     },
     "attributes": {
-      "created_at": "2026-04-20T00:00:00Z",
+      "aws_account_id": "123456789012",
+      "aws_event_source_name": "p",
+      "aws_region": "us-east-1",
+      "created_at": "2025-09-25T08:02:45.000Z",
       "domain": "writer.okta.com",
       "family": "log_stream",
-      "last_updated_at": "2026-04-23T00:00:00Z",
-      "log_stream_id": "logstream-splunk",
-      "name": "Splunk Cloud",
-      "resource_id": "logstream-splunk",
+      "last_updated_at": "2025-09-25T08:02:45.000Z",
+      "log_stream_id": "example-032efd3817db72a9",
+      "name": "Test List AWS Log Stream",
+      "resource_id": "example-032efd3817db72a9",
       "resource_type": "LogStream",
-      "splunk_edition": "aws",
-      "splunk_host": "https://splunk.example.com/services/collector",
-      "splunk_host_host": "splunk.example.com",
       "status": "ACTIVE",
-      "type": "splunk_cloud_logstreaming"
+      "type": "aws_eventbridge"
     }
   }
 ]
