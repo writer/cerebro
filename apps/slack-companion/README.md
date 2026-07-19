@@ -110,6 +110,12 @@ subtypes, incomplete records, empty text, and direct mentions of the companion
 are rejected with stable reason codes. Slack history fetching, authorization,
 storage, and learning execution remain host-owned.
 
+## Source health
+
+`src/execution/source-health-policy.ts` applies failure cooldown, successful recovery, slow-source degradation, and stable ranking to caller-owned state. It reuses the portable consecutive-failure and capacity-cooldown records so the host can commit one coherent aggregate.
+
+The host owns source calls, persistence, probe scheduling, and policy values. This module does not poll sources, create a store, or choose deployment behavior.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with

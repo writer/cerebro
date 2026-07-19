@@ -44,6 +44,7 @@ export {
 export * from "./execution/effect-reconciliation.js";
 export * from "./execution/effect-intent.js";
 export * from "./execution/repeated-failure-policy.js";
+export * from "./execution/source-health-policy.js";
 export type {
   EffectIntentValue,
   ExecutionSession,
