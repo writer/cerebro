@@ -2043,7 +2043,7 @@ paths:
         - name: tenant_id
           in: query
           required: false
-          description: Tenant selected for credentials that are not already bound to one tenant. An authenticated tenant is used when omitted.
+          description: Optional tenant override constrained by the authenticated principal.
           schema:
             type: string
             maxLength: 200
